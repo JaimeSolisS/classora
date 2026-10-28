@@ -28,7 +28,7 @@ the Unit of Work's audit actor (``None`` in a job); instants come from
 import uuid
 from collections.abc import Collection
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import Select, select
 from sqlalchemy.exc import IntegrityError
@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import clock
 from app.core.audit import current_actor_id
 from app.core.money import Money, money_sum
+from app.modules.billing.discounts import DiscountKind, DiscountLine
 from app.modules.billing.errors import ChargeNetNegativeError, StudentHasNoFamilyError
 from app.modules.billing.models import (
     ACCOUNT_FAMILY_FK,
@@ -47,6 +48,7 @@ from app.modules.billing.models import (
     BillingAccount,
     Charge,
     ChargeAdjustment,
+    ChargeDiscount,
     PaymentAllocation,
 )
 from app.modules.billing.schemas import (
@@ -171,8 +173,10 @@ async def post_charge(session: AsyncSession, draft: ChargeDraft) -> PostedCharge
     :class:`StudentHasNoFamilyError`, nothing written) → its account
     (:func:`ensure_billing_account`) → the account row ``FOR UPDATE`` → the
     natural key: already posted → ``created = False``, nothing written →
-    insert in a savepoint (E4). The charge keeps this account even if the
-    student later moves to another family.
+    insert in a savepoint (E4) → the draft's discount lines as
+    ``charge_discounts`` rows (#95 B5; only for a charge created now). The
+    charge keeps this account even if the student later moves to another
+    family.
     """
     family = await families.family_of_student(session, draft.student_id)
     if family is None:
@@ -196,6 +200,7 @@ async def post_charge(session: AsyncSession, draft: ChargeDraft) -> PostedCharge
         cohort_enrollment_id=draft.cohort_enrollment_id,
         service_date=draft.service_date,
         price_version_id=draft.price_version_id,
+        custom_price_id=draft.custom_price_id,
         education_level_id=draft.education_level_id,
         scheduled_minutes=draft.scheduled_minutes,
         list_amount=draft.list_amount,
@@ -216,9 +221,56 @@ async def post_charge(session: AsyncSession, draft: ChargeDraft) -> PostedCharge
         if existing is None:  # pragma: no cover - the violation means it exists
             raise
         return existing
+    if draft.discounts:
+        # #95 B5: the snapshot of the applied discounts, only for a charge
+        # created now (a repeat posts nothing), under the account lock.
+        session.add_all(
+            ChargeDiscount(
+                charge_id=charge.id,
+                discount_id=line.discount_id,
+                position=line.position,
+                kind=line.kind,
+                name=line.name,
+                percent=line.percent,
+                fixed_amount=line.fixed_amount,
+                amount=line.amount,
+            )
+            for line in draft.discounts
+        )
+        await session.flush()
     return PostedCharge(
         charge_id=charge.id, billing_account_id=account.id, created=True
     )
+
+
+async def charge_discount_lines(
+    session: AsyncSession, charge_ids: Collection[uuid.UUID]
+) -> dict[uuid.UUID, list[DiscountLine]]:
+    """The discount lines of each charge, in position order (#95 B6): the
+    snapshot taken at posting (kind, name, percent or fixed amount as they
+    were then). Charges without lines are left out. One statement (none for
+    no ids)."""
+    if not charge_ids:
+        return {}
+    rows = await session.scalars(
+        select(ChargeDiscount)
+        .where(ChargeDiscount.charge_id.in_(set(charge_ids)))
+        .order_by(ChargeDiscount.charge_id, ChargeDiscount.position)
+    )
+    found: dict[uuid.UUID, list[DiscountLine]] = {}
+    for row in rows:
+        found.setdefault(row.charge_id, []).append(
+            DiscountLine(
+                discount_id=row.discount_id,
+                position=row.position,
+                kind=cast(DiscountKind, row.kind),
+                name=row.name,
+                percent=row.percent,
+                fixed_amount=row.fixed_amount,
+                amount=row.amount,
+            )
+        )
+    return found
 
 
 # --- Adjustments ---------------------------------------------------------------------

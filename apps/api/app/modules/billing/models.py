@@ -50,11 +50,35 @@ migration 0061 (#90) makes it ``EXISTS`` a charge with that
 singleton (mutable config, versioned) holding the billing start floor
 ``billing_starts_on`` (``NULL``: the sweepers post nothing).
 
+**Discounts and custom prices** (#95; data-model §3.6-§3.8, §5.2):
+
+- ``custom_prices`` (mutable config, versioned, guarded once referenced): a
+  student's or a family's price for one catalog item, from
+  ``effective_from`` to ``expires_on`` (inclusive, ``NULL`` = open), never
+  overlapping for one target and item (two ``EXCLUDE USING gist``).
+  Migration 0063's trigger ``custom_prices_no_referenced_change`` refuses
+  every change but ``expires_on`` (and ``version``/``updated_at``) and every
+  ``DELETE`` of a row a charge references (SQLSTATE 42501);
+  ``custom_prices_no_truncate`` refuses ``TRUNCATE``.
+- ``discounts`` (mutable config, versioned, never deleted): a discount,
+  scholarship, sibling discount or promotion (``kind``), a percentage or a
+  fixed amount, structured ``eligibility``, an ``audience`` (``all`` or
+  ``assigned``) and an optional date window.
+- ``discount_assignments`` (mutable config, no ``version``): who an
+  ``assigned`` discount is for (a student or a family).
+- ``charge_discounts`` (append-only, the §5.1 triggers): the discounts
+  applied to a charge, snapshotted at posting (kind, name, percent or fixed
+  amount, the line amount, the position).
+- ``charges.custom_price_id`` (column added by #95): the custom price used;
+  at most one of it and ``price_version_id`` (``ck_charges_one_price``), never
+  on a ``manual`` charge (``ck_charges_manual_unpriced``).
+
 Every model is ``Audited``; every foreign key is ``ON DELETE RESTRICT``.
 """
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Final
 
 from sqlalchemy import (
@@ -65,13 +89,14 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Numeric,
     SmallInteger,
     String,
     UniqueConstraint,
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID, ExcludeConstraint
 from sqlalchemy.orm import Mapped, declared_attr, mapped_column
 
 from app.core.audit import Audited
@@ -414,6 +439,17 @@ class Charge(Audited, Model):
             "price_version_id",
             postgresql_where=text("price_version_id IS NOT NULL"),
         ),
+        CheckConstraint(
+            "num_nonnulls(price_version_id, custom_price_id) <= 1", name="one_price"
+        ),
+        CheckConstraint(
+            "kind <> 'manual' OR custom_price_id IS NULL", name="manual_unpriced"
+        ),
+        Index(
+            "ix_charges_custom_price_id",
+            "custom_price_id",
+            postgresql_where=text("custom_price_id IS NOT NULL"),
+        ),
     )
 
     billing_account_id: Mapped[uuid.UUID] = _uuid_fk("billing_accounts")
@@ -433,6 +469,9 @@ class Charge(Audited, Model):
     price_version_id: Mapped[uuid.UUID | None] = _uuid_fk(
         "price_versions", nullable=True
     )
+    custom_price_id: Mapped[uuid.UUID | None] = _uuid_fk("custom_prices", nullable=True)
+    """The custom price used (#95; ``NULL`` for a catalog-priced or manual
+    charge)."""
     education_level_id: Mapped[uuid.UUID | None] = _uuid_fk(
         "education_levels", nullable=True
     )
@@ -649,3 +688,182 @@ class BillingSettings(Audited, VersionedMixin, Model):
         Boolean, default=True, server_default=text("true"), unique=True
     )
     billing_starts_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
+# --- Discounts and custom prices (#95) -----------------------------------------------
+
+DISCOUNT_KINDS: Final = ("scholarship", "sibling", "discount", "promotion")
+"""The discount kinds, in the order they apply (#95 H4)."""
+DISCOUNT_AUDIENCES: Final = ("all", "assigned")
+DISCOUNT_NAME_MAX: Final = 120
+DISCOUNT_NAME_INDEX: Final = "uq_discounts_name_lower"
+DISCOUNT_ASSIGNMENT_STUDENT_KEY: Final = "uq_discount_assignments_discount_student"
+DISCOUNT_ASSIGNMENT_FAMILY_KEY: Final = "uq_discount_assignments_discount_family"
+CUSTOM_PRICE_STUDENT_OVERLAP: Final = "ex_custom_prices_student_overlap"
+CUSTOM_PRICE_FAMILY_OVERLAP: Final = "ex_custom_prices_family_overlap"
+CUSTOM_PRICE_RANGE_SQL: Final = "daterange(effective_from, expires_on, '[]')"
+"""The inclusive validity range of a custom price (``NULL`` end = open)."""
+
+
+def _percent() -> Numeric[Any]:
+    return Numeric(14, 4)
+
+
+def _overlap(target: str, name: str) -> ExcludeConstraint:
+    return ExcludeConstraint(
+        (text("service_price_id"), "="),
+        (text(target), "="),
+        (text(CUSTOM_PRICE_RANGE_SQL), "&&"),
+        name=name,
+        using="gist",
+        where=text(f"{target} IS NOT NULL"),
+    )
+
+
+class CustomPrice(Audited, VersionedMixin, Model):
+    """A student's or a family's price for one catalog item (#95 A2;
+    data-model §3.6). Guarded once a charge references it (§5.2)."""
+
+    __tablename__ = "custom_prices"
+    __table_args__ = (
+        CheckConstraint("num_nonnulls(student_id, family_id) = 1", name="one_target"),
+        CheckConstraint(
+            "expires_on IS NULL OR expires_on >= effective_from", name="dates"
+        ),
+        CheckConstraint("amount >= 0", name="amount_non_negative"),
+        _overlap("student_id", CUSTOM_PRICE_STUDENT_OVERLAP),
+        _overlap("family_id", CUSTOM_PRICE_FAMILY_OVERLAP),
+        Index(
+            "ix_custom_prices_student_item",
+            "student_id",
+            "service_price_id",
+            postgresql_where=text("student_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_custom_prices_family_item",
+            "family_id",
+            "service_price_id",
+            postgresql_where=text("family_id IS NOT NULL"),
+        ),
+    )
+
+    service_price_id: Mapped[uuid.UUID] = _uuid_fk("service_prices")
+    student_id: Mapped[uuid.UUID | None] = _uuid_fk("students", nullable=True)
+    family_id: Mapped[uuid.UUID | None] = _uuid_fk("families", nullable=True)
+    effective_from: Mapped[date] = mapped_column(Date)
+    expires_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    amount: Mapped[Money] = mapped_column(MoneyType())
+
+
+class Discount(Audited, VersionedMixin, Model):
+    """A reusable discount, scholarship, sibling discount or promotion
+    (#95 A3; data-model §3.7). Never deleted: retired with ``is_active``."""
+
+    __tablename__ = "discounts"
+    __table_args__ = (
+        CheckConstraint(_in("kind", DISCOUNT_KINDS), name="kind_valid"),
+        CheckConstraint(_in("audience", DISCOUNT_AUDIENCES), name="audience_valid"),
+        CheckConstraint(
+            f"length(btrim(name)) BETWEEN 1 AND {DISCOUNT_NAME_MAX}"
+            " AND name = btrim(name)",
+            name="name_valid",
+        ),
+        CheckConstraint(
+            "percent IS NULL OR (percent > 0 AND percent <= 100)",
+            name="percent_range",
+        ),
+        CheckConstraint("amount IS NULL OR amount > 0", name="amount_positive"),
+        CheckConstraint("num_nonnulls(percent, amount) = 1", name="one_value"),
+        CheckConstraint(
+            "jsonb_typeof(eligibility) = 'object'", name="eligibility_object"
+        ),
+        CheckConstraint(
+            "starts_on IS NULL OR expires_on IS NULL OR starts_on <= expires_on",
+            name="dates_order",
+        ),
+        CheckConstraint(
+            "kind <> 'scholarship' OR audience = 'assigned'",
+            name="scholarship_assigned",
+        ),
+        CheckConstraint("kind <> 'sibling' OR audience = 'all'", name="sibling_all"),
+        CheckConstraint(
+            "kind <> 'promotion' OR (starts_on IS NOT NULL AND expires_on IS NOT NULL)",
+            name="promotion_dates",
+        ),
+        Index(DISCOUNT_NAME_INDEX, func.lower(text("name")), unique=True),
+    )
+
+    kind: Mapped[str] = mapped_column(String(16))
+    audience: Mapped[str] = mapped_column(String(16))
+    name: Mapped[str] = mapped_column(String(DISCOUNT_NAME_MAX))
+    percent: Mapped[Decimal | None] = mapped_column(_percent(), nullable=True)
+    amount: Mapped[Money | None] = mapped_column(MoneyType(), nullable=True)
+    eligibility: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb")
+    )
+    starts_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    expires_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+
+
+class DiscountAssignment(Audited, Model):
+    """A student or a family an ``assigned`` discount is for (#95 A4).
+    Deleted by the route (nothing references it)."""
+
+    __tablename__ = "discount_assignments"
+    __table_args__ = (
+        CheckConstraint("num_nonnulls(student_id, family_id) = 1", name="one_target"),
+        Index(
+            DISCOUNT_ASSIGNMENT_STUDENT_KEY,
+            "discount_id",
+            "student_id",
+            unique=True,
+            postgresql_where=text("student_id IS NOT NULL"),
+        ),
+        Index(
+            DISCOUNT_ASSIGNMENT_FAMILY_KEY,
+            "discount_id",
+            "family_id",
+            unique=True,
+            postgresql_where=text("family_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_discount_assignments_student_id",
+            "student_id",
+            postgresql_where=text("student_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_discount_assignments_family_id",
+            "family_id",
+            postgresql_where=text("family_id IS NOT NULL"),
+        ),
+    )
+
+    discount_id: Mapped[uuid.UUID] = _uuid_fk("discounts")
+    student_id: Mapped[uuid.UUID | None] = _uuid_fk("students", nullable=True)
+    family_id: Mapped[uuid.UUID | None] = _uuid_fk("families", nullable=True)
+
+
+class ChargeDiscount(Audited, Model):
+    """One discount applied to a charge, snapshotted at posting (#95 A5, H8;
+    data-model §3.8). Append-only."""
+
+    __tablename__ = "charge_discounts"
+    __table_args__ = (
+        CheckConstraint("position >= 1", name="position_positive"),
+        CheckConstraint(_in("kind", DISCOUNT_KINDS), name="kind_valid"),
+        CheckConstraint("num_nonnulls(percent, fixed_amount) = 1", name="one_value"),
+        CheckConstraint("amount > 0", name="amount_positive"),
+        UniqueConstraint(
+            "charge_id", "position", name="uq_charge_discounts_charge_id_position"
+        ),
+    )
+
+    charge_id: Mapped[uuid.UUID] = _uuid_fk("charges")
+    discount_id: Mapped[uuid.UUID] = _uuid_fk("discounts")
+    position: Mapped[int] = mapped_column(SmallInteger)
+    kind: Mapped[str] = mapped_column(String(16))
+    name: Mapped[str] = mapped_column(String(DISCOUNT_NAME_MAX))
+    percent: Mapped[Decimal | None] = mapped_column(_percent(), nullable=True)
+    fixed_amount: Mapped[Money | None] = mapped_column(MoneyType(), nullable=True)
+    amount: Mapped[Money] = mapped_column(MoneyType())

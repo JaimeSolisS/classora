@@ -19,19 +19,37 @@ on the later field of the pair it compares, so the earlier fields are in
   not negative (``amount_negative``); required and not ``null`` on create.
 """
 
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Final, Literal
+from decimal import Decimal
+from typing import Annotated, Any, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    field_validator,
+)
+from pydantic.json_schema import SkipJsonSchema
 from pydantic_core import PydanticCustomError
 
+from app.core.errors import FieldError
 from app.core.money import Money
+from app.modules.billing.discounts import (
+    DiscountAudience,
+    DiscountEligibility,
+    DiscountKind,
+    DiscountLine,
+)
 from app.modules.billing.models import (
     ADJUSTMENT_KINDS,
     ALLOWED_MODELS,
     DESCRIPTION_MAX,
+    DISCOUNT_NAME_MAX,
     DURATION_MAX,
     DURATION_MIN,
     MANUAL,
@@ -285,10 +303,27 @@ class ChargeDraft:
     cohort_enrollment_id: uuid.UUID | None = None
     scheduled_minutes: int | None = None
     price_version_id: uuid.UUID | None = None
+    custom_price_id: uuid.UUID | None = None
     education_level_id: uuid.UUID | None = None
     discount_amount: Money = Money.zero()
+    discounts: tuple[DiscountLine, ...] = ()
     apply_family_offset: bool = True
     description: str | None = None
+
+    @classmethod
+    def priced(cls, quote: Quote, **source_fields: Any) -> ChargeDraft:
+        """A draft priced by :func:`~app.modules.billing.service.quote`
+        (#95 B5): ``list_amount``, ``discount_amount``, ``discounts`` and
+        ``price_version_id`` or ``custom_price_id`` come from the quote;
+        ``source_fields`` are the rest (student, kind, source, dates…)."""
+        return cls(
+            list_amount=quote.list_amount,
+            discount_amount=quote.discount_amount,
+            discounts=quote.discounts,
+            price_version_id=quote.price_version_id,
+            custom_price_id=quote.custom_price_id,
+            **source_fields,
+        )
 
     def __post_init__(self) -> None:
         if self.kind not in _CHARGE_SOURCES:
@@ -316,6 +351,25 @@ class ChargeDraft:
             raise ValueError("charge amounts can't be negative")
         if discount > list_amount:
             raise ValueError("discount_amount can't exceed list_amount")
+        self._check_pricing(discount)
+
+    def _check_pricing(self, discount: Money) -> None:
+        """#95 B5: at most one price source; a manual charge has neither a
+        custom price nor discounts; the lines are numbered 1…n, positive,
+        and, when there are lines, add up to ``discount_amount`` (a draft
+        without lines keeps the #90 behaviour of a bare
+        ``discount_amount``)."""
+        if self.price_version_id is not None and self.custom_price_id is not None:
+            raise ValueError("a charge has a price version or a custom price, not both")
+        if self.kind == MANUAL and (self.custom_price_id is not None or self.discounts):
+            raise ValueError("a manual charge has no custom price and no discounts")
+        lines = tuple(self.discounts)
+        if [line.position for line in lines] != list(range(1, len(lines) + 1)):
+            raise ValueError("discount lines are numbered 1 to n")
+        if any(not line.amount.is_positive() for line in lines):
+            raise ValueError("a discount line is positive")
+        if lines and Money.total(line.amount for line in lines) != discount:
+            raise ValueError("the discount lines add up to discount_amount")
 
     @property
     def amount(self) -> Money:
@@ -539,3 +593,425 @@ class CoverageQuery:
     subject_id: uuid.UUID
     service_date: date
     scheduled_minutes: int
+
+
+# --- Price calculation (#95 B2-B4) ---------------------------------------------------
+
+type QuoteChargeKind = Literal[
+    "session",
+    "group_enrollment",
+    "cohort_enrollment",
+    "tuition_period",
+    "package_purchase",
+]
+"""The charge kinds priced through ``quote`` (never ``manual``, #100)."""
+type BasePriceSource = Literal["custom_student", "custom_family", "catalog"]
+
+
+@dataclass(frozen=True, kw_only=True)
+class PriceQuery:
+    """What :func:`~app.modules.billing.service.quote` prices (#95 B2): the
+    :func:`~app.modules.billing.service.lookup_price` arguments plus the
+    student, the student's family (``None``: no family price, no family
+    assignment, no sibling discount) and the charge kind. ``on`` is the
+    local service date; ``education_level_id`` the student's level at
+    posting."""
+
+    student_id: uuid.UUID
+    family_id: uuid.UUID | None
+    charge_kind: QuoteChargeKind
+    class_type: ClassType
+    pricing_model: str
+    subject_id: uuid.UUID
+    on: date
+    education_level_id: uuid.UUID | None = None
+    duration_minutes: int | None = None
+    cohort_id: uuid.UUID | None = None
+    group_id: uuid.UUID | None = None
+
+
+@dataclass(frozen=True)
+class BasePrice:
+    """The base price of a :class:`PriceQuery` (#95 B2, H6): the custom
+    price that applies, else the catalog price. Exactly one of
+    ``price_version_id`` and ``custom_price_id`` is set; ``rank`` is the
+    #89 rank of the deciding item."""
+
+    list_amount: Money
+    price_version_id: uuid.UUID | None
+    custom_price_id: uuid.UUID | None
+    source: BasePriceSource
+    rank: int
+
+    @classmethod
+    def of_catalog(cls, price: PriceInEffect) -> BasePrice:
+        """The catalog price as a base price."""
+        return cls(
+            list_amount=price.amount,
+            price_version_id=price.price_version_id,
+            custom_price_id=None,
+            source="catalog",
+            rank=price.rank,
+        )
+
+
+@dataclass(frozen=True)
+class Quote:
+    """A priced :class:`PriceQuery` (#95 B4): the :class:`BasePrice` fields,
+    the discount lines (H4), ``discount_amount`` (Σ lines) and ``amount =
+    list_amount − discount_amount``."""
+
+    list_amount: Money
+    price_version_id: uuid.UUID | None
+    custom_price_id: uuid.UUID | None
+    source: BasePriceSource
+    rank: int
+    discounts: tuple[DiscountLine, ...]
+    discount_amount: Money
+    amount: Money
+
+
+# --- Discounts and custom prices: request bodies (#95 D, E) --------------------------
+
+PERCENT_PLACES: Final = 4
+_PERCENT_PATTERN: Final = re.compile(r"^(0|[1-9][0-9]{0,2})(\.[0-9]+)?$")
+_HUNDRED: Final = Decimal(100)
+
+DiscountName = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=DISCOUNT_NAME_MAX
+    ),
+]
+"""A discount name: trimmed, 1 to 120 characters."""
+
+RULE_MESSAGES: Final[dict[str, str]] = {
+    "value_required": "Enter a percentage or an amount.",
+    "value_conflict": "Enter a percentage or an amount, not both.",
+    "audience_not_allowed": (
+        "A scholarship is for assigned students or families; a sibling discount"
+        " is for everyone."
+    ),
+    "dates_required": "A promotion has a start date and an end date.",
+    "dates_order": "The end date can't be before the start date.",
+    "min_family_students_required": (
+        "A sibling discount needs the minimum number of students in the family."
+    ),
+    "min_family_students_not_allowed": (
+        "Only a sibling discount has a minimum number of students in the family."
+    ),
+    "target_required": "Choose a student or a family.",
+    "target_conflict": "Choose a student or a family, not both.",
+    "field_immutable": "This field can't be changed.",
+}
+
+
+def _rule(code: str) -> PydanticCustomError:
+    return PydanticCustomError(code, RULE_MESSAGES[code])
+
+
+def percent_text(value: str) -> str:
+    """A percentage string checked (``percent_invalid``,
+    ``percent_precision``, ``percent_out_of_range``: more than 0, at most
+    100) and returned with four places."""
+    if not _PERCENT_PATTERN.match(value):
+        raise PydanticCustomError(
+            "percent_invalid", "Enter a percentage such as 10 or 12.5."
+        )
+    number = Decimal(value)
+    exponent = number.as_tuple().exponent
+    if isinstance(exponent, int) and -exponent > PERCENT_PLACES:
+        raise PydanticCustomError(
+            "percent_precision", "Use at most four decimal places."
+        )
+    if not (Decimal(0) < number <= _HUNDRED):
+        raise PydanticCustomError(
+            "percent_out_of_range", "Choose more than 0 and at most 100."
+        )
+    return f"{number:.4f}"
+
+
+def _amount_positive(value: Money | None) -> Money | None:
+    if value is not None and not value.is_positive():
+        raise PydanticCustomError(
+            "amount_not_positive", "The amount must be more than 0."
+        )
+    return value
+
+
+def audience_rule(kind: str, audience: str) -> str | None:
+    """``audience_not_allowed``: a scholarship is ``assigned``, a sibling
+    discount ``all`` (H2)."""
+    if (kind == "scholarship" and audience != "assigned") or (
+        kind == "sibling" and audience != "all"
+    ):
+        return "audience_not_allowed"
+    return None
+
+
+def value_rule(percent: object, amount: object) -> str | None:
+    """Exactly one of the percentage and the amount."""
+    if percent is None and amount is None:
+        return "value_required"
+    if percent is not None and amount is not None:
+        return "value_conflict"
+    return None
+
+
+def dates_rule(
+    kind: str | None, starts_on: date | None, expires_on: date | None
+) -> str | None:
+    """``dates_order`` and, for a promotion, ``dates_required``."""
+    if starts_on is not None and expires_on is not None and starts_on > expires_on:
+        return "dates_order"
+    if kind == "promotion" and (starts_on is None or expires_on is None):
+        return "dates_required"
+    return None
+
+
+def threshold_rule(kind: str, eligibility: DiscountEligibility) -> str | None:
+    """``min_family_students`` is set for a ``sibling`` discount only."""
+    present = eligibility.min_family_students is not None
+    if kind == "sibling" and not present:
+        return "min_family_students_required"
+    if kind != "sibling" and present:
+        return "min_family_students_not_allowed"
+    return None
+
+
+def discount_rule_errors(
+    *,
+    kind: str,
+    audience: str,
+    percent: object,
+    amount: object,
+    starts_on: date | None,
+    expires_on: date | None,
+    eligibility: DiscountEligibility,
+) -> list[FieldError]:
+    """The D3 cross-field rules for a whole discount row (the ``PATCH``
+    result, D5), as field errors in one list."""
+    found = [
+        ("audience", audience_rule(kind, audience)),
+        ("amount", value_rule(percent, amount)),
+        ("expires_on", dates_rule(kind, starts_on, expires_on)),
+        ("eligibility", threshold_rule(kind, eligibility)),
+    ]
+    return [
+        {"path": ["body", field], "code": code, "message": RULE_MESSAGES[code]}
+        for field, code in found
+        if code is not None
+    ]
+
+
+def _optional_date(value: date | None) -> date | None:
+    return None if value is None else _effective_from(value)
+
+
+def _immutable(value: object) -> object:
+    raise _rule("field_immutable")
+
+
+class DiscountCreate(BaseModel):
+    """``POST /api/v1/billing/discounts`` (#95 D3). Fields are in rule
+    order: each cross-field rule is checked on the later field."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: DiscountKind
+    audience: DiscountAudience
+    name: DiscountName
+    percent: str | None = None
+    amount: Money | None = Field(default=None, validate_default=True)
+    starts_on: date | None = None
+    expires_on: date | None = Field(default=None, validate_default=True)
+    eligibility: DiscountEligibility = Field(
+        default_factory=DiscountEligibility, validate_default=True
+    )
+    is_active: bool = True
+
+    @field_validator("audience")
+    @classmethod
+    def _audience(cls, value: str, info: ValidationInfo) -> str:
+        kind = info.data.get("kind")
+        if kind is not None and audience_rule(kind, value) is not None:
+            raise _rule("audience_not_allowed")
+        return value
+
+    @field_validator("percent")
+    @classmethod
+    def _percent(cls, value: str | None) -> str | None:
+        return None if value is None else percent_text(value)
+
+    @field_validator("amount")
+    @classmethod
+    def _amount(cls, value: Money | None, info: ValidationInfo) -> Money | None:
+        _amount_positive(value)
+        if "percent" in info.data:
+            code = value_rule(info.data["percent"], value)
+            if code is not None:
+                raise _rule(code)
+        return value
+
+    @field_validator("starts_on")
+    @classmethod
+    def _starts(cls, value: date | None) -> date | None:
+        return _optional_date(value)
+
+    @field_validator("expires_on")
+    @classmethod
+    def _expires(cls, value: date | None, info: ValidationInfo) -> date | None:
+        _optional_date(value)
+        if "starts_on" in info.data:
+            code = dates_rule(info.data.get("kind"), info.data["starts_on"], value)
+            if code is not None:
+                raise _rule(code)
+        return value
+
+    @field_validator("eligibility")
+    @classmethod
+    def _eligibility(
+        cls, value: DiscountEligibility, info: ValidationInfo
+    ) -> DiscountEligibility:
+        kind = info.data.get("kind")
+        if kind is not None:
+            code = threshold_rule(kind, value)
+            if code is not None:
+                raise _rule(code)
+        return value
+
+
+class DiscountUpdate(BaseModel):
+    """``PATCH /api/v1/billing/discounts/{id}`` (#95 D5): ``version`` and
+    any of the editable fields. Switching between a percentage and an
+    amount sends the other as ``null``; ``eligibility`` replaces the whole
+    object. ``kind`` and ``audience`` never change (``field_immutable``).
+    The resulting row is checked against the D3 rules by the service."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int
+    name: DiscountName | None = None
+    percent: str | None = None
+    amount: Money | None = None
+    eligibility: DiscountEligibility | None = None
+    starts_on: date | None = None
+    expires_on: date | None = None
+    is_active: bool | None = None
+    kind: SkipJsonSchema[Any] = None
+    audience: SkipJsonSchema[Any] = None
+
+    _immutable = field_validator("kind", "audience")(_immutable)
+
+    @field_validator("name", "eligibility", "is_active")
+    @classmethod
+    def _not_null(cls, value: object) -> object:
+        if value is None:
+            raise PydanticCustomError("value_not_null", "This field can't be null.")
+        return value
+
+    @field_validator("percent")
+    @classmethod
+    def _percent(cls, value: str | None) -> str | None:
+        return None if value is None else percent_text(value)
+
+    @field_validator("amount")
+    @classmethod
+    def _amount(cls, value: Money | None) -> Money | None:
+        return _amount_positive(value)
+
+    @field_validator("starts_on", "expires_on")
+    @classmethod
+    def _dates(cls, value: date | None) -> date | None:
+        return _optional_date(value)
+
+
+def _target_rule(student_id: object, family_id: object) -> None:
+    if student_id is None and family_id is None:
+        raise _rule("target_required")
+    if student_id is not None and family_id is not None:
+        raise _rule("target_conflict")
+
+
+class DiscountAssignmentCreate(BaseModel):
+    """``POST /api/v1/billing/discounts/{id}/assignments`` (#95 D6): exactly
+    one of ``student_id`` and ``family_id``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    student_id: uuid.UUID | None = None
+    family_id: uuid.UUID | None = Field(default=None, validate_default=True)
+
+    @field_validator("family_id")
+    @classmethod
+    def _target(cls, value: uuid.UUID | None, info: ValidationInfo) -> uuid.UUID | None:
+        if "student_id" in info.data:
+            _target_rule(info.data["student_id"], value)
+        return value
+
+
+class CustomPriceCreate(BaseModel):
+    """``POST /api/v1/billing/custom-prices`` (#95 E3): one catalog item,
+    exactly one target, the dates (inclusive; ``expires_on`` optional) and
+    the amount (not negative)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    service_price_id: uuid.UUID
+    student_id: uuid.UUID | None = None
+    family_id: uuid.UUID | None = Field(default=None, validate_default=True)
+    effective_from: date
+    expires_on: date | None = None
+    amount: Money
+
+    @field_validator("family_id")
+    @classmethod
+    def _target(cls, value: uuid.UUID | None, info: ValidationInfo) -> uuid.UUID | None:
+        if "student_id" in info.data:
+            _target_rule(info.data["student_id"], value)
+        return value
+
+    @field_validator("effective_from")
+    @classmethod
+    def _from(cls, value: date) -> date:
+        return _effective_from(value)
+
+    @field_validator("expires_on")
+    @classmethod
+    def _expires(cls, value: date | None, info: ValidationInfo) -> date | None:
+        _optional_date(value)
+        start = info.data.get("effective_from")
+        if value is not None and start is not None and value < start:
+            raise _rule("dates_order")
+        return value
+
+    @field_validator("amount")
+    @classmethod
+    def _amount_sign(cls, value: Money) -> Money:
+        _not_negative(value)
+        return value
+
+
+class CustomPriceUpdate(BaseModel):
+    """``PATCH /api/v1/billing/custom-prices/{id}`` (#95 E5): end (or
+    re-open with ``null``) a custom price. ``expires_on`` is required; every
+    other field is ``field_immutable`` (E7)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int
+    expires_on: date | None
+    service_price_id: SkipJsonSchema[Any] = None
+    student_id: SkipJsonSchema[Any] = None
+    family_id: SkipJsonSchema[Any] = None
+    effective_from: SkipJsonSchema[Any] = None
+    amount: SkipJsonSchema[Any] = None
+
+    _immutable = field_validator(
+        "service_price_id", "student_id", "family_id", "effective_from", "amount"
+    )(_immutable)
+
+    @field_validator("expires_on")
+    @classmethod
+    def _expires(cls, value: date | None) -> date | None:
+        return _optional_date(value)

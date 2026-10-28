@@ -35,7 +35,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Final
 
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, Select, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -112,6 +112,24 @@ async def families_of_students(
         .where(FamilyStudent.student_id.in_(wanted))
     )
     return {row.student_id: FamilyReference(id=row.id, name=row.name) for row in rows}
+
+
+async def active_student_count(session: AsyncSession, family_id: uuid.UUID) -> int:
+    """How many **active** students the family has now (#95 H3: the sibling
+    discount's count). One statement; no access check."""
+    count = await session.scalar(
+        select(func.count())
+        .select_from(FamilyStudent)
+        .join(Student, Student.id == FamilyStudent.student_id)
+        .where(FamilyStudent.family_id == family_id, Student.is_active.is_(True))
+    )
+    return int(count or 0)
+
+
+def family_name_columns() -> Select[uuid.UUID, str]:
+    """``SELECT id, name FROM families``, **not executed** (#95: the billing
+    reads join it as a subquery for names and order)."""
+    return select(Family.id, Family.name)
 
 
 async def family_of_guardian(

@@ -116,3 +116,122 @@ class StudentHasNoFamilyError(Exception):
     def __init__(self, student_id: uuid.UUID) -> None:
         super().__init__("student has no family")
         self.student_id = student_id
+
+
+# --- Discounts and custom prices (#95 F1) --------------------------------------------
+
+
+class BillingValidationError(AppError):
+    """``422 validation_error`` with the rule or reference errors of a
+    discount or custom price write (#95 D3, D5, D6, E3), all in one
+    response."""
+
+    status = 422
+    code = "validation_error"
+    detail = "The request is not valid."
+
+    def __init__(self, errors: Sequence[FieldError]) -> None:
+        super().__init__(errors=errors)
+
+
+class DiscountNameExistsError(AppError):
+    """Another discount has this name, ignoring case (#95 D3)."""
+
+    status = 409
+    code = "discount_name_exists"
+    detail = "Another discount already has this name."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class DiscountAssignmentExistsError(AppError):
+    """The student or family is already assigned to the discount (#95 D6)."""
+
+    status = 409
+    code = "discount_assignment_exists"
+    detail = "This student or family is already assigned to the discount."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class AudienceNotAssignedError(AppError):
+    """Only an ``assigned`` discount has assignments (#95 D6)."""
+
+    status = 422
+    code = "audience_not_assigned"
+    detail = "This discount is for everyone: it has no assignments."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class CustomPriceOverlapError(AppError):
+    """Another custom price of the same student or family for the same item
+    overlaps these dates (#95 E3, E5; also the exclusion constraints)."""
+
+    status = 409
+    code = "custom_price_overlap"
+    detail = (
+        "Another custom price for this student or family and this price"
+        " overlaps these dates."
+    )
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+def _field(field: str, code: str, message: str) -> list[FieldError]:
+    return [{"path": ["body", field], "code": code, "message": message}]
+
+
+class CustomPriceEffectiveFromInvalidError(AppError):
+    """A custom price starts on or after the center's local today (#95 H7:
+    no backdating)."""
+
+    status = 422
+    code = "custom_price_effective_from_invalid"
+    detail = "A custom price starts today or later."
+
+    def __init__(self) -> None:
+        super().__init__(errors=_field("effective_from", self.code, self.detail or ""))
+
+
+class CustomPriceExpiryInvalidError(AppError):
+    """The end date is before today, before the start, or before a session
+    already charged at this price (#95 E5, H7)."""
+
+    status = 422
+    code = "custom_price_expiry_invalid"
+    detail = (
+        "The end date must be today or later, on or after the start, and on or"
+        " after the last service date charged at this price."
+    )
+
+    def __init__(self) -> None:
+        super().__init__(errors=_field("expires_on", self.code, self.detail or ""))
+
+
+class CustomPriceInEffectError(AppError):
+    """Only an upcoming custom price can be deleted (#95 E6)."""
+
+    status = 409
+    code = "custom_price_in_effect"
+    detail = (
+        "This custom price is in effect or in the past: end it instead of deleting it."
+    )
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class CustomPriceInUseError(AppError):
+    """A charge uses the custom price (the guard, SQLSTATE 42501; #95 E6)."""
+
+    status = 409
+    code = "custom_price_in_use"
+    detail = "This custom price is used by a charge and can't be deleted."
+
+    def __init__(self) -> None:
+        super().__init__()

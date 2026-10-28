@@ -42,6 +42,7 @@ Overview. "Creating issue" is the issue whose migration creates the table. Wheth
 | `price_versions` | billing | #89 | guarded: immutable once referenced |
 | `custom_prices` | billing | #95 | mutable config |
 | `discounts` | billing | #95 | mutable config |
+| `discount_assignments` | billing | #95 | mutable config |
 | `charge_discounts` | billing | #95 | append-only |
 | `charges` | billing | #90 (sources added by #91–#94) | append-only |
 | `charge_adjustments` | billing | #90 | append-only |
@@ -153,7 +154,7 @@ Catalog items (E9).
 
 ### 3.6 `custom_prices` (#95)
 
-A custom student or family price, step 1 of the lookup. #95 may add columns; this is the minimum.
+A custom student or family price, step 1 of the lookup (#95 H6, H7).
 
 | Column | Type | Null | Check / note |
 |---|---|---|---|
@@ -161,44 +162,83 @@ A custom student or family price, step 1 of the lookup. #95 may add columns; thi
 | `service_price_id` | UUID | no | FK `service_prices` (the item it overrides) |
 | `student_id` | UUID | yes | FK `students` |
 | `family_id` | UUID | yes | FK `families` |
-| `effective_from` | DATE | no | |
+| `effective_from` | DATE | no | on or after the center's local today when created (no backdating) |
+| `expires_on` | DATE | yes | inclusive; `NULL` = open-ended; `>= effective_from` (`ck_custom_prices_dates`) |
 | `amount` | NUMERIC(14,2) | no | `>= 0` |
 | `version` | INTEGER | no | |
 
-`CHECK (num_nonnulls(student_id, family_id) = 1)`. #95 documents the precedence between a student and a family price. Once referenced by a charge (`charges.custom_price_id`) it is guarded like `price_versions`.
+- `CHECK (num_nonnulls(student_id, family_id) = 1)` (`ck_custom_prices_one_target`).
+- **No overlap:** `ex_custom_prices_student_overlap` and `ex_custom_prices_family_overlap` (`EXCLUDE USING gist`, partial on the target column) over `(service_price_id =, <target> =, daterange(effective_from, expires_on, '[]') &&)`.
+- **Items:** only `per_session` and `full_course` items have custom prices in #95 (the models the #89 routes serve); #93/#94 may widen it.
+- **Precedence (H6):** a custom price **matches** a query when its item is one of #89's candidates for the query (ranks 0–4) and it is in effect on the service date. A **student** price beats a **family** price; among one target's prices the item with the lowest rank wins. A matching custom price beats the catalog even when the catalog's deciding version is `NULL` or the item has no version in effect. A family price follows the student's family **at posting**.
+- **Ending (H7):** only `expires_on` changes (to today or later, on or after `effective_from`, and on or after the latest `service_date` of a charge at it), or back to `NULL`. The amount, target, item and start never change: a new amount is a new row from a later date. Only an upcoming, unreferenced row may be deleted.
+- **Guarded** once referenced by a charge (`charges.custom_price_id`, §5.2), except `expires_on`.
 
 ### 3.7 `discounts` (#95)
 
-Reusable discounts, scholarships, sibling discounts and promotions (spec §6).
+Reusable discounts, scholarships, sibling discounts and promotions (spec §6; #95 H2, H3, H8, H9).
 
 | Column | Type | Null | Check / note |
 |---|---|---|---|
 | `id` | UUID | no | PK |
-| `kind` | VARCHAR(16) | no | `discount` \| `scholarship` \| `sibling` \| `promotion` |
-| `name` | VARCHAR(120) | no | staff-entered |
+| `kind` | VARCHAR(16) | no | `scholarship` \| `sibling` \| `discount` \| `promotion`; never changes |
+| `audience` | VARCHAR(16) | no | `all` (every matching charge) \| `assigned` (only `discount_assignments`); never changes |
+| `name` | VARCHAR(120) | no | staff-entered, trimmed, 1–120, unique ignoring case (`uq_discounts_name_lower`) |
 | `percent` | NUMERIC(14,4) | yes | `> 0 AND <= 100` |
-| `amount` | NUMERIC(14,2) | yes | `> 0` |
-| `eligibility` | JSONB | no | structured criteria, defined by #95 |
-| `starts_on` | DATE | yes | |
-| `expires_on` | DATE | yes | |
-| `is_active` | BOOLEAN | no | |
+| `amount` | NUMERIC(14,2) | yes | `> 0` (a fixed amount per charge) |
+| `eligibility` | JSONB | no | a JSON object (`ck_discounts_eligibility_object`), default `{}`; the criteria below |
+| `starts_on` | DATE | yes | inclusive, against the service date |
+| `expires_on` | DATE | yes | inclusive; `starts_on <= expires_on` |
+| `is_active` | BOOLEAN | no | default `true` |
 | `version` | INTEGER | no | |
 
-`CHECK (num_nonnulls(percent, amount) = 1)`. The stacking and precedence rules are #95's.
+- `CHECK (num_nonnulls(percent, amount) = 1)`.
+- **Kind rules** (CHECKs): `scholarship` ⇒ `audience = 'assigned'`; `sibling` ⇒ `audience = 'all'`; `promotion` ⇒ both dates. `min_family_students` is set for `sibling` only (checked by the API schema).
+- **`eligibility`** (validated by `billing.discounts.DiscountEligibility`, `extra="forbid"`, stored canonical: lists sorted, no duplicates; every key optional, absent = any; every key must hold): `charge_kinds` (subset of `session`, `group_enrollment`, `cohort_enrollment`, `tuition_period`, `package_purchase`; never `manual`), `class_types` (subset of `individual`, `group`, `course`), `subject_ids` (1–50, the charge's subject), `education_level_ids` (1–50, the **student's** level at posting; a student with no level matches only when the key is absent), `min_family_students` (2–20, `sibling` only: the family has at least that many **active** students when the charge is posted; every student of such a family gets it). An empty list is refused.
+- **Editable configuration (H8):** an edit or a deactivation affects only charges posted afterwards; posted charges keep their `charge_discounts` snapshot. Discounts are never deleted (no route; `RESTRICT` FKs).
+- **Evaluated at posting (H9):** the window against the charge's service date; `is_active`, the assignments, the student's level and the family's active students as they are when the charge is posted. Nothing re-evaluates a posted charge.
+
+### 3.7a `discount_assignments` (#95)
+
+Who an `assigned` discount is for (H2). Mutable config (no `version`): rows are added and hard-deleted by the routes; nothing references them.
+
+| Column | Type | Null | Check / note |
+|---|---|---|---|
+| `id` | UUID | no | PK |
+| `discount_id` | UUID | no | FK `discounts` |
+| `student_id` | UUID | yes | FK `students` |
+| `family_id` | UUID | yes | FK `families` (covers each student of the family at posting) |
+
+`CHECK (num_nonnulls(student_id, family_id) = 1)`; partial `UNIQUE (discount_id, student_id)` and `UNIQUE (discount_id, family_id)`; partial indexes on `student_id` and `family_id`.
 
 ### 3.8 `charge_discounts` (#95)
 
-The discounts applied to a charge, snapshotted when it is posted (W4.2).
+The discounts applied to a charge, snapshotted when it is posted (W4.2; H8). Append-only (§5.1).
 
 | Column | Type | Null | Check / note |
 |---|---|---|---|
 | `id` | UUID | no | PK |
 | `charge_id` | UUID | no | FK `charges` |
 | `discount_id` | UUID | no | FK `discounts` |
-| `position` | SMALLINT | no | application order, `UNIQUE (charge_id, position)` |
-| `amount` | NUMERIC(14,2) | no | `> 0` |
+| `position` | SMALLINT | no | application order, `>= 1`, `UNIQUE (charge_id, position)` |
+| `kind` | VARCHAR(16) | no | the discount's kind at posting |
+| `name` | VARCHAR(120) | no | the discount's name at posting |
+| `percent` | NUMERIC(14,4) | yes | the discount's percentage at posting |
+| `fixed_amount` | NUMERIC(14,2) | yes | the discount's fixed amount at posting; `num_nonnulls(percent, fixed_amount) = 1` |
+| `amount` | NUMERIC(14,2) | no | `> 0`, what this line took off |
 
-Σ `amount` per charge = `charges.discount_amount` (App, in the posting transaction).
+Σ `amount` per charge = `charges.discount_amount` (App, in the posting transaction: `ChargeDraft` checks it, `post_charge` inserts the lines only when it creates the charge).
+
+### Price calculation (#95)
+
+`billing.service.quote(PriceQuery) -> Quote | None` prices every charge a sweeper or a billing workflow posts (ADR-0006 E9):
+
+1. **Base price** (`base_price`, `list_amount`): a matching custom price of the **student**, then of the **family** (§3.6), else exactly `lookup_price` (§3.5 ranks and `NULL` rule). `None` = no price.
+2. **At most one discount per kind:** among the eligible discounts of one kind (§3.7), the one that takes the most off at its position wins (ties: earliest `created_at`, then `id`).
+3. **Kinds in a fixed order:** `scholarship` → `sibling` → `discount` → `promotion` (the most specific first), each on the **running remainder**: a percentage line is `remainder × percent / 100` rounded once half-up (`Money.multiply`, ADR-0004); a fixed line is `min(amount, remainder)`. A `0.00` line is not recorded; the amount is never negative.
+4. `discount_amount` = Σ lines; `amount = list_amount − discount_amount` (I7). A 100 % scholarship gives a `0.00` charge (`void`).
+
+Discounts apply on top of a custom price too (H5). #92 prorates between `base_price` and `discounts_for`; #99 reprices a duration change with `apply_discount_chain` over the charge's snapshot (never a new selection).
 
 ### 3.9 `charges`
 
@@ -218,7 +258,7 @@ What the family owes for one student and one thing (E1, E5, E9, E11). Always for
 | `service_date` | DATE | no | the session's original local date; the enrollment's local date; the period start (`period_start`); the purchase date; or the staff-entered date |
 | `service_period_end` | DATE | yes | last day of a `tuition_period`; `>= service_date` (`ck_charges_service_period_end_valid`; `NULL` for every kind until #93) |
 | `price_version_id` | UUID | yes | FK `price_versions`; the version used (`NULL` for `manual` and custom-priced charges) |
-| `custom_price_id` | UUID | yes | FK `custom_prices` (column added by #95) |
+| `custom_price_id` | UUID | yes | FK `custom_prices` (column added by #95); the custom price used; never on `manual` (`ck_charges_manual_unpriced`) |
 | `education_level_id` | UUID | yes | FK `education_levels`; the student's level at posting (snapshot) |
 | `scheduled_minutes` | SMALLINT | yes | the session's `scheduled_minutes` at posting (snapshot; `session` only); 15–480 (`ck_charges_scheduled_minutes_range`, the `class_sessions` range) |
 | `list_amount` | NUMERIC(14,2) | no | `>= 0`; price before discounts |
@@ -239,7 +279,7 @@ What the family owes for one student and one thing (E1, E5, E9, E11). Always for
 
   Written as `num_nonnulls(class_session_id, group_enrollment_id, cohort_enrollment_id, tuition_plan_id, package_id) = CASE WHEN kind = 'manual' THEN 0 ELSE 1 END` plus one implication per kind.
 - **Staged CHECKs (#90 E3):** #90 creates the kinds whose source exists. `ck_charges_kind` allows `session`, `group_enrollment`, `cohort_enrollment` and `manual`; `ck_charges_one_source` is the rule above over the three existing source columns, with the `session` ⇔ `scheduled_minutes` and `manual` ⇔ `description` implications. #93 (`tuition_plan_id`) and #94 (`package_id`) each add their column, its foreign key and its natural key, and replace both named CHECKs to include their kind.
-- **`price_version_id` and `custom_price_id`:** at most one is set.
+- **`price_version_id` and `custom_price_id`:** at most one is set (`ck_charges_one_price`, #95); a `manual` charge has no custom price (`ck_charges_manual_unpriced`) and no discount lines.
 - **Natural keys** (partial unique indexes, J4):
   - `(class_session_id, student_id) WHERE kind = 'session'`;
   - `(group_enrollment_id) WHERE kind = 'group_enrollment'`;
@@ -252,7 +292,7 @@ What the family owes for one student and one thing (E1, E5, E9, E11). Always for
 - **Composite targets:** `UNIQUE (id, billing_account_id)` and `UNIQUE (id, billing_account_id, student_id)`, referenced by the composite foreign keys of allocations and adjustments (I4, I5).
 - **Kept account:** a charge keeps the account it was posted to, even if the student later moves to another family. There is no foreign key to `family_students`.
 - **Rescheduling:** a rescheduled session keeps its charge and its `service_date`; reporting uses the session's current date (E7).
-- **Session charges (#91):** `billing:post_session_charges` charges `individual` sessions only; #92 adds group per-session charges (`group/per_session` with `group_id`) through the same eligibility predicate and price key, and course sessions are never charged per session (#91 G1). A `0.00` price posts a zero charge (`list_amount = amount = 0.00`, status `void`); it is not an unbilled item (#91 G5). A key that `billing.service.package_covered_keys` returns takes the package path instead (no charge, not listed); the seam returns nothing until #94 implements it (#91 G7).
+- **Session charges (#91):** `billing:post_session_charges` charges `individual` sessions only; #92 adds group per-session charges (`group/per_session` with `group_id`) through the same eligibility predicate and price key, and course sessions are never charged per session (#91 G1). A `0.00` price posts a zero charge (`list_amount = amount = 0.00`, status `void`); it is not an unbilled item (#91 G5). A key that `billing.service.package_covered_keys` returns takes the package path instead (no charge, not listed); the seam returns nothing until #94 implements it (#91 G7). Since #95 the price is `billing.service.quote` (custom price, catalog, discounts; "Price calculation (#95)"), and a custom price makes an item the catalog doesn't price billable.
 
 ### 3.10 `charge_adjustments`
 
@@ -610,6 +650,8 @@ Privileges alone can't do it: the local, test and CI database role is a superuse
 
 `price_versions` (and `custom_prices` from #95) get a `BEFORE UPDATE OR DELETE` row trigger that raises 42501 when the row is referenced by any `charges` or `packages` row, plus the `BEFORE TRUNCATE` trigger. An unreferenced version may still be corrected or removed.
 
+**`custom_prices` (#95 H7):** `custom_prices_guard()` (triggers `custom_prices_no_referenced_change`, `custom_prices_no_truncate`): when any `charges.custom_price_id` references the row, `DELETE` is refused and `UPDATE` is refused **unless only `expires_on`, `version` and `updated_at` change** (ending a custom price is allowed); `TRUNCATE` is always refused. The `RESTRICT` foreign key is the concurrent backstop.
+
 **Staged predicate (#89 E2).** `charges` and `packages` don't exist when `price_versions` is created, so the trigger function `price_versions_guard()` (triggers `price_versions_no_referenced_change` and `price_versions_no_truncate`) asks `price_version_is_referenced(version_id uuid) RETURNS boolean` (`LANGUAGE sql VOLATILE`). Migration 0060 (#89) creates it as `SELECT false`. #90's migration replaces it (`CREATE OR REPLACE`) with an `EXISTS` on `charges.price_version_id`, and #94's adds `packages`; each downgrade restores the previous body. The `RESTRICT` foreign keys from `charges` and `packages` stay the concurrent backstop.
 
 ## 6. Concurrency
@@ -633,6 +675,10 @@ Beyond primary keys, unique keys and natural keys, for the access paths of spec 
 - `charges (student_id, service_date)`: per-student breakdown;
 - `charges (billing_account_id, due_date)`: overdue and reminders;
 - `charges (price_version_id) WHERE price_version_id IS NOT NULL` (`ix_charges_price_version_id`, #90): the price-version predicate (§5.2) and the `RESTRICT` check when an unreferenced version is deleted;
+- `charges (custom_price_id) WHERE custom_price_id IS NOT NULL` (`ix_charges_custom_price_id`, #95): the custom-price guard and the `expires_on` check;
+- `custom_prices (student_id, service_price_id)` and `(family_id, service_price_id)` (partial; #95), besides the exclusion constraints' gist indexes;
+- `discount_assignments (student_id)` and `(family_id)` (partial; #95): the per-charge discount lookup;
+- `charge_discounts (charge_id, position)` (the unique key);
 - `charge_adjustments (charge_id)`;
 - `charge_due_date_changes (charge_id, created_at)`;
 - `charge_reminders (charge_id, stage)` (the unique key);
@@ -680,6 +726,14 @@ erDiagram
     service_prices ||--o{ price_versions : ""
     service_prices ||--o| package_products : ""
     price_versions ||--o{ charges : "price used"
+    service_prices ||--o{ custom_prices : ""
+    students ||--o{ custom_prices : "student price"
+    families ||--o{ custom_prices : "family price"
+    custom_prices ||--o{ charges : "custom price used"
+    discounts ||--o{ discount_assignments : ""
+    students ||--o{ discount_assignments : ""
+    families ||--o{ discount_assignments : ""
+    discounts ||--o{ charge_discounts : ""
     package_products ||--o{ packages : ""
     packages ||--o{ package_credit_transactions : ""
     packages ||--o| charges : "purchase charge"
@@ -708,7 +762,7 @@ Each M6 issue, the ADR-0006 / ADR-0015 decision items it relies on, and the tabl
 | #92 M6-07 Enrollment charges | E1 (M4 hooks + sweeper), E9 (`full_course`, late proration, `enrollment_removal`), E11 | `charges`, `charge_adjustments` |
 | #93 M6-08 Tuition plans | E1 (daily job, local periods), E9 (`per_period`, group per-student), E11 (`period_start + due_offset_days`) | `tuition_plans`, `charges` |
 | #94 M6-09 Packages | E1 (purchase), E6 (purchase key), E10, E11 (purchase date) | `package_products`, `packages`, `package_credit_transactions`, `charges` |
-| #95 M6-10 Discounts, custom prices | E9 (precedence step 1, discount snapshot equation) | `custom_prices`, `discounts`, `charge_discounts` |
+| #95 M6-10 Discounts, custom prices | E8 (`billing.manage`), E9 (precedence step 1, stacking, discount snapshot equation) | `custom_prices`, `discounts`, `discount_assignments`, `charge_discounts`, `charges` (`custom_price_id`) |
 | #96 M6-11 Payments, allocations | E5 (allocations, account credit, I2/I3), E6, E8 (`payment.record`), E12 (method from the seeded table) | `payment_methods`, `payments`, `payment_allocations` |
 | #97 M6-12 Due dates, reminders | E11 (rules, family override, `charge_due_date_changes`, local-date overdue, `(charge_id, stage)`) | `charge_due_date_changes`, `charge_reminders` |
 | #98 M6-13 Receipts | E13 (`number_series`, snapshot incl. template version, one per payment), E14, E15 | `receipts`, `number_series` |

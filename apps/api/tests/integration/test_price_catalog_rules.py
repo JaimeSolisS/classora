@@ -269,11 +269,12 @@ def test_truncate_is_refused(module_seeded_url):
     with pytest.raises(DBAPIError) as raised:
         # Since #90 ``charges`` references the table, so a TRUNCATE must
         # name the referencing tables too; price_versions comes first, so
-        # its own trigger is the one that refuses it.
+        # its own trigger is the one that refuses it. Since #95
+        # charge_discounts references charges too.
         run_sql(
             module_seeded_url,
             "TRUNCATE price_versions, charges, charge_adjustments,"
-            " payment_allocations, allocation_releases",
+            " payment_allocations, allocation_releases, charge_discounts",
         )
 
     assert _sqlstate(raised.value) == "42501"

@@ -13,6 +13,7 @@ sessions cancelled), so a page holds the test's own items only.
 import uuid
 from collections.abc import Iterator
 from datetime import timedelta
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -311,7 +312,9 @@ def test_the_statement_bound(module_seeded_url):
 
     assert page.total == 30
     assert {entry.reason for entry in page.items} == {"no_price"}
-    assert count <= 6 + 3, count
+    # #95 C3: six statements, the custom prices of the page in one batch,
+    # and the three memoized catalog lookups.
+    assert count <= 6 + 1 + 3, count
 
 
 def test_the_list_matches_what_the_sweeper_skips(client, staff, module_seeded_url):
@@ -367,3 +370,38 @@ def test_access(client, module_seeded_url, role, allowed):
 def test_anonymous_is_401(client):
     client.cookies.clear()
     assert client.get(UNBILLED).status_code == 401
+
+
+# --- #95 C2, H7: a custom price makes an unpriced item billable ----------------------
+
+
+def test_a_custom_price_makes_a_no_price_item_billable(
+    client, staff, module_seeded_url
+):
+    from tests.factories.billing import persist_custom_price
+
+    url = module_seeded_url
+    it = item(url, starts_at=local(DAY), price=None)
+    # The catalog item exists but has no version ("no price" in the catalog).
+    catalog_item = add_price(url, it.subject, [])
+    set_floor(url, FLOOR)
+    assert [(e["reason"]) for e in listed(client, staff)["items"]] == ["no_price"]
+
+    assert it.family is not None
+    in_uow(
+        url,
+        lambda s: persist_custom_price(
+            s,
+            service_price_id=catalog_item,
+            amount="175.00",
+            effective_from=PRICE_FROM,
+            family_id=it.family,
+        ),
+    )
+
+    assert listed(client, staff)["total"] == 0
+    assert run(url).posted == 1
+    [charge] = charges_of(url, it.session)
+    assert charge.list_amount == Decimal("175.00")
+    assert charge.custom_price_id is not None and charge.price_version_id is None
+    assert listed(client, staff)["total"] == 0

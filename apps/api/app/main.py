@@ -120,10 +120,14 @@ from app.workflows.assignments_router import (
 from app.workflows.billing_accounts_router import (
     router as billing_accounts_router,
 )
+from app.workflows.billing_discounts_router import (
+    router as billing_discounts_router,
+)
 from app.workflows.change_requests_router import (
     router as change_request_review_router,
 )
 from app.workflows.cohorts_router import router as cohorts_router
+from app.workflows.custom_prices_router import router as custom_prices_router
 from app.workflows.evaluations_router import (
     evaluation_router as evaluations_router,
 )
@@ -301,6 +305,8 @@ def build_app(
     app.include_router(groups_router)
     app.include_router(cohorts_router)
     app.include_router(price_catalog_router)
+    app.include_router(billing_discounts_router)
+    app.include_router(custom_prices_router)
     app.include_router(billing_accounts_router)
     app.include_router(billing_settings_router)
     app.include_router(unbilled_items_router)

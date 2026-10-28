@@ -46,7 +46,9 @@ from app.workflows.price_catalog_schemas import (
 )
 
 
-def _names() -> billing.CatalogNames:
+def catalog_names() -> billing.CatalogNames:
+    """The unexecuted name selects the catalog reads join (also #95's custom
+    price reads)."""
     return billing.CatalogNames(
         subjects=catalog.subject_sort_columns(),
         levels=catalog.education_level_sort_columns(),
@@ -59,9 +61,10 @@ def _error(field: str, code: str, message: str) -> FieldError:
     return {"path": ["body", field], "code": code, "message": message}
 
 
-def _item(
+def service_price_item(
     row: billing.CatalogItemRow, versions: billing.CurrentAndNext
 ) -> ServicePriceItem:
+    """The response item of a catalog row (also #95's custom prices)."""
     return ServicePriceItem(
         id=row.id,
         class_type=row.class_type,  # type: ignore[arg-type]
@@ -102,7 +105,7 @@ async def list_service_prices(
     today = await administration.center_today(session)
     rows, total = await billing.list_service_prices(
         session,
-        _names(),
+        catalog_names(),
         class_type=class_type,
         pricing_model=pricing_model,
         subject_id=subject_id,
@@ -113,7 +116,7 @@ async def list_service_prices(
         session, [row.id for row in rows], today=today
     )
     return OffsetPage[ServicePriceItem](
-        items=[_item(row, versions[row.id]) for row in rows],
+        items=[service_price_item(row, versions[row.id]) for row in rows],
         total=total,
         limit=page.limit,
         offset=page.offset,
@@ -123,9 +126,9 @@ async def list_service_prices(
 async def _detail(
     session: AsyncSession, service_price_id: uuid.UUID, today: date
 ) -> ServicePriceDetail:
-    row = await billing.get_service_price(session, _names(), service_price_id)
+    row = await billing.get_service_price(session, catalog_names(), service_price_id)
     versions = await billing.list_versions(session, service_price_id, today=today)
-    item = _item(row, billing.current_and_next_of(versions))
+    item = service_price_item(row, billing.current_and_next_of(versions))
     return ServicePriceDetail(**item.model_dump(), versions=versions)
 
 
