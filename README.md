@@ -335,6 +335,10 @@ unless a bullet says otherwise.
   from that date are charged automatically to the student's family, and
   Billing → Unbilled lists the sessions that can't be charged yet (no
   family or no price) with a link to fix the cause.
+- They also keep discounts, scholarships, sibling discounts and promotions
+  with eligibility rules and validity dates (Billing → Discounts), and
+  custom prices per student or family (Billing → Custom prices); posted
+  charges keep the price and discounts they were computed with.
 
 **Notifications**
 

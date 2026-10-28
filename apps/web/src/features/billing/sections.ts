@@ -17,6 +17,17 @@ export const BILLING_SECTIONS: readonly BillingSection[] = [
     labelKey: 'billing.tabs.prices',
     permission: 'billing.manage',
   },
+  // #367 A2: discounts and custom prices, after Prices.
+  {
+    to: '/billing/discounts',
+    labelKey: 'billing.tabs.discounts',
+    permission: 'billing.manage',
+  },
+  {
+    to: '/billing/custom-prices',
+    labelKey: 'billing.tabs.customPrices',
+    permission: 'billing.manage',
+  },
   {
     to: '/billing/unbilled',
     labelKey: 'billing.tabs.unbilled',

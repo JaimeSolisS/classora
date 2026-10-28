@@ -835,6 +835,35 @@ export const routes: RouteObject[] = [
             }),
             handle: BILLING_ACCESS,
           },
+          // #367 A1: discounts and custom prices (code-split),
+          // billing.manage holders.
+          {
+            path: 'billing/discounts',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/billing/discounts/DiscountsPage')
+              ).DiscountsPage,
+            }),
+            handle: { permission: 'billing.manage' },
+          },
+          {
+            path: 'billing/discounts/:discountId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/billing/discounts/DiscountPage')
+              ).DiscountPage,
+            }),
+            handle: { permission: 'billing.manage' },
+          },
+          {
+            path: 'billing/custom-prices',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/billing/custom-prices/CustomPricesPage')
+              ).CustomPricesPage,
+            }),
+            handle: { permission: 'billing.manage' },
+          },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },
           // Any signed-in user, before and after accepting (#174 G1).
