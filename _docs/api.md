@@ -221,6 +221,15 @@ Codes in use today:
 | `price_version_in_use` | 409 | Deleting a price version that a charge or a package uses (the `price_versions` guard, from M6-05/M6-09 on; see Price catalog). |
 | `pricing_model_not_allowed` / `scope_not_allowed` / `scope_conflict` / `level_not_allowed` / `duration_not_allowed` / `duration_out_of_range` / `amount_negative` / `date_out_of_range` | 422 | Field codes of a price catalog body (see Price catalog). |
 | `subject_unknown` / `subject_inactive` / `education_level_unknown` / `education_level_inactive` / `cohort_unknown` / `group_unknown` / `scope_subject_mismatch` | 422 | Reference field codes of `POST /api/v1/billing/service-prices`, all in one response (see Price catalog). |
+| `discount_name_exists` | 409 | Creating or renaming a discount to a name another discount has, ignoring case (see Discounts and custom prices). |
+| `discount_assignment_exists` | 409 | Assigning a discount to a student or family it is already assigned to (see Discounts and custom prices). |
+| `audience_not_assigned` | 422 | Adding an assignment to a discount whose audience is `all` (see Discounts and custom prices). |
+| `custom_price_overlap` | 409 | A custom price whose dates overlap another one of the same student or family for the same catalog price (also from the exclusion constraints; see Discounts and custom prices). |
+| `custom_price_effective_from_invalid` | 422 | A custom price that starts before the center's local today (no backdating); on `["body","effective_from"]`. |
+| `custom_price_expiry_invalid` | 422 | Ending a custom price before today, before its start or before the last service date charged at it; on `["body","expires_on"]`. |
+| `custom_price_in_effect` / `custom_price_in_use` | 409 | Deleting a custom price that is in effect or past, or one a charge uses (the `custom_prices` guard). |
+| `field_immutable` | 422 | Sending `kind` or `audience` in a discount `PATCH`, or anything but `version`/`expires_on` in a custom price `PATCH`. |
+| `value_required` / `value_conflict` / `percent_invalid` / `percent_out_of_range` / `percent_precision` / `amount_not_positive` / `audience_not_allowed` / `dates_required` / `dates_order` / `criteria_empty_list` / `criteria_too_many` / `min_family_students_required` / `min_family_students_not_allowed` / `min_family_students_out_of_range` / `value_not_null` / `target_required` / `target_conflict` / `service_price_unknown` / `student_unknown` / `family_unknown` | 422 | Field codes of the discount and custom price bodies and references (see Discounts and custom prices). |
 | `range_in_future` / `range_too_long` | 422 | A progress dashboard range whose `to` is after the center's today (on `["query","to"]`) or that covers more than 24 calendar months (on `["query","from"]`); with `range_invalid` (`from` after `to` or before 2000-01-01) and `subject_unknown` (on `["query","subject_id"]`) as `validation_error` field errors (see Progress dashboard). |
 | `summary_required` | 422 | A closeout summary field (`topics`, `performance`, `next_steps`) left empty, unless every participant is absent; on `["body","summary",<field>]` (see Session closeout). Also a top-level code when a progress report without a summary is submitted (see Progress reports). |
 | `proposal_required` / `proposal_not_allowed` | 422 | A reschedule request without `proposed_starts_at`, or a cancellation with one; on `["body","proposed_starts_at"]`. |
@@ -5995,7 +6004,9 @@ plans (M6-08); those rows are never listed, and their ids are `404`.
   less specific items are **not** consulted. One statement, no lock, no
   commit. `ValueError` for `package` (read through the product, M6-09),
   for a cohort outside `course`, a group outside `group`, or both. The
-  custom student or family price (M6-10) is a step above this function.
+  custom student or family price (M6-10) is a step above this function:
+  charges are priced with `billing.service.quote` (see Discounts and custom
+  prices), never with `lookup_price` directly.
 - **Guard** (`price_versions`): the trigger
   `price_versions_no_referenced_change` refuses an `UPDATE` or `DELETE` of
   a version for which `price_version_is_referenced(id)` is true (42501),
@@ -6088,8 +6099,9 @@ pages are M6-06b (#366).
   minutes): every `confirmed` or `completed` **individual** session whose
   local date (center zone) is on or after `billing_starts_on` gets one
   `session` charge per participant, at the catalog price in effect on that
-  local date (`billing.service.lookup_price` with the student's current
-  level and the session's `scheduled_minutes`), due on the service date
+  local date (`billing.service.quote`, M6-10: a custom student or family
+  price first, else `lookup_price` with the student's current level and the
+  session's `scheduled_minutes`, then the discounts), due on the service date
   plus the account's `due_offset_days`, posted with no actor. A `0.00`
   price posts a zero charge. Group per-session charges come with M6-07; a
   session covered by a package takes the package path from M6-09. A posted
@@ -6097,19 +6109,149 @@ pages are M6-06b (#366).
   price version or a family move keep it).
 - **Unbilled items.** The candidates the job skips, computed on read
   (nothing stored, no lock): `no_billing_account` (the student has no
-  family; checked first) or `no_price` (no price in effect, or "not
-  offered"). Billing off gives an empty page; a candidate that is priced
+  family; checked first) or `no_price` (no custom price of the student or
+  family and no catalog price in effect, or "not offered"). Billing off gives an empty page; a candidate that is priced
   but not posted yet, or covered by a package, is not listed. Each is
   charged by the next run once its cause is fixed. `UnbilledSessionItem`:
   `class_session_id`, `starts_at`, `ends_at`, `service_date`, `state`,
   `scheduled_minutes`, `subject {id, name}`, `student {id, name}`,
   `education_level {id, name} | null` (the student's), `family {id, name}
   | null` and `reason`. Order: `service_date`, `starts_at`, student name
-  (case-insensitive), `class_session_id`, `student_id`. At most six
-  statements plus one price lookup per distinct (subject, level, minutes,
-  date).
+  (case-insensitive), `class_session_id`, `student_id`. At most seven
+  statements (the custom prices of every candidate in one, M6-10) plus one
+  catalog lookup per distinct (subject, level, minutes, date).
 - **Check order of the list:** `401` → `403 privacy_notice_required` →
   `403 permission_denied` → `422` (the query). No new error code.
+
+### Discounts and custom prices
+
+Implemented by M6-10 (#95; spec §6 discounts, scholarships, sibling
+discounts, promotions, custom pricing, W4.2; ADR-0006 E8, E9;
+owner-delegated decisions H1-H10 (a)). The rows and rules are in
+`app/modules/billing/` (`discounts.py` the pure stacking, `pricing.py` the
+price calculation, `discount_config.py`, `custom_prices.py`); the routes and
+the cross-module names in `app/workflows/billing_discounts_router.py`,
+`billing_discounts.py`, `custom_prices_router.py` and `custom_prices.py`.
+Tables: `_docs/data-model.md` §3.6-§3.8, the order in "Price calculation
+(#95)". The web pages are M6-10b (#367).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/billing/discounts` | `require("billing.manage")` | Offset pagination; filters `kind`, `status` (repeatable), `q` (part of the name). Items are `DiscountItem`. At most four statements per page. |
+| `POST /api/v1/billing/discounts` | `require("billing.manage")` | Body `DiscountCreate`. `201` with `DiscountDetail`. |
+| `GET /api/v1/billing/discounts/{discount_id}` | `require("billing.manage")` | `DiscountDetail`. |
+| `PATCH /api/v1/billing/discounts/{discount_id}` | `require("billing.manage")` | Body `DiscountUpdate` (`version` + any editable field). `200` with `DiscountDetail`. |
+| `POST /api/v1/billing/discounts/{discount_id}/assignments` | `require("billing.manage")` | Body `{student_id}` or `{family_id}`. `201` with `DiscountDetail`. |
+| `DELETE /api/v1/billing/discounts/{discount_id}/assignments/{assignment_id}` | `require("billing.manage")` | `204`. |
+| `GET /api/v1/billing/custom-prices` | `require("billing.manage")` | Offset pagination; filters `student_id`, `family_id`, `service_price_id`, `status` (repeatable). Items are `CustomPriceItem`. At most three statements per page. |
+| `POST /api/v1/billing/custom-prices` | `require("billing.manage")` | Body `CustomPriceCreate`. `201` with `CustomPriceItem`. |
+| `GET /api/v1/billing/custom-prices/{custom_price_id}` | `require("billing.manage")` | `CustomPriceItem`. |
+| `PATCH /api/v1/billing/custom-prices/{custom_price_id}` | `require("billing.manage")` | Body `{version, expires_on}` (both required). `200` with `CustomPriceItem`. |
+| `DELETE /api/v1/billing/custom-prices/{custom_price_id}` | `require("billing.manage")` | `204`. Upcoming and unused only. |
+
+Reads need `billing.manage` too (Owners, Administrators and Finance Staff;
+not delegable). No reauthentication and no `Idempotency-Key`: these are
+configuration rows (#86 E6); retries are safe through the `409`s and
+`version`. Check order of the writes: `401` → `403 csrf_failed` → `403
+privacy_notice_required` → `403 permission_denied` → `422` (body) → `404`
+→ the row lock → `409 version_conflict` → the rules. There is no discount
+`DELETE`: a discount is retired with `is_active: false`.
+
+- **`DiscountItem`:** `id`, `kind` (`scholarship`, `sibling`, `discount`,
+  `promotion`), `name`, `audience` (`all`: every matching charge;
+  `assigned`: only the assigned students and families' students),
+  `percent` (string, four places) or `amount` (Money), `eligibility`
+  (`charge_kinds`, `class_types`, `subjects [{id, name}]`,
+  `education_levels [{id, name}]`, `min_family_students`; each `null` =
+  any), `starts_on`, `expires_on` (inclusive, optional), `is_active`,
+  `status` (`inactive`, `upcoming`, `current`, `expired` against the
+  center's today), `assignment_count`, `version`, `created_at`.
+  `DiscountDetail` adds `assignments [{id, student {id, name} | null,
+  family {id, name} | null, created_at}]` by name. List order: active
+  first, kind (scholarship, sibling, discount, promotion), name, `id`.
+- **`DiscountCreate`** (unknown fields `422`; all field codes in one
+  response): `kind`, `audience`, `name` (trimmed, 1-120), exactly one of
+  `percent` (a decimal string, more than 0, at most 100, at most four
+  places: `percent_invalid`, `percent_out_of_range`, `percent_precision`)
+  and `amount` (Money, more than 0: `amount_not_positive`, `money_*`)
+  (`value_required`, `value_conflict`), `starts_on`, `expires_on`
+  (2000-2099, `date_out_of_range`; `dates_order`), `eligibility` (lists not
+  empty, `criteria_empty_list`; at most 50 ids, `criteria_too_many`;
+  `charge_kinds` from `session`, `group_enrollment`, `cohort_enrollment`,
+  `tuition_period`, `package_purchase`; `class_types` from `individual`,
+  `group`, `course`; `min_family_students` 2-20,
+  `min_family_students_out_of_range`), `is_active` (default `true`). Kind
+  rules: a scholarship is `assigned` and a sibling discount `all`
+  (`audience_not_allowed`); a sibling discount needs `min_family_students`
+  (`min_family_students_required`) and no other kind may have it
+  (`min_family_students_not_allowed`); a promotion has both dates
+  (`dates_required`). Then the references, with the list index in the path:
+  `subject_unknown`, `subject_inactive`, `education_level_unknown`,
+  `education_level_inactive`. Then `409 discount_name_exists` (ignoring
+  case).
+- **`DiscountUpdate`:** `version` plus any of `name`, `percent`, `amount`
+  (switching sends the other as `null`), `eligibility` (replaces the whole
+  object; its references are checked), `starts_on`, `expires_on`,
+  `is_active`. `kind` and `audience` are `field_immutable`; `null` for
+  `name`, `eligibility` or `is_active` is `value_not_null`. The resulting
+  discount must meet the creation rules. One `update` audit event; a body
+  that changes nothing writes nothing and keeps the version. A change
+  never touches posted charges, which keep their snapshot.
+- **Assignments:** only on an `assigned` discount (`422
+  audience_not_assigned`); exactly one target (`target_required`,
+  `target_conflict`); `student_unknown` / `family_unknown`; inactive
+  students and families may be assigned; `409 discount_assignment_exists`.
+  A family assignment covers each student of that family when a charge is
+  posted. `DELETE` of an assignment of another discount is `404`.
+- **`CustomPriceItem`:** `id`, `service_price` (the catalog item as in the
+  price catalog, without `next` and versions: `class_type`,
+  `pricing_model`, `subject`, `education_level`, `duration_minutes`,
+  `cohort`, `group`, and `current`, its catalog version today, for
+  comparison), `student {id, name} | null`, `family {id, name} | null`,
+  `effective_from`, `expires_on` (inclusive; `null` = open-ended),
+  `amount`, `status` (`past`, `current`, `upcoming`), `in_use` (a charge
+  was posted at it), `version`, `created_at`. List order: student or family
+  name, the price catalog order, newest `effective_from`, `id`.
+- **`CustomPriceCreate`:** `service_price_id`, exactly one of `student_id`
+  and `family_id` (`target_required`, `target_conflict`),
+  `effective_from`, optional `expires_on` (2000-2099; `dates_order`),
+  `amount` (Money, not negative: `amount_negative`, `money_*`). Then `422
+  custom_price_effective_from_invalid` before the center's local today (no
+  backdating: a past lookup never changes), then the references in one
+  response (`service_price_unknown`; `pricing_model_not_allowed` unless
+  the item is `per_session` or `full_course`; `student_unknown`,
+  `family_unknown`), then `409 custom_price_overlap` (the ranges of one
+  target and item never overlap).
+- **`CustomPriceUpdate`:** `{version, expires_on}`; every other field is
+  `field_immutable` (to change the amount, end it and create a new one from
+  a later date). A new `expires_on` must be today or later, on or after
+  `effective_from` and on or after the latest service date of a charge at
+  this price (`422 custom_price_expiry_invalid`); `null` re-opens it
+  (`409 custom_price_overlap` if that overlaps).
+- **`DELETE`** of a custom price: only an upcoming one (`409
+  custom_price_in_effect`) that no charge uses (`409 custom_price_in_use`,
+  the guard; e.g. a future confirmed session already charged at it).
+- **Pricing (for other modules): `billing.service.quote(session,
+  PriceQuery)`** → `Quote` or `None` (= no price). `PriceQuery` is the
+  `lookup_price` arguments plus `student_id`, `family_id` and
+  `charge_kind`. The base price is a matching custom price of the student,
+  then of the family (its item is one of the #89 candidates of the query;
+  the lowest rank wins; it beats the catalog even where the catalog says
+  "not offered"), else exactly `lookup_price`. Then at most one discount
+  per kind, kinds in the order scholarship → sibling → discount →
+  promotion, each on the running remainder, one half-up rounding per line,
+  a fixed amount capped at the remainder. Eligibility is evaluated when the
+  charge is posted: the date window against the service date; the active
+  flag, the assignments, the student's level and the family's number of
+  active students as they are at posting. At most four statements, no
+  lock. Post with `ChargeDraft.priced(quote, …)`; `post_charge` writes the
+  `charge_discounts` snapshot (kind, name, percent or fixed amount, amount,
+  position) only when it creates the charge.
+- **Audit:** automatic: `create`/`update` for discounts and custom prices
+  (percentages and amounts as strings), `create`/`delete` for assignments,
+  `delete` for a deleted custom price, one `create` per `charge_discounts`
+  row in the posting transaction (no actor from the job). `4xx` responses
+  write nothing.
 
 ### Response headers
 

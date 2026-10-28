@@ -3943,6 +3943,159 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/discounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Discounts
+         * @description The discounts, active first, then by kind (scholarship, sibling,
+         *     discount, promotion), name and id. `kind` and `status` may be repeated;
+         *     `q` matches part of the name, ignoring case.
+         */
+        get: operations["list_discounts_api_v1_billing_discounts_get"];
+        put?: never;
+        /**
+         * Create Discount
+         * @description Create a discount, scholarship, sibling discount or promotion. It
+         *     applies to charges posted from now on whose service date is inside its
+         *     dates and that meet its criteria (and, for `assigned`, its
+         *     assignments).
+         */
+        post: operations["create_discount_api_v1_billing_discounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/discounts/{discount_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Discount
+         * @description A discount with its assignments.
+         */
+        get: operations["get_discount_api_v1_billing_discounts__discount_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Discount
+         * @description Change a discount (switching between a percentage and an amount sends
+         *     the other as `null`; `eligibility` replaces the whole object). Posted
+         *     charges keep the values they were computed with. Sending the current
+         *     values changes nothing (the version is still checked).
+         */
+        patch: operations["update_discount_api_v1_billing_discounts__discount_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/billing/discounts/{discount_id}/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Assignment
+         * @description Assign an `assigned` discount to a student or a family (a family
+         *     covers each of its students when a charge is posted).
+         */
+        post: operations["add_assignment_api_v1_billing_discounts__discount_id__assignments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/discounts/{discount_id}/assignments/{assignment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Assignment
+         * @description Remove an assignment. Posted charges keep their discounts.
+         */
+        delete: operations["delete_assignment_api_v1_billing_discounts__discount_id__assignments__assignment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/custom-prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Custom Prices
+         * @description The custom prices by student or family name, then in the catalog's
+         *     order, newest start first. `status` may be repeated.
+         */
+        get: operations["list_custom_prices_api_v1_billing_custom_prices_get"];
+        put?: never;
+        /**
+         * Create Custom Price
+         * @description Give a student or a family its own price for a catalog price, from
+         *     today or a later date. A student's price beats the family's, and both
+         *     beat the catalog; discounts still apply on top.
+         */
+        post: operations["create_custom_price_api_v1_billing_custom_prices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/custom-prices/{custom_price_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Custom Price
+         * @description A custom price.
+         */
+        get: operations["get_custom_price_api_v1_billing_custom_prices__custom_price_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Custom Price
+         * @description Delete an upcoming custom price that no charge uses.
+         */
+        delete: operations["delete_custom_price_api_v1_billing_custom_prices__custom_price_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Custom Price
+         * @description End a custom price (`expires_on`, inclusive) or re-open it (`null`).
+         *     To change the amount, end it and create a new one from a later date.
+         */
+        patch: operations["update_custom_price_api_v1_billing_custom_prices__custom_price_id__patch"];
+        trace?: never;
+    };
     "/api/v1/families/{family_id}/billing-account": {
         parameters: {
             query?: never;
@@ -5674,6 +5827,20 @@ export interface components {
             name: string;
             /** Is Active */
             is_active: boolean;
+        };
+        /**
+         * BillingReference
+         * @description A record a discount or custom price points at: its id and current
+         *     name.
+         */
+        BillingReference: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
         };
         /**
          * BillingSettingsDetail
@@ -8848,6 +9015,10 @@ export interface components {
             assessments?: components["schemas"]["CourseTemplateAssessmentWrite"][];
         };
         /** @enum {string} */
+        CriteriaChargeKind: "session" | "group_enrollment" | "cohort_enrollment" | "tuition_period" | "package_purchase";
+        /** @enum {string} */
+        CriteriaClassType: "individual" | "group" | "course";
+        /** @enum {string} */
         CriterionStatus: "met" | "not_met" | "pending" | "not_required";
         /** CursorPage[AuditEventListItem] */
         CursorPage_AuditEventListItem_: {
@@ -8892,6 +9063,112 @@ export interface components {
             next_cursor: string | null;
         };
         /**
+         * CustomPriceCreate
+         * @description ``POST /api/v1/billing/custom-prices`` (#95 E3): one catalog item,
+         *     exactly one target, the dates (inclusive; ``expires_on`` optional) and
+         *     the amount (not negative).
+         */
+        CustomPriceCreate: {
+            /**
+             * Service Price Id
+             * Format: uuid
+             */
+            service_price_id: string;
+            /** Student Id */
+            student_id?: string | null;
+            /** Family Id */
+            family_id?: string | null;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Expires On */
+            expires_on?: string | null;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+        };
+        /**
+         * CustomPriceItem
+         * @description One custom price (#95 E1): for a student or a family (the other is
+         *     ``null``), from ``effective_from`` to ``expires_on`` (inclusive;
+         *     ``null`` = open-ended). ``status`` against the center's local today;
+         *     ``in_use``: a charge was posted at this price (then only ``expires_on``
+         *     can change).
+         */
+        CustomPriceItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            service_price: components["schemas"]["CustomPriceServicePrice"];
+            student: components["schemas"]["BillingReference"] | null;
+            family: components["schemas"]["BillingReference"] | null;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Expires On */
+            expires_on: string | null;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            status: components["schemas"]["CustomPriceStatus"];
+            /** In Use */
+            in_use: boolean;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * CustomPriceServicePrice
+         * @description The catalog item a custom price is for (the #89 item without its
+         *     versions), with its ``current`` catalog version for comparison.
+         */
+        CustomPriceServicePrice: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            class_type: components["schemas"]["ClassType"];
+            pricing_model: components["schemas"]["CatalogPricingModel"];
+            subject: components["schemas"]["PriceCatalogSubject"];
+            education_level: components["schemas"]["PriceCatalogReference"] | null;
+            /** Duration Minutes */
+            duration_minutes: number | null;
+            cohort: components["schemas"]["PriceCatalogReference"] | null;
+            group: components["schemas"]["PriceCatalogReference"] | null;
+            current: components["schemas"]["PriceVersionItem"] | null;
+        };
+        /** @enum {string} */
+        CustomPriceStatus: "past" | "current" | "upcoming";
+        /**
+         * CustomPriceUpdate
+         * @description ``PATCH /api/v1/billing/custom-prices/{id}`` (#95 E5): end (or
+         *     re-open with ``null``) a custom price. ``expires_on`` is required; every
+         *     other field is ``field_immutable`` (E7).
+         */
+        CustomPriceUpdate: {
+            /** Version */
+            version: number;
+            /** Expires On */
+            expires_on: string | null;
+        };
+        /**
          * Format: decimal
          * @example 7.50
          */
@@ -8903,6 +9180,215 @@ export interface components {
         DecimalOut: string;
         /** @enum {string} */
         DelegablePermissionCode: "finance.refund.approve" | "payroll.finalize" | "schedule.override" | "user.admin_role.assign";
+        /**
+         * DiscountAssignmentCreate
+         * @description ``POST /api/v1/billing/discounts/{id}/assignments`` (#95 D6): exactly
+         *     one of ``student_id`` and ``family_id``.
+         */
+        DiscountAssignmentCreate: {
+            /** Student Id */
+            student_id?: string | null;
+            /** Family Id */
+            family_id?: string | null;
+        };
+        /**
+         * DiscountAssignmentItem
+         * @description One assignment: a student or a family (the other is ``null``).
+         */
+        DiscountAssignmentItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            student: components["schemas"]["BillingReference"] | null;
+            family: components["schemas"]["BillingReference"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** @enum {string} */
+        DiscountAudience: "all" | "assigned";
+        /**
+         * DiscountCreate
+         * @description ``POST /api/v1/billing/discounts`` (#95 D3). Fields are in rule
+         *     order: each cross-field rule is checked on the later field.
+         */
+        DiscountCreate: {
+            kind: components["schemas"]["DiscountKind"];
+            audience: components["schemas"]["DiscountAudience"];
+            /** Name */
+            name: string;
+            /** Percent */
+            percent?: string | null;
+            /** Amount */
+            amount?: string | null;
+            /** Starts On */
+            starts_on?: string | null;
+            /** Expires On */
+            expires_on?: string | null;
+            eligibility?: components["schemas"]["DiscountEligibility"];
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+        };
+        /**
+         * DiscountDetail
+         * @description A discount with its assignments, by student or family name.
+         */
+        DiscountDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["DiscountKind"];
+            /** Name */
+            name: string;
+            audience: components["schemas"]["DiscountAudience"];
+            /**
+             * Percent
+             * @example 10.0000
+             */
+            percent: string | null;
+            /** Amount */
+            amount: string | null;
+            eligibility: components["schemas"]["DiscountEligibilityDetail"];
+            /** Starts On */
+            starts_on: string | null;
+            /** Expires On */
+            expires_on: string | null;
+            /** Is Active */
+            is_active: boolean;
+            status: components["schemas"]["DiscountStatus"];
+            /** Assignment Count */
+            assignment_count: number;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Assignments */
+            assignments: components["schemas"]["DiscountAssignmentItem"][];
+        };
+        /**
+         * DiscountEligibility
+         * @description The ``eligibility`` criteria of a discount (H2). Every key is
+         *     optional; absent or ``null`` means any. An empty list is refused
+         *     (``criteria_empty_list``); lists are stored sorted and without
+         *     duplicates; at most 50 ids (``criteria_too_many``);
+         *     ``min_family_students`` 2–20 (``min_family_students_out_of_range``) and
+         *     only for ``sibling`` (checked with the kind).
+         */
+        DiscountEligibility: {
+            /** Charge Kinds */
+            charge_kinds?: components["schemas"]["CriteriaChargeKind"][] | null;
+            /** Class Types */
+            class_types?: components["schemas"]["CriteriaClassType"][] | null;
+            /** Subject Ids */
+            subject_ids?: string[] | null;
+            /** Education Level Ids */
+            education_level_ids?: string[] | null;
+            /** Min Family Students */
+            min_family_students?: number | null;
+        };
+        /**
+         * DiscountEligibilityDetail
+         * @description The criteria of a discount (#95 H2), every one ``null`` = any; the
+         *     subject and level ids come with their current names. ``subjects`` is the
+         *     charge's subject; ``education_levels`` the student's level at posting;
+         *     ``min_family_students`` (sibling discounts only) the family's active
+         *     students.
+         */
+        DiscountEligibilityDetail: {
+            /** Charge Kinds */
+            charge_kinds: components["schemas"]["CriteriaChargeKind"][] | null;
+            /** Class Types */
+            class_types: components["schemas"]["CriteriaClassType"][] | null;
+            /** Subjects */
+            subjects: components["schemas"]["BillingReference"][] | null;
+            /** Education Levels */
+            education_levels: components["schemas"]["BillingReference"][] | null;
+            /** Min Family Students */
+            min_family_students: number | null;
+        };
+        /**
+         * DiscountItem
+         * @description One discount (#95 D1). Exactly one of ``percent`` (four places) and
+         *     ``amount``. ``status`` is against the center's local today:
+         *     ``inactive``, ``upcoming`` (starts later), ``expired`` (ended before
+         *     today) or ``current``.
+         */
+        DiscountItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["DiscountKind"];
+            /** Name */
+            name: string;
+            audience: components["schemas"]["DiscountAudience"];
+            /**
+             * Percent
+             * @example 10.0000
+             */
+            percent: string | null;
+            /** Amount */
+            amount: string | null;
+            eligibility: components["schemas"]["DiscountEligibilityDetail"];
+            /** Starts On */
+            starts_on: string | null;
+            /** Expires On */
+            expires_on: string | null;
+            /** Is Active */
+            is_active: boolean;
+            status: components["schemas"]["DiscountStatus"];
+            /** Assignment Count */
+            assignment_count: number;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** @enum {string} */
+        DiscountKind: "scholarship" | "sibling" | "discount" | "promotion";
+        /** @enum {string} */
+        DiscountStatus: "inactive" | "upcoming" | "current" | "expired";
+        /**
+         * DiscountUpdate
+         * @description ``PATCH /api/v1/billing/discounts/{id}`` (#95 D5): ``version`` and
+         *     any of the editable fields. Switching between a percentage and an
+         *     amount sends the other as ``null``; ``eligibility`` replaces the whole
+         *     object. ``kind`` and ``audience`` never change (``field_immutable``).
+         *     The resulting row is checked against the D3 rules by the service.
+         */
+        DiscountUpdate: {
+            /** Version */
+            version: number;
+            /** Name */
+            name?: string | null;
+            /** Percent */
+            percent?: string | null;
+            /** Amount */
+            amount?: string | null;
+            eligibility?: components["schemas"]["DiscountEligibility"] | null;
+            /** Starts On */
+            starts_on?: string | null;
+            /** Expires On */
+            expires_on?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
         /** @enum {string} */
         Due: "upcoming" | "past";
         /**
@@ -11633,6 +12119,28 @@ export interface components {
         OffsetPage_CourseTemplateSummary_: {
             /** Items */
             items: components["schemas"]["CourseTemplateSummary"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** OffsetPage[CustomPriceItem] */
+        OffsetPage_CustomPriceItem_: {
+            /** Items */
+            items: components["schemas"]["CustomPriceItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** OffsetPage[DiscountItem] */
+        OffsetPage_DiscountItem_: {
+            /** Items */
+            items: components["schemas"]["DiscountItem"][];
             /** Total */
             total: number;
             /** Limit */
@@ -29116,6 +29624,684 @@ export interface operations {
                 };
             };
             /** @description Only an upcoming version can be deleted (price_version_in_effect); a version used by a charge or a package can't be (price_version_in_use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_discounts_api_v1_billing_discounts_get: {
+        parameters: {
+            query?: {
+                kind?: components["schemas"]["DiscountKind"][] | null;
+                status?: components["schemas"]["DiscountStatus"][] | null;
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_DiscountItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_discount_api_v1_billing_discounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscountCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscountDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Another discount has this name, ignoring case (discount_name_exists). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_discount_api_v1_billing_discounts__discount_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discount_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscountDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such discount (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_discount_api_v1_billing_discounts__discount_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discount_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscountUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscountDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such discount (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The discount changed since it was loaded (version_conflict); Another discount has this name, ignoring case (discount_name_exists). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    add_assignment_api_v1_billing_discounts__discount_id__assignments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discount_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscountAssignmentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscountDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such discount (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The student or family is already assigned (discount_assignment_exists). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    delete_assignment_api_v1_billing_discounts__discount_id__assignments__assignment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discount_id: string;
+                assignment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such discount, or an assignment of another one (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_custom_prices_api_v1_billing_custom_prices_get: {
+        parameters: {
+            query?: {
+                student_id?: string | null;
+                family_id?: string | null;
+                service_price_id?: string | null;
+                status?: components["schemas"]["CustomPriceStatus"][] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_CustomPriceItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_custom_price_api_v1_billing_custom_prices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomPriceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomPriceItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Another custom price of the same student or family for the same price overlaps these dates (custom_price_overlap). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_custom_price_api_v1_billing_custom_prices__custom_price_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                custom_price_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomPriceItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such custom price (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    delete_custom_price_api_v1_billing_custom_prices__custom_price_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                custom_price_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such custom price (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only an upcoming custom price can be deleted (custom_price_in_effect); one used by a charge can't be (custom_price_in_use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_custom_price_api_v1_billing_custom_prices__custom_price_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                custom_price_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomPriceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomPriceItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such custom price (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The custom price changed since it was loaded (version_conflict); Another custom price of the same student or family for the same price overlaps these dates (custom_price_overlap). */
             409: {
                 headers: {
                     [name: string]: unknown;

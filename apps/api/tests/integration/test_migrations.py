@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0062"
+HEAD = "0063"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -162,6 +162,13 @@ LEDGER_TABLES = [
 """The tables revision 0061 adds (#90 A2)."""
 BILLING_SETTINGS_TABLES = ["billing_settings"]
 """The table revision 0062 adds (#91 A2)."""
+DISCOUNT_TABLES = [
+    "custom_prices",
+    "discounts",
+    "discount_assignments",
+    "charge_discounts",
+]
+"""The tables revision 0063 adds (#95 A2-A5)."""
 APPEND_ONLY_LEDGER_TABLES = [
     "charges",
     "charge_adjustments",
@@ -400,6 +407,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *LEDGER_TABLES,
             LEDGER_VIEW,
             *BILLING_SETTINGS_TABLES,
+            *DISCOUNT_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4557,9 +4565,33 @@ def _of_0062(diff: Any) -> bool:
     return False
 
 
+def _of_0063(diff: Any) -> bool:
+    """A metadata difference that revision 0063 adds: the discount and custom
+    price tables and their indexes, and ``charges.custom_price_id`` with its
+    foreign key and index (#95 A2-A6)."""
+    if diff[0] == "add_table":
+        return diff[1].name in DISCOUNT_TABLES
+    if diff[0] == "add_index":
+        return diff[1].table.name in DISCOUNT_TABLES or (
+            diff[1].name == "ix_charges_custom_price_id"
+        )
+    if diff[0] == "add_column":
+        return diff[2] == "charges" and diff[3].name == "custom_price_id"
+    if diff[0] == "add_fk":
+        return diff[1].parent.name == "charges" and diff[1].column_keys == [
+            "custom_price_id"
+        ]
+    return False
+
+
+def _of_0062_on(diff: Any) -> bool:
+    """A metadata difference that revision 0062 or a later one adds."""
+    return _of_0062(diff) or _of_0063(diff)
+
+
 def _of_0061_on(diff: Any) -> bool:
     """A metadata difference that revision 0061 or a later one adds."""
-    return _of_0061(diff) or _of_0062(diff)
+    return _of_0061(diff) or _of_0062_on(diff)
 
 
 def _of_0060_on(diff: Any) -> bool:
@@ -10823,7 +10855,7 @@ def test_0061_adds_the_ledger_and_downgrade_drops_it(fresh_database_url):
     command.upgrade(config, "0061")
 
     assert version_nums(dsn) == ["0061"]
-    assert [d for d in metadata_diff(dsn) if not _of_0062(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0062_on(d)] == []
     assert public_tables(dsn) - before == {*LEDGER_TABLES, LEDGER_VIEW}
     assert _append_only_functions(dsn) == {
         f"{table}_append_only" for table in APPEND_ONLY_LEDGER_TABLES
@@ -10880,6 +10912,7 @@ def test_ledger_columns_constraints_indexes_triggers_and_view(fresh_database_url
         "service_date": ("date", "NO", None, None),
         "service_period_end": ("date", "YES", None, None),
         "price_version_id": uuid_null,
+        "custom_price_id": uuid_null,
         "education_level_id": uuid_null,
         "scheduled_minutes": ("smallint", "YES", None, None),
         "list_amount": money,
@@ -10890,10 +10923,9 @@ def test_ledger_columns_constraints_indexes_triggers_and_view(fresh_database_url
         "posted_at": ("timestamp with time zone", "NO", None, None),
         "posted_by_user_id": uuid_null,
     }
-    # E3: the staged columns come with their own issues.
-    assert {"tuition_plan_id", "package_id", "custom_price_id"}.isdisjoint(
-        _columns(dsn, "charges")
-    )
+    # E3: the staged columns come with their own issues (#95 added
+    # custom_price_id).
+    assert {"tuition_plan_id", "package_id"}.isdisjoint(_columns(dsn, "charges"))
     assert "withdrawal_id" not in _columns(dsn, "refunds")
     assert _columns(dsn, "charge_adjustments") == {
         **standard,
@@ -11041,7 +11073,7 @@ def test_0062_adds_the_billing_settings_and_downgrade_drops_it(fresh_database_ur
     command.upgrade(config, "0062")
 
     assert version_nums(dsn) == ["0062"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0063(d)] == []
     assert public_tables(dsn) - before == set(BILLING_SETTINGS_TABLES)
     rows = run_sql(
         dsn, "SELECT singleton, billing_starts_on, version FROM billing_settings"
@@ -11054,7 +11086,7 @@ def test_0062_adds_the_billing_settings_and_downgrade_drops_it(fresh_database_ur
 
     assert version_nums(dsn) == ["0061"]
     assert public_tables(dsn) == before
-    assert [d for d in metadata_diff(dsn) if not _of_0062(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0062_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -11089,3 +11121,169 @@ def test_billing_settings_columns_constraints_and_singleton(fresh_database_url):
             )
     [count] = run_sql(dsn, "SELECT count(*) AS n FROM billing_settings")
     assert count.n == 1
+
+
+# --- 0063: discounts, scholarships and custom prices (#95 A1-A7) ------------------
+
+DISCOUNT_FUNCTIONS = {"custom_prices_guard", "charge_discounts_append_only"}
+
+
+def _discount_functions(dsn: str) -> set[str]:
+    rows = run_sql(
+        dsn,
+        "SELECT proname FROM pg_proc WHERE proname IN"
+        " ('custom_prices_guard', 'charge_discounts_append_only')",
+    )
+    return {row.proname for row in rows}
+
+
+def test_0063_adds_discounts_and_custom_prices_and_downgrade_drops_them(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0062")
+    before = public_tables(dsn)
+    charge_columns = set(_columns(dsn, "charges"))
+
+    command.upgrade(config, "0063")
+
+    assert version_nums(dsn) == ["0063"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(DISCOUNT_TABLES)
+    assert set(_columns(dsn, "charges")) - charge_columns == {"custom_price_id"}
+    assert _discount_functions(dsn) == DISCOUNT_FUNCTIONS
+    assert _triggers(dsn, "custom_prices") == {
+        "custom_prices_no_referenced_change",
+        "custom_prices_no_truncate",
+    }
+    assert _triggers(dsn, "charge_discounts") == {
+        "charge_discounts_no_update_delete",
+        "charge_discounts_no_truncate",
+    }
+
+    command.downgrade(config, "0062")
+
+    assert version_nums(dsn) == ["0062"]
+    assert public_tables(dsn) == before
+    assert set(_columns(dsn, "charges")) == charge_columns
+    assert {"ck_charges_one_price", "ck_charges_manual_unpriced"}.isdisjoint(
+        _constraints(dsn, "charges")
+    )
+    assert "ix_charges_custom_price_id" not in _indexes(dsn, "charges")
+    assert _discount_functions(dsn) == set()
+    assert [d for d in metadata_diff(dsn) if not _of_0063(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_discount_and_custom_price_columns_constraints_and_indexes(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    uuid_ = ("uuid", "NO", None, None)
+    uuid_null = ("uuid", "YES", None, None)
+    money = ("numeric", "NO", None, None)
+    money_null = ("numeric", "YES", None, None)
+    date_null = ("date", "YES", None, None)
+    standard = {k: v for k, v in STANDARD_COLUMNS.items() if k != "version"}
+    assert _columns(dsn, "custom_prices") == {
+        **STANDARD_COLUMNS,
+        "service_price_id": uuid_,
+        "student_id": uuid_null,
+        "family_id": uuid_null,
+        "effective_from": ("date", "NO", None, None),
+        "expires_on": date_null,
+        "amount": money,
+    }
+    assert _columns(dsn, "discounts") == {
+        **STANDARD_COLUMNS,
+        "kind": ("character varying", "NO", 16, None),
+        "audience": ("character varying", "NO", 16, None),
+        "name": ("character varying", "NO", 120, None),
+        "percent": money_null,
+        "amount": money_null,
+        "eligibility": ("jsonb", "NO", None, "'{}'::jsonb"),
+        "starts_on": date_null,
+        "expires_on": date_null,
+        "is_active": ("boolean", "NO", None, "true"),
+    }
+    assert _columns(dsn, "discount_assignments") == {
+        **standard,
+        "discount_id": uuid_,
+        "student_id": uuid_null,
+        "family_id": uuid_null,
+    }
+    assert _columns(dsn, "charge_discounts") == {
+        **standard,
+        "charge_id": uuid_,
+        "discount_id": uuid_,
+        "position": ("smallint", "NO", None, None),
+        "kind": ("character varying", "NO", 16, None),
+        "name": ("character varying", "NO", 120, None),
+        "percent": money_null,
+        "fixed_amount": money_null,
+        "amount": money,
+    }
+    assert {
+        "ck_custom_prices_one_target",
+        "ck_custom_prices_dates",
+        "ck_custom_prices_amount_non_negative",
+        "ex_custom_prices_student_overlap",
+        "ex_custom_prices_family_overlap",
+    } <= set(_constraints(dsn, "custom_prices"))
+    assert {
+        "ck_discounts_kind_valid",
+        "ck_discounts_audience_valid",
+        "ck_discounts_name_valid",
+        "ck_discounts_percent_range",
+        "ck_discounts_amount_positive",
+        "ck_discounts_one_value",
+        "ck_discounts_eligibility_object",
+        "ck_discounts_dates_order",
+        "ck_discounts_scholarship_assigned",
+        "ck_discounts_sibling_all",
+        "ck_discounts_promotion_dates",
+    } <= set(_constraints(dsn, "discounts"))
+    assert {
+        "ck_charge_discounts_position_positive",
+        "ck_charge_discounts_kind_valid",
+        "ck_charge_discounts_one_value",
+        "ck_charge_discounts_amount_positive",
+        "uq_charge_discounts_charge_id_position",
+    } <= set(_constraints(dsn, "charge_discounts"))
+    assert "ck_discount_assignments_one_target" in _constraints(
+        dsn, "discount_assignments"
+    )
+    charges = _constraints(dsn, "charges")
+    assert {"ck_charges_one_price", "ck_charges_manual_unpriced"} <= set(charges)
+    assert charges["fk_charges_custom_price_id_custom_prices"].endswith(
+        "ON DELETE RESTRICT"
+    )
+    for table in DISCOUNT_TABLES:
+        for name, definition in _constraints(dsn, table).items():
+            if definition.startswith("FOREIGN KEY"):
+                assert "ON DELETE RESTRICT" in definition, (table, name)
+    overlap = _constraints(dsn, "custom_prices")["ex_custom_prices_student_overlap"]
+    assert overlap.startswith("EXCLUDE USING gist")
+    assert "WHERE ((student_id IS NOT NULL))" in overlap
+    assert (
+        "WHERE (custom_price_id IS NOT NULL)"
+        in (_indexes(dsn, "charges")["ix_charges_custom_price_id"])
+    )
+    name_index = _indexes(dsn, "discounts")["uq_discounts_name_lower"]
+    assert "lower((name)::text)" in name_index
+    assignments = _indexes(dsn, "discount_assignments")
+    assert "UNIQUE" in assignments["uq_discount_assignments_discount_student"]
+    assert "UNIQUE" in assignments["uq_discount_assignments_discount_family"]
+    assert {
+        "ix_discount_assignments_student_id",
+        "ix_discount_assignments_family_id",
+    } <= set(assignments)
+    assert {"ix_custom_prices_student_item", "ix_custom_prices_family_item"} <= set(
+        _indexes(dsn, "custom_prices")
+    )

@@ -21,7 +21,10 @@ staff with ``guardian.view``. Family membership is never student access.
 access check). For the billing account reads (#364 B5):
 :func:`family_record_reference` (the family's id, name, active flag and
 current student ids; no access check) and :func:`own_family_id` (the family
-of the caller's active guardian profile, the #172 rule).
+of the caller's active guardian profile, the #172 rule). For discounts and
+custom prices (#95): :func:`active_student_count` (a family's active
+students, the sibling rule) and the unexecuted :func:`family_name_columns`
+and :func:`student_name_columns` (names joined by billing reads).
 
 **Name search** (ISSUE-D6, accepted on #33): with ``n(x) =
 public.f_unaccent(lower(x))`` and ``name = given_names || ' ' ||
@@ -96,6 +99,7 @@ from typing import Any, Final
 
 from sqlalchemy import (
     ColumnElement,
+    Select,
     exists,
     func,
     select,
@@ -172,6 +176,7 @@ __all__ = [
     "StudentAgeReference",
     "StudentLevelReference",
     "academic_notification_recipients",
+    "active_student_count",
     "add_family_guardian",
     "add_family_student",
     "create_family",
@@ -179,6 +184,7 @@ __all__ = [
     "create_student",
     "families_of_students",
     "family_of_student",
+    "family_name_columns",
     "family_record_reference",
     "family_schedule_facts",
     "get_consents",
@@ -201,6 +207,7 @@ __all__ = [
     "revoke_consent",
     "set_student_account",
     "student_age_references",
+    "student_name_columns",
     "student_level_references",
     "student_notification_recipients",
     "student_references",
@@ -246,6 +253,10 @@ access check; #91 D4, the unbilled list)."""
 FamilyRecordReference = _groupings.FamilyRecordReference
 family_record_reference = _groupings.family_record_reference
 own_family_id = _groupings.own_family_id
+active_student_count = _groupings.active_student_count
+"""A family's number of active students (one statement; no access check;
+#95 H3)."""
+family_name_columns = _groupings.family_name_columns
 
 # --- References (#48) -------------------------------------------------------------
 
@@ -271,6 +282,15 @@ async def student_references(
         )
         for row in rows
     }
+
+
+def student_name_columns() -> Select[uuid.UUID, str]:
+    """``SELECT id, name FROM students`` (``name`` = given names and family
+    names), **not executed** (#95: the billing reads join it as a subquery
+    for names and order)."""
+    return select(
+        Student.id, (Student.given_names + " " + Student.family_names).label("name")
+    )
 
 
 @dataclass(frozen=True)

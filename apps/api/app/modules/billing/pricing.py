@@ -1,4 +1,5 @@
-"""The catalog price lookup (#89 C; #86 E9; data-model §3.5).
+"""The catalog price lookup (#89 C; #86 E9; data-model §3.5) and the
+shared price calculation (#95 B2-B4; :func:`quote`, at the end).
 
 :func:`lookup_price` answers "which catalog price applies to this service on
 this local date". The billing issues that post charges call it through
@@ -39,14 +40,34 @@ lock, no commit.
 """
 
 import uuid
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import ColumnElement, and_, case, or_, select, true
+from sqlalchemy import ColumnElement, and_, case, exists, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.billing.models import PriceVersion, ServicePrice
-from app.modules.billing.schemas import PriceInEffect
+from app.core.money import Money
+from app.modules.billing.discounts import (
+    ChargeFacts,
+    DiscountEligibility,
+    DiscountKind,
+    DiscountLine,
+    DiscountSpec,
+    matches,
+    select_discounts,
+    total,
+)
+from app.modules.billing.models import (
+    CustomPrice,
+    Discount,
+    DiscountAssignment,
+    PriceVersion,
+    ServicePrice,
+)
+from app.modules.billing.schemas import BasePrice, PriceInEffect, PriceQuery, Quote
+from app.modules.families import service as families
 
 PACKAGE = "package"
 
@@ -173,3 +194,314 @@ async def lookup_price(
         amount=row[3],
         rank=int(row[4]),
     )
+
+
+# --- The price calculation (#95 B2-B4) -----------------------------------------------
+#
+# **Order** (ADR-0006 E9; #95 H4-H6): (1) a custom price of the **student**,
+# then one of the **family**, whose catalog item is one of the #89 candidates
+# of the query and which is in effect on ``on`` (``effective_from <= on <=
+# expires_on``); among one target's prices the item with the lowest #89 rank
+# wins. A matching custom price beats the catalog even when the catalog says
+# "not offered" (``NULL``) or has no version in effect. (2) With no custom
+# price, exactly :func:`lookup_price` (its ranks and ``NULL`` rule). (3) The
+# discounts on top of that base price (:func:`discounts_for`, H4/H5: at most
+# one per kind, scholarship → sibling → discount → promotion, each on the
+# running remainder). #92 prorates between :func:`base_price` and
+# :func:`discounts_for` (proration before discounts).
+#
+# Everything runs in the caller's Unit of Work: no commit, no lock.
+
+
+def _target_condition(
+    student_id: uuid.UUID, family_id: uuid.UUID | None
+) -> ColumnElement[bool]:
+    if family_id is None:
+        return CustomPrice.student_id == student_id
+    return or_(CustomPrice.student_id == student_id, CustomPrice.family_id == family_id)
+
+
+def _check_query(query: PriceQuery) -> None:
+    _check_arguments(
+        class_type=query.class_type,
+        pricing_model=query.pricing_model,
+        cohort_id=query.cohort_id,
+        group_id=query.group_id,
+    )
+
+
+async def base_price(session: AsyncSession, query: PriceQuery) -> BasePrice | None:
+    """The base price of ``query`` (#95 B2, H6): the matching custom price
+    (one statement), otherwise :func:`lookup_price` (one more). ``None`` is
+    ``no_price``. At most two statements."""
+    _check_query(query)
+    ranks = _rank_conditions(
+        education_level_id=query.education_level_id,
+        duration_minutes=query.duration_minutes,
+        cohort_id=query.cohort_id,
+        group_id=query.group_id,
+    )
+    rank = case(*ranks).label("rank")
+    by_student = case((CustomPrice.student_id.is_not(None), 0), else_=1)
+    row = (
+        await session.execute(
+            select(CustomPrice.id, CustomPrice.amount, CustomPrice.student_id, rank)
+            .join(ServicePrice, ServicePrice.id == CustomPrice.service_price_id)
+            .where(
+                ServicePrice.class_type == query.class_type,
+                ServicePrice.pricing_model == query.pricing_model,
+                ServicePrice.subject_id == query.subject_id,
+                or_(*(condition for condition, _ in ranks)),
+                CustomPrice.effective_from <= query.on,
+                or_(
+                    CustomPrice.expires_on.is_(None), CustomPrice.expires_on >= query.on
+                ),
+                _target_condition(query.student_id, query.family_id),
+            )
+            .order_by(by_student, rank, CustomPrice.id)
+            .limit(1)
+        )
+    ).first()
+    if row is not None:
+        return BasePrice(
+            list_amount=row.amount,
+            price_version_id=None,
+            custom_price_id=row.id,
+            source="custom_student" if row.student_id is not None else "custom_family",
+            rank=int(row.rank),
+        )
+    price = await lookup_price(
+        session,
+        class_type=query.class_type,
+        pricing_model=query.pricing_model,
+        subject_id=query.subject_id,
+        on=query.on,
+        education_level_id=query.education_level_id,
+        duration_minutes=query.duration_minutes,
+        cohort_id=query.cohort_id,
+        group_id=query.group_id,
+    )
+    return None if price is None else BasePrice.of_catalog(price)
+
+
+@dataclass(frozen=True)
+class _ItemKey:
+    class_type: str
+    pricing_model: str
+    subject_id: uuid.UUID | None
+    education_level_id: uuid.UUID | None
+    duration_minutes: int | None
+    cohort_id: uuid.UUID | None
+    group_id: uuid.UUID | None
+
+
+def candidate_rank(item: _ItemKey, query: PriceQuery) -> int | None:
+    """The #89 rank of a catalog item for ``query`` (the Python twin of the
+    ranks :func:`lookup_price` computes in SQL), or ``None`` when the item is
+    not a candidate."""
+    if (item.class_type, item.pricing_model, item.subject_id) != (
+        query.class_type,
+        query.pricing_model,
+        query.subject_id,
+    ):
+        return None
+    if item.cohort_id is not None or item.group_id is not None:
+        scoped = (
+            query.cohort_id is not None and item.cohort_id == query.cohort_id
+        ) or (query.group_id is not None and item.group_id == query.group_id)
+        return 0 if scoped else None
+    level, duration = item.education_level_id, item.duration_minutes
+    level_ok = level is None or level == query.education_level_id
+    duration_ok = duration is None or duration == query.duration_minutes
+    if not (level_ok and duration_ok):
+        return None
+    if level is not None:
+        return 1 if duration is not None else 2
+    return 3 if duration is not None else 4
+
+
+async def custom_prices_for(
+    session: AsyncSession, queries: Sequence[PriceQuery]
+) -> dict[PriceQuery, BasePrice]:
+    """The matching custom price of each query that has one (the
+    :func:`base_price` rule, H6), in **one** statement for all of them (none
+    for no query): the #91 unbilled list reads a page's custom prices with
+    it. Queries without a custom price are left out (the caller then asks
+    the catalog)."""
+    if not queries:
+        return {}
+    for query in queries:
+        _check_query(query)
+    students = {q.student_id for q in queries}
+    families_ = {q.family_id for q in queries if q.family_id is not None}
+    target: ColumnElement[bool] = CustomPrice.student_id.in_(students)
+    if families_:
+        target = or_(target, CustomPrice.family_id.in_(families_))
+    rows = (
+        await session.execute(
+            select(
+                CustomPrice.id,
+                CustomPrice.amount,
+                CustomPrice.student_id,
+                CustomPrice.family_id,
+                CustomPrice.effective_from,
+                CustomPrice.expires_on,
+                ServicePrice.class_type,
+                ServicePrice.pricing_model,
+                ServicePrice.subject_id,
+                ServicePrice.education_level_id,
+                ServicePrice.duration_minutes,
+                ServicePrice.cohort_id,
+                ServicePrice.group_id,
+            )
+            .join(ServicePrice, ServicePrice.id == CustomPrice.service_price_id)
+            .where(
+                target,
+                ServicePrice.subject_id.in_({q.subject_id for q in queries}),
+                ServicePrice.pricing_model.in_({q.pricing_model for q in queries}),
+                CustomPrice.effective_from <= max(q.on for q in queries),
+                or_(
+                    CustomPrice.expires_on.is_(None),
+                    CustomPrice.expires_on >= min(q.on for q in queries),
+                ),
+            )
+        )
+    ).all()
+    found: dict[PriceQuery, BasePrice] = {}
+    for query in queries:
+        best: tuple[int, int, uuid.UUID, Any] | None = None
+        for row in rows:
+            if not (
+                row.effective_from <= query.on
+                and (row.expires_on is None or row.expires_on >= query.on)
+            ):
+                continue
+            if row.student_id == query.student_id:
+                order = 0
+            elif query.family_id is not None and row.family_id == query.family_id:
+                order = 1
+            else:
+                continue
+            rank = candidate_rank(
+                _ItemKey(
+                    class_type=row.class_type,
+                    pricing_model=row.pricing_model,
+                    subject_id=row.subject_id,
+                    education_level_id=row.education_level_id,
+                    duration_minutes=row.duration_minutes,
+                    cohort_id=row.cohort_id,
+                    group_id=row.group_id,
+                ),
+                query,
+            )
+            if rank is None:
+                continue
+            candidate = (order, rank, row.id, row)
+            if best is None or candidate[:3] < best[:3]:
+                best = candidate
+        if best is not None:
+            order, rank, _, row = best
+            found[query] = BasePrice(
+                list_amount=row.amount,
+                price_version_id=None,
+                custom_price_id=row.id,
+                source="custom_student" if order == 0 else "custom_family",
+                rank=rank,
+            )
+    return found
+
+
+def _spec(row: Discount) -> DiscountSpec:
+    return DiscountSpec(
+        discount_id=row.id,
+        kind=cast(DiscountKind, row.kind),
+        name=row.name,
+        percent=row.percent,
+        fixed_amount=row.amount,
+        created_at=row.created_at,
+    )
+
+
+async def discounts_for(
+    session: AsyncSession, query: PriceQuery, list_amount: Money
+) -> tuple[DiscountLine, ...]:
+    """The discount lines of ``query`` on ``list_amount`` (#95 B3; H2, H3,
+    H4, H9): the active discounts whose window contains ``on`` and whose
+    audience is ``all`` or has an assignment of the student or the family
+    (one statement); the criteria (:func:`~app.modules.billing.discounts.
+    matches`); the family's active students, read only when a ``sibling``
+    candidate remains (one more); then the H4 selection. ``family_id``
+    ``None``: no family assignment and no sibling discount. At most two
+    statements."""
+    assigned = [DiscountAssignment.student_id == query.student_id]
+    if query.family_id is not None:
+        assigned.append(DiscountAssignment.family_id == query.family_id)
+    audience = or_(
+        Discount.audience == "all",
+        exists().where(DiscountAssignment.discount_id == Discount.id, or_(*assigned)),
+    )
+    conditions: list[ColumnElement[bool]] = [
+        Discount.is_active.is_(True),
+        or_(Discount.starts_on.is_(None), Discount.starts_on <= query.on),
+        or_(Discount.expires_on.is_(None), Discount.expires_on >= query.on),
+        audience,
+    ]
+    if query.family_id is None:
+        conditions.append(Discount.kind != "sibling")
+    rows = (await session.scalars(select(Discount).where(*conditions))).all()
+    facts = ChargeFacts(
+        charge_kind=query.charge_kind,
+        class_type=query.class_type,
+        subject_id=query.subject_id,
+        education_level_id=query.education_level_id,
+    )
+    pending: list[tuple[Discount, DiscountEligibility]] = []
+    eligible: list[DiscountSpec] = []
+    for row in rows:
+        criteria = DiscountEligibility.model_validate(row.eligibility)
+        if criteria.min_family_students is None:
+            if matches(criteria, facts):
+                eligible.append(_spec(row))
+        elif matches(criteria.model_copy(update={"min_family_students": None}), facts):
+            pending.append((row, criteria))
+    if pending and query.family_id is not None:
+        count = await families.active_student_count(session, query.family_id)
+        counted = ChargeFacts(
+            charge_kind=facts.charge_kind,
+            class_type=facts.class_type,
+            subject_id=facts.subject_id,
+            education_level_id=facts.education_level_id,
+            family_active_students=count,
+        )
+        eligible.extend(
+            _spec(row) for row, criteria in pending if matches(criteria, counted)
+        )
+    return select_discounts(list_amount, eligible)
+
+
+def make_quote(base: BasePrice, lines: Iterable[DiscountLine]) -> Quote:
+    """A :class:`Quote` from a base price and its discount lines."""
+    applied = tuple(lines)
+    discount = total(applied)
+    return Quote(
+        list_amount=base.list_amount,
+        price_version_id=base.price_version_id,
+        custom_price_id=base.custom_price_id,
+        source=base.source,
+        rank=base.rank,
+        discounts=applied,
+        discount_amount=discount,
+        amount=base.list_amount - discount,
+    )
+
+
+async def quote(session: AsyncSession, query: PriceQuery) -> Quote | None:
+    """The price of ``query`` (#95 B4): :func:`base_price` then
+    :func:`discounts_for` (the order at the top of this section). ``None``
+    ⇔ no base price (``no_price``). At most four statements; no lock, no
+    commit. Every charge a sweeper or a billing workflow posts is priced
+    here; post it with ``ChargeDraft.priced(quote, …)``."""
+    base = await base_price(session, query)
+    if base is None:
+        return None
+    return make_quote(base, await discounts_for(session, query, base.list_amount))

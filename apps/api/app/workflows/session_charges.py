@@ -19,12 +19,17 @@ that reason), for a candidate in this order:
 1. ``package_covered``: ``billing.service.package_covered_keys`` returns its
    key (ADR-0006 E10; empty until #94) → no charge, not listed;
 2. ``no_billing_account``: the student has no family → no charge, listed;
-3. ``no_price``: ``billing.service.lookup_price(class_type='individual',
-   pricing_model='per_session', subject, on=service date, the student's
-   current level, duration=scheduled_minutes)`` is ``None`` (no price, or
-   "not offered" at the deciding rank) → no charge, listed;
-4. ``billable``: the price. A ``0.00`` price is a price (G5): a zero charge
-   is posted (status ``void``), and the item is not listed.
+3. ``no_price``: ``billing.service.base_price`` of the item's
+   :class:`~app.modules.billing.schemas.PriceQuery` (``charge_kind
+   'session'``, ``individual``, ``per_session``, the subject, ``on`` = the
+   service date, the student's current level, ``duration`` = the scheduled
+   minutes, the student and the family; #95 C2) is ``None``: no custom price
+   of the student or the family, and no catalog price (or "not offered" at
+   the deciding rank) → no charge, listed. A custom price makes the item
+   billable even where the catalog has none;
+4. ``billable``: the base price. A ``0.00`` price is a price (G5): a zero
+   charge is posted (status ``void``), and the item is not listed. Discounts
+   are not computed to classify.
 
 **Service date** = the local date of ``starts_at`` in the center zone (read
 once per run or read). **Due date** = the service date + the account's
@@ -44,7 +49,10 @@ lock order:
 2. ``billing.service.billing_starts_on(lock=True)`` (``FOR SHARE``): ``NULL``
    or a floor after the service date → ``not_billable``;
 3. :func:`classify` (package seam → family → price);
-4. ``billing.service.post_charge`` (the account row ``FOR UPDATE``, last):
+4. ``billing.service.quote`` (#95 C1: the base price and the discounts;
+   ``None`` → ``no_price``), then ``billing.service.post_charge`` with
+   ``ChargeDraft.priced(quote, …)`` (the account row ``FOR UPDATE``, last;
+   the ``charge_discounts`` snapshot only when the charge is created):
    ``created`` → ``posted``; already posted (a rerun, a concurrent worker)
    → ``already_posted``, a success; a family removed meanwhile
    (``StudentHasNoFamilyError``) → ``no_billing_account``.
@@ -68,10 +76,11 @@ engine and disposes it)::
 **Unbilled items** (:func:`list_unbilled_items`, ``GET
 /api/v1/billing/unbilled-items``): computed on read, nothing stored, no
 lock, no write. Every candidate classified ``no_billing_account`` or
-``no_price``; billing off → an empty page. At most six statements (floor,
-zone, candidates with their subject names, families, students, level names)
-plus the price lookups, memoized per ``(subject, level, scheduled minutes,
-service date)``.
+``no_price``; billing off → an empty page. At most seven statements (floor,
+zone, candidates with their subject names, families, students, the custom
+prices of every candidate in one batch (#95 C3), level names) plus the
+catalog lookups, memoized per ``(subject, level, scheduled minutes, service
+date)``.
 """
 
 import logging
@@ -260,12 +269,43 @@ def price_key(candidate: Candidate, education_level_id: uuid.UUID | None) -> Pri
     )
 
 
+def price_query(
+    candidate: Candidate,
+    education_level_id: uuid.UUID | None,
+    family_id: uuid.UUID | None,
+) -> billing.PriceQuery:
+    """The :class:`~app.modules.billing.schemas.PriceQuery` of a session
+    charge (#95 C1): :func:`price_key` plus the student, the family and the
+    charge kind."""
+    key = price_key(candidate, education_level_id)
+    return billing.PriceQuery(
+        student_id=candidate.student_id,
+        family_id=family_id,
+        charge_kind="session",
+        class_type="individual",
+        pricing_model=key.pricing_model,
+        subject_id=key.subject_id,
+        on=key.on,
+        education_level_id=key.education_level_id,
+        duration_minutes=key.duration_minutes,
+    )
+
+
 @dataclass
 class PriceMemo:
-    """Price lookups memoized per :class:`PriceKey` within one run or read."""
+    """Base prices within one run or read (#95 C2, C3). After
+    :meth:`prefetch` the custom prices of the given queries come from one
+    batched statement and the catalog lookups are memoized per
+    :class:`PriceKey`; without it each query is one
+    ``billing.service.base_price``."""
 
     session: AsyncSession
+    custom: Mapping[billing.PriceQuery, billing.BasePrice] | None = None
     found: dict[PriceKey, billing.PriceInEffect | None] = field(default_factory=dict)
+
+    async def prefetch(self, queries: Sequence[billing.PriceQuery]) -> None:
+        """Read the custom prices of ``queries`` in one statement."""
+        self.custom = await billing.custom_prices_for(self.session, queries)
 
     async def lookup(self, key: PriceKey) -> billing.PriceInEffect | None:
         if key not in self.found:
@@ -280,14 +320,26 @@ class PriceMemo:
             )
         return self.found[key]
 
+    async def base(
+        self, query: billing.PriceQuery, key: PriceKey
+    ) -> billing.BasePrice | None:
+        if self.custom is None:
+            return await billing.base_price(self.session, query)
+        custom = self.custom.get(query)
+        if custom is not None:
+            return custom
+        price = await self.lookup(key)
+        return None if price is None else billing.BasePrice.of_catalog(price)
+
 
 @dataclass(frozen=True)
 class Classification:
-    """A candidate's outcome; ``price`` only for ``billable``."""
+    """A candidate's outcome; ``price`` (the base price) only for
+    ``billable``."""
 
     outcome: Outcome
     education_level_id: uuid.UUID | None = None
-    price: billing.PriceInEffect | None = None
+    price: billing.BasePrice | None = None
 
 
 async def classify(
@@ -318,10 +370,12 @@ async def classify(
         level = levels.get(candidate.student_id)
         if candidate.key in covered:
             result.append(Classification("package_covered", level))
-        elif families_by_student.get(candidate.student_id) is None:
+        elif (family := families_by_student.get(candidate.student_id)) is None:
             result.append(Classification("no_billing_account", level))
         else:
-            price = await prices.lookup(price_key(candidate, level))
+            price = await prices.base(
+                price_query(candidate, level, family.id), price_key(candidate, level)
+            )
             if price is None:
                 result.append(Classification("no_price", level))
             else:
@@ -376,20 +430,21 @@ async def post_one(
     )
     if classified.outcome != "billable":
         return classified.outcome
-    price = classified.price
-    assert price is not None  # noqa: S101 - "billable" always carries its price
+    assert family is not None  # noqa: S101 - "billable" always has a family
+    quote = await billing.quote(session, price_query(candidate, level, family.id))
+    if quote is None:
+        return "no_price"
     try:
         posted = await billing.post_charge(
             session,
-            billing.ChargeDraft(
+            billing.ChargeDraft.priced(
+                quote,
                 student_id=student_id,
                 kind="session",
                 class_session_id=class_session_id,
                 service_date=candidate.service_date,
                 scheduled_minutes=candidate.scheduled_minutes,
-                price_version_id=price.price_version_id,
                 education_level_id=level,
-                list_amount=price.amount,
                 due_date_base=candidate.service_date,
             ),
         )
@@ -501,8 +556,8 @@ async def list_unbilled_items(
     """The candidates the sweeper skips as ``no_billing_account`` or
     ``no_price`` (``reasons``: only those; empty = both), optionally one
     student's, by service date, start, student name, session id and student
-    id. Billing off: an empty page. No lock, no write; at most six
-    statements plus the memoized price lookups."""
+    id. Billing off: an empty page. No lock, no write; at most seven
+    statements plus the memoized catalog lookups."""
     empty = OffsetPage[UnbilledSessionItem](
         items=[], total=0, limit=page.limit, offset=page.offset
     )
@@ -525,12 +580,21 @@ async def list_unbilled_items(
     student_ids = {c.student_id for c in candidates}
     family_by_student = await families.families_of_students(session, student_ids)
     students = await families.student_level_references(session, student_ids)
+    levels = {sid: ref.education_level_id for sid, ref in students.items()}
+    prices = PriceMemo(session)
+    await prices.prefetch(
+        [
+            price_query(c, levels.get(c.student_id), family.id)
+            for c in candidates
+            if (family := family_by_student.get(c.student_id)) is not None
+        ]
+    )
     classified = await classify(
         session,
         candidates,
         families_by_student=family_by_student,
-        levels={sid: ref.education_level_id for sid, ref in students.items()},
-        prices=PriceMemo(session),
+        levels=levels,
+        prices=prices,
     )
     wanted = set(reasons) or set(UNBILLED_REASONS)
 
@@ -553,7 +617,7 @@ async def list_unbilled_items(
         ),
     )
     window = unbilled[page.offset : page.offset + page.limit]
-    levels = await catalog.education_level_references(
+    level_names = await catalog.education_level_references(
         session,
         {r.education_level_id for _, r in window if r.education_level_id is not None},
     )
@@ -562,7 +626,7 @@ async def list_unbilled_items(
         level = (
             None
             if result.education_level_id is None
-            else levels.get(result.education_level_id)
+            else level_names.get(result.education_level_id)
         )
         family = family_by_student.get(candidate.student_id)
         items.append(

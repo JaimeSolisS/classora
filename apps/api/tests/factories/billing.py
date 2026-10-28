@@ -16,6 +16,7 @@ directly. Every helper flushes and never commits.
 import uuid
 from collections.abc import Sequence
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
@@ -23,8 +24,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.money import Money
 from app.modules.billing import service as billing
+from app.modules.billing.discounts import DiscountEligibility
 from app.modules.billing.models import (
     AllocationRelease,
+    CustomPrice,
+    Discount,
+    DiscountAssignment,
     Payment,
     PaymentAllocation,
     PaymentReversal,
@@ -231,3 +236,80 @@ async def refund(
     session.add(row)
     await session.flush()
     return row
+
+
+# --- Discounts and custom prices (#95) -----------------------------------------------
+
+
+async def persist_discount(
+    session: AsyncSession,
+    *,
+    kind: str = "discount",
+    audience: str = "all",
+    name: str | None = None,
+    percent: str | None = None,
+    amount: str | None = None,
+    eligibility: dict[str, Any] | None = None,
+    starts_on: date | None = None,
+    expires_on: date | None = None,
+    is_active: bool = True,
+) -> Discount:
+    """A discount row (no reference checks; a unique name by default).
+    Tests in a shared database restrict ``all`` discounts to their own
+    subject (``eligibility={"subject_ids": [...]}``) so they never reach
+    another test's charges. Flushes, never commits."""
+    discount = Discount(
+        kind=kind,
+        audience=audience,
+        name=name or f"{kind} {uuid.uuid4().hex[:8]}",
+        percent=None if percent is None else Decimal(percent),
+        amount=None if amount is None else Money(amount),
+        eligibility=DiscountEligibility.model_validate(eligibility or {}).stored(),
+        starts_on=starts_on,
+        expires_on=expires_on,
+        is_active=is_active,
+    )
+    session.add(discount)
+    await session.flush()
+    return discount
+
+
+async def assign_discount(
+    session: AsyncSession,
+    discount_id: uuid.UUID,
+    *,
+    student_id: uuid.UUID | None = None,
+    family_id: uuid.UUID | None = None,
+) -> DiscountAssignment:
+    """An assignment row. Flushes, never commits."""
+    assignment = DiscountAssignment(
+        discount_id=discount_id, student_id=student_id, family_id=family_id
+    )
+    session.add(assignment)
+    await session.flush()
+    return assignment
+
+
+async def persist_custom_price(
+    session: AsyncSession,
+    *,
+    service_price_id: uuid.UUID,
+    amount: str,
+    effective_from: date,
+    expires_on: date | None = None,
+    student_id: uuid.UUID | None = None,
+    family_id: uuid.UUID | None = None,
+) -> CustomPrice:
+    """A custom price row (any dates: the no-backdating rule is the
+    route's). Flushes, never commits."""
+    custom = CustomPrice(
+        service_price_id=service_price_id,
+        student_id=student_id,
+        family_id=family_id,
+        effective_from=effective_from,
+        expires_on=expires_on,
+        amount=Money(amount),
+    )
+    session.add(custom)
+    await session.flush()
+    return custom

@@ -273,7 +273,9 @@ def _ordered_case(column: Any, order: dict[str, int]) -> ColumnElement[int]:
     return case(order, value=column, else_=len(order))
 
 
-def _catalog_query(names: CatalogNames) -> tuple[Select[Any], list[Any]]:
+def catalog_query(names: CatalogNames) -> tuple[Select[Any], list[Any]]:
+    """The named item select of the catalog reads and its B2 order (the
+    item id last); #95's custom price reads extend it."""
     subjects = names.subjects.subquery("subject_names")
     levels = names.levels.subquery("level_names")
     cohorts = names.cohorts.subquery("cohort_names")
@@ -313,7 +315,9 @@ def _catalog_query(names: CatalogNames) -> tuple[Select[Any], list[Any]]:
     return query, order
 
 
-def _row(found: Any) -> CatalogItemRow:
+def catalog_row(found: Any) -> CatalogItemRow:
+    """The :class:`CatalogItemRow` of a :func:`catalog_query` row (its first
+    seven columns)."""
     item: ServicePrice = found[0]
     assert item.subject_id is not None  # noqa: S101 (CATALOG_MODELS have one)
     return CatalogItemRow(
@@ -348,7 +352,7 @@ async def list_service_prices(
     """A page of ``per_session``/``full_course`` items in the B2 order, and
     the total. One statement (the total is a window count), plus a count
     when the page is past the end."""
-    query, order = _catalog_query(names)
+    query, order = catalog_query(names)
     conditions: list[ColumnElement[bool]] = []
     if class_type is not None:
         conditions.append(ServicePrice.class_type == class_type)
@@ -366,7 +370,7 @@ async def list_service_prices(
         )
     ).all()
     if result:
-        return [_row(found) for found in result], int(result[0][-1])
+        return [catalog_row(found) for found in result], int(result[0][-1])
     total = await session.scalar(
         select(func.count(ServicePrice.id)).where(
             ServicePrice.pricing_model.in_(CATALOG_MODELS), *conditions
@@ -380,13 +384,13 @@ async def get_service_price(
 ) -> CatalogItemRow:
     """One item (``404 not_found`` for an unknown id or a ``package`` /
     ``per_period`` row). One statement."""
-    query, _ = _catalog_query(names)
+    query, _ = catalog_query(names)
     found = (
         await session.execute(query.where(ServicePrice.id == service_price_id))
     ).first()
     if found is None:
         raise RecordNotFoundError()
-    return _row(found)
+    return catalog_row(found)
 
 
 def _status(

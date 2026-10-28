@@ -347,6 +347,101 @@ rate_limit = ["available_slots.user"]
 
 [[route]]
 method = "GET"
+path = "/api/v1/billing/custom-prices"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 E2 (H10): reads need billing.manage too. No reauthentication and no
+# Idempotency-Key: custom prices are configuration (#86 E6).
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/custom-prices"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 E3: the empty body is 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/billing/custom-prices/{custom_price_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 E6: the placeholder id is no custom price: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/custom-prices/{custom_price_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 E4: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/billing/custom-prices/{custom_price_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 E5: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/discounts"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 D2 (H10): reads need billing.manage too. No reauthentication and no
+# Idempotency-Key: discounts are configuration (#86 E6).
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/discounts"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 D3: the empty body is 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/discounts/{discount_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 D4: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/billing/discounts/{discount_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 D5: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/discounts/{discount_id}/assignments"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 D6: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/billing/discounts/{discount_id}/assignments/{assignment_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 D7: the placeholder ids are no discount: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
 path = "/api/v1/billing/service-prices"
 access = "permission"
 permission = "billing.manage"

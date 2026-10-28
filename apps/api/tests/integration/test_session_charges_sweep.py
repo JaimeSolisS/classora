@@ -422,14 +422,15 @@ def test_a_failing_item_is_logged_and_retried(module_seeded_url, monkeypatch, ca
         {"s": bad.student},
     )
     set_floor(url, FLOOR)
-    real = billing.lookup_price
+    # Since #95 the sweeper prices through billing.service.base_price/quote.
+    real = billing.base_price
 
-    async def _lookup(session: AsyncSession, **kwargs: Any) -> Any:
-        if kwargs["subject_id"] == bad.subject:
+    async def _lookup(session: AsyncSession, query: Any) -> Any:
+        if query.subject_id == bad.subject:
             raise RuntimeError("catalog unavailable")
-        return await real(session, **kwargs)
+        return await real(session, query)
 
-    monkeypatch.setattr(billing, "lookup_price", _lookup)
+    monkeypatch.setattr(billing, "base_price", _lookup)
     with caplog.at_level(logging.ERROR, logger=session_charges.__name__):
         result = run(url)
 
@@ -447,7 +448,7 @@ def test_a_failing_item_is_logged_and_retried(module_seeded_url, monkeypatch, ca
     assert student.given_names not in logged
     assert student.family_names not in logged
 
-    monkeypatch.setattr(billing, "lookup_price", real)
+    monkeypatch.setattr(billing, "base_price", real)
     assert run(url) == SessionChargeRunResult(candidates=1, posted=1)
     assert len(charges_of(url, bad.session)) == 1
 
@@ -533,4 +534,31 @@ def test_a_reschedule_a_new_duration_or_a_family_move_keep_the_charge(
         DAY,
         60,
         Money("250.00").amount,
+    )
+
+
+# --- #95 C4: no custom price and no discount posts as before -------------------------
+
+
+def test_a_plain_session_has_no_custom_price_and_no_lines(module_seeded_url):
+    url = module_seeded_url
+    it = item(url, starts_at=local(DAY, 10), price="250.00")
+    set_floor(url, FLOOR)
+
+    run(url)
+
+    charge = only_charge(url, it)
+    assert charge.custom_price_id is None and charge.price_version_id is not None
+    assert (charge.list_amount, charge.discount_amount, charge.amount) == (
+        Money("250.00").amount,
+        Money("0.00").amount,
+        Money("250.00").amount,
+    )
+    assert (
+        run_sql(
+            url,
+            "SELECT id FROM charge_discounts WHERE charge_id = :c",
+            {"c": charge.id},
+        )
+        == []
     )
