@@ -1169,6 +1169,36 @@ allow = ["owner", "administrator"]
 json = {}
 
 [[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account"
+access = "authenticated"
+# #364 B1 the balance; #90b F1 (a) record policy: billing.view holders (Owner,
+# Administrator, Finance Staff) see every family, a guardian only the family
+# of their active profile, anyone else 404. The placeholder id is no family:
+# 404 for every signed-in role. Roles and guardians:
+# tests/integration/test_billing_account_access.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/charges"
+access = "authenticated"
+# #364 B2 the charges; #90b F1 (a) record policy: billing.view holders (Owner,
+# Administrator, Finance Staff) see every family, a guardian only the family
+# of their active profile, anyone else 404. The placeholder id is no family:
+# 404 for every signed-in role. Roles and guardians:
+# tests/integration/test_billing_account_access.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/ledger"
+access = "authenticated"
+# #364 B3 the ledger; #90b F1 (a) record policy: billing.view holders (Owner,
+# Administrator, Finance Staff) see every family, a guardian only the family
+# of their active profile, anyone else 404. The placeholder id is no family:
+# 404 for every signed-in role. Roles and guardians:
+# tests/integration/test_billing_account_access.py.
+
+[[route]]
 method = "DELETE"
 path = "/api/v1/families/{family_id}/guardians/{guardian_id}"
 access = "permission"

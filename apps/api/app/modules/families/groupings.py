@@ -31,6 +31,7 @@ Every function runs in the caller's Unit of Work and never commits.
 """
 
 import uuid
+from dataclasses import dataclass
 from typing import Any, Final
 
 from sqlalchemy import ColumnElement, func, select
@@ -107,6 +108,58 @@ async def family_of_guardian(
         )
     ).first()
     return None if row is None else FamilyReference(id=row.id, name=row.name)
+
+
+@dataclass(frozen=True)
+class FamilyRecordReference:
+    """A family's id, name and active flag with its current students' ids
+    (#364 B5; for billing, which follows the family, ADR-0007 D17)."""
+
+    id: uuid.UUID
+    name: str
+    is_active: bool
+    student_ids: tuple[uuid.UUID, ...]
+
+
+async def family_record_reference(
+    session: AsyncSession, family_id: uuid.UUID
+) -> FamilyRecordReference | None:
+    """The family with its current students' ids (by id), or ``None`` when
+    it doesn't exist. One statement; no access check (the caller's record
+    policy decides)."""
+    row = (
+        await session.execute(
+            select(
+                Family.id,
+                Family.name,
+                Family.is_active,
+                func.array_agg(FamilyStudent.student_id)
+                .filter(FamilyStudent.student_id.is_not(None))
+                .label("student_ids"),
+            )
+            .outerjoin(FamilyStudent, FamilyStudent.family_id == Family.id)
+            .where(Family.id == family_id)
+            .group_by(Family.id)
+        )
+    ).first()
+    if row is None:
+        return None
+    return FamilyRecordReference(
+        id=row.id,
+        name=row.name,
+        is_active=row.is_active,
+        student_ids=tuple(sorted(row.student_ids or ())),
+    )
+
+
+async def own_family_id(
+    session: AsyncSession, principal: Principal
+) -> uuid.UUID | None:
+    """The family of the caller's **active** guardian profile, only for a
+    caller holding ``guardian`` (:func:`load_family_facts`: one statement,
+    none otherwise). Loaded on every request, so a removed membership or a
+    deactivated profile applies on the next one."""
+    return (await load_family_facts(session, principal)).own_family_id
 
 
 # --- Projections -------------------------------------------------------------------
@@ -477,13 +530,16 @@ async def remove_guardian(
 
 
 __all__ = [
+    "FamilyRecordReference",
     "add_guardian",
     "add_student",
     "create_family",
     "family_of_guardian",
     "family_of_student",
+    "family_record_reference",
     "get_family",
     "list_families",
+    "own_family_id",
     "remove_guardian",
     "remove_student",
     "update_family",

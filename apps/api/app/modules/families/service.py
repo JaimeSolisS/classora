@@ -18,7 +18,10 @@ and never answers ``403``/``404`` for them.
 and are public through this module. The detail shows the student's family to
 staff with ``guardian.view``. Family membership is never student access.
 :func:`family_of_student` gives billing a student's family (#90 B3; no
-access check).
+access check). For the billing account reads (#364 B5):
+:func:`family_record_reference` (the family's id, name, active flag and
+current student ids; no access check) and :func:`own_family_id` (the family
+of the caller's active guardian profile, the #172 rule).
 
 **Name search** (ISSUE-D6, accepted on #33): with ``n(x) =
 public.f_unaccent(lower(x))`` and ``name = given_names || ' ' ||
@@ -157,6 +160,7 @@ from app.modules.identity import service as identity
 
 __all__ = [
     "STUDENT_LOGIN_GATE",
+    "FamilyRecordReference",
     "FamilyScheduleFacts",
     "StudentAccessFacts",
     "StudentAgeReference",
@@ -167,6 +171,7 @@ __all__ = [
     "create_guardian",
     "create_student",
     "family_of_student",
+    "family_record_reference",
     "family_schedule_facts",
     "get_consents",
     "get_family",
@@ -179,6 +184,7 @@ __all__ = [
     "list_guardians",
     "list_students",
     "load_access_facts",
+    "own_family_id",
     "own_student_id",
     "record_consent",
     "register_tutor_assignment_source",
@@ -225,6 +231,9 @@ family_of_student = _groupings.family_of_student
 """The student's family, or ``None`` (one statement; no access check).
 ``billing.service.post_charge`` resolves the billing account with it
 (#90 B3)."""
+FamilyRecordReference = _groupings.FamilyRecordReference
+family_record_reference = _groupings.family_record_reference
+own_family_id = _groupings.own_family_id
 
 # --- References (#48) -------------------------------------------------------------
 

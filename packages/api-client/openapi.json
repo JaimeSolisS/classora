@@ -19216,6 +19216,344 @@
         }
       }
     },
+    "/api/v1/families/{family_id}/billing-account": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Get Family Billing Account",
+        "description": "The family's billing account: the outstanding amount, the account\ncredit, the net balance and the open amounts by status (pending,\npartially paid, overdue), overall and per student, computed for the\ncenter's today. Staff with billing.view see every family; a guardian\nonly their own family. A family with no account yet has `account_id:\nnull` and zeros.",
+        "operationId": "get_family_billing_account_api_v1_families__family_id__billing_account_get",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingAccountSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The privacy notice must be accepted first (privacy_notice_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family, or one whose account you can't see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/families/{family_id}/billing-account/charges": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Family Billing Charges",
+        "description": "The family's charges with their net, allocated and open amounts and\ntheir status, newest service date first (then posted time, then id).\n`posted_by_user_id` is null for a guardian. A student with no charge on\nthe account gives an empty page.",
+        "operationId": "list_family_billing_charges_api_v1_families__family_id__billing_account_charges_get",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "student_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChargeStatus"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only charges in these statuses (repeatable).",
+              "title": "Status"
+            },
+            "description": "Only charges in these statuses (repeatable)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_ChargeItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The privacy notice must be accepted first (privacy_notice_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family, or one whose account you can't see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/families/{family_id}/billing-account/ledger": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Family Billing Ledger",
+        "description": "The family's ledger history, newest first: charges, adjustments,\npayments, reversals, allocations, releases and refunds, each with its\neffect on the net balance. With `student_id`, only that student's rows\n(payment-level rows have no student).",
+        "operationId": "list_family_billing_ledger_api_v1_families__family_id__billing_account_ledger_get",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "student_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_LedgerEntryItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The cursor is not valid (invalid_cursor).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The privacy notice must be accepted first (privacy_notice_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family, or one whose account you can't see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/available-slots": {
       "get": {
         "tags": [
@@ -23161,6 +23499,156 @@
         "title": "AvailableSlots",
         "description": "``GET /api/v1/available-slots``: every date of the range, in order."
       },
+      "BillingAccountSummary": {
+        "properties": {
+          "family": {
+            "$ref": "#/components/schemas/BillingFamily"
+          },
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "due_offset_days": {
+            "type": "integer",
+            "title": "Due Offset Days"
+          },
+          "outstanding": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Outstanding",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "account_credit": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Account Credit",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "net_balance": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Net Balance",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "pending": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Pending",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "partially_paid": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Partially Paid",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "overdue": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Overdue",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "students": {
+            "items": {
+              "$ref": "#/components/schemas/StudentBalanceItem"
+            },
+            "type": "array",
+            "title": "Students"
+          },
+          "today": {
+            "type": "string",
+            "format": "date",
+            "title": "Today"
+          }
+        },
+        "type": "object",
+        "required": [
+          "family",
+          "account_id",
+          "due_offset_days",
+          "outstanding",
+          "account_credit",
+          "net_balance",
+          "pending",
+          "partially_paid",
+          "overdue",
+          "students",
+          "today"
+        ],
+        "title": "BillingAccountSummary",
+        "description": "A family's billing account (#364 B1). ``account_id`` is ``null`` (and\nevery amount zero) while the family has no account yet. ``outstanding =\npending + partially_paid + overdue``; ``net_balance = outstanding −\naccount_credit``. ``students``: every student with a charge on the\naccount and every current member of the family, by name then id.\n``today`` is the center-local date the statuses were computed for."
+      },
+      "BillingFamily": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "is_active"
+        ],
+        "title": "BillingFamily",
+        "description": "The family the account belongs to."
+      },
+      "BillingStudent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "BillingStudent",
+        "description": "A student of the account: id and display name."
+      },
       "BusinessSettingsDetail": {
         "properties": {
           "center_name": {
@@ -24370,6 +24858,196 @@
           "approved",
           "rejected",
           "cancelled"
+        ]
+      },
+      "ChargeItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "student": {
+            "$ref": "#/components/schemas/BillingStudent"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "service_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Service Date"
+          },
+          "due_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Due Date"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "list_amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "List Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "discount_amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Discount Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "adjustments_total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Adjustments Total",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "net": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Net",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "allocated": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Allocated",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "open": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Open",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ChargeStatus"
+          },
+          "posted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Posted At"
+          },
+          "posted_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posted By User Id"
+          },
+          "class_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Class Session Id"
+          },
+          "group_enrollment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Enrollment Id"
+          },
+          "cohort_enrollment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Enrollment Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "student",
+          "kind",
+          "service_date",
+          "due_date",
+          "description",
+          "list_amount",
+          "discount_amount",
+          "amount",
+          "adjustments_total",
+          "net",
+          "allocated",
+          "open",
+          "status",
+          "posted_at",
+          "posted_by_user_id",
+          "class_session_id",
+          "group_enrollment_id",
+          "cohort_enrollment_id"
+        ],
+        "title": "ChargeItem",
+        "description": "One charge with its derived values (#364 B2). ``due_date`` is the\neffective due date; ``net = amount + adjustments_total``; ``open = net −\nallocated``. ``posted_by_user_id`` is ``null`` for a job-posted charge\nand for a caller without billing.view. At most one of the source ids is\nset (none for a manual charge)."
+      },
+      "ChargeStatus": {
+        "type": "string",
+        "enum": [
+          "void",
+          "paid",
+          "overdue",
+          "partially_paid",
+          "pending"
         ]
       },
       "ClassSeriesCancel": {
@@ -29815,6 +30493,34 @@
         ],
         "title": "CursorPage[FamilyLearningNote]"
       },
+      "CursorPage_LedgerEntryItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LedgerEntryItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CursorPage[LedgerEntryItem]"
+      },
       "CursorPage_NotificationItem_": {
         "properties": {
           "items": {
@@ -35000,6 +35706,114 @@
         "title": "LearningPlanView",
         "description": "A learning plan with its objectives and milestones (#81 F3): the same\nshape for staff, tutors and families. The `can_*` flags say what you may\ndo now (always false for families)."
       },
+      "LedgerEntryItem": {
+        "properties": {
+          "entry_type": {
+            "$ref": "#/components/schemas/LedgerEntryType"
+          },
+          "entry_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Entry Id"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "student_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Student Id"
+          },
+          "charge_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charge Id"
+          },
+          "payment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Id"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "balance_effect": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Balance Effect",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entry_type",
+          "entry_id",
+          "kind",
+          "student_id",
+          "charge_id",
+          "payment_id",
+          "amount",
+          "balance_effect",
+          "occurred_at"
+        ],
+        "title": "LedgerEntryItem",
+        "description": "One ledger row (#364 B3; the ``billing_ledger_entries`` view):\n``balance_effect`` is its effect on the net balance; ``kind`` is the\ncharge or adjustment kind, or the payment or refund method; payment-level\nrows have no ``student_id``."
+      },
+      "LedgerEntryType": {
+        "type": "string",
+        "enum": [
+          "charge",
+          "adjustment",
+          "payment",
+          "payment_reversal",
+          "allocation",
+          "allocation_release",
+          "refund"
+        ]
+      },
       "LoginRequest": {
         "properties": {
           "username": {
@@ -35648,6 +36462,37 @@
           "offset"
         ],
         "title": "OffsetPage[ChangeRequestItem]"
+      },
+      "OffsetPage_ChargeItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChargeItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[ChargeItem]"
       },
       "OffsetPage_ClassroomDetail_": {
         "properties": {
@@ -36501,6 +37346,7 @@
           "attendance.correct",
           "audit.view",
           "billing.manage",
+          "billing.view",
           "catalog.manage",
           "consent.record",
           "course.manage",
@@ -41937,6 +42783,59 @@
           "starts_at"
         ],
         "title": "StudentAssignmentSession"
+      },
+      "StudentBalanceItem": {
+        "properties": {
+          "student": {
+            "$ref": "#/components/schemas/BillingStudent"
+          },
+          "outstanding": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Outstanding",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "pending": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Pending",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "partially_paid": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Partially Paid",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "overdue": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Overdue",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "student",
+          "outstanding",
+          "pending",
+          "partially_paid",
+          "overdue"
+        ],
+        "title": "StudentBalanceItem",
+        "description": "One student's open amounts on the account. Account credit is\naccount-level only."
       },
       "StudentCompletion": {
         "properties": {

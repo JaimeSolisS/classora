@@ -405,6 +405,50 @@ class ChargeBalance:
 
 
 @dataclass(frozen=True)
+class ChargeDetail:
+    """A :class:`ChargeBalance` with the charge's stored fields, for the
+    charge list (#364 B2). ``due_date`` is the effective due date;
+    ``posted_by_user_id`` is ``None`` for a job-posted charge."""
+
+    charge_id: uuid.UUID
+    student_id: uuid.UUID
+    kind: str
+    service_date: date
+    due_date: date
+    description: str | None
+    list_amount: Money
+    discount_amount: Money
+    amount: Money
+    adjustments_total: Money
+    net: Money
+    allocated: Money
+    open: Money
+    status: ChargeStatus
+    posted_at: datetime
+    posted_by_user_id: uuid.UUID | None
+    class_session_id: uuid.UUID | None
+    group_enrollment_id: uuid.UUID | None
+    cohort_enrollment_id: uuid.UUID | None
+
+
+@dataclass(frozen=True)
+class ChargeDetailPage:
+    """One page of :class:`ChargeDetail` rows and the total that match."""
+
+    items: tuple[ChargeDetail, ...]
+    total: int
+
+
+@dataclass(frozen=True)
+class BillingAccountReference:
+    """A family's billing account: its id and due-date offset (#364 B1)."""
+
+    id: uuid.UUID
+    family_id: uuid.UUID
+    due_offset_days: int
+
+
+@dataclass(frozen=True)
 class StudentBalance:
     """One student's open amounts on an account (#90 D2). Account credit is
     account-level only."""

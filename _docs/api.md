@@ -6005,6 +6005,58 @@ plans (M6-08); those rows are never listed, and their ids are `404`.
   version (the amount as its string, `"250.00"`), a `delete` event for a
   deleted version. `4xx` responses write no event.
 
+### Billing accounts
+
+Implemented by M6-05b (#364; spec §6, W4.4, W4.6; #86 E4, E5, E8;
+owner-delegated decision #90b F1 (a)) on top of the M6-05 ledger core
+(#90). The routes and the cross-module reads are in
+`app/workflows/billing_accounts_router.py` and
+`app/workflows/billing_accounts.py`; the balances are
+`billing.service.account_balance`, `charge_details` and `ledger_entries`.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/families/{family_id}/billing-account` | `authenticated()` + record policy | `BillingAccountSummary`. At most seven statements, whatever the number of charges. |
+| `GET /api/v1/families/{family_id}/billing-account/charges` | `authenticated()` + record policy | Offset pagination; filters `student_id` and `status` (`pending`, `partially_paid`, `overdue`, `paid`, `void`; repeatable). Items are `ChargeItem`. |
+| `GET /api/v1/families/{family_id}/billing-account/ledger` | `authenticated()` + record policy | Cursor pagination (`400 invalid_cursor`); filter `student_id`. Items are `LedgerEntryItem`, newest first. |
+
+- **Record policy.** `billing.view` (Owners, Administrators and Finance
+  Staff; not delegable; seeded by M6-05b) sees every family. A `guardian`
+  sees only the family of their **active** guardian profile
+  (`family_guardians`, loaded on every request, so a removal or a
+  deactivation applies on the next request). Billing follows the family,
+  not the student-guardian links: a guardian linked to a child but not in
+  the family sees nothing. Everyone else (Academic Coordinators, tutors,
+  students, other guardians) gets `404 not_found`, the same body as an
+  unknown family. A caller without `billing.view` gets the same shapes
+  with `posted_by_user_id` `null`.
+- **Check order:** `401` → `403 privacy_notice_required` → `422` (the
+  query) → `404` → `200`. No new error code.
+- **No account yet:** `200` with `account_id: null`, `due_offset_days: 0`,
+  zero amounts and the current members listed with zeros; the lists are
+  empty pages (any ledger `cursor` is `400 invalid_cursor`). Reads never
+  create an account and take no lock.
+- **`BillingAccountSummary`:** `family {id, name, is_active}`,
+  `account_id`, `due_offset_days`, `outstanding`, `account_credit`,
+  `net_balance`, `pending`, `partially_paid`, `overdue` (Money strings;
+  `outstanding = pending + partially_paid + overdue`, `net_balance =
+  outstanding − account_credit`), `students` (every student with a charge
+  on the account plus every current member, each `{student {id, name},
+  outstanding, pending, partially_paid, overdue}`, by name then id) and
+  `today` (the center-local date of the statuses).
+- **`ChargeItem`:** `id`, `student {id, name}`, `kind`, `service_date`,
+  `due_date` (effective), `description`, `list_amount`,
+  `discount_amount`, `amount`, `adjustments_total`, `net`, `allocated`,
+  `open`, `status`, `posted_at`, `posted_by_user_id`, and the source ids
+  `class_session_id`, `group_enrollment_id`, `cohort_enrollment_id`.
+  Order: `service_date` desc, `posted_at` desc, `id` desc. A
+  `student_id` with no charge on the account gives an empty page.
+- **`LedgerEntryItem`:** the `billing_ledger_entries` view's
+  `entry_type`, `entry_id`, `kind`, `student_id`, `charge_id`,
+  `payment_id`, `amount`, `balance_effect` and `occurred_at`.
+  Payment-level rows have no `student_id`, so the student filter leaves
+  them out.
+
 ### Response headers
 
 Every API response, errors included, carries exactly one

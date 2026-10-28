@@ -11,6 +11,9 @@ reads take no lock and write nothing.
   **net balance** = outstanding − account credit.
 - **Status** (:func:`charge_status`): ``void`` → ``paid`` → ``overdue`` →
   ``partially_paid`` → ``pending``, with "today" the center's local date.
+- **Charge list** (:func:`charge_details`, #364 B2): a page of charges
+  with their stored fields, derived values and status, filtered by student
+  and status in SQL (the same status rule as :func:`charge_status`).
 - **History** (:func:`ledger_entries`): the ``billing_ledger_entries``
   view, newest first, read through :data:`LEDGER_VIEW` (a lightweight
   ``table()`` construct that is not on ``Base.metadata``; the view is
@@ -19,6 +22,7 @@ reads take no lock and write nothing.
 
 import uuid
 from collections import defaultdict
+from collections.abc import Collection
 from datetime import date, datetime
 from typing import Any, Final
 
@@ -26,7 +30,11 @@ from sqlalchemy import (
     ColumnElement,
     DateTime,
     String,
+    and_,
+    case,
     column,
+    func,
+    literal,
     select,
     table,
     tuple_,
@@ -39,6 +47,7 @@ from app.core.pagination import (
     CursorPage,
     CursorParams,
     InvalidCursorError,
+    OffsetParams,
     decode_cursor,
     encode_cursor,
 )
@@ -55,7 +64,10 @@ from app.modules.billing.models import (
 )
 from app.modules.billing.schemas import (
     AccountBalance,
+    BillingAccountReference,
     ChargeBalance,
+    ChargeDetail,
+    ChargeDetailPage,
     ChargeStatus,
     LedgerEntry,
     StudentBalance,
@@ -249,17 +261,159 @@ async def account_balance(
     )
 
 
+async def account_of_family(
+    session: AsyncSession, family_id: uuid.UUID
+) -> BillingAccountReference | None:
+    """The family's billing account, or ``None`` when it has none yet (one
+    statement, no lock; a read never creates one, #364 B4)."""
+    row = (
+        await session.execute(
+            select(
+                BillingAccount.id,
+                BillingAccount.family_id,
+                BillingAccount.due_offset_days,
+            ).where(BillingAccount.family_id == family_id)
+        )
+    ).first()
+    if row is None:
+        return None
+    return BillingAccountReference(
+        id=row.id, family_id=row.family_id, due_offset_days=row.due_offset_days
+    )
+
+
 async def family_balance(
     session: AsyncSession, family_id: uuid.UUID, *, today: date | None = None
 ) -> AccountBalance | None:
     """The family's :func:`account_balance`, or ``None`` when it has no
     account yet (a read never creates one; #90 D3)."""
-    account_id: uuid.UUID | None = await session.scalar(
-        select(BillingAccount.id).where(BillingAccount.family_id == family_id)
-    )
-    if account_id is None:
+    account = await account_of_family(session, family_id)
+    if account is None:
         return None
-    return await account_balance(session, account_id, today=today)
+    return await account_balance(session, account.id, today=today)
+
+
+def _status_expression(
+    net: ColumnElement[Money],
+    allocated: ColumnElement[Money],
+    due: ColumnElement[date],
+    today: date,
+) -> ColumnElement[str]:
+    """:func:`charge_status` in SQL, the same rules in the same order."""
+    zero = literal(Money.zero(), MoneyType())
+    return case(
+        (and_(net == zero, allocated == zero), "void"),
+        (net - allocated <= zero, "paid"),
+        (due < today, "overdue"),
+        (allocated > zero, "partially_paid"),
+        else_="pending",
+    )
+
+
+async def charge_details(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    *,
+    page: OffsetParams,
+    student_id: uuid.UUID | None = None,
+    statuses: Collection[ChargeStatus] | None = None,
+    today: date | None = None,
+) -> ChargeDetailPage:
+    """A page of the account's charges (#364 B2), newest first by
+    ``service_date``, ``posted_at``, ``id``, optionally of one student and
+    in some statuses (``today`` is the center's local date). One statement
+    for the page with its total (a window count), one more for the total
+    when the page is past the end, plus the center's today when not given.
+    No lock."""
+    today = await _today(session, today)
+    adjustments = (
+        select(money_sum(ChargeAdjustment.amount))
+        .where(ChargeAdjustment.charge_id == Charge.id)
+        .scalar_subquery()
+    )
+    allocated = _valid_allocated(PaymentAllocation.charge_id == Charge.id)
+    inner = select(
+        Charge.id,
+        Charge.student_id,
+        Charge.kind,
+        Charge.service_date,
+        _effective_due_date().label("due_date"),
+        Charge.description,
+        Charge.list_amount,
+        Charge.discount_amount,
+        Charge.amount,
+        adjustments.label("adjustments_total"),
+        allocated.label("allocated"),
+        Charge.posted_at,
+        Charge.posted_by_user_id,
+        Charge.class_session_id,
+        Charge.group_enrollment_id,
+        Charge.cohort_enrollment_id,
+    ).where(Charge.billing_account_id == account_id)
+    if student_id is not None:
+        inner = inner.where(Charge.student_id == student_id)
+    rows_of = inner.subquery("charge_rows")
+    status = _status_expression(
+        rows_of.c.amount + rows_of.c.adjustments_total,
+        rows_of.c.allocated,
+        rows_of.c.due_date,
+        today,
+    ).label("status")
+    with_status = select(rows_of, status).subquery("charge_statuses")
+    conditions = []
+    if statuses:
+        conditions.append(with_status.c.status.in_(sorted(set(statuses))))
+    rows = (
+        await session.execute(
+            select(with_status, func.count().over().label("total"))
+            .where(*conditions)
+            .order_by(
+                with_status.c.service_date.desc(),
+                with_status.c.posted_at.desc(),
+                with_status.c.id.desc(),
+            )
+            .limit(page.limit)
+            .offset(page.offset)
+        )
+    ).all()
+    if rows:
+        total = int(rows[0].total)
+    elif page.offset == 0:
+        total = 0
+    else:
+        total = int(
+            await session.scalar(
+                select(func.count()).select_from(with_status).where(*conditions)
+            )
+            or 0
+        )
+    items = []
+    for row in rows:
+        net = row.amount + row.adjustments_total
+        items.append(
+            ChargeDetail(
+                charge_id=row.id,
+                student_id=row.student_id,
+                kind=row.kind,
+                service_date=row.service_date,
+                due_date=row.due_date,
+                description=row.description,
+                list_amount=row.list_amount,
+                discount_amount=row.discount_amount,
+                amount=row.amount,
+                adjustments_total=row.adjustments_total,
+                net=net,
+                allocated=row.allocated,
+                open=net - row.allocated,
+                status=row.status,
+                posted_at=row.posted_at,
+                posted_by_user_id=row.posted_by_user_id,
+                class_session_id=row.class_session_id,
+                group_enrollment_id=row.group_enrollment_id,
+                cohort_enrollment_id=row.cohort_enrollment_id,
+            )
+        )
+    return ChargeDetailPage(items=tuple(items), total=total)
 
 
 def _position(cursor: str) -> tuple[datetime, uuid.UUID]:
