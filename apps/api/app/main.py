@@ -180,10 +180,12 @@ from app.workflows.session_notes_router import (
 from app.workflows.session_requests_router import (
     router as session_request_review_router,
 )
+from app.workflows.tuition_plans_router import router as tuition_plans_router
 from app.workflows.unbilled_enrollments_router import (
     router as unbilled_enrollments_router,
 )
 from app.workflows.unbilled_items_router import router as unbilled_items_router
+from app.workflows.unbilled_tuition_router import router as unbilled_tuition_router
 
 
 @asynccontextmanager
@@ -314,6 +316,8 @@ def build_app(
     app.include_router(billing_settings_router)
     app.include_router(unbilled_items_router)
     app.include_router(unbilled_enrollments_router)
+    app.include_router(tuition_plans_router)
+    app.include_router(unbilled_tuition_router)
     app.include_router(available_slots_router)
     app.include_router(session_requests_router)
     app.include_router(session_request_review_router)

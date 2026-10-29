@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0064"
+HEAD = "0065"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -171,6 +171,8 @@ DISCOUNT_TABLES = [
     "charge_discounts",
 ]
 """The tables revision 0063 adds (#95 A2-A5)."""
+TUITION_TABLES = ["tuition_plans", "tuition_plan_pauses"]
+"""The tables revision 0065 adds (#93 A3, A4)."""
 APPEND_ONLY_LEDGER_TABLES = [
     "charges",
     "charge_adjustments",
@@ -410,6 +412,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             LEDGER_VIEW,
             *BILLING_SETTINGS_TABLES,
             *DISCOUNT_TABLES,
+            *TUITION_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4594,9 +4597,38 @@ def _of_0064(diff: Any) -> bool:
     return False
 
 
+def _of_0065(diff: Any) -> bool:
+    """A metadata difference that revision 0065 adds: the tuition tables and
+    their indexes, ``charges.tuition_plan_id`` with its composite foreign key
+    and natural key, ``service_prices.period_frequency`` and the re-created
+    catalog key (#93 A2-A5; CHECKs are not compared)."""
+    if diff[0] == "add_table":
+        return diff[1].name in TUITION_TABLES
+    if diff[0] in ("add_index", "remove_index"):
+        return diff[1].table.name in TUITION_TABLES or diff[1].name in (
+            "uq_charges_tuition_period",
+            "uq_service_prices_catalog_key",
+        )
+    if diff[0] == "add_column":
+        return (diff[2], diff[3].name) in (
+            ("charges", "tuition_plan_id"),
+            ("service_prices", "period_frequency"),
+        )
+    if diff[0] == "add_fk":
+        return diff[1].parent.name == "charges" and "tuition_plan_id" in (
+            diff[1].column_keys
+        )
+    return False
+
+
+def _of_0064_on(diff: Any) -> bool:
+    """A metadata difference that revision 0064 or a later one adds."""
+    return _of_0064(diff) or _of_0065(diff)
+
+
 def _of_0063_on(diff: Any) -> bool:
     """A metadata difference that revision 0063 or a later one adds."""
-    return _of_0063(diff) or _of_0064(diff)
+    return _of_0063(diff) or _of_0064_on(diff)
 
 
 def _of_0062_on(diff: Any) -> bool:
@@ -10752,6 +10784,7 @@ def test_price_catalog_columns_constraints_indexes_and_guard(fresh_database_url)
         "duration_minutes": ("smallint", "YES", None, None),
         "cohort_id": uuid_null,
         "group_id": uuid_null,
+        "period_frequency": ("character varying", "YES", 16, None),
     }
     standard = {k: v for k, v in STANDARD_COLUMNS.items() if k != "version"}
     assert _columns(dsn, "price_versions") == {
@@ -10773,6 +10806,7 @@ def test_price_catalog_columns_constraints_indexes_and_guard(fresh_database_url)
         "ck_service_prices_subject_required",
         "ck_service_prices_duration_valid",
         "ck_service_prices_scoped_any_level_duration",
+        "ck_service_prices_period_frequency",
         "fk_service_prices_subject_id_subjects",
         "fk_service_prices_education_level_id_education_levels",
         "fk_service_prices_cohort_id_course_cohorts",
@@ -10801,7 +10835,8 @@ def test_price_catalog_columns_constraints_indexes_and_guard(fresh_database_url)
     assert "UNIQUE INDEX" in key
     assert (
         "(class_type, pricing_model, subject_id, education_level_id,"
-        " duration_minutes, cohort_id, group_id) NULLS NOT DISTINCT"
+        " duration_minutes, cohort_id, group_id, period_frequency)"
+        " NULLS NOT DISTINCT"
     ) in key
     assert "WHERE ((pricing_model)::text <> 'package'::text)" in key
     assert _triggers(dsn, "price_versions") == {
@@ -10939,10 +10974,11 @@ def test_ledger_columns_constraints_indexes_triggers_and_view(fresh_database_url
         "posted_by_user_id": uuid_null,
         "proration_remaining": ("smallint", "YES", None, None),
         "proration_total": ("smallint", "YES", None, None),
+        "tuition_plan_id": uuid_null,
     }
     # E3: the staged columns come with their own issues (#95 added
-    # custom_price_id, #92 the proration).
-    assert {"tuition_plan_id", "package_id"}.isdisjoint(_columns(dsn, "charges"))
+    # custom_price_id, #92 the proration, #93 tuition_plan_id).
+    assert "package_id" not in _columns(dsn, "charges")
     assert "withdrawal_id" not in _columns(dsn, "refunds")
     assert _columns(dsn, "charge_adjustments") == {
         **standard,
@@ -11166,7 +11202,7 @@ def test_0063_adds_discounts_and_custom_prices_and_downgrade_drops_them(
     command.upgrade(config, "0063")
 
     assert version_nums(dsn) == ["0063"]
-    assert [d for d in metadata_diff(dsn) if not _of_0064(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0064_on(d)] == []
     assert public_tables(dsn) - before == set(DISCOUNT_TABLES)
     assert set(_columns(dsn, "charges")) - charge_columns == {"custom_price_id"}
     assert _discount_functions(dsn) == DISCOUNT_FUNCTIONS
@@ -11318,7 +11354,7 @@ def test_0064_adds_the_proration_and_downgrade_drops_it(fresh_database_url):
     command.upgrade(config, "0064")
 
     assert version_nums(dsn) == ["0064"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0065(d)] == []
     assert set(_columns(dsn, "charges")) - charge_columns == set(PRORATION_COLUMNS)
     assert "ck_charges_proration" in _constraints(dsn, "charges")
 
@@ -11327,8 +11363,159 @@ def test_0064_adds_the_proration_and_downgrade_drops_it(fresh_database_url):
     assert version_nums(dsn) == ["0063"]
     assert set(_columns(dsn, "charges")) == charge_columns
     assert "ck_charges_proration" not in _constraints(dsn, "charges")
-    assert [d for d in metadata_diff(dsn) if not _of_0064(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0064_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
     assert metadata_diff(dsn) == []
+
+
+# --- 0065: recurring tuition plans (#93 A1-A6) ------------------------------------
+
+TUITION_TRIGGER = "tuition_plans_key_immutable"
+CHARGES_KIND_0061 = (
+    "CHECK (((kind)::text = ANY ((ARRAY['session'::character varying,"
+    " 'group_enrollment'::character varying, 'cohort_enrollment'::character"
+    " varying, 'manual'::character varying])::text[])))"
+)
+
+
+def _tuition_function(dsn: str) -> set[str]:
+    rows = run_sql(
+        dsn,
+        "SELECT proname FROM pg_proc WHERE proname = :n",
+        {"n": TUITION_TRIGGER},
+    )
+    return {row.proname for row in rows}
+
+
+def test_0065_adds_tuition_plans_and_downgrade_restores_0064(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0064")
+    before = public_tables(dsn)
+    charge_columns = set(_columns(dsn, "charges"))
+    price_columns = set(_columns(dsn, "service_prices"))
+    charge_checks = {
+        name: definition
+        for name, definition in _constraints(dsn, "charges").items()
+        if name in ("ck_charges_kind", "ck_charges_one_source")
+    }
+    catalog_key = _indexes(dsn, "service_prices")["uq_service_prices_catalog_key"]
+    assert charge_checks["ck_charges_kind"] == CHARGES_KIND_0061
+
+    command.upgrade(config, "0065")
+
+    assert version_nums(dsn) == ["0065"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(TUITION_TABLES)
+    assert set(_columns(dsn, "charges")) - charge_columns == {"tuition_plan_id"}
+    assert set(_columns(dsn, "service_prices")) - price_columns == {"period_frequency"}
+    assert _triggers(dsn, "tuition_plans") == {TUITION_TRIGGER}
+    assert _tuition_function(dsn) == {TUITION_TRIGGER}
+    constraints = _constraints(dsn, "charges")
+    assert "'tuition_period'" in constraints["ck_charges_kind"]
+    assert "tuition_plan_id" in constraints["ck_charges_one_source"]
+    assert constraints["fk_charges_tuition_plan"].startswith(
+        "FOREIGN KEY (tuition_plan_id, billing_account_id, student_id) REFERENCES"
+        " tuition_plans(id, billing_account_id, student_id)"
+    )
+    assert "ON DELETE RESTRICT" in constraints["fk_charges_tuition_plan"]
+
+    command.downgrade(config, "0064")
+
+    assert version_nums(dsn) == ["0064"]
+    assert public_tables(dsn) == before
+    assert set(_columns(dsn, "charges")) == charge_columns
+    assert set(_columns(dsn, "service_prices")) == price_columns
+    restored = _constraints(dsn, "charges")
+    assert {
+        name: restored[name] for name in ("ck_charges_kind", "ck_charges_one_source")
+    } == charge_checks
+    assert "fk_charges_tuition_plan" not in restored
+    assert "uq_charges_tuition_period" not in _indexes(dsn, "charges")
+    assert _indexes(dsn, "service_prices")["uq_service_prices_catalog_key"] == (
+        catalog_key
+    )
+    assert "ck_service_prices_period_frequency" not in _constraints(
+        dsn, "service_prices"
+    )
+    assert _tuition_function(dsn) == set()
+    assert [d for d in metadata_diff(dsn) if not _of_0065(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_tuition_columns_constraints_indexes_and_trigger(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    uuid_ = ("uuid", "NO", None, None)
+    assert _columns(dsn, "tuition_plans") == {
+        **STANDARD_COLUMNS,
+        "billing_account_id": uuid_,
+        "student_id": uuid_,
+        "service_price_id": uuid_,
+        "group_enrollment_id": ("uuid", "YES", None, None),
+        "frequency": ("character varying", "NO", 16, None),
+        "starts_on": ("date", "NO", None, None),
+        "ends_on": ("date", "YES", None, None),
+        "due_offset_days": ("smallint", "NO", None, "0"),
+    }
+    assert _columns(dsn, "tuition_plan_pauses") == {
+        **STANDARD_COLUMNS,
+        "tuition_plan_id": uuid_,
+        "starts_on": ("date", "NO", None, None),
+        "ends_on": ("date", "YES", None, None),
+    }
+    plans = _constraints(dsn, "tuition_plans")
+    assert set(plans) == {
+        "pk_tuition_plans",
+        "ck_tuition_plans_frequency_valid",
+        "ck_tuition_plans_dates",
+        "ck_tuition_plans_due_offset_days_range",
+        "fk_tuition_plans_billing_account_id_billing_accounts",
+        "fk_tuition_plans_student_id_students",
+        "fk_tuition_plans_service_price_id_service_prices",
+        "fk_tuition_plans_group_enrollment_id_group_enrollments",
+        "uq_tuition_plans_id_account_student",
+        "ex_tuition_plans_enrollment_overlap",
+        "ex_tuition_plans_student_item_overlap",
+    }
+    for name, definition in plans.items():
+        if definition.startswith("FOREIGN KEY"):
+            assert "ON DELETE RESTRICT" in definition, name
+    assert plans["uq_tuition_plans_id_account_student"] == (
+        "UNIQUE (id, billing_account_id, student_id)"
+    )
+    assert (
+        "WHERE ((group_enrollment_id IS NOT NULL))"
+        in (plans["ex_tuition_plans_enrollment_overlap"])
+    )
+    assert (
+        "WHERE ((group_enrollment_id IS NULL))"
+        in (plans["ex_tuition_plans_student_item_overlap"])
+    )
+    pauses = _constraints(dsn, "tuition_plan_pauses")
+    assert set(pauses) == {
+        "pk_tuition_plan_pauses",
+        "ck_tuition_plan_pauses_dates",
+        "fk_tuition_plan_pauses_tuition_plan_id_tuition_plans",
+        "ex_tuition_plan_pauses_overlap",
+    }
+    assert (
+        "ON DELETE CASCADE"
+        in (pauses["fk_tuition_plan_pauses_tuition_plan_id_tuition_plans"])
+    )
+    assert {
+        "ix_tuition_plans_student_id",
+        "ix_tuition_plans_billing_account_id",
+    } <= set(_indexes(dsn, "tuition_plans"))
+    key = _indexes(dsn, "charges")["uq_charges_tuition_period"]
+    assert "UNIQUE INDEX" in key
+    assert "(tuition_plan_id, service_date)" in key
+    assert "WHERE ((kind)::text = 'tuition_period'::text)" in key
+    assert _triggers(dsn, "tuition_plans") == {TUITION_TRIGGER}
+    assert _triggers(dsn, "tuition_plan_pauses") == set()

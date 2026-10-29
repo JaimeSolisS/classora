@@ -219,7 +219,7 @@ Codes in use today:
 | `price_effective_from_invalid` | 422 | A new version of a price that has versions starts before the center's local today or not after the latest version; the field error is on `["body","effective_from"]` (see Price catalog). |
 | `price_version_in_effect` | 409 | Deleting a price version that is in effect or in the past; only upcoming versions can be deleted (see Price catalog). |
 | `price_version_in_use` | 409 | Deleting a price version that a charge or a package uses (the `price_versions` guard, from M6-05/M6-09 on; see Price catalog). |
-| `pricing_model_not_allowed` / `scope_not_allowed` / `scope_conflict` / `level_not_allowed` / `duration_not_allowed` / `duration_out_of_range` / `amount_negative` / `date_out_of_range` | 422 | Field codes of a price catalog body (see Price catalog). |
+| `pricing_model_not_allowed` / `scope_not_allowed` / `scope_conflict` / `level_not_allowed` / `duration_not_allowed` / `duration_out_of_range` / `amount_negative` / `date_out_of_range` / `period_frequency_required` / `period_frequency_not_allowed` | 422 | Field codes of a price catalog body (see Price catalog; the frequency codes since M6-08). |
 | `subject_unknown` / `subject_inactive` / `education_level_unknown` / `education_level_inactive` / `cohort_unknown` / `group_unknown` / `scope_subject_mismatch` | 422 | Reference field codes of `POST /api/v1/billing/service-prices`, all in one response (see Price catalog). |
 | `discount_name_exists` | 409 | Creating or renaming a discount to a name another discount has, ignoring case (see Discounts and custom prices). |
 | `discount_assignment_exists` | 409 | Assigning a discount to a student or family it is already assigned to (see Discounts and custom prices). |
@@ -229,6 +229,13 @@ Codes in use today:
 | `custom_price_expiry_invalid` | 422 | Ending a custom price before today, before its start or before the last service date charged at it; on `["body","expires_on"]`. |
 | `custom_price_in_effect` / `custom_price_in_use` | 409 | Deleting a custom price that is in effect or past, or one a charge uses (the `custom_prices` guard). |
 | `field_immutable` | 422 | Sending `kind` or `audience` in a discount `PATCH`, or anything but `version`/`expires_on` in a custom price `PATCH`. |
+| `tuition_plan_price_invalid` / `tuition_plan_enrollment_invalid` / `tuition_plan_starts_on_invalid` / `tuition_plan_ends_on_invalid` | 422 | A tuition plan's price, group enrollment, start or end is refused; the field error is on `service_price_id`, `group_enrollment_id`, `starts_on` or `ends_on` (see Tuition plans). |
+| `tuition_pause_invalid` / `tuition_resume_invalid` | 422 | A pause that doesn't start on an uncharged, not past period start (field `starts_on`) or doesn't end on a period end (field `ends_on`); a resume date that isn't a period start after the pause began and not in the past (field `resume_on`). |
+| `student_has_no_family` | 409 | A tuition plan for a student who isn't in a family (no account to bill). |
+| `tuition_plan_overlap` | 409 | Another plan of the same group enrollment, or of the same student and price, overlaps the dates (also from the exclusion constraints). |
+| `tuition_plan_enrollment_fee_charged` / `tuition_plan_sessions_charged` | 409 | Linking a plan (or extending a linked plan) to a group enrollment whose flat fee is charged, or whose sessions inside the plan's dates are charged per session. |
+| `tuition_plan_ended` / `tuition_plan_has_charges` | 409 | Extending or pausing a plan that has ended; deleting a plan with charges. |
+| `tuition_pause_overlap` / `tuition_pause_not_open` | 409 | A pause overlapping another pause of the plan; resuming a plan without an open pause. |
 | `value_required` / `value_conflict` / `percent_invalid` / `percent_out_of_range` / `percent_precision` / `amount_not_positive` / `audience_not_allowed` / `dates_required` / `dates_order` / `criteria_empty_list` / `criteria_too_many` / `min_family_students_required` / `min_family_students_not_allowed` / `min_family_students_out_of_range` / `value_not_null` / `target_required` / `target_conflict` / `service_price_unknown` / `student_unknown` / `family_unknown` | 422 | Field codes of the discount and custom price bodies and references (see Discounts and custom prices). |
 | `range_in_future` / `range_too_long` | 422 | A progress dashboard range whose `to` is after the center's today (on `["query","to"]`) or that covers more than 24 calendar months (on `["query","from"]`); with `range_invalid` (`from` after `to` or before 2000-01-01) and `subject_unknown` (on `["query","subject_id"]`) as `validation_error` field errors (see Progress dashboard). |
 | `summary_required` | 422 | A closeout summary field (`topics`, `performance`, `next_steps`) left empty, unless every participant is absent; on `["body","summary",<field>]` (see Session closeout). Also a top-level code when a progress report without a summary is submitted (see Progress reports). |
@@ -5915,7 +5922,7 @@ The web page is M6-04b (#363).
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
-| `GET /api/v1/billing/service-prices` | `require("billing.manage")` | Offset pagination; filters `class_type`, `pricing_model` (`per_session` or `full_course`), `subject_id` (unknown: an empty page). Items are `ServicePriceItem`. At most four statements per page, whatever its size. |
+| `GET /api/v1/billing/service-prices` | `require("billing.manage")` | Offset pagination; filters `class_type`, `pricing_model` (`per_session`, `full_course` or, since M6-08, `per_period`), `subject_id` (unknown: an empty page). Items are `ServicePriceItem`. At most four statements per page, whatever its size. |
 | `POST /api/v1/billing/service-prices` | `require("billing.manage")` | Body `ServicePriceCreate`: the item and its first version in one transaction. `201` with `ServicePriceDetail`. |
 | `GET /api/v1/billing/service-prices/{service_price_id}` | `require("billing.manage")` | `ServicePriceDetail`. |
 | `POST /api/v1/billing/service-prices/{service_price_id}/versions` | `require("billing.manage")` | Body `PriceVersionCreate`. `201` with `ServicePriceDetail`. |
@@ -5926,9 +5933,13 @@ delegable; seeded by M6-04. Academic Coordinators, tutors, students and
 guardians get `403`. No reauthentication and no `Idempotency-Key`: catalog
 rows are configuration, not ledger rows. There is no `PATCH` and no item
 `DELETE`: the key never changes, and a price is retired with a `null`
-version. Only `per_session` and `full_course` items are served: `package`
-prices come with their product (M6-09) and `per_period` prices with tuition
-plans (M6-08); those rows are never listed, and their ids are `404`.
+version. `per_session`, `full_course` and (since M6-08, #93 B1)
+`per_period` items are served: `package` prices come with their product
+(M6-09); those rows are never listed, and their ids are `404`. A
+`per_period` item (the amount of a tuition plan) has a `period_frequency`
+(`weekly`, `biweekly`, `monthly`) that is part of its key, so a weekly and
+a monthly price of the same subject, level and scope are two items.
+Custom prices are still refused for `per_period` items (M6-08 K8).
 
 - **Shapes.** `PriceVersionItem`: `id`, `effective_from`, `amount` (Money or
   `null` = not offered), `status` (`past`, `current` or `upcoming` against
@@ -5937,25 +5948,32 @@ plans (M6-08); those rows are never listed, and their ids are `404`.
   `subject {id, name, education_level_id, education_level_name}`,
   `education_level {id, name} | null` (`null` = any level),
   `duration_minutes | null` (any), `cohort {id, name} | null`,
-  `group {id, name} | null`, `current` (the version in effect today) and
+  `group {id, name} | null`, `period_frequency` (`null` except on a
+  `per_period` item; M6-08), `current` (the version in effect today) and
   `next` (the earliest upcoming one), `created_at`. `ServicePriceDetail`
   adds `versions`, newest `effective_from` first.
 - **List order:** class type (individual, group, course); the subject's
   level order, then level name; subject name; pricing model (per_session,
-  full_course); unscoped before scoped, then the cohort or group name; any
+  full_course, per_period; within per_period weekly, biweekly, monthly);
+  unscoped before scoped, then the cohort or group name; any
   level first, then the level order; any duration first, then ascending;
   `id`. Names compare case-insensitively.
 - **Create body** (`ServicePriceCreate`, unknown fields `422`):
   `class_type`, `pricing_model`, `subject_id`, optional `cohort_id`,
-  `group_id`, `education_level_id`, `duration_minutes`, and the first
-  version's `effective_from` and `amount` (required, not `null`). Field
-  codes, all in one response: `pricing_model` other than `per_session` /
-  `full_course` (`literal_error`) or not allowed for the class type
-  (`pricing_model_not_allowed`: individual takes per_session; group
-  per_session or full_course; course full_course); a cohort only on
+  `group_id`, `education_level_id`, `duration_minutes`,
+  `period_frequency` (M6-08), and the first version's `effective_from` and
+  `amount` (required, not `null`). Field codes, all in one response:
+  `pricing_model` other than `per_session` / `full_course` / `per_period`
+  (`literal_error`) or not allowed for the class type
+  (`pricing_model_not_allowed`: individual takes per_session or
+  per_period; group per_session, full_course or per_period; course
+  full_course); `period_frequency` required with `per_period`
+  (`period_frequency_required`) and refused otherwise
+  (`period_frequency_not_allowed`); a cohort only on
   `course` and a group only on `group` (`scope_not_allowed`), never both
   (`scope_conflict`); a scoped price has no level (`level_not_allowed`) and
-  no duration; a duration only on `per_session` (`duration_not_allowed`),
+  no duration; a duration only on an unscoped `per_session` price
+  (`duration_not_allowed`),
   15 to 480 (`duration_out_of_range`); `effective_from` from 2000-01-01 to
   2099-12-31 (`date_out_of_range`); `amount` as Money (`money_invalid`,
   `money_precision`, `money_out_of_range`) and not negative
@@ -6182,6 +6200,115 @@ web section is M6-07b (#372).
   `service_date`, student name (case-insensitive), `enrollment_id`.
 - **Check order:** `401` → `403 privacy_notice_required` → `403
   permission_denied` → `422` (the query).
+
+### Tuition plans
+
+Implemented by M6-08 (#93; spec §6 "recurring weekly/biweekly/monthly
+tuition plans", W7.2; ADR-0006 E1, E7, E8, E9, E11; owner-delegated
+decisions K1-K9 (a); `_docs/data-model.md` §3.17, §3.17a and "Tuition plans
+(#93)"). The plan and pause rows are `app/modules/billing/tuition_plans.py`,
+the period grid `app/modules/billing/tuition.py`; the routes
+`app/workflows/tuition_plans_router.py` and `unbilled_tuition_router.py`,
+the job `app/workflows/tuition_charges.py`. The web pages are M6-08b
+(#374).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/billing/tuition-plans` | `require("billing.view")` | Offset pagination; filters `student_id`, `family_id`, `group_id`, `status` (`scheduled`, `active`, `paused`, `ended`; repeatable). Items are `TuitionPlanItem`, by student name, `starts_on` descending, `id`. At most ten statements whatever the page size. |
+| `POST /api/v1/billing/tuition-plans` | `require("billing.manage")` | Body `TuitionPlanCreate`. `201` with `TuitionPlanDetail`. |
+| `GET /api/v1/billing/tuition-plans/eligible-enrollments?student_id=` | `require("billing.manage")` | The student's active group enrollments: `[{group_enrollment_id, group {id, name}, subject {id, name}, enrolled_on, has_fee_charge, has_plan}]`, oldest first. |
+| `GET /api/v1/billing/tuition-plans/{tuition_plan_id}` | `require("billing.view")` | `TuitionPlanDetail`; `404 not_found`. |
+| `PATCH /api/v1/billing/tuition-plans/{tuition_plan_id}` | `require("billing.manage")` | Body `{version, due_offset_days?, ends_on?}` (`ends_on: null` = open-ended). `200` with `TuitionPlanDetail`. |
+| `DELETE /api/v1/billing/tuition-plans/{tuition_plan_id}?version=` | `require("billing.manage")` | `204`; only a plan without charges; its pauses go with it. |
+| `POST /api/v1/billing/tuition-plans/{tuition_plan_id}/pauses` | `require("billing.manage")` | Body `{version, starts_on, ends_on?}`. `201` with `TuitionPlanDetail` (the plan's `version` is bumped). |
+| `POST /api/v1/billing/tuition-plans/{tuition_plan_id}/resume` | `require("billing.manage")` | Body `{version, resume_on}`. `200` with `TuitionPlanDetail`. |
+| `GET /api/v1/billing/unbilled-tuition-periods` | `require("billing.view")` | Offset pagination; filters `reason` (`no_price`, `family_changed`; repeatable) and `student_id`. Items are `UnbilledTuitionItem`. |
+
+No reauthentication and no `Idempotency-Key`: a plan is configuration; the
+daily job posts its charges on their natural key.
+
+- **What a plan charges.** A plan pins one `per_period` catalog price (its
+  frequency is the price's `period_frequency`). Each period is charged
+  once, at the pinned price's version in effect on the period's first day,
+  then the discounts (a negotiated tuition is a discount assigned to the
+  student or family). A new version changes only periods that start on or
+  after its `effective_from`; posted charges never change.
+- **Periods.** Anchored at `starts_on` and always whole: weekly `+7` days,
+  biweekly `+14`, monthly `+1` calendar month computed from `starts_on`
+  with the day clamped (31 Jan → 28 Feb → 31 Mar). `ends_on` must be a
+  period's last day (no proration, ever). Dates are the center's local
+  dates.
+- **The job.** `billing:post_tuition_charges` runs daily at 07:30 UTC and
+  after a create that starts today or earlier, a resume, an `ends_on`
+  extension and a billing settings `PATCH` that sets a date. It posts every
+  due (`period_start` on or before the center's today, on or after
+  `billing_starts_on`), unposted, unpaused period, oldest first, so an
+  outage is caught up. Charge: `kind = tuition_period`, `tuition_plan_id`,
+  `service_date` = period start, `service_period_end` = period end,
+  `due_date` = period start + the plan's `due_offset_days` (0-60) + the
+  account's `due_offset_days`.
+- **Accounts.** A plan bills the family account of the student at
+  creation (`409 student_has_no_family` without a family). If the student
+  later moves to another family, the plan's periods are `family_changed`
+  (listed, never posted): end the plan and create one for the new family.
+- **Group plans.** A plan linked to a group enrollment (`group_enrollment_id`)
+  pins a group `per_period` price scoped to that group or unscoped for its
+  subject. The period then never gets the group's flat fee, and its group
+  sessions dated inside the plan's dates (paused periods included) are not
+  charged per session (outside them the group's usual pricing applies).
+  Linking is refused when the enrollment's flat fee is charged (`409
+  tuition_plan_enrollment_fee_charged`) or a session inside the plan's
+  dates is charged (`409 tuition_plan_sessions_charged`). A withdrawal
+  stops the periods that start on or after its date. An individual plan
+  never changes per-session charges (K7).
+- **Create** (`TuitionPlanCreate`: `student_id`, `service_price_id`,
+  `group_enrollment_id?`, `starts_on`, `ends_on?`, `due_offset_days` 0-60,
+  default 0; dates 2000-2099). Order: body `422` → `student_unknown` /
+  `student_inactive` (`validation_error`, on `student_id`) →
+  `tuition_plan_price_invalid` → `tuition_plan_enrollment_invalid` →
+  `tuition_plan_price_invalid` (the scope) → `tuition_plan_starts_on_invalid`
+  (more than 31 days ago or 366 ahead, or before the enrollment) →
+  `tuition_plan_ends_on_invalid` → `409 student_has_no_family` → `409
+  tuition_plan_overlap` → `409 tuition_plan_enrollment_fee_charged` / `409
+  tuition_plan_sessions_charged`.
+- **End and extend** (`PATCH`): `ends_on` must be a period end on or after
+  the first period's end and the last charged period's end (`422
+  tuition_plan_ends_on_invalid`). Moving it later or to `null` needs a plan
+  that hasn't ended (`409 tuition_plan_ended`) and no overlap (`409
+  tuition_plan_overlap`; group plans also re-check the session charges).
+  `due_offset_days` applies to periods charged afterwards.
+- **Pauses.** A pause starts on a period start after the last charged
+  period, not before today's period and not after the plan's end, and ends
+  on a period end or stays open (`422 tuition_pause_invalid`; `409
+  tuition_pause_overlap`; `409 tuition_plan_ended`). A period that starts
+  inside a pause is never charged, not even after a resume. **Resume**
+  ends the open pause the day before `resume_on` (a period start not
+  before the pause's start nor today's period: `422
+  tuition_resume_invalid`; `409 tuition_pause_not_open`); resuming on the
+  pause's own start removes it.
+- **Shapes.** `TuitionPlanItem`: `id`, `version`, `student {id, name}`,
+  `family {id, name}` (the billed family), `service_price` (the catalog
+  `ServicePriceItem`), `group {id, name} | null`, `group_enrollment_id |
+  null`, `frequency`, `starts_on`, `ends_on | null`, `due_offset_days`,
+  `status` (for the center's today: `ended` when the linked enrollment was
+  withdrawn or `ends_on` is before today's period; `scheduled` before
+  `starts_on`; `paused` when today's period starts in a pause; else
+  `active`), `current_amount` (Money or `null`: the price's version in
+  effect today, before discounts). `TuitionPlanDetail` adds `pauses [{id,
+  version, starts_on, ends_on}]`, `posted_through` (the last charged
+  period's end), `recent_periods` (the last 24 charged: `period_start`,
+  `period_end`, `charge_id`, `amount` (net), `status`) and
+  `upcoming_periods` (the next 12 from the current one, none after the
+  plan's end: `period_start`, `period_end`, `state` (`not_due`,
+  `below_floor`, `after_end`, `paused`, `enrollment_ended`, `due`),
+  `charge_id | null`, `reason` (`no_price` / `family_changed` / `null`)).
+- **Unbilled tuition periods.** The due, unposted periods the job skips,
+  computed on read (no lock): `family_changed` (checked first) or
+  `no_price`. Billing off gives an empty page. `UnbilledTuitionItem`:
+  `tuition_plan_id`, `period_start`, `period_end`, `frequency`, `student
+  {id, name}`, `family {id, name} | null` (the current family), `subject
+  {id, name}`, `group {id, name} | null`, `reason`. Order: `period_start`,
+  student name (case-insensitive), plan id.
 
 ### Discounts and custom prices
 

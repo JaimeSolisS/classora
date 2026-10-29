@@ -123,9 +123,9 @@ def test_the_catalog_key_treats_nulls_as_equal(module_seeded_url):
 
 PRICE_INSERT = (
     "INSERT INTO service_prices (class_type, pricing_model, subject_id,"
-    " education_level_id, duration_minutes, cohort_id, group_id)"
+    " education_level_id, duration_minutes, cohort_id, group_id, period_frequency)"
     " VALUES (:class_type, :pricing_model, :subject_id, :education_level_id,"
-    " :duration_minutes, :cohort_id, :group_id)"
+    " :duration_minutes, :cohort_id, :group_id, :period_frequency)"
 )
 
 
@@ -149,9 +149,28 @@ PRICE_INSERT = (
             id="individual-full-course",
         ),
         pytest.param(
-            {"class_type": "course", "pricing_model": "per_period"},
+            {
+                "class_type": "course",
+                "pricing_model": "per_period",
+                "period_frequency": "monthly",
+            },
             "pricing_model_allowed",
             id="course-per-period",
+        ),
+        pytest.param(
+            {"pricing_model": "per_period"},
+            "period_frequency",
+            id="per-period-without-frequency",
+        ),
+        pytest.param(
+            {"period_frequency": "weekly"},
+            "period_frequency",
+            id="frequency-on-per-session",
+        ),
+        pytest.param(
+            {"pricing_model": "per_period", "period_frequency": "daily"},
+            "period_frequency",
+            id="unknown-frequency",
         ),
         pytest.param(
             {"class_type": "group", "pricing_model": "package"},
@@ -208,6 +227,7 @@ def test_each_check_rejects_a_bad_row(module_seeded_url, row, constraint):
         "duration_minutes": None,
         "cohort_id": None,
         "group_id": None,
+        "period_frequency": None,
         **{
             k: refs.get(v, v) if isinstance(v, str) and k.endswith("_id") else v
             for k, v in row.items()
@@ -398,3 +418,24 @@ def test_concurrent_versions_follow_the_latest(
         ]
         assert dates == sorted(dates)
         assert len(dates) == 1 + expected.count("201")
+
+
+def test_per_period_items_differing_only_by_frequency_coexist(module_seeded_url):
+    # #93 A2, K2: the frequency is part of the catalog key.
+    refs = _references(module_seeded_url)
+    values = {
+        "class_type": "individual",
+        "pricing_model": "per_period",
+        "subject_id": refs["subject"],
+        "education_level_id": None,
+        "duration_minutes": None,
+        "cohort_id": None,
+        "group_id": None,
+    }
+    run_sql(module_seeded_url, PRICE_INSERT, {**values, "period_frequency": "weekly"})
+    run_sql(module_seeded_url, PRICE_INSERT, {**values, "period_frequency": "monthly"})
+
+    with pytest.raises(IntegrityError, match="uq_service_prices_catalog_key"):
+        run_sql(
+            module_seeded_url, PRICE_INSERT, {**values, "period_frequency": "weekly"}
+        )

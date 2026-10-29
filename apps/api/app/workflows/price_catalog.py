@@ -87,6 +87,7 @@ def service_price_item(
         group=None
         if row.group_id is None
         else PriceCatalogReference(id=row.group_id, name=row.group_name),
+        period_frequency=row.period_frequency,  # type: ignore[arg-type]
         current=versions.current,
         next=versions.next,
         created_at=row.created_at,
@@ -232,6 +233,7 @@ async def create_service_price(
             duration_minutes=body.duration_minutes,
             cohort_id=body.cohort_id,
             group_id=body.group_id,
+            period_frequency=body.period_frequency,
         ),
         effective_from=body.effective_from,
         amount=body.amount,

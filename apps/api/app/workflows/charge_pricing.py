@@ -12,7 +12,8 @@ rules without an import cycle:
 - :class:`Period` (a group or cohort enrollment period),
   :func:`fee_price_query` (its ``full_course`` fee, #86 E9) and
   :func:`period_facts` (the charges a period's classification needs, J2 and
-  J5, for many periods in one statement per kind).
+  J5, and whether a tuition plan is linked to it, #93 K6, for many periods
+  in one statement per kind).
 
 Everything runs in the caller's Unit of Work: no lock, no write.
 """
@@ -211,11 +212,15 @@ class PeriodFacts:
       period is never fee-charged);
     - ``other_fee_positive``: another period of the student in the same
       group or cohort has a fee charge with a net above ``0.00`` (step 5,
-      J5)."""
+      J5);
+    - ``tuition_linked``: a tuition plan is linked to the group period
+      (#93 K6, any window): the period is ``tuition_priced``, never
+      fee-charged."""
 
     fee_posted: bool = False
     session_charged: bool = False
     other_fee_positive: bool = False
+    tuition_linked: bool = False
 
 
 async def period_facts(
@@ -278,6 +283,13 @@ async def _facts_of_kind(
             .exists()
         )
         columns.append(session_charged.label("session_charged"))
+        plans = billing.linked_plan_columns().subquery("linked_plans")
+        linked = (
+            select(plans.c.id)
+            .where(plans.c.group_enrollment_id == periods.c.enrollment_id)
+            .exists()
+        )
+        columns.append(linked.label("tuition_linked"))
     rows = await session.execute(
         select(*columns).where(periods.c.enrollment_id.in_(list(ids)))
     )
@@ -286,6 +298,7 @@ async def _facts_of_kind(
             fee_posted=bool(row.fee_posted),
             session_charged=bool(getattr(row, "session_charged", False)),
             other_fee_positive=bool(row.other_fee_positive),
+            tuition_linked=bool(getattr(row, "tuition_linked", False)),
         )
         for row in rows
     }

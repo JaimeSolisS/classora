@@ -147,6 +147,12 @@ def _natural_key_filter(draft: ChargeDraft) -> list[Any] | None:
             Charge.kind == "cohort_enrollment",
             Charge.cohort_enrollment_id == draft.cohort_enrollment_id,
         ]
+    if draft.kind == "tuition_period":
+        return [
+            Charge.kind == "tuition_period",
+            Charge.tuition_plan_id == draft.tuition_plan_id,
+            Charge.service_date == draft.service_date,
+        ]
     return None
 
 
@@ -288,7 +294,9 @@ async def post_charge(session: AsyncSession, draft: ChargeDraft) -> PostedCharge
         class_session_id=draft.class_session_id,
         group_enrollment_id=draft.group_enrollment_id,
         cohort_enrollment_id=draft.cohort_enrollment_id,
+        tuition_plan_id=draft.tuition_plan_id,
         service_date=draft.service_date,
+        service_period_end=draft.service_period_end,
         price_version_id=draft.price_version_id,
         custom_price_id=draft.custom_price_id,
         education_level_id=draft.education_level_id,

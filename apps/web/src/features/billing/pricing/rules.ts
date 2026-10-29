@@ -22,10 +22,11 @@ export const CLASS_TYPES: readonly ClassType[] = [
   'group',
   'course',
 ];
-export const PRICING_MODELS: readonly PricingModel[] = [
+/** The models this page lists and creates (per-period prices are #374's). */
+export const PRICING_MODELS = [
   'per_session',
   'full_course',
-];
+] as const satisfies readonly PricingModel[];
 
 /** The pricing models a class type takes (#89 B3). */
 export const MODELS_BY_CLASS: Record<ClassType, readonly PricingModel[]> = {

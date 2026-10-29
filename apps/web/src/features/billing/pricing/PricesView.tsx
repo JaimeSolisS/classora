@@ -15,12 +15,7 @@ import {
 import { Pagination } from '@/features/catalog/Pagination';
 import { LINK_BUTTON_CLASS, SELECT_CLASS } from '@/features/students/styles';
 import { BillingTabs } from '../BillingTabs';
-import type {
-  ClassType,
-  PriceListFilters,
-  PricingModel,
-  ServicePricePage,
-} from './api';
+import type { ClassType, PriceListFilters, ServicePricePage } from './api';
 import { usePriceLabels } from './labels';
 import { CLASS_TYPES, PRICING_MODELS } from './rules';
 
@@ -229,7 +224,7 @@ export function PricesView({
             }
           >
             <option value="">{t('billing.prices.filters.all')}</option>
-            {PRICING_MODELS.map((model: PricingModel) => (
+            {PRICING_MODELS.map((model) => (
               <option key={model} value={model}>
                 {t(`billing.prices.modelFilters.${model}`)}
               </option>

@@ -70,6 +70,7 @@ from app.modules.billing.schemas import BasePrice, PriceInEffect, PriceQuery, Qu
 from app.modules.families import service as families
 
 PACKAGE = "package"
+PER_PERIOD = "per_period"
 
 
 def _unscoped() -> ColumnElement[bool]:
@@ -118,9 +119,12 @@ def _check_arguments(
     pricing_model: str,
     cohort_id: uuid.UUID | None,
     group_id: uuid.UUID | None,
+    pinned: bool = False,
 ) -> None:
     if pricing_model == PACKAGE:
         raise ValueError("package prices are read through their product (#94)")
+    if pricing_model == PER_PERIOD and not pinned:
+        raise ValueError("per_period prices are read through the plan (#93)")
     if cohort_id is not None and group_id is not None:
         raise ValueError("give a cohort_id or a group_id, not both")
     if cohort_id is not None and class_type != "course":
@@ -145,7 +149,10 @@ async def lookup_price(
     (see the module docstring for the ranks and the ``NULL`` rule).
 
     Raises :class:`ValueError` for ``pricing_model='package'`` (read
-    through the product, #94), for a ``cohort_id`` with a class type other
+    through the product, #94) and ``'per_period'`` (read through the plan,
+    #93: a plan pins its item, ``PriceQuery.service_price_id``; a weekly and
+    a monthly item share every other key column, so a rank search could
+    pick either), for a ``cohort_id`` with a class type other
     than ``course`` or a ``group_id`` with one other than ``group``, and
     for both scopes at once. One statement."""
     _check_arguments(
@@ -239,14 +246,137 @@ def _check_query(query: PriceQuery) -> None:
         pricing_model=query.pricing_model,
         cohort_id=query.cohort_id,
         group_id=query.group_id,
+        pinned=query.service_price_id is not None,
     )
+
+
+def _version_in_effect(
+    versions: Sequence[tuple[date, uuid.UUID, Money | None]], on: date
+) -> tuple[uuid.UUID, Money | None] | None:
+    """The version in effect on ``on`` among ``(effective_from, id,
+    amount)`` rows (the greatest ``effective_from <= on``), or ``None``."""
+    best: tuple[date, uuid.UUID, Money | None] | None = None
+    for version in versions:
+        if version[0] <= on and (best is None or version[0] > best[0]):
+            best = version
+    return None if best is None else (best[1], best[2])
+
+
+async def _pinned_base_price(
+    session: AsyncSession, query: PriceQuery, service_price_id: uuid.UUID
+) -> BasePrice | None:
+    """#93 B4: the pinned item's custom price of the student, then of the
+    family, in effect on ``on`` (one statement), otherwise the item's
+    version in effect on ``on`` (one more; none or a ``NULL`` amount →
+    ``None``). ``rank`` is 0 (no rank search)."""
+    by_student = case((CustomPrice.student_id.is_not(None), 0), else_=1)
+    row = (
+        await session.execute(
+            select(CustomPrice.id, CustomPrice.amount, CustomPrice.student_id)
+            .where(
+                CustomPrice.service_price_id == service_price_id,
+                CustomPrice.effective_from <= query.on,
+                or_(
+                    CustomPrice.expires_on.is_(None), CustomPrice.expires_on >= query.on
+                ),
+                _target_condition(query.student_id, query.family_id),
+            )
+            .order_by(by_student, CustomPrice.id)
+            .limit(1)
+        )
+    ).first()
+    if row is not None:
+        return BasePrice(
+            list_amount=row.amount,
+            price_version_id=None,
+            custom_price_id=row.id,
+            source="custom_student" if row.student_id is not None else "custom_family",
+            rank=0,
+        )
+    version = (
+        await session.execute(
+            select(PriceVersion.id, PriceVersion.amount)
+            .where(
+                PriceVersion.service_price_id == service_price_id,
+                PriceVersion.effective_from <= query.on,
+            )
+            .order_by(PriceVersion.effective_from.desc())
+            .limit(1)
+        )
+    ).first()
+    if version is None or version.amount is None:
+        return None
+    return BasePrice(
+        list_amount=version.amount,
+        price_version_id=version.id,
+        custom_price_id=None,
+        source="catalog",
+        rank=0,
+    )
+
+
+async def pinned_base_prices(
+    session: AsyncSession, queries: Sequence[PriceQuery]
+) -> dict[PriceQuery, BasePrice | None]:
+    """The :func:`base_price` of many **pinned** queries (#93 G1: the
+    unbilled tuition read) in two statements (none for no query): their
+    custom prices (:func:`custom_prices_for`) and every version of their
+    items. Raises :class:`ValueError` for an unpinned query."""
+    if not queries:
+        return {}
+    if any(q.service_price_id is None for q in queries):
+        raise ValueError("pinned_base_prices takes pinned queries only")
+    custom = await custom_prices_for(session, queries)
+    rows = (
+        await session.execute(
+            select(
+                PriceVersion.service_price_id,
+                PriceVersion.effective_from,
+                PriceVersion.id,
+                PriceVersion.amount,
+            ).where(
+                PriceVersion.service_price_id.in_({q.service_price_id for q in queries})
+            )
+        )
+    ).all()
+    versions: dict[uuid.UUID, list[tuple[date, uuid.UUID, Money | None]]] = {}
+    for row in rows:
+        versions.setdefault(row.service_price_id, []).append(
+            (row.effective_from, row.id, row.amount)
+        )
+    found: dict[PriceQuery, BasePrice | None] = {}
+    for query in queries:
+        if query in custom:
+            found[query] = custom[query]
+            continue
+        assert query.service_price_id is not None  # noqa: S101 - checked above
+        in_effect = _version_in_effect(
+            versions.get(query.service_price_id, []), query.on
+        )
+        if in_effect is None or in_effect[1] is None:
+            found[query] = None
+        else:
+            found[query] = BasePrice(
+                list_amount=in_effect[1],
+                price_version_id=in_effect[0],
+                custom_price_id=None,
+                source="catalog",
+                rank=0,
+            )
+    return found
 
 
 async def base_price(session: AsyncSession, query: PriceQuery) -> BasePrice | None:
     """The base price of ``query`` (#95 B2, H6): the matching custom price
     (one statement), otherwise :func:`lookup_price` (one more). ``None`` is
-    ``no_price``. At most two statements."""
+    ``no_price``. At most two statements.
+
+    With a pin (``query.service_price_id``, #93 B4): the custom-price step
+    for that item only, then that item's version in effect on ``on``; the
+    rank search is skipped (still at most two statements)."""
     _check_query(query)
+    if query.service_price_id is not None:
+        return await _pinned_base_price(session, query, query.service_price_id)
     ranks = _rank_conditions(
         education_level_id=query.education_level_id,
         duration_minutes=query.duration_minutes,
@@ -339,7 +469,8 @@ async def custom_prices_for(
     :func:`base_price` rule, H6), in **one** statement for all of them (none
     for no query): the #91 unbilled list reads a page's custom prices with
     it. Queries without a custom price are left out (the caller then asks
-    the catalog)."""
+    the catalog). A pinned query (#93) matches only its item's custom
+    prices (rank 0)."""
     if not queries:
         return {}
     for query in queries:
@@ -353,6 +484,7 @@ async def custom_prices_for(
         await session.execute(
             select(
                 CustomPrice.id,
+                CustomPrice.service_price_id,
                 CustomPrice.amount,
                 CustomPrice.student_id,
                 CustomPrice.family_id,
@@ -394,18 +526,20 @@ async def custom_prices_for(
                 order = 1
             else:
                 continue
-            rank = candidate_rank(
-                _ItemKey(
-                    class_type=row.class_type,
-                    pricing_model=row.pricing_model,
-                    subject_id=row.subject_id,
-                    education_level_id=row.education_level_id,
-                    duration_minutes=row.duration_minutes,
-                    cohort_id=row.cohort_id,
-                    group_id=row.group_id,
-                ),
-                query,
-            )
+            rank = 0 if row.service_price_id == query.service_price_id else None
+            if query.service_price_id is None:
+                rank = candidate_rank(
+                    _ItemKey(
+                        class_type=row.class_type,
+                        pricing_model=row.pricing_model,
+                        subject_id=row.subject_id,
+                        education_level_id=row.education_level_id,
+                        duration_minutes=row.duration_minutes,
+                        cohort_id=row.cohort_id,
+                        group_id=row.group_id,
+                    ),
+                    query,
+                )
             if rank is None:
                 continue
             candidate = (order, rank, row.id, row)

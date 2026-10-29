@@ -282,6 +282,7 @@ def test_the_result_carries_money_and_the_version(module_seeded_url, world):
     "query",
     [
         pytest.param({"pricing_model": "package"}, id="package"),
+        pytest.param({"pricing_model": "per_period"}, id="per-period"),
         pytest.param({"cohort_id": uuid.uuid4()}, id="cohort-on-individual"),
         pytest.param(
             {"class_type": "group", "cohort_id": uuid.uuid4()}, id="cohort-on-group"

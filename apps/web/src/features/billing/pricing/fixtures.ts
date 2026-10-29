@@ -97,6 +97,7 @@ const BASE = {
   duration_minutes: null,
   cohort: null,
   group: null,
+  period_frequency: null,
 };
 
 /** Individual, per session, 60 min, current 350.00, next 380.00. */

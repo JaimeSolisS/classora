@@ -78,6 +78,20 @@ fees with their net: the sweeper's anti-join and the J5 re-enrollment rule)
 and :func:`group_fee_item_columns` (the ``group/full_course`` items, D3);
 and :func:`session_charge_states` (session charges with their net and their
 Σ ``enrollment_removal``, for the J4 removal credits and restorations).
+
+**Tuition plans** (#93; :mod:`~app.modules.billing.tuition` (the pure
+period grid and :func:`plan_period_state`) and
+:mod:`~app.modules.billing.tuition_plans` (the plan and pause rows); the
+workflows ``app.workflows.tuition_plans`` and
+``app.workflows.tuition_charges``). For other modules:
+``PriceQuery.service_price_id`` (the pin: :func:`quote` prices exactly that
+item, its custom prices then its version in effect; required for
+``per_period``, which :func:`lookup_price` refuses), ``ChargeDraft.
+tuition_plan_id`` and ``service_period_end`` (a ``tuition_period``
+charge), :func:`pinned_base_prices` (many pinned base prices in two
+statements), and the unexecuted :func:`linked_plan_columns` with
+:func:`linked_plan_windows` (the K6 ``tuition_priced`` outcome of the #91
+and #92 classifications).
 """
 
 from app.modules.billing.balances import account_balance as account_balance
@@ -180,7 +194,47 @@ from app.modules.billing.errors import (
     ServicePriceExistsError as ServicePriceExistsError,
 )
 from app.modules.billing.errors import (
+    StudentHasNoFamilyAccountError as StudentHasNoFamilyAccountError,
+)
+from app.modules.billing.errors import (
     StudentHasNoFamilyError as StudentHasNoFamilyError,
+)
+from app.modules.billing.errors import (
+    TuitionPauseInvalidError as TuitionPauseInvalidError,
+)
+from app.modules.billing.errors import (
+    TuitionPauseNotOpenError as TuitionPauseNotOpenError,
+)
+from app.modules.billing.errors import (
+    TuitionPauseOverlapError as TuitionPauseOverlapError,
+)
+from app.modules.billing.errors import TuitionPlanEndedError as TuitionPlanEndedError
+from app.modules.billing.errors import (
+    TuitionPlanEndsOnInvalidError as TuitionPlanEndsOnInvalidError,
+)
+from app.modules.billing.errors import (
+    TuitionPlanEnrollmentFeeChargedError as TuitionPlanEnrollmentFeeChargedError,
+)
+from app.modules.billing.errors import (
+    TuitionPlanEnrollmentInvalidError as TuitionPlanEnrollmentInvalidError,
+)
+from app.modules.billing.errors import (
+    TuitionPlanHasChargesError as TuitionPlanHasChargesError,
+)
+from app.modules.billing.errors import (
+    TuitionPlanOverlapError as TuitionPlanOverlapError,
+)
+from app.modules.billing.errors import (
+    TuitionPlanPriceInvalidError as TuitionPlanPriceInvalidError,
+)
+from app.modules.billing.errors import (
+    TuitionPlanSessionsChargedError as TuitionPlanSessionsChargedError,
+)
+from app.modules.billing.errors import (
+    TuitionPlanStartsOnInvalidError as TuitionPlanStartsOnInvalidError,
+)
+from app.modules.billing.errors import (
+    TuitionResumeInvalidError as TuitionResumeInvalidError,
 )
 from app.modules.billing.ledger import (
     ENROLLMENT_REMOVAL as ENROLLMENT_REMOVAL,
@@ -205,6 +259,7 @@ from app.modules.billing.ledger import (
     session_charge_states as session_charge_states,
 )
 from app.modules.billing.prices import CATALOG_MODELS as CATALOG_MODELS
+from app.modules.billing.prices import CUSTOM_PRICE_MODELS as CUSTOM_PRICE_MODELS
 from app.modules.billing.prices import CatalogItemRow as CatalogItemRow
 from app.modules.billing.prices import CatalogKey as CatalogKey
 from app.modules.billing.prices import CatalogNames as CatalogNames
@@ -215,6 +270,7 @@ from app.modules.billing.prices import current_and_next as current_and_next
 from app.modules.billing.prices import current_and_next_of as current_and_next_of
 from app.modules.billing.prices import delete_price_version as delete_price_version
 from app.modules.billing.prices import get_service_price as get_service_price
+from app.modules.billing.prices import get_service_prices as get_service_prices
 from app.modules.billing.prices import list_service_prices as list_service_prices
 from app.modules.billing.prices import list_versions as list_versions
 from app.modules.billing.pricing import base_price as base_price
@@ -225,6 +281,7 @@ from app.modules.billing.pricing import (
 )
 from app.modules.billing.pricing import lookup_price as lookup_price
 from app.modules.billing.pricing import make_quote as make_quote
+from app.modules.billing.pricing import pinned_base_prices as pinned_base_prices
 from app.modules.billing.pricing import quote as quote
 from app.modules.billing.schemas import AccountBalance as AccountBalance
 from app.modules.billing.schemas import AdjustmentDraft as AdjustmentDraft
@@ -252,6 +309,7 @@ from app.modules.billing.schemas import (
 from app.modules.billing.schemas import DiscountCreate as DiscountCreate
 from app.modules.billing.schemas import DiscountUpdate as DiscountUpdate
 from app.modules.billing.schemas import LedgerEntry as LedgerEntry
+from app.modules.billing.schemas import PeriodFrequency as PeriodFrequency
 from app.modules.billing.schemas import PostedAdjustment as PostedAdjustment
 from app.modules.billing.schemas import PostedCharge as PostedCharge
 from app.modules.billing.schemas import PriceInEffect as PriceInEffect
@@ -268,6 +326,53 @@ from app.modules.billing.settings import (
 from app.modules.billing.settings import (
     update_billing_settings as update_billing_settings,
 )
+from app.modules.billing.tuition import PERIOD_STATES as PERIOD_STATES
+from app.modules.billing.tuition import Frequency as Frequency
+from app.modules.billing.tuition import Period as Period
+from app.modules.billing.tuition import PeriodState as PeriodState
+from app.modules.billing.tuition import PlanTerms as PlanTerms
+from app.modules.billing.tuition import in_pause as in_pause
+from app.modules.billing.tuition import is_period_end as is_period_end
+from app.modules.billing.tuition import is_period_start as is_period_start
+from app.modules.billing.tuition import period_at as period_at
+from app.modules.billing.tuition import period_containing as period_containing
+from app.modules.billing.tuition import period_index as period_index
+from app.modules.billing.tuition import period_start as period_start
+from app.modules.billing.tuition import periods_between as periods_between
+from app.modules.billing.tuition import plan_period_state as plan_period_state
+from app.modules.billing.tuition_plans import CANDIDATE_PAGE as CANDIDATE_PAGE
+from app.modules.billing.tuition_plans import PauseRow as PauseRow
+from app.modules.billing.tuition_plans import PerPeriodItem as PerPeriodItem
+from app.modules.billing.tuition_plans import PostedPeriod as PostedPeriod
+from app.modules.billing.tuition_plans import TuitionPlanRow as TuitionPlanRow
+from app.modules.billing.tuition_plans import add_pause as add_pause
+from app.modules.billing.tuition_plans import create_plan as create_plan
+from app.modules.billing.tuition_plans import delete_plan as delete_plan
+from app.modules.billing.tuition_plans import end_pause as end_pause
+from app.modules.billing.tuition_plans import get_plan as get_plan
+from app.modules.billing.tuition_plans import (
+    group_fee_enrollment_ids as group_fee_enrollment_ids,
+)
+from app.modules.billing.tuition_plans import group_fee_net as group_fee_net
+from app.modules.billing.tuition_plans import linked_plan_columns as linked_plan_columns
+from app.modules.billing.tuition_plans import linked_plan_windows as linked_plan_windows
+from app.modules.billing.tuition_plans import list_plans as list_plans
+from app.modules.billing.tuition_plans import per_period_item as per_period_item
+from app.modules.billing.tuition_plans import per_period_items as per_period_items
+from app.modules.billing.tuition_plans import plan_has_charges as plan_has_charges
+from app.modules.billing.tuition_plans import plan_ids_of as plan_ids_of
+from app.modules.billing.tuition_plans import plan_overlaps as plan_overlaps
+from app.modules.billing.tuition_plans import plan_pauses as plan_pauses
+from app.modules.billing.tuition_plans import (
+    positive_session_charges as positive_session_charges,
+)
+from app.modules.billing.tuition_plans import (
+    posted_period_starts as posted_period_starts,
+)
+from app.modules.billing.tuition_plans import posted_through as posted_through
+from app.modules.billing.tuition_plans import recent_periods as recent_periods
+from app.modules.billing.tuition_plans import tuition_candidates as tuition_candidates
+from app.modules.billing.tuition_plans import update_plan as update_plan
 
 ChargeDiscountLine = DiscountLine
 """A charge's snapshot line (:func:`charge_discount_lines`, #95 B6)."""

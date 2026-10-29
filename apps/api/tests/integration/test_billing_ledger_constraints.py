@@ -52,6 +52,7 @@ CHARGE_COLUMNS = (
     "class_session_id",
     "group_enrollment_id",
     "cohort_enrollment_id",
+    "tuition_plan_id",
     "service_date",
     "service_period_end",
     "scheduled_minutes",
@@ -76,6 +77,7 @@ def _charge(rows: LedgerRows, **overrides: Any) -> dict[str, Any]:
         "class_session_id": None,
         "group_enrollment_id": None,
         "cohort_enrollment_id": None,
+        "tuition_plan_id": None,
         "service_date": DAY,
         "service_period_end": None,
         "scheduled_minutes": None,
@@ -97,7 +99,19 @@ def test_a_valid_manual_charge_row_is_accepted(module_seeded_url, rows):
 @pytest.mark.parametrize(
     ("overrides", "constraint"),
     [
-        pytest.param({"kind": "tuition_period"}, "ck_charges_kind", id="kind-not-yet"),
+        pytest.param(
+            {"kind": "package_purchase"}, "ck_charges_kind", id="kind-not-yet"
+        ),
+        pytest.param(
+            {"kind": "tuition_period", "description": None},
+            "ck_charges_one_source",
+            id="tuition-without-plan",
+        ),
+        pytest.param(
+            {"service_period_end": date(2031, 3, 31)},
+            "ck_charges_one_source",
+            id="period-end-on-manual",
+        ),
         pytest.param(
             {"kind": "session", "description": None, "scheduled_minutes": 60},
             "ck_charges_one_source",
@@ -124,9 +138,34 @@ def test_a_valid_manual_charge_row_is_accepted(module_seeded_url, rows):
         ),
         pytest.param({"description": ""}, "ck_charges_description_valid", id="empty"),
         pytest.param(
-            {"service_period_end": date(2031, 3, 9)},
+            {
+                "kind": "tuition_period",
+                "description": None,
+                "tuition_plan_id": "PLAN",
+                "service_period_end": date(2031, 3, 9),
+            },
             "ck_charges_service_period_end_valid",
             id="period-end-before-start",
+        ),
+        pytest.param(
+            {
+                "kind": "tuition_period",
+                "description": None,
+                "tuition_plan_id": "PLAN",
+            },
+            "ck_charges_one_source",
+            id="tuition-without-period-end",
+        ),
+        pytest.param(
+            {
+                "kind": "session",
+                "class_session_id": "SESSION",
+                "description": None,
+                "scheduled_minutes": 60,
+                "tuition_plan_id": "PLAN",
+            },
+            "ck_charges_one_source",
+            id="tuition-plan-on-session",
         ),
         pytest.param(
             {
@@ -169,8 +208,10 @@ def test_a_valid_manual_charge_row_is_accepted(module_seeded_url, rows):
     ],
 )
 def test_charge_checks(module_seeded_url, rows, session_id, overrides, constraint):
+    # "PLAN" is a made-up plan id: the CHECKs fire before the composite
+    # foreign key (#93 A5).
     values = {
-        k: session_id if v == "SESSION" else v
+        k: session_id if v == "SESSION" else (uuid.uuid4() if v == "PLAN" else v)
         for k, v in _charge(rows, **overrides).items()
     }
     message = fails_with(module_seeded_url, CHARGE_INSERT, CHECK, **values)

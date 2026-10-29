@@ -68,6 +68,7 @@ ITEM_KEYS = {
     "duration_minutes",
     "cohort",
     "group",
+    "period_frequency",
     "current",
     "next",
     "created_at",
@@ -330,8 +331,36 @@ def test_the_same_key_is_409_with_the_existing_id(
     [
         pytest.param(
             {"pricing_model": "per_period"},
-            {("pricing_model", "literal_error")},
-            id="per-period",
+            {("period_frequency", "period_frequency_required")},
+            id="per-period-without-frequency",
+        ),
+        pytest.param(
+            {"period_frequency": "weekly"},
+            {("period_frequency", "period_frequency_not_allowed")},
+            id="frequency-on-per-session",
+        ),
+        pytest.param(
+            {"pricing_model": "per_period", "period_frequency": "daily"},
+            {("period_frequency", "literal_error")},
+            id="unknown-frequency",
+        ),
+        pytest.param(
+            {
+                "class_type": "course",
+                "pricing_model": "per_period",
+                "period_frequency": "monthly",
+            },
+            {("pricing_model", "pricing_model_not_allowed")},
+            id="course-per-period",
+        ),
+        pytest.param(
+            {
+                "pricing_model": "per_period",
+                "period_frequency": "monthly",
+                "duration_minutes": 60,
+            },
+            {("duration_minutes", "duration_not_allowed")},
+            id="duration-on-per-period",
         ),
         pytest.param(
             {"pricing_model": "package"},
@@ -775,7 +804,6 @@ def test_unknown_and_hidden_items_are_404(client, staff, world, module_seeded_ur
         for key in (
             {"subject_id": world.subject, "pricing_model": "package"},
             {"subject_id": None, "pricing_model": "package"},
-            {"subject_id": world.subject, "pricing_model": "per_period"},
         )
     ]
     item = created(client, staff, world, effective_from=TOMORROW)
@@ -875,3 +903,56 @@ def test_a_referenced_upcoming_version_is_409_in_use(
     assert code_of(response) == IN_USE
     assert version_dates(url, item["id"]) == [TOMORROW]
     assert len(events(url, record_type="price_versions")) == before
+
+
+# --- #93 B1, B2, H8: per-period prices ---------------------------------------------
+
+
+def test_per_period_prices_with_each_frequency_coexist(
+    client, staff, world, module_seeded_url
+):
+    frequencies = ("weekly", "biweekly", "monthly")
+    found = [
+        created(
+            client,
+            staff,
+            world,
+            pricing_model="per_period",
+            period_frequency=frequency,
+            amount="1000.00",
+        )
+        for frequency in frequencies
+    ]
+    group_item = created(
+        client,
+        staff,
+        world,
+        class_type="group",
+        group_id=world.group,
+        pricing_model="per_period",
+        period_frequency="monthly",
+    )
+
+    assert [f["period_frequency"] for f in found] == list(frequencies)
+    assert all(f["pricing_model"] == "per_period" for f in found)
+    assert group_item["group"]["id"] == str(world.group)
+    duplicate = create(
+        client, staff, world, pricing_model="per_period", period_frequency="weekly"
+    )
+    assert code_of(duplicate) == (409, "service_price_exists")
+    assert duplicate.json()["details"] == {"service_price_id": found[0]["id"]}
+    detail = get(client, staff, f"{PRICES}/{found[2]['id']}").json()
+    assert detail["period_frequency"] == "monthly"
+    # Versions work on per-period items exactly as #89 E3.
+    versioned = add_version(client, staff, found[2]["id"], TOMORROW, "1100.00")
+    assert versioned.status_code == 201, versioned.text
+    assert [v["amount"] for v in versioned.json()["versions"]] == [
+        "1100.00",
+        "1000.00",
+    ]
+    removed = remove(
+        client, staff, found[2]["id"], versioned.json()["versions"][0]["id"]
+    )
+    assert removed.status_code == 204, removed.text
+    per_session = created(client, staff, world, amount="300.00")
+    assert per_session["period_frequency"] is None

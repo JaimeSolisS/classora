@@ -49,7 +49,9 @@ or ``service`` (ADR-0002). :func:`defer_series_materialization` is the
 closure writes' after-commit trigger of ``scheduling:materialize_series``;
 :func:`defer_session_charges` and :func:`defer_enrollment_charges` the
 billing settings ``PATCH``'s triggers of ``billing:post_session_charges``
-(#91 B4) and ``billing:post_enrollment_charges`` (#92 D1).
+(#91 B4) and ``billing:post_enrollment_charges`` (#92 D1);
+:func:`defer_tuition_charges` the trigger of ``billing:post_tuition_charges``
+after the settings ``PATCH`` and the tuition plan writes (#93 E1).
 """
 
 import functools
@@ -103,6 +105,14 @@ ENROLLMENT_CHARGES_TASK: Final = "billing:post_enrollment_charges"
 ``PATCH /api/v1/billing/settings`` that sets a date."""
 ENROLLMENT_CHARGES_QUEUEING_LOCK: Final = "billing-post-enrollment-charges"
 """At most one queued ``billing:post_enrollment_charges`` job (the periodic
+tick shares it)."""
+
+TUITION_CHARGES_TASK: Final = "billing:post_tuition_charges"
+"""The daily tuition charge job (#93 E1, K5), also deferred after a tuition
+plan create, resume or extension and after a ``PATCH
+/api/v1/billing/settings`` that sets a date."""
+TUITION_CHARGES_QUEUEING_LOCK: Final = "billing-post-tuition-charges"
+"""At most one queued ``billing:post_tuition_charges`` job (the periodic
 tick shares it)."""
 
 # Worker concurrency is fixed at 1 here; making it configurable and sizing it
@@ -233,11 +243,13 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     Core and module tasks (the hourly purges of rate-limit counters, #27, of
     sessions, #25, and of expired idempotency keys, #88; the five-minute
     offer expiry, #52; the nightly series materialization, #53; the daily
-    progress report placeholders, #316, and the 15-minute session and
-    enrollment charge sweepers, #91 and #92, whose task files are
+    progress report placeholders, #316, the 15-minute session and
+    enrollment charge sweepers, #91 and #92, and the daily tuition charges,
+    #93, whose task files are
     ``app/workflows/progress_report_schedule_tasks.py``,
-    ``app/workflows/session_charge_tasks.py`` and
-    ``app/workflows/enrollment_charge_tasks.py`` because they compose
+    ``app/workflows/session_charge_tasks.py``,
+    ``app/workflows/enrollment_charge_tasks.py`` and
+    ``app/workflows/tuition_charge_tasks.py`` because they compose
     modules)
     are registered in every environment. The demo tasks
     (and the periodic demo) are registered only in :data:`DEMO_ENVIRONMENTS`.
@@ -251,6 +263,7 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
         enrollment_charge_tasks,
         progress_report_schedule_tasks,
         session_charge_tasks,
+        tuition_charge_tasks,
     )
 
     app = App(connector=connector)
@@ -261,6 +274,7 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     progress_report_schedule_tasks.register(app)
     session_charge_tasks.register(app)
     enrollment_charge_tasks.register(app)
+    tuition_charge_tasks.register(app)
     if app_env in DEMO_ENVIRONMENTS:
         demo_jobs.register(app)
     return app
@@ -352,4 +366,28 @@ async def defer_enrollment_charges(job_app: App) -> None:
         logger.error(
             "Deferring the enrollment charges failed",
             extra={"task_name": ENROLLMENT_CHARGES_TASK, "error": type(exc).__name__},
+        )
+
+
+async def defer_tuition_charges(job_app: App) -> None:
+    """Queue one ``billing:post_tuition_charges`` run now (#93 E1).
+
+    The same contract as :func:`defer_session_charges`: only after the Unit
+    of Work has committed (a tuition plan create, resume or extension, or a
+    billing settings ``PATCH`` that sets a date); a run already queued is a
+    no-op (``AlreadyEnqueued`` is ignored); any other failure is logged and
+    swallowed (the next daily run posts the periods).
+    """
+    try:
+        await job_app.configure_task(
+            TUITION_CHARGES_TASK,
+            allow_unknown=False,
+            queueing_lock=TUITION_CHARGES_QUEUEING_LOCK,
+        ).defer_async(timestamp=int(time.time()))
+    except AlreadyEnqueued:
+        return
+    except Exception as exc:  # noqa: BLE001 - the write must still answer 2xx
+        logger.error(
+            "Deferring the tuition charges failed",
+            extra={"task_name": TUITION_CHARGES_TASK, "error": type(exc).__name__},
         )

@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from app.modules.billing.schemas import (
     CatalogPricingModel,
     ClassType,
+    PeriodFrequency,
     PriceVersionItem,
 )
 
@@ -33,8 +34,10 @@ class PriceCatalogSubject(BaseModel):
 class ServicePriceItem(BaseModel):
     """One catalog item (#89 B1). ``education_level`` and
     ``duration_minutes`` ``null`` mean "any"; ``cohort``/``group`` scope it.
-    ``current`` is the version in effect today (``amount: null`` = not
-    offered) and ``next`` the earliest upcoming one."""
+    ``period_frequency`` is the period length of a ``per_period`` item
+    (#93; ``null`` for the other models). ``current`` is the version in
+    effect today (``amount: null`` = not offered) and ``next`` the earliest
+    upcoming one."""
 
     id: uuid.UUID
     class_type: ClassType
@@ -44,6 +47,7 @@ class ServicePriceItem(BaseModel):
     duration_minutes: int | None
     cohort: PriceCatalogReference | None
     group: PriceCatalogReference | None
+    period_frequency: PeriodFrequency | None
     current: PriceVersionItem | None
     next: PriceVersionItem | None
     created_at: datetime

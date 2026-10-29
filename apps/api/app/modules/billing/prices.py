@@ -5,9 +5,10 @@ The routes are ``app.workflows.price_catalog_router``; the workflow
 and passes the center's local ``today``. Every function runs in the
 caller's Unit of Work and never commits.
 
-**Scope of the routes (E5):** only ``per_session`` and ``full_course``
-items are listed, read or written here (:data:`CATALOG_MODELS`); ``package``
-(#94) and ``per_period`` (#93) rows are invisible (``404``).
+**Scope of the routes (E5):** ``per_session``, ``full_course`` and (since
+#93 B1) ``per_period`` items are listed, read or written here
+(:data:`CATALOG_MODELS`); ``package`` rows (#94) are invisible (``404``). A
+``per_period`` item carries its ``period_frequency`` (part of the key, K2).
 
 **Writes:**
 
@@ -61,13 +62,18 @@ from app.modules.billing.errors import (
 from app.modules.billing.models import CATALOG_KEY_INDEX, PriceVersion, ServicePrice
 from app.modules.billing.schemas import PriceVersionItem, PriceVersionStatus
 
-CATALOG_MODELS: Final = ("per_session", "full_course")
-"""The pricing models the #89 routes list, read and write (E5)."""
+CATALOG_MODELS: Final = ("per_session", "full_course", "per_period")
+"""The pricing models the #89 routes list, read and write (E5; ``per_period``
+since #93 B1)."""
+CUSTOM_PRICE_MODELS: Final = ("per_session", "full_course")
+"""The pricing models a custom price may be for (#95; #93 K8: not
+``per_period``)."""
 
 INSUFFICIENT_PRIVILEGE: Final = "42501"
 
 _CLASS_TYPE_ORDER: Final = {"individual": 0, "group": 1, "course": 2}
-_MODEL_ORDER: Final = {"per_session": 0, "full_course": 1}
+_MODEL_ORDER: Final = {"per_session": 0, "full_course": 1, "per_period": 2}
+_FREQUENCY_ORDER: Final = {"weekly": 0, "biweekly": 1, "monthly": 2}
 
 
 @dataclass(frozen=True)
@@ -81,6 +87,8 @@ class CatalogKey:
     duration_minutes: int | None
     cohort_id: uuid.UUID | None
     group_id: uuid.UUID | None
+    period_frequency: str | None = None
+    """Set iff ``pricing_model = 'per_period'`` (#93 K2)."""
 
 
 @dataclass(frozen=True)
@@ -120,6 +128,7 @@ class CatalogItemRow:
     group_id: uuid.UUID | None
     group_name: str
     created_at: datetime
+    period_frequency: str | None = None
 
 
 @dataclass(frozen=True)
@@ -147,6 +156,7 @@ def _key_conditions(key: CatalogKey) -> list[ColumnElement[bool]]:
                 "duration_minutes",
                 "cohort_id",
                 "group_id",
+                "period_frequency",
             )
         ),
     ]
@@ -180,6 +190,7 @@ async def create_service_price(
         duration_minutes=key.duration_minutes,
         cohort_id=key.cohort_id,
         group_id=key.group_id,
+        period_frequency=key.period_frequency,
     )
     try:
         async with session.begin_nested():
@@ -305,6 +316,7 @@ def catalog_query(names: CatalogNames) -> tuple[Select[Any], list[Any]]:
         func.lower(subjects.c.education_level_name),
         func.lower(subjects.c.name),
         _ordered_case(ServicePrice.pricing_model, _MODEL_ORDER),
+        _ordered_case(ServicePrice.period_frequency, _FREQUENCY_ORDER),
         case((scoped, 1), else_=0),
         func.lower(func.coalesce(cohorts.c.name, groups.c.name)),
         case((ServicePrice.education_level_id.is_(None), 0), else_=1),
@@ -336,6 +348,7 @@ def catalog_row(found: Any) -> CatalogItemRow:
         group_id=item.group_id,
         group_name=found[6] or "",
         created_at=item.created_at,
+        period_frequency=item.period_frequency,
     )
 
 
@@ -349,7 +362,8 @@ async def list_service_prices(
     limit: int,
     offset: int,
 ) -> tuple[list[CatalogItemRow], int]:
-    """A page of ``per_session``/``full_course`` items in the B2 order, and
+    """A page of ``per_session``/``full_course``/``per_period`` items in the
+    B2 order (``per_period`` last, weekly → biweekly → monthly), and
     the total. One statement (the total is a window count), plus a count
     when the page is past the end."""
     query, order = catalog_query(names)
@@ -382,8 +396,8 @@ async def list_service_prices(
 async def get_service_price(
     session: AsyncSession, names: CatalogNames, service_price_id: uuid.UUID
 ) -> CatalogItemRow:
-    """One item (``404 not_found`` for an unknown id or a ``package`` /
-    ``per_period`` row). One statement."""
+    """One item (``404 not_found`` for an unknown id or a ``package`` row).
+    One statement."""
     query, _ = catalog_query(names)
     found = (
         await session.execute(query.where(ServicePrice.id == service_price_id))
@@ -391,6 +405,19 @@ async def get_service_price(
     if found is None:
         raise RecordNotFoundError()
     return catalog_row(found)
+
+
+async def get_service_prices(
+    session: AsyncSession, names: CatalogNames, ids: Collection[uuid.UUID]
+) -> dict[uuid.UUID, CatalogItemRow]:
+    """The items with these ids (unknown or ``package`` ids are left out),
+    by id (#93: the tuition plans' items). One statement (none for no
+    id)."""
+    if not ids:
+        return {}
+    query, _ = catalog_query(names)
+    rows = await session.execute(query.where(ServicePrice.id.in_(set(ids))))
+    return {found[0].id: catalog_row(found) for found in rows}
 
 
 def _status(

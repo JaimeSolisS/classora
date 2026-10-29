@@ -403,3 +403,45 @@ async def group_sessions_after(
         )
         for row in rows
     ]
+
+
+@dataclass(frozen=True)
+class NamedGroupPeriod:
+    """A :class:`GroupPeriod` with its group's name (#93: tuition plans)."""
+
+    period: GroupPeriod
+    group_name: str
+
+
+async def named_group_periods(
+    session: AsyncSession,
+    *,
+    enrollment_ids: Collection[uuid.UUID] | None = None,
+    student_id: uuid.UUID | None = None,
+    active_only: bool = False,
+) -> dict[uuid.UUID, NamedGroupPeriod]:
+    """The group enrollment periods with these ids and/or of this student
+    (``active_only``: not withdrawn), with the group's name, by enrollment
+    id (#93 D1, D3, D9, E4, G1). One statement (none for an empty
+    ``enrollment_ids``); re-read. No record policy: the billing routes
+    check ``billing.view``/``billing.manage``."""
+    if enrollment_ids is not None and not enrollment_ids:
+        return {}
+    query = group_enrollment_columns().add_columns(ClassGroup.name.label("group_name"))
+    if enrollment_ids is not None:
+        query = query.where(GroupEnrollment.id.in_(set(enrollment_ids)))
+    if student_id is not None:
+        query = query.where(GroupEnrollment.student_id == student_id)
+    if active_only:
+        query = query.where(GroupEnrollment.withdrawn_at.is_(None))
+    rows = await session.execute(
+        query.order_by(
+            GroupEnrollment.enrolled_at, GroupEnrollment.id
+        ).execution_options(populate_existing=True)
+    )
+    return {
+        row.enrollment_id: NamedGroupPeriod(
+            period=_group_period(row), group_name=row.group_name
+        )
+        for row in rows
+    }
