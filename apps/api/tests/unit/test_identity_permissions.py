@@ -95,6 +95,10 @@ EXPECTED = {
     # record policy, not through billing.view; no Academic Coordinator,
     # Tutor or Student.
     "billing.view": {OWNER, ADMINISTRATOR, FINANCE_STAFF},
+    # Owner-delegated decision #96 M1 (a) (ADR-0006 E8): no Academic
+    # Coordinator, Tutor, Student or Guardian; not bound to reauthentication
+    # (M6 (a)).
+    "payment.record": {OWNER, ADMINISTRATOR, FINANCE_STAFF},
 }
 
 
@@ -108,8 +112,8 @@ def test_catalog_matches_the_approved_table():
     }
 
     assert by_permission == EXPECTED
-    assert len(PERMISSIONS) == 37
-    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 96
+    assert len(PERMISSIONS) == 38
+    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 99
 
 
 def test_every_code_has_the_dotted_form():
@@ -142,6 +146,14 @@ def test_delegable_set_is_exactly_adr_0007():
 def test_delegation_and_owner_assignment_are_not_delegable():
     assert "user.delegation.manage" not in DELEGABLE_PERMISSIONS
     assert "user.owner_role.assign" not in DELEGABLE_PERMISSIONS
+
+
+def test_payment_record_is_not_delegable_nor_bound_to_reauthentication():
+    # #96 A1 (ADR-0006 E8; M6 (a)): recording a payment needs no step-up.
+    from app.core.reauth import actions_binding
+
+    assert "payment.record" not in DELEGABLE_PERMISSIONS
+    assert actions_binding("payment.record") == frozenset()
 
 
 def test_all_seven_roles_are_present():

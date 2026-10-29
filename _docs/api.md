@@ -235,6 +235,11 @@ Codes in use today:
 | `package_product_inactive` / `package_not_offered` | 409 | Selling a deactivated package product, or one with no price version in effect today (or a `null` "not offered" version; see Packages). |
 | `package_product_unknown` | 422 | A package sale naming an unknown product; on `["body","package_product_id"]` (with `student_unknown` on `["body","student_id"]`; see Packages). |
 | `quantity_out_of_range` / `quantity_step` / `validity_days_out_of_range` | 422 | Field codes of a package product body: 1-500 sessions or 15-30000 minutes, minutes in steps of 15, a validity of 1-730 days (see Packages). |
+| `allocation_exceeds_open` | 409 | A payment or credit allocation line above what is still open on its charge (I2, under the account lock); `details` `{charge_id, open}`. Nothing is written (see Payments). |
+| `insufficient_account_credit` / `nothing_to_allocate` | 409 | A credit allocation asking for more than the account credit (`details.account_credit`); no account credit, no account, or no open charge to allocate it to (see Payments). |
+| `allocation_charge_not_found` | 422 | An explicit allocation line naming a charge that isn't on the family's account; one field error per line at `["body","allocation","lines",i,"charge_id"]` (see Payments). |
+| `payment_method_unavailable` / `received_on_in_future` | 422 | Recording a payment with an unknown or deactivated method (on `["body","payment_method_code"]`), or dated after the center's today (on `["body","received_on"]`; see Payments). |
+| `allocation_exceeds_payment` / `allocation_duplicate_charge` / `allocation_lines_required` / `allocation_lines_not_allowed` / `amount_not_allowed` | 422 | Field codes of the payment and credit allocation bodies: explicit lines adding up to more than the payment, a charge twice, `lines` missing for `explicit` or sent for another mode, an `amount` on an explicit credit allocation (with `amount_not_positive` and `date_out_of_range`; see Payments). |
 | `tuition_plan_overlap` | 409 | Another plan of the same group enrollment, or of the same student and price, overlaps the dates (also from the exclusion constraints). |
 | `tuition_plan_enrollment_fee_charged` / `tuition_plan_sessions_charged` | 409 | Linking a plan (or extending a linked plan) to a group enrollment whose flat fee is charged, or whose sessions inside the plan's dates are charged per session. |
 | `tuition_plan_ended` / `tuition_plan_has_charges` | 409 | Extending or pausing a plan that has ended; deleting a plan with charges. |
@@ -6090,6 +6095,95 @@ owner-delegated decision #90b F1 (a)) on top of the M6-05 ledger core
   `payment_id`, `amount`, `balance_effect` and `occurred_at`.
   Payment-level rows have no `student_id`, so the student filter leaves
   them out.
+
+### Payments
+
+Implemented by M6-11 (#96; spec §6 payments, W4.3, W4.4; ADR-0006 E5,
+E6, E8, E12; owner-delegated decisions M1-M10 (a); `_docs/data-model.md`
+§3.12, §3.14, §4.1, §6). The rules are `app/modules/billing/payments.py`
+(`record_payment`, `allocate_account_credit`, the pure
+`plan_allocations`); the routes `app/workflows/billing_payments_router.py`
+(workflow `billing_payments.py`). The staff account page and the dialogs
+are M6-11b (#379).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `POST /api/v1/families/{family_id}/billing-account/payments` | `require("payment.record")` + `Idempotency-Key` | Body `PaymentCreate`. `201` with `PaymentRecorded`. |
+| `POST /api/v1/families/{family_id}/billing-account/allocations` | `require("payment.record")` + `Idempotency-Key` | Body `CreditAllocationCreate`. `201` with `CreditAllocated`. |
+| `GET /api/v1/families/{family_id}/billing-account/payments` | `authenticated()` + record policy | Offset pagination. Items are `PaymentItem`, newest `received_on` first (then entry time, id). At most four statements per page. |
+| `GET /api/v1/families/{family_id}/billing-account/payments/{payment_id}` | `authenticated()` + record policy | `PaymentDetail`; a payment of another family is `404 not_found`. |
+| `GET /api/v1/billing/payment-methods` | `require("billing.view")` | `[{code, is_active}]` by code (no pagination). Offer the active ones; labels come from the client catalogs (`billing.paymentMethods.<code>`). |
+
+`payment.record` (Owners, Administrators and Finance Staff; not
+delegable; seeded by `make seed`) needs **no reauthentication**: a mistake
+is undone by a reversal (#100), which does. Both `POST`s post ledger rows,
+so they need an `Idempotency-Key` (#88: a retry with the same key replays
+the first `201`; another body with that key is `422
+idempotency_key_reused`; a refused request stores no key). They take no
+query parameter. Check order: `401` → `403 csrf_failed` / `privacy_notice_required`
+/ `permission_denied` → `400 idempotency_key_*` → replay / `422
+idempotency_key_reused` → `422 validation_error` (the body) → the rules
+below.
+
+- **Recording** (`PaymentCreate`: `amount`, `received_on`,
+  `payment_method_code`, `reference?`, `payer_name?`, `note?`,
+  `allocation {mode, lines?}`). `amount` above zero (`amount_not_positive`,
+  `money_*`); `received_on` from 2000-01-01 (`date_out_of_range`) to the
+  center's today (`422 received_on_in_future`): backdating is allowed;
+  `reference` ≤ 100, `payer_name` ≤ 200, `note` ≤ 500 characters, trimmed,
+  blank → `null`. Then: the family (unknown → `404 not_found`; an inactive
+  family may pay) → the method (unknown or inactive → `422
+  payment_method_unavailable`) → the date → the family's billing account
+  (created with the first payment) → the account row `FOR UPDATE` → the
+  allocation, checked against what is open **under the lock** → one
+  payment and its allocations, in one transaction.
+- **Allocation modes.** `oldest_first`: the account's open charges (every
+  student, a student who left the family included; paid, void and zero
+  charges skipped) by **effective due date**, then service date, posting
+  time and id, each filled up to its open amount until the money runs
+  out. `explicit`: `lines [{charge_id, amount}]`, 1-200 distinct charges,
+  each above zero and adding up to at most the payment
+  (`allocation_exceeds_payment`); all or nothing: a charge not on the
+  account → `422 allocation_charge_not_found`, a line above the charge's
+  open amount → `409 allocation_exceeds_open`. `none`: nothing allocated.
+  `lines` only and always with `explicit` (`allocation_lines_required` /
+  `allocation_lines_not_allowed`, `allocation_duplicate_charge`).
+  Whatever isn't allocated **is** account credit (no extra row).
+- **Allocating credit later** (`CreditAllocationCreate`: `allocation
+  {mode: oldest_first | explicit, lines?}`, `amount?` only with
+  `oldest_first`, `amount_not_allowed`). The family (`404`) → its account
+  (none → `409 nothing_to_allocate`) → the account lock → no credit, or
+  `oldest_first` finding no open charge → `409 nothing_to_allocate`;
+  `amount` (default: all the credit) or the explicit lines above the
+  credit → `409 insufficient_account_credit` (`details.account_credit`).
+  The money is taken from the payments with an unallocated remainder and
+  no reversal, **oldest payment first** (`received_on`, entry time, id),
+  so one chosen charge can get several allocation rows.
+- **Undoing.** There is no "un-allocate" route: an allocation ends only
+  through a reversal (#100) or a credit on its charge (the newest
+  allocations are released, the freed money becomes account credit).
+- **Record policy** (reads): the Billing accounts policy (`billing.view`
+  sees every family; a guardian only their active profile's family;
+  everyone else the `404` of an unknown family). A caller without
+  `billing.view` gets `note`, `recorded_by_user_id` and every allocation's
+  `created_by_user_id` as `null`; `reference` and `payer_name` are shown
+  (the family gave them; the receipt shows them). A family with no account
+  has an empty list.
+- **Shapes.** `PaymentItem`: `id`, `amount`, `received_on`,
+  `payment_method_code`, `reference`, `payer_name`, `note`,
+  `recorded_by_user_id`, `recorded_at`, `allocated_amount` (valid
+  allocations), `refunded_amount`, `unallocated_amount` (`amount −
+  allocated − refunded`; account credit only while not reversed),
+  `is_reversed`. `PaymentDetail` adds `allocations [{id, charge_id,
+  student_id, amount, created_at, created_by_user_id, is_valid}]`, oldest
+  first (released ones `is_valid: false`; a re-inserted remainder has
+  `created_by_user_id: null`). `PaymentRecorded`: `payment`
+  (`PaymentItem`), `allocations [{id, charge_id, student_id, amount}]`,
+  `unallocated_amount`, `account_credit_after`. `CreditAllocated`:
+  `allocations [{id, payment_id, charge_id, student_id, amount}]`,
+  `allocated_total`, `account_credit_after`.
+- Each payment and allocation row writes one `create` audit event by the
+  caller; a family's first payment also audits the new account.
 
 ### Billing settings and unbilled session items
 

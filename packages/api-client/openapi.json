@@ -20551,6 +20551,465 @@
         }
       }
     },
+    "/api/v1/families/{family_id}/billing-account/payments": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Record Family Payment",
+        "description": "Record an external payment (cash, transfer or other) for a family\nand allocate it: `oldest_first` (the earliest due date first, across\nall the family's students), `explicit` (chosen charges and amounts,\neach at most what is open) or `none`. Whatever isn't allocated stays as\naccount credit. The family's billing account is created with its first\npayment. Send a new `Idempotency-Key` per payment and the same one to\nretry it.",
+        "operationId": "record_family_payment_api_v1_families__family_id__billing_account_payments_post",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRecorded"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An allocation is more than what is still open on its charge (allocation_exceeds_open; details: charge_id, open).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Family Payments",
+        "description": "The family's payments, the latest received first, with their\nallocated, refunded and unallocated amounts. Staff with billing.view\nsee every family; a guardian only their own family, without the note\nand the actor ids.",
+        "operationId": "list_family_payments_api_v1_families__family_id__billing_account_payments_get",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_PaymentItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The privacy notice must be accepted first (privacy_notice_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family or payment, or one whose account you can't see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/families/{family_id}/billing-account/allocations": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Allocate Family Credit",
+        "description": "Allocate the family's account credit to open charges, `oldest_first`\n(up to `amount`, or all the credit) or `explicit`. The money comes from\nthe oldest payments with an unallocated remainder first. Send a new\n`Idempotency-Key` per allocation and the same one to retry it.",
+        "operationId": "allocate_family_credit_api_v1_families__family_id__billing_account_allocations_post",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditAllocationCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditAllocated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "There is no account credit or no open charge (nothing_to_allocate); the amount or the lines are more than the account credit (insufficient_account_credit; details: account_credit); a line is more than what is open on its charge (allocation_exceeds_open).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/families/{family_id}/billing-account/payments/{payment_id}": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Get Family Payment",
+        "description": "One payment of the family with every allocation it has had, oldest\nfirst (released ones have `is_valid: false`).",
+        "operationId": "get_family_payment_api_v1_families__family_id__billing_account_payments__payment_id__get",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Payment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The privacy notice must be accepted first (privacy_notice_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family or payment, or one whose account you can't see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/payment-methods": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Payment Methods",
+        "description": "Every payment method by code, with whether it is active. Offer only\nthe active ones; labels come from the client catalogs.",
+        "operationId": "list_payment_methods_api_v1_billing_payment_methods_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentMethodItem"
+                  },
+                  "type": "array",
+                  "title": "Response List Payment Methods Api V1 Billing Payment Methods Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/settings": {
       "get": {
         "tags": [
@@ -24251,6 +24710,40 @@
         "enum": [
           "offered",
           "confirmed"
+        ]
+      },
+      "AllocationLineBody": {
+        "properties": {
+          "charge_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Charge Id"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "charge_id",
+          "amount"
+        ],
+        "title": "AllocationLineBody",
+        "description": "One explicit allocation line: a charge of the account and an amount\nabove zero (``amount_not_positive``)."
+      },
+      "AllocationMode": {
+        "type": "string",
+        "enum": [
+          "oldest_first",
+          "explicit",
+          "none"
         ]
       },
       "ApprovalAction": {
@@ -33487,6 +33980,152 @@
         "title": "CourseTemplateWrite",
         "description": "A whole template document (``POST /api/v1/course-templates``)."
       },
+      "CreditAllocated": {
+        "properties": {
+          "allocations": {
+            "items": {
+              "$ref": "#/components/schemas/CreditAllocationItem"
+            },
+            "type": "array",
+            "title": "Allocations"
+          },
+          "allocated_total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Allocated Total",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "account_credit_after": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Account Credit After",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "allocations",
+          "allocated_total",
+          "account_credit_after"
+        ],
+        "title": "CreditAllocated",
+        "description": "``201`` of allocating account credit (#96 C4): the rows written (one\nchosen charge may get several, one per source payment, oldest payment\nfirst), their total and the account credit afterwards."
+      },
+      "CreditAllocationBody": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/CreditAllocationMode"
+          },
+          "lines": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AllocationLineBody"
+                },
+                "type": "array",
+                "maxItems": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lines"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "title": "CreditAllocationBody",
+        "description": "How to allocate account credit (#96 M4): ``oldest_first`` or\n``explicit`` (``lines`` as in :class:`PaymentAllocationBody`)."
+      },
+      "CreditAllocationCreate": {
+        "properties": {
+          "allocation": {
+            "$ref": "#/components/schemas/CreditAllocationBody"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "allocation"
+        ],
+        "title": "CreditAllocationCreate",
+        "description": "``POST /api/v1/families/{family_id}/billing-account/allocations``\n(#96 C4, M4). ``amount`` (above zero) only with ``oldest_first``\n(``amount_not_allowed``); without it the whole account credit is\nallocated."
+      },
+      "CreditAllocationItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "charge_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Charge Id"
+          },
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "payment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Payment Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "charge_id",
+          "student_id",
+          "amount",
+          "payment_id"
+        ],
+        "title": "CreditAllocationItem",
+        "description": "An allocation of account credit, with the payment it came from."
+      },
+      "CreditAllocationMode": {
+        "type": "string",
+        "enum": [
+          "oldest_first",
+          "explicit"
+        ]
+      },
       "CriteriaChargeKind": {
         "type": "string",
         "enum": [
@@ -40974,6 +41613,37 @@
         ],
         "title": "OffsetPage[PackageProductItem]"
       },
+      "OffsetPage_PaymentItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PaymentItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[PaymentItem]"
+      },
       "OffsetPage_ServicePriceItem_": {
         "properties": {
           "items": {
@@ -42162,6 +42832,489 @@
         "title": "PasswordResetTokenRequest",
         "description": "The token from a reset link (``POST …/password-reset/lookup``)."
       },
+      "PaymentAllocationBody": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/AllocationMode"
+          },
+          "lines": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AllocationLineBody"
+                },
+                "type": "array",
+                "maxItems": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lines"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "title": "PaymentAllocationBody",
+        "description": "How to allocate a payment (#96 M3). ``lines`` (1 to 200, distinct\ncharges) only and always with ``explicit``."
+      },
+      "PaymentAllocationItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "charge_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Charge Id"
+          },
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "is_valid": {
+            "type": "boolean",
+            "title": "Is Valid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "charge_id",
+          "student_id",
+          "amount",
+          "created_at",
+          "created_by_user_id",
+          "is_valid"
+        ],
+        "title": "PaymentAllocationItem",
+        "description": "One allocation of a payment to a charge. ``is_valid`` is false once\na reversal or a credit released it (#90 E5); ``created_by_user_id`` is\n``null`` for a re-inserted remainder."
+      },
+      "PaymentCreate": {
+        "properties": {
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "received_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Received On"
+          },
+          "payment_method_code": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Payment Method Code"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "payer_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Name"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "allocation": {
+            "$ref": "#/components/schemas/PaymentAllocationBody"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount",
+          "received_on",
+          "payment_method_code",
+          "allocation"
+        ],
+        "title": "PaymentCreate",
+        "description": "``POST /api/v1/families/{family_id}/billing-account/payments`` (#96\nC1, M5). ``amount`` above zero (``amount_not_positive``; ``money_*``);\n``received_on`` from 2000-01-01 (``date_out_of_range``; a date after\nthe center's today is the route's ``received_on_in_future``);\n``reference`` (≤ 100), ``payer_name`` (≤ 200) and ``note`` (≤ 500)\ntrimmed, blank → ``null``. Explicit lines may not add up to more than\nthe payment (``allocation_exceeds_payment``)."
+      },
+      "PaymentDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "received_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Received On"
+          },
+          "payment_method_code": {
+            "type": "string",
+            "title": "Payment Method Code"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "payer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Name"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "recorded_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded By User Id"
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Recorded At"
+          },
+          "allocated_amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Allocated Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "refunded_amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Refunded Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "unallocated_amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Unallocated Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "is_reversed": {
+            "type": "boolean",
+            "title": "Is Reversed"
+          },
+          "allocations": {
+            "items": {
+              "$ref": "#/components/schemas/PaymentAllocationItem"
+            },
+            "type": "array",
+            "title": "Allocations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "amount",
+          "received_on",
+          "payment_method_code",
+          "reference",
+          "payer_name",
+          "note",
+          "recorded_by_user_id",
+          "recorded_at",
+          "allocated_amount",
+          "refunded_amount",
+          "unallocated_amount",
+          "is_reversed",
+          "allocations"
+        ],
+        "title": "PaymentDetail",
+        "description": "A payment with every allocation it has had, oldest first."
+      },
+      "PaymentItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "received_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Received On"
+          },
+          "payment_method_code": {
+            "type": "string",
+            "title": "Payment Method Code"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "payer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Name"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "recorded_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded By User Id"
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Recorded At"
+          },
+          "allocated_amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Allocated Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "refunded_amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Refunded Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "unallocated_amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Unallocated Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "is_reversed": {
+            "type": "boolean",
+            "title": "Is Reversed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "amount",
+          "received_on",
+          "payment_method_code",
+          "reference",
+          "payer_name",
+          "note",
+          "recorded_by_user_id",
+          "recorded_at",
+          "allocated_amount",
+          "refunded_amount",
+          "unallocated_amount",
+          "is_reversed"
+        ],
+        "title": "PaymentItem",
+        "description": "A payment. ``unallocated_amount = amount − allocated_amount −\nrefunded_amount`` (valid allocations only); it is account credit only\nwhile ``is_reversed`` is false. ``recorded_at`` is when it was\nentered; ``received_on`` the center-local day the money came in."
+      },
+      "PaymentMethodItem": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "is_active"
+        ],
+        "title": "PaymentMethodItem",
+        "description": "A payment method (#96 M8). Labels come from the client catalogs\n(``billing.paymentMethods.<code>``); only active ones are offered."
+      },
+      "PaymentRecorded": {
+        "properties": {
+          "payment": {
+            "$ref": "#/components/schemas/PaymentItem"
+          },
+          "allocations": {
+            "items": {
+              "$ref": "#/components/schemas/RecordedAllocationItem"
+            },
+            "type": "array",
+            "title": "Allocations"
+          },
+          "unallocated_amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Unallocated Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "account_credit_after": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Account Credit After",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "payment",
+          "allocations",
+          "unallocated_amount",
+          "account_credit_after"
+        ],
+        "title": "PaymentRecorded",
+        "description": "``201`` of recording a payment (#96 C3): the payment, the\nallocations written now, the part left as account credit and the\naccount credit afterwards."
+      },
       "PendingOffer": {
         "properties": {
           "id": {
@@ -42273,6 +43426,7 @@
           "finance.refund.approve",
           "guardian.view",
           "learning_plan.manage",
+          "payment.record",
           "payroll.finalize",
           "progress_report.review",
           "qualification.review",
@@ -44377,6 +45531,43 @@
         ],
         "title": "ReauthenticateResponse",
         "description": "The end of the session's reauthentication window (#26).\n\nHolds no token, hash or session id."
+      },
+      "RecordedAllocationItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "charge_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Charge Id"
+          },
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "charge_id",
+          "student_id",
+          "amount"
+        ],
+        "title": "RecordedAllocationItem",
+        "description": "An allocation written by the request."
       },
       "RegistrationCreate": {
         "properties": {

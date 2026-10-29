@@ -364,6 +364,8 @@ An external payment (cash, transfer or other) recorded by staff (spec §1, §6; 
 
 `UNIQUE (id, billing_account_id)` is the target of the composite foreign keys (I4).
 
+**Recording (#96).** `POST /api/v1/families/{family_id}/billing-account/payments` (`payment.record`, `Idempotency-Key`; no reauthentication, M6) through `billing.service.record_payment`. `amount > 0` within `NUMERIC(14,2)`; `received_on` from 2000-01-01 to the center's today (backdating allowed, no future date); the method must be an **active** `payment_methods` row; `reference`, `payer_name` and `note` are trimmed and blank becomes `NULL` (so the staff-text CHECKs never fire). An inactive family may pay. A family's first payment creates its account (`ensure_billing_account`). `recorded_by_user_id` is the request's actor; a job never records a payment. The entry time is the row's `created_at`. #98 issues the receipt inside the same transaction.
+
 ### 3.13 `payment_reversals`
 
 At most one per payment (E5). A reversal releases all of the payment's valid allocations in the same transaction.
@@ -392,6 +394,14 @@ Part of a payment applied to one charge of the same account (spec W4.3).
 | `created_by_user_id` | UUID | yes | FK `users`; `NULL` when re-inserted by an adjustment's release |
 
 An allocation is **valid** while it has no `allocation_releases` row.
+
+**Allocation (#96 M2-M4; `app/modules/billing/payments.py`).** A payment is allocated in its own transaction (`oldest_first`, `explicit` or `none`); account credit is allocated later (`POST …/allocations`, `oldest_first` or `explicit`). Both run under the account lock and read every `open` amount after it.
+
+- **Oldest first:** the account's charges with `open > 0`, every student included (a student who left the family too), ordered by **effective due date** (§3.11), then `service_date`, `posted_at`, `id`; each gets `min(open, money left)`. #97's due-date changes reorder it with no change in #96.
+- **Explicit:** 1–200 distinct charges of the account, each line `> 0` and `≤ open`, all or nothing (`409 allocation_exceeds_open`, `422 allocation_charge_not_found`); a payment's lines add up to at most its amount (`422 allocation_exceeds_payment`).
+- **The rest is account credit:** no row is written for unallocated money (E5).
+- **Credit source (M4):** a credit allocation draws from the payments without a reversal whose remainder (`amount − Σ valid allocations − Σ refunds`, the same expression as account credit, `billing.service.payment_remainder_column`) is `> 0`, **oldest payment first** (`received_on`, `created_at`, `id`). One target line can become several rows, one per source payment. More than the credit → `409 insufficient_account_credit`; no credit or no open charge → `409 nothing_to_allocate`.
+- There is no "un-allocate": an allocation ends only by a release (§3.15).
 
 ### 3.15 `allocation_releases`
 
@@ -670,8 +680,8 @@ One row per charge and reminder stage, so the reminder job is idempotent (E11, n
 | ID | Invariant | Enforced | Proven by |
 |---|---|---|---|
 | I1 | `net(charge) >= 0` | App | #90, #103 |
-| I2 | Σ valid allocations ≤ net, per charge | App | #96, #103 |
-| I3 | Σ valid allocations + Σ refunds ≤ payment amount; a reversed payment has no valid allocation; a payment with refunds can't be reversed (`409`) | App (`payment_reversals.payment_id` UNIQUE is DB) | #96, #100, #103 |
+| I2 | Σ valid allocations ≤ net, per charge | App | #96 (`test_billing_payments_record.py`, `_credit.py`, `_concurrency.py`), #103 |
+| I3 | Σ valid allocations + Σ refunds ≤ payment amount; a reversed payment has no valid allocation; a payment with refunds can't be reversed (`409`) | App (`payment_reversals.payment_id` UNIQUE is DB) | #96 (`test_billing_payments_credit.py`, `_concurrency.py`), #100, #103 |
 | I4 | An allocation, its payment and its charge are in the same account; so are reversals, refunds and receipts with their payment | DB (composite FKs) | #90 |
 | I5 | An adjustment is in the same account and for the same student as its charge | DB (composite FK) | #90 |
 | I6 | Sign and range checks: charge amounts ≥ 0; adjustment ≠ 0; payment, allocation, refund > 0; `due_offset_days` 0–60; package unit signs per kind | DB (`CHECK`) | #90, #94 |
@@ -729,6 +739,7 @@ Privileges alone can't do it: the local, test and CI database role is a superuse
   3. `number_series` row `FOR UPDATE`, only when a receipt is issued.
 
   The App invariants of §4.1 are checked after step 2.
+- **Payments (#96):** the `idempotency_keys` row → the family's account (created if missing) → the account row `FOR UPDATE` → the charges' `open` amounts and the payment remainders, read under it → the payment and allocation rows → (#98) `number_series`. A credit allocation takes the same order without creating an account. Two payments, credit allocations or adjustments (`post_adjustment`) on one account serialize on the account row; different accounts don't wait.
 - **API requests:** the `idempotency_keys` row is inserted first in the business transaction, before any lock. A concurrent duplicate blocks on the unique index until the first commits, then reads the stored response (E6).
 - **Jobs and sweepers:** insert on the natural keys and treat a conflict as success. On `Audited` tables (every ledger table) that is not `INSERT … ON CONFLICT DO NOTHING`, which the audit guard refuses: the posting primitives (`post_charge`, `post_adjustment`, `ensure_billing_account`; #90 E4) check the key under the account lock and insert through the ORM in a savepoint, and a violation of a named natural-key index rolls the savepoint back and returns the existing row (`created = False`). The non-audited `number_series` keeps `ON CONFLICT DO NOTHING`; periodic tasks use a Procrastinate `queueing_lock` (ADR-0003). They never use `idempotency_keys`. The jobs: `billing:post_session_charges` (every 15 minutes, #91; in `app/workflows/session_charge_tasks.py`, logic in `app/workflows/session_charges.py`), `billing:post_enrollment_charges` (every 15 minutes, #92; in `app/workflows/enrollment_charge_tasks.py`, logic in `app/workflows/enrollment_charges.py`), `billing:post_tuition_charges` (daily at 07:30 UTC, #93; in `app/workflows/tuition_charge_tasks.py`, logic in `app/workflows/tuition_charges.py`), the daily package expiry `billing:expire_packages` (07:40 UTC, #94; in `app/workflows/package_expiry_tasks.py`, logic in `app/workflows/package_expiry.py`), the reminder job (#97, natural key `charge_reminders (charge_id, stage)`) and `idempotency:purge_keys` (hourly, #88).
 - **Session charges (#91):** one Unit of Work per candidate `(class_session_id, student_id)`, in this order: the session row `FOR SHARE` (`scheduling.service.lock_session_for_billing`; every scheduling writer that changes a session's state, time, duration or participants takes it `FOR UPDATE`; the participants are read after the lock) → `billing_settings` `FOR SHARE` → `billing_accounts` `FOR UPDATE` (in `post_charge`, last). A group session re-checks the J2 rule after the account lock (#92 E3).
@@ -835,7 +846,7 @@ Each M6 issue, the ADR-0006 / ADR-0015 decision items it relies on, and the tabl
 | #93 M6-08 Tuition plans | E1 (daily job, local periods), E9 (`per_period`, group per-student), E11 (`period_start + due_offset_days`) | `tuition_plans`, `tuition_plan_pauses`, `service_prices` (`period_frequency`), `charges` (`tuition_plan_id`) |
 | #94 M6-09 Packages | E1 (purchase; the floor gates only session charges, L5), E6 (purchase key), E7 (`expire` rows), E10 (coverage by service date, first-expiring-first, consumption at approval revision 1, the L1 expiry fallback), E11 (purchase date) | `package_products`, `packages`, `package_credit_transactions` (no `withdrawal_id`/`refund` yet, L10), `service_prices` (`package` items), `charges` (`package_id`) |
 | #95 M6-10 Discounts, custom prices | E8 (`billing.manage`), E9 (precedence step 1, stacking, discount snapshot equation) | `custom_prices`, `discounts`, `discount_assignments`, `charge_discounts`, `charges` (`custom_price_id`) |
-| #96 M6-11 Payments, allocations | E5 (allocations, account credit, I2/I3), E6, E8 (`payment.record`), E12 (method from the seeded table) | `payment_methods`, `payments`, `payment_allocations` |
+| #96 M6-11 Payments, allocations | E5 (allocations, account credit, I2/I3), E6, E8 (`payment.record`, seeded by `make seed`; no reauthentication), E12 (method from the seeded table); no migration (the tables exist since 0061) | `payment_methods`, `payments`, `payment_allocations` |
 | #97 M6-12 Due dates, reminders | E11 (rules, family override, `charge_due_date_changes`, local-date overdue, `(charge_id, stage)`) | `charge_due_date_changes`, `charge_reminders` |
 | #98 M6-13 Receipts | E13 (`number_series`, snapshot incl. template version, one per payment), E14, E15 | `receipts`, `number_series` |
 | #99 M6-14 Reconciliation | E2 (delta adjustment), E3 (rules, outcomes, closures), E10 (`charge` debits units) | `cancellation_billing_rules`, `charge_adjustments` |

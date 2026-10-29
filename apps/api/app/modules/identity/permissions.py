@@ -141,8 +141,7 @@ ASSIGNMENT_REVIEW = "assignment.review"
 PROGRESS_REPORT_REVIEW = "progress_report.review"
 # Price catalog (#89, owner-delegated decision E6 (a); ADR-0006 E8): who reads
 # and manages the service price catalog (Owner, Administrator, Finance
-# Staff; not delegable). Seeded by #89, its first user; payment.record (#96)
-# comes with its own issue.
+# Staff; not delegable). Seeded by #89, its first user.
 BILLING_MANAGE = "billing.manage"
 # Billing accounts (#364 / #90b F1 (a); ADR-0006 E8): who reads every
 # family's billing account, charges and ledger (Owner, Administrator,
@@ -150,6 +149,11 @@ BILLING_MANAGE = "billing.manage"
 # through the record policy of app/workflows/billing_accounts.py, not
 # through this permission.
 BILLING_VIEW = "billing.view"
+# Payments (#96, owner-delegated decisions M1 (a) and M6 (a); ADR-0006 E8): who
+# records a family's external payments and allocates them, or allocates the
+# account credit later (Owner, Administrator, Finance Staff; not delegable; no
+# reauthentication: a mistake is undone by a #100 reversal, which needs it).
+PAYMENT_RECORD = "payment.record"
 
 
 @dataclass(frozen=True)
@@ -195,6 +199,7 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(PROGRESS_REPORT_REVIEW),
     PermissionDef(BILLING_MANAGE),
     PermissionDef(BILLING_VIEW),
+    PermissionDef(PAYMENT_RECORD),
     PermissionDef(PAYROLL_FINALIZE, delegable=True),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
@@ -244,6 +249,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 PROGRESS_REPORT_REVIEW,
                 BILLING_MANAGE,
                 BILLING_VIEW,
+                PAYMENT_RECORD,
             }
         ),
         ACADEMIC_COORDINATOR: frozenset(
@@ -273,6 +279,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 COURSE_VIEW,
                 BILLING_MANAGE,
                 BILLING_VIEW,
+                PAYMENT_RECORD,
             }
         ),
         # Record policies limit these to assigned students, self and linked

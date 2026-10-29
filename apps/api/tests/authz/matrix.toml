@@ -525,6 +525,14 @@ allow = ["owner", "administrator", "finance_staff"]
 
 [[route]]
 method = "GET"
+path = "/api/v1/billing/payment-methods"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #96 C5 (M8): the payment methods, for the record-payment form.
+
+[[route]]
+method = "GET"
 path = "/api/v1/billing/service-prices"
 access = "permission"
 permission = "billing.manage"
@@ -1472,6 +1480,20 @@ access = "authenticated"
 # tests/integration/test_billing_account_access.py.
 
 [[route]]
+method = "POST"
+path = "/api/v1/families/{family_id}/billing-account/allocations"
+access = "permission"
+permission = "payment.record"
+allow = ["owner", "administrator", "finance_staff"]
+idempotency = true
+# #96 C4 (M1 (a), M4 (a); ADR-0006 E8): allocating account credit posts ledger
+# rows, so it needs an Idempotency-Key (#88); without one the allowed roles get
+# 400. No reauthentication (M6 (a)). Replays, the concurrent duplicate and the
+# codes: tests/integration/test_billing_payments_credit.py and
+# test_billing_payments_idempotency.py.
+json = {}
+
+[[route]]
 method = "GET"
 path = "/api/v1/families/{family_id}/billing-account/charges"
 access = "authenticated"
@@ -1490,6 +1512,39 @@ access = "authenticated"
 # of their active profile, anyone else 404. The placeholder id is no family:
 # 404 for every signed-in role. Roles and guardians:
 # tests/integration/test_billing_account_access.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/payments"
+access = "authenticated"
+# #96 C6 the payments; #90b F1 (a) record policy (#96 M7): billing.view holders
+# (Owner, Administrator, Finance Staff) see every family, a guardian only the
+# family of their active profile (note and actor ids null), anyone else 404.
+# The placeholder id is no family: 404 for every signed-in role. Roles and
+# guardians: tests/integration/test_billing_payments_access.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/families/{family_id}/billing-account/payments"
+access = "permission"
+permission = "payment.record"
+allow = ["owner", "administrator", "finance_staff"]
+idempotency = true
+# #96 C1 (M1 (a); ADR-0006 E8): recording a payment posts ledger rows, so it
+# needs an Idempotency-Key (#88); without one the allowed roles get 400. No
+# reauthentication (M6 (a)). Replays, the concurrent duplicate and the codes:
+# tests/integration/test_billing_payments_idempotency.py and
+# test_billing_payments_record.py.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/payments/{payment_id}"
+access = "authenticated"
+# #96 C6 one payment with its allocations; the same record policy as the list
+# (#90b F1 (a), #96 M7). The placeholder ids are no family: 404 for every
+# signed-in role. Roles and guardians:
+# tests/integration/test_billing_payments_access.py.
 
 [[route]]
 method = "DELETE"

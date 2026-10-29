@@ -30,6 +30,7 @@ from decimal import Decimal
 from typing import Annotated, Any, Final, Literal
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -56,7 +57,11 @@ from app.modules.billing.models import (
     DURATION_MAX,
     DURATION_MIN,
     MANUAL,
+    NOTE_MAX,
+    PAYER_NAME_MAX,
+    PAYMENT_METHOD_CODE_MAX,
     REASON_MAX,
+    REFERENCE_MAX,
     SCHEDULED_MINUTES_MAX,
     SCHEDULED_MINUTES_MIN,
     SOURCE_KEY_MAX,
@@ -517,7 +522,8 @@ class PostedAdjustment:
 class ChargeBalance:
     """One charge with its derived values (#90 D1; data-model §4.2).
     ``allocated`` counts valid allocations only; ``open = net −
-    allocated``."""
+    allocated``. ``posted_at`` breaks ties in the #96 oldest-first
+    allocation order (M2)."""
 
     charge_id: uuid.UUID
     student_id: uuid.UUID
@@ -530,6 +536,7 @@ class ChargeBalance:
     allocated: Money
     open: Money
     status: ChargeStatus
+    posted_at: datetime
 
 
 @dataclass(frozen=True)
@@ -1101,3 +1108,377 @@ class CustomPriceUpdate(BaseModel):
     @classmethod
     def _expires(cls, value: date | None) -> date | None:
         return _optional_date(value)
+
+
+# --- Payments and allocations (#96 B, C; M3-M5) --------------------------------------
+
+type AllocationMode = Literal["oldest_first", "explicit", "none"]
+"""How a payment is allocated (#96 M3): the oldest open charges first
+(M2), the charges and amounts the staff member chose, or not at all (all
+account credit)."""
+type CreditAllocationMode = Literal["oldest_first", "explicit"]
+"""How account credit is allocated later (#96 M4; no ``none``)."""
+
+ALLOCATION_LINES_MAX: Final = 200
+RECEIVED_ON_MIN: Final = date(2000, 1, 1)
+
+PAYMENT_RULE_MESSAGES: Final[dict[str, str]] = {
+    "allocation_lines_required": "Choose at least one charge.",
+    "allocation_lines_not_allowed": (
+        "Charges are chosen only for an explicit allocation."
+    ),
+    "allocation_duplicate_charge": "Each charge can appear only once.",
+    "allocation_exceeds_payment": "The allocations add up to more than the payment.",
+    "amount_not_allowed": "An amount is given only for an oldest-first allocation.",
+}
+
+
+def _payment_rule(code: str) -> PydanticCustomError:
+    return PydanticCustomError(code, PAYMENT_RULE_MESSAGES[code])
+
+
+def _blank_to_none(value: str | None) -> str | None:
+    return value or None
+
+
+ReferenceText = Annotated[
+    Annotated[str, StringConstraints(strip_whitespace=True, max_length=REFERENCE_MAX)]
+    | None,
+    AfterValidator(_blank_to_none),
+]
+"""Optional staff text (#96 M5): trimmed, at most 100 characters, ``null``
+when blank after trimming, so the ``staff_text_check`` CHECKs never fire.
+:data:`PayerNameText` (200) and :data:`NoteText` (500) likewise."""
+PayerNameText = Annotated[
+    Annotated[str, StringConstraints(strip_whitespace=True, max_length=PAYER_NAME_MAX)]
+    | None,
+    AfterValidator(_blank_to_none),
+]
+NoteText = Annotated[
+    Annotated[str, StringConstraints(strip_whitespace=True, max_length=NOTE_MAX)]
+    | None,
+    AfterValidator(_blank_to_none),
+]
+
+
+def _received_on(value: date) -> date:
+    if value < RECEIVED_ON_MIN:
+        raise PydanticCustomError(
+            "date_out_of_range", "Choose a date from 2000-01-01 on."
+        )
+    return value
+
+
+class AllocationLineBody(BaseModel):
+    """One explicit allocation line: a charge of the account and an amount
+    above zero (``amount_not_positive``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    charge_id: uuid.UUID
+    amount: Money
+
+    _positive = field_validator("amount")(_amount_positive)
+
+
+def _lines_rule(
+    value: list[AllocationLineBody] | None, info: ValidationInfo
+) -> list[AllocationLineBody] | None:
+    mode = info.data.get("mode")
+    if mode is None:
+        return value
+    if mode == "explicit" and not value:
+        raise _payment_rule("allocation_lines_required")
+    if mode != "explicit" and value is not None:
+        raise _payment_rule("allocation_lines_not_allowed")
+    if value is not None and len({line.charge_id for line in value}) != len(value):
+        raise _payment_rule("allocation_duplicate_charge")
+    return value
+
+
+class PaymentAllocationBody(BaseModel):
+    """How to allocate a payment (#96 M3). ``lines`` (1 to 200, distinct
+    charges) only and always with ``explicit``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: AllocationMode
+    lines: Annotated[
+        list[AllocationLineBody] | None,
+        Field(max_length=ALLOCATION_LINES_MAX, validate_default=True),
+    ] = None
+
+    _lines = field_validator("lines")(_lines_rule)
+
+
+class CreditAllocationBody(BaseModel):
+    """How to allocate account credit (#96 M4): ``oldest_first`` or
+    ``explicit`` (``lines`` as in :class:`PaymentAllocationBody`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: CreditAllocationMode
+    lines: Annotated[
+        list[AllocationLineBody] | None,
+        Field(max_length=ALLOCATION_LINES_MAX, validate_default=True),
+    ] = None
+
+    _lines = field_validator("lines")(_lines_rule)
+
+
+def _lines_total(lines: list[AllocationLineBody] | None) -> Decimal:
+    # Decimal, not Money: 200 lines near the NUMERIC(14,2) limit may add up
+    # to more than Money can hold.
+    return sum((line.amount.amount for line in lines or ()), Decimal(0))
+
+
+class PaymentCreate(BaseModel):
+    """``POST /api/v1/families/{family_id}/billing-account/payments`` (#96
+    C1, M5). ``amount`` above zero (``amount_not_positive``; ``money_*``);
+    ``received_on`` from 2000-01-01 (``date_out_of_range``; a date after
+    the center's today is the route's ``received_on_in_future``);
+    ``reference`` (≤ 100), ``payer_name`` (≤ 200) and ``note`` (≤ 500)
+    trimmed, blank → ``null``. Explicit lines may not add up to more than
+    the payment (``allocation_exceeds_payment``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    amount: Money
+    received_on: date
+    payment_method_code: Annotated[
+        str, StringConstraints(min_length=1, max_length=PAYMENT_METHOD_CODE_MAX)
+    ]
+    reference: ReferenceText = None
+    payer_name: PayerNameText = None
+    note: NoteText = None
+    allocation: PaymentAllocationBody
+
+    _positive = field_validator("amount")(_amount_positive)
+    _date = field_validator("received_on")(_received_on)
+
+    @field_validator("allocation")
+    @classmethod
+    def _within_payment(
+        cls, value: PaymentAllocationBody, info: ValidationInfo
+    ) -> PaymentAllocationBody:
+        amount = info.data.get("amount")
+        if amount is not None and _lines_total(value.lines) > amount.amount:
+            raise _payment_rule("allocation_exceeds_payment")
+        return value
+
+
+class CreditAllocationCreate(BaseModel):
+    """``POST /api/v1/families/{family_id}/billing-account/allocations``
+    (#96 C4, M4). ``amount`` (above zero) only with ``oldest_first``
+    (``amount_not_allowed``); without it the whole account credit is
+    allocated."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    allocation: CreditAllocationBody
+    amount: Money | None = None
+
+    @field_validator("amount")
+    @classmethod
+    def _amount_rule(cls, value: Money | None, info: ValidationInfo) -> Money | None:
+        _amount_positive(value)
+        allocation = info.data.get("allocation")
+        if (
+            value is not None
+            and allocation is not None
+            and allocation.mode != "oldest_first"
+        ):
+            raise _payment_rule("amount_not_allowed")
+        return value
+
+
+@dataclass(frozen=True)
+class AllocationLine:
+    """One explicit allocation line (#96 M3)."""
+
+    charge_id: uuid.UUID
+    amount: Money
+
+
+def _check_lines(mode: str, lines: tuple[AllocationLine, ...]) -> None:
+    if mode == "explicit":
+        if not 1 <= len(lines) <= ALLOCATION_LINES_MAX:
+            raise ValueError(f"explicit needs 1 to {ALLOCATION_LINES_MAX} lines")
+    elif lines:
+        raise ValueError("lines only with explicit")
+    if len({line.charge_id for line in lines}) != len(lines):
+        raise ValueError("allocation lines name distinct charges")
+    if any(not _require_money(line.amount, "amount").is_positive() for line in lines):
+        raise ValueError("an allocation line is positive")
+
+
+@dataclass(frozen=True, kw_only=True)
+class AllocationRequest:
+    """How to allocate (#96 M3, M4). Rule breaks raise :class:`ValueError`
+    when built (the request bodies refuse them first)."""
+
+    mode: AllocationMode
+    lines: tuple[AllocationLine, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.mode not in ("oldest_first", "explicit", "none"):
+            raise ValueError(f"unknown allocation mode {self.mode!r}")
+        _check_lines(self.mode, tuple(self.lines))
+
+    @property
+    def total(self) -> Money:
+        """Σ explicit lines (zero for the other modes)."""
+        return Money.total(line.amount for line in self.lines)
+
+    @classmethod
+    def of(
+        cls, body: PaymentAllocationBody | CreditAllocationBody
+    ) -> AllocationRequest:
+        """The request of a validated body."""
+        return cls(
+            mode=body.mode,
+            lines=tuple(
+                AllocationLine(charge_id=line.charge_id, amount=line.amount)
+                for line in body.lines or ()
+            ),
+        )
+
+
+@dataclass(frozen=True, kw_only=True)
+class PaymentDraft:
+    """A payment to record with
+    :func:`app.modules.billing.service.record_payment` (#96 B1). ``amount``
+    above zero; text fields ``None`` or trimmed staff text; explicit lines
+    within the amount. Rule breaks raise :class:`ValueError` when built."""
+
+    billing_account_id: uuid.UUID
+    amount: Money
+    received_on: date
+    payment_method_code: str
+    reference: str | None = None
+    payer_name: str | None = None
+    note: str | None = None
+    allocation: AllocationRequest
+
+    def __post_init__(self) -> None:
+        if not _require_money(self.amount, "amount").is_positive():
+            raise ValueError("a payment amount is above zero")
+        _check_staff_text(self.reference, "reference", REFERENCE_MAX)
+        _check_staff_text(self.payer_name, "payer_name", PAYER_NAME_MAX)
+        _check_staff_text(self.note, "note", NOTE_MAX)
+        if self.allocation.total > self.amount:
+            raise ValueError("the allocation lines add up to more than the payment")
+
+
+@dataclass(frozen=True, kw_only=True)
+class CreditAllocationRequest:
+    """An allocation of account credit for
+    :func:`app.modules.billing.service.allocate_account_credit` (#96 B2,
+    M4): ``oldest_first`` (``amount``: at most this much; ``None`` = the
+    whole credit) or ``explicit``."""
+
+    billing_account_id: uuid.UUID
+    allocation: AllocationRequest
+    amount: Money | None = None
+
+    def __post_init__(self) -> None:
+        if self.allocation.mode == "none":
+            raise ValueError("a credit allocation is oldest_first or explicit")
+        if self.amount is not None:
+            if not _require_money(self.amount, "amount").is_positive():
+                raise ValueError("a credit allocation amount is above zero")
+            if self.allocation.mode != "oldest_first":
+                raise ValueError("amount only with oldest_first")
+
+
+@dataclass(frozen=True)
+class PlannedAllocation:
+    """One line of an allocation plan (:func:`plan_allocations`)."""
+
+    charge_id: uuid.UUID
+    amount: Money
+
+
+@dataclass(frozen=True)
+class RecordedAllocation:
+    """A ``payment_allocations`` row written by #96."""
+
+    allocation_id: uuid.UUID
+    payment_id: uuid.UUID
+    charge_id: uuid.UUID
+    student_id: uuid.UUID
+    amount: Money
+
+
+@dataclass(frozen=True)
+class RecordedPayment:
+    """The result of ``record_payment`` (#96 B1): the payment, its
+    allocations (in plan order), the part left as account credit and the
+    account credit afterwards."""
+
+    payment_id: uuid.UUID
+    allocations: tuple[RecordedAllocation, ...]
+    unallocated: Money
+    account_credit_after: Money
+
+
+@dataclass(frozen=True)
+class CreditAllocation:
+    """The result of ``allocate_account_credit`` (#96 B2): the rows written
+    (one target line may become several, one per source payment), their
+    total and the account credit afterwards."""
+
+    allocations: tuple[RecordedAllocation, ...]
+    allocated_total: Money
+    account_credit_after: Money
+
+
+@dataclass(frozen=True)
+class PaymentMethodRow:
+    """A ``payment_methods`` row (#96 B6)."""
+
+    code: str
+    is_active: bool
+
+
+@dataclass(frozen=True)
+class PaymentRow:
+    """A payment with its derived amounts (#96 C6). ``unallocated_amount =
+    amount − allocated_amount − refunded_amount``; it is account credit
+    only while ``is_reversed`` is false. ``recorded_at`` is the row's
+    ``created_at``."""
+
+    id: uuid.UUID
+    amount: Money
+    received_on: date
+    payment_method_code: str
+    reference: str | None
+    payer_name: str | None
+    note: str | None
+    recorded_by_user_id: uuid.UUID
+    recorded_at: datetime
+    allocated_amount: Money
+    refunded_amount: Money
+    unallocated_amount: Money
+    is_reversed: bool
+
+
+@dataclass(frozen=True)
+class PaymentPage:
+    """One page of :class:`PaymentRow` and the account's payment total."""
+
+    items: tuple[PaymentRow, ...]
+    total: int
+
+
+@dataclass(frozen=True)
+class PaymentAllocationRow:
+    """One allocation of a payment, valid or released (#96 C6)."""
+
+    id: uuid.UUID
+    charge_id: uuid.UUID
+    student_id: uuid.UUID
+    amount: Money
+    created_at: datetime
+    created_by_user_id: uuid.UUID | None
+    is_valid: bool

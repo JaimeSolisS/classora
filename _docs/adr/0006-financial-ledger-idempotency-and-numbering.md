@@ -108,6 +108,7 @@ Resolves architecture §10 **ISSUE-F1** (when lesson charges are posted), **ISSU
 
   Charge status is derived from these: `pending`, `partially_paid`, `paid`, `overdue` (open > 0 and the due date before today in the center zone) and `void` (net = 0 with no allocation). There is no stored balance. A verified snapshot is allowed only for reporting.
 - **W4.4 reading:** *refunds* in "posted charges/adjustments less valid allocations and refunds" are the credit-side corrections (negative adjustments). A cash refund reduces account credit, not the outstanding amount.
+- Clarification (#96, 2026-10-28): "oldest first" (M2) means the open charges by **effective due date**, then service date, posting time and id, across every student on the account; a later allocation of account credit (M4) draws from the **oldest unreversed payment's remainder first** (`received_on`, `created_at`, `id`), so one target charge can get several allocation rows. No accepted rule changes.
 - **Immutability:** every ledger table is append-only through `BEFORE UPDATE OR DELETE` and `BEFORE TRUNCATE` triggers raising SQLSTATE **42501**, the `audit_events` pattern of migration 0004. Privileges can't do it, because the local, test and CI role is a superuser; #165 (M10-10) adds the least-privilege role later. A migration may disable a trigger only in its own downgrade, for that one statement.
 - **Serialization:** every financial mutation takes the billing account row `FOR UPDATE` as its **last** lock, after any scheduling or courses lock of the calling workflow; the receipt counter comes after it (E13). The cross-row invariants (net ≥ 0; allocations ≤ net; allocations + refunds ≤ payment) are checked under that lock. Same-account and same-student rules are database-enforced through composite foreign keys.
 - **Money and currency:** `NUMERIC(14,2)` with half-up rounding per line ([ADR-0004](0004-money-time-and-date-representation.md)). No currency columns (MXN only), no tax computation and no IVA lines. Prices are final amounts, and receipts are not CFDI (spec §1).
@@ -146,6 +147,7 @@ Permissions, not roles. None of the new ones is delegable, and each is seeded by
 | `payroll.prepare` / `payroll.finalize` | Finance Staff / Owner, delegable (already in code) | recorded here for M7, as ISSUE-F7 proposed | M7 |
 
 - **Reauthentication** ([ADR-0007](0007-authentication-sessions-recovery-and-delegation.md) D10): a negative manual adjustment against a posted charge is a financial correction (`finance.correction`). It needs `billing.manage` plus reauthentication. Positive manual charges don't.
+  - Clarification (#96 M6, 2026-10-28): recording or allocating a payment (`payment.record`) needs **no** reauthentication: it is additive and not on the D10 list; a mistake is undone by a reversal (#100), which does.
 - **Withdrawals (#101):** `schedule.manage` (it withdraws the enrollment), plus `finance.refund.approve` for a refund outcome or `billing.manage` for an account-credit outcome.
 - **Academic Coordinators and tutors** get no billing permission.
 - **Families** get access through record policy only (E4).

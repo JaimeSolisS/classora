@@ -429,3 +429,77 @@ class SessionSettledByPackageError(Exception):
         super().__init__("the session is settled by a package")
         self.class_session_id = class_session_id
         self.student_id = student_id
+
+
+# --- Payments and allocations (#96 B4, C2; M3-M5) ------------------------------------
+
+
+class AllocationExceedsOpenError(_Conflict):
+    """An explicit allocation line is above the charge's open amount under
+    the account lock (I2; #96 M3). ``details``: the charge id and its open
+    amount. Nothing is written."""
+
+    code = "allocation_exceeds_open"
+    detail = "An allocation is more than what is still open on the charge."
+
+    def __init__(self, charge_id: uuid.UUID, open_amount: Money) -> None:
+        AppError.__init__(
+            self, details={"charge_id": str(charge_id), "open": str(open_amount)}
+        )
+
+
+class InsufficientAccountCreditError(_Conflict):
+    """A credit allocation asks for more than the account credit (#96 M4).
+    ``details.account_credit`` is the credit under the account lock."""
+
+    code = "insufficient_account_credit"
+    detail = "The account doesn't have that much credit."
+
+    def __init__(self, account_credit: Money) -> None:
+        AppError.__init__(self, details={"account_credit": str(account_credit)})
+
+
+class NothingToAllocateError(_Conflict):
+    """A credit allocation found no account credit or no open charge (#96
+    M4). Nothing is written."""
+
+    code = "nothing_to_allocate"
+    detail = "There is no account credit or no open charge to allocate it to."
+
+
+class AllocationChargeNotFoundError(AppError):
+    """Explicit allocation lines name charges that are not on the family's
+    account (#96 M3): one field error per line, at
+    ``["body", "allocation", "lines", i, "charge_id"]``."""
+
+    status = 422
+    code = "allocation_charge_not_found"
+    detail = "Choose charges of this family's account."
+
+    def __init__(self, indexes: Sequence[int]) -> None:
+        super().__init__(
+            errors=[
+                {
+                    "path": ["body", "allocation", "lines", index, "charge_id"],
+                    "code": self.code,
+                    "message": self.detail or "",
+                }
+                for index in indexes
+            ]
+        )
+
+
+class PaymentMethodUnavailableError(_FieldRuleError):
+    """The payment method is unknown or deactivated (#96 M5, E12)."""
+
+    code = "payment_method_unavailable"
+    field = "payment_method_code"
+    detail = "Choose an active payment method."
+
+
+class ReceivedOnInFutureError(_FieldRuleError):
+    """The payment is dated after the center's local today (#96 M5)."""
+
+    code = "received_on_in_future"
+    field = "received_on"
+    detail = "The payment date can't be after today."

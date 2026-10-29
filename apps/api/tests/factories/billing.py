@@ -6,11 +6,12 @@ commit), so a test can build any catalog the CHECKs allow, ``package`` and
 ``per_period`` rows included; the routes are tested through the API.
 
 Ledger (#90): :func:`billing_account` and :func:`charge` go through the
-posting primitives (``ensure_billing_account``, ``post_charge``). The
-payment side has no primitive until #96/#100, so :func:`payment`,
-:func:`allocation`, :func:`reversal` (which also releases the payment's
-valid allocations, as #100 will) and :func:`refund` insert ORM rows
-directly. Every helper flushes and never commits.
+posting primitives (``ensure_billing_account``, ``post_charge``).
+:func:`payment`, :func:`allocation`, :func:`reversal` (which also releases
+the payment's valid allocations, as #100 will) and :func:`refund` insert
+ORM rows directly, so a test can build any ledger state; #96's
+``record_payment`` / ``allocate_account_credit`` are tested through their
+routes and primitives. Every helper flushes and never commits.
 """
 
 import uuid

@@ -10,7 +10,8 @@ and history (``balances.py``); see :mod:`app.modules.billing.service`. M6-06
 (#91) adds the billing settings; M6-10 (#95) the discounts, scholarships and
 custom prices (``discounts.py``, ``discount_config.py``,
 ``custom_prices.py``) and the shared price calculation
-(:func:`app.modules.billing.service.quote`).
+(:func:`app.modules.billing.service.quote`). M6-11 (#96) records payments
+and allocates them, and allocates account credit later (``payments.py``).
 
 Other modules use :mod:`app.modules.billing.service` and
 :mod:`app.modules.billing.schemas` only (ADR-0002).
