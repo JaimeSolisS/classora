@@ -26,17 +26,22 @@ import {
   type UnbilledItem,
   type UnbilledPage,
 } from './api';
+import {
+  UnbilledEnrollments,
+  type UnbilledEnrollmentsState,
+} from './UnbilledEnrollments';
 
-// The Unbilled tab (#366 C), without any query (stories render each
+// The Unbilled tab (#366 C, #372), without any query (stories render each
 // state): the Billing tabs, the title with the note that new confirmations
 // are billed within about 15 minutes, the reason filter (the page keeps it
-// in the URL) and the table: date and time in the center's zone, student,
-// subject, length, family and reason, with a link to fix the cause when
-// the user can use it (no family → the families list for guardian.view
-// holders; no price → the price catalog for billing.manage holders). While
-// billing is off the table gives way to a link to the Settings tab. Below
-// `md` the table scrolls inside its own container (SC 1.4.10 data-table
-// exception).
+// in the URL; it applies to both sections), the Sessions table: date and
+// time in the center's zone, student, subject, class (individual or the
+// group), length, family and reason, with a link to fix the cause when the
+// user can use it (no family → the families list for guardian.view
+// holders; no price → the price catalog for billing.manage holders), and
+// below it the Enrollments section (UnbilledEnrollments). While billing is
+// off both give way to a link to the Settings tab. Below `md` the tables
+// scroll inside their own container (SC 1.4.10 data-table exception).
 
 export type UnbilledState =
   | { status: 'loading' }
@@ -45,9 +50,12 @@ export type UnbilledState =
 
 export interface UnbilledViewProps {
   state: UnbilledState;
+  /** The Enrollments section, loaded and failing on its own. */
+  enrollments: UnbilledEnrollmentsState;
   filters: UnbilledFilters;
   onFilters: (filters: UnbilledFilters) => void;
   onPage: (page: number) => void;
+  onEnrollmentPage: (page: number) => void;
   /** guardian.view: the "Not in a family" fix link (the families list). */
   canOpenFamilies: boolean;
   /** billing.manage: the "No price" fix link (the price catalog). */
@@ -56,16 +64,22 @@ export interface UnbilledViewProps {
 
 export function UnbilledView({
   state,
+  enrollments,
   filters,
   onFilters,
   onPage,
+  onEnrollmentPage,
   canOpenFamilies,
   canManagePrices,
 }: UnbilledViewProps) {
   const { t } = useTranslation();
   const { formatInstant, formatLocalDate } = useFormatters();
   const id = useId();
-  const ids = { title: `${id}-title`, reason: `${id}-reason` };
+  const ids = {
+    title: `${id}-title`,
+    sessions: `${id}-sessions`,
+    reason: `${id}-reason`,
+  };
 
   function fixLink(item: UnbilledItem) {
     if (item.reason === 'no_billing_account' && canOpenFamilies) {
@@ -97,6 +111,8 @@ export function UnbilledView({
     return null;
   }
 
+  const billingOff =
+    state.status === 'ready' && state.settings.billing_starts_on === null;
   let body;
   if (state.status === 'loading') {
     body = <LoadingState layout="table" rows={5} />;
@@ -132,7 +148,7 @@ export function UnbilledView({
     const { items, total, limit, offset } = state.page;
     body = (
       <div className="flex flex-col gap-4">
-        <Table aria-labelledby={ids.title}>
+        <Table aria-labelledby={ids.sessions}>
           <TableHeader>
             <TableRow>
               <TableHead scope="col">
@@ -143,6 +159,9 @@ export function UnbilledView({
               </TableHead>
               <TableHead scope="col">
                 {t('billing.unbilled.columns.subject')}
+              </TableHead>
+              <TableHead scope="col">
+                {t('billing.unbilled.columns.class')}
               </TableHead>
               <TableHead scope="col">
                 {t('billing.unbilled.columns.length')}
@@ -173,6 +192,11 @@ export function UnbilledView({
                 <TableCell className="max-w-xs whitespace-normal break-words">
                   {item.subject.name}
                 </TableCell>
+                <TableCell className="max-w-xs whitespace-normal break-words">
+                  {item.class_type === 'group' && item.group
+                    ? item.group.name
+                    : t('billing.unbilled.individual')}
+                </TableCell>
                 <TableCell>
                   {t('billing.unbilled.minutes', {
                     minutes: item.scheduled_minutes,
@@ -195,6 +219,7 @@ export function UnbilledView({
           shown={items.length}
           total={total}
           onPage={onPage}
+          label={t('billing.unbilled.sessions.pagination')}
         />
       </div>
     );
@@ -234,6 +259,7 @@ export function UnbilledView({
                     (reason) => reason === event.target.value,
                   ) ?? null,
                 page: 1,
+                enrollmentPage: 1,
               })
             }
           >
@@ -246,7 +272,29 @@ export function UnbilledView({
           </select>
         </div>
       </div>
-      {body}
+      {billingOff ? (
+        body
+      ) : (
+        <>
+          <section
+            aria-labelledby={ids.sessions}
+            className="flex flex-col gap-4"
+            data-unbilled-section="sessions"
+          >
+            <h2 id={ids.sessions} className="text-lg font-semibold">
+              {t('billing.unbilled.sessions.title')}
+            </h2>
+            {body}
+          </section>
+          <UnbilledEnrollments
+            state={enrollments}
+            filtered={filters.reason !== null}
+            onPage={onEnrollmentPage}
+            canOpenFamilies={canOpenFamilies}
+            canManagePrices={canManagePrices}
+          />
+        </>
+      )}
     </div>
   );
 }

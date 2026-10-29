@@ -7,27 +7,37 @@ import { StoryRouter } from '@/test/StoryRouter';
 import { SETTINGS_OFF, SETTINGS_ON } from '../settings/fixtures';
 import { FINANCE_SESSION } from '../storySession';
 import {
+  EMPTY_UNBILLED_ENROLLMENTS_PAGE,
   EMPTY_UNBILLED_PAGE,
+  ITEM_GROUP,
   ITEM_NO_FAMILY,
   ITEM_NO_PRICE,
+  UNBILLED_ENROLLMENTS_PAGE,
   UNBILLED_PAGE,
 } from './fixtures';
 import { UnbilledView } from './UnbilledView';
 
-// The Unbilled tab without its queries (#366 E2): rows with both reasons
-// and their fix links, rows without the links (no permission), billing off
-// (the Settings link), billing on with nothing unbilled, loading and a
-// failed load. No request: every call is a stub. axe runs on each story in
-// both themes.
+// The Unbilled tab without its queries (#366 E2, #372 D2): session rows
+// with both reasons, the Class column and their fix links above the
+// Enrollments section, rows without the links (no permission), billing off
+// (the Settings link, no Enrollments section), billing on with nothing
+// unbilled, loading and a failed load. No request: every call is a stub.
+// axe runs on each story in both themes.
 
 const meta = {
   title: 'Billing/UnbilledView',
   component: UnbilledView,
   args: {
     state: { status: 'ready', settings: SETTINGS_ON, page: UNBILLED_PAGE },
-    filters: { reason: null, page: 1 },
+    enrollments: {
+      status: 'ready',
+      startsOn: '2026-09-01',
+      page: UNBILLED_ENROLLMENTS_PAGE,
+    },
+    filters: { reason: null, page: 1, enrollmentPage: 1 },
     onFilters: fn(),
     onPage: fn(),
+    onEnrollmentPage: fn(),
     canOpenFamilies: true,
     canManagePrices: true,
   },
@@ -47,7 +57,15 @@ type Story = StoryObj<typeof meta>;
 export const Rows: Story = {
   play: async ({ canvas }) => {
     await expect(
-      canvas.getByRole('table', { name: i18n.t('billing.unbilled.title') }),
+      canvas.getByRole('table', {
+        name: i18n.t('billing.unbilled.sessions.title'),
+      }),
+    ).toBeVisible();
+    await expect(canvas.getByText(ITEM_GROUP.group!.name)).toBeVisible();
+    await expect(
+      canvas.getByRole('table', {
+        name: i18n.t('billing.unbilled.enrollments.title'),
+      }),
     ).toBeVisible();
     await expect(
       canvas.getByRole('link', { name: i18n.t('billing.tabs.unbilled') }),
@@ -78,7 +96,7 @@ export const RowsWithoutLinks: Story = {
       }),
     ).toBeNull();
     await expect(
-      canvas.getByText(i18n.t('billing.unbilled.noFamily')),
+      canvas.getAllByText(i18n.t('billing.unbilled.noFamily'))[0],
     ).toBeVisible();
   },
 };
@@ -90,8 +108,14 @@ export const EmptyBillingOff: Story = {
       settings: SETTINGS_OFF,
       page: EMPTY_UNBILLED_PAGE,
     },
+    enrollments: { status: 'hidden' },
   },
   play: async ({ canvas }) => {
+    await expect(
+      canvas.queryByRole('heading', {
+        name: i18n.t('billing.unbilled.enrollments.title'),
+      }),
+    ).toBeNull();
     await expect(
       canvas.getByText(i18n.t('billing.unbilled.emptyOff')),
     ).toBeVisible();
@@ -110,17 +134,25 @@ export const EmptyBillingOn: Story = {
       settings: SETTINGS_ON,
       page: EMPTY_UNBILLED_PAGE,
     },
+    enrollments: {
+      status: 'ready',
+      startsOn: '2026-09-01',
+      page: EMPTY_UNBILLED_ENROLLMENTS_PAGE,
+    },
   },
   play: async ({ canvas, canvasElement }) => {
     await expect(canvas.queryByRole('table')).toBeNull();
     await expect(
       canvasElement.querySelector('[data-unbilled-empty="on"]'),
     ).toBeVisible();
+    await expect(
+      canvasElement.querySelector('[data-unbilled-enrollments-empty="on"]'),
+    ).toBeVisible();
   },
 };
 
 export const Loading: Story = {
-  args: { state: { status: 'loading' } },
+  args: { state: { status: 'loading' }, enrollments: { status: 'loading' } },
   play: async ({ canvasElement }) => {
     await expect(
       canvasElement.querySelector('[aria-busy="true"]'),
