@@ -70,7 +70,8 @@ test('turning billing on from a date and off again', async ({ page }) => {
       .getByRole('banner')
       .getByRole('link', { name: common.nav.billing })
       .click();
-    await expect(page).toHaveURL('/billing/prices');
+    // Billing opens Accounts, its first tab since #379.
+    await expect(page).toHaveURL('/billing/accounts');
     await tabs.getByRole('link', { name: billing.tabs.settings }).click();
     await expect(page).toHaveURL('/billing/settings');
     await expect(

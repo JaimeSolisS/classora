@@ -26,7 +26,9 @@ import {
 // first up to the money available), the running total and what is left
 // (account credit for a payment, unused credit for a credit allocation).
 // The dialogs check the rows on submit (a row above its open amount, or a
-// total above the money, blocks the request).
+// total above the money, blocks the request). The table scrolls sideways
+// inside the dialog at phone width (min-w-0 down from the dialog, #379 QA
+// D2), so the dialog never gets wider than the screen.
 
 export interface AllocationEditorProps {
   /** The open charges, oldest first. */
@@ -69,7 +71,7 @@ export function AllocationEditor({
   const over = remainder !== null && remainder < 0;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           {t('billing.accounts.editor.help')}

@@ -308,7 +308,7 @@ function DialogBody({
         method="post"
         noValidate
         onSubmit={onFormSubmit}
-        className="flex flex-col gap-4"
+        className="flex min-w-0 flex-col gap-4"
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="flex min-w-0 flex-col gap-2">
@@ -508,7 +508,7 @@ function DialogBody({
 
   return (
     <DialogContent
-      className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"
+      className="max-h-[90vh] overflow-y-auto sm:max-w-3xl [&>*]:min-w-0"
       onOpenAutoFocus={returnFocus.onOpenAutoFocus}
       onCloseAutoFocus={returnFocus.onCloseAutoFocus}
       onInteractOutside={(event) => event.preventDefault()}

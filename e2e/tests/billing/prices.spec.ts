@@ -81,10 +81,15 @@ test('managing the price catalog', async ({ page }, testInfo) => {
   await page.goto('/');
   await createSubjectViaApi(page, 'Secundaria', subjectName);
 
-  // 2. Billing → Prices from the navigation.
+  // 2. Billing → Prices from the navigation (Billing opens Accounts, its
+  // first tab since #379).
   await page
     .getByRole('banner')
     .getByRole('link', { name: common.nav.billing })
+    .click();
+  await expect(page).toHaveURL('/billing/accounts');
+  await main
+    .getByRole('link', { name: common.billing.tabs.prices, exact: true })
     .click();
   await expect(page).toHaveURL('/billing/prices');
   await expect(

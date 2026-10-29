@@ -3,6 +3,7 @@ import { expect, fn, within } from 'storybook/test';
 import { i18n } from '@/i18n';
 import type { LocalDate } from '@/lib/time';
 import { StoryRouter } from '@/test/StoryRouter';
+import { VIEWPORTS } from '@/features/assignments/storyKit';
 import {
   CHARGE_OVERDUE,
   CHARGE_PARTIAL,
@@ -29,6 +30,7 @@ const meta = {
     onSubmit: fn(() => Promise.resolve()),
     onClose: fn(),
   },
+  parameters: { viewport: { options: VIEWPORTS } },
   render: (args) => (
     <StoryRouter
       path="/billing/accounts/x"
@@ -105,5 +107,25 @@ export const Errors: Story = {
       ),
     ).toBeVisible();
     await expect(context.args.onSubmit).not.toHaveBeenCalled();
+  },
+};
+
+/** #379 QA D2: at 390 px the charges table scrolls inside the dialog. */
+export const ChooseChargesPhone: Story = {
+  ...ChooseCharges,
+  globals: { viewport: { value: 'phone390' } },
+  play: async (context) => {
+    await ChooseCharges.play?.(context);
+    const dialog = await within(
+      context.canvasElement.ownerDocument.body,
+    ).findByRole('dialog', { name: i18n.t('billing.accounts.record.title') });
+    const view = context.canvasElement.ownerDocument.defaultView!;
+    await expect(view.innerWidth).toBeLessThanOrEqual(390);
+    // Nothing in the dialog scrolls it sideways (the table scrolls inside
+    // its own region), and the dialog stays on screen.
+    await expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
+    await expect(dialog.getBoundingClientRect().right).toBeLessThanOrEqual(
+      view.innerWidth,
+    );
   },
 };
