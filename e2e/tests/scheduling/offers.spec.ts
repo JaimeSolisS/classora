@@ -163,6 +163,17 @@ function firstWeekdayAhead(days: number): string {
 }
 
 async function axeViolations(page: Page): Promise<string[]> {
+  // Scan the resting state: a pointer left on the last clicked button keeps it
+  // mid-hover-transition, which axe reads as a color-contrast violation (#369).
+  await page.mouse.move(0, 0);
+  await page.evaluate(() =>
+    Promise.allSettled(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity)
+        .map((a) => a.finished),
+    ),
+  );
   const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
   return results.violations.map(
     (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
