@@ -4520,7 +4520,8 @@
       "discounts": "Discounts",
       "customPrices": "Custom prices",
       "unbilled": "Unbilled",
-      "settings": "Settings"
+      "settings": "Settings",
+      "tuitionPlans": "Tuition plans"
     },
     "prices": {
       "title": "Prices",
@@ -4540,7 +4541,8 @@
         "level": "Student level",
         "duration": "Duration (minutes)",
         "effectiveFrom": "Effective from",
-        "amount": "Amount (MXN)"
+        "amount": "Amount (MXN)",
+        "periodFrequency": "Frequency"
       },
       "columns": {
         "service": "Service",
@@ -4560,16 +4562,20 @@
       "pricingModels": {
         "per_session": "per session",
         "flat_fee": "flat fee per enrollment",
-        "course_fee": "course fee"
+        "course_fee": "course fee",
+        "per_period": "per period",
+        "per_period_of": "per period · {{frequency}}"
       },
       "modelOptions": {
         "per_session": "Per session",
         "flat_fee": "Flat fee per enrollment",
-        "course_fee": "Course fee"
+        "course_fee": "Course fee",
+        "per_period": "Per period"
       },
       "modelFilters": {
         "per_session": "Per session",
-        "full_course": "Flat fee or course fee"
+        "full_course": "Flat fee or course fee",
+        "per_period": "Per period"
       },
       "service": "{{classType}} · {{pricingModel}}",
       "subjectOfLevel": "{{level}} · {{subject}}",
@@ -4596,7 +4602,8 @@
         "level": "\"Any\" applies to students of every level.",
         "duration": "Empty applies to any duration; otherwise {{min}} to {{max}} minutes.",
         "durationPerSession": "Only per-session prices have a duration.",
-        "amount": "In pesos, for example 350.00."
+        "amount": "In pesos, for example 350.00.",
+        "periodFrequency": "How often a tuition plan with this price is charged: each week, every two weeks or each month."
       },
       "validation": {
         "classTypeRequired": "Choose the class type.",
@@ -4606,7 +4613,8 @@
         "dateRequired": "Choose a date.",
         "dateBeforeMin": "Choose today or a later date.",
         "amountRequired": "Enter the amount.",
-        "amountInvalid": "Enter an amount of 0 or more with up to 2 decimals, for example 350.00."
+        "amountInvalid": "Enter an amount of 0 or more with up to 2 decimals, for example 350.00.",
+        "frequencyRequired": "Choose the frequency."
       },
       "status": {
         "past": "Past",
@@ -4643,7 +4651,17 @@
       "notFound": "Price not found",
       "notFoundHelp": "This price doesn't exist or is no longer available.",
       "detailTitle": "Price",
-      "detailHeading": "{{service}}: {{subject}}"
+      "detailHeading": "{{service}}: {{subject}}",
+      "frequencies": {
+        "weekly": "Weekly",
+        "biweekly": "Biweekly",
+        "monthly": "Monthly"
+      },
+      "frequencyWords": {
+        "weekly": "weekly",
+        "biweekly": "biweekly",
+        "monthly": "monthly"
+      }
     },
     "discounts": {
       "title": "Discounts",
@@ -4898,7 +4916,7 @@
     },
     "unbilled": {
       "title": "Unbilled sessions and enrollments",
-      "intro": "Confirmed and completed sessions, and group and course enrollments, since the billing start date that can't be charged, and why. Fix the cause and they are charged.",
+      "intro": "Confirmed and completed sessions, group and course enrollments and tuition periods since the billing start date that can't be charged, and why. Fix the cause and they are charged.",
       "delay": "New confirmations and enrollments are billed within about 15 minutes.",
       "filters": {
         "label": "Unbilled filters",
@@ -4957,6 +4975,25 @@
         "pagination": "Enrollment pages",
         "emptyOn": "Every enrollment since {{date}} is charged.",
         "emptyFiltered": "No unbilled enrollments with this reason."
+      },
+      "tuition": {
+        "title": "Tuition",
+        "columns": {
+          "period": "Period",
+          "plan": "Plan"
+        },
+        "reasons": {
+          "no_price": "No price for the period",
+          "family_changed": "Student is no longer in the plan's family"
+        },
+        "fix": {
+          "plan": "Open plan",
+          "planFor": "Open plan of {{student}}",
+          "priceFor": "Open prices to add a per-period price for {{subject}}"
+        },
+        "pagination": "Tuition pages",
+        "emptyOn": "Every tuition period since {{date}} is charged.",
+        "emptyFiltered": "No unbilled tuition periods with this reason."
       }
     },
     "settings": {
@@ -5007,6 +5044,199 @@
         "family": "Type part of the family's name."
       },
       "chosen": "Chosen: {{name}}"
+    },
+    "tuition": {
+      "title": "Tuition plans",
+      "intro": "Weekly, biweekly or monthly tuition, on its own or for a group enrollment. Each period is charged to the family on its first day; paused periods are never charged.",
+      "add": "New plan",
+      "create": "Create plan",
+      "empty": "No tuition plans yet.",
+      "emptyFiltered": "No tuition plans match these filters.",
+      "view": "View plan",
+      "viewFor": "View plan: {{student}}, {{plan}}",
+      "back": "Back to tuition plans",
+      "notFound": "Tuition plan not found",
+      "notFoundHelp": "This plan doesn't exist or was deleted.",
+      "detailTitle": "Tuition plan",
+      "detailTitleOf": "Tuition plan of {{student}}",
+      "planSubject": "{{subject}} · {{level}}",
+      "anyLevel": "any level",
+      "individual": "Individual",
+      "anyGroup": "every group",
+      "planLine": "{{subject}} · {{scope}} · {{frequency}}",
+      "scopeLine": "{{scope}} · {{frequency}}",
+      "openEnded": "Open-ended",
+      "dueOnStart": "On the day the period starts",
+      "dueAfter_one": "{{count}} day after the period starts",
+      "dueAfter_other": "{{count}} days after the period starts",
+      "periodRange": "{{from}} – {{to}}",
+      "priceOption": "{{subject}} · {{scope}} · {{frequency}} — {{amount}}",
+      "untilResumed": "Until resumed",
+      "chosenStudent": "Chosen: {{name}}",
+      "openFamilies": "Open families",
+      "enrollmentOption": "{{group}} ({{subject}}), since {{date}}",
+      "enrollmentBlocked": "{{name}} — {{reason}}",
+      "enrollmentBlock": {
+        "has_plan": "already has a plan",
+        "has_fee_charge": "flat fee already charged"
+      },
+      "columns": {
+        "student": "Student",
+        "family": "Family",
+        "plan": "Plan",
+        "amount": "Current amount",
+        "startsOn": "Starts",
+        "endsOn": "Ends",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "status": {
+        "scheduled": "Scheduled",
+        "active": "Active",
+        "paused": "Paused",
+        "ended": "Ended"
+      },
+      "filters": {
+        "label": "Tuition plan filters",
+        "student": "Student",
+        "unknownStudent": "A student who isn't available",
+        "clearStudent": "Show all students",
+        "searchStudent": "Search student",
+        "searchHelp": "Type part of a name to list one student's plans.",
+        "status": "Status",
+        "statusHelp": "None checked: every status."
+      },
+      "kinds": {
+        "individual": "Individual",
+        "group": "Group enrollment"
+      },
+      "ends": {
+        "open": "Open-ended",
+        "periods": "After a number of periods"
+      },
+      "fields": {
+        "student": "Student",
+        "kind": "Type",
+        "enrollment": "Enrollment",
+        "price": "Per-period price",
+        "startsOn": "Starts on",
+        "dueOffset": "Due days after each period starts",
+        "end": "End",
+        "periods": "Number of periods"
+      },
+      "hints": {
+        "student": "Search an active student by name.",
+        "individual": "Per-session charges continue for this student's individual classes unless the student has a per-session custom price of 0.",
+        "enrollment": "One of the student's active group enrollments.",
+        "enrollmentStudentFirst": "Choose the student first.",
+        "enrollmentFailed": "We couldn't load the enrollments. Close the dialog and open it again.",
+        "enrollmentNone": "This student has no active group enrollments.",
+        "price": "Its frequency sets the periods; its price in effect on each period's first day is charged.",
+        "priceEnrollmentFirst": "Choose the group enrollment first.",
+        "priceNone": {
+          "individual": "No individual per-period prices yet. Add one in Prices.",
+          "group": "No per-period prices for this group or its subject yet. Add one in Prices."
+        },
+        "startsOn": "Up to 31 days back. The first period starts on this date.",
+        "dueOffset": "Whole days from {{min}} to {{max}}.",
+        "periods": "Whole periods, from {{min}} to {{max}}.",
+        "lastDay": "The plan's last day: {{date}}."
+      },
+      "validation": {
+        "studentRequired": "Choose the student.",
+        "enrollmentRequired": "Choose the group enrollment.",
+        "priceRequired": "Choose the price.",
+        "dateRequired": "Choose a date.",
+        "periodsRange": "Enter whole periods from 1 to 120.",
+        "dueOffsetRange": "Enter whole days from 0 to 60.",
+        "pauseStartRequired": "Choose the first paused period.",
+        "resumeRequired": "Choose when to resume.",
+        "endRequired": "Choose the last day."
+      },
+      "periodStates": {
+        "charged": "Charged",
+        "upcoming": "Upcoming",
+        "due": "Due — charged on the next run",
+        "due_unbilled": "Due — not charged",
+        "paused": "Paused",
+        "after_end": "After the end",
+        "enrollment_ended": "Enrollment ended",
+        "below_floor": "Before the billing start"
+      },
+      "chargeStatus": {
+        "pending": "Pending",
+        "partially_paid": "Partially paid",
+        "paid": "Paid",
+        "overdue": "Overdue",
+        "void": "Void"
+      },
+      "reasons": {
+        "no_price": "No price for the period",
+        "family_changed": "Student is no longer in the plan's family"
+      },
+      "summary": {
+        "price": "Price",
+        "frequency": "Frequency",
+        "due": "Due",
+        "group": "Group"
+      },
+      "periods": {
+        "title": "Periods",
+        "upcoming": "Upcoming periods",
+        "recent": "Charged periods",
+        "noUpcoming": "No upcoming periods: the plan has ended.",
+        "noRecent": "No period has been charged yet.",
+        "period": "Period",
+        "state": "State",
+        "amount": "Amount",
+        "charge": "Charge"
+      },
+      "pauses": {
+        "title": "Pauses",
+        "empty": "No pauses.",
+        "range": "{{from}} – {{to}}"
+      },
+      "pause": {
+        "action": "Pause",
+        "title": "Pause the plan",
+        "description": "Periods that start during a pause are never charged, not even after resuming.",
+        "submit": "Pause",
+        "from": "First paused period",
+        "fromHelp": "Only periods that aren't charged yet.",
+        "until": "Until",
+        "done": "Plan paused."
+      },
+      "resume": {
+        "action": "Resume",
+        "title": "Resume the plan",
+        "description": "Paused since {{date}}.",
+        "submit": "Resume",
+        "from": "Charge again from",
+        "fromHelp": "The first period charged again. Choosing the pause's first period removes the pause.",
+        "done": "Plan resumed."
+      },
+      "end": {
+        "action": "End",
+        "title": "End the plan",
+        "description": "It ends on {{date}} today.",
+        "descriptionOpen": "It is open-ended today.",
+        "submit": "Save",
+        "lastDay": "Last day",
+        "help": "Plans end on the last day of a period, never before the last charged one.",
+        "remove": "Remove end date (open-ended)",
+        "done": "End date saved."
+      },
+      "dueOffset": {
+        "action": "Edit due days",
+        "title": "Edit the due days",
+        "description": "Applies to the periods charged from now on.",
+        "done": "Due days saved."
+      },
+      "delete": "Delete",
+      "deleteDialog": {
+        "title": "Delete this plan?",
+        "body": "The plan of {{student}} ({{plan}}) and its pauses will be deleted. Nothing has been charged."
+      }
     }
   }
 }

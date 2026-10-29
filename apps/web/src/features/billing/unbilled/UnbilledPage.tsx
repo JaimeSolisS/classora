@@ -7,13 +7,19 @@ import { BILLING_SETTINGS_KEY, fetchBillingSettings } from '../settings/api';
 import {
   fetchUnbilledEnrollments,
   fetchUnbilledItems,
+  fetchUnbilledTuition,
+  tuitionReasonOf,
   unbilledEnrollmentsKey,
   unbilledFilters,
   unbilledListKey,
   unbilledParams,
+  unbilledTuitionKey,
+  UNBILLED_PAGE_SIZE,
   type UnbilledFilters,
+  type UnbilledTuitionPage,
 } from './api';
 import type { UnbilledEnrollmentsState } from './UnbilledEnrollments';
+import type { UnbilledTuitionState } from './UnbilledTuition';
 import { UnbilledView, type UnbilledState } from './UnbilledView';
 
 // /billing/unbilled (#366 C, #372 B), for billing.view holders: the
@@ -24,7 +30,17 @@ import { UnbilledView, type UnbilledState } from './UnbilledView';
 // failed settings or sessions load shows the error in the sessions section
 // with "Try again", which reloads what failed; the enrollments section
 // loads and fails on its own (hidden while the settings aren't known or
-// billing is off).
+// billing is off), and so does the tuition section (#374 F1, its page in
+// ?tuition_page=; a tab reason with no tuition counterpart lists nothing
+// without a request).
+
+/** The tuition page shown when the tab's reason has no tuition counterpart. */
+const NO_TUITION: UnbilledTuitionPage = {
+  items: [],
+  total: 0,
+  limit: UNBILLED_PAGE_SIZE,
+  offset: 0,
+};
 
 export function UnbilledPage() {
   const { t } = useTranslation();
@@ -48,6 +64,14 @@ export function UnbilledPage() {
     queryKey: unbilledEnrollmentsKey(filters),
     queryFn: ({ signal }) => fetchUnbilledEnrollments(filters, signal),
     placeholderData: keepPreviousData,
+  });
+
+  const tuitionReason = tuitionReasonOf(filters.reason);
+  const tuitionList = useQuery({
+    queryKey: unbilledTuitionKey(filters),
+    queryFn: ({ signal }) => fetchUnbilledTuition(filters, signal),
+    placeholderData: keepPreviousData,
+    enabled: tuitionReason !== 'none',
   });
 
   function apply(next: UnbilledFilters) {
@@ -86,16 +110,36 @@ export function UnbilledPage() {
             ? { status: 'ready', startsOn, page: enrollmentList.data }
             : { status: 'loading' };
 
+  const tuition: UnbilledTuitionState = settings.isError
+    ? { status: 'hidden' }
+    : !settings.data
+      ? { status: 'loading' }
+      : startsOn === null
+        ? { status: 'hidden' }
+        : tuitionReason === 'none'
+          ? { status: 'ready', startsOn, page: NO_TUITION }
+          : tuitionList.isError
+            ? {
+                status: 'error',
+                error: tuitionList.error,
+                onRetry: () => void tuitionList.refetch(),
+              }
+            : tuitionList.data
+              ? { status: 'ready', startsOn, page: tuitionList.data }
+              : { status: 'loading' };
+
   return (
     <UnbilledView
       state={state}
       enrollments={enrollments}
+      tuition={tuition}
       filters={filters}
       onFilters={apply}
       onPage={(page) => apply({ ...filters, page })}
       onEnrollmentPage={(enrollmentPage) =>
         apply({ ...filters, enrollmentPage })
       }
+      onTuitionPage={(tuitionPage) => apply({ ...filters, tuitionPage })}
       canOpenFamilies={canOpenFamilies}
       canManagePrices={canManagePrices}
     />

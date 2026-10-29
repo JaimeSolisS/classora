@@ -28,6 +28,12 @@ export const BILLING_SECTIONS: readonly BillingSection[] = [
     labelKey: 'billing.tabs.customPrices',
     permission: 'billing.manage',
   },
+  // #374 A1: tuition plans, after the pricing sections, before Unbilled.
+  {
+    to: '/billing/tuition-plans',
+    labelKey: 'billing.tabs.tuitionPlans',
+    permission: 'billing.view',
+  },
   {
     to: '/billing/unbilled',
     labelKey: 'billing.tabs.unbilled',

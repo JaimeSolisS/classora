@@ -864,6 +864,26 @@ export const routes: RouteObject[] = [
             }),
             handle: { permission: 'billing.manage' },
           },
+          // #374 A1: tuition plans (code-split), billing.view holders; the
+          // page offers the changes to billing.manage holders only.
+          {
+            path: 'billing/tuition-plans',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/billing/tuition/TuitionPlansPage')
+              ).TuitionPlansPage,
+            }),
+            handle: { permission: 'billing.view' },
+          },
+          {
+            path: 'billing/tuition-plans/:planId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/billing/tuition/TuitionPlanPage')
+              ).TuitionPlanPage,
+            }),
+            handle: { permission: 'billing.view' },
+          },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },
           // Any signed-in user, before and after accepting (#174 G1).

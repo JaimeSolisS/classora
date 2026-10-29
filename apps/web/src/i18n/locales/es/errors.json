@@ -332,5 +332,21 @@
   "target_required": "Elige un estudiante o una familia.",
   "target_conflict": "Elige un estudiante o una familia, no ambos.",
   "family_unknown": "Elige una familia existente.",
-  "service_price_unknown": "Elige un precio existente del catálogo."
+  "service_price_unknown": "Elige un precio existente del catálogo.",
+  "period_frequency_required": "Elige cada cuánto se cobra el precio.",
+  "period_frequency_not_allowed": "Solo los precios por periodo tienen frecuencia.",
+  "tuition_plan_price_invalid": "Elige un precio por periodo que corresponda al plan (individual, o del grupo de la inscripción).",
+  "tuition_plan_enrollment_invalid": "Elige una de las inscripciones a grupo activas del estudiante.",
+  "tuition_plan_starts_on_invalid": "Elige un inicio desde hace 31 días hasta un año adelante, y no antes de la inscripción.",
+  "tuition_plan_ends_on_invalid": "El plan debe terminar el último día de un periodo, no antes del último cobrado.",
+  "tuition_pause_invalid": "Una pausa empieza en un periodo sin cobrar desde el actual y termina el último día de un periodo.",
+  "tuition_resume_invalid": "Reanuda al inicio de un periodo, no antes de que empezara la pausa ni del periodo actual.",
+  "student_has_no_family": "Este estudiante no pertenece a una familia, así que no hay cuenta a la cual cobrar. Agrégalo primero a una familia.",
+  "tuition_plan_overlap": "Otro plan ya cubre estas fechas para este estudiante y precio o para esta inscripción.",
+  "tuition_plan_enrollment_fee_charged": "La cuota de esta inscripción ya se cobró, así que no puede tener un plan de colegiatura.",
+  "tuition_plan_sessions_charged": "Ya se cobraron por sesión clases de este grupo dentro de las fechas del plan.",
+  "tuition_plan_ended": "Este plan ya terminó. Crea un plan nuevo.",
+  "tuition_plan_has_charges": "Este plan tiene periodos cobrados y no se puede eliminar. Termínalo en su lugar.",
+  "tuition_pause_overlap": "Esta pausa se cruza con otra pausa del plan.",
+  "tuition_pause_not_open": "Este plan no tiene una pausa abierta para reanudar."
 }

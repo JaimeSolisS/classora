@@ -3,10 +3,13 @@ import type {
   UnbilledEnrollmentPage,
   UnbilledItem,
   UnbilledPage,
+  UnbilledTuition,
+  UnbilledTuitionPage,
 } from './api';
 
-// Unbilled session fixtures (#366 E1, E2) and unbilled enrollment fixtures
-// (#372 D1, D2) for the tests and the stories.
+// Unbilled session fixtures (#366 E1, E2), unbilled enrollment fixtures
+// (#372 D1, D2) and unbilled tuition period fixtures (#374 H1, H2) for the
+// tests and the stories.
 
 const SUBJECT_ALGEBRA = {
   id: '30000000-0000-4000-8000-000000000001',
@@ -147,6 +150,49 @@ export const UNBILLED_ENROLLMENTS_PAGE: UnbilledEnrollmentPage = {
 };
 
 export const EMPTY_UNBILLED_ENROLLMENTS_PAGE: UnbilledEnrollmentPage = {
+  items: [],
+  total: 0,
+  limit: 25,
+  offset: 0,
+};
+
+/** An individual monthly plan's period with no price in effect. */
+export const TUITION_NO_PRICE: UnbilledTuition = {
+  tuition_plan_id: 'a0000000-0000-4000-8000-000000000001',
+  period_start: '2026-10-01',
+  period_end: '2026-10-31',
+  frequency: 'monthly',
+  student: { id: '40000000-0000-4000-8000-000000000001', name: 'Ana López' },
+  family: { id: '50000000-0000-4000-8000-000000000002', name: 'Familia López' },
+  subject: SUBJECT_ALGEBRA,
+  group: null,
+  reason: 'no_price',
+};
+
+/** A group plan's period after the student moved to another family. */
+export const TUITION_FAMILY_CHANGED: UnbilledTuition = {
+  tuition_plan_id: 'a0000000-0000-4000-8000-000000000002',
+  period_start: '2026-10-05',
+  period_end: '2026-10-18',
+  frequency: 'biweekly',
+  student: { id: '40000000-0000-4000-8000-000000000002', name: 'Bruno Díaz' },
+  family: null,
+  subject: SUBJECT_ALGEBRA,
+  group: {
+    id: '70000000-0000-4000-8000-000000000001',
+    name: 'Álgebra sábados',
+  },
+  reason: 'family_changed',
+};
+
+export const UNBILLED_TUITION_PAGE: UnbilledTuitionPage = {
+  items: [TUITION_NO_PRICE, TUITION_FAMILY_CHANGED],
+  total: 2,
+  limit: 25,
+  offset: 0,
+};
+
+export const EMPTY_UNBILLED_TUITION_PAGE: UnbilledTuitionPage = {
   items: [],
   total: 0,
   limit: 25,

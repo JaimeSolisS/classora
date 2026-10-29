@@ -19,7 +19,9 @@ type CatalogItem = Pick<
   | 'duration_minutes'
   | 'cohort'
   | 'group'
->;
+> &
+  // A per-period price's frequency is part of its service line (#374 B2).
+  Partial<Pick<ServicePrice, 'period_frequency'>>;
 
 export function useCustomPriceLabels() {
   const { t } = useTranslation();

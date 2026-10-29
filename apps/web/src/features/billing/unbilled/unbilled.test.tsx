@@ -19,18 +19,26 @@ import {
 } from '@/test/render-app';
 import type { BillingSettings } from '../settings/api';
 import { SETTINGS_OFF, SETTINGS_ON } from '../settings/fixtures';
-import type { UnbilledEnrollmentPage, UnbilledPage } from './api';
+import type {
+  UnbilledEnrollmentPage,
+  UnbilledPage,
+  UnbilledTuitionPage,
+} from './api';
 import {
   EMPTY_UNBILLED_ENROLLMENTS_PAGE,
   EMPTY_UNBILLED_PAGE,
+  EMPTY_UNBILLED_TUITION_PAGE,
   ENROLLMENT_COHORT_NO_FAMILY,
   ENROLLMENT_COHORT_NO_PRICE,
   ENROLLMENT_GROUP_NO_FAMILY,
   ITEM_GROUP,
   ITEM_NO_FAMILY,
   ITEM_NO_PRICE,
+  TUITION_FAMILY_CHANGED,
+  TUITION_NO_PRICE,
   UNBILLED_ENROLLMENTS_PAGE,
   UNBILLED_PAGE,
+  UNBILLED_TUITION_PAGE,
 } from './fixtures';
 
 // #366 E1 (A, C, D): the Unbilled tab behind billing.view: the rows (date
@@ -42,10 +50,13 @@ import {
 // group), the Enrollments section (rows of both kinds and both reasons,
 // the shared reason filter on both requests, its own pagination, fix links
 // per permission, empty and off states, and an error with retry on one
-// section only).
+// section only). #374 H1: the Tuition section (rows, both reasons, the
+// shared no_price filter, links per permission, empty, off, its own page
+// and an error with retry on that section only).
 
 const LIST = 'GET /api/v1/billing/unbilled-items';
 const ENROLLMENTS = 'GET /api/v1/billing/unbilled-enrollments';
+const TUITION = 'GET /api/v1/billing/unbilled-tuition-periods';
 const SETTINGS = 'GET /api/v1/billing/settings';
 const ME = 'GET /api/v1/auth/me';
 
@@ -64,6 +75,8 @@ const VIEWER = user(['finance_staff'], ['billing.view']);
 let listUrls: URL[] = [];
 /** The URLs the enrollments list was read with. */
 let enrollmentUrls: URL[] = [];
+/** The URLs the tuition list was read with. */
+let tuitionUrls: URL[] = [];
 
 function stub(
   routes: Record<string, Responder | Responder[]> = {},
@@ -71,11 +84,13 @@ function stub(
     settings = SETTINGS_ON,
     page = UNBILLED_PAGE,
     enrollments = UNBILLED_ENROLLMENTS_PAGE,
+    tuition = UNBILLED_TUITION_PAGE,
     as = FINANCE,
   }: {
     settings?: BillingSettings;
     page?: UnbilledPage;
     enrollments?: UnbilledEnrollmentPage;
+    tuition?: UnbilledTuitionPage;
     as?: SessionUserBody;
   } = {},
 ): ApiStub {
@@ -89,6 +104,10 @@ function stub(
     [ENROLLMENTS]: (request) => {
       enrollmentUrls.push(new URL(request.url));
       return jsonResponse(200, enrollments);
+    },
+    [TUITION]: (request) => {
+      tuitionUrls.push(new URL(request.url));
+      return jsonResponse(200, tuition);
     },
     ...routes,
   });
@@ -112,6 +131,13 @@ const sessionsSection = () =>
   main().querySelector('[data-unbilled-section="sessions"]')!;
 const enrollmentsSection = () =>
   main().querySelector('[data-unbilled-section="enrollments"]');
+const tuitionSection = () =>
+  main().querySelector('[data-unbilled-section="tuition"]');
+const tuitionRowOf = (planId: string) =>
+  main().querySelector<HTMLTableRowElement>(
+    `[data-unbilled-tuition-plan-id="${planId}"]`,
+  )!;
+const lastTuitionQuery = () => tuitionUrls.at(-1)!.searchParams;
 const linksIn = (row: Element) =>
   [...row.querySelectorAll('a')].map((a) => [
     a.textContent,
@@ -133,6 +159,7 @@ beforeEach(() => {
   applyLanguage('en');
   listUrls = [];
   enrollmentUrls = [];
+  tuitionUrls = [];
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-10-20T18:00:00Z'));
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -162,6 +189,7 @@ describe('the unbilled list (C1, C5)', () => {
       ['Prices', null],
       ['Discounts', null],
       ['Custom prices', null],
+      ['Tuition plans', null],
       ['Unbilled', 'page'],
       ['Settings', null],
     ]);
@@ -604,6 +632,172 @@ describe('the enrollments section (B1–B4)', () => {
       'Familia Díaz',
       'Sin cuota de curso o grupo',
     ]);
+  });
+});
+
+describe('the tuition section (#374 F1)', () => {
+  it('lists the periods with both reasons below the enrollments', async () => {
+    stub();
+    await renderAt();
+    await settleUntil(() => tuitionSection()?.querySelector('table'));
+
+    const sections = [
+      ...main().querySelectorAll<HTMLElement>('[data-unbilled-section]'),
+    ].map((section) => section.dataset.unbilledSection);
+    expect(sections).toEqual(['sessions', 'enrollments', 'tuition']);
+    expect(tuitionSection()!.querySelector('h2')?.textContent).toBe('Tuition');
+    expect(
+      cells(tuitionRowOf(TUITION_NO_PRICE.tuition_plan_id)).slice(0, 5),
+    ).toEqual([
+      'Oct 1, 2026 – Oct 31, 2026',
+      'Ana López',
+      'ÁlgebraIndividual · Monthly',
+      'Familia López',
+      'No price for the period',
+    ]);
+    expect(
+      cells(tuitionRowOf(TUITION_FAMILY_CHANGED.tuition_plan_id)).slice(0, 5),
+    ).toEqual([
+      'Oct 5, 2026 – Oct 18, 2026',
+      'Bruno Díaz',
+      'ÁlgebraÁlgebra sábados · Biweekly',
+      'No family',
+      "Student is no longer in the plan's family",
+    ]);
+    expect(lastTuitionQuery().has('reason')).toBe(false);
+    expect(lastTuitionQuery().get('limit')).toBe('25');
+  });
+
+  it('gives the fix links per permission', async () => {
+    stub();
+    await renderAt();
+    await settleUntil(() => tuitionSection()?.querySelector('table'));
+
+    expect(linksIn(tuitionRowOf(TUITION_NO_PRICE.tuition_plan_id))).toEqual([
+      [
+        'Open prices',
+        '/billing/prices?class_type=individual&pricing_model=per_period',
+        'Open prices to add a per-period price for Álgebra',
+      ],
+    ]);
+    expect(
+      linksIn(tuitionRowOf(TUITION_FAMILY_CHANGED.tuition_plan_id)),
+    ).toEqual([
+      [
+        'Open plan',
+        `/billing/tuition-plans/${TUITION_FAMILY_CHANGED.tuition_plan_id}`,
+        'Open plan of Bruno Díaz',
+      ],
+    ]);
+    app!.unmount();
+
+    stub({}, { as: VIEWER });
+    await renderAt();
+    await settleUntil(() => tuitionSection()?.querySelector('table'));
+    expect(linksIn(tuitionRowOf(TUITION_NO_PRICE.tuition_plan_id))).toEqual([]);
+    expect(
+      linksIn(tuitionRowOf(TUITION_FAMILY_CHANGED.tuition_plan_id)),
+    ).toHaveLength(1);
+  });
+
+  it('shares the no_price reason and lists nothing for a reason it lacks', async () => {
+    stub({}, { tuition: EMPTY_UNBILLED_TUITION_PAGE });
+    await renderAt('/billing/unbilled?reason=no_price');
+    await settleUntil(() => tuitionUrls.length > 0);
+    expect(lastTuitionQuery().getAll('reason')).toEqual(['no_price']);
+    await settleUntil(() =>
+      tuitionSection()?.querySelector('[data-unbilled-tuition-empty]'),
+    );
+    expect(
+      tuitionSection()!.querySelector(
+        '[data-unbilled-tuition-empty="filtered"]',
+      )?.textContent,
+    ).toBe('No unbilled tuition periods with this reason.');
+    const requests = tuitionUrls.length;
+
+    setFieldValue(reasonFilter(), 'no_billing_account');
+    await settleUntil(() => lastQuery().get('reason') === 'no_billing_account');
+    // No tuition reason stands for "Not in a family": nothing is read.
+    expect(tuitionUrls).toHaveLength(requests);
+    expect(
+      tuitionSection()!.querySelector(
+        '[data-unbilled-tuition-empty="filtered"]',
+      ),
+    ).not.toBeNull();
+  });
+
+  it('says every period since the date is charged', async () => {
+    stub({}, { tuition: EMPTY_UNBILLED_TUITION_PAGE });
+    await renderAt();
+    await settleUntil(() =>
+      tuitionSection()?.querySelector('[data-unbilled-tuition-empty]'),
+    );
+
+    expect(
+      tuitionSection()!.querySelector('[data-unbilled-tuition-empty="on"]')
+        ?.textContent,
+    ).toBe('Every tuition period since Sep 1, 2026 is charged.');
+  });
+
+  it('is hidden while billing is off', async () => {
+    stub(
+      {},
+      {
+        settings: SETTINGS_OFF,
+        page: EMPTY_UNBILLED_PAGE,
+        enrollments: EMPTY_UNBILLED_ENROLLMENTS_PAGE,
+        tuition: EMPTY_UNBILLED_TUITION_PAGE,
+      },
+    );
+    await renderAt();
+
+    expect(main().querySelector('[data-unbilled-empty="off"]')).not.toBeNull();
+    expect(tuitionSection()).toBeNull();
+  });
+
+  it('pages on its own', async () => {
+    stub(
+      {},
+      {
+        tuition: { ...UNBILLED_TUITION_PAGE, total: 30, limit: 25, offset: 0 },
+      },
+    );
+    await renderAt();
+    await settleUntil(() => tuitionSection()?.querySelector('table'));
+    const enrollmentRequests = enrollmentUrls.length;
+
+    const section = tuitionSection()!;
+    expect(section.querySelector('nav')?.getAttribute('aria-label')).toBe(
+      'Tuition pages',
+    );
+    await click(buttonNamed(section, 'Next'));
+    await settleUntil(() => lastTuitionQuery().get('offset') === '25');
+
+    expect(app!.location()).toBe('/billing/unbilled?tuition_page=2');
+    expect(enrollmentUrls).toHaveLength(enrollmentRequests);
+  });
+
+  it('shows its own failed load with Try again', async () => {
+    const api = stub({
+      [TUITION]: [
+        () => problem(400, 'bad_request'),
+        (request) => {
+          tuitionUrls.push(new URL(request.url));
+          return jsonResponse(200, UNBILLED_TUITION_PAGE);
+        },
+      ],
+    });
+    await renderAt();
+    await settleUntil(() => tuitionSection()?.querySelector('[role="alert"]'));
+
+    expect(alerts(main())).toHaveLength(1);
+    expect(enrollmentsSection()!.querySelector('table')).not.toBeNull();
+    await click(buttonNamed(tuitionSection()!, 'Try again'));
+    await settleUntil(() => tuitionSection()!.querySelector('table'));
+
+    expect(alerts(main())).toHaveLength(0);
+    expect(api.calls(TUITION)).toHaveLength(2);
+    expect(api.calls(ENROLLMENTS)).toHaveLength(1);
   });
 });
 

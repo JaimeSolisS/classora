@@ -30,6 +30,10 @@ import {
   UnbilledEnrollments,
   type UnbilledEnrollmentsState,
 } from './UnbilledEnrollments';
+import {
+  UnbilledTuitionSection,
+  type UnbilledTuitionState,
+} from './UnbilledTuition';
 
 // The Unbilled tab (#366 C, #372), without any query (stories render each
 // state): the Billing tabs, the title with the note that new confirmations
@@ -39,8 +43,8 @@ import {
 // group), length, family and reason, with a link to fix the cause when the
 // user can use it (no family → the families list for guardian.view
 // holders; no price → the price catalog for billing.manage holders), and
-// below it the Enrollments section (UnbilledEnrollments). While billing is
-// off both give way to a link to the Settings tab. Below `md` the tables
+// below it the Enrollments section (UnbilledEnrollments) and the Tuition
+// section (UnbilledTuition, #374 F1). While billing is off they give way to a link to the Settings tab. Below `md` the tables
 // scroll inside their own container (SC 1.4.10 data-table exception).
 
 export type UnbilledState =
@@ -52,10 +56,13 @@ export interface UnbilledViewProps {
   state: UnbilledState;
   /** The Enrollments section, loaded and failing on its own. */
   enrollments: UnbilledEnrollmentsState;
+  /** The Tuition section, loaded and failing on its own. */
+  tuition: UnbilledTuitionState;
   filters: UnbilledFilters;
   onFilters: (filters: UnbilledFilters) => void;
   onPage: (page: number) => void;
   onEnrollmentPage: (page: number) => void;
+  onTuitionPage: (page: number) => void;
   /** guardian.view: the "Not in a family" fix link (the families list). */
   canOpenFamilies: boolean;
   /** billing.manage: the "No price" fix link (the price catalog). */
@@ -65,10 +72,12 @@ export interface UnbilledViewProps {
 export function UnbilledView({
   state,
   enrollments,
+  tuition,
   filters,
   onFilters,
   onPage,
   onEnrollmentPage,
+  onTuitionPage,
   canOpenFamilies,
   canManagePrices,
 }: UnbilledViewProps) {
@@ -260,6 +269,7 @@ export function UnbilledView({
                   ) ?? null,
                 page: 1,
                 enrollmentPage: 1,
+                tuitionPage: 1,
               })
             }
           >
@@ -291,6 +301,12 @@ export function UnbilledView({
             filtered={filters.reason !== null}
             onPage={onEnrollmentPage}
             canOpenFamilies={canOpenFamilies}
+            canManagePrices={canManagePrices}
+          />
+          <UnbilledTuitionSection
+            state={tuition}
+            filtered={filters.reason !== null}
+            onPage={onTuitionPage}
             canManagePrices={canManagePrices}
           />
         </>

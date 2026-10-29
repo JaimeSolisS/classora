@@ -4618,7 +4618,8 @@
       "discounts": "Descuentos",
       "customPrices": "Precios especiales",
       "unbilled": "Sin cobrar",
-      "settings": "Configuración"
+      "settings": "Configuración",
+      "tuitionPlans": "Colegiaturas"
     },
     "prices": {
       "title": "Precios",
@@ -4638,7 +4639,8 @@
         "level": "Nivel del estudiante",
         "duration": "Duración (minutos)",
         "effectiveFrom": "Vigente desde",
-        "amount": "Monto (MXN)"
+        "amount": "Monto (MXN)",
+        "periodFrequency": "Frecuencia"
       },
       "columns": {
         "service": "Servicio",
@@ -4658,16 +4660,20 @@
       "pricingModels": {
         "per_session": "por sesión",
         "flat_fee": "cuota por inscripción",
-        "course_fee": "cuota del curso"
+        "course_fee": "cuota del curso",
+        "per_period": "por periodo",
+        "per_period_of": "por periodo · {{frequency}}"
       },
       "modelOptions": {
         "per_session": "Por sesión",
         "flat_fee": "Cuota por inscripción",
-        "course_fee": "Cuota del curso"
+        "course_fee": "Cuota del curso",
+        "per_period": "Por periodo"
       },
       "modelFilters": {
         "per_session": "Por sesión",
-        "full_course": "Cuota por inscripción o del curso"
+        "full_course": "Cuota por inscripción o del curso",
+        "per_period": "Por periodo"
       },
       "service": "{{classType}} · {{pricingModel}}",
       "subjectOfLevel": "{{level}} · {{subject}}",
@@ -4694,7 +4700,8 @@
         "level": "«Cualquiera» vale para los estudiantes de todos los niveles.",
         "duration": "Vacío vale para cualquier duración; si no, de {{min}} a {{max}} minutos.",
         "durationPerSession": "Solo los precios por sesión llevan duración.",
-        "amount": "En pesos, por ejemplo 350.00."
+        "amount": "En pesos, por ejemplo 350.00.",
+        "periodFrequency": "Cada cuánto se cobra un plan de colegiatura con este precio: cada semana, cada dos semanas o cada mes."
       },
       "validation": {
         "classTypeRequired": "Elige el tipo de clase.",
@@ -4704,7 +4711,8 @@
         "dateRequired": "Elige una fecha.",
         "dateBeforeMin": "Elige hoy o una fecha posterior.",
         "amountRequired": "Escribe el monto.",
-        "amountInvalid": "Escribe un monto de 0 o más con hasta 2 decimales, por ejemplo 350.00."
+        "amountInvalid": "Escribe un monto de 0 o más con hasta 2 decimales, por ejemplo 350.00.",
+        "frequencyRequired": "Elige la frecuencia."
       },
       "status": {
         "past": "Anterior",
@@ -4741,7 +4749,17 @@
       "notFound": "Precio no encontrado",
       "notFoundHelp": "Este precio no existe o ya no está disponible.",
       "detailTitle": "Precio",
-      "detailHeading": "{{service}}: {{subject}}"
+      "detailHeading": "{{service}}: {{subject}}",
+      "frequencies": {
+        "weekly": "Semanal",
+        "biweekly": "Quincenal",
+        "monthly": "Mensual"
+      },
+      "frequencyWords": {
+        "weekly": "semanal",
+        "biweekly": "quincenal",
+        "monthly": "mensual"
+      }
     },
     "discounts": {
       "title": "Descuentos",
@@ -4999,7 +5017,7 @@
     },
     "unbilled": {
       "title": "Sesiones e inscripciones sin cobrar",
-      "intro": "Sesiones confirmadas y completadas, e inscripciones a grupos y cursos, desde la fecha de inicio de cobros que no se pueden cobrar, y el motivo. Corrige la causa y se cobran.",
+      "intro": "Sesiones confirmadas y completadas, inscripciones a grupos y cursos y periodos de colegiatura desde la fecha de inicio de cobros que no se pueden cobrar, y el motivo. Corrige la causa y se cobran.",
       "delay": "Las confirmaciones e inscripciones nuevas se cobran en unos 15 minutos.",
       "filters": {
         "label": "Filtros de pendientes de cobro",
@@ -5058,6 +5076,25 @@
         "pagination": "Páginas de inscripciones",
         "emptyOn": "Todas las inscripciones desde el {{date}} están cobradas.",
         "emptyFiltered": "No hay inscripciones sin cobrar con este motivo."
+      },
+      "tuition": {
+        "title": "Colegiaturas",
+        "columns": {
+          "period": "Periodo",
+          "plan": "Plan"
+        },
+        "reasons": {
+          "no_price": "Sin precio para el periodo",
+          "family_changed": "El estudiante ya no está en la familia del plan"
+        },
+        "fix": {
+          "plan": "Abrir plan",
+          "planFor": "Abrir plan de {{student}}",
+          "priceFor": "Abrir precios para agregar uno por periodo de {{subject}}"
+        },
+        "pagination": "Páginas de colegiaturas",
+        "emptyOn": "Todos los periodos de colegiatura desde el {{date}} están cobrados.",
+        "emptyFiltered": "No hay periodos de colegiatura sin cobrar con este motivo."
       }
     },
     "settings": {
@@ -5108,6 +5145,200 @@
         "family": "Escribe parte del nombre de la familia."
       },
       "chosen": "Elegido: {{name}}"
+    },
+    "tuition": {
+      "title": "Colegiaturas",
+      "intro": "Colegiaturas semanales, quincenales o mensuales, solas o de una inscripción a grupo. Cada periodo se cobra a la familia el día que empieza; los periodos en pausa nunca se cobran.",
+      "add": "Nuevo plan",
+      "create": "Crear plan",
+      "empty": "Todavía no hay planes de colegiatura.",
+      "emptyFiltered": "Ningún plan de colegiatura coincide con estos filtros.",
+      "view": "Ver plan",
+      "viewFor": "Ver plan: {{student}}, {{plan}}",
+      "back": "Volver a colegiaturas",
+      "notFound": "No se encontró el plan de colegiatura",
+      "notFoundHelp": "Este plan no existe o se eliminó.",
+      "detailTitle": "Plan de colegiatura",
+      "detailTitleOf": "Plan de colegiatura de {{student}}",
+      "planSubject": "{{subject}} · {{level}}",
+      "anyLevel": "cualquier nivel",
+      "individual": "Individual",
+      "anyGroup": "todos los grupos",
+      "planLine": "{{subject}} · {{scope}} · {{frequency}}",
+      "scopeLine": "{{scope}} · {{frequency}}",
+      "openEnded": "Sin fecha de fin",
+      "dueOnStart": "El día que empieza el periodo",
+      "dueAfter_one": "{{count}} día después de que empieza el periodo",
+      "dueAfter_many": "{{count}} días después de que empieza el periodo",
+      "dueAfter_other": "{{count}} días después de que empieza el periodo",
+      "periodRange": "{{from}} – {{to}}",
+      "priceOption": "{{subject}} · {{scope}} · {{frequency}} — {{amount}}",
+      "untilResumed": "Hasta reanudar",
+      "chosenStudent": "Elegido: {{name}}",
+      "openFamilies": "Abrir familias",
+      "enrollmentOption": "{{group}} ({{subject}}), desde el {{date}}",
+      "enrollmentBlocked": "{{name}} — {{reason}}",
+      "enrollmentBlock": {
+        "has_plan": "ya tiene un plan",
+        "has_fee_charge": "cuota ya cobrada"
+      },
+      "columns": {
+        "student": "Estudiante",
+        "family": "Familia",
+        "plan": "Plan",
+        "amount": "Monto actual",
+        "startsOn": "Inicia",
+        "endsOn": "Termina",
+        "status": "Estado",
+        "actions": "Acciones"
+      },
+      "status": {
+        "scheduled": "Programado",
+        "active": "Activo",
+        "paused": "En pausa",
+        "ended": "Terminado"
+      },
+      "filters": {
+        "label": "Filtros de colegiaturas",
+        "student": "Estudiante",
+        "unknownStudent": "Un estudiante que no está disponible",
+        "clearStudent": "Mostrar todos los estudiantes",
+        "searchStudent": "Buscar estudiante",
+        "searchHelp": "Escribe parte de un nombre para ver los planes de un estudiante.",
+        "status": "Estado",
+        "statusHelp": "Sin marcar: todos los estados."
+      },
+      "kinds": {
+        "individual": "Individual",
+        "group": "Inscripción a grupo"
+      },
+      "ends": {
+        "open": "Sin fecha de fin",
+        "periods": "Después de varios periodos"
+      },
+      "fields": {
+        "student": "Estudiante",
+        "kind": "Tipo",
+        "enrollment": "Inscripción",
+        "price": "Precio por periodo",
+        "startsOn": "Inicia el",
+        "dueOffset": "Días para pagar después de que empieza cada periodo",
+        "end": "Fin",
+        "periods": "Número de periodos"
+      },
+      "hints": {
+        "student": "Busca un estudiante activo por nombre.",
+        "individual": "Las clases individuales de este estudiante se siguen cobrando por sesión, salvo que tenga un precio especial por sesión de 0.",
+        "enrollment": "Una de las inscripciones a grupo activas del estudiante.",
+        "enrollmentStudentFirst": "Elige primero al estudiante.",
+        "enrollmentFailed": "No pudimos cargar las inscripciones. Cierra el diálogo y vuelve a abrirlo.",
+        "enrollmentNone": "Este estudiante no tiene inscripciones a grupo activas.",
+        "price": "Su frecuencia define los periodos; se cobra su precio vigente el primer día de cada periodo.",
+        "priceEnrollmentFirst": "Elige primero la inscripción a grupo.",
+        "priceNone": {
+          "individual": "Todavía no hay precios individuales por periodo. Agrega uno en Precios.",
+          "group": "Todavía no hay precios por periodo para este grupo o su materia. Agrega uno en Precios."
+        },
+        "startsOn": "Hasta 31 días atrás. El primer periodo empieza en esta fecha.",
+        "dueOffset": "Días enteros de {{min}} a {{max}}.",
+        "periods": "Periodos completos, de {{min}} a {{max}}.",
+        "lastDay": "Último día del plan: {{date}}."
+      },
+      "validation": {
+        "studentRequired": "Elige al estudiante.",
+        "enrollmentRequired": "Elige la inscripción a grupo.",
+        "priceRequired": "Elige el precio.",
+        "dateRequired": "Elige una fecha.",
+        "periodsRange": "Escribe periodos completos de 1 a 120.",
+        "dueOffsetRange": "Escribe días enteros de 0 a 60.",
+        "pauseStartRequired": "Elige el primer periodo en pausa.",
+        "resumeRequired": "Elige cuándo reanudar.",
+        "endRequired": "Elige el último día."
+      },
+      "periodStates": {
+        "charged": "Cobrado",
+        "upcoming": "Próximo",
+        "due": "Corresponde cobrar — se cobra en la siguiente corrida",
+        "due_unbilled": "Corresponde cobrar — sin cobrar",
+        "paused": "En pausa",
+        "after_end": "Después del fin",
+        "enrollment_ended": "Inscripción terminada",
+        "below_floor": "Antes del inicio de cobros"
+      },
+      "chargeStatus": {
+        "pending": "Pendiente",
+        "partially_paid": "Pagado en parte",
+        "paid": "Pagado",
+        "overdue": "Vencido",
+        "void": "Anulado"
+      },
+      "reasons": {
+        "no_price": "Sin precio para el periodo",
+        "family_changed": "El estudiante ya no está en la familia del plan"
+      },
+      "summary": {
+        "price": "Precio",
+        "frequency": "Frecuencia",
+        "due": "Vencimiento",
+        "group": "Grupo"
+      },
+      "periods": {
+        "title": "Periodos",
+        "upcoming": "Próximos periodos",
+        "recent": "Periodos cobrados",
+        "noUpcoming": "No hay próximos periodos: el plan terminó.",
+        "noRecent": "Todavía no se ha cobrado ningún periodo.",
+        "period": "Periodo",
+        "state": "Estado",
+        "amount": "Monto",
+        "charge": "Cargo"
+      },
+      "pauses": {
+        "title": "Pausas",
+        "empty": "Sin pausas.",
+        "range": "{{from}} – {{to}}"
+      },
+      "pause": {
+        "action": "Pausar",
+        "title": "Pausar el plan",
+        "description": "Los periodos que empiezan durante una pausa nunca se cobran, ni siquiera después de reanudar.",
+        "submit": "Pausar",
+        "from": "Primer periodo en pausa",
+        "fromHelp": "Solo periodos que aún no se cobran.",
+        "until": "Hasta",
+        "done": "Plan en pausa."
+      },
+      "resume": {
+        "action": "Reanudar",
+        "title": "Reanudar el plan",
+        "description": "En pausa desde el {{date}}.",
+        "submit": "Reanudar",
+        "from": "Volver a cobrar desde",
+        "fromHelp": "El primer periodo que se vuelve a cobrar. Elegir el primer periodo de la pausa la elimina.",
+        "done": "Plan reanudado."
+      },
+      "end": {
+        "action": "Terminar",
+        "title": "Terminar el plan",
+        "description": "Hoy termina el {{date}}.",
+        "descriptionOpen": "Hoy no tiene fecha de fin.",
+        "submit": "Guardar",
+        "lastDay": "Último día",
+        "help": "Los planes terminan el último día de un periodo, nunca antes del último cobrado.",
+        "remove": "Quitar la fecha de fin (sin fecha de fin)",
+        "done": "Fecha de fin guardada."
+      },
+      "dueOffset": {
+        "action": "Editar días para pagar",
+        "title": "Editar los días para pagar",
+        "description": "Aplica a los periodos que se cobren de ahora en adelante.",
+        "done": "Días para pagar guardados."
+      },
+      "delete": "Eliminar",
+      "deleteDialog": {
+        "title": "¿Eliminar este plan?",
+        "body": "Se eliminarán el plan de {{student}} ({{plan}}) y sus pausas. No se ha cobrado nada."
+      }
     }
   }
 }

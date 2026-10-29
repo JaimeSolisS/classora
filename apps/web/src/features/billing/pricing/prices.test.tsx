@@ -31,6 +31,7 @@ import {
   PRICE_DETAIL_WITHOUT_UPCOMING,
   PRICE_NOT_OFFERED,
   PRICE_NO_PRICE_YET,
+  PRICE_PER_PERIOD,
   PRICE_WITH_NEXT,
   PRICES_PAGE,
   SUBJECT_ALGEBRA,
@@ -175,6 +176,7 @@ async function openAdd() {
 /** Fills the dialog with an individual, per-session 60-minute price. */
 function fillIndividual(amount = '350.00') {
   setFieldValue(select(dialog(), 'Class type'), 'individual');
+  setFieldValue(select(dialog(), 'Pricing model'), 'per_session');
   setFieldValue(select(dialog(), 'Subject'), SUBJECT_ALGEBRA.id);
   setFieldValue(input(dialog(), 'Duration (minutes)'), '60');
   setFieldValue(input(dialog(), 'Amount (MXN)'), amount);
@@ -219,6 +221,7 @@ describe('access and navigation (A)', () => {
       ['Prices', 'page'],
       ['Discounts', null],
       ['Custom prices', null],
+      ['Tuition plans', null],
       ['Unbilled', null],
       ['Settings', null],
     ]);
@@ -385,15 +388,22 @@ describe('the add dialog (C)', () => {
     const model = () => select(dialog(), 'Pricing model');
     expect(model().disabled).toBe(true);
 
+    // #374 B1: individual and group prices can also be per period.
     setFieldValue(select(dialog(), 'Class type'), 'individual');
-    expect(optionTexts(model())).toEqual(['Per session']);
-    expect(model().value).toBe('per_session');
+    expect(optionTexts(model())).toEqual([
+      'Choose an option',
+      'Per session',
+      'Per period',
+    ]);
+    expect(model().value).toBe('');
+    setFieldValue(model(), 'per_session');
 
     setFieldValue(select(dialog(), 'Class type'), 'group');
     expect(optionTexts(model())).toEqual([
       'Choose an option',
       'Per session',
       'Flat fee per enrollment',
+      'Per period',
     ]);
     // per_session is still allowed for a group: kept.
     expect(model().value).toBe('per_session');
@@ -651,6 +661,116 @@ describe('the add dialog (C)', () => {
     expect(dialog().textContent).toContain(
       'Enter the amount in pesos, with up to 2 decimals.',
     );
+  });
+});
+
+// --- #374 B: per-period prices ---------------------------------------------------------
+
+describe('per-period prices (#374 B)', () => {
+  it('labels a per-period item with its frequency and filters by the model', async () => {
+    stub({}, { page: { ...PRICES_PAGE, items: [PRICE_PER_PERIOD], total: 1 } });
+    await renderAt('/billing/prices');
+
+    expect(cells(rowOf(PRICE_PER_PERIOD.id)).slice(0, 6)).toEqual([
+      'Individual class · per period · monthly',
+      'Secundaria · Álgebra',
+      'Any',
+      '—',
+      '—',
+      '$1,500.00',
+    ]);
+    expect(optionTexts(select(main(), 'Pricing model'))).toEqual([
+      'All',
+      'Per session',
+      'Flat fee or course fee',
+      'Per period',
+    ]);
+
+    setFieldValue(select(main(), 'Pricing model'), 'per_period');
+    await settleUntil(() => listUrls.length >= 2);
+    expect(app!.router.state.location.search).toBe('?pricing_model=per_period');
+    expect(listUrls.at(-1)?.searchParams.get('pricing_model')).toBe(
+      'per_period',
+    );
+  });
+
+  it('asks for the frequency instead of the duration and sends it', async () => {
+    const api = stub({ [CREATE]: () => jsonResponse(201, PRICE_DETAIL) });
+    await renderAt('/billing/prices');
+    await openAdd();
+
+    setFieldValue(select(dialog(), 'Class type'), 'individual');
+    setFieldValue(select(dialog(), 'Pricing model'), 'per_period');
+    expect(() => input(dialog(), 'Duration (minutes)')).toThrow();
+    expect(optionTexts(select(dialog(), 'Frequency'))).toEqual([
+      'Choose an option',
+      'Weekly',
+      'Biweekly',
+      'Monthly',
+    ]);
+    setFieldValue(select(dialog(), 'Subject'), SUBJECT_ALGEBRA.id);
+    setFieldValue(input(dialog(), 'Amount (MXN)'), '1500.00');
+
+    await click(buttonNamed(dialog(), 'Save'));
+    expect(dialog().textContent).toContain('Choose the frequency.');
+    expect(document.activeElement).toBe(select(dialog(), 'Frequency'));
+    expect(api.calls(CREATE)).toHaveLength(0);
+
+    setFieldValue(select(dialog(), 'Frequency'), 'monthly');
+    await click(buttonNamed(dialog(), 'Save'));
+
+    expect(api.calls(CREATE)[0]?.body).toEqual({
+      class_type: 'individual',
+      pricing_model: 'per_period',
+      subject_id: SUBJECT_ALGEBRA.id,
+      period_frequency: 'monthly',
+      effective_from: '2026-10-20',
+      amount: '1500.00',
+    });
+  });
+
+  it('puts period_frequency_required on the frequency', async () => {
+    stub({
+      [CREATE]: () =>
+        problemWith(422, 'validation_error', {
+          errors: [
+            {
+              path: ['body', 'period_frequency'],
+              code: 'period_frequency_not_allowed',
+            },
+          ],
+        }),
+    });
+    await renderAt('/billing/prices');
+    await openAdd();
+
+    setFieldValue(select(dialog(), 'Class type'), 'group');
+    setFieldValue(select(dialog(), 'Pricing model'), 'per_period');
+    setFieldValue(select(dialog(), 'Frequency'), 'weekly');
+    setFieldValue(select(dialog(), 'Subject'), SUBJECT_ALGEBRA.id);
+    setFieldValue(input(dialog(), 'Amount (MXN)'), '300');
+    await click(buttonNamed(dialog(), 'Save'));
+
+    const frequency = select(dialog(), 'Frequency');
+    expect(frequency.getAttribute('aria-invalid')).toBe('true');
+    expect(dialog().textContent).toContain(
+      'Only per-period prices have a frequency.',
+    );
+    expect(frequency.value).toBe('weekly');
+  });
+
+  it('clears the frequency when the model changes', async () => {
+    stub();
+    await renderAt('/billing/prices');
+    await openAdd();
+
+    setFieldValue(select(dialog(), 'Class type'), 'group');
+    setFieldValue(select(dialog(), 'Pricing model'), 'per_period');
+    setFieldValue(select(dialog(), 'Frequency'), 'weekly');
+    setFieldValue(select(dialog(), 'Pricing model'), 'per_session');
+    expect(input(dialog(), 'Duration (minutes)').disabled).toBe(false);
+    setFieldValue(select(dialog(), 'Pricing model'), 'per_period');
+    expect(select(dialog(), 'Frequency').value).toBe('');
   });
 });
 

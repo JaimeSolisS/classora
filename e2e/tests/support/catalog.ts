@@ -44,17 +44,38 @@ type Common = {
     billing: string;
   };
   // #363 F4, F5: the price catalog; #366 E3: the Unbilled and Settings tabs;
-  // #367 G3, G4: discounts and custom prices.
+  // #367 G3, G4: discounts and custom prices; #374 H3: tuition plans.
   billing: {
     tabs: Record<
       | 'label'
       | 'prices'
       | 'discounts'
       | 'customPrices'
+      | 'tuitionPlans'
       | 'unbilled'
       | 'settings',
       string
     >;
+    tuition: {
+      title: string;
+      add: string;
+      create: string;
+      back: string;
+      view: string;
+      delete: string;
+      emptyFiltered: string;
+      openEnded: string;
+      untilResumed: string;
+      columns: Record<'endsOn', string>;
+      fields: Record<'student' | 'price' | 'startsOn', string>;
+      status: Record<'scheduled' | 'active' | 'paused' | 'ended', string>;
+      filters: { status: string; searchStudent: string };
+      periodStates: Record<'paused', string>;
+      pauses: { empty: string };
+      pause: Record<'action' | 'title' | 'submit' | 'from', string>;
+      resume: Record<'action' | 'title' | 'submit', string>;
+      end: Record<'action' | 'title' | 'submit' | 'lastDay', string>;
+    };
     targets: {
       kinds: Record<'student' | 'family', string>;
       search: Record<'student' | 'family', string>;
@@ -113,7 +134,13 @@ type Common = {
       back: string;
       viewExisting: string;
       fields: Record<
-        'classType' | 'subject' | 'duration' | 'effectiveFrom' | 'amount',
+        | 'classType'
+        | 'pricingModel'
+        | 'periodFrequency'
+        | 'subject'
+        | 'duration'
+        | 'effectiveFrom'
+        | 'amount',
         string
       >;
       status: Record<'current' | 'upcoming' | 'past', string>;

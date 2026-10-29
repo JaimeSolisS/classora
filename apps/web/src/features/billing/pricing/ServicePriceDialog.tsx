@@ -39,6 +39,7 @@ import {
   emptyPriceForm,
   existingPriceId,
   MODELS_BY_CLASS,
+  PERIOD_FREQUENCIES,
   PRICE_FIELD_ORDER,
   priceServerErrors,
   scopeKindOf,
@@ -54,7 +55,8 @@ import {
 // models follow the class type (pre-selected when only one applies); the
 // scope (a cohort for a course, a group for a group, of the chosen subject)
 // clears and disables the level and the duration (#89 E4); only a
-// per-session price has a duration. A 409 service_price_exists links to
+// per-session price has a duration, and a per-period price (#374 B1) has a
+// required frequency in its place. A 409 service_price_exists links to
 // the existing price; a 422 puts each field error on its field; anything
 // else is an alert. Nothing typed is lost on any error.
 
@@ -243,6 +245,7 @@ function DialogBody({
 
   const models = values.classType ? MODELS_BY_CLASS[values.classType] : [];
   const perSession = values.pricingModel === 'per_session';
+  const perPeriod = values.pricingModel === 'per_period';
   const scoped = values.scopeId !== '';
   const scopeHelp =
     scopeKind === 'cohort'
@@ -319,7 +322,7 @@ function DialogBody({
                               ? 'flat_fee'
                               : model === 'full_course'
                                 ? 'course_fee'
-                                : 'per_session'
+                                : model
                           }`,
                         )}
                       </option>
@@ -398,22 +401,46 @@ function DialogBody({
               ? t('billing.prices.hints.scoped')
               : t('billing.prices.hints.level'),
           )}
-          {field(
-            'duration',
-            t('billing.prices.fields.duration'),
-            <Input
-              id={fieldId('duration')}
-              type="text"
-              inputMode="numeric"
-              autoComplete="off"
-              value={values.duration}
-              disabled={!perSession || scoped}
-              aria-invalid={invalid('duration')}
-              aria-describedby={describedBy('duration', true)}
-              onChange={(event) => change('duration', event.target.value)}
-            />,
-            durationHelp,
-          )}
+          {perPeriod
+            ? field(
+                'periodFrequency',
+                t('billing.prices.fields.periodFrequency'),
+                select(
+                  'periodFrequency',
+                  values.periodFrequency,
+                  (value) =>
+                    change(
+                      'periodFrequency',
+                      PERIOD_FREQUENCIES.find((item) => item === value) ?? '',
+                    ),
+                  <>
+                    <option value="">{t('billing.prices.choose')}</option>
+                    {PERIOD_FREQUENCIES.map((frequency) => (
+                      <option key={frequency} value={frequency}>
+                        {labels.frequency(frequency)}
+                      </option>
+                    ))}
+                  </>,
+                  { help: true },
+                ),
+                t('billing.prices.hints.periodFrequency'),
+              )
+            : field(
+                'duration',
+                t('billing.prices.fields.duration'),
+                <Input
+                  id={fieldId('duration')}
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={values.duration}
+                  disabled={!perSession || scoped}
+                  aria-invalid={invalid('duration')}
+                  aria-describedby={describedBy('duration', true)}
+                  onChange={(event) => change('duration', event.target.value)}
+                />,
+                durationHelp,
+              )}
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {field(

@@ -49,6 +49,10 @@ async function fillAddDialog(page: Page, subjectName: string) {
   await dialog
     .getByLabel(prices.fields.classType, { exact: true })
     .selectOption('individual');
+  // #374 B1: an individual price is per session or per period.
+  await dialog
+    .getByLabel(prices.fields.pricingModel, { exact: true })
+    .selectOption('per_session');
   await dialog
     .getByLabel(prices.fields.subject, { exact: true })
     .selectOption({ label: subjectName });

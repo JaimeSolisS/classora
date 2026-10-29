@@ -336,9 +336,13 @@ unless a bullet says otherwise.
   family, as are course fees and flat group fees when a student enrolls
   (prorated by the sessions left for a late enrollment); withdrawing a
   student from a group charged per session credits the future sessions.
-  Billing → Unbilled lists the sessions and the group or course
-  enrollments that can't be charged yet (no family or no price) with a
-  link to fix the cause.
+  Billing → Unbilled lists the sessions, the group or course enrollments
+  and the tuition periods that can't be charged yet (no family, no price
+  or a family change) with a link to fix the cause.
+- They can set weekly, biweekly or monthly tuition plans (Billing →
+  Tuition plans), on their own or for a group enrollment, that charge each
+  period automatically from a per-period price, with pause, resume and an
+  end date.
 - They also keep discounts, scholarships, sibling discounts and promotions
   with eligibility rules and validity dates (Billing → Discounts), and
   custom prices per student or family (Billing → Custom prices); posted
