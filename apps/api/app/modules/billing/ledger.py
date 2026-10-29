@@ -27,16 +27,17 @@ the Unit of Work's audit actor (``None`` in a job); instants come from
 
 import uuid
 from collections.abc import Collection
+from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, cast
+from typing import Any, Final, cast
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select, tuple_, type_coerce
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
 from app.core.audit import current_actor_id
-from app.core.money import Money, money_sum
+from app.core.money import Money, MoneyType, money_sum
 from app.modules.billing.discounts import DiscountKind, DiscountLine
 from app.modules.billing.errors import ChargeNetNegativeError, StudentHasNoFamilyError
 from app.modules.billing.models import (
@@ -44,6 +45,7 @@ from app.modules.billing.models import (
     ACCOUNT_FAMILY_UNIQUE,
     ADJUSTMENT_SOURCE_KEY,
     CHARGE_NATURAL_KEYS,
+    ENROLLMENT_CHARGE_KINDS,
     AllocationRelease,
     BillingAccount,
     Charge,
@@ -58,6 +60,8 @@ from app.modules.billing.schemas import (
     PostedCharge,
 )
 from app.modules.families import service as families
+
+ENROLLMENT_REMOVAL: Final = "enrollment_removal"
 
 
 def _violates(error: IntegrityError, names: Collection[str]) -> bool:
@@ -155,6 +159,92 @@ def session_charge_key_columns() -> Select[uuid.UUID | None, uuid.UUID]:
     )
 
 
+def _net_column(charge: Any = Charge) -> Any:
+    """``amount + Σ adjustments`` of a charge row, as a correlated scalar
+    subquery (not executed)."""
+    adjustments = (
+        select(money_sum(ChargeAdjustment.amount))
+        .where(ChargeAdjustment.charge_id == charge.id)
+        .correlate(charge)
+        .scalar_subquery()
+    )
+    return type_coerce(charge.amount + adjustments, MoneyType()).label("net")
+
+
+def enrollment_fee_columns() -> Select[Any]:
+    """``SELECT id, kind, enrollment_id, student_id, net FROM charges WHERE
+    kind IN ('group_enrollment', 'cohort_enrollment')`` (``enrollment_id`` =
+    the group or cohort enrollment id; ``net`` = amount + Σ adjustments),
+    **not executed**: the #92 enrollment sweeper anti-joins it, and its
+    classification reads the fees of a period and of the student's other
+    periods of the same group or cohort (J5)."""
+    return select(
+        Charge.id.label("charge_id"),
+        Charge.kind,
+        func.coalesce(Charge.group_enrollment_id, Charge.cohort_enrollment_id).label(
+            "enrollment_id"
+        ),
+        Charge.student_id,
+        _net_column(),
+    ).where(Charge.kind.in_(ENROLLMENT_CHARGE_KINDS))
+
+
+@dataclass(frozen=True)
+class SessionChargeState:
+    """A session charge with its net and the sum of its ``enrollment_removal``
+    adjustments (#92 J4)."""
+
+    charge_id: uuid.UUID
+    class_session_id: uuid.UUID
+    student_id: uuid.UUID
+    net: Money
+    removals: Money
+
+
+async def session_charge_states(
+    session: AsyncSession, keys: Collection[tuple[uuid.UUID, uuid.UUID]]
+) -> dict[tuple[uuid.UUID, uuid.UUID], SessionChargeState]:
+    """The ``session`` charges of these ``(class_session_id, student_id)``
+    keys with their net and Σ ``enrollment_removal`` (#92 J4: the removal
+    credits and the re-enrollment restorations). Keys without a charge are
+    left out. One statement (none for no keys); no lock: the caller posts
+    under the account lock, which :func:`post_adjustment` takes."""
+    if not keys:
+        return {}
+    removals = (
+        select(money_sum(ChargeAdjustment.amount))
+        .where(
+            ChargeAdjustment.charge_id == Charge.id,
+            ChargeAdjustment.kind == ENROLLMENT_REMOVAL,
+        )
+        .correlate(Charge)
+        .scalar_subquery()
+    )
+    rows = await session.execute(
+        select(
+            Charge.id,
+            Charge.class_session_id,
+            Charge.student_id,
+            _net_column(),
+            removals.label("removals"),
+        ).where(
+            Charge.kind == "session",
+            tuple_(Charge.class_session_id, Charge.student_id).in_(list(set(keys))),
+        )
+    )
+    found: dict[tuple[uuid.UUID, uuid.UUID], SessionChargeState] = {}
+    for row in rows:
+        assert row.class_session_id is not None  # noqa: S101 - a session charge
+        found[(row.class_session_id, row.student_id)] = SessionChargeState(
+            charge_id=row.id,
+            class_session_id=row.class_session_id,
+            student_id=row.student_id,
+            net=Money(row.net),
+            removals=Money(row.removals),
+        )
+    return found
+
+
 async def _posted_charge(session: AsyncSession, key: list[Any]) -> PostedCharge | None:
     row = (
         await session.execute(select(Charge.id, Charge.billing_account_id).where(*key))
@@ -208,6 +298,8 @@ async def post_charge(session: AsyncSession, draft: ChargeDraft) -> PostedCharge
         amount=draft.amount,
         due_date=due_date,
         description=draft.description,
+        proration_remaining=None if draft.proration is None else draft.proration[0],
+        proration_total=None if draft.proration is None else draft.proration[1],
         posted_at=clock.now(),
         posted_by_user_id=current_actor_id(session),
     )

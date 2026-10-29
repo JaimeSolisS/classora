@@ -190,6 +190,50 @@ def test_a_charge_with_two_sources_breaks_the_one_source_check(module_seeded_url
     assert "ck_charges_one_source" in message
 
 
+PRORATION_INSERT = (
+    f"INSERT INTO charges ({', '.join(CHARGE_COLUMNS)}, proration_remaining,"  # noqa: S608
+    f" proration_total) VALUES ({', '.join(':' + c for c in CHARGE_COLUMNS)},"
+    " :remaining, :total)"
+)
+
+
+@pytest.mark.parametrize(
+    ("kind", "remaining", "total"),
+    [
+        pytest.param("manual", 3, 10, id="manual"),
+        pytest.param("session", 3, 10, id="session"),
+        pytest.param("group_enrollment", 11, 10, id="remaining-above-total"),
+        pytest.param("group_enrollment", 0, 0, id="total-zero"),
+        pytest.param("cohort_enrollment", -1, 10, id="negative"),
+        pytest.param("group_enrollment", 3, None, id="only-remaining"),
+        pytest.param("cohort_enrollment", None, 10, id="only-total"),
+    ],
+)
+def test_the_proration_check(
+    module_seeded_url, rows, session_id, kind, remaining, total
+):
+    # #92 A2, J8: both NULL, or an enrollment fee with 0 <= r <= t, t >= 1.
+    # The CHECKs run before the foreign keys (made-up period ids reach it)
+    # and in name order (ck_charges_one_source passes first).
+    source: dict[str, Any] = {"description": None}
+    if kind == "manual":
+        source = {}
+    elif kind == "session":
+        source.update(class_session_id=session_id, scheduled_minutes=60)
+    else:
+        source[f"{kind}_id"] = uuid.uuid4()
+    values = _charge(rows, kind=kind, **source)
+    message = fails_with(
+        module_seeded_url,
+        PRORATION_INSERT,
+        CHECK,
+        **values,
+        remaining=remaining,
+        total=total,
+    )
+    assert "ck_charges_proration" in message
+
+
 def test_the_session_natural_key_is_unique(module_seeded_url, rows, session_id):
     url = module_seeded_url
     values = _charge(

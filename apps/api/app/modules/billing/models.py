@@ -253,6 +253,16 @@ PAYER_NAME_MAX: Final = 200
 NOTE_MAX: Final = 500
 PAYMENT_METHOD_CODE_MAX: Final = 32
 KIND_MAX: Final = 24
+ENROLLMENT_CHARGE_KINDS: Final = ("group_enrollment", "cohort_enrollment")
+"""The enrollment fee kinds (#92), the only ones with a proration."""
+PRORATION_CHECK: Final = (
+    "num_nulls(proration_remaining, proration_total) = 2"
+    " OR (num_nulls(proration_remaining, proration_total) = 0"
+    " AND kind IN ('group_enrollment', 'cohort_enrollment')"
+    " AND proration_total >= 1"
+    " AND proration_remaining BETWEEN 0 AND proration_total)"
+)
+"""``ck_charges_proration`` (#92 J8, migration 0064)."""
 
 ACCOUNT_FAMILY_UNIQUE: Final = "uq_billing_accounts_family_id"
 ACCOUNT_FAMILY_FK: Final = "fk_billing_accounts_family_id_families"
@@ -450,6 +460,7 @@ class Charge(Audited, Model):
             "custom_price_id",
             postgresql_where=text("custom_price_id IS NOT NULL"),
         ),
+        CheckConstraint(PRORATION_CHECK, name="proration"),
     )
 
     billing_account_id: Mapped[uuid.UUID] = _uuid_fk("billing_accounts")
@@ -482,6 +493,12 @@ class Charge(Audited, Model):
     )
     amount: Mapped[Money] = mapped_column(MoneyType())
     due_date: Mapped[date] = mapped_column(Date)
+    proration_remaining: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    """The sessions left at enrollment (#92 J3, J8; enrollment fees only)."""
+    proration_total: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    """The proration denominator (#92 J3, J8): the cohort snapshot's
+    ``session_count`` or a finite group's sessions; ``NULL`` for an
+    open-ended group fee and every other kind."""
     description: Mapped[str | None] = mapped_column(
         String(DESCRIPTION_MAX), nullable=True
     )

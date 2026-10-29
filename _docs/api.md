@@ -3515,9 +3515,10 @@ any other change, SQLSTATE 42501). The routes call
 `app/workflows/group_enrollment.py`, whose `apply_enrollment_change`
 step receives each `GroupEnrollmentChange {enrollment_id, group_id,
 student_id, change: enrolled | withdrawn, effective_at, actor_user_id}` in
-the same Unit of Work; M6-07 adds its charge step there, and its sweeper
-reads `scheduling.service.list_group_enrollment_periods(changed_since,
-limit)`. No job is enqueued and there is no event bus.
+the same Unit of Work; M6-07 (#92) posts the charges there (see
+**Enrollment charges and unbilled enrollments**), and the periods it
+skips are found by the `billing:post_enrollment_charges` job. No job is
+enqueued and there is no event bus.
 
 ### Course cohorts
 
@@ -3768,14 +3769,14 @@ profile get an empty list and `404`.
 **The billing hook (M6-07, M6-16):** `enroll_in_cohort(uow, …)` and
 `withdraw_from_cohort(uow, …)` return a frozen `CohortEnrollmentChange
 {enrollment_id, cohort_id, student_id, change: enrolled | withdrawn,
-effective_at, actor_user_id}` and never commit. M6-07 adds its charge step
-inside them (`apply_cohort_enrollment_change`), in the same Unit of Work;
-its sweeper reads `courses.service.list_cohort_enrollment_periods(
-changed_since, limit)`. M6-16 calls `withdraw_from_cohort` from its own
-withdrawal workflow, in the same transaction as the refund or credit.
-Course prices are not prorated for closures (ADR-0005 D6); proration for a
-late enrollment is M6-07's rule. No job is enqueued and there is no event
-bus.
+effective_at, actor_user_id}` and never commit. M6-07 (#92) posts the
+course fee inside them (`apply_cohort_enrollment_change`), in the same Unit
+of Work; the periods it skips are found by the
+`billing:post_enrollment_charges` job. M6-16 calls `withdraw_from_cohort`
+from its own withdrawal workflow, in the same transaction as the refund or
+credit. Course prices are not prorated for closures (ADR-0005 D6); a late
+enrollment is prorated by the sessions left (M6-07). No job is enqueued
+and there is no event bus.
 
 **Price (E6).** A cohort has no price yet: M6-04 / M6-07 add the
 `course_cohorts` price link (a nullable foreign key to the price catalog)
@@ -6094,7 +6095,8 @@ pages are M6-06b (#366).
   reauthentication and no `Idempotency-Key`: the setting posts nothing by
   itself, and moving it later or back to `null` never changes posted
   charges. After the commit, a `PATCH` whose result is a date queues one
-  `billing:post_session_charges` run.
+  `billing:post_session_charges` run and one
+  `billing:post_enrollment_charges` run (M6-07).
 - **Session charges** (the `billing:post_session_charges` job, every 15
   minutes): every `confirmed` or `completed` **individual** session whose
   local date (center zone) is on or after `billing_starts_on` gets one
@@ -6103,8 +6105,11 @@ pages are M6-06b (#366).
   price first, else `lookup_price` with the student's current level and the
   session's `scheduled_minutes`, then the discounts), due on the service date
   plus the account's `due_offset_days`, posted with no actor. A `0.00`
-  price posts a zero charge. Group per-session charges come with M6-07; a
-  session covered by a package takes the package path from M6-09. A posted
+  price posts a zero charge. Since M6-07 `group` sessions are charged the
+  same way at `group/per_session` (with the group), unless the
+  participant's enrollment period is priced by a flat group fee
+  (`enrollment_priced`: no charge, not listed); a session covered by a
+  package takes the package path from M6-09. A posted
   charge is never changed by the job (a reschedule, a new duration, a new
   price version or a family move keep it).
 - **Unbilled items.** The candidates the job skips, computed on read
@@ -6116,12 +6121,67 @@ pages are M6-06b (#366).
   `class_session_id`, `starts_at`, `ends_at`, `service_date`, `state`,
   `scheduled_minutes`, `subject {id, name}`, `student {id, name}`,
   `education_level {id, name} | null` (the student's), `family {id, name}
-  | null` and `reason`. Order: `service_date`, `starts_at`, student name
+  | null`, `reason`, and (M6-07, additive) `class_type` (`individual` |
+  `group`) and `group {id, name} | null`. Order: `service_date`, `starts_at`, student name
   (case-insensitive), `class_session_id`, `student_id`. At most seven
-  statements (the custom prices of every candidate in one, M6-10) plus one
-  catalog lookup per distinct (subject, level, minutes, date).
+  statements (the custom prices of every candidate in one, M6-10), two
+  more when group sessions are candidates (M6-07), plus one catalog lookup
+  per distinct price key.
 - **Check order of the list:** `401` → `403 privacy_notice_required` →
   `403 permission_denied` → `422` (the query). No new error code.
+
+### Enrollment charges and unbilled enrollments
+
+Implemented by M6-07 (#92; spec §3, §6; ADR-0006 E1, E9, E11;
+owner-delegated decisions J1-J10 (a); the rules in
+`app/workflows/enrollment_charges.py` and `_docs/data-model.md`
+"Enrollment charges (#92)"). No new permission and no new error code. The
+web section is M6-07b (#372).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/billing/unbilled-enrollments` | `require("billing.view")` | Offset pagination; filters `reason` (`no_billing_account`, `no_price`; repeatable), `kind` (`group_enrollment`, `cohort_enrollment`; repeatable) and `student_id`. Items are `UnbilledEnrollmentItem`. |
+
+- **Fees.** A cohort enrollment gets the cohort's course fee
+  (`course/full_course` with the cohort) and a fee-priced group enrollment
+  the group's flat fee (`group/full_course` with the group), at the price
+  in effect on the enrollment's local date, through `billing.service.quote`.
+  They are posted by the enrollment and group-create routes in the same
+  transaction (`posted_by` = the enrolling user) or, when that was not
+  possible (billing off, no price, no family), by the
+  `billing:post_enrollment_charges` job (every 15 minutes) once the cause
+  is fixed. A group period is fee-priced when a flat fee is in effect and
+  none of its sessions was charged per session; otherwise its sessions are
+  charged per session. A withdrawn-and-re-enrolled student is not charged
+  the same course or group twice while the first fee's net is above
+  `0.00`.
+- **Late enrollment.** The fee is prorated by the sessions left (`fee ×
+  remaining / total`, before discounts): a cohort's total is its
+  template's `session_count`; a group's fee is prorated only when its
+  schedule is finite. The charge keeps `proration_remaining` and
+  `proration_total`.
+- **Dates.** `service_date` is the enrollment's local date; the due date
+  is the later of the enrollment's date and the first session's, plus the
+  account's `due_offset_days`. A fee is posted only when that base date is
+  on or after `billing_starts_on`.
+- **Removal.** Withdrawing a student from a group charged per session
+  credits each charged future session the student left with an
+  `enrollment_removal` adjustment (`−net`); re-enrolling restores them.
+  Flat group fees and course fees are never adjusted by a withdrawal
+  (M6-16). An unexpected billing failure in a route fails the enrollment
+  (`500`, nothing saved).
+- **Unbilled enrollments.** The periods the job skips, computed on read
+  (nothing stored, no lock): `no_price` (a cohort with no course fee in
+  effect on the enrollment's date; checked first) or `no_billing_account`
+  (the student has no family). A session-priced group period is not listed
+  (its sessions are in `/unbilled-items`). Billing off gives an empty page.
+  `UnbilledEnrollmentItem`: `kind`, `enrollment_id`, `enrolled_at`,
+  `withdrawn_at`, `service_date`, `student {id, name}`, `family {id, name}
+  | null`, `education_level {id, name} | null`, `subject {id, name}`,
+  `group {id, name} | null`, `cohort {id, name} | null`, `reason`. Order:
+  `service_date`, student name (case-insensitive), `enrollment_id`.
+- **Check order:** `401` → `403 privacy_notice_required` → `403
+  permission_denied` → `422` (the query).
 
 ### Discounts and custom prices
 

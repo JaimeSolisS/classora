@@ -68,6 +68,16 @@ session_charges`` call it), and the unexecuted
 :func:`session_charge_key_columns` (the posted session keys the sweeper
 anti-joins). :func:`update_billing_settings` is the ``PATCH
 /api/v1/billing/settings`` write.
+
+**Enrollment charges** (#92; ``app.workflows.enrollment_charges``). For
+other modules: ``quote(query, prorate=(remaining, total))`` (the base price
+prorated **before** the discounts, J3); ``ChargeDraft.proration`` (the
+snapshot of the counts on a ``group_enrollment``/``cohort_enrollment``
+charge, J8); the unexecuted :func:`enrollment_fee_columns` (the enrollment
+fees with their net: the sweeper's anti-join and the J5 re-enrollment rule)
+and :func:`group_fee_item_columns` (the ``group/full_course`` items, D3);
+and :func:`session_charge_states` (session charges with their net and their
+Σ ``enrollment_removal``, for the J4 removal credits and restorations).
 """
 
 from app.modules.billing.balances import account_balance as account_balance
@@ -173,7 +183,14 @@ from app.modules.billing.errors import (
     StudentHasNoFamilyError as StudentHasNoFamilyError,
 )
 from app.modules.billing.ledger import (
+    ENROLLMENT_REMOVAL as ENROLLMENT_REMOVAL,
+)
+from app.modules.billing.ledger import SessionChargeState as SessionChargeState
+from app.modules.billing.ledger import (
     charge_discount_lines as charge_discount_lines,
+)
+from app.modules.billing.ledger import (
+    enrollment_fee_columns as enrollment_fee_columns,
 )
 from app.modules.billing.ledger import (
     ensure_billing_account as ensure_billing_account,
@@ -183,6 +200,9 @@ from app.modules.billing.ledger import post_adjustment as post_adjustment
 from app.modules.billing.ledger import post_charge as post_charge
 from app.modules.billing.ledger import (
     session_charge_key_columns as session_charge_key_columns,
+)
+from app.modules.billing.ledger import (
+    session_charge_states as session_charge_states,
 )
 from app.modules.billing.prices import CATALOG_MODELS as CATALOG_MODELS
 from app.modules.billing.prices import CatalogItemRow as CatalogItemRow
@@ -200,6 +220,9 @@ from app.modules.billing.prices import list_versions as list_versions
 from app.modules.billing.pricing import base_price as base_price
 from app.modules.billing.pricing import custom_prices_for as custom_prices_for
 from app.modules.billing.pricing import discounts_for as discounts_for
+from app.modules.billing.pricing import (
+    group_fee_item_columns as group_fee_item_columns,
+)
 from app.modules.billing.pricing import lookup_price as lookup_price
 from app.modules.billing.pricing import make_quote as make_quote
 from app.modules.billing.pricing import quote as quote

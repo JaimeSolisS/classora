@@ -506,6 +506,14 @@ json = {}
 
 [[route]]
 method = "GET"
+path = "/api/v1/billing/unbilled-enrollments"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #92 F2: computed on read; billing off (the seeded null) gives an empty page.
+
+[[route]]
+method = "GET"
 path = "/api/v1/billing/unbilled-items"
 access = "permission"
 permission = "billing.view"

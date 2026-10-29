@@ -44,9 +44,9 @@ version_conflict``.
 
 **The billing hook (E2/E3).** ``group_enrollments`` holds one row per
 enrollment period (write-once withdrawal, never deleted). Each change
-returns a :class:`GroupEnrollmentChange` for the workflow, where M6-07 adds
-its charge step in the same Unit of Work; its sweeper reads the periods
-with :func:`list_group_enrollment_periods`.
+returns a :class:`GroupEnrollmentChange` for the workflow, where M6-07
+(#92) posts the charges in the same Unit of Work; the periods it misses are
+found by ``billing:post_enrollment_charges``.
 
 Every function runs in the caller's Unit of Work and never commits.
 """
@@ -58,7 +58,7 @@ from datetime import datetime
 from typing import Final, Literal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -145,22 +145,6 @@ class GroupCreation:
 
     group_id: uuid.UUID
     changes: tuple[GroupEnrollmentChange, ...]
-
-
-@dataclass(frozen=True)
-class GroupEnrollmentPeriod:
-    """One enrollment period for the M6-07 sweeper (#56 E3).
-    ``changed_at`` is its latest change (``withdrawn_at``, else
-    ``enrolled_at``)."""
-
-    enrollment_id: uuid.UUID
-    group_id: uuid.UUID
-    student_id: uuid.UUID
-    enrolled_at: datetime
-    enrolled_by_user_id: uuid.UUID
-    withdrawn_at: datetime | None
-    withdrawn_by_user_id: uuid.UUID | None
-    changed_at: datetime
 
 
 # --- Shared steps --------------------------------------------------------------------
@@ -583,41 +567,3 @@ async def withdraw_from_group(
         effective_at=now,
         actor_user_id=actor_id,
     )
-
-
-# --- E3. The sweeper's reader --------------------------------------------------------
-
-
-async def list_group_enrollment_periods(
-    session: AsyncSession, *, changed_since: datetime, limit: int
-) -> list[GroupEnrollmentPeriod]:
-    """The enrollment periods whose ``enrolled_at`` or ``withdrawn_at`` is at
-    or after ``changed_since``, by their latest change then id, at most
-    ``limit`` (one statement): the M6-07 sweeper's input (#56 E3)."""
-    changed_at = func.coalesce(
-        GroupEnrollment.withdrawn_at, GroupEnrollment.enrolled_at
-    )
-    rows = await session.execute(
-        select(GroupEnrollment, changed_at.label("changed_at"))
-        .where(
-            or_(
-                GroupEnrollment.enrolled_at >= changed_since,
-                GroupEnrollment.withdrawn_at >= changed_since,
-            )
-        )
-        .order_by(changed_at, GroupEnrollment.id)
-        .limit(limit)
-    )
-    return [
-        GroupEnrollmentPeriod(
-            enrollment_id=row.id,
-            group_id=row.group_id,
-            student_id=row.student_id,
-            enrolled_at=row.enrolled_at,
-            enrolled_by_user_id=row.enrolled_by_user_id,
-            withdrawn_at=row.withdrawn_at,
-            withdrawn_by_user_id=row.withdrawn_by_user_id,
-            changed_at=at,
-        )
-        for row, at in rows
-    ]

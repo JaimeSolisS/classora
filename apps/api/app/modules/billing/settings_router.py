@@ -12,8 +12,10 @@ Check order of the ``PATCH``: ``401`` → ``csrf_failed`` → ``403
 permission_denied`` → ``422`` (the body) → the row ``FOR UPDATE`` → ``409
 version_conflict``. After the commit, a ``PATCH`` whose result is a date
 queues one ``billing:post_session_charges`` run
-(``app.core.jobs.defer_session_charges``), so staff see the charges without
-waiting for the next tick; a failed ``PATCH`` queues nothing.
+(``app.core.jobs.defer_session_charges``) and one
+``billing:post_enrollment_charges`` run (``defer_enrollment_charges``,
+#92 D1), so staff see the charges without waiting for the next tick; a
+failed ``PATCH`` queues nothing.
 """
 
 from typing import Annotated, Final
@@ -23,7 +25,11 @@ from procrastinate import App
 
 from app.core.authz import PERMISSION_RESPONSES, Principal, require
 from app.core.errors import problem_response_doc
-from app.core.jobs import defer_session_charges, get_job_app
+from app.core.jobs import (
+    defer_enrollment_charges,
+    defer_session_charges,
+    get_job_app,
+)
 from app.core.uow import UnitOfWorkDep
 from app.modules.billing.schemas import BillingSettingsDetail, BillingSettingsUpdate
 from app.modules.billing.settings import get_billing_settings, update_billing_settings
@@ -78,4 +84,5 @@ async def change_billing_settings(
     if updated.billing_starts_on is not None:
         # Runs after the response, so after the Unit of Work committed.
         background.add_task(defer_session_charges, job_app)
+        background.add_task(defer_enrollment_charges, job_app)
     return updated

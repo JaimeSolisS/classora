@@ -145,6 +145,18 @@ Session charges (#91, :mod:`~app.modules.scheduling.billing_context`):
 (the session with its participants, the row ``FOR SHARE``: every writer
 that changes a session's state, time, duration or participants takes it
 ``FOR UPDATE``, so a charge is posted from committed, current data).
+Since #92 the candidates include ``group`` sessions (with ``group_id``).
+
+Enrollment charges (#92, :mod:`~app.modules.scheduling.enrollment_billing`):
+:func:`enrollment_session_counts` and :func:`owner_schedules` (the J3
+proration counts: materialized plus projected occurrences, not cancelled or
+skipped, and the first session), :func:`lock_group_for_billing` (the group
+row ``FOR SHARE``, the enrollment sweeper's first lock), the unexecuted
+:func:`group_enrollment_columns` and :func:`owner_session_columns` (joined
+by ``app.workflows.enrollment_charges``), :func:`group_enrollment_period`,
+:func:`covering_group_periods` with :func:`covers` (the period of a group
+session's participant) and :func:`group_sessions_after` (the J4 removal
+credits and re-enrollment restorations).
 
 Closure changes on existing occurrences (#232,
 :mod:`~app.modules.scheduling.closure_changes`): the nightly job runs
@@ -179,7 +191,7 @@ Ongoing tutoring groups (#56): :func:`create_group`, :func:`update_group`,
 lock order; the pure rules in :mod:`~app.modules.scheduling.groups_rules`),
 each returning the :class:`GroupEnrollmentChange` the
 ``app.workflows.group_enrollment`` workflow (the M6-07 billing hook)
-receives; :func:`list_group_enrollment_periods` for the M6-07 sweeper; and
+receives (the enrollment charges and their seam are below); and
 the reads with the student record policy :func:`get_group`,
 :func:`list_groups`, :func:`list_group_sessions` and
 :func:`get_group_enrollment` (:mod:`~app.modules.scheduling.group_reads`),
@@ -460,6 +472,44 @@ from app.modules.scheduling.course_series import (
 from app.modules.scheduling.course_series import (
     list_cohort_sessions as list_cohort_sessions,
 )
+from app.modules.scheduling.enrollment_billing import (
+    GroupForBilling as GroupForBilling,
+)
+from app.modules.scheduling.enrollment_billing import GroupPeriod as GroupPeriod
+from app.modules.scheduling.enrollment_billing import (
+    GroupSessionSeat as GroupSessionSeat,
+)
+from app.modules.scheduling.enrollment_billing import (
+    OwnerSchedule as OwnerSchedule,
+)
+from app.modules.scheduling.enrollment_billing import (
+    SessionCounts as SessionCounts,
+)
+from app.modules.scheduling.enrollment_billing import (
+    covering_group_periods as covering_group_periods,
+)
+from app.modules.scheduling.enrollment_billing import covers as covers
+from app.modules.scheduling.enrollment_billing import (
+    enrollment_session_counts as enrollment_session_counts,
+)
+from app.modules.scheduling.enrollment_billing import (
+    group_enrollment_columns as group_enrollment_columns,
+)
+from app.modules.scheduling.enrollment_billing import (
+    group_enrollment_period as group_enrollment_period,
+)
+from app.modules.scheduling.enrollment_billing import (
+    group_sessions_after as group_sessions_after,
+)
+from app.modules.scheduling.enrollment_billing import (
+    lock_group_for_billing as lock_group_for_billing,
+)
+from app.modules.scheduling.enrollment_billing import (
+    owner_schedules as owner_schedules,
+)
+from app.modules.scheduling.enrollment_billing import (
+    owner_session_columns as owner_session_columns,
+)
 from app.modules.scheduling.errors import (
     AlreadyEnrolledError as AlreadyEnrolledError,
 )
@@ -529,14 +579,8 @@ from app.modules.scheduling.groups import GroupCreation as GroupCreation
 from app.modules.scheduling.groups import (
     GroupEnrollmentChange as GroupEnrollmentChange,
 )
-from app.modules.scheduling.groups import (
-    GroupEnrollmentPeriod as GroupEnrollmentPeriod,
-)
 from app.modules.scheduling.groups import create_group as create_group
 from app.modules.scheduling.groups import enroll_in_group as enroll_in_group
-from app.modules.scheduling.groups import (
-    list_group_enrollment_periods as list_group_enrollment_periods,
-)
 from app.modules.scheduling.groups import update_group as update_group
 from app.modules.scheduling.groups import (
     withdraw_from_group as withdraw_from_group,

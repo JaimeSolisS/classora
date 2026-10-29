@@ -253,6 +253,9 @@ type LedgerEntryType = Literal[
     "refund",
 ]
 
+PRORATION_MAX: Final = 32767
+"""The ``SMALLINT`` limit of the proration columns."""
+
 _CHARGE_SOURCES: Final[dict[str, str | None]] = {
     "session": "class_session_id",
     "group_enrollment": "group_enrollment_id",
@@ -309,6 +312,11 @@ class ChargeDraft:
     discounts: tuple[DiscountLine, ...] = ()
     apply_family_offset: bool = True
     description: str | None = None
+    proration: tuple[int, int] | None = None
+    """``(remaining, total)`` of a prorated enrollment fee (#92 J3, J8):
+    ``group_enrollment`` and ``cohort_enrollment`` only, ``1 <= total`` and
+    ``0 <= remaining <= total``; ``None`` for every other charge and for an
+    open-ended group fee."""
 
     @classmethod
     def priced(cls, quote: Quote, **source_fields: Any) -> ChargeDraft:
@@ -352,6 +360,23 @@ class ChargeDraft:
         if discount > list_amount:
             raise ValueError("discount_amount can't exceed list_amount")
         self._check_pricing(discount)
+        self._check_proration()
+
+    def _check_proration(self) -> None:
+        """#92 A2: a proration only on an enrollment fee, in range (the
+        ``ck_charges_proration`` CHECK is the backstop)."""
+        if self.proration is None:
+            return
+        if self.kind not in ("group_enrollment", "cohort_enrollment"):
+            raise ValueError("a proration is set for an enrollment fee only")
+        remaining, total = self.proration
+        if not (
+            isinstance(remaining, int)
+            and isinstance(total, int)
+            and 1 <= total <= PRORATION_MAX
+            and 0 <= remaining <= total
+        ):
+            raise ValueError("the proration is (remaining, total), 0 <= r <= t, t >= 1")
 
     def _check_pricing(self, discount: Money) -> None:
         """#95 B5: at most one price source; a manual charge has neither a

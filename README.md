@@ -331,8 +331,11 @@ unless a bullet says otherwise.
   offered), an upcoming change can be deleted, and existing prices are
   never edited.
 - They can turn billing on from a start date, or off again (Billing →
-  Settings). While it is on, confirmed and completed individual sessions
-  from that date are charged automatically to the student's family, and
+  Settings). While it is on, confirmed and completed individual and group
+  sessions from that date are charged automatically to the student's
+  family, as are course fees and flat group fees when a student enrolls
+  (prorated by the sessions left for a late enrollment); withdrawing a
+  student from a group charged per session credits the future sessions.
   Billing → Unbilled lists the sessions that can't be charged yet (no
   family or no price) with a link to fix the cause.
 - They also keep discounts, scholarships, sibling discounts and promotions

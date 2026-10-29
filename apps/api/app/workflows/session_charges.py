@@ -88,9 +88,8 @@ import uuid
 from collections import Counter
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime
 from typing import Any, Final, Literal, cast
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import Select, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -106,28 +105,63 @@ from app.modules.catalog import service as catalog
 from app.modules.families import service as families
 from app.modules.families.schemas import FamilyReference
 from app.modules.scheduling import service as scheduling
+from app.workflows.charge_pricing import (
+    Period,
+    PeriodFacts,
+    PriceKey,
+    PriceMemo,
+    fee_price_query,
+    floor_instant,
+    local_date,
+    period_facts,
+)
 from app.workflows.session_charge_schemas import (
     BillableState,
+    ClassType,
     UnbilledReason,
     UnbilledRecord,
     UnbilledSessionItem,
 )
 
+__all__ = [
+    "ELIGIBLE_KINDS",
+    "Candidate",
+    "Classification",
+    "GroupPricing",
+    "PriceKey",
+    "PriceMemo",
+    "SessionChargeRunResult",
+    "candidate_page",
+    "classify",
+    "floor_instant",
+    "group_pricing",
+    "list_unbilled_items",
+    "local_date",
+    "post_one",
+    "price_key",
+    "price_query",
+    "run_post_session_charges",
+]
+
 logger = logging.getLogger(__name__)
 
-ELIGIBLE_KINDS: Final = ("individual",)
-"""The session kinds charged per session (#91 G1; #92 adds ``group``)."""
+ELIGIBLE_KINDS: Final = ("individual", "group")
+"""The session kinds charged per session (#91 G1; ``group`` since #92 E1).
+Course sessions are never charged per session."""
 PAGE_SIZE: Final = 200
 """Candidates per keyset page (C4)."""
 UNBILLED_REASONS: Final[tuple[UnbilledReason, ...]] = ("no_billing_account", "no_price")
 
-type Outcome = Literal["package_covered", "no_billing_account", "no_price", "billable"]
+type Outcome = Literal[
+    "package_covered", "enrollment_priced", "no_billing_account", "no_price", "billable"
+]
 type ItemOutcome = Literal[
     "posted",
     "already_posted",
     "no_billing_account",
     "no_price",
     "package_covered",
+    "enrollment_priced",
     "not_billable",
 ]
 
@@ -148,20 +182,14 @@ class Candidate:
     scheduled_minutes: int
     service_date: date
     subject_name: str = ""
+    kind: str = "individual"
+    group_id: uuid.UUID | None = None
+    """The group of a ``group`` session (#92 E1)."""
+    group_name: str = ""
 
     @property
     def key(self) -> tuple[uuid.UUID, uuid.UUID]:
         return (self.class_session_id, self.student_id)
-
-
-def local_date(instant: datetime, zone: str) -> date:
-    """The center-local date of ``instant`` (ADR-0004)."""
-    return instant.astimezone(ZoneInfo(zone)).date()
-
-
-def floor_instant(floor: date, zone: str) -> datetime:
-    """The instant of the floor's local midnight in the center zone."""
-    return datetime.combine(floor, time(0), tzinfo=ZoneInfo(zone)).astimezone(UTC)
 
 
 def _candidates_query(
@@ -174,6 +202,7 @@ def _candidates_query(
     ).subquery("participants")
     posted = billing.session_charge_key_columns().subquery("posted")
     subjects = catalog.subject_name_columns().subquery("subjects")
+    groups = scheduling.group_name_columns().subquery("groups")
     already_posted = (
         select(posted.c.class_session_id)
         .where(
@@ -183,8 +212,13 @@ def _candidates_query(
         .exists()
     )
     return (
-        select(participants, subjects.c.name.label("subject_name"))
+        select(
+            participants,
+            subjects.c.name.label("subject_name"),
+            groups.c.name.label("group_name"),
+        )
         .join(subjects, subjects.c.id == participants.c.subject_id)
+        .outerjoin(groups, groups.c.id == participants.c.group_id)
         .where(~already_posted)
         .order_by(
             participants.c.starts_at,
@@ -206,6 +240,9 @@ def _candidate(row: Any, zone: str) -> Candidate:
         scheduled_minutes=row.scheduled_minutes,
         service_date=local_date(starts_at, zone),
         subject_name=row.subject_name,
+        kind=row.kind,
+        group_id=row.group_id,
+        group_name=row.group_name or "",
     )
 
 
@@ -244,28 +281,18 @@ async def candidate_page(
 # --- The classification (D1) ---------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class PriceKey:
-    """The catalog lookup of a candidate (#91 C5 step 5). #92 adds the
-    ``group`` kind and ``group_id``."""
-
-    subject_id: uuid.UUID
-    education_level_id: uuid.UUID | None
-    duration_minutes: int
-    on: date
-    class_type: str = "individual"
-    pricing_model: str = "per_session"
-
-
 def price_key(candidate: Candidate, education_level_id: uuid.UUID | None) -> PriceKey:
-    """The one price key of a session charge: individual, per session, the
-    subject, the student's current level, the scheduled minutes and the
-    service date."""
+    """The one price key of a session charge: the session's class type
+    (``individual``, or ``group`` with its ``group_id``, #92 E2), per
+    session, the subject, the student's current level, the scheduled
+    minutes and the service date."""
     return PriceKey(
         subject_id=candidate.subject_id,
         education_level_id=education_level_id,
         duration_minutes=candidate.scheduled_minutes,
         on=candidate.service_date,
+        class_type=candidate.kind,
+        group_id=candidate.group_id,
     )
 
 
@@ -282,54 +309,14 @@ def price_query(
         student_id=candidate.student_id,
         family_id=family_id,
         charge_kind="session",
-        class_type="individual",
+        class_type=cast(ClassType, key.class_type),
         pricing_model=key.pricing_model,
         subject_id=key.subject_id,
         on=key.on,
         education_level_id=key.education_level_id,
         duration_minutes=key.duration_minutes,
+        group_id=key.group_id,
     )
-
-
-@dataclass
-class PriceMemo:
-    """Base prices within one run or read (#95 C2, C3). After
-    :meth:`prefetch` the custom prices of the given queries come from one
-    batched statement and the catalog lookups are memoized per
-    :class:`PriceKey`; without it each query is one
-    ``billing.service.base_price``."""
-
-    session: AsyncSession
-    custom: Mapping[billing.PriceQuery, billing.BasePrice] | None = None
-    found: dict[PriceKey, billing.PriceInEffect | None] = field(default_factory=dict)
-
-    async def prefetch(self, queries: Sequence[billing.PriceQuery]) -> None:
-        """Read the custom prices of ``queries`` in one statement."""
-        self.custom = await billing.custom_prices_for(self.session, queries)
-
-    async def lookup(self, key: PriceKey) -> billing.PriceInEffect | None:
-        if key not in self.found:
-            self.found[key] = await billing.lookup_price(
-                self.session,
-                class_type=key.class_type,
-                pricing_model=key.pricing_model,
-                subject_id=key.subject_id,
-                on=key.on,
-                education_level_id=key.education_level_id,
-                duration_minutes=key.duration_minutes,
-            )
-        return self.found[key]
-
-    async def base(
-        self, query: billing.PriceQuery, key: PriceKey
-    ) -> billing.BasePrice | None:
-        if self.custom is None:
-            return await billing.base_price(self.session, query)
-        custom = self.custom.get(query)
-        if custom is not None:
-            return custom
-        price = await self.lookup(key)
-        return None if price is None else billing.BasePrice.of_catalog(price)
 
 
 @dataclass(frozen=True)
@@ -342,6 +329,97 @@ class Classification:
     price: billing.BasePrice | None = None
 
 
+@dataclass(frozen=True)
+class GroupPricing:
+    """The enrollment periods covering group candidates (#92 E2), with
+    their ledger facts. ``covering`` maps a candidate key to its period
+    (none: session-priced)."""
+
+    covering: Mapping[tuple[uuid.UUID, uuid.UUID], Period] = field(default_factory=dict)
+    facts: Mapping[uuid.UUID, PeriodFacts] = field(default_factory=dict)
+
+    def fee_query(
+        self,
+        key: tuple[uuid.UUID, uuid.UUID],
+        *,
+        zone: str,
+        education_level_id: uuid.UUID | None,
+        family_id: uuid.UUID | None,
+    ) -> billing.PriceQuery | None:
+        """The fee query of the period covering ``key``, if any."""
+        period = self.covering.get(key)
+        if period is None:
+            return None
+        return fee_price_query(
+            period,
+            service_date=local_date(period.enrolled_at, zone),
+            education_level_id=education_level_id,
+            family_id=family_id,
+        )
+
+    async def enrollment_priced(
+        self,
+        key: tuple[uuid.UUID, uuid.UUID],
+        *,
+        zone: str,
+        education_level_id: uuid.UUID | None,
+        family_id: uuid.UUID | None,
+        prices: PriceMemo,
+    ) -> bool:
+        """E2: the covering period has its fee charge, or is fee-priced
+        (#92 B1 steps 3-4: no session charge of the student inside it, and
+        a ``group/full_course`` base price on its enrollment date)."""
+        query = self.fee_query(
+            key,
+            zone=zone,
+            education_level_id=education_level_id,
+            family_id=family_id,
+        )
+        if query is None:
+            return False
+        period = self.covering[key]
+        known = self.facts.get(period.enrollment_id, PeriodFacts())
+        if known.fee_posted:
+            return True
+        if known.session_charged:
+            return False
+        return await prices.base(query) is not None
+
+
+async def group_pricing(
+    session: AsyncSession, candidates: Sequence[Candidate]
+) -> GroupPricing:
+    """The :class:`GroupPricing` of the ``group`` candidates: their periods
+    (one statement) and the periods' ledger facts (one more); nothing for
+    no group candidate."""
+    groups = [c for c in candidates if c.group_id is not None]
+    if not groups:
+        return GroupPricing()
+    rows = await scheduling.covering_group_periods(
+        session, {(c.group_id, c.student_id) for c in groups if c.group_id is not None}
+    )
+    covering: dict[tuple[uuid.UUID, uuid.UUID], Period] = {}
+    for candidate in groups:
+        for row in rows:
+            if (
+                row.group_id == candidate.group_id
+                and row.student_id == candidate.student_id
+                and scheduling.covers(row, candidate.starts_at)
+            ):
+                covering[candidate.key] = Period(
+                    kind="group_enrollment",
+                    enrollment_id=row.enrollment_id,
+                    owner_id=row.group_id,
+                    student_id=row.student_id,
+                    subject_id=row.subject_id,
+                    enrolled_at=row.enrolled_at,
+                    withdrawn_at=row.withdrawn_at,
+                )
+                break
+    unique = list({p.enrollment_id: p for p in covering.values()}.values())
+    return GroupPricing(covering=covering, facts=await period_facts(session, unique))
+
+
 async def classify(
     session: AsyncSession,
     candidates: Sequence[Candidate],
@@ -349,9 +427,13 @@ async def classify(
     families_by_student: Mapping[uuid.UUID, FamilyReference | None],
     levels: Mapping[uuid.UUID, uuid.UUID | None],
     prices: PriceMemo,
+    zone: str,
+    groups: GroupPricing | None = None,
 ) -> list[Classification]:
     """The rules of the module docstring, for each candidate (in order):
-    package seam → family → price."""
+    package seam → enrollment-priced group session (#92 E2) → family →
+    price. ``groups`` is :func:`group_pricing` of the candidates (read here
+    when not given)."""
     covered = await billing.package_covered_keys(
         session,
         [
@@ -365,12 +447,23 @@ async def classify(
             for c in candidates
         ],
     )
+    if groups is None:
+        groups = await group_pricing(session, candidates)
     result: list[Classification] = []
     for candidate in candidates:
         level = levels.get(candidate.student_id)
+        family = families_by_student.get(candidate.student_id)
         if candidate.key in covered:
             result.append(Classification("package_covered", level))
-        elif (family := families_by_student.get(candidate.student_id)) is None:
+        elif candidate.group_id is not None and await groups.enrollment_priced(
+            candidate.key,
+            zone=zone,
+            education_level_id=level,
+            family_id=None if family is None else family.id,
+            prices=prices,
+        ):
+            result.append(Classification("enrollment_priced", level))
+        elif family is None:
             result.append(Classification("no_billing_account", level))
         else:
             price = await prices.base(
@@ -412,6 +505,8 @@ async def post_one(
         state=locked.state,
         scheduled_minutes=locked.scheduled_minutes,
         service_date=local_date(locked.starts_at, zone),
+        kind=locked.kind,
+        group_id=locked.group_id,
     )
     floor = await billing.billing_starts_on(session, lock=True)
     if floor is None or candidate.service_date < floor:
@@ -427,10 +522,25 @@ async def post_one(
         families_by_student={student_id: family},
         levels={student_id: level},
         prices=PriceMemo(session),
+        zone=zone,
     )
     if classified.outcome != "billable":
         return classified.outcome
     assert family is not None  # noqa: S101 - "billable" always has a family
+    if candidate.group_id is not None:
+        # #92 E3 (J2): under the family's account lock, the period's fee and
+        # this session charge can't both be posted.
+        account_id = await billing.ensure_billing_account(session, family.id)
+        await billing.lock_billing_account(session, account_id)
+        groups = await group_pricing(session, [candidate])
+        if await groups.enrollment_priced(
+            candidate.key,
+            zone=zone,
+            education_level_id=level,
+            family_id=family.id,
+            prices=PriceMemo(session),
+        ):
+            return "enrollment_priced"
     quote = await billing.quote(session, price_query(candidate, level, family.id))
     if quote is None:
         return "no_price"
@@ -463,6 +573,8 @@ class SessionChargeRunResult:
     no_billing_account: int = 0
     no_price: int = 0
     package_covered: int = 0
+    enrollment_priced: int = 0
+    """Group sessions of a fee-priced enrollment period (#92 E2)."""
     not_billable: int = 0
     """The re-check under the locks failed (C5 steps 1-2)."""
     failed: int = 0
@@ -529,6 +641,7 @@ async def run_post_session_charges(
         no_billing_account=outcomes["no_billing_account"],
         no_price=outcomes["no_price"],
         package_covered=outcomes["package_covered"],
+        enrollment_priced=outcomes["enrollment_priced"],
         not_billable=outcomes["not_billable"],
         failed=failed,
     )
@@ -546,6 +659,13 @@ def _record(id_: uuid.UUID, name: str) -> UnbilledRecord:
     return UnbilledRecord(id=id_, name=name)
 
 
+def _family_id(
+    family_by_student: Mapping[uuid.UUID, FamilyReference], student_id: uuid.UUID
+) -> uuid.UUID | None:
+    family = family_by_student.get(student_id)
+    return None if family is None else family.id
+
+
 async def list_unbilled_items(
     session: AsyncSession,
     *,
@@ -557,7 +677,9 @@ async def list_unbilled_items(
     ``no_price`` (``reasons``: only those; empty = both), optionally one
     student's, by service date, start, student name, session id and student
     id. Billing off: an empty page. No lock, no write; at most seven
-    statements plus the memoized catalog lookups."""
+    statements, two more when group sessions are candidates (their covering
+    periods and the periods' ledger facts, #92 E4), plus the memoized
+    catalog lookups."""
     empty = OffsetPage[UnbilledSessionItem](
         items=[], total=0, limit=page.limit, offset=page.offset
     )
@@ -581,13 +703,28 @@ async def list_unbilled_items(
     family_by_student = await families.families_of_students(session, student_ids)
     students = await families.student_level_references(session, student_ids)
     levels = {sid: ref.education_level_id for sid, ref in students.items()}
+    groups = await group_pricing(session, candidates)
     prices = PriceMemo(session)
+    fee_queries = [
+        query
+        for c in candidates
+        if (
+            query := groups.fee_query(
+                c.key,
+                zone=zone,
+                education_level_id=levels.get(c.student_id),
+                family_id=_family_id(family_by_student, c.student_id),
+            )
+        )
+        is not None
+    ]
     await prices.prefetch(
         [
             price_query(c, levels.get(c.student_id), family.id)
             for c in candidates
             if (family := family_by_student.get(c.student_id)) is not None
         ]
+        + fee_queries
     )
     classified = await classify(
         session,
@@ -595,6 +732,8 @@ async def list_unbilled_items(
         families_by_student=family_by_student,
         levels=levels,
         prices=prices,
+        zone=zone,
+        groups=groups,
     )
     wanted = set(reasons) or set(UNBILLED_REASONS)
 
@@ -644,6 +783,12 @@ async def list_unbilled_items(
                 ),
                 family=None if family is None else _record(family.id, family.name),
                 reason=cast(UnbilledReason, result.outcome),
+                class_type=cast(ClassType, candidate.kind),
+                group=(
+                    None
+                    if candidate.group_id is None
+                    else _record(candidate.group_id, candidate.group_name)
+                ),
             )
         )
     return OffsetPage[UnbilledSessionItem](

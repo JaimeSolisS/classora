@@ -4221,6 +4221,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/unbilled-enrollments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Unbilled Enrollments
+         * @description The group and cohort enrollment periods that have no fee charge because
+         *     no course fee is in effect on the enrollment's local date (`no_price`,
+         *     cohorts) or the student has no family (`no_billing_account`), by service
+         *     date, student name and enrollment id. `reason` and `kind` may be
+         *     repeated. Empty while billing is off. Each period is charged by the next
+         *     sweeper run once its cause is fixed.
+         */
+        get: operations["list_unbilled_enrollments_api_v1_billing_unbilled_enrollments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/available-slots": {
         parameters: {
             query?: never;
@@ -7396,7 +7421,7 @@ export interface components {
             warnings: components["schemas"]["SchedulingWarning"][];
         };
         /** @enum {string} */
-        ClassType: "individual" | "group" | "course";
+        "ClassType-Input": "individual" | "group" | "course";
         /**
          * ClassroomCreate
          * @description A new classroom (``POST /api/v1/classrooms``). It starts active;
@@ -9144,7 +9169,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            class_type: components["schemas"]["ClassType"];
+            class_type: components["schemas"]["app__modules__billing__schemas__ClassType"];
             pricing_model: components["schemas"]["CatalogPricingModel"];
             subject: components["schemas"]["PriceCatalogSubject"];
             education_level: components["schemas"]["PriceCatalogReference"] | null;
@@ -9548,6 +9573,8 @@ export interface components {
             /** Display Name */
             display_name: string;
         };
+        /** @enum {string} */
+        EnrollmentChargeKind: "group_enrollment" | "cohort_enrollment";
         /**
          * EnrollmentStudent
          * @description The enrolled student.
@@ -12258,6 +12285,17 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** OffsetPage[UnbilledEnrollmentItem] */
+        OffsetPage_UnbilledEnrollmentItem_: {
+            /** Items */
+            items: components["schemas"]["UnbilledEnrollmentItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /** OffsetPage[UnbilledSessionItem] */
         OffsetPage_UnbilledSessionItem_: {
             /** Items */
@@ -13935,7 +13973,7 @@ export interface components {
          *     version (#89 B3). Fields are in rule order (see the module docstring).
          */
         ServicePriceCreate: {
-            class_type: components["schemas"]["ClassType"];
+            class_type: components["schemas"]["ClassType-Input"];
             pricing_model: components["schemas"]["CatalogPricingModel"];
             /**
              * Subject Id
@@ -13972,7 +14010,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            class_type: components["schemas"]["ClassType"];
+            class_type: components["schemas"]["app__modules__billing__schemas__ClassType"];
             pricing_model: components["schemas"]["CatalogPricingModel"];
             subject: components["schemas"]["PriceCatalogSubject"];
             education_level: components["schemas"]["PriceCatalogReference"] | null;
@@ -14003,7 +14041,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            class_type: components["schemas"]["ClassType"];
+            class_type: components["schemas"]["app__modules__billing__schemas__ClassType"];
             pricing_model: components["schemas"]["CatalogPricingModel"];
             subject: components["schemas"]["PriceCatalogSubject"];
             education_level: components["schemas"]["PriceCatalogReference"] | null;
@@ -15933,6 +15971,43 @@ export interface components {
             /** Professional Experience */
             professional_experience?: string | null;
         };
+        /**
+         * UnbilledEnrollmentItem
+         * @description One group or cohort enrollment period whose fee the enrollment sweeper
+         *     can't post (``GET /api/v1/billing/unbilled-enrollments``).
+         */
+        UnbilledEnrollmentItem: {
+            kind: components["schemas"]["EnrollmentChargeKind"];
+            /**
+             * Enrollment Id
+             * Format: uuid
+             */
+            enrollment_id: string;
+            /**
+             * Enrolled At
+             * Format: date-time
+             */
+            enrolled_at: string;
+            /** Withdrawn At */
+            withdrawn_at: string | null;
+            /**
+             * Service Date
+             * Format: date
+             * @description The enrollment's local date in the center's time zone.
+             */
+            service_date: string;
+            student: components["schemas"]["UnbilledRecord"];
+            /** @description The student's family (null: none, reason no_billing_account). */
+            family: components["schemas"]["UnbilledRecord"] | null;
+            /** @description The student's current level (null: none). */
+            education_level: components["schemas"]["UnbilledRecord"] | null;
+            subject: components["schemas"]["UnbilledRecord"];
+            /** @description The group of a group_enrollment period (else null). */
+            group: components["schemas"]["UnbilledRecord"] | null;
+            /** @description The cohort of a cohort_enrollment period (else null). */
+            cohort: components["schemas"]["UnbilledRecord"] | null;
+            reason: components["schemas"]["UnbilledReason"];
+        };
         /** @enum {string} */
         UnbilledReason: "no_billing_account" | "no_price";
         /**
@@ -15950,8 +16025,8 @@ export interface components {
         };
         /**
          * UnbilledSessionItem
-         * @description One confirmed or completed individual session participant the
-         *     sweeper skips (``GET /api/v1/billing/unbilled-items``).
+         * @description One confirmed or completed individual or group session participant
+         *     the sweeper skips (``GET /api/v1/billing/unbilled-items``).
          */
         UnbilledSessionItem: {
             /**
@@ -15985,6 +16060,10 @@ export interface components {
             /** @description The student's family (null: none, reason no_billing_account). */
             family: components["schemas"]["UnbilledRecord"] | null;
             reason: components["schemas"]["UnbilledReason"];
+            /** @description individual, or group for a session-priced group (#92). */
+            class_type: components["schemas"]["app__workflows__session_charge_schemas__ClassType"];
+            /** @description The group of a group session (else null). */
+            group: components["schemas"]["UnbilledRecord"] | null;
         };
         /**
          * UserAllowedActions
@@ -16185,6 +16264,8 @@ export interface components {
              */
             windows: components["schemas"]["AvailabilityWindow"][];
         };
+        /** @enum {string} */
+        app__modules__billing__schemas__ClassType: "individual" | "group" | "course";
         /**
          * ScheduleSubject
          * @description The session's subject with its level's name.
@@ -16210,6 +16291,8 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** @enum {string} */
+        app__workflows__session_charge_schemas__ClassType: "individual" | "group";
     };
     responses: never;
     parameters: never;
@@ -29347,7 +29430,7 @@ export interface operations {
     list_service_prices_api_v1_billing_service_prices_get: {
         parameters: {
             query?: {
-                class_type?: components["schemas"]["ClassType"] | null;
+                class_type?: components["schemas"]["ClassType-Input"] | null;
                 pricing_model?: components["schemas"]["CatalogPricingModel"] | null;
                 subject_id?: string | null;
                 limit?: number;
@@ -30633,6 +30716,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OffsetPage_UnbilledSessionItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_unbilled_enrollments_api_v1_billing_unbilled_enrollments_get: {
+        parameters: {
+            query?: {
+                reason?: components["schemas"]["UnbilledReason"][] | null;
+                kind?: components["schemas"]["EnrollmentChargeKind"][] | null;
+                student_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_UnbilledEnrollmentItem_"];
                 };
             };
             /** @description Authentication required. */

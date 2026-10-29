@@ -13,6 +13,8 @@ family (so no billing account), or the catalog has no price in effect on
 the service date (none, or "not offered")."""
 
 type BillableState = Literal["confirmed", "completed"]
+type ClassType = Literal["individual", "group"]
+"""The class type of a session charged per session (``group`` since #92)."""
 
 
 class UnbilledRecord(BaseModel):
@@ -23,8 +25,8 @@ class UnbilledRecord(BaseModel):
 
 
 class UnbilledSessionItem(BaseModel):
-    """One confirmed or completed individual session participant the
-    sweeper skips (``GET /api/v1/billing/unbilled-items``)."""
+    """One confirmed or completed individual or group session participant
+    the sweeper skips (``GET /api/v1/billing/unbilled-items``)."""
 
     class_session_id: uuid.UUID
     starts_at: datetime
@@ -43,3 +45,9 @@ class UnbilledSessionItem(BaseModel):
         description="The student's family (null: none, reason no_billing_account)."
     )
     reason: UnbilledReason
+    class_type: ClassType = Field(
+        description="individual, or group for a session-priced group (#92)."
+    )
+    group: UnbilledRecord | None = Field(
+        description="The group of a group session (else null)."
+    )

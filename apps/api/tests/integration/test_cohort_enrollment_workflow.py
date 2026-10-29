@@ -1,24 +1,22 @@
 """The billing hook of cohort enrollments (#66 J3, D3, E3): the routes return
 the workflow's change, a failure after the participant insert rolls the
 whole change back (one Unit of Work), a caller standing in for M6-16 (#101)
-withdraws inside its own Unit of Work and fails, and the sweeper's reader
-lists the periods in order in one statement."""
+withdraws inside its own Unit of Work and fails. (The #66 sweeper reader
+was replaced by ``billing:post_enrollment_charges``, #92 J7.)"""
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 import pytest
 
 from app.core.db import create_sessionmaker
 from app.core.uow import UnitOfWork
-from app.modules.courses import service as courses
 from app.workflows import cohort_enrollment
 from app.workflows.cohort_schemas import CohortEnrollmentCreate, CohortWithdrawal
 from tests.conftest import frozen_clock
 from tests.integration.auth_support import auth_client
-from tests.integration.catalog_support import count_statements
 from tests.integration.cohort_support import (
     cohort_body,
     cohort_rows,
@@ -218,49 +216,3 @@ def test_a_caller_like_m6_16_withdraws_in_its_own_unit_of_work(
         for r in cohort_rows(url, cohort["id"])
     )
     assert len(events(url)) == before_events
-
-
-def test_the_sweeper_reads_the_periods_in_order_in_one_statement(
-    module_seeded_url, client, refs
-):
-    url = module_seeded_url
-    tl = timeline()
-    a, b, c = refs["students"]
-    with frozen_clock(tl.now):
-        cookie = owner_cookie(url, client)
-        cohort = make_cohort(client, cookie, refs, tl.monday)
-    for minutes, (action, student) in enumerate(
-        [("enroll", a), ("enroll", b), ("withdraw", a), ("enroll", c)], start=1
-    ):
-        with frozen_clock(tl.now + timedelta(minutes=minutes)):
-            cookie = owner_cookie(url, client)
-            if action == "enroll":
-                response = enroll(client, cookie, cohort["id"], student)
-            else:
-                period = next(
-                    e
-                    for e in enrollment_rows(url, cohort["id"])
-                    if e.student_id == student
-                )
-                response = withdraw(client, cookie, cohort["id"], period.id)
-        assert response.status_code in (200, 201), response.text
-    since = tl.now + timedelta(minutes=2)
-    ours = {str(e.id) for e in enrollment_rows(url, cohort["id"])}
-
-    count, periods = count_statements(
-        url,
-        lambda session: courses.list_cohort_enrollment_periods(
-            session, changed_since=since, limit=1000
-        ),
-    )
-
-    mine = [p for p in periods if str(p.enrollment_id) in ours]
-    assert count == 1
-    # b (enrolled at +2), a (withdrawn at +3), c (enrolled at +4).
-    assert [(str(p.student_id), p.withdrawn_at is not None) for p in mine] == [
-        (str(b), False),
-        (str(a), True),
-        (str(c), False),
-    ]
-    assert all(str(p.cohort_id) == cohort["id"] for p in mine)
-    assert [p.changed_at for p in mine] == sorted(p.changed_at for p in mine)

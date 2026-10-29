@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0063"
+HEAD = "0064"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -161,6 +161,8 @@ LEDGER_TABLES = [
 ]
 """The tables revision 0061 adds (#90 A2)."""
 BILLING_SETTINGS_TABLES = ["billing_settings"]
+PRORATION_COLUMNS = ["proration_remaining", "proration_total"]
+"""The columns revision 0064 adds to ``charges`` (#92 A2)."""
 """The table revision 0062 adds (#91 A2)."""
 DISCOUNT_TABLES = [
     "custom_prices",
@@ -4584,9 +4586,22 @@ def _of_0063(diff: Any) -> bool:
     return False
 
 
+def _of_0064(diff: Any) -> bool:
+    """A metadata difference that revision 0064 adds: the proration columns
+    of ``charges`` (#92 A2; CHECKs are not compared)."""
+    if diff[0] == "add_column":
+        return diff[2] == "charges" and diff[3].name in PRORATION_COLUMNS
+    return False
+
+
+def _of_0063_on(diff: Any) -> bool:
+    """A metadata difference that revision 0063 or a later one adds."""
+    return _of_0063(diff) or _of_0064(diff)
+
+
 def _of_0062_on(diff: Any) -> bool:
     """A metadata difference that revision 0062 or a later one adds."""
-    return _of_0062(diff) or _of_0063(diff)
+    return _of_0062(diff) or _of_0063_on(diff)
 
 
 def _of_0061_on(diff: Any) -> bool:
@@ -10922,9 +10937,11 @@ def test_ledger_columns_constraints_indexes_triggers_and_view(fresh_database_url
         "description": ("character varying", "YES", 200, None),
         "posted_at": ("timestamp with time zone", "NO", None, None),
         "posted_by_user_id": uuid_null,
+        "proration_remaining": ("smallint", "YES", None, None),
+        "proration_total": ("smallint", "YES", None, None),
     }
     # E3: the staged columns come with their own issues (#95 added
-    # custom_price_id).
+    # custom_price_id, #92 the proration).
     assert {"tuition_plan_id", "package_id"}.isdisjoint(_columns(dsn, "charges"))
     assert "withdrawal_id" not in _columns(dsn, "refunds")
     assert _columns(dsn, "charge_adjustments") == {
@@ -11172,7 +11189,7 @@ def test_0063_adds_discounts_and_custom_prices_and_downgrade_drops_them(
     )
     assert "ix_charges_custom_price_id" not in _indexes(dsn, "charges")
     assert _discount_functions(dsn) == set()
-    assert [d for d in metadata_diff(dsn) if not _of_0063(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0063_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -11287,3 +11304,31 @@ def test_discount_and_custom_price_columns_constraints_and_indexes(
     assert {"ix_custom_prices_student_item", "ix_custom_prices_family_item"} <= set(
         _indexes(dsn, "custom_prices")
     )
+
+
+# --- 0064: the proration of enrollment charges (#92 A1-A3) -------------------------
+
+
+def test_0064_adds_the_proration_and_downgrade_drops_it(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0063")
+    charge_columns = set(_columns(dsn, "charges"))
+
+    command.upgrade(config, "0064")
+
+    assert version_nums(dsn) == ["0064"]
+    assert metadata_diff(dsn) == []
+    assert set(_columns(dsn, "charges")) - charge_columns == set(PRORATION_COLUMNS)
+    assert "ck_charges_proration" in _constraints(dsn, "charges")
+
+    command.downgrade(config, "0063")
+
+    assert version_nums(dsn) == ["0063"]
+    assert set(_columns(dsn, "charges")) == charge_columns
+    assert "ck_charges_proration" not in _constraints(dsn, "charges")
+    assert [d for d in metadata_diff(dsn) if not _of_0064(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []

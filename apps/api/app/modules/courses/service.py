@@ -51,7 +51,11 @@ write-once period rows (:func:`insert_cohort_enrollment`,
 :func:`lock_cohort_enrollment`, :func:`withdraw_cohort_enrollment`), the
 active counts, the record-policy filters (``visible_to`` on
 :func:`get_cohort` and :func:`list_cohorts`, :func:`cohort_visible_to`) and
-:func:`list_cohort_enrollment_periods` for the M6-07 sweeper;
+the #92 billing reads (:func:`cohort_enrollment_columns`,
+:func:`cohort_enrollment_period`, :func:`lock_cohort_for_billing`: the
+cohort row ``FOR SHARE``, the enrollment sweeper's first lock, and
+:func:`cohort_session_count`: the snapshot's ``session_count``, the
+proration denominator);
 ``app.workflows.cohort_enrollment`` composes them with
 ``scheduling.service``.
 
@@ -104,11 +108,9 @@ from app.modules.courses.cohorts import (
 )
 from app.modules.courses.cohorts import snapshot_subject_ids, syllabus_of
 from app.modules.courses.enrollment import (
-    CohortEnrollmentPeriod as CohortEnrollmentPeriod,
-)
-from app.modules.courses.enrollment import (
     CohortEnrollmentRow as CohortEnrollmentRow,
 )
+from app.modules.courses.enrollment import CohortPeriod as CohortPeriod
 from app.modules.courses.enrollment import (
     active_cohort_enrollment_count,
     has_active_enrollment,
@@ -120,7 +122,16 @@ from app.modules.courses.enrollment import (
     active_cohort_enrollments as active_cohort_enrollments,
 )
 from app.modules.courses.enrollment import (
+    cohort_enrollment_columns as cohort_enrollment_columns,
+)
+from app.modules.courses.enrollment import (
+    cohort_enrollment_period as cohort_enrollment_period,
+)
+from app.modules.courses.enrollment import (
     cohort_enrollment_rows as cohort_enrollment_rows,
+)
+from app.modules.courses.enrollment import (
+    cohort_session_count as cohort_session_count,
 )
 from app.modules.courses.enrollment import (
     cohort_visible_to as cohort_visible_to,
@@ -132,10 +143,10 @@ from app.modules.courses.enrollment import (
     insert_cohort_enrollment as insert_cohort_enrollment,
 )
 from app.modules.courses.enrollment import (
-    list_cohort_enrollment_periods as list_cohort_enrollment_periods,
+    lock_cohort_enrollment as lock_cohort_enrollment,
 )
 from app.modules.courses.enrollment import (
-    lock_cohort_enrollment as lock_cohort_enrollment,
+    lock_cohort_for_billing as lock_cohort_for_billing,
 )
 from app.modules.courses.enrollment import (
     withdraw_cohort_enrollment as withdraw_cohort_enrollment,
