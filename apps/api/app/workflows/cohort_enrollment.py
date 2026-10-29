@@ -62,15 +62,20 @@ no scheduling lock: the workflow takes the student lock first.
 **The billing contract (E3).** Each function returns a frozen
 :class:`CohortEnrollmentChange` (``enrollment_id``, ``cohort_id``,
 ``student_id``, ``change`` ``enrolled`` | ``withdrawn``, ``effective_at``,
-``actor_user_id``) and runs :func:`apply_cohort_enrollment_change` (a
-no-op today) in the same Unit of Work:
+``actor_user_id``) and runs :func:`apply_cohort_enrollment_change` in the
+same Unit of Work:
 
-- **M6-07 (#92)** adds its charge step there, so a failure rolls back the
-  period, its participants, its override and its audit events together.
-  Its sweeper finds the periods without charges through
-  ``courses.service.list_cohort_enrollment_periods`` (ISSUE-J1). Course
-  prices are not prorated for closures (ADR-0005 D6); proration for a late
-  enrollment is M6-07's rule.
+- **M6-07 (#92)** posts the course fee there on ``enrolled``
+  (``billing_starts_on`` ``FOR SHARE`` → the classification → the account
+  row ``FOR UPDATE``, after the locks above), so an unexpected failure
+  rolls back the period, its participants, its override and its audit
+  events together (J10; the expected skips write nothing and raise
+  nothing). A ``withdrawn`` change posts nothing: a course fee changes only
+  through #101. The periods a hook skips are found by
+  ``billing:post_enrollment_charges`` (ISSUE-J1). Course prices are not
+  prorated for closures (ADR-0005 D6); a late enrollment is prorated by the
+  sessions left (#92 J3; the rules are in
+  :mod:`app.workflows.enrollment_charges`).
 - **M6-16 (#101)** calls :func:`withdraw_from_cohort` from its own
   ``withdraw_enrollment`` workflow, in the same transaction as the refund
   or credit: nothing here commits.
@@ -93,6 +98,7 @@ from app.modules.administration import service as administration
 from app.modules.courses import service as courses
 from app.modules.families import service as families
 from app.modules.scheduling import service as scheduling
+from app.workflows import enrollment_charges
 from app.workflows.cohort_schemas import CohortEnrollmentCreate, CohortWithdrawal
 
 __all__ = [
@@ -128,9 +134,14 @@ class CohortEnrollmentChange:
 async def apply_cohort_enrollment_change(
     session: AsyncSession, change: CohortEnrollmentChange
 ) -> None:
-    """The cross-module steps of one change (none yet). M6-07 (#92) adds the
-    charge (or proration) of the period here, in the same Unit of Work."""
-    del session, change
+    """The billing step of one change (#92 C1), in the same Unit of Work:
+    ``enrolled`` posts the period's course fee (prorated for a late
+    enrollment); ``withdrawn`` posts nothing (flat and course fees change
+    only through #101)."""
+    if change.change != "enrolled":
+        return
+    period = await enrollment_charges.cohort_period(session, change.enrollment_id)
+    await enrollment_charges.charge_period(session, period)
 
 
 async def _check_student(session: AsyncSession, student_id: uuid.UUID) -> None:

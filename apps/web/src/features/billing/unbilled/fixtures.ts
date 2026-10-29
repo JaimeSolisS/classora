@@ -24,6 +24,8 @@ export const ITEM_NO_FAMILY: UnbilledItem = {
   },
   family: null,
   reason: 'no_billing_account',
+  class_type: 'individual',
+  group: null,
 };
 
 /** A session with no price in effect on its date (reason no_price). */
@@ -40,6 +42,8 @@ export const ITEM_NO_PRICE: UnbilledItem = {
   education_level: null,
   family: { id: '50000000-0000-4000-8000-000000000001', name: 'Familia Díaz' },
   reason: 'no_price',
+  class_type: 'individual',
+  group: null,
 };
 
 export const UNBILLED_PAGE: UnbilledPage = {

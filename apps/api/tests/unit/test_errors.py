@@ -209,6 +209,7 @@ def test_production_app_has_no_demo_route(
         "/api/v1/billing/service-prices/{service_price_id}/versions/{price_version_id}",
         "/api/v1/billing/settings",
         "/api/v1/billing/unbilled-items",
+        "/api/v1/billing/unbilled-enrollments",
         "/api/v1/families/{family_id}/billing-account",
         "/api/v1/families/{family_id}/billing-account/charges",
         "/api/v1/families/{family_id}/billing-account/ledger",

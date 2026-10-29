@@ -51,7 +51,7 @@ def test_the_price_key_is_individual_per_session_on_the_service_date():
         class_type="individual",
         pricing_model="per_session",
     )
-    assert session_charges.ELIGIBLE_KINDS == ("individual",)
+    assert session_charges.ELIGIBLE_KINDS == ("individual", "group")
 
 
 def test_the_settings_body_needs_both_keys_and_a_sane_date():

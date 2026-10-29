@@ -11,7 +11,8 @@
   **unexecuted** ``SELECT`` the workflow joins (ADR-0002: cross-module joins
   only in ``app/workflows/``).
 - :func:`lock_session_for_billing`: one session with its participants, the
-  session row ``FOR SHARE`` (re-read). Every scheduling writer that changes
+  session row ``FOR SHARE`` (re-read; the participants are read after the
+  lock). Every scheduling writer that changes
   a session's state, time, duration or participants takes that row ``FOR
   UPDATE``, so a charge waits for it, or it waits for the charge's
   transaction; either way the charge is posted from committed, current
@@ -46,6 +47,8 @@ class BillableSession:
     ends_at: datetime
     scheduled_minutes: int
     participant_ids: tuple[uuid.UUID, ...]
+    group_id: uuid.UUID | None = None
+    """The group of a ``group`` session (#92 E1), else ``None``."""
 
 
 def billable_participant_columns(
@@ -53,9 +56,12 @@ def billable_participant_columns(
     kinds: Collection[str],
     starts_from: datetime,
     student_id: uuid.UUID | None = None,
-) -> Select[uuid.UUID, uuid.UUID, uuid.UUID, datetime, datetime, str, int]:
+) -> Select[
+    uuid.UUID, uuid.UUID, uuid.UUID, datetime, datetime, str, int, str, uuid.UUID | None
+]:
     """``SELECT class_session_id, student_id, subject_id, starts_at,
-    ends_at, state, scheduled_minutes`` of the participants of the sessions
+    ends_at, state, scheduled_minutes, kind, group_id`` of the participants
+    of the sessions
     of ``kinds`` in a :data:`BILLABLE_STATES` state that start at or after
     ``starts_from`` (optionally one student's), **not executed**."""
     query = (
@@ -67,6 +73,8 @@ def billable_participant_columns(
             ClassSession.ends_at,
             ClassSession.state,
             ClassSession.scheduled_minutes,
+            ClassSession.kind,
+            ClassSession.group_id,
         )
         .join(
             ClassSessionParticipant,
@@ -87,24 +95,25 @@ async def lock_session_for_billing(
     session: AsyncSession, class_session_id: uuid.UUID
 ) -> BillableSession | None:
     """The session with its participants (``None`` when unknown), the
-    session row ``FOR SHARE`` (re-read, never from the identity map). One
-    statement."""
-    rows = (
-        await session.execute(
-            select(ClassSession, ClassSessionParticipant.student_id)
-            .outerjoin(
-                ClassSessionParticipant,
-                ClassSessionParticipant.class_session_id == ClassSession.id,
-            )
-            .where(ClassSession.id == class_session_id)
-            .order_by(ClassSessionParticipant.student_id)
-            .with_for_update(read=True, of=ClassSession)
-            .execution_options(populate_existing=True)
-        )
-    ).all()
-    if not rows:
+    session row ``FOR SHARE`` (re-read, never from the identity map). Two
+    statements: the row lock first, then the participants, read **after**
+    the lock (#92: a statement that waited on a row lock sees the locked row
+    as committed but a joined table as of its own start, so a group
+    withdrawal that removed the participant while the step waited would be
+    missed)."""
+    row: ClassSession | None = await session.scalar(
+        select(ClassSession)
+        .where(ClassSession.id == class_session_id)
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
+    if row is None:
         return None
-    row: ClassSession = rows[0][0]
+    participant_ids = await session.scalars(
+        select(ClassSessionParticipant.student_id)
+        .where(ClassSessionParticipant.class_session_id == class_session_id)
+        .order_by(ClassSessionParticipant.student_id)
+    )
     return BillableSession(
         id=row.id,
         kind=row.kind,
@@ -113,7 +122,6 @@ async def lock_session_for_billing(
         starts_at=row.starts_at.astimezone(UTC),
         ends_at=row.ends_at.astimezone(UTC),
         scheduled_minutes=row.scheduled_minutes,
-        participant_ids=tuple(
-            student_id for _, student_id in rows if student_id is not None
-        ),
+        participant_ids=tuple(participant_ids),
+        group_id=row.group_id,
     )

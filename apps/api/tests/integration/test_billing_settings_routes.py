@@ -3,9 +3,10 @@ app.
 
 The shapes; ``null``, past and future dates; ``409 version_conflict``;
 the ``422``s; the ``update`` audit event with the old and new date (none for
-a no-op); the after-commit run of ``billing:post_session_charges``, counted
-in the module database's ``procrastinate_jobs`` (no worker runs here): one
-for a date, none for ``null``, a ``409`` or a ``422``; and the access
+a no-op); the after-commit runs of ``billing:post_session_charges`` and
+``billing:post_enrollment_charges`` (#92 D1), counted in the module
+database's ``procrastinate_jobs`` (no worker runs here): one each for a
+date, none for ``null``, a ``409`` or a ``422``; and the access
 matrix. Each test reads the version it sends.
 """
 
@@ -33,7 +34,7 @@ from tests.integration.invitation_support import sign_in
 from tests.integration.lifecycle_support import code_of, events
 
 SETTINGS = "/api/v1/billing/settings"
-TASK = jobs.SESSION_CHARGES_TASK
+TASKS = [jobs.SESSION_CHARGES_TASK, jobs.ENROLLMENT_CHARGES_TASK]
 
 
 @pytest.fixture(scope="module")
@@ -49,20 +50,25 @@ def manager(client: TestClient, module_seeded_url: str) -> SetCookie:
     )
 
 
+def clear_jobs(url: str) -> None:
+    run_sql(
+        url,
+        "DELETE FROM procrastinate_jobs WHERE task_name = ANY(:tasks)",
+        {"tasks": TASKS},
+    )
+
+
 @pytest.fixture(autouse=True)
 def no_queued_job(module_seeded_url: str) -> None:
-    run_sql(
-        module_seeded_url,
-        "DELETE FROM procrastinate_jobs WHERE task_name = :task",
-        {"task": TASK},
-    )
+    clear_jobs(module_seeded_url)
 
 
 def queued(url: str) -> list[Any]:
     return run_sql(
         url,
-        "SELECT queueing_lock, args FROM procrastinate_jobs WHERE task_name = :task",
-        {"task": TASK},
+        "SELECT queueing_lock, args FROM procrastinate_jobs"
+        " WHERE task_name = ANY(:tasks) ORDER BY task_name DESC",
+        {"tasks": TASKS},
     )
 
 
@@ -119,15 +125,16 @@ def test_a_date_is_set_audited_and_queues_one_run(
     event = found[-1]
     assert event.action == "update"
     assert event.changes == {"billing_starts_on": {"old": None, "new": value}}
-    [job] = queued(url)
-    assert job.queueing_lock == jobs.SESSION_CHARGES_QUEUEING_LOCK
-    assert set(job.args) == {"timestamp"}
+    sessions, enrollments = queued(url)
+    assert sessions.queueing_lock == jobs.SESSION_CHARGES_QUEUEING_LOCK
+    assert enrollments.queueing_lock == jobs.ENROLLMENT_CHARGES_QUEUEING_LOCK
+    assert set(sessions.args) == set(enrollments.args) == {"timestamp"}
 
 
 def test_null_turns_billing_off_and_queues_nothing(client, manager, module_seeded_url):
     url = module_seeded_url
     change(client, manager, "2031-03-01")
-    run_sql(url, "DELETE FROM procrastinate_jobs WHERE task_name = :t", {"t": TASK})
+    clear_jobs(url)
 
     response = change(client, manager, None)
 
@@ -155,7 +162,7 @@ def test_a_stale_version_is_409_and_changes_nothing(client, manager, module_seed
     url = module_seeded_url
     change(client, manager, "2031-05-01")
     before = current(client, manager)
-    run_sql(url, "DELETE FROM procrastinate_jobs WHERE task_name = :t", {"t": TASK})
+    clear_jobs(url)
 
     response = change(client, manager, "2031-06-01", before["version"] - 1)
 

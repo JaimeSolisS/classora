@@ -6,7 +6,9 @@ A2, C, D, E2; spec §1, §3, §6, §12 ``CohortEnrollment``; architecture §4.1
 in a cohort: inserted at the enrollment instant, closed once by the
 withdrawal (``withdrawn_at``, ``withdrawn_by_user_id``, the optional
 reason) and never deleted (a database trigger). Re-enrolling after a
-withdrawal is a new row, so M6-07 (#92) bills each period. The participant
+withdrawal is a new row; M6-07 (#92) charges a period's fee only while no
+other period of the student in the cohort has a fee with a positive net
+(J5). The participant
 rows of the cohort's series and sessions stay in ``scheduling``.
 
 ``app.workflows.cohort_enrollment`` composes these functions with
@@ -19,9 +21,11 @@ imports ``scheduling`` and takes no lock but its own rows: the workflow
 takes ``scheduling.service.lock_students``, the zone and
 :func:`~app.modules.courses.service.lock_cohort` first (#66 H1).
 
-The reads for the M6-07 sweeper (:func:`list_cohort_enrollment_periods`),
-the roster (:func:`cohort_enrollment_rows`) and the record policy
-(:func:`active_cohort_ids_of_students`) are here too.
+The billing reads (#92: :func:`cohort_enrollment_columns`,
+:func:`cohort_enrollment_period`, :func:`lock_cohort_for_billing`,
+:func:`cohort_session_count`), the roster (:func:`cohort_enrollment_rows`)
+and the record policy (:func:`active_cohort_ids_of_students`) are here
+too.
 
 Every function runs in the caller's Unit of Work and never commits.
 """
@@ -29,9 +33,9 @@ Every function runs in the caller's Unit of Work and never commits.
 import uuid
 from collections.abc import Collection
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
-from sqlalchemy import Exists, func, or_, select
+from sqlalchemy import Exists, Select, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,6 +48,7 @@ from app.modules.courses.models import (
     COHORT_ENROLLMENT_ACTIVE_UNIQUE,
     CohortEnrollment,
     CourseCohort,
+    CourseTemplateSnapshot,
 )
 
 
@@ -60,21 +65,6 @@ class CohortEnrollmentRow:
     withdrawn_by_user_id: uuid.UUID | None
     withdrawal_reason: str | None
     version: int
-
-
-@dataclass(frozen=True)
-class CohortEnrollmentPeriod:
-    """One enrollment period for the M6-07 sweeper (#66 D3). ``changed_at``
-    is its latest change (``withdrawn_at``, else ``enrolled_at``)."""
-
-    enrollment_id: uuid.UUID
-    cohort_id: uuid.UUID
-    student_id: uuid.UUID
-    enrolled_at: datetime
-    enrolled_by_user_id: uuid.UUID
-    withdrawn_at: datetime | None
-    withdrawn_by_user_id: uuid.UUID | None
-    changed_at: datetime
 
 
 def _row(enrollment: CohortEnrollment) -> CohortEnrollmentRow:
@@ -269,36 +259,91 @@ async def cohort_visible_to(
     return found is not None
 
 
-async def list_cohort_enrollment_periods(
-    session: AsyncSession, *, changed_since: datetime, limit: int
-) -> list[CohortEnrollmentPeriod]:
-    """The enrollment periods whose ``enrolled_at`` or ``withdrawn_at`` is at
-    or after ``changed_since``, by their latest change then id, at most
-    ``limit`` (one statement): the M6-07 (#92) sweeper's input (#66 D3)."""
-    changed_at = func.coalesce(
-        CohortEnrollment.withdrawn_at, CohortEnrollment.enrolled_at
-    )
-    rows = await session.execute(
-        select(CohortEnrollment, changed_at.label("changed_at"))
-        .where(
-            or_(
-                CohortEnrollment.enrolled_at >= changed_since,
-                CohortEnrollment.withdrawn_at >= changed_since,
-            )
+# --- Billing reads (#92) -------------------------------------------------------------
+
+
+def cohort_enrollment_columns() -> Select[
+    uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID, datetime, datetime | None
+]:
+    """``SELECT enrollment_id, owner_id (the cohort), student_id, subject_id
+    (the cohort's), enrolled_at, withdrawn_at`` of every cohort enrollment
+    period, **not executed** (the #92 enrollment sweeper's candidates and
+    the J5 "other periods" read)."""
+    return select(
+        CohortEnrollment.id.label("enrollment_id"),
+        CohortEnrollment.cohort_id.label("owner_id"),
+        CohortEnrollment.student_id,
+        CourseCohort.subject_id,
+        CohortEnrollment.enrolled_at,
+        CohortEnrollment.withdrawn_at,
+    ).join(CourseCohort, CourseCohort.id == CohortEnrollment.cohort_id)
+
+
+@dataclass(frozen=True)
+class CohortPeriod:
+    """One cohort enrollment period with the cohort's subject."""
+
+    enrollment_id: uuid.UUID
+    cohort_id: uuid.UUID
+    student_id: uuid.UUID
+    subject_id: uuid.UUID
+    enrolled_at: datetime
+    withdrawn_at: datetime | None
+
+
+async def cohort_enrollment_period(
+    session: AsyncSession, enrollment_id: uuid.UUID
+) -> CohortPeriod | None:
+    """One period (re-read), or ``None`` when unknown. One statement."""
+    row = (
+        await session.execute(
+            cohort_enrollment_columns()
+            .where(CohortEnrollment.id == enrollment_id)
+            .execution_options(populate_existing=True)
         )
-        .order_by(changed_at, CohortEnrollment.id)
-        .limit(limit)
+    ).first()
+    if row is None:
+        return None
+    return CohortPeriod(
+        enrollment_id=row.enrollment_id,
+        cohort_id=row.owner_id,
+        student_id=row.student_id,
+        subject_id=row.subject_id,
+        enrolled_at=row.enrolled_at.astimezone(UTC),
+        withdrawn_at=(
+            None if row.withdrawn_at is None else row.withdrawn_at.astimezone(UTC)
+        ),
     )
-    return [
-        CohortEnrollmentPeriod(
-            enrollment_id=row.id,
-            cohort_id=row.cohort_id,
-            student_id=row.student_id,
-            enrolled_at=row.enrolled_at,
-            enrolled_by_user_id=row.enrolled_by_user_id,
-            withdrawn_at=row.withdrawn_at,
-            withdrawn_by_user_id=row.withdrawn_by_user_id,
-            changed_at=at,
+
+
+async def lock_cohort_for_billing(
+    session: AsyncSession, cohort_id: uuid.UUID
+) -> uuid.UUID | None:
+    """The cohort row ``FOR SHARE`` (#92 D4), its id or ``None`` when
+    unknown. The #66 enrollment and withdrawal take it ``FOR UPDATE``, so an
+    enrollment sweeper step and an enrollment change serialize. One
+    statement."""
+    found: uuid.UUID | None = await session.scalar(
+        select(CourseCohort.id)
+        .where(CourseCohort.id == cohort_id)
+        .with_for_update(read=True)
+    )
+    return found
+
+
+async def cohort_session_count(session: AsyncSession, cohort_id: uuid.UUID) -> int:
+    """The cohort snapshot's ``session_count`` (the advertised number of
+    sessions, fixed at creation): the denominator of a late enrollment's
+    proration (#92 B2, J3). An unknown cohort is a :class:`ValueError`. One
+    statement."""
+    count = await session.scalar(
+        select(CourseTemplateSnapshot.content["session_count"].as_integer())
+        .join(
+            CourseCohort,
+            CourseCohort.template_snapshot_id == CourseTemplateSnapshot.id,
         )
-        for row, at in rows
-    ]
+        .where(CourseCohort.id == cohort_id)
+    )
+    if count is None:
+        raise ValueError("unknown cohort")
+    return int(count)

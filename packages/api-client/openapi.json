@@ -20776,6 +20776,138 @@
         }
       }
     },
+    "/api/v1/billing/unbilled-enrollments": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Unbilled Enrollments",
+        "description": "The group and cohort enrollment periods that have no fee charge because\nno course fee is in effect on the enrollment's local date (`no_price`,\ncohorts) or the student has no family (`no_billing_account`), by service\ndate, student name and enrollment id. `reason` and `kind` may be\nrepeated. Empty while billing is off. Each period is charged by the next\nsweeper run once its cause is fixed.",
+        "operationId": "list_unbilled_enrollments_api_v1_billing_unbilled_enrollments_get",
+        "parameters": [
+          {
+            "name": "reason",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UnbilledReason"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EnrollmentChargeKind"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "student_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_UnbilledEnrollmentItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/available-slots": {
       "get": {
         "tags": [
@@ -33212,6 +33344,13 @@
         "title": "EnrollmentActor",
         "description": "Who enrolled or withdrew the student."
       },
+      "EnrollmentChargeKind": {
+        "type": "string",
+        "enum": [
+          "group_enrollment",
+          "cohort_enrollment"
+        ]
+      },
       "EnrollmentStudent": {
         "properties": {
           "id": {
@@ -39243,6 +39382,37 @@
           "offset"
         ],
         "title": "OffsetPage[TutorListItem]"
+      },
+      "OffsetPage_UnbilledEnrollmentItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UnbilledEnrollmentItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[UnbilledEnrollmentItem]"
       },
       "OffsetPage_UnbilledSessionItem_": {
         "properties": {
@@ -47114,6 +47284,118 @@
         "title": "TutorUpdate",
         "description": "A profile change (``PATCH /api/v1/tutors/{user_id}``). Fields not sent\nstay unchanged; ``\"\"`` or ``null`` clears ``email``, ``phone`` or\n``professional_experience``."
       },
+      "UnbilledClassType": {
+        "type": "string",
+        "enum": [
+          "individual",
+          "group"
+        ]
+      },
+      "UnbilledEnrollmentItem": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/EnrollmentChargeKind"
+          },
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Enrollment Id"
+          },
+          "enrolled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Enrolled At"
+          },
+          "withdrawn_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withdrawn At"
+          },
+          "service_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Service Date",
+            "description": "The enrollment's local date in the center's time zone."
+          },
+          "student": {
+            "$ref": "#/components/schemas/UnbilledRecord"
+          },
+          "family": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnbilledRecord"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The student's family (null: none, reason no_billing_account)."
+          },
+          "education_level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnbilledRecord"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The student's current level (null: none)."
+          },
+          "subject": {
+            "$ref": "#/components/schemas/UnbilledRecord"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnbilledRecord"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The group of a group_enrollment period (else null)."
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnbilledRecord"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The cohort of a cohort_enrollment period (else null)."
+          },
+          "reason": {
+            "$ref": "#/components/schemas/UnbilledReason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "enrollment_id",
+          "enrolled_at",
+          "withdrawn_at",
+          "service_date",
+          "student",
+          "family",
+          "education_level",
+          "subject",
+          "group",
+          "cohort",
+          "reason"
+        ],
+        "title": "UnbilledEnrollmentItem",
+        "description": "One group or cohort enrollment period whose fee the enrollment sweeper\ncan't post (``GET /api/v1/billing/unbilled-enrollments``)."
+      },
       "UnbilledReason": {
         "type": "string",
         "enum": [
@@ -47201,6 +47483,21 @@
           },
           "reason": {
             "$ref": "#/components/schemas/UnbilledReason"
+          },
+          "class_type": {
+            "$ref": "#/components/schemas/UnbilledClassType",
+            "description": "individual, or group for a session-priced group (#92)."
+          },
+          "group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnbilledRecord"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The group of a group session (else null)."
           }
         },
         "type": "object",
@@ -47215,10 +47512,12 @@
           "student",
           "education_level",
           "family",
-          "reason"
+          "reason",
+          "class_type",
+          "group"
         ],
         "title": "UnbilledSessionItem",
-        "description": "One confirmed or completed individual session participant the\nsweeper skips (``GET /api/v1/billing/unbilled-items``)."
+        "description": "One confirmed or completed individual or group session participant\nthe sweeper skips (``GET /api/v1/billing/unbilled-items``)."
       },
       "UserAllowedActions": {
         "properties": {

@@ -17,14 +17,24 @@ Each returns the frozen :class:`GroupEnrollmentChange` (``enrollment_id``,
 ``group_id``, ``student_id``, ``change`` ``enrolled`` | ``withdrawn``,
 ``effective_at``, ``actor_user_id``).
 
-**The M6-07 contract.** M6-07 adds its charge step to
-:func:`apply_enrollment_change`, **in the same Unit of Work**: a failure
-there rolls back the enrollment, its participants and its audit events
-together. Its sweeper finds the enrollment periods without charges in
-``group_enrollments`` (one row per period, write-once withdrawal, never
-deleted) through ``scheduling.service.list_group_enrollment_periods``
-(ISSUE-J1: work enqueued after commit is found again by a sweeper). There is
-no event bus and no job is enqueued here: today the step does nothing.
+**The charges (#92 M6-07).** :func:`apply_enrollment_change` runs the
+billing steps **in the same Unit of Work**, after the M4 locks (students →
+zone → group → series → sessions), so an unexpected failure there rolls
+back the enrollment, its participants and its audit events together (J10;
+the expected skips write nothing and raise nothing):
+
+- ``enrolled``: the J4 restorations of the session charges the student's
+  earlier withdrawals credited, then the flat fee of the period when the
+  group is fee-priced (``billing_starts_on`` ``FOR SHARE`` → the
+  classification → the account row ``FOR UPDATE``);
+- ``withdrawn``: the J4 ``enrollment_removal`` credits of the charged
+  sessions the student just left. A flat group fee is never adjusted here
+  (only #101).
+
+The rules are in :mod:`app.workflows.enrollment_charges`; the periods a
+hook skips (billing off, no family) are found by
+``billing:post_enrollment_charges`` (ISSUE-J1). There is no event bus and
+no job is enqueued here.
 
 **Rules the steps rely on** (``scheduling.groups``): the change takes effect
 at ``effective_at`` and touches only the group's occurrences that start
@@ -45,6 +55,7 @@ from app.modules.scheduling.schemas import (
     GroupWithdrawal,
 )
 from app.modules.scheduling.service import GroupEnrollmentChange
+from app.workflows import enrollment_charges
 
 __all__ = [
     "GroupEnrollmentChange",
@@ -58,9 +69,26 @@ __all__ = [
 async def apply_enrollment_change(
     session: AsyncSession, change: GroupEnrollmentChange
 ) -> None:
-    """The cross-module steps of one enrollment change (none yet). M6-07
-    adds the charge (or proration) of the period here."""
-    del session, change
+    """The billing steps of one enrollment change (#92 C2; see the module
+    docstring), in the caller's Unit of Work."""
+    if change.change == "withdrawn":
+        await enrollment_charges.credit_removed_sessions(
+            session,
+            group_id=change.group_id,
+            student_id=change.student_id,
+            enrollment_id=change.enrollment_id,
+            effective_at=change.effective_at,
+        )
+        return
+    await enrollment_charges.restore_rejoined_sessions(
+        session,
+        group_id=change.group_id,
+        student_id=change.student_id,
+        enrollment_id=change.enrollment_id,
+        effective_at=change.effective_at,
+    )
+    period = await enrollment_charges.group_period(session, change.enrollment_id)
+    await enrollment_charges.charge_period(session, period)
 
 
 async def create_group(

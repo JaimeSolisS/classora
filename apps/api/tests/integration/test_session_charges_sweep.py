@@ -141,7 +141,7 @@ def test_the_service_date_is_the_local_date(module_seeded_url):
         ("conflict", "individual"),
         ("cancelled", "individual"),
         ("skipped_closure", "individual"),
-        ("confirmed", "group"),
+        # Group sessions are charged since #92 (E1): test_group_enrollment_charges.
         ("confirmed", "course"),
     ],
 )

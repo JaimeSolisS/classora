@@ -224,6 +224,7 @@ MODULE_TASKS = {
     "scheduling:materialize_series",
     "academics:create_progress_report_placeholders",
     "billing:post_session_charges",
+    "billing:post_enrollment_charges",
 }
 
 
@@ -318,6 +319,29 @@ def test_the_session_charges_run_every_15_minutes():
     )
     assert jobs.SESSION_CHARGES_TASK == "billing:post_session_charges"
     assert jobs.task_parameter_types(app)["billing:post_session_charges"] == {
+        "timestamp": int
+    }
+
+
+def test_the_enrollment_charges_run_every_15_minutes():
+    # #92 D1: one queued job at a time; the settings PATCH shares the lock.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "billing:post_enrollment_charges"
+    ]
+    assert periodic.cron == "*/15 * * * *"
+    assert periodic.periodic_id == "billing-post-enrollment-charges"
+    assert periodic.configure_kwargs["queueing_lock"] == (
+        "billing-post-enrollment-charges"
+    )
+    assert app.tasks["billing:post_enrollment_charges"].queueing_lock == (
+        jobs.ENROLLMENT_CHARGES_QUEUEING_LOCK
+    )
+    assert jobs.ENROLLMENT_CHARGES_TASK == "billing:post_enrollment_charges"
+    assert jobs.task_parameter_types(app)["billing:post_enrollment_charges"] == {
         "timestamp": int
     }
 

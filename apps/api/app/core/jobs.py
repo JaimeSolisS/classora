@@ -6,7 +6,8 @@ calls them, so the API process and the ``worker`` container see the same
 tasks. Like ``app.core.model_registry``, it is the registry that imports the
 modules' task files (lazily, inside :func:`create_job_app`), and the
 workflow task files (``app.workflows.progress_report_schedule_tasks``, #316,
-and ``app.workflows.session_charge_tasks``, #91: jobs that compose modules);
+``app.workflows.session_charge_tasks``, #91, and
+``app.workflows.enrollment_charge_tasks``, #92: jobs that compose modules);
 module code never imports another module's ``tasks`` (ADR-0002).
 
 Rules for every job (ADR-0003, ISSUE-J1 to J4):
@@ -46,8 +47,9 @@ Pool sizes are small fixed defaults; sizing for the hosts is M10-04.
 its name here, so the deferring module never imports the owner's ``tasks``
 or ``service`` (ADR-0002). :func:`defer_series_materialization` is the
 closure writes' after-commit trigger of ``scheduling:materialize_series``;
-:func:`defer_session_charges` the billing settings ``PATCH``'s trigger of
-``billing:post_session_charges`` (#91 B4).
+:func:`defer_session_charges` and :func:`defer_enrollment_charges` the
+billing settings ``PATCH``'s triggers of ``billing:post_session_charges``
+(#91 B4) and ``billing:post_enrollment_charges`` (#92 D1).
 """
 
 import functools
@@ -94,6 +96,13 @@ SESSION_CHARGES_TASK: Final = "billing:post_session_charges"
 ``PATCH /api/v1/billing/settings`` that sets a date (#91 B4)."""
 SESSION_CHARGES_QUEUEING_LOCK: Final = "billing-post-session-charges"
 """At most one queued ``billing:post_session_charges`` job (the periodic
+tick shares it)."""
+
+ENROLLMENT_CHARGES_TASK: Final = "billing:post_enrollment_charges"
+"""The 15-minute enrollment charge sweeper (#92 D1), also deferred after a
+``PATCH /api/v1/billing/settings`` that sets a date."""
+ENROLLMENT_CHARGES_QUEUEING_LOCK: Final = "billing-post-enrollment-charges"
+"""At most one queued ``billing:post_enrollment_charges`` job (the periodic
 tick shares it)."""
 
 # Worker concurrency is fixed at 1 here; making it configurable and sizing it
@@ -224,10 +233,12 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     Core and module tasks (the hourly purges of rate-limit counters, #27, of
     sessions, #25, and of expired idempotency keys, #88; the five-minute
     offer expiry, #52; the nightly series materialization, #53; the daily
-    progress report placeholders, #316, and the 15-minute session charge
-    sweeper, #91, whose task files are
-    ``app/workflows/progress_report_schedule_tasks.py`` and
-    ``app/workflows/session_charge_tasks.py`` because they compose modules)
+    progress report placeholders, #316, and the 15-minute session and
+    enrollment charge sweepers, #91 and #92, whose task files are
+    ``app/workflows/progress_report_schedule_tasks.py``,
+    ``app/workflows/session_charge_tasks.py`` and
+    ``app/workflows/enrollment_charge_tasks.py`` because they compose
+    modules)
     are registered in every environment. The demo tasks
     (and the periodic demo) are registered only in :data:`DEMO_ENVIRONMENTS`.
     Does not open the connector.
@@ -236,7 +247,11 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     from app.core import demo_jobs, idempotency_tasks, ratelimit_tasks
     from app.modules.identity import tasks as identity_tasks
     from app.modules.scheduling import tasks as scheduling_tasks
-    from app.workflows import progress_report_schedule_tasks, session_charge_tasks
+    from app.workflows import (
+        enrollment_charge_tasks,
+        progress_report_schedule_tasks,
+        session_charge_tasks,
+    )
 
     app = App(connector=connector)
     ratelimit_tasks.register(app)
@@ -245,6 +260,7 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     scheduling_tasks.register(app)
     progress_report_schedule_tasks.register(app)
     session_charge_tasks.register(app)
+    enrollment_charge_tasks.register(app)
     if app_env in DEMO_ENVIRONMENTS:
         demo_jobs.register(app)
     return app
@@ -313,4 +329,27 @@ async def defer_session_charges(job_app: App) -> None:
         logger.error(
             "Deferring the session charges failed",
             extra={"task_name": SESSION_CHARGES_TASK, "error": type(exc).__name__},
+        )
+
+
+async def defer_enrollment_charges(job_app: App) -> None:
+    """Queue one ``billing:post_enrollment_charges`` run now (#92 D1).
+
+    The same contract as :func:`defer_session_charges`: only after the Unit
+    of Work has committed; a run already queued is a no-op
+    (``AlreadyEnqueued`` is ignored); any other failure is logged and
+    swallowed (the next 15-minute tick posts the charges).
+    """
+    try:
+        await job_app.configure_task(
+            ENROLLMENT_CHARGES_TASK,
+            allow_unknown=False,
+            queueing_lock=ENROLLMENT_CHARGES_QUEUEING_LOCK,
+        ).defer_async(timestamp=int(time.time()))
+    except AlreadyEnqueued:
+        return
+    except Exception as exc:  # noqa: BLE001 - the write must still answer 2xx
+        logger.error(
+            "Deferring the enrollment charges failed",
+            extra={"task_name": ENROLLMENT_CHARGES_TASK, "error": type(exc).__name__},
         )

@@ -180,6 +180,9 @@ from app.workflows.session_notes_router import (
 from app.workflows.session_requests_router import (
     router as session_request_review_router,
 )
+from app.workflows.unbilled_enrollments_router import (
+    router as unbilled_enrollments_router,
+)
 from app.workflows.unbilled_items_router import router as unbilled_items_router
 
 
@@ -310,6 +313,7 @@ def build_app(
     app.include_router(billing_accounts_router)
     app.include_router(billing_settings_router)
     app.include_router(unbilled_items_router)
+    app.include_router(unbilled_enrollments_router)
     app.include_router(available_slots_router)
     app.include_router(session_requests_router)
     app.include_router(session_request_review_router)

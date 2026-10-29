@@ -1,10 +1,10 @@
 """The billing hook of group enrollments (#56 J4, E2, E3): the routes return
-the workflow's change, a failure in the workflow's step rolls the whole
-change back (one Unit of Work), and the sweeper's reader lists the periods
-in order in one statement."""
+the workflow's change, and a failure in the workflow's step rolls the
+whole change back (one Unit of Work). (The #56 sweeper reader was replaced
+by ``billing:post_enrollment_charges``, #92 J7.)"""
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 import pytest
@@ -14,7 +14,6 @@ from app.modules.scheduling.schemas import GroupEnrollmentCreate
 from app.workflows import group_enrollment
 from tests.conftest import frozen_clock
 from tests.integration.auth_support import auth_client
-from tests.integration.catalog_support import count_statements
 from tests.integration.group_support import (
     create_group,
     enroll,
@@ -136,48 +135,3 @@ def test_a_failing_step_rolls_the_enrollment_back(
         for row in group_rows(url, group["id"])
     )
     assert len(events(url, action="create")) == before_events
-
-
-def test_the_sweeper_reads_the_periods_in_order_in_one_statement(
-    module_seeded_url, client, refs
-):
-    url = module_seeded_url
-    tl = timeline()
-    a, b, c = refs["students"]
-    with frozen_clock(tl.now):
-        cookie = owner_cookie(url, client)
-        group = make_group(client, cookie, refs, tl.monday, students=0)
-    steps: list[tuple[str, Any]] = []
-    for minutes, (action, student) in enumerate(
-        [("enroll", a), ("enroll", b), ("withdraw", a), ("enroll", c)], start=1
-    ):
-        with frozen_clock(tl.now + timedelta(minutes=minutes)):
-            cookie = owner_cookie(url, client)
-            if action == "enroll":
-                response = enroll(client, cookie, group["id"], student)
-            else:
-                period = next(
-                    e for e in enrollments(url, group["id"]) if e.student_id == student
-                )
-                response = withdraw(client, cookie, group["id"], period.id)
-        assert response.status_code in (200, 201), response.text
-        steps.append((action, response.json()["id"]))
-    since = tl.now + timedelta(minutes=2)
-    ours = {str(e.id) for e in enrollments(url, group["id"])}
-
-    count, periods = count_statements(
-        url,
-        lambda session: scheduling.list_group_enrollment_periods(
-            session, changed_since=since, limit=1000
-        ),
-    )
-
-    mine = [p for p in periods if str(p.enrollment_id) in ours]
-    assert count == 1
-    # b (enrolled at +2), a (withdrawn at +3), c (enrolled at +4).
-    assert [(str(p.student_id), p.withdrawn_at is not None) for p in mine] == [
-        (str(b), False),
-        (str(a), True),
-        (str(c), False),
-    ]
-    assert [p.changed_at for p in mine] == sorted(p.changed_at for p in mine)

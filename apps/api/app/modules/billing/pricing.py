@@ -41,7 +41,7 @@ lock, no commit.
 
 import uuid
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from typing import Any, cast
 
@@ -196,6 +196,18 @@ async def lookup_price(
     )
 
 
+def group_fee_item_columns() -> Any:
+    """``SELECT subject_id, group_id FROM service_prices WHERE class_type =
+    'group' AND pricing_model = 'full_course'`` (``group_id`` ``NULL``: an
+    unscoped item of the subject), **not executed**: the #92 enrollment
+    sweeper reads a group period only when such an item could price it
+    (D3), so session-priced groups aren't re-read on every tick."""
+    return select(ServicePrice.subject_id, ServicePrice.group_id).where(
+        ServicePrice.class_type == "group",
+        ServicePrice.pricing_model == "full_course",
+    )
+
+
 # --- The price calculation (#95 B2-B4) -----------------------------------------------
 #
 # **Order** (ADR-0006 E9; #95 H4-H6): (1) a custom price of the **student**,
@@ -208,7 +220,7 @@ async def lookup_price(
 # discounts on top of that base price (:func:`discounts_for`, H4/H5: at most
 # one per kind, scholarship → sibling → discount → promotion, each on the
 # running remainder). #92 prorates between :func:`base_price` and
-# :func:`discounts_for` (proration before discounts).
+# :func:`discounts_for` (proration before discounts: ``quote(…, prorate=)``).
 #
 # Everything runs in the caller's Unit of Work: no commit, no lock.
 
@@ -495,13 +507,26 @@ def make_quote(base: BasePrice, lines: Iterable[DiscountLine]) -> Quote:
     )
 
 
-async def quote(session: AsyncSession, query: PriceQuery) -> Quote | None:
+async def quote(
+    session: AsyncSession,
+    query: PriceQuery,
+    *,
+    prorate: tuple[int, int] | None = None,
+) -> Quote | None:
     """The price of ``query`` (#95 B4): :func:`base_price` then
     :func:`discounts_for` (the order at the top of this section). ``None``
     ⇔ no base price (``no_price``). At most four statements; no lock, no
     commit. Every charge a sweeper or a billing workflow posts is priced
-    here; post it with ``ChargeDraft.priced(quote, …)``."""
+    here; post it with ``ChargeDraft.priced(quote, …)``.
+
+    ``prorate = (remaining, total)`` (#92 B3, J3): the base price's list
+    amount becomes ``list_amount.prorate(remaining, total)`` (one half-up
+    rounding) **before** the discounts are computed on it, so proration
+    comes before discounts. ``None`` is exactly the #95 behaviour."""
     base = await base_price(session, query)
     if base is None:
         return None
+    if prorate is not None:
+        remaining, total = prorate
+        base = replace(base, list_amount=base.list_amount.prorate(remaining, total))
     return make_quote(base, await discounts_for(session, query, base.list_amount))

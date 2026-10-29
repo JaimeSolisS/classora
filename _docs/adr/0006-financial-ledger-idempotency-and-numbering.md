@@ -48,6 +48,8 @@ Resolves architecture §10 **ISSUE-F1** (when lesson charges are posted), **ISSU
 - **Price:** the price in effect on the session's **local service date** (center zone). Amounts are snapshotted on the charge (W4.2).
 - **A rescheduled session keeps its charge** (spec §3). The charge's `service_date` stays the original one; reporting uses the session's current date (E7).
 - **Group and course enrollments** are charged at enrollment, in the M4 hooks' Unit of Work (`apply_enrollment_change`, `apply_cohort_enrollment_change`), plus a sweeper over `list_group_enrollment_periods` and `list_cohort_enrollment_periods`.
+  - Clarification (#92 J7, 2026-10-28): the sweeper is `billing:post_enrollment_charges` (every 15 minutes), an anti-join of the enrollment periods with no fee charge (the #91 pattern), so skipped periods (no price, no family, billing off) are retried; the two M4 cursor readers were removed.
+  - Clarification (#92 J6, 2026-10-28): for an enrollment fee, "service dates on or after the floor" means its due-date base, `max(enrollment local date, first counted session's local date)` (E11), is on or after `billing_starts_on`; `service_date` stays the enrollment's local date. An advance enrollment made before go-live for a course that runs after it is charged.
 - **Tuition plans:** one charge per plan per period, from a daily job on the natural key `(tuition_plan_id, period_start)`. Periods follow the center's local dates.
 - **Package purchases** post a charge at purchase (a staff POST with an idempotency key). Package-covered sessions follow E10.
 - **Billing start floor:** the billing settings row holds `billing_starts_on DATE NULL`. While it is `NULL` the sweepers post nothing; afterwards they post only for service dates on or after it.

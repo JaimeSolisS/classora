@@ -71,6 +71,8 @@ ITEM_KEYS = {
     "education_level",
     "family",
     "reason",
+    "class_type",
+    "group",
 }
 
 
@@ -132,6 +134,7 @@ def test_both_reasons_with_the_item_shape(client, staff, module_seeded_url):
     assert key(orphan) == (first["class_session_id"], first["student"]["id"])
     assert first["reason"] == "no_billing_account"
     assert first["family"] is None
+    assert (first["class_type"], first["group"]) == ("individual", None)
     student_name, subject_name = names(url, orphan)
     assert first["student"] == {"id": str(orphan.student), "name": student_name}
     assert first["subject"] == {"id": str(orphan.subject), "name": subject_name}
@@ -281,20 +284,41 @@ def test_the_statement_bound(module_seeded_url):
     url = module_seeded_url
 
     async def _many(session: AsyncSession) -> None:
+        from app.modules.scheduling.models import GroupEnrollment
+        from tests.factories.scheduling import persist_class_group, persist_tutor_user
+
         subjects = [await persist_subject(session) for _ in range(3)]
+        groups = [
+            await persist_class_group(session, subject_id=subject.id)
+            for subject in subjects
+        ]
+        actor = await persist_tutor_user(session)
         for n in range(30):
             subject = subjects[n % 3]
             starts_at = local(DAY, 6) + timedelta(minutes=30 * n)
+            # #92 E4: half of them are group sessions (one group per subject),
+            # each participant with a covering enrollment period.
+            grouped = n >= 15
             row = await persist_class_session(
                 session,
                 subject_id=subject.id,
                 starts_at=starts_at,
                 ends_at=starts_at + timedelta(minutes=30),
+                **({"kind": "group", "group_id": groups[n % 3].id} if grouped else {}),
             )
             student = await persist_student(
                 session, contacts=0, education_level_id=subject.education_level_id
             )
             await add_participant(session, row, student.id)
+            if grouped:
+                session.add(
+                    GroupEnrollment(
+                        group_id=groups[n % 3].id,
+                        student_id=student.id,
+                        enrolled_at=local(FLOOR, 8),
+                        enrolled_by_user_id=actor,
+                    )
+                )
             family = FamilyFactory.build()
             session.add(family)
             await session.flush()
@@ -312,9 +336,12 @@ def test_the_statement_bound(module_seeded_url):
 
     assert page.total == 30
     assert {entry.reason for entry in page.items} == {"no_price"}
-    # #95 C3: six statements, the custom prices of the page in one batch,
-    # and the three memoized catalog lookups.
-    assert count <= 6 + 1 + 3, count
+    assert {entry.class_type for entry in page.items} == {"individual", "group"}
+    # #95 C3: six statements, the custom prices of the page in one batch;
+    # #92 E4: two more for the group sessions (their covering periods and the
+    # periods' ledger facts); the memoized catalog lookups: three individual
+    # and three group per-session keys, and the three groups' fee keys.
+    assert count <= 6 + 1 + 2 + 3 + 3 + 3, count
 
 
 def test_the_list_matches_what_the_sweeper_skips(client, staff, module_seeded_url):
