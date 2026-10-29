@@ -53,6 +53,8 @@ from app.modules.billing.models import (
     PriceVersion,
     Refund,
     ServicePrice,
+    TuitionPlan,
+    TuitionPlanPause,
 )
 from app.modules.catalog.models import (
     AcademicPeriod,
@@ -210,6 +212,8 @@ def test_the_guard_scans_the_real_audited_models():
         StudentEmergencyContact,
         StudentGuardian,
         Subject,
+        TuitionPlan,
+        TuitionPlanPause,
         TutorAvailabilityChangeRequest,
         TutorAvailabilityException,
         TutorAvailabilitySettings,

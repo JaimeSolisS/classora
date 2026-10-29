@@ -42,9 +42,10 @@ def frozen() -> Iterator[None]:
 
 
 def _catalog(url: str) -> dict[str, Any]:
-    """Thirteen listed items, numbered in their expected order, plus a
-    ``package`` and a ``per_period`` row; names chosen so that the level
-    order and the name order disagree."""
+    """Fifteen listed items, numbered in their expected order (the two
+    ``per_period`` items, #93 B2, are 5.1 and 5.2: after the subject's
+    ``per_session`` items, weekly before monthly), plus two ``package`` rows;
+    names chosen so that the level order and the name order disagree."""
 
     async def _make(session: AsyncSession) -> dict[str, Any]:
         primary = EducationLevel(name="Primaria", sort_order=10)
@@ -63,7 +64,7 @@ def _catalog(url: str) -> dict[str, Any]:
         cohort = await persist_course_cohort(session, subject_id=biology.id)
         await session.flush()
 
-        async def item(number: int, **key: Any) -> tuple[int, uuid.UUID]:
+        async def item(number: float, **key: Any) -> tuple[float, uuid.UUID]:
             key.setdefault("subject_id", biology.id)
             versions = key.pop("versions", [(CURRENT, f"{number}.00")])
             row = await persist_service_price(session, versions=versions, **key)
@@ -94,6 +95,18 @@ def _catalog(url: str) -> dict[str, Any]:
                 await item(6, subject_id=calculus.id),
                 await item(12, **course),
                 await item(8, **group),
+                await item(
+                    5.2,
+                    pricing_model="per_period",
+                    period_frequency="monthly",
+                    versions=[(CURRENT, "520.00")],
+                ),
+                await item(
+                    5.1,
+                    pricing_model="per_period",
+                    period_frequency="weekly",
+                    versions=[(CURRENT, "510.00")],
+                ),
             ]
         )
         await persist_service_price(
@@ -101,9 +114,6 @@ def _catalog(url: str) -> dict[str, Any]:
         )
         await persist_service_price(
             session, subject_id=None, pricing_model="package", versions=[(PAST, "9.00")]
-        )
-        await persist_service_price(
-            session, subject_id=biology.id, pricing_model="per_period"
         )
         return {
             "ids": numbered,
@@ -133,8 +143,12 @@ def test_the_list_order_filters_and_pages(head_url):
     catalog = _catalog(head_url)
 
     page = listed(head_url)
-    assert numbers(catalog, page) == list(range(1, 14))
-    assert page.total == 13
+    assert numbers(catalog, page) == [1, 2, 3, 4, 5, 5.1, 5.2, *range(6, 14)]
+    assert page.total == 15
+    assert numbers(catalog, listed(head_url, pricing_model="per_period")) == [
+        5.1,
+        5.2,
+    ]
 
     assert numbers(catalog, listed(head_url, class_type="group")) == [8, 9, 10, 11]
     assert numbers(catalog, listed(head_url, pricing_model="full_course")) == [
@@ -146,11 +160,11 @@ def test_the_list_order_filters_and_pages(head_url):
     unknown = listed(head_url, subject_id=uuid.uuid4())
     assert unknown.items == [] and unknown.total == 0
 
-    second = listed(head_url, limit=5, offset=10)
+    second = listed(head_url, limit=5, offset=12)
     assert numbers(catalog, second) == [11, 12, 13]
-    assert (second.total, second.limit, second.offset) == (13, 5, 10)
+    assert (second.total, second.limit, second.offset) == (15, 5, 12)
     past_the_end = listed(head_url, limit=5, offset=20)
-    assert past_the_end.items == [] and past_the_end.total == 13
+    assert past_the_end.items == [] and past_the_end.total == 15
 
 
 def test_items_carry_current_and_next(head_url):
@@ -189,7 +203,7 @@ def test_the_statement_budget_does_not_grow_with_the_page(head_url):
     one, found_one = count_statements(head_url, page(1))
     many, found_many = count_statements(head_url, page(100))
 
-    assert len(found_one.items) == 1 and len(found_many.items) == 13
+    assert len(found_one.items) == 1 and len(found_many.items) == 15
     # The zone, the page with its total, the versions.
     assert one == many == 3
 
@@ -199,7 +213,6 @@ def test_the_statement_budget_does_not_grow_with_the_page(head_url):
     [
         {"class_type": "tutoring"},
         {"pricing_model": "package"},
-        {"pricing_model": "per_period"},
         {"subject_id": "abc"},
         {"limit": 101},
         {"offset": -1},

@@ -34,7 +34,11 @@ from tests.integration.invitation_support import sign_in
 from tests.integration.lifecycle_support import code_of, events
 
 SETTINGS = "/api/v1/billing/settings"
-TASKS = [jobs.SESSION_CHARGES_TASK, jobs.ENROLLMENT_CHARGES_TASK]
+TASKS = [
+    jobs.SESSION_CHARGES_TASK,
+    jobs.ENROLLMENT_CHARGES_TASK,
+    jobs.TUITION_CHARGES_TASK,
+]
 
 
 @pytest.fixture(scope="module")
@@ -125,10 +129,16 @@ def test_a_date_is_set_audited_and_queues_one_run(
     event = found[-1]
     assert event.action == "update"
     assert event.changes == {"billing_starts_on": {"old": None, "new": value}}
-    sessions, enrollments = queued(url)
+    tuition, sessions, enrollments = queued(url)
+    assert tuition.queueing_lock == jobs.TUITION_CHARGES_QUEUEING_LOCK
     assert sessions.queueing_lock == jobs.SESSION_CHARGES_QUEUEING_LOCK
     assert enrollments.queueing_lock == jobs.ENROLLMENT_CHARGES_QUEUEING_LOCK
-    assert set(sessions.args) == set(enrollments.args) == {"timestamp"}
+    assert (
+        set(tuition.args)
+        == set(sessions.args)
+        == set(enrollments.args)
+        == {"timestamp"}
+    )
 
 
 def test_null_turns_billing_off_and_queues_nothing(client, manager, module_seeded_url):

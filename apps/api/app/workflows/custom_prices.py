@@ -141,7 +141,7 @@ async def _reference_errors(
                 "Choose an existing catalog price.",
             )
         )
-    elif model not in billing.CATALOG_MODELS:
+    elif model not in billing.CUSTOM_PRICE_MODELS:
         errors.append(
             _error(
                 "service_price_id",

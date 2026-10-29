@@ -339,9 +339,10 @@ def test_the_statement_bound(module_seeded_url):
     assert {entry.class_type for entry in page.items} == {"individual", "group"}
     # #95 C3: six statements, the custom prices of the page in one batch;
     # #92 E4: two more for the group sessions (their covering periods and the
-    # periods' ledger facts); the memoized catalog lookups: three individual
-    # and three group per-session keys, and the three groups' fee keys.
-    assert count <= 6 + 1 + 2 + 3 + 3 + 3, count
+    # periods' ledger facts); #93 F1: one more (their linked tuition plans);
+    # the memoized catalog lookups: three individual and three group
+    # per-session keys, and the three groups' fee keys.
+    assert count <= 6 + 1 + 2 + 1 + 3 + 3 + 3, count
 
 
 def test_the_list_matches_what_the_sweeper_skips(client, staff, module_seeded_url):

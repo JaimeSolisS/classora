@@ -506,6 +506,77 @@ json = {}
 
 [[route]]
 method = "GET"
+path = "/api/v1/billing/tuition-plans"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 D2: reads need billing.view.
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/tuition-plans"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 D3: the empty body is 422 for the allowed roles. No reauthentication
+# and no Idempotency-Key: a plan is configuration (#86 E6).
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/tuition-plans/eligible-enrollments"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 D9: the placeholder student has no enrollment: an empty list.
+query = { student_id = "00000000-0000-0000-0000-000000000000" }
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/billing/tuition-plans/{tuition_plan_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 D6: the placeholder id is no plan: 404 for the allowed roles.
+query = { version = "1" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/tuition-plans/{tuition_plan_id}"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 D4: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/billing/tuition-plans/{tuition_plan_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 D5: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/tuition-plans/{tuition_plan_id}/pauses"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 D7: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/tuition-plans/{tuition_plan_id}/resume"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 D8: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "GET"
 path = "/api/v1/billing/unbilled-enrollments"
 access = "permission"
 permission = "billing.view"
@@ -519,6 +590,14 @@ access = "permission"
 permission = "billing.view"
 allow = ["owner", "administrator", "finance_staff"]
 # #91 D2: computed on read; billing off (the seeded null) gives an empty page.
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/unbilled-tuition-periods"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 G1: computed on read; billing off (the seeded null) gives an empty page.
 
 [[route]]
 method = "GET"

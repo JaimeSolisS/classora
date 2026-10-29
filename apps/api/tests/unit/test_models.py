@@ -78,7 +78,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # billing_accounts, payment_methods, charges, charge_adjustments,
     # payments, payment_reversals, payment_allocations, allocation_releases
     # and refunds, M6-05; billing_settings, M6-06; custom_prices,
-    # discounts, discount_assignments and charge_discounts, M6-10).
+    # discounts, discount_assignments and charge_discounts, M6-10;
+    # tuition_plans and tuition_plan_pauses, M6-08).
     assert target_metadata is Base.metadata
     assert set(Base.metadata.tables) == {
         "audit_events",
@@ -150,6 +151,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "discounts",
         "discount_assignments",
         "charge_discounts",
+        "tuition_plans",
+        "tuition_plan_pauses",
         "account_tokens",
         "registration_requests",
         "education_levels",

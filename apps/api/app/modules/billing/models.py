@@ -73,7 +73,19 @@ singleton (mutable config, versioned) holding the billing start floor
   at most one of it and ``price_version_id`` (``ck_charges_one_price``), never
   on a ``manual`` charge (``ck_charges_manual_unpriced``).
 
-Every model is ``Audited``; every foreign key is ``ON DELETE RESTRICT``.
+**Tuition plans** (#93; data-model §3.17, §3.17a):
+
+- ``tuition_plans`` (mutable config, versioned): a student's recurring
+  plan, pinned to one ``per_period`` catalog item and bound to the family
+  account it bills (K9); optionally linked to a group enrollment (K6).
+- ``tuition_plan_pauses`` (mutable config, versioned): period-aligned
+  pauses (K4).
+- ``charges.tuition_plan_id`` (column added by #93): the source of a
+  ``tuition_period`` charge, with the composite foreign key to the plan's
+  ``(id, billing_account_id, student_id)``.
+
+Every model is ``Audited``; every foreign key is ``ON DELETE RESTRICT``
+except ``tuition_plan_pauses.tuition_plan_id`` (``CASCADE``).
 """
 
 import uuid
@@ -115,6 +127,11 @@ ALLOWED_MODELS: Final[dict[str, tuple[str, ...]]] = {
 DURATION_MIN: Final = 15
 DURATION_MAX: Final = 480
 """The ``duration_minutes`` range (the ``class_sessions`` range, #89 E5)."""
+
+PERIOD_FREQUENCIES: Final = ("weekly", "biweekly", "monthly")
+"""The period lengths of a ``per_period`` item and a tuition plan (#93 K2,
+K3), in list order."""
+PERIOD_FREQUENCY_MAX: Final = 16
 
 CATALOG_KEY_INDEX: Final = "uq_service_prices_catalog_key"
 VERSION_UNIQUE: Final = "uq_price_versions_service_price_id_effective_from"
@@ -165,6 +182,12 @@ class ServicePrice(Audited, VersionedMixin, Model):
             " OR (education_level_id IS NULL AND duration_minutes IS NULL)",
             name="scoped_any_level_duration",
         ),
+        CheckConstraint(
+            "(period_frequency IS NULL"
+            f" OR {_in('period_frequency', PERIOD_FREQUENCIES)})"
+            " AND ((pricing_model = 'per_period') = (period_frequency IS NOT NULL))",
+            name="period_frequency",
+        ),
         Index(
             CATALOG_KEY_INDEX,
             "class_type",
@@ -174,6 +197,7 @@ class ServicePrice(Audited, VersionedMixin, Model):
             "duration_minutes",
             "cohort_id",
             "group_id",
+            "period_frequency",
             unique=True,
             postgresql_nulls_not_distinct=True,
             postgresql_where=text("pricing_model <> 'package'"),
@@ -203,6 +227,11 @@ class ServicePrice(Audited, VersionedMixin, Model):
         ForeignKey("class_groups.id", ondelete="RESTRICT"),
         nullable=True,
     )
+    period_frequency: Mapped[str | None] = mapped_column(
+        String(PERIOD_FREQUENCY_MAX), nullable=True
+    )
+    """``weekly | biweekly | monthly``, set iff ``pricing_model =
+    'per_period'`` (#93 K2; part of the catalog key)."""
 
 
 class PriceVersion(Audited, Model):
@@ -226,10 +255,16 @@ class PriceVersion(Audited, Model):
 DUE_OFFSET_MAX: Final = 60
 """``billing_accounts.due_offset_days`` runs from 0 to this (E11)."""
 
-CHARGE_KINDS: Final = ("session", "group_enrollment", "cohort_enrollment", "manual")
-"""The charge kinds whose source exists (#90 E3): #93 adds ``tuition_period``
-and #94 ``package_purchase``, each replacing ``ck_charges_kind`` and
-``ck_charges_one_source``."""
+CHARGE_KINDS: Final = (
+    "session",
+    "group_enrollment",
+    "cohort_enrollment",
+    "tuition_period",
+    "manual",
+)
+"""The charge kinds whose source exists (#90 E3; ``tuition_period`` since
+#93): #94 adds ``package_purchase``, replacing ``ck_charges_kind`` and
+``ck_charges_one_source`` again (and keeping ``tuition_period``)."""
 
 ADJUSTMENT_KINDS: Final = (
     "duration_change",
@@ -269,10 +304,13 @@ ACCOUNT_FAMILY_FK: Final = "fk_billing_accounts_family_id_families"
 CHARGE_SESSION_KEY: Final = "uq_charges_session_student"
 CHARGE_GROUP_ENROLLMENT_KEY: Final = "uq_charges_group_enrollment"
 CHARGE_COHORT_ENROLLMENT_KEY: Final = "uq_charges_cohort_enrollment"
+CHARGE_TUITION_PERIOD_KEY: Final = "uq_charges_tuition_period"
+CHARGE_TUITION_PLAN_FK: Final = "fk_charges_tuition_plan"
 CHARGE_NATURAL_KEYS: Final = (
     CHARGE_SESSION_KEY,
     CHARGE_GROUP_ENROLLMENT_KEY,
     CHARGE_COHORT_ENROLLMENT_KEY,
+    CHARGE_TUITION_PERIOD_KEY,
 )
 """The named natural-key indexes of ``charges`` (J4): a violation of one of
 them means "already posted" (#90 E4)."""
@@ -300,17 +338,19 @@ def staff_text_check(column: str, max_length: int) -> str:
 
 
 ONE_SOURCE: Final = (
-    "num_nonnulls(class_session_id, group_enrollment_id, cohort_enrollment_id)"
-    " = CASE WHEN kind = 'manual' THEN 0 ELSE 1 END"
+    "num_nonnulls(class_session_id, group_enrollment_id, cohort_enrollment_id,"
+    " tuition_plan_id) = CASE WHEN kind = 'manual' THEN 0 ELSE 1 END"
     " AND (kind = 'session') = (class_session_id IS NOT NULL)"
     " AND (kind = 'session') = (scheduled_minutes IS NOT NULL)"
     " AND (kind = 'group_enrollment') = (group_enrollment_id IS NOT NULL)"
     " AND (kind = 'cohort_enrollment') = (cohort_enrollment_id IS NOT NULL)"
+    " AND (kind = 'tuition_period') = (tuition_plan_id IS NOT NULL)"
+    " AND (kind = 'tuition_period') = (service_period_end IS NOT NULL)"
     " AND (kind = 'manual') = (description IS NOT NULL)"
 )
-"""``ck_charges_one_source`` (#90 A2, E3): exactly the source of the kind,
-the minutes of a session charge only, the description of a manual charge
-only."""
+"""``ck_charges_one_source`` (#90 A2, E3; #93 A5): exactly the source of the
+kind, the minutes of a session charge only, the period end of a tuition
+charge only, the description of a manual charge only."""
 
 
 def _user_fk(**kwargs: Any) -> Any:
@@ -461,6 +501,23 @@ class Charge(Audited, Model):
             postgresql_where=text("custom_price_id IS NOT NULL"),
         ),
         CheckConstraint(PRORATION_CHECK, name="proration"),
+        ForeignKeyConstraint(
+            ["tuition_plan_id", "billing_account_id", "student_id"],
+            [
+                "tuition_plans.id",
+                "tuition_plans.billing_account_id",
+                "tuition_plans.student_id",
+            ],
+            name=CHARGE_TUITION_PLAN_FK,
+            ondelete="RESTRICT",
+        ),
+        Index(
+            CHARGE_TUITION_PERIOD_KEY,
+            "tuition_plan_id",
+            "service_date",
+            unique=True,
+            postgresql_where=text("kind = 'tuition_period'"),
+        ),
     )
 
     billing_account_id: Mapped[uuid.UUID] = _uuid_fk("billing_accounts")
@@ -475,6 +532,12 @@ class Charge(Audited, Model):
     cohort_enrollment_id: Mapped[uuid.UUID | None] = _uuid_fk(
         "cohort_enrollments", nullable=True
     )
+    tuition_plan_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    """The source of a ``tuition_period`` charge (#93; the composite foreign
+    key ``fk_charges_tuition_plan`` keeps it on its plan's account and
+    student)."""
     service_date: Mapped[date] = mapped_column(Date)
     service_period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     price_version_id: Mapped[uuid.UUID | None] = _uuid_fk(
@@ -892,3 +955,93 @@ class ChargeDiscount(Audited, Model):
     percent: Mapped[Decimal | None] = mapped_column(_percent(), nullable=True)
     fixed_amount: Mapped[Money | None] = mapped_column(MoneyType(), nullable=True)
     amount: Mapped[Money] = mapped_column(MoneyType())
+
+
+# --- Tuition plans (#93) -------------------------------------------------------------
+
+TUITION_PLAN_RANGE_SQL: Final = "daterange(starts_on, ends_on, '[]')"
+"""The inclusive window of a plan or a pause (``NULL`` end = open)."""
+TUITION_PLAN_ENROLLMENT_OVERLAP: Final = "ex_tuition_plans_enrollment_overlap"
+TUITION_PLAN_STUDENT_ITEM_OVERLAP: Final = "ex_tuition_plans_student_item_overlap"
+TUITION_PAUSE_OVERLAP: Final = "ex_tuition_plan_pauses_overlap"
+TUITION_PLAN_COMPOSITE_KEY: Final = "uq_tuition_plans_id_account_student"
+
+
+class TuitionPlan(Audited, VersionedMixin, Model):
+    """A recurring tuition plan (#93 A3; data-model §3.17): one
+    ``tuition_period`` charge per period, posted by the daily job.
+
+    The key (``billing_account_id``, ``student_id``, ``service_price_id``,
+    ``group_enrollment_id``, ``frequency``, ``starts_on``) never changes
+    (migration 0065's trigger ``tuition_plans_key_immutable``, SQLSTATE
+    42501); only ``ends_on`` and ``due_offset_days`` do. Two linked plans of
+    one enrollment, or two standalone plans of one student and item, never
+    overlap (two ``EXCLUDE USING gist``)."""
+
+    __tablename__ = "tuition_plans"
+    __table_args__ = (
+        CheckConstraint(_in("frequency", PERIOD_FREQUENCIES), name="frequency_valid"),
+        CheckConstraint("ends_on IS NULL OR ends_on >= starts_on", name="dates"),
+        CheckConstraint(
+            f"due_offset_days BETWEEN 0 AND {DUE_OFFSET_MAX}",
+            name="due_offset_days_range",
+        ),
+        UniqueConstraint(
+            "id",
+            "billing_account_id",
+            "student_id",
+            name=TUITION_PLAN_COMPOSITE_KEY,
+        ),
+        ExcludeConstraint(
+            (text("group_enrollment_id"), "="),
+            (text(TUITION_PLAN_RANGE_SQL), "&&"),
+            name=TUITION_PLAN_ENROLLMENT_OVERLAP,
+            using="gist",
+            where=text("group_enrollment_id IS NOT NULL"),
+        ),
+        ExcludeConstraint(
+            (text("student_id"), "="),
+            (text("service_price_id"), "="),
+            (text(TUITION_PLAN_RANGE_SQL), "&&"),
+            name=TUITION_PLAN_STUDENT_ITEM_OVERLAP,
+            using="gist",
+            where=text("group_enrollment_id IS NULL"),
+        ),
+        Index("ix_tuition_plans_student_id", "student_id"),
+        Index("ix_tuition_plans_billing_account_id", "billing_account_id"),
+    )
+
+    billing_account_id: Mapped[uuid.UUID] = _uuid_fk("billing_accounts")
+    student_id: Mapped[uuid.UUID] = _uuid_fk("students")
+    service_price_id: Mapped[uuid.UUID] = _uuid_fk("service_prices")
+    group_enrollment_id: Mapped[uuid.UUID | None] = _uuid_fk(
+        "group_enrollments", nullable=True
+    )
+    frequency: Mapped[str] = mapped_column(String(PERIOD_FREQUENCY_MAX))
+    starts_on: Mapped[date] = mapped_column(Date)
+    ends_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    due_offset_days: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
+
+
+class TuitionPlanPause(Audited, VersionedMixin, Model):
+    """A pause of a tuition plan (#93 A4, K4; data-model §3.17a): from a
+    period start to a period end (``NULL`` = until resumed). Pauses of one
+    plan never overlap. A period whose start falls inside a pause is never
+    charged."""
+
+    __tablename__ = "tuition_plan_pauses"
+    __table_args__ = (
+        CheckConstraint("ends_on IS NULL OR ends_on >= starts_on", name="dates"),
+        ExcludeConstraint(
+            (text("tuition_plan_id"), "="),
+            (text(TUITION_PLAN_RANGE_SQL), "&&"),
+            name=TUITION_PAUSE_OVERLAP,
+            using="gist",
+        ),
+    )
+
+    tuition_plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tuition_plans.id", ondelete="CASCADE")
+    )
+    starts_on: Mapped[date] = mapped_column(Date)
+    ends_on: Mapped[date | None] = mapped_column(Date, nullable=True)

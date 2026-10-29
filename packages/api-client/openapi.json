@@ -18781,7 +18781,7 @@
           "billing"
         ],
         "summary": "List Service Prices",
-        "description": "The catalog prices with their current and next versions, by class\ntype (individual, group, course), the subject's level and name, the\npricing model, unscoped before scoped (then the cohort or group name),\nany level first (then the level order), any duration first (then\nascending) and id. `package` and `per_period` prices are not listed.",
+        "description": "The catalog prices with their current and next versions, by class\ntype (individual, group, course), the subject's level and name, the\npricing model (per_period last, then weekly, every two weeks, monthly),\nunscoped before scoped (then the cohort or group name), any level first\n(then the level order), any duration first (then ascending) and id.\n`package` prices are not listed.",
         "operationId": "list_service_prices_api_v1_billing_service_prices_get",
         "parameters": [
           {
@@ -18905,7 +18905,7 @@
           "billing"
         ],
         "summary": "Create Service Price",
-        "description": "Create a catalog price and its first version, which may start on any\ndate (a price entered late can bill the sessions that waited).",
+        "description": "Create a catalog price and its first version, which may start on any\ndate (a price entered late can bill the sessions that waited). A\nper_period price (a tuition plan's amount) has a period length, part of\nits key: a weekly and a monthly price of the same subject are two\nprices.",
         "operationId": "create_service_price_api_v1_billing_service_prices_post",
         "requestBody": {
           "required": true,
@@ -19023,7 +19023,7 @@
             }
           },
           "404": {
-            "description": "No such price (not_found); `package` and `per_period` prices are not served here.",
+            "description": "No such price (not_found); `package` prices are not served here.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -19107,7 +19107,7 @@
             }
           },
           "404": {
-            "description": "No such price (not_found); `package` and `per_period` prices are not served here.",
+            "description": "No such price (not_found); `package` prices are not served here.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -20871,6 +20871,844 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/OffsetPage_UnbilledEnrollmentItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/tuition-plans": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Tuition Plans",
+        "description": "The tuition plans by student name, newest start first. `status`\n(scheduled, active, paused, ended; for the center's today) may be\nrepeated.",
+        "operationId": "list_tuition_plans_api_v1_billing_tuition_plans_get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "family_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "group_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TuitionPlanStatus"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_TuitionPlanItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Create Tuition Plan",
+        "description": "Create a weekly, every-two-weeks or monthly tuition plan (its\nfrequency is the price's). Each period is charged once, at the price in\neffect on its first day. A plan linked to a group enrollment replaces the\ngroup's flat fee and its per-session charges inside the plan's dates. An\nindividual plan never changes per-session charges.",
+        "operationId": "create_tuition_plan_api_v1_billing_tuition_plans_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TuitionPlanCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TuitionPlanDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The student isn't in a family (student_has_no_family); another plan for the same group enrollment, or for the same student and price, overlaps these dates (tuition_plan_overlap); the group enrollment already has a flat fee charged (tuition_plan_enrollment_fee_charged) or session charges inside the plan's dates (tuition_plan_sessions_charged).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/tuition-plans/eligible-enrollments": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Eligible Enrollments",
+        "description": "The student's active group enrollments a plan can be linked to,\noldest first, with whether each already has a flat fee charge or a\nplan.",
+        "operationId": "list_eligible_enrollments_api_v1_billing_tuition_plans_eligible_enrollments_get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Student Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EligibleEnrollment"
+                  },
+                  "title": "Response List Eligible Enrollments Api V1 Billing Tuition Plans Eligible Enrollments Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/tuition-plans/{tuition_plan_id}": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Get Tuition Plan",
+        "description": "A tuition plan with its pauses, its last 24 posted periods and its\nnext 12 periods.",
+        "operationId": "get_tuition_plan_api_v1_billing_tuition_plans__tuition_plan_id__get",
+        "parameters": [
+          {
+            "name": "tuition_plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tuition Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TuitionPlanDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tuition plan (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Update Tuition Plan",
+        "description": "End a plan (`ends_on`, the last day of a period), make it open-ended\nagain (`ends_on: null`) or change its due offset (periods charged later\nonly). Ending never changes a charged period.",
+        "operationId": "update_tuition_plan_api_v1_billing_tuition_plans__tuition_plan_id__patch",
+        "parameters": [
+          {
+            "name": "tuition_plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tuition Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TuitionPlanUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TuitionPlanDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tuition plan (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The plan changed since it was loaded (version_conflict). Extending: The plan has ended (tuition_plan_ended): create a new plan. Another plan overlaps the new dates (tuition_plan_overlap); a group plan's added dates have session charges (tuition_plan_sessions_charged).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Delete Tuition Plan",
+        "description": "Delete a plan that has no charge, with its pauses.",
+        "operationId": "delete_tuition_plan_api_v1_billing_tuition_plans__tuition_plan_id__delete",
+        "parameters": [
+          {
+            "name": "tuition_plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tuition Plan Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "The plan's version, as last read.",
+              "title": "Version"
+            },
+            "description": "The plan's version, as last read."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tuition plan (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The plan changed since it was loaded (version_conflict). A plan with charges can't be deleted (tuition_plan_has_charges): end it instead.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/tuition-plans/{tuition_plan_id}/pauses": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Add Tuition Pause",
+        "description": "Pause a plan from a period (until a period's end, or until resumed).\nPaused periods are never charged, not even after a resume.",
+        "operationId": "add_tuition_pause_api_v1_billing_tuition_plans__tuition_plan_id__pauses_post",
+        "parameters": [
+          {
+            "name": "tuition_plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tuition Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TuitionPauseCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TuitionPlanDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tuition plan (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The plan changed since it was loaded (version_conflict). The plan has ended (tuition_plan_ended): create a new plan. The pause overlaps another pause (tuition_pause_overlap).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/tuition-plans/{tuition_plan_id}/resume": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Resume Tuition Plan",
+        "description": "End the open pause the day before `resume_on` (a pause that hasn't\nbegun is removed when `resume_on` is its start). Charging restarts from\n`resume_on`; paused periods are never caught up.",
+        "operationId": "resume_tuition_plan_api_v1_billing_tuition_plans__tuition_plan_id__resume_post",
+        "parameters": [
+          {
+            "name": "tuition_plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tuition Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TuitionResume"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TuitionPlanDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tuition plan (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The plan changed since it was loaded (version_conflict). The plan has no open pause (tuition_pause_not_open).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/unbilled-tuition-periods": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Unbilled Tuition Periods",
+        "description": "The due tuition periods that have no charge because the plan's price\nhas no amount on the period's first day (`no_price`) or the student\nmoved to another family (`family_changed`), by period start, student\nname and plan id. `reason` may be repeated. Empty while billing is off.\nEach period is charged by the next daily run once its price is fixed; a\nfamily change needs a new plan.",
+        "operationId": "list_unbilled_tuition_periods_api_v1_billing_unbilled_tuition_periods_get",
+        "parameters": [
+          {
+            "name": "reason",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TuitionUnbilledReason"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          {
+            "name": "student_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_UnbilledTuitionItem_"
                 }
               }
             }
@@ -25330,7 +26168,8 @@
         "type": "string",
         "enum": [
           "per_session",
-          "full_course"
+          "full_course",
+          "per_period"
         ]
       },
       "CatalogStatus": {
@@ -33213,6 +34052,45 @@
         "title": "EligibleAuthor",
         "description": "A tutor who currently teaches the student, with the active subjects\nthey teach them."
       },
+      "EligibleEnrollment": {
+        "properties": {
+          "group_enrollment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Group Enrollment Id"
+          },
+          "group": {
+            "$ref": "#/components/schemas/TuitionRecord"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/TuitionRecord"
+          },
+          "enrolled_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Enrolled On"
+          },
+          "has_fee_charge": {
+            "type": "boolean",
+            "title": "Has Fee Charge"
+          },
+          "has_plan": {
+            "type": "boolean",
+            "title": "Has Plan"
+          }
+        },
+        "type": "object",
+        "required": [
+          "group_enrollment_id",
+          "group",
+          "subject",
+          "enrolled_on",
+          "has_fee_charge",
+          "has_plan"
+        ],
+        "title": "EligibleEnrollment",
+        "description": "An active group enrollment of a student a plan can be linked to\n(#93 D9), with whether it has a flat fee charge or a linked plan."
+      },
       "EmergencyContact": {
         "properties": {
           "id": {
@@ -39352,6 +40230,37 @@
         ],
         "title": "OffsetPage[SubjectDetail]"
       },
+      "OffsetPage_TuitionPlanItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TuitionPlanItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[TuitionPlanItem]"
+      },
       "OffsetPage_TutorListItem_": {
         "properties": {
           "items": {
@@ -39444,6 +40353,37 @@
           "offset"
         ],
         "title": "OffsetPage[UnbilledSessionItem]"
+      },
+      "OffsetPage_UnbilledTuitionItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UnbilledTuitionItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[UnbilledTuitionItem]"
       },
       "OffsetPage_UserListItem_": {
         "properties": {
@@ -39876,6 +40816,25 @@
         "format": "decimal",
         "examples": [
           "50"
+        ]
+      },
+      "PeriodFrequency": {
+        "type": "string",
+        "enum": [
+          "weekly",
+          "biweekly",
+          "monthly"
+        ]
+      },
+      "PeriodState": {
+        "type": "string",
+        "enum": [
+          "not_due",
+          "below_floor",
+          "after_end",
+          "paused",
+          "enrollment_ended",
+          "due"
         ]
       },
       "PeriodType": {
@@ -43015,6 +43974,16 @@
             ],
             "title": "Duration Minutes"
           },
+          "period_frequency": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PeriodFrequency"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "effective_from": {
             "type": "string",
             "format": "date",
@@ -43099,6 +44068,16 @@
               }
             ]
           },
+          "period_frequency": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PeriodFrequency"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "current": {
             "anyOf": [
               {
@@ -43142,6 +44121,7 @@
           "duration_minutes",
           "cohort",
           "group",
+          "period_frequency",
           "current",
           "next",
           "created_at",
@@ -43207,6 +44187,16 @@
               }
             ]
           },
+          "period_frequency": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PeriodFrequency"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "current": {
             "anyOf": [
               {
@@ -43243,12 +44233,13 @@
           "duration_minutes",
           "cohort",
           "group",
+          "period_frequency",
           "current",
           "next",
           "created_at"
         ],
         "title": "ServicePriceItem",
-        "description": "One catalog item (#89 B1). ``education_level`` and\n``duration_minutes`` ``null`` mean \"any\"; ``cohort``/``group`` scope it.\n``current`` is the version in effect today (``amount: null`` = not\noffered) and ``next`` the earliest upcoming one."
+        "description": "One catalog item (#89 B1). ``education_level`` and\n``duration_minutes`` ``null`` mean \"any\"; ``cohort``/``group`` scope it.\n``period_frequency`` is the period length of a ``per_period`` item\n(#93; ``null`` for the other models). ``current`` is the version in\neffect today (``amount: null`` = not offered) and ``next`` the earliest\nupcoming one."
       },
       "SessionAttendance": {
         "properties": {
@@ -46702,6 +47693,571 @@
           "system"
         ]
       },
+      "TuitionPauseCreate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "starts_on"
+        ],
+        "title": "TuitionPauseCreate",
+        "description": "``POST /api/v1/billing/tuition-plans/{id}/pauses`` (#93 D7)."
+      },
+      "TuitionPauseItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "starts_on",
+          "ends_on"
+        ],
+        "title": "TuitionPauseItem",
+        "description": "A pause (#93 K4): from a period start to a period end (``ends_on:\nnull`` = until resumed)."
+      },
+      "TuitionPlanCreate": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "service_price_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Service Price Id"
+          },
+          "group_enrollment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Enrollment Id"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "due_offset_days": {
+            "type": "integer",
+            "maximum": 60.0,
+            "minimum": 0.0,
+            "title": "Due Offset Days",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student_id",
+          "service_price_id",
+          "starts_on"
+        ],
+        "title": "TuitionPlanCreate",
+        "description": "``POST /api/v1/billing/tuition-plans`` (#93 D3)."
+      },
+      "TuitionPlanDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "student": {
+            "$ref": "#/components/schemas/TuitionRecord"
+          },
+          "family": {
+            "$ref": "#/components/schemas/TuitionRecord"
+          },
+          "service_price": {
+            "$ref": "#/components/schemas/ServicePriceItem"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TuitionRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "group_enrollment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Enrollment Id"
+          },
+          "frequency": {
+            "$ref": "#/components/schemas/PeriodFrequency"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "due_offset_days": {
+            "type": "integer",
+            "title": "Due Offset Days"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TuitionPlanStatus"
+          },
+          "current_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Amount"
+          },
+          "pauses": {
+            "items": {
+              "$ref": "#/components/schemas/TuitionPauseItem"
+            },
+            "type": "array",
+            "title": "Pauses"
+          },
+          "posted_through": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posted Through"
+          },
+          "recent_periods": {
+            "items": {
+              "$ref": "#/components/schemas/TuitionPostedPeriod"
+            },
+            "type": "array",
+            "title": "Recent Periods"
+          },
+          "upcoming_periods": {
+            "items": {
+              "$ref": "#/components/schemas/TuitionUpcomingPeriod"
+            },
+            "type": "array",
+            "title": "Upcoming Periods"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "student",
+          "family",
+          "service_price",
+          "group",
+          "group_enrollment_id",
+          "frequency",
+          "starts_on",
+          "ends_on",
+          "due_offset_days",
+          "status",
+          "current_amount",
+          "pauses",
+          "posted_through",
+          "recent_periods",
+          "upcoming_periods"
+        ],
+        "title": "TuitionPlanDetail",
+        "description": "A plan with its pauses, the end of its latest posted period, its last\n24 posted periods (newest first) and the next 12 periods from the\ncurrent one (none after the plan's end)."
+      },
+      "TuitionPlanItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "student": {
+            "$ref": "#/components/schemas/TuitionRecord"
+          },
+          "family": {
+            "$ref": "#/components/schemas/TuitionRecord"
+          },
+          "service_price": {
+            "$ref": "#/components/schemas/ServicePriceItem"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TuitionRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "group_enrollment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Enrollment Id"
+          },
+          "frequency": {
+            "$ref": "#/components/schemas/PeriodFrequency"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "due_offset_days": {
+            "type": "integer",
+            "title": "Due Offset Days"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TuitionPlanStatus"
+          },
+          "current_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "student",
+          "family",
+          "service_price",
+          "group",
+          "group_enrollment_id",
+          "frequency",
+          "starts_on",
+          "ends_on",
+          "due_offset_days",
+          "status",
+          "current_amount"
+        ],
+        "title": "TuitionPlanItem",
+        "description": "A tuition plan (#93 D1). ``family`` is the family whose account the\nplan bills (K9); ``service_price`` its pinned ``per_period`` catalog\nprice; ``current_amount`` that price's version in effect today, before\ndiscounts (``null``: none, or not offered)."
+      },
+      "TuitionPlanStatus": {
+        "type": "string",
+        "enum": [
+          "scheduled",
+          "active",
+          "paused",
+          "ended"
+        ]
+      },
+      "TuitionPlanUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "due_offset_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 60.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Offset Days"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "TuitionPlanUpdate",
+        "description": "``PATCH /api/v1/billing/tuition-plans/{id}`` (#93 D5): ``version``\nand any of ``due_offset_days`` and ``ends_on`` (``null`` =\nopen-ended)."
+      },
+      "TuitionPostedPeriod": {
+        "properties": {
+          "period_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Period Start"
+          },
+          "period_end": {
+            "type": "string",
+            "format": "date",
+            "title": "Period End"
+          },
+          "charge_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Charge Id"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ChargeStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "period_start",
+          "period_end",
+          "charge_id",
+          "amount",
+          "status"
+        ],
+        "title": "TuitionPostedPeriod",
+        "description": "A posted period: its charge, the charge's net and its status."
+      },
+      "TuitionRecord": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "TuitionRecord",
+        "description": "A student, family, group or subject: its id and current name."
+      },
+      "TuitionResume": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "resume_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Resume On"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "resume_on"
+        ],
+        "title": "TuitionResume",
+        "description": "``POST /api/v1/billing/tuition-plans/{id}/resume`` (#93 D8)."
+      },
+      "TuitionUnbilledReason": {
+        "type": "string",
+        "enum": [
+          "no_price",
+          "family_changed"
+        ]
+      },
+      "TuitionUpcomingPeriod": {
+        "properties": {
+          "period_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Period Start"
+          },
+          "period_end": {
+            "type": "string",
+            "format": "date",
+            "title": "Period End"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PeriodState"
+          },
+          "charge_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charge Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TuitionUnbilledReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "period_start",
+          "period_end",
+          "state",
+          "charge_id",
+          "reason"
+        ],
+        "title": "TuitionUpcomingPeriod",
+        "description": "A period from the current one on (#93 D1): its state (C2) and, for\na due period, its charge (``charge_id``, once posted) or why it isn't\nposted (``reason``; ``null`` = the next run posts it)."
+      },
       "TutorAvailabilityDetail": {
         "properties": {
           "weekly": {
@@ -47518,6 +49074,71 @@
         ],
         "title": "UnbilledSessionItem",
         "description": "One confirmed or completed individual or group session participant\nthe sweeper skips (``GET /api/v1/billing/unbilled-items``)."
+      },
+      "UnbilledTuitionItem": {
+        "properties": {
+          "tuition_plan_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tuition Plan Id"
+          },
+          "period_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Period Start"
+          },
+          "period_end": {
+            "type": "string",
+            "format": "date",
+            "title": "Period End"
+          },
+          "frequency": {
+            "$ref": "#/components/schemas/PeriodFrequency"
+          },
+          "student": {
+            "$ref": "#/components/schemas/TuitionRecord"
+          },
+          "family": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TuitionRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subject": {
+            "$ref": "#/components/schemas/TuitionRecord"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TuitionRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "$ref": "#/components/schemas/TuitionUnbilledReason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tuition_plan_id",
+          "period_start",
+          "period_end",
+          "frequency",
+          "student",
+          "family",
+          "subject",
+          "group",
+          "reason"
+        ],
+        "title": "UnbilledTuitionItem",
+        "description": "A due tuition period that is not posted (#93 G1): ``no_price`` (the\npinned price has no version in effect on the period's start, or it says\n\"not offered\") or ``family_changed`` (the student is no longer in the\nfamily whose account the plan bills, K9). ``family`` is the student's\ncurrent family."
       },
       "UserAllowedActions": {
         "properties": {

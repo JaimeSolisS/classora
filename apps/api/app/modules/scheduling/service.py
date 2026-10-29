@@ -156,7 +156,9 @@ row ``FOR SHARE``, the enrollment sweeper's first lock), the unexecuted
 by ``app.workflows.enrollment_charges``), :func:`group_enrollment_period`,
 :func:`covering_group_periods` with :func:`covers` (the period of a group
 session's participant) and :func:`group_sessions_after` (the J4 removal
-credits and re-enrollment restorations).
+credits and re-enrollment restorations). Tuition plans (#93) add
+:func:`named_group_periods` (group periods by id or student, with the
+group's name).
 
 Closure changes on existing occurrences (#232,
 :mod:`~app.modules.scheduling.closure_changes`): the nightly job runs
@@ -480,6 +482,9 @@ from app.modules.scheduling.enrollment_billing import (
     GroupSessionSeat as GroupSessionSeat,
 )
 from app.modules.scheduling.enrollment_billing import (
+    NamedGroupPeriod as NamedGroupPeriod,
+)
+from app.modules.scheduling.enrollment_billing import (
     OwnerSchedule as OwnerSchedule,
 )
 from app.modules.scheduling.enrollment_billing import (
@@ -503,6 +508,9 @@ from app.modules.scheduling.enrollment_billing import (
 )
 from app.modules.scheduling.enrollment_billing import (
     lock_group_for_billing as lock_group_for_billing,
+)
+from app.modules.scheduling.enrollment_billing import (
+    named_group_periods as named_group_periods,
 )
 from app.modules.scheduling.enrollment_billing import (
     owner_schedules as owner_schedules,

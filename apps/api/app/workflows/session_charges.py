@@ -18,6 +18,13 @@ that reason), for a candidate in this order:
 
 1. ``package_covered``: ``billing.service.package_covered_keys`` returns its
    key (ADR-0006 E10; empty until #94) → no charge, not listed;
+1a. ``tuition_priced`` (#93 K6): a **group** session whose participant's
+   covering enrollment period has a linked tuition plan whose window
+   (``starts_on`` to ``ends_on``, paused periods included) contains the
+   session's local date → no charge, not listed (the plan prices it);
+1b. ``enrollment_priced`` (#92 E2): the covering period has its fee, or is
+   fee-priced (a period with a linked plan never is) → no charge, not
+   listed;
 2. ``no_billing_account``: the student has no family → no charge, listed;
 3. ``no_price``: ``billing.service.base_price`` of the item's
    :class:`~app.modules.billing.schemas.PriceQuery` (``charge_kind
@@ -153,7 +160,12 @@ PAGE_SIZE: Final = 200
 UNBILLED_REASONS: Final[tuple[UnbilledReason, ...]] = ("no_billing_account", "no_price")
 
 type Outcome = Literal[
-    "package_covered", "enrollment_priced", "no_billing_account", "no_price", "billable"
+    "package_covered",
+    "tuition_priced",
+    "enrollment_priced",
+    "no_billing_account",
+    "no_price",
+    "billable",
 ]
 type ItemOutcome = Literal[
     "posted",
@@ -161,6 +173,7 @@ type ItemOutcome = Literal[
     "no_billing_account",
     "no_price",
     "package_covered",
+    "tuition_priced",
     "enrollment_priced",
     "not_billable",
 ]
@@ -332,11 +345,28 @@ class Classification:
 @dataclass(frozen=True)
 class GroupPricing:
     """The enrollment periods covering group candidates (#92 E2), with
-    their ledger facts. ``covering`` maps a candidate key to its period
-    (none: session-priced)."""
+    their ledger facts and the windows of their linked tuition plans (#93
+    K6). ``covering`` maps a candidate key to its period (none:
+    session-priced)."""
 
     covering: Mapping[tuple[uuid.UUID, uuid.UUID], Period] = field(default_factory=dict)
     facts: Mapping[uuid.UUID, PeriodFacts] = field(default_factory=dict)
+    plans: Mapping[uuid.UUID, Sequence[tuple[date, date | None]]] = field(
+        default_factory=dict
+    )
+
+    def tuition_priced(
+        self, key: tuple[uuid.UUID, uuid.UUID], service_date: date
+    ) -> bool:
+        """#93 K6: the covering period has a linked plan whose window
+        contains ``service_date`` (paused periods included)."""
+        period = self.covering.get(key)
+        if period is None:
+            return False
+        return any(
+            starts_on <= service_date and (ends_on is None or service_date <= ends_on)
+            for starts_on, ends_on in self.plans.get(period.enrollment_id, ())
+        )
 
     def fee_query(
         self,
@@ -367,8 +397,10 @@ class GroupPricing:
         prices: PriceMemo,
     ) -> bool:
         """E2: the covering period has its fee charge, or is fee-priced
-        (#92 B1 steps 3-4: no session charge of the student inside it, and
-        a ``group/full_course`` base price on its enrollment date)."""
+        (#92 B1 steps 3-4: no session charge of the student inside it, no
+        linked tuition plan (#93 K6: such a period never gets a fee, so its
+        sessions outside the plan's window are charged per session), and a
+        ``group/full_course`` base price on its enrollment date)."""
         query = self.fee_query(
             key,
             zone=zone,
@@ -381,7 +413,7 @@ class GroupPricing:
         known = self.facts.get(period.enrollment_id, PeriodFacts())
         if known.fee_posted:
             return True
-        if known.session_charged:
+        if known.session_charged or known.tuition_linked:
             return False
         return await prices.base(query) is not None
 
@@ -390,8 +422,9 @@ async def group_pricing(
     session: AsyncSession, candidates: Sequence[Candidate]
 ) -> GroupPricing:
     """The :class:`GroupPricing` of the ``group`` candidates: their periods
-    (one statement) and the periods' ledger facts (one more); nothing for
-    no group candidate."""
+    (one statement), the periods' ledger facts (one more) and the windows of
+    their linked tuition plans (one more, #93 K6); nothing for no group
+    candidate."""
     groups = [c for c in candidates if c.group_id is not None]
     if not groups:
         return GroupPricing()
@@ -417,7 +450,13 @@ async def group_pricing(
                 )
                 break
     unique = list({p.enrollment_id: p for p in covering.values()}.values())
-    return GroupPricing(covering=covering, facts=await period_facts(session, unique))
+    return GroupPricing(
+        covering=covering,
+        facts=await period_facts(session, unique),
+        plans=await billing.linked_plan_windows(
+            session, [p.enrollment_id for p in unique]
+        ),
+    )
 
 
 async def classify(
@@ -431,9 +470,10 @@ async def classify(
     groups: GroupPricing | None = None,
 ) -> list[Classification]:
     """The rules of the module docstring, for each candidate (in order):
-    package seam → enrollment-priced group session (#92 E2) → family →
-    price. ``groups`` is :func:`group_pricing` of the candidates (read here
-    when not given)."""
+    package seam → tuition-priced group session (#93 K6) →
+    enrollment-priced group session (#92 E2) → family → price. ``groups``
+    is :func:`group_pricing` of the candidates (read here when not
+    given)."""
     covered = await billing.package_covered_keys(
         session,
         [
@@ -455,6 +495,10 @@ async def classify(
         family = families_by_student.get(candidate.student_id)
         if candidate.key in covered:
             result.append(Classification("package_covered", level))
+        elif candidate.group_id is not None and groups.tuition_priced(
+            candidate.key, candidate.service_date
+        ):
+            result.append(Classification("tuition_priced", level))
         elif candidate.group_id is not None and await groups.enrollment_priced(
             candidate.key,
             zone=zone,
@@ -528,11 +572,13 @@ async def post_one(
         return classified.outcome
     assert family is not None  # noqa: S101 - "billable" always has a family
     if candidate.group_id is not None:
-        # #92 E3 (J2): under the family's account lock, the period's fee and
-        # this session charge can't both be posted.
+        # #92 E3 (J2), #93 K6: under the family's account lock, the period's
+        # fee, a linked tuition plan and this session charge can't coexist.
         account_id = await billing.ensure_billing_account(session, family.id)
         await billing.lock_billing_account(session, account_id)
         groups = await group_pricing(session, [candidate])
+        if groups.tuition_priced(candidate.key, candidate.service_date):
+            return "tuition_priced"
         if await groups.enrollment_priced(
             candidate.key,
             zone=zone,
@@ -573,6 +619,8 @@ class SessionChargeRunResult:
     no_billing_account: int = 0
     no_price: int = 0
     package_covered: int = 0
+    tuition_priced: int = 0
+    """Group sessions inside a linked tuition plan's window (#93 K6)."""
     enrollment_priced: int = 0
     """Group sessions of a fee-priced enrollment period (#92 E2)."""
     not_billable: int = 0
@@ -641,6 +689,7 @@ async def run_post_session_charges(
         no_billing_account=outcomes["no_billing_account"],
         no_price=outcomes["no_price"],
         package_covered=outcomes["package_covered"],
+        tuition_priced=outcomes["tuition_priced"],
         enrollment_priced=outcomes["enrollment_priced"],
         not_billable=outcomes["not_billable"],
         failed=failed,
@@ -677,9 +726,9 @@ async def list_unbilled_items(
     ``no_price`` (``reasons``: only those; empty = both), optionally one
     student's, by service date, start, student name, session id and student
     id. Billing off: an empty page. No lock, no write; at most seven
-    statements, two more when group sessions are candidates (their covering
-    periods and the periods' ledger facts, #92 E4), plus the memoized
-    catalog lookups."""
+    statements, three more when group sessions are candidates (their
+    covering periods, the periods' ledger facts, #92 E4, and their linked
+    tuition plans, #93 K6), plus the memoized catalog lookups."""
     empty = OffsetPage[UnbilledSessionItem](
         items=[], total=0, limit=page.limit, offset=page.offset
     )

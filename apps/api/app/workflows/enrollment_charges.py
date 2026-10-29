@@ -23,21 +23,24 @@ the sweeper skips with that reason), for a period in this order:
    local date of the owner's first counted session)`` is before
    ``billing_starts_on`` (history from before go-live is never charged; an
    advance enrollment for a course that starts after go-live is);
-3. **group:** ``session_priced`` (J2): a ``session`` charge of the student
+3. **group:** ``tuition_priced`` (#93 K6): a tuition plan is linked to the
+   period (any window): the plan prices it, so it never gets a flat fee and
+   is not listed;
+4. **group:** ``session_priced`` (J2): a ``session`` charge of the student
    exists on a group session starting at or after the period's
    ``enrolled_at`` (whatever its net after removal credits, sessions after
    ``withdrawn_at`` included), so the period is priced per session;
-4. no fee price: ``billing.service.base_price`` of the period's fee
+5. no fee price: ``billing.service.base_price`` of the period's fee
    (``course/full_course`` with the cohort, or ``group/full_course`` with
    the group; the owner's subject, ``on`` = the enrollment's local date,
    the student's current level, no duration) is ``None`` → group:
    ``session_priced``; cohort: ``no_price``;
-5. ``already_charged`` (J5): another period of the student in the same
+6. ``already_charged`` (J5): another period of the student in the same
    group or cohort has a fee charge whose net is above ``0.00`` (a
    withdraw-and-re-enroll never charges the course twice; once #101 credits
    the fee to ``0.00``, a new period is charged again);
-6. ``no_billing_account``: the student has no family;
-7. ``billable``: the base price; when posting, the proration and the quote.
+7. ``no_billing_account``: the student has no family;
+8. ``billable``: the base price; when posting, the proration and the quote.
 
 **Precedence (choice):** for a cohort period ``no_price`` comes **before**
 ``no_billing_account`` (the reverse of #91 G4), because the fee price
@@ -61,9 +64,10 @@ plus the account's ``due_offset_days`` (E11).
 
 **Posting** (:func:`post_enrollment_fee`, B4): the student's family → its
 account (``ensure_billing_account``) → the account row ``FOR UPDATE`` →
-steps 1, 3 and 5 re-read **under the lock** (J2, J5: a session charge and
-the fee of one period are both posted under the family's account lock, so
-whichever commits first wins and the other posts nothing) →
+steps 1, 3, 4 and 6 re-read **under the lock** (J2, J5, #93 K6: a session
+charge, a linked tuition plan and the fee of one period are all written
+under the family's account lock, so whichever commits first wins and the
+others post nothing) →
 ``billing.service.post_charge``. ``created = False`` is a success; a family
 removed meanwhile is ``no_billing_account``. ``posted_by_user_id`` is the
 Unit of Work's actor: the enrolling user in a hook, ``NULL`` in the job.
@@ -172,6 +176,7 @@ type Outcome = Literal[
     "posted_already",
     "below_floor",
     "already_charged",
+    "tuition_priced",
     "session_priced",
     "no_billing_account",
     "no_price",
@@ -182,6 +187,7 @@ type FeeOutcome = Literal[
     "already_posted",
     "below_floor",
     "already_charged",
+    "tuition_priced",
     "session_priced",
     "no_billing_account",
     "no_price",
@@ -283,6 +289,9 @@ async def classify_periods(
         if base < floor:
             result.append(replace(outcome, outcome="below_floor"))
             continue
+        if period.is_group and known.tuition_linked:
+            result.append(replace(outcome, outcome="tuition_priced"))
+            continue
         if period.is_group and known.session_charged:
             result.append(replace(outcome, outcome="session_priced"))
             continue
@@ -375,6 +384,8 @@ async def post_enrollment_fee(
     )
     if known.fee_posted:
         return "already_posted"
+    if period.is_group and known.tuition_linked:
+        return "tuition_priced"
     if period.is_group and known.session_charged:
         return "session_priced"
     if known.other_fee_positive:
@@ -699,6 +710,8 @@ class EnrollmentChargeRunResult:
     already_posted: int = 0
     below_floor: int = 0
     already_charged: int = 0
+    tuition_priced: int = 0
+    """Group periods a linked tuition plan prices (#93 K6)."""
     session_priced: int = 0
     no_billing_account: int = 0
     no_price: int = 0
@@ -765,6 +778,7 @@ async def run_post_enrollment_charges(
         already_posted=outcomes["already_posted"],
         below_floor=outcomes["below_floor"],
         already_charged=outcomes["already_charged"],
+        tuition_priced=outcomes["tuition_priced"],
         session_priced=outcomes["session_priced"],
         no_billing_account=outcomes["no_billing_account"],
         no_price=outcomes["no_price"],

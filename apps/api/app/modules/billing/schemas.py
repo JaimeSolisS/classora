@@ -6,9 +6,12 @@ report every failing field in one ``422`` (each rule is a field validator
 on the later field of the pair it compares, so the earlier fields are in
 ``info.data``):
 
-- ``pricing_model``: ``per_session`` or ``full_course`` only (#89 E5;
-  ``per_period`` waits for #93 and ``package`` for #94), and allowed for the
-  class type (``pricing_model_not_allowed``);
+- ``pricing_model``: ``per_session``, ``full_course`` or (since #93 B1)
+  ``per_period`` (``package`` is #94's), and allowed for the class type
+  (``pricing_model_not_allowed``);
+- ``period_frequency`` (#93 K2): required with ``per_period``
+  (``period_frequency_required``), refused otherwise
+  (``period_frequency_not_allowed``);
 - ``cohort_id`` only for ``course`` and ``group_id`` only for ``group``
   (``scope_not_allowed``), never both (``scope_conflict``);
 - a scoped item has no level (``level_not_allowed``) and no duration
@@ -60,8 +63,11 @@ from app.modules.billing.models import (
 )
 
 type ClassType = Literal["individual", "group", "course"]
-type CatalogPricingModel = Literal["per_session", "full_course"]
-"""The pricing models the #89 routes accept (E5)."""
+type CatalogPricingModel = Literal["per_session", "full_course", "per_period"]
+"""The pricing models the #89 routes accept (E5; ``per_period`` since #93)."""
+type PeriodFrequency = Literal["weekly", "biweekly", "monthly"]
+"""The period length of a ``per_period`` item and of a tuition plan (#93
+K2, K3)."""
 type PriceVersionStatus = Literal["past", "current", "upcoming"]
 
 EFFECTIVE_FROM_MIN: Final = date(2000, 1, 1)
@@ -95,6 +101,9 @@ class ServicePriceCreate(BaseModel):
     group_id: uuid.UUID | None = None
     education_level_id: uuid.UUID | None = None
     duration_minutes: int | None = None
+    period_frequency: PeriodFrequency | None = Field(
+        default=None, validate_default=True
+    )
     effective_from: date
     amount: Money
 
@@ -154,7 +163,8 @@ class ServicePriceCreate(BaseModel):
     def _duration(cls, value: int | None, info: ValidationInfo) -> int | None:
         if value is None:
             return value
-        if info.data.get("pricing_model") == "full_course" or _scoped(info):
+        model = info.data.get("pricing_model")
+        if (model is not None and model != "per_session") or _scoped(info):
             raise PydanticCustomError(
                 "duration_not_allowed",
                 "Only a per-session price outside a cohort or group has a duration.",
@@ -162,6 +172,24 @@ class ServicePriceCreate(BaseModel):
         if not DURATION_MIN <= value <= DURATION_MAX:
             raise PydanticCustomError(
                 "duration_out_of_range", "Choose 15 to 480 minutes."
+            )
+        return value
+
+    @field_validator("period_frequency")
+    @classmethod
+    def _frequency(cls, value: str | None, info: ValidationInfo) -> str | None:
+        model = info.data.get("pricing_model")
+        if model is None:
+            return value
+        if model == "per_period" and value is None:
+            raise PydanticCustomError(
+                "period_frequency_required",
+                "Choose weekly, every two weeks or monthly.",
+            )
+        if model != "per_period" and value is not None:
+            raise PydanticCustomError(
+                "period_frequency_not_allowed",
+                "Only a per-period price has a period length.",
             )
         return value
 
@@ -232,8 +260,11 @@ class PriceInEffect:
 
 # --- Ledger core (#90) ---------------------------------------------------------------
 
-type ChargeKind = Literal["session", "group_enrollment", "cohort_enrollment", "manual"]
-"""The charge kinds of #90 (E3); #93 and #94 add theirs."""
+type ChargeKind = Literal[
+    "session", "group_enrollment", "cohort_enrollment", "tuition_period", "manual"
+]
+"""The charge kinds of #90 (E3) and ``tuition_period`` (#93); #94 adds its
+own."""
 type AdjustmentKind = Literal[
     "duration_change",
     "cancellation_credit",
@@ -260,6 +291,7 @@ _CHARGE_SOURCES: Final[dict[str, str | None]] = {
     "session": "class_session_id",
     "group_enrollment": "group_enrollment_id",
     "cohort_enrollment": "cohort_enrollment_id",
+    "tuition_period": "tuition_plan_id",
     MANUAL: None,
 }
 """The source column each charge kind needs (``None``: no source)."""
@@ -267,6 +299,7 @@ _SOURCE_COLUMNS: Final = (
     "class_session_id",
     "group_enrollment_id",
     "cohort_enrollment_id",
+    "tuition_plan_id",
 )
 
 
@@ -287,8 +320,10 @@ def _check_staff_text(value: str | None, name: str, max_length: int) -> None:
 class ChargeDraft:
     """A charge to post with :func:`app.modules.billing.service.post_charge`
     (#90 C3). ``kind`` needs exactly its source id (none for ``manual``);
-    ``scheduled_minutes`` only and always for ``session``; ``description``
-    only and always for ``manual``. ``amount = list_amount −
+    ``scheduled_minutes`` only and always for ``session``;
+    ``service_period_end`` (on or after ``service_date``) only and always
+    for ``tuition_period`` (#93 A5); ``description`` only and always for
+    ``manual``. ``amount = list_amount −
     discount_amount``, never negative. The due date is ``due_date_base``,
     plus the family's ``due_offset_days`` when ``apply_family_offset``
     (callers pass ``False`` for a staff-entered due date, E11).
@@ -304,6 +339,8 @@ class ChargeDraft:
     class_session_id: uuid.UUID | None = None
     group_enrollment_id: uuid.UUID | None = None
     cohort_enrollment_id: uuid.UUID | None = None
+    tuition_plan_id: uuid.UUID | None = None
+    service_period_end: date | None = None
     scheduled_minutes: int | None = None
     price_version_id: uuid.UUID | None = None
     custom_price_id: uuid.UUID | None = None
@@ -337,13 +374,16 @@ class ChargeDraft:
         if self.kind not in _CHARGE_SOURCES:
             raise ValueError(f"unknown charge kind {self.kind!r}")
         needed = _CHARGE_SOURCES[self.kind]
-        for column in (
-            "class_session_id",
-            "group_enrollment_id",
-            "cohort_enrollment_id",
-        ):
+        for column in _SOURCE_COLUMNS:
             if (getattr(self, column) is not None) != (column == needed):
                 raise ValueError(f"a {self.kind} charge needs exactly its source")
+        if (self.service_period_end is not None) != (self.kind == "tuition_period"):
+            raise ValueError("service_period_end is set for a tuition charge only")
+        if (
+            self.service_period_end is not None
+            and self.service_period_end < self.service_date
+        ):
+            raise ValueError("service_period_end can't be before service_date")
         if (self.scheduled_minutes is not None) != (self.kind == "session"):
             raise ValueError("scheduled_minutes is set for a session charge only")
         if self.scheduled_minutes is not None and not (
@@ -640,7 +680,7 @@ class PriceQuery:
     student, the student's family (``None``: no family price, no family
     assignment, no sibling discount) and the charge kind. ``on`` is the
     local service date; ``education_level_id`` the student's level at
-    posting."""
+    posting; ``service_price_id`` an optional item pin (#93)."""
 
     student_id: uuid.UUID
     family_id: uuid.UUID | None
@@ -653,6 +693,11 @@ class PriceQuery:
     duration_minutes: int | None = None
     cohort_id: uuid.UUID | None = None
     group_id: uuid.UUID | None = None
+    service_price_id: uuid.UUID | None = None
+    """The pin (#93 B4): price exactly this catalog item (its custom prices,
+    then its version in effect on ``on``; no rank search). Required for a
+    ``per_period`` query (a tuition plan's item); ``None`` = the #89/#95
+    precedence."""
 
 
 @dataclass(frozen=True)

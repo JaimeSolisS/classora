@@ -126,6 +126,7 @@ Catalog items (E9).
 | `duration_minutes` | SMALLINT | yes | 15 to 480, only with `per_session` (#89); `NULL` = any duration |
 | `cohort_id` | UUID | yes | FK `course_cohorts`; scope (spec §3, "each cohort has its own … pricing") |
 | `group_id` | UUID | yes | FK `class_groups`; scope |
+| `period_frequency` | VARCHAR(16) | yes | `weekly` \| `biweekly` \| `monthly`; set **iff** `pricing_model = 'per_period'` (`ck_service_prices_period_frequency`, #93 K2) |
 | `version` | INTEGER | no | |
 
 - **Checks:** `NOT (cohort_id IS NOT NULL AND group_id IS NOT NULL)`; `cohort_id` only with `class_type = 'course'`; `group_id` only with `class_type = 'group'`; `package` only with `class_type = 'individual'` (E10). Added by #89 (E4, E5):
@@ -133,9 +134,9 @@ Catalog items (E9).
   - `subject_id IS NOT NULL OR pricing_model = 'package'`;
   - `duration_minutes IS NULL OR (pricing_model = 'per_session' AND duration_minutes BETWEEN 15 AND 480)`;
   - a scoped row (cohort or group) has `education_level_id IS NULL AND duration_minutes IS NULL`.
-- **API scope (#89 E5):** the #89 routes create, list and read only `per_session` and `full_course` items. `package` rows are created with their product (#94) and `per_period` prices by #93.
+- **API scope (#89 E5):** the #89 routes create, list and read `per_session` and `full_course` items and, since #93 B1, `per_period` items (with their `period_frequency`). `package` rows are created with their product (#94).
 - **Pricing models:** `per_session` (individual sessions, and group sessions priced per session); `full_course` (a cohort fee, or a group flat fee per enrollment); `per_period` (group per-student pricing, through a tuition plan linked to the group enrollment, and tuition plans in general); `package` (the price of a package product).
-- **Catalog key:** `UNIQUE NULLS NOT DISTINCT (class_type, pricing_model, subject_id, education_level_id, duration_minutes, cohort_id, group_id) WHERE pricing_model <> 'package'`. A `package` row is identified by its product instead (`package_products.service_price_id` is UNIQUE), so two products for the same subject can coexist.
+- **Catalog key:** `UNIQUE NULLS NOT DISTINCT (class_type, pricing_model, subject_id, education_level_id, duration_minutes, cohort_id, group_id, period_frequency) WHERE pricing_model <> 'package'` (`period_frequency` added by #93 K2: a weekly and a monthly price of the same subject, level and scope are two items). A `package` row is identified by its product instead (`package_products.service_price_id` is UNIQUE), so two products for the same subject can coexist.
 - The key columns don't change once a `price_versions` row exists; a different key is a new item.
 
 ### 3.5 `price_versions`
@@ -254,7 +255,7 @@ What the family owes for one student and one thing (E1, E5, E9, E11). Always for
 | `class_session_id` | UUID | yes | FK `class_sessions`; source of `session` |
 | `group_enrollment_id` | UUID | yes | FK `group_enrollments`; source of `group_enrollment` |
 | `cohort_enrollment_id` | UUID | yes | FK `cohort_enrollments`; source of `cohort_enrollment` |
-| `tuition_plan_id` | UUID | yes | FK `tuition_plans`; source of `tuition_period` (column added by #93) |
+| `tuition_plan_id` | UUID | yes | source of `tuition_period` (column added by #93); composite FK `fk_charges_tuition_plan` `(tuition_plan_id, billing_account_id, student_id) → tuition_plans (id, billing_account_id, student_id)` RESTRICT (K9) |
 | `package_id` | UUID | yes | FK `packages`; source of `package_purchase` (column added by #94) |
 | `service_date` | DATE | no | the session's original local date; the enrollment's local date; the period start (`period_start`); the purchase date; or the staff-entered date |
 | `service_period_end` | DATE | yes | last day of a `tuition_period`; `>= service_date` (`ck_charges_service_period_end_valid`; `NULL` for every kind until #93) |
@@ -281,7 +282,7 @@ What the family owes for one student and one thing (E1, E5, E9, E11). Always for
   - `manual` ⇔ every source column `NULL`, and `description IS NOT NULL`.
 
   Written as `num_nonnulls(class_session_id, group_enrollment_id, cohort_enrollment_id, tuition_plan_id, package_id) = CASE WHEN kind = 'manual' THEN 0 ELSE 1 END` plus one implication per kind.
-- **Staged CHECKs (#90 E3):** #90 creates the kinds whose source exists. `ck_charges_kind` allows `session`, `group_enrollment`, `cohort_enrollment` and `manual`; `ck_charges_one_source` is the rule above over the three existing source columns, with the `session` ⇔ `scheduled_minutes` and `manual` ⇔ `description` implications. #93 (`tuition_plan_id`) and #94 (`package_id`) each add their column, its foreign key and its natural key, and replace both named CHECKs to include their kind.
+- **Staged CHECKs (#90 E3):** #90 creates the kinds whose source exists. `ck_charges_kind` allows `session`, `group_enrollment`, `cohort_enrollment` and `manual`; `ck_charges_one_source` is the rule above over the three existing source columns, with the `session` ⇔ `scheduled_minutes` and `manual` ⇔ `description` implications. #93 (`tuition_plan_id`) and #94 (`package_id`) each add their column, its foreign key and its natural key, and replace both named CHECKs to include their kind. **Since #93 (migration 0065):** `ck_charges_kind` adds `tuition_period`; `ck_charges_one_source` counts `tuition_plan_id` and adds `(kind = 'tuition_period') = (tuition_plan_id IS NOT NULL)` and `(kind = 'tuition_period') = (service_period_end IS NOT NULL)`; #94 (0066) must keep both when it replaces them again.
 - **`price_version_id` and `custom_price_id`:** at most one is set (`ck_charges_one_price`, #95); a `manual` charge has no custom price (`ck_charges_manual_unpriced`) and no discount lines.
 - **Natural keys** (partial unique indexes, J4):
   - `(class_session_id, student_id) WHERE kind = 'session'`;
@@ -290,7 +291,7 @@ What the family owes for one student and one thing (E1, E5, E9, E11). Always for
   - `(tuition_plan_id, service_date) WHERE kind = 'tuition_period'`, i.e. `(tuition_plan_id, period_start)`;
   - `(package_id) WHERE kind = 'package_purchase'`.
 
-  #90 names them `uq_charges_session_student`, `uq_charges_group_enrollment` and `uq_charges_cohort_enrollment`; #93 and #94 add the last two. Manual charges have no natural key; they rely on the API idempotency key (§3.24).
+  #90 names them `uq_charges_session_student`, `uq_charges_group_enrollment` and `uq_charges_cohort_enrollment`; #93 adds `uq_charges_tuition_period` and #94 the last one. Manual charges have no natural key; they rely on the API idempotency key (§3.24).
 - **Posting (#90 E4):** `billing.service.post_charge` locks the account row, checks the natural key under the lock, and inserts through the ORM in a savepoint; a violation of a named natural-key index (a posting for the same key to another account) counts as already posted (`created = False`).
 - **Composite targets:** `UNIQUE (id, billing_account_id)` and `UNIQUE (id, billing_account_id, student_id)`, referenced by the composite foreign keys of allocations and adjustments (I4, I5).
 - **Kept account:** a charge keeps the account it was posted to, even if the student later moves to another family. There is no foreign key to `family_students`.
@@ -303,7 +304,7 @@ What the family owes for one student and one thing (E1, E5, E9, E11). Always for
 ADR-0006 E1, E9, E11; the rules live in `app/workflows/enrollment_charges.py`.
 
 - **Fees:** a cohort enrollment period gets the cohort's course fee (`course/full_course` with `cohort_id`); a **fee-priced** group enrollment period gets the group's flat fee (`group/full_course` with `group_id`). Both through `billing.service.quote`, with the owner's subject, `on` = the enrollment's local date, the student's current level and no duration.
-- **Group pricing model (J2):** decided per enrollment period. A period is fee-priced when a `group/full_course` base price is in effect on its enrollment date and no `session` charge of the student exists on a group session starting at or after the period's `enrolled_at` (whatever the charge's net after `enrollment_removal` credits, sessions after `withdrawn_at` included: a period once charged per session is never fee-charged, QA #92 D1); otherwise it is session-priced and its confirmed and completed sessions are charged per session. With both prices the fee wins, unless session charges already exist. A group session participant with no covering period is session-priced. #93 extends "priced by enrollment" with a linked tuition plan.
+- **Group pricing model (J2):** decided per enrollment period. A period is fee-priced when a `group/full_course` base price is in effect on its enrollment date and no `session` charge of the student exists on a group session starting at or after the period's `enrolled_at` (whatever the charge's net after `enrollment_removal` credits, sessions after `withdrawn_at` included: a period once charged per session is never fee-charged, QA #92 D1); otherwise it is session-priced and its confirmed and completed sessions are charged per session. With both prices the fee wins, unless session charges already exist. A group session participant with no covering period is session-priced. #93 extends "priced by enrollment" with a linked tuition plan (`tuition_priced`, see "Tuition plans (#93)").
 - **Classification (in order):** fee already posted → J6 due-date base before `billing_starts_on` (`below_floor`) → group with a session charge in the period (`session_priced`) → no fee price (group: `session_priced`; cohort: `no_price`) → another period of the student in the same group or cohort has a fee with a net above `0.00` (`already_charged`, J5) → no family (`no_billing_account`) → billable. A cohort's `no_price` comes before `no_billing_account` (the reverse of #91 G4).
 - **Proration (J3):** `list_amount = fee × remaining / total`, one half-up rounding (`Money.prorate`), **before** the discounts. `remaining` counts the owner's occurrences that start after the enrollment instant and are not `cancelled` or `skipped_closure`, materialized rows **and** occurrences of the series rules not materialized yet (minus projected dates on known closures). The denominator is the cohort snapshot's `session_count` (`remaining` clamped to it), or, for a group whose series are all finite, its counted occurrences; an open-ended group pays the full fee with no proration. `remaining = 0` gives a `0.00` charge.
 - **Dates (J6, E11):** `service_date` = the enrollment's local date; the due-date base = `max(enrollment local date, first counted session's local date)`, plus the account's `due_offset_days`. The floor is compared with the due-date base, so advance enrollments made before go-live for a course that runs after it are charged.
@@ -427,22 +428,54 @@ Needs `finance.refund.approve` plus reauthentication `finance.refund_or_reversal
 
 ### 3.17 `tuition_plans` (#93)
 
-A recurring tuition plan; one charge per plan per period (E1).
+A recurring tuition plan; one charge per plan per period (E1). Mutable config, `Audited`, versioned (migration 0065).
 
 | Column | Type | Null | Check / note |
 |---|---|---|---|
 | `id` | UUID | no | PK |
-| `billing_account_id` | UUID | no | FK `billing_accounts` |
-| `student_id` | UUID | no | FK `students` |
-| `service_price_id` | UUID | no | FK `service_prices` with `pricing_model = 'per_period'` (App) |
-| `group_enrollment_id` | UUID | yes | FK `group_enrollments`; group per-student pricing (E9) |
-| `frequency` | VARCHAR(16) | no | `weekly` \| `biweekly` \| `monthly` |
-| `starts_on` | DATE | no | |
-| `ends_on` | DATE | yes | `>= starts_on`; `NULL` = open-ended |
-| `due_offset_days` | SMALLINT | no | `>= 0`; the plan's due rule (E11) |
+| `billing_account_id` | UUID | no | FK `billing_accounts` RESTRICT; the family account the plan bills, fixed at creation (K9) |
+| `student_id` | UUID | no | FK `students` RESTRICT |
+| `service_price_id` | UUID | no | FK `service_prices` RESTRICT; the pinned `per_period` item (App, K2) |
+| `group_enrollment_id` | UUID | yes | FK `group_enrollments` RESTRICT; group per-student pricing (E9, K6) |
+| `frequency` | VARCHAR(16) | no | `weekly` \| `biweekly` \| `monthly` (`ck_tuition_plans_frequency_valid`); copied from the item |
+| `starts_on` | DATE | no | the anchor of the period grid (K3) |
+| `ends_on` | DATE | yes | `>= starts_on` (`ck_tuition_plans_dates`); a period end (App); `NULL` = open-ended |
+| `due_offset_days` | SMALLINT | no | 0–60 (`ck_tuition_plans_due_offset_days_range`), default 0; the plan's due rule (E11) |
 | `version` | INTEGER | no | |
 
-Periods follow the center's local dates. Pausing or ending a plan stops future periods and never touches posted charges. #93 may add a pause column. Composite `UNIQUE (id, billing_account_id, student_id)` lets a tuition charge be checked against its plan's account and student.
+- **Composite target:** `UNIQUE (id, billing_account_id, student_id)` (`uq_tuition_plans_id_account_student`), referenced by `charges.fk_charges_tuition_plan`, so a tuition charge always posts to its plan's account and student (K9).
+- **No overlap** (`EXCLUDE USING gist`, `daterange(starts_on, ends_on, '[]') &&`): `ex_tuition_plans_enrollment_overlap` on `group_enrollment_id =` `WHERE group_enrollment_id IS NOT NULL`; `ex_tuition_plans_student_item_overlap` on `(student_id =, service_price_id =)` `WHERE group_enrollment_id IS NULL`. API: `409 tuition_plan_overlap`.
+- **Key trigger** `tuition_plans_key_immutable` (`BEFORE UPDATE`, 42501): `billing_account_id`, `student_id`, `service_price_id`, `group_enrollment_id`, `frequency` and `starts_on` never change (they define the grid and the composite key); only `ends_on`, `due_offset_days` and the standard columns do.
+- **Indexes:** `ix_tuition_plans_student_id`, `ix_tuition_plans_billing_account_id`.
+- **Deleting** a plan is allowed only while it has no charge (API; the composite FK is RESTRICT).
+
+### 3.17a `tuition_plan_pauses` (#93)
+
+Pauses of a plan (K4). Mutable config, `Audited`, versioned.
+
+| Column | Type | Null | Check / note |
+|---|---|---|---|
+| `id` | UUID | no | PK |
+| `tuition_plan_id` | UUID | no | FK `tuition_plans` **CASCADE** |
+| `starts_on` | DATE | no | a period start (App) |
+| `ends_on` | DATE | yes | `>= starts_on` (`ck_tuition_plan_pauses_dates`); a period end (App); `NULL` = until resumed |
+| `version` | INTEGER | no | |
+
+- `EXCLUDE USING gist (tuition_plan_id WITH =, daterange(starts_on, ends_on, '[]') WITH &&)` (`ex_tuition_plan_pauses_overlap`): pauses of one plan never overlap, so there is at most one open pause.
+
+### Tuition plans (#93)
+
+ADR-0006 E1, E7, E9, E11; the rules live in `app/modules/billing/tuition.py` (pure grid and period state) and `app/workflows/tuition_charges.py` (the job and the unbilled read).
+
+- **Price (K2):** a plan pins its `per_period` item; each period's base price is the item's version in effect on `period_start` (`billing.service.quote` with `PriceQuery.service_price_id`: the item's custom prices, then its version; no rank search), then the discounts (`charge_kind = 'tuition_period'`). `lookup_price` refuses `per_period` (`ValueError`). A new version changes only later periods; posted charges keep `price_version_id`. No custom prices on `per_period` items (K8).
+- **Grid (K3):** periods are anchored at `starts_on` and whole: weekly `starts_on + 7k`, biweekly `+ 14k`, monthly `starts_on + k` months with the day clamped and always computed from `starts_on` (31 Jan → 28/29 Feb → 31 Mar → 30 Apr). A period ends the day before the next one starts. Local calendar dates of the center zone (ADR-0004); no instant is stored, so no time-zone dependency is registered. No proration, ever: `ends_on` is a period end and the last period is charged in full.
+- **Period state** (`plan_period_state`, in order): `not_due` (`period_start` after the center's today) → `below_floor` (billing off or `period_start < billing_starts_on`) → `after_end` (`period_start > ends_on`) → `paused` (`period_start` inside a pause) → `enrollment_ended` (the linked enrollment was withdrawn on or before `period_start`) → `due`. A due period is then `family_changed` when the student's current family is not the plan's (K9), `no_price` when the pinned base price is `None`, else posted.
+- **Posting (K5):** due when `period_start ≤ center today`; the daily job `billing:post_tuition_charges` (`30 7 * * *`, also deferred after a plan create, resume or extension and a non-null settings `PATCH`) posts every due, unposted period oldest first (catch-up). Charge: `kind = 'tuition_period'`, `service_date = period_start`, `service_period_end = period_end`, `due_date = period_start + plan.due_offset_days + account.due_offset_days`, the student's level snapshot. A `0.00` version posts a `0.00` charge (`void`).
+- **Pauses (K4):** a paused period is never charged, never caught up; a pause starts after the last posted period and not before today's period; resume sets the open pause's `ends_on` (resuming on its own start deletes it).
+- **Group per-student pricing (K6):** a plan linked to a group enrollment pins a `group/per_period` item scoped to the group or unscoped with its subject. The #92 classification gains `tuition_priced` (a period with a linked plan, any window, never gets a flat fee and is not listed); the #91 classification gains `tuition_priced` for a group session whose covering period has a linked plan whose window contains the session's local date (paused periods included): no charge, not listed. Outside the window J2 applies (a linked period is never fee-priced, so those sessions are charged per session). Linking is refused with a flat fee of net > 0 (`409 tuition_plan_enrollment_fee_charged`) or an in-window session charge of net > 0 (`409 tuition_plan_sessions_charged`), checked under the account lock; the #91 session step and the #92 fee step re-check `tuition_priced` under the same lock. A withdrawal stops the periods from its local date; posted periods stay (crediting them is #101).
+- **Individual plans (K7):** a standalone recurring charge; they never change per-session charging (a center billing a student only by tuition gives them a `0.00` per-session custom price).
+- **Account binding (K9):** a plan bills the family account of the student at creation (`409 student_has_no_family` without a family); after a family change the periods are `family_changed` (listed in `GET /api/v1/billing/unbilled-tuition-periods`, never posted to either account).
+- **Unbilled tuition periods:** the due, unposted periods classified `family_changed` or `no_price`, computed on read; billing off → empty.
 
 ### 3.18 `package_products` (#94)
 
@@ -680,9 +713,10 @@ Privileges alone can't do it: the local, test and CI database role is a superuse
 
   The App invariants of §4.1 are checked after step 2.
 - **API requests:** the `idempotency_keys` row is inserted first in the business transaction, before any lock. A concurrent duplicate blocks on the unique index until the first commits, then reads the stored response (E6).
-- **Jobs and sweepers:** insert on the natural keys and treat a conflict as success. On `Audited` tables (every ledger table) that is not `INSERT … ON CONFLICT DO NOTHING`, which the audit guard refuses: the posting primitives (`post_charge`, `post_adjustment`, `ensure_billing_account`; #90 E4) check the key under the account lock and insert through the ORM in a savepoint, and a violation of a named natural-key index rolls the savepoint back and returns the existing row (`created = False`). The non-audited `number_series` keeps `ON CONFLICT DO NOTHING`; periodic tasks use a Procrastinate `queueing_lock` (ADR-0003). They never use `idempotency_keys`. The jobs: `billing:post_session_charges` (every 15 minutes, #91; in `app/workflows/session_charge_tasks.py`, logic in `app/workflows/session_charges.py`), `billing:post_enrollment_charges` (every 15 minutes, #92; in `app/workflows/enrollment_charge_tasks.py`, logic in `app/workflows/enrollment_charges.py`), the daily tuition job (#93), the daily package expiry job (#94), the reminder job (#97, natural key `charge_reminders (charge_id, stage)`) and `idempotency:purge_keys` (hourly, #88).
+- **Jobs and sweepers:** insert on the natural keys and treat a conflict as success. On `Audited` tables (every ledger table) that is not `INSERT … ON CONFLICT DO NOTHING`, which the audit guard refuses: the posting primitives (`post_charge`, `post_adjustment`, `ensure_billing_account`; #90 E4) check the key under the account lock and insert through the ORM in a savepoint, and a violation of a named natural-key index rolls the savepoint back and returns the existing row (`created = False`). The non-audited `number_series` keeps `ON CONFLICT DO NOTHING`; periodic tasks use a Procrastinate `queueing_lock` (ADR-0003). They never use `idempotency_keys`. The jobs: `billing:post_session_charges` (every 15 minutes, #91; in `app/workflows/session_charge_tasks.py`, logic in `app/workflows/session_charges.py`), `billing:post_enrollment_charges` (every 15 minutes, #92; in `app/workflows/enrollment_charge_tasks.py`, logic in `app/workflows/enrollment_charges.py`), `billing:post_tuition_charges` (daily at 07:30 UTC, #93; in `app/workflows/tuition_charge_tasks.py`, logic in `app/workflows/tuition_charges.py`), the daily package expiry job (#94), the reminder job (#97, natural key `charge_reminders (charge_id, stage)`) and `idempotency:purge_keys` (hourly, #88).
 - **Session charges (#91):** one Unit of Work per candidate `(class_session_id, student_id)`, in this order: the session row `FOR SHARE` (`scheduling.service.lock_session_for_billing`; every scheduling writer that changes a session's state, time, duration or participants takes it `FOR UPDATE`; the participants are read after the lock) → `billing_settings` `FOR SHARE` → `billing_accounts` `FOR UPDATE` (in `post_charge`, last). A group session re-checks the J2 rule after the account lock (#92 E3).
 - **Enrollment charges (#92):** the sweeper's Unit of Work per candidate period takes the group row (`scheduling.service.lock_group_for_billing`) or the cohort row (`courses.service.lock_cohort_for_billing`) `FOR SHARE` → `billing_settings` `FOR SHARE` → `billing_accounts` `FOR UPDATE` (last), and re-reads the J2/J5 facts under the account lock. The hooks run after the M4 locks (students → zone → group or cohort `FOR UPDATE` → series → sessions) → `billing_settings` `FOR SHARE` (enrollments only) → `billing_accounts` `FOR UPDATE`. The M4 writers take the group or cohort row `FOR UPDATE`, so a sweeper step and an enrollment change serialize.
+- **Tuition charges (#93):** the job's Unit of Work per plan takes (linked) the group row `FOR SHARE` (`scheduling.service.lock_group_for_billing`) → the plan row `FOR SHARE` → `billing_settings` `FOR SHARE` → `billing_accounts` `FOR UPDATE` (in `post_charge`, last). The plan writes (`PATCH`, `DELETE`, pauses, resume) take (linked) the group `FOR SHARE` then the plan row `FOR UPDATE`, so a pause waits for a posting (or the posting for the pause). A linked plan create takes the group `FOR SHARE` → the account `FOR UPDATE`, then checks the K6 refusals; the #91 session step and the #92 fee step re-check `tuition_priced` after the same account lock.
 - **Scheduling transactions** never post charges: a billing failure can't roll back a schedule change (E1). Enrollment charges are the exception: they are posted in the M4 hooks' Unit of Work (`apply_enrollment_change`, `apply_cohort_enrollment_change`), which already holds the enrollment locks.
 
 ## 7. Indexes
@@ -778,7 +812,7 @@ Each M6 issue, the ADR-0006 / ADR-0015 decision items it relies on, and the tabl
 | #90 M6-05 Account and ledger core | E4, E5 (rows, triggers, balances, statuses, the release on a credit), E11 (`due_date`, `due_offset_days`); `billing.view` and the read routes in #364 (M6-05b) | `billing_accounts`, `payment_methods` (table, seed), `charges`, `charge_adjustments`, `payments`, `payment_reversals`, `payment_allocations`, `allocation_releases`, `refunds`, view `billing_ledger_entries` |
 | #91 M6-06 Session charges | E1 (sweeper, floor, unbilled list, `apply_confirmation_charge` removed), E2 (`scheduled_minutes`), E9 (lookup), E10 (covered by a package → no charge), E11 (session due date) | `billing_settings`, `charges` |
 | #92 M6-07 Enrollment charges | E1 (M4 hooks + sweeper `billing:post_enrollment_charges`, group per-session charges in the #91 sweeper), E9 (`full_course`, late proration, `enrollment_removal`), E11 | `charges` (`proration_remaining`, `proration_total`), `charge_adjustments` |
-| #93 M6-08 Tuition plans | E1 (daily job, local periods), E9 (`per_period`, group per-student), E11 (`period_start + due_offset_days`) | `tuition_plans`, `charges` |
+| #93 M6-08 Tuition plans | E1 (daily job, local periods), E9 (`per_period`, group per-student), E11 (`period_start + due_offset_days`) | `tuition_plans`, `tuition_plan_pauses`, `service_prices` (`period_frequency`), `charges` (`tuition_plan_id`) |
 | #94 M6-09 Packages | E1 (purchase), E6 (purchase key), E10, E11 (purchase date) | `package_products`, `packages`, `package_credit_transactions`, `charges` |
 | #95 M6-10 Discounts, custom prices | E8 (`billing.manage`), E9 (precedence step 1, stacking, discount snapshot equation) | `custom_prices`, `discounts`, `discount_assignments`, `charge_discounts`, `charges` (`custom_price_id`) |
 | #96 M6-11 Payments, allocations | E5 (allocations, account credit, I2/I3), E6, E8 (`payment.record`), E12 (method from the seeded table) | `payment_methods`, `payments`, `payment_allocations` |

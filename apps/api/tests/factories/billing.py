@@ -53,9 +53,13 @@ async def persist_service_price(
     cohort_id: uuid.UUID | None = None,
     group_id: uuid.UUID | None = None,
     versions: Sequence[tuple[date, str | None]] = (),
+    period_frequency: str | None = None,
 ) -> ServicePrice:
     """An item and its ``versions`` (``(effective_from, amount)``, ``None``
-    = not offered). Flushes, never commits."""
+    = not offered). A ``per_period`` item gets ``period_frequency``
+    (``monthly`` unless given, #93 K2). Flushes, never commits."""
+    if pricing_model == "per_period" and period_frequency is None:
+        period_frequency = "monthly"
     item = ServicePrice(
         class_type=class_type,
         pricing_model=pricing_model,
@@ -64,6 +68,7 @@ async def persist_service_price(
         duration_minutes=duration_minutes,
         cohort_id=cohort_id,
         group_id=group_id,
+        period_frequency=period_frequency,
     )
     session.add(item)
     await session.flush()

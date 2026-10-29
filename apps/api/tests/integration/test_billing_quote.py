@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.money import Money
@@ -413,3 +414,68 @@ def test_custom_prices_for_matches_base_price(module_seeded_url):
         single = in_uow(url, lambda s, q=q: billing.base_price(s, q))
         expected = None if single is None or single.source == "catalog" else single
         assert batched.get(q) == expected, q
+
+
+# --- The item pin (#93 B4, H8) -------------------------------------------------------
+
+
+def test_a_pinned_query_prices_exactly_its_item(module_seeded_url):
+    url = module_seeded_url
+    w = make_world(url)
+    weekly = item(
+        url,
+        w,
+        [(FROM, "250.00"), (DAY + timedelta(days=1), "260.00")],
+        pricing_model="per_period",
+        period_frequency="weekly",
+    )
+    monthly = item(
+        url,
+        w,
+        [(FROM, "900.00"), (DAY, None)],
+        pricing_model="per_period",
+        period_frequency="monthly",
+    )
+    discount(url, w, kind="discount", percent="10")
+    pinned = query(
+        w,
+        charge_kind="tuition_period",
+        pricing_model="per_period",
+        duration_minutes=None,
+        service_price_id=weekly,
+    )
+
+    count, found = count_statements(url, lambda s: billing.quote(s, pinned))
+
+    assert count <= 4
+    assert found is not None
+    assert (str(found.list_amount), str(found.amount)) == ("250.00", "225.00")
+    assert found.price_version_id is not None and found.rank == 0
+    later = quote(url, query(w, **{**vars_of(pinned), "on": DAY + timedelta(days=1)}))
+    assert later is not None and str(later.list_amount) == "260.00"
+    # The monthly item's version in effect on DAY says "not offered".
+    not_offered = billing.PriceQuery(**{**vars_of(pinned), "service_price_id": monthly})
+    assert quote(url, not_offered) is None
+    before = billing.PriceQuery(
+        **{**vars_of(not_offered), "on": DAY - timedelta(days=1)}
+    )
+    found_before = quote(url, before)
+    assert found_before is not None and str(found_before.list_amount) == "900.00"
+    batched = in_uow(
+        url, lambda s: billing.pinned_base_prices(s, [pinned, not_offered, before])
+    )
+    assert batched[not_offered] is None
+    assert str(batched[pinned].list_amount) == "250.00"  # type: ignore[union-attr]
+    assert str(batched[before].list_amount) == "900.00"  # type: ignore[union-attr]
+
+
+def test_an_unpinned_per_period_query_is_a_programming_error(module_seeded_url):
+    w = make_world(module_seeded_url)
+    unpinned = query(w, charge_kind="tuition_period", pricing_model="per_period")
+
+    with pytest.raises(ValueError, match="read through the plan"):
+        quote(module_seeded_url, unpinned)
+
+
+def vars_of(q: billing.PriceQuery) -> dict[str, Any]:
+    return {field: getattr(q, field) for field in q.__dataclass_fields__}
