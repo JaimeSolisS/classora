@@ -190,6 +190,7 @@ describe('the unbilled list (C1, C5)', () => {
       ['Discounts', null],
       ['Custom prices', null],
       ['Tuition plans', null],
+      ['Packages', null],
       ['Unbilled', 'page'],
       ['Settings', null],
     ]);

@@ -135,6 +135,7 @@ describe('navigation and access (A)', () => {
       ['Discounts', null],
       ['Custom prices', null],
       ['Tuition plans', null],
+      ['Packages', null],
       ['Unbilled', null],
       ['Settings', 'page'],
     ]);
@@ -153,6 +154,7 @@ describe('navigation and access (A)', () => {
 
     expect(tabs()).toEqual([
       ['Tuition plans', null],
+      ['Packages', null],
       ['Unbilled', null],
       ['Settings', 'page'],
     ]);
@@ -432,6 +434,7 @@ describe('Spanish (D1)', () => {
       'Descuentos',
       'Precios especiales',
       'Colegiaturas',
+      'Paquetes',
       'Sin cobrar',
       'Configuración',
     ]);

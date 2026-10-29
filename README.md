@@ -343,6 +343,10 @@ unless a bullet says otherwise.
   Tuition plans), on their own or for a group enrollment, that charge each
   period automatically from a per-period price, with pause, resume and an
   end date.
+- They can sell session or hour packages with an expiry date (Billing →
+  Packages), charged to the family when sold. Approved individual sessions
+  use them automatically, earliest-expiring first, and unused units
+  expire; each package shows its remaining units and history.
 - They also keep discounts, scholarships, sibling discounts and promotions
   with eligibility rules and validity dates (Billing → Discounts), and
   custom prices per student or family (Billing → Custom prices); posted

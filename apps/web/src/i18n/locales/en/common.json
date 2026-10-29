@@ -4521,7 +4521,8 @@
       "customPrices": "Custom prices",
       "unbilled": "Unbilled",
       "settings": "Settings",
-      "tuitionPlans": "Tuition plans"
+      "tuitionPlans": "Tuition plans",
+      "packages": "Packages"
     },
     "prices": {
       "title": "Prices",
@@ -5236,6 +5237,196 @@
       "deleteDialog": {
         "title": "Delete this plan?",
         "body": "The plan of {{student}} ({{plan}}) and its pauses will be deleted. Nothing has been charged."
+      }
+    },
+    "packages": {
+      "anySubject": "Any subject",
+      "subjectOption": "{{subject}} · {{level}}",
+      "validityDays_one": "{{count}} day",
+      "validityDays_other": "{{count}} days",
+      "unitNames": {
+        "sessions": "Sessions",
+        "minutes": "Hours"
+      },
+      "units": {
+        "sessions_one": "{{count}} session",
+        "sessions_other": "{{count}} sessions",
+        "hours": "{{hours}} h",
+        "minutes": "{{minutes}} min",
+        "hoursMinutes": "{{hours}} h {{minutes}} min",
+        "sessionsBalance_one": "{{remaining}} / {{count}} session",
+        "sessionsBalance_other": "{{remaining}} / {{count}} sessions",
+        "balance": "{{remaining}} / {{granted}}"
+      },
+      "status": {
+        "active": "Active",
+        "exhausted": "Used up",
+        "expired": "Expired"
+      },
+      "nav": {
+        "label": "Package pages",
+        "sold": "Sold",
+        "products": "Products"
+      },
+      "fields": {
+        "name": "Name",
+        "unit": "Unit",
+        "quantitySessions": "Number of sessions",
+        "quantityHours": "Number of hours",
+        "validity": "Validity in days",
+        "subject": "Subject",
+        "amount": "Price",
+        "effectiveFrom": "Price effective from",
+        "student": "Student",
+        "product": "Package"
+      },
+      "hints": {
+        "sessions": "Whole sessions, from {{min}} to {{max}}. Each individual session uses one, whatever its length.",
+        "hours": "From {{min}} to {{max}} hours, in quarter hours (for example 1.25). Each individual session uses its scheduled minutes.",
+        "validity": "Whole days, from {{min}} to {{max}}. The package expires this many days after the sale.",
+        "subject": "Only individual sessions of this subject use the package; \"Any subject\" covers every individual session.",
+        "effectiveFrom": "The first price version. Later changes are scheduled on the package page.",
+        "student": "Search an active student by name."
+      },
+      "validation": {
+        "nameRequired": "Enter a name.",
+        "nameTooLong": "Use at most 120 characters.",
+        "sessionsRange": "Enter whole sessions from 1 to 500.",
+        "hoursRange": "Enter 0.25 to 500 hours, in quarter hours.",
+        "validityRange": "Enter whole days from 1 to 730.",
+        "amountRequired": "Enter the price.",
+        "amountInvalid": "Enter an amount like 1250 or 1250.50.",
+        "dateRequired": "Choose a date.",
+        "studentRequired": "Choose the student.",
+        "productRequired": "Choose a package that is offered today."
+      },
+      "products": {
+        "title": "Package products",
+        "intro": "Session and hour packages that can be sold to a student. Deactivating one stops new sales; sold packages keep working.",
+        "add": "New package",
+        "create": "Create package",
+        "empty": "No package products yet.",
+        "emptyFiltered": "No package products match these filters.",
+        "view": "View package",
+        "viewFor": "View package: {{name}}",
+        "back": "Back to package products",
+        "notFound": "Package product not found",
+        "notFoundHelp": "This package product doesn't exist.",
+        "detailTitle": "Package product",
+        "fixedHint": "The unit, quantity, validity and subject can't be changed later: to sell something different, create a new package.",
+        "active": "Active",
+        "inactive": "Inactive",
+        "columns": {
+          "name": "Name",
+          "units": "Units",
+          "validity": "Validity",
+          "subject": "Subject",
+          "price": "Current price",
+          "status": "Status",
+          "actions": "Actions"
+        },
+        "filters": {
+          "label": "Package product filters",
+          "status": "Status",
+          "all": "Active and inactive",
+          "subject": "Subject",
+          "allSubjects": "Every subject",
+          "otherSubject": "A subject that is no longer active"
+        }
+      },
+      "product": {
+        "edit": "Edit",
+        "editTitle": "Edit package name",
+        "save": "Save",
+        "saved": "Package saved.",
+        "activate": "Activate",
+        "deactivate": "Deactivate",
+        "activated": "Package activated: it can be sold again.",
+        "deactivated": "Package deactivated: it can no longer be sold.",
+        "deactivateDialog": {
+          "title": "Deactivate this package?",
+          "body": "\"{{name}}\" can no longer be sold. Packages already sold keep working until they expire."
+        }
+      },
+      "sold": {
+        "title": "Sold packages",
+        "intro": "Each package's remaining units, expiry and status. Approved individual sessions use them automatically.",
+        "empty": "No packages sold yet.",
+        "emptyFiltered": "No sold packages match these filters.",
+        "view": "View",
+        "viewFor": "View: {{student}}, {{name}}",
+        "back": "Back to sold packages",
+        "notFound": "Package not found",
+        "notFoundHelp": "This package doesn't exist.",
+        "detailTitle": "Package",
+        "columns": {
+          "student": "Student",
+          "family": "Family",
+          "package": "Package",
+          "balance": "Remaining / granted",
+          "purchased": "Purchased",
+          "expires": "Expires",
+          "status": "Status",
+          "actions": "Actions"
+        },
+        "filters": {
+          "label": "Sold package filters",
+          "student": "Student",
+          "family": "Family",
+          "unknown": "A record that isn't available",
+          "clearStudent": "Show all students",
+          "clearFamily": "Show all families",
+          "searchStudent": "Search student",
+          "searchStudentHelp": "Type part of a name to list one student's packages.",
+          "searchFamily": "Search family",
+          "searchFamilyHelp": "Type part of a name to list one family's packages.",
+          "status": "Status",
+          "statusHelp": "None checked: every status."
+        }
+      },
+      "sell": {
+        "action": "Sell package",
+        "title": "Sell a package",
+        "help": "The package's price is charged to the student's family today.",
+        "submit": "Sell package",
+        "selling": "Selling…",
+        "chosenStudent": "Chosen: {{name}}",
+        "productOption": "{{name}} · {{units}} · {{validity}} — {{price}}",
+        "productHelp": "Active packages. One without a price in effect today is listed but disabled.",
+        "noProducts": "No active packages yet. Create one in Products.",
+        "noneOffered": "No active package has a price in effect today. Add a price on its page.",
+        "summary": "Charge {{amount}} today, before discounts · expires {{date}}",
+        "notConverted": "Sessions already charged before the sale (for example, an already confirmed series) are not converted.",
+        "openStudent": "Open {{name}}'s page",
+        "done": "Package sold and charged to the family."
+      },
+      "package": {
+        "heading": "{{name}} — {{student}}",
+        "remaining": "Remaining",
+        "granted": "Granted",
+        "charge": "Purchase charge",
+        "chargeLoading": "Loading…",
+        "chargeUnavailable": "We couldn't load the charge."
+      },
+      "history": {
+        "title": "History",
+        "empty": "No movements yet.",
+        "movement": "Movement",
+        "units": "Units",
+        "date": "Date",
+        "kinds": {
+          "grant": "Granted",
+          "consume": "Used for session on {{date}}",
+          "expire": "Expired",
+          "reversal": "Reversal"
+        }
+      },
+      "rules": {
+        "title": "How packages are used",
+        "consumption": "Units are used when an individual session's closeout is approved, from the package that expires first.",
+        "short": "A session that the remaining units can't fully cover is charged normally.",
+        "expiry": "Unused units expire the day after the expiry date.",
+        "notConverted": "Sessions already charged before the purchase (for example, an already confirmed series) are not converted."
       }
     }
   }

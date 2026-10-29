@@ -313,6 +313,15 @@ const API_CODES = [
   'tuition_plan_has_charges',
   'tuition_pause_overlap',
   'tuition_pause_not_open',
+  'package_product_inactive',
+  'package_not_offered',
+  'package_product_unknown',
+  'quantity_out_of_range',
+  'quantity_step',
+  'validity_days_out_of_range',
+  'idempotency_key_required',
+  'idempotency_key_invalid',
+  'idempotency_key_reused',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

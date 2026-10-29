@@ -4619,7 +4619,8 @@
       "customPrices": "Precios especiales",
       "unbilled": "Sin cobrar",
       "settings": "Configuración",
-      "tuitionPlans": "Colegiaturas"
+      "tuitionPlans": "Colegiaturas",
+      "packages": "Paquetes"
     },
     "prices": {
       "title": "Precios",
@@ -5338,6 +5339,199 @@
       "deleteDialog": {
         "title": "¿Eliminar este plan?",
         "body": "Se eliminarán el plan de {{student}} ({{plan}}) y sus pausas. No se ha cobrado nada."
+      }
+    },
+    "packages": {
+      "anySubject": "Cualquier materia",
+      "subjectOption": "{{subject}} · {{level}}",
+      "validityDays_one": "{{count}} día",
+      "validityDays_many": "{{count}} días",
+      "validityDays_other": "{{count}} días",
+      "unitNames": {
+        "sessions": "Sesiones",
+        "minutes": "Horas"
+      },
+      "units": {
+        "sessions_one": "{{count}} sesión",
+        "sessions_many": "{{count}} sesiones",
+        "sessions_other": "{{count}} sesiones",
+        "hours": "{{hours}} h",
+        "minutes": "{{minutes}} min",
+        "hoursMinutes": "{{hours}} h {{minutes}} min",
+        "sessionsBalance_one": "{{remaining}} / {{count}} sesión",
+        "sessionsBalance_many": "{{remaining}} / {{count}} sesiones",
+        "sessionsBalance_other": "{{remaining}} / {{count}} sesiones",
+        "balance": "{{remaining}} / {{granted}}"
+      },
+      "status": {
+        "active": "Activo",
+        "exhausted": "Agotado",
+        "expired": "Vencido"
+      },
+      "nav": {
+        "label": "Páginas de paquetes",
+        "sold": "Vendidos",
+        "products": "Productos"
+      },
+      "fields": {
+        "name": "Nombre",
+        "unit": "Unidad",
+        "quantitySessions": "Número de sesiones",
+        "quantityHours": "Número de horas",
+        "validity": "Vigencia en días",
+        "subject": "Materia",
+        "amount": "Precio",
+        "effectiveFrom": "Precio vigente desde",
+        "student": "Estudiante",
+        "product": "Paquete"
+      },
+      "hints": {
+        "sessions": "Sesiones completas, de {{min}} a {{max}}. Cada sesión individual usa una, sin importar su duración.",
+        "hours": "De {{min}} a {{max}} horas, en cuartos de hora (por ejemplo 1.25). Cada sesión individual usa sus minutos programados.",
+        "validity": "Días completos, de {{min}} a {{max}}. El paquete vence esa cantidad de días después de la venta.",
+        "subject": "Solo las sesiones individuales de esta materia usan el paquete; \"Cualquier materia\" cubre toda sesión individual.",
+        "effectiveFrom": "La primera versión del precio. Los cambios posteriores se programan en la página del paquete.",
+        "student": "Busca un estudiante activo por nombre."
+      },
+      "validation": {
+        "nameRequired": "Escribe un nombre.",
+        "nameTooLong": "Usa como máximo 120 caracteres.",
+        "sessionsRange": "Escribe sesiones completas de 1 a 500.",
+        "hoursRange": "Escribe de 0.25 a 500 horas, en cuartos de hora.",
+        "validityRange": "Escribe días completos de 1 a 730.",
+        "amountRequired": "Escribe el precio.",
+        "amountInvalid": "Escribe un monto como 1250 o 1250.50.",
+        "dateRequired": "Elige una fecha.",
+        "studentRequired": "Elige al estudiante.",
+        "productRequired": "Elige un paquete que se ofrezca hoy."
+      },
+      "products": {
+        "title": "Productos de paquetes",
+        "intro": "Paquetes de sesiones y de horas que se pueden vender a un estudiante. Desactivar uno detiene las ventas nuevas; los paquetes vendidos siguen funcionando.",
+        "add": "Nuevo paquete",
+        "create": "Crear paquete",
+        "empty": "Aún no hay productos de paquetes.",
+        "emptyFiltered": "Ningún producto de paquete coincide con estos filtros.",
+        "view": "Ver paquete",
+        "viewFor": "Ver paquete: {{name}}",
+        "back": "Volver a productos de paquetes",
+        "notFound": "Producto de paquete no encontrado",
+        "notFoundHelp": "Este producto de paquete no existe.",
+        "detailTitle": "Producto de paquete",
+        "fixedHint": "La unidad, la cantidad, la vigencia y la materia no se pueden cambiar después: para vender algo distinto, crea un paquete nuevo.",
+        "active": "Activo",
+        "inactive": "Inactivo",
+        "columns": {
+          "name": "Nombre",
+          "units": "Unidades",
+          "validity": "Vigencia",
+          "subject": "Materia",
+          "price": "Precio actual",
+          "status": "Estado",
+          "actions": "Acciones"
+        },
+        "filters": {
+          "label": "Filtros de productos de paquetes",
+          "status": "Estado",
+          "all": "Activos e inactivos",
+          "subject": "Materia",
+          "allSubjects": "Todas las materias",
+          "otherSubject": "Una materia que ya no está activa"
+        }
+      },
+      "product": {
+        "edit": "Editar",
+        "editTitle": "Editar nombre del paquete",
+        "save": "Guardar",
+        "saved": "Paquete guardado.",
+        "activate": "Activar",
+        "deactivate": "Desactivar",
+        "activated": "Paquete activado: se puede vender de nuevo.",
+        "deactivated": "Paquete desactivado: ya no se puede vender.",
+        "deactivateDialog": {
+          "title": "¿Desactivar este paquete?",
+          "body": "\"{{name}}\" ya no se podrá vender. Los paquetes ya vendidos siguen funcionando hasta que venzan."
+        }
+      },
+      "sold": {
+        "title": "Paquetes vendidos",
+        "intro": "Las unidades restantes, el vencimiento y el estado de cada paquete. Las sesiones individuales aprobadas los usan automáticamente.",
+        "empty": "Aún no se han vendido paquetes.",
+        "emptyFiltered": "Ningún paquete vendido coincide con estos filtros.",
+        "view": "Ver",
+        "viewFor": "Ver: {{student}}, {{name}}",
+        "back": "Volver a paquetes vendidos",
+        "notFound": "Paquete no encontrado",
+        "notFoundHelp": "Este paquete no existe.",
+        "detailTitle": "Paquete",
+        "columns": {
+          "student": "Estudiante",
+          "family": "Familia",
+          "package": "Paquete",
+          "balance": "Restantes / otorgadas",
+          "purchased": "Comprado",
+          "expires": "Vence",
+          "status": "Estado",
+          "actions": "Acciones"
+        },
+        "filters": {
+          "label": "Filtros de paquetes vendidos",
+          "student": "Estudiante",
+          "family": "Familia",
+          "unknown": "Un registro que no está disponible",
+          "clearStudent": "Mostrar todos los estudiantes",
+          "clearFamily": "Mostrar todas las familias",
+          "searchStudent": "Buscar estudiante",
+          "searchStudentHelp": "Escribe parte de un nombre para ver los paquetes de un estudiante.",
+          "searchFamily": "Buscar familia",
+          "searchFamilyHelp": "Escribe parte de un nombre para ver los paquetes de una familia.",
+          "status": "Estado",
+          "statusHelp": "Ninguno marcado: todos los estados."
+        }
+      },
+      "sell": {
+        "action": "Vender paquete",
+        "title": "Vender un paquete",
+        "help": "El precio del paquete se cobra hoy a la familia del estudiante.",
+        "submit": "Vender paquete",
+        "selling": "Vendiendo…",
+        "chosenStudent": "Elegido: {{name}}",
+        "productOption": "{{name}} · {{units}} · {{validity}} — {{price}}",
+        "productHelp": "Paquetes activos. Uno sin precio vigente hoy aparece desactivado.",
+        "noProducts": "Aún no hay paquetes activos. Crea uno en Productos.",
+        "noneOffered": "Ningún paquete activo tiene un precio vigente hoy. Agrega un precio en su página.",
+        "summary": "Cobro de {{amount}} hoy, antes de descuentos · vence el {{date}}",
+        "notConverted": "Las sesiones ya cobradas antes de la venta (por ejemplo, una serie ya confirmada) no se convierten.",
+        "openStudent": "Abrir la página de {{name}}",
+        "done": "Paquete vendido y cobrado a la familia."
+      },
+      "package": {
+        "heading": "{{name}} — {{student}}",
+        "remaining": "Restantes",
+        "granted": "Otorgadas",
+        "charge": "Cargo de compra",
+        "chargeLoading": "Cargando…",
+        "chargeUnavailable": "No pudimos cargar el cargo."
+      },
+      "history": {
+        "title": "Historial",
+        "empty": "Aún no hay movimientos.",
+        "movement": "Movimiento",
+        "units": "Unidades",
+        "date": "Fecha",
+        "kinds": {
+          "grant": "Otorgado",
+          "consume": "Usado en la sesión del {{date}}",
+          "expire": "Vencido",
+          "reversal": "Reversión"
+        }
+      },
+      "rules": {
+        "title": "Cómo se usan los paquetes",
+        "consumption": "Las unidades se usan cuando se aprueba el cierre de una sesión individual, del paquete que vence primero.",
+        "short": "Una sesión que las unidades restantes no cubren por completo se cobra normalmente.",
+        "expiry": "Las unidades sin usar vencen el día después de la fecha de vencimiento.",
+        "notConverted": "Las sesiones ya cobradas antes de la compra (por ejemplo, una serie ya confirmada) no se convierten."
       }
     }
   }

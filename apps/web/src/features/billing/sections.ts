@@ -9,6 +9,8 @@ import type { SessionUser } from '@/features/auth/session';
 export interface BillingSection extends AccessRequirement {
   to: string;
   labelKey: ParseKeys<'common'>;
+  /** Other path prefixes whose pages belong to this tab (#377 A1). */
+  alsoActiveFor?: readonly string[];
 }
 
 export const BILLING_SECTIONS: readonly BillingSection[] = [
@@ -33,6 +35,13 @@ export const BILLING_SECTIONS: readonly BillingSection[] = [
     to: '/billing/tuition-plans',
     labelKey: 'billing.tabs.tuitionPlans',
     permission: 'billing.view',
+  },
+  // #377 A1: packages (sold and products), after Tuition plans.
+  {
+    to: '/billing/packages',
+    labelKey: 'billing.tabs.packages',
+    permission: 'billing.view',
+    alsoActiveFor: ['/billing/package-products'],
   },
   {
     to: '/billing/unbilled',

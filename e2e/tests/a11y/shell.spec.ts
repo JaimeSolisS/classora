@@ -32,6 +32,7 @@ const THEMES = ['light', 'dark'] as const;
 // (once its form loaded, #61 H2), /billing/prices (#363 F5),
 // /billing/unbilled and /billing/settings (#366 E4), /billing/discounts
 // and /billing/custom-prices (#367 G4), /billing/tuition-plans (#374 H3),
+// /billing/packages (#377 G3),
 // /students, /students/new and the detail of a student the scan creates
 // through the API first (#33 L2; with a linked guardian and a paper consent,
 // so the Login account and Consents sections show, #35 K4), /guardians, /guardians/new and the detail
@@ -149,6 +150,13 @@ const ROUTES: ScannedRoute[] = [
     path: '/billing/tuition-plans',
     signedIn: true,
     waitForField: common.billing.tuition.filters.searchStudent,
+  },
+  // #377 G3: the Packages tab (the sold list).
+  {
+    name: 'billing-packages',
+    path: '/billing/packages',
+    signedIn: true,
+    waitForField: common.billing.packages.sold.filters.searchStudent,
   },
   {
     name: 'catalog-level',
