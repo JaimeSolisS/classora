@@ -1067,6 +1067,8 @@ def test_the_sample_app_has_an_idempotent_route():
     ]
 
 
-def test_the_real_matrix_has_no_idempotent_route_yet():
-    # #94/#96 add the first ones together with their routes.
-    assert not [e.label for e in load_matrix() if e.is_idempotent]
+def test_the_real_matrix_lists_the_idempotent_routes():
+    # #94 adds the first one (the package purchase); #96 and later add theirs.
+    assert [e.label for e in load_matrix() if e.is_idempotent] == [
+        "POST /api/v1/billing/packages"
+    ]

@@ -209,12 +209,16 @@ async def create_service_price(
     return item.id
 
 
-async def _lock_item(session: AsyncSession, service_price_id: uuid.UUID) -> None:
+async def _lock_item(
+    session: AsyncSession,
+    service_price_id: uuid.UUID,
+    pricing_models: Collection[str] = CATALOG_MODELS,
+) -> None:
     found = await session.scalar(
         select(ServicePrice.id)
         .where(
             ServicePrice.id == service_price_id,
-            ServicePrice.pricing_model.in_(CATALOG_MODELS),
+            ServicePrice.pricing_model.in_(tuple(pricing_models)),
         )
         .with_for_update()
     )
@@ -229,9 +233,13 @@ async def add_price_version(
     effective_from: date,
     amount: Money | None,
     today: date,
+    pricing_models: Collection[str] = CATALOG_MODELS,
 ) -> uuid.UUID:
-    """A new version (B5; E3): the item lock → the date rule → insert."""
-    await _lock_item(session, service_price_id)
+    """A new version (B5; E3): the item lock → the date rule → insert.
+    ``pricing_models``: the items this caller may touch (an item of another
+    model is ``404``; the package product routes pass ``("package",)``,
+    #94 L7)."""
+    await _lock_item(session, service_price_id, pricing_models)
     latest = await session.scalar(
         select(func.max(PriceVersion.effective_from)).where(
             PriceVersion.service_price_id == service_price_id
@@ -255,9 +263,11 @@ async def delete_price_version(
     price_version_id: uuid.UUID,
     *,
     today: date,
+    pricing_models: Collection[str] = CATALOG_MODELS,
 ) -> None:
-    """Delete an upcoming version (B6; E2, E3)."""
-    await _lock_item(session, service_price_id)
+    """Delete an upcoming version (B6; E2, E3); ``pricing_models`` as in
+    :func:`add_price_version`."""
+    await _lock_item(session, service_price_id, pricing_models)
     version = await session.scalar(
         select(PriceVersion).where(
             PriceVersion.id == price_version_id,

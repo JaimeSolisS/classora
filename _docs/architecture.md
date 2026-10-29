@@ -465,7 +465,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - Per-session lessons: a 15-minute sweeper (`billing:post_session_charges`) posts a charge for each `confirmed` or `completed` participant on the natural key `(class_session_id, student_id)`, at the price in effect on the local service date. Nothing posts inside the scheduling transaction; #60's `apply_confirmation_charge` was removed by #91. A reschedule keeps the charge.
   - Group and course enrollments: post at **enrollment**, in the M4 hooks' Unit of Work, plus a sweeper.
   - Tuition plans: one charge per plan per local period, from a daily job.
-  - Packages: charge at purchase. A covered session posts no charge; its units are consumed at closeout approval (`app/workflows/closeout_approval.on_closeout_approved`, #78: revision 1 only), first-expiring-first.
+  - Packages: charge at purchase. A covered session posts no charge; its units are consumed at closeout approval (`app/workflows/closeout_approval.on_closeout_approved`, #78: revision 1 only), first-expiring-first, or at the latest by the daily expiry job's fallback (#94 L1); an approved session the credit can't cover is charged by the session sweeper (#94 L3).
   - `billing_settings.billing_starts_on` (`NULL` = billing off) is the floor date. Items with no billing account or no price are listed for staff as unbilled, never charged at zero.
   - Cancellations follow the billing-owned `cancellation_billing_rules` (`credit` or `charge` per classification); duration changes create delta adjustments.
 

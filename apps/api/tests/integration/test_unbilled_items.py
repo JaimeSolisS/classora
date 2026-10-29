@@ -341,8 +341,10 @@ def test_the_statement_bound(module_seeded_url):
     # #92 E4: two more for the group sessions (their covering periods and the
     # periods' ledger facts); #93 F1: one more (their linked tuition plans);
     # the memoized catalog lookups: three individual and three group
-    # per-session keys, and the three groups' fee keys.
-    assert count <= 6 + 1 + 2 + 1 + 3 + 3 + 3, count
+    # per-session keys, and the three groups' fee keys; #94 E2: at most four
+    # for the package coverage (the approved closeouts, the consumed keys,
+    # the families, the candidate packages).
+    assert count <= 6 + 1 + 2 + 1 + 3 + 3 + 3 + 4, count
 
 
 def test_the_list_matches_what_the_sweeper_skips(client, staff, module_seeded_url):

@@ -22,7 +22,7 @@ of a version for which ``price_version_is_referenced(id)`` is true
 (SQLSTATE 42501), and ``price_versions_no_truncate`` refuses every
 ``TRUNCATE``. Migration 0060 created the predicate as ``SELECT false``;
 migration 0061 (#90) makes it ``EXISTS`` a charge with that
-``price_version_id``, and #94 adds packages.
+``price_version_id``, and 0066 (#94) adds packages.
 
 **Ledger core** (#90; data-model §3.1, §3.3, §3.9, §3.10, §3.12–§3.16,
 §3.26, §4, §5.1, §6):
@@ -84,6 +84,18 @@ singleton (mutable config, versioned) holding the billing start floor
   ``tuition_period`` charge, with the composite foreign key to the plan's
   ``(id, billing_account_id, student_id)``.
 
+**Prepaid packages** (#94; data-model §3.18-§3.20):
+
+- ``package_products`` (mutable config, versioned): a product, priced by the
+  versions of its own ``service_prices`` row (``package``, UNIQUE); unit,
+  quantity, validity and subject are fixed after creation.
+- ``packages`` (append-only): one purchase for one account and one student.
+- ``package_credit_transactions`` (append-only): the signed unit movements
+  (``grant``, ``consume``, ``expire``, ``reversal``; #101 adds ``refund``).
+- ``charges.package_id`` (column added by #94): the source of a
+  ``package_purchase`` charge, with the composite foreign key to the
+  package's ``(id, billing_account_id, student_id)``.
+
 Every model is ``Audited``; every foreign key is ``ON DELETE RESTRICT``
 except ``tuition_plan_pauses.tuition_plan_id`` (``CASCADE``).
 """
@@ -101,6 +113,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     Numeric,
     SmallInteger,
     String,
@@ -260,11 +273,11 @@ CHARGE_KINDS: Final = (
     "group_enrollment",
     "cohort_enrollment",
     "tuition_period",
+    "package_purchase",
     "manual",
 )
 """The charge kinds whose source exists (#90 E3; ``tuition_period`` since
-#93): #94 adds ``package_purchase``, replacing ``ck_charges_kind`` and
-``ck_charges_one_source`` again (and keeping ``tuition_period``)."""
+#93, ``package_purchase`` since #94)."""
 
 ADJUSTMENT_KINDS: Final = (
     "duration_change",
@@ -306,11 +319,14 @@ CHARGE_GROUP_ENROLLMENT_KEY: Final = "uq_charges_group_enrollment"
 CHARGE_COHORT_ENROLLMENT_KEY: Final = "uq_charges_cohort_enrollment"
 CHARGE_TUITION_PERIOD_KEY: Final = "uq_charges_tuition_period"
 CHARGE_TUITION_PLAN_FK: Final = "fk_charges_tuition_plan"
+CHARGE_PACKAGE_PURCHASE_KEY: Final = "uq_charges_package_purchase"
+CHARGE_PACKAGE_FK: Final = "fk_charges_package"
 CHARGE_NATURAL_KEYS: Final = (
     CHARGE_SESSION_KEY,
     CHARGE_GROUP_ENROLLMENT_KEY,
     CHARGE_COHORT_ENROLLMENT_KEY,
     CHARGE_TUITION_PERIOD_KEY,
+    CHARGE_PACKAGE_PURCHASE_KEY,
 )
 """The named natural-key indexes of ``charges`` (J4): a violation of one of
 them means "already posted" (#90 E4)."""
@@ -339,18 +355,19 @@ def staff_text_check(column: str, max_length: int) -> str:
 
 ONE_SOURCE: Final = (
     "num_nonnulls(class_session_id, group_enrollment_id, cohort_enrollment_id,"
-    " tuition_plan_id) = CASE WHEN kind = 'manual' THEN 0 ELSE 1 END"
+    " tuition_plan_id, package_id) = CASE WHEN kind = 'manual' THEN 0 ELSE 1 END"
     " AND (kind = 'session') = (class_session_id IS NOT NULL)"
     " AND (kind = 'session') = (scheduled_minutes IS NOT NULL)"
     " AND (kind = 'group_enrollment') = (group_enrollment_id IS NOT NULL)"
     " AND (kind = 'cohort_enrollment') = (cohort_enrollment_id IS NOT NULL)"
     " AND (kind = 'tuition_period') = (tuition_plan_id IS NOT NULL)"
     " AND (kind = 'tuition_period') = (service_period_end IS NOT NULL)"
+    " AND (kind = 'package_purchase') = (package_id IS NOT NULL)"
     " AND (kind = 'manual') = (description IS NOT NULL)"
 )
-"""``ck_charges_one_source`` (#90 A2, E3; #93 A5): exactly the source of the
-kind, the minutes of a session charge only, the period end of a tuition
-charge only, the description of a manual charge only."""
+"""``ck_charges_one_source`` (#90 A2, E3; #93 A5; #94 A5): exactly the source
+of the kind, the minutes of a session charge only, the period end of a
+tuition charge only, the description of a manual charge only."""
 
 
 def _user_fk(**kwargs: Any) -> Any:
@@ -518,6 +535,22 @@ class Charge(Audited, Model):
             unique=True,
             postgresql_where=text("kind = 'tuition_period'"),
         ),
+        ForeignKeyConstraint(
+            ["package_id", "billing_account_id", "student_id"],
+            [
+                "packages.id",
+                "packages.billing_account_id",
+                "packages.student_id",
+            ],
+            name=CHARGE_PACKAGE_FK,
+            ondelete="RESTRICT",
+        ),
+        Index(
+            CHARGE_PACKAGE_PURCHASE_KEY,
+            "package_id",
+            unique=True,
+            postgresql_where=text("kind = 'package_purchase'"),
+        ),
     )
 
     billing_account_id: Mapped[uuid.UUID] = _uuid_fk("billing_accounts")
@@ -537,6 +570,12 @@ class Charge(Audited, Model):
     )
     """The source of a ``tuition_period`` charge (#93; the composite foreign
     key ``fk_charges_tuition_plan`` keeps it on its plan's account and
+    student)."""
+    package_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    """The source of a ``package_purchase`` charge (#94; the composite foreign
+    key ``fk_charges_package`` keeps it on its package's account and
     student)."""
     service_date: Mapped[date] = mapped_column(Date)
     service_period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -1045,3 +1084,164 @@ class TuitionPlanPause(Audited, VersionedMixin, Model):
     )
     starts_on: Mapped[date] = mapped_column(Date)
     ends_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
+# --- Prepaid packages (#94) ----------------------------------------------------------
+
+PACKAGE_UNITS: Final = ("sessions", "minutes")
+"""A package's unit (#94 A2; ADR-0006 E10)."""
+PACKAGE_UNIT_MAX: Final = 8
+PACKAGE_NAME_MAX: Final = 120
+PACKAGE_TRANSACTION_KINDS: Final = ("grant", "consume", "expire", "reversal")
+"""The kinds of ``package_credit_transactions`` (#94 L10: ``refund`` and
+``withdrawal_id`` are added by #101, which replaces
+``ck_package_credit_transactions_kind``)."""
+PACKAGE_APPEND_ONLY_TABLES: Final = ("packages", "package_credit_transactions")
+"""The tables migration 0066 makes append-only (data-model §5.1)."""
+PACKAGE_COMPOSITE_KEY: Final = "uq_packages_id_account_student"
+PACKAGE_GRANT_KEY: Final = "uq_package_credit_transactions_grant"
+PACKAGE_EXPIRE_KEY: Final = "uq_package_credit_transactions_expire"
+PACKAGE_CONSUME_KEY: Final = "uq_package_credit_transactions_consume"
+PACKAGE_REVERSAL_KEY: Final = "uq_package_credit_transactions_reversal"
+PACKAGE_REVERSAL_FK: Final = "fk_package_credit_transactions_reverses_transaction_id"
+
+
+class PackageProduct(Audited, VersionedMixin, Model):
+    """A package product (#94 A2; data-model §3.18): its price is the
+    versions of its own ``service_prices`` row (``pricing_model =
+    'package'``). ``unit``, ``quantity``, ``validity_days`` and
+    ``subject_id`` are fixed after creation (#94 L7); only ``name`` and
+    ``is_active`` change. Never deleted."""
+
+    __tablename__ = "package_products"
+    __table_args__ = (
+        CheckConstraint(
+            f"length(btrim(name)) BETWEEN 1 AND {PACKAGE_NAME_MAX}"
+            " AND name = btrim(name)",
+            name="name_valid",
+        ),
+        CheckConstraint(_in("unit", PACKAGE_UNITS), name="unit_valid"),
+        CheckConstraint("quantity > 0", name="quantity_positive"),
+        CheckConstraint("validity_days > 0", name="validity_days_positive"),
+    )
+
+    service_price_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("service_prices.id", ondelete="RESTRICT"),
+        unique=True,
+    )
+    name: Mapped[str] = mapped_column(String(PACKAGE_NAME_MAX))
+    unit: Mapped[str] = mapped_column(String(PACKAGE_UNIT_MAX))
+    quantity: Mapped[int] = mapped_column(Integer)
+    validity_days: Mapped[int] = mapped_column(SmallInteger)
+    subject_id: Mapped[uuid.UUID | None] = _uuid_fk("subjects", nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+
+
+class Package(Audited, Model):
+    """A purchased package (#94 A3; data-model §3.19): one billing account
+    and one student, never shared (spec §6). Append-only. Its
+    ``package_purchase`` charge is posted in the same transaction."""
+
+    __tablename__ = "packages"
+    __table_args__ = (
+        CheckConstraint(_in("unit", PACKAGE_UNITS), name="unit_valid"),
+        CheckConstraint("units_granted > 0", name="units_granted_positive"),
+        CheckConstraint("expires_on > purchased_on", name="dates"),
+        UniqueConstraint(
+            "id", "billing_account_id", "student_id", name=PACKAGE_COMPOSITE_KEY
+        ),
+        Index(
+            "ix_packages_account_student_expires_on",
+            "billing_account_id",
+            "student_id",
+            "expires_on",
+        ),
+        Index("ix_packages_price_version_id", "price_version_id"),
+    )
+
+    billing_account_id: Mapped[uuid.UUID] = _uuid_fk("billing_accounts")
+    student_id: Mapped[uuid.UUID] = _uuid_fk("students")
+    package_product_id: Mapped[uuid.UUID] = _uuid_fk("package_products")
+    price_version_id: Mapped[uuid.UUID] = _uuid_fk("price_versions")
+    unit: Mapped[str] = mapped_column(String(PACKAGE_UNIT_MAX))
+    units_granted: Mapped[int] = mapped_column(Integer)
+    subject_id: Mapped[uuid.UUID | None] = _uuid_fk("subjects", nullable=True)
+    purchased_on: Mapped[date] = mapped_column(Date)
+    expires_on: Mapped[date] = mapped_column(Date)
+
+
+class PackageCreditTransaction(Audited, Model):
+    """One signed unit movement of a package (#94 A4; data-model §3.20,
+    without ``withdrawal_id``, added by #101). Append-only."""
+
+    __tablename__ = "package_credit_transactions"
+    __table_args__ = (
+        CheckConstraint(_in("kind", PACKAGE_TRANSACTION_KINDS), name="kind"),
+        CheckConstraint(
+            "(kind = 'grant' AND units > 0)"
+            " OR (kind IN ('consume', 'expire') AND units < 0)"
+            " OR (kind = 'reversal' AND units <> 0)",
+            name="units_sign",
+        ),
+        CheckConstraint(
+            "(class_session_id IS NOT NULL) = (kind = 'consume')",
+            name="consume_session",
+        ),
+        CheckConstraint(
+            "(student_id IS NOT NULL) = (kind = 'consume')", name="consume_student"
+        ),
+        CheckConstraint(
+            "(reverses_transaction_id IS NOT NULL) = (kind = 'reversal')",
+            name="reversal_target",
+        ),
+        Index(
+            PACKAGE_GRANT_KEY,
+            "package_id",
+            unique=True,
+            postgresql_where=text("kind = 'grant'"),
+        ),
+        Index(
+            PACKAGE_EXPIRE_KEY,
+            "package_id",
+            unique=True,
+            postgresql_where=text("kind = 'expire'"),
+        ),
+        Index(
+            PACKAGE_CONSUME_KEY,
+            "package_id",
+            "class_session_id",
+            unique=True,
+            postgresql_where=text("kind = 'consume'"),
+        ),
+        Index(
+            PACKAGE_REVERSAL_KEY,
+            "reverses_transaction_id",
+            unique=True,
+            postgresql_where=text("kind = 'reversal'"),
+        ),
+        Index("ix_package_credit_transactions_package_id", "package_id"),
+        Index(
+            "ix_package_credit_transactions_session_student",
+            "class_session_id",
+            "student_id",
+            postgresql_where=text("kind = 'consume'"),
+        ),
+    )
+
+    package_id: Mapped[uuid.UUID] = _uuid_fk("packages")
+    kind: Mapped[str] = mapped_column(String(16))
+    units: Mapped[int] = mapped_column(Integer)
+    class_session_id: Mapped[uuid.UUID | None] = _uuid_fk(
+        "class_sessions", nullable=True
+    )
+    student_id: Mapped[uuid.UUID | None] = _uuid_fk("students", nullable=True)
+    reverses_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "package_credit_transactions.id",
+            ondelete="RESTRICT",
+            name=PACKAGE_REVERSAL_FK,
+        ),
+        nullable=True,
+    )

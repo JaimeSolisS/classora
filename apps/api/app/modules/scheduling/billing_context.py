@@ -125,3 +125,19 @@ async def lock_session_for_billing(
         participant_ids=tuple(participant_ids),
         group_id=row.group_id,
     )
+
+
+async def session_starts(
+    session: AsyncSession, class_session_ids: Collection[uuid.UUID]
+) -> dict[uuid.UUID, datetime]:
+    """The ``starts_at`` (UTC) of these sessions (#94 D5: a package's
+    consumptions show their session's start). One statement (none for no
+    ids), no lock; unknown ids are left out."""
+    if not class_session_ids:
+        return {}
+    rows = await session.execute(
+        select(ClassSession.id, ClassSession.starts_at).where(
+            ClassSession.id.in_(set(class_session_ids))
+        )
+    )
+    return {row.id: row.starts_at.astimezone(UTC) for row in rows}

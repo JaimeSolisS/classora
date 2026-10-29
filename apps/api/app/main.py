@@ -153,6 +153,8 @@ from app.workflows.learning_plans_router import (
 from app.workflows.overdue_closeouts_router import (
     router as overdue_closeouts_router,
 )
+from app.workflows.package_products_router import router as package_products_router
+from app.workflows.packages_router import router as packages_router
 from app.workflows.price_catalog_router import router as price_catalog_router
 from app.workflows.progress_dashboard_router import (
     student_router as student_progress_dashboard_router,
@@ -318,6 +320,8 @@ def build_app(
     app.include_router(unbilled_enrollments_router)
     app.include_router(tuition_plans_router)
     app.include_router(unbilled_tuition_router)
+    app.include_router(package_products_router)
+    app.include_router(packages_router)
     app.include_router(available_slots_router)
     app.include_router(session_requests_router)
     app.include_router(session_request_review_router)

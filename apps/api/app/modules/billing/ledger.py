@@ -39,7 +39,11 @@ from app.core import clock
 from app.core.audit import current_actor_id
 from app.core.money import Money, MoneyType, money_sum
 from app.modules.billing.discounts import DiscountKind, DiscountLine
-from app.modules.billing.errors import ChargeNetNegativeError, StudentHasNoFamilyError
+from app.modules.billing.errors import (
+    ChargeNetNegativeError,
+    SessionSettledByPackageError,
+    StudentHasNoFamilyError,
+)
 from app.modules.billing.models import (
     ACCOUNT_FAMILY_FK,
     ACCOUNT_FAMILY_UNIQUE,
@@ -51,6 +55,7 @@ from app.modules.billing.models import (
     Charge,
     ChargeAdjustment,
     ChargeDiscount,
+    PackageCreditTransaction,
     PaymentAllocation,
 )
 from app.modules.billing.schemas import (
@@ -153,7 +158,29 @@ def _natural_key_filter(draft: ChargeDraft) -> list[Any] | None:
             Charge.tuition_plan_id == draft.tuition_plan_id,
             Charge.service_date == draft.service_date,
         ]
+    if draft.kind == "package_purchase":
+        return [
+            Charge.kind == "package_purchase",
+            Charge.package_id == draft.package_id,
+        ]
     return None
+
+
+async def _consumed(
+    session: AsyncSession, class_session_id: uuid.UUID, student_id: uuid.UUID
+) -> bool:
+    """Whether a package ``consume`` row exists for the key (#94 D3, I9;
+    any package, any account)."""
+    found = await session.scalar(
+        select(PackageCreditTransaction.id)
+        .where(
+            PackageCreditTransaction.kind == "consume",
+            PackageCreditTransaction.class_session_id == class_session_id,
+            PackageCreditTransaction.student_id == student_id,
+        )
+        .limit(1)
+    )
+    return found is not None
 
 
 def session_charge_key_columns() -> Select[uuid.UUID | None, uuid.UUID]:
@@ -267,7 +294,10 @@ async def post_charge(session: AsyncSession, draft: ChargeDraft) -> PostedCharge
 
     The student's family (``families.service.family_of_student``; none →
     :class:`StudentHasNoFamilyError`, nothing written) → its account
-    (:func:`ensure_billing_account`) → the account row ``FOR UPDATE`` → the
+    (:func:`ensure_billing_account`) → the account row ``FOR UPDATE`` → for
+    a ``session`` charge, a package ``consume`` row for the key →
+    :class:`SessionSettledByPackageError`, nothing written (#94 D3: I9 is
+    checked on both sides under the account lock) → the
     natural key: already posted → ``created = False``, nothing written →
     insert in a savepoint (E4) → the draft's discount lines as
     ``charge_discounts`` rows (#95 B5; only for a charge created now). The
@@ -279,6 +309,10 @@ async def post_charge(session: AsyncSession, draft: ChargeDraft) -> PostedCharge
         raise StudentHasNoFamilyError(draft.student_id)
     account_id = await ensure_billing_account(session, family.id)
     account = await lock_billing_account(session, account_id)
+    if draft.kind == "session":
+        assert draft.class_session_id is not None  # noqa: S101 - a session draft
+        if await _consumed(session, draft.class_session_id, draft.student_id):
+            raise SessionSettledByPackageError(draft.class_session_id, draft.student_id)
     key = _natural_key_filter(draft)
     if key is not None:
         existing = await _posted_charge(session, key)
@@ -295,6 +329,7 @@ async def post_charge(session: AsyncSession, draft: ChargeDraft) -> PostedCharge
         group_enrollment_id=draft.group_enrollment_id,
         cohort_enrollment_id=draft.cohort_enrollment_id,
         tuition_plan_id=draft.tuition_plan_id,
+        package_id=draft.package_id,
         service_date=draft.service_date,
         service_period_end=draft.service_period_end,
         price_version_id=draft.price_version_id,

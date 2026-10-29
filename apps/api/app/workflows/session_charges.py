@@ -17,7 +17,13 @@ unbilled list, so a listed item is exactly an item the sweeper skips with
 that reason), for a candidate in this order:
 
 1. ``package_covered``: ``billing.service.package_covered_keys`` returns its
-   key (ADR-0006 E10; empty until #94) → no charge, not listed;
+   key (ADR-0006 E10, #94 D1): a package consumed it, or it is an
+   **individual** session whose closeout has no approval yet
+   (``academics.service.approved_closeout_session_ids``, one batch per
+   classification) and an eligible package of the student's current family
+   can cover it whole → no charge, not listed. An approved session whose
+   credit wasn't consumed (too little at approval) is not covered, so it is
+   charged here (#94 L3);
 1a. ``tuition_priced`` (#93 K6): a **group** session whose participant's
    covering enrollment period has a linked tuition plan whose window
    (``starts_on`` to ``ends_on``, paused periods included) contains the
@@ -45,7 +51,8 @@ once per run or read). **Due date** = the service date + the account's
 repeated until a short page, so unbillable items never starve new ones):
 the participants of billable individual sessions starting at or after the
 floor's local midnight, with no ``session`` charge for the key (an
-anti-join on ``uq_charges_session_student``), service date ≥ floor.
+anti-join on ``uq_charges_session_student``) and no package ``consume`` row
+for it (#94 E2: settled keys stop being re-read), service date ≥ floor.
 
 **Per candidate, its own Unit of Work** (no actor), in the data-model §6
 lock order:
@@ -62,7 +69,10 @@ lock order:
    the ``charge_discounts`` snapshot only when the charge is created):
    ``created`` → ``posted``; already posted (a rerun, a concurrent worker)
    → ``already_posted``, a success; a family removed meanwhile
-   (``StudentHasNoFamilyError``) → ``no_billing_account``.
+   (``StudentHasNoFamilyError``) → ``no_billing_account``; a package
+   consumed the key meanwhile (``SessionSettledByPackageError``, checked by
+   ``post_charge`` under the account lock, #94 D3/I9) →
+   ``package_covered``, nothing written.
 
 Every scheduling writer that changes a session's state, time, duration or
 participants takes the session row ``FOR UPDATE``, so the item waits for it
@@ -87,7 +97,9 @@ lock, no write. Every candidate classified ``no_billing_account`` or
 zone, candidates with their subject names, families, students, the custom
 prices of every candidate in one batch (#95 C3), level names) plus the
 catalog lookups, memoized per ``(subject, level, scheduled minutes, service
-date)``.
+date)``, plus at most four for the package coverage (#94: the approved
+closeouts, then the consumed keys, the families and the candidate
+packages).
 """
 
 import logging
@@ -106,6 +118,7 @@ from app.core.db import create_sessionmaker
 from app.core.jobs import create_worker_engine
 from app.core.pagination import OffsetPage, OffsetParams
 from app.core.uow import UnitOfWork
+from app.modules.academics import service as academics
 from app.modules.administration import service as administration
 from app.modules.billing import service as billing
 from app.modules.catalog import service as catalog
@@ -224,6 +237,15 @@ def _candidates_query(
         )
         .exists()
     )
+    consumed = billing.consumed_key_columns().subquery("consumed")
+    already_consumed = (
+        select(consumed.c.class_session_id)
+        .where(
+            consumed.c.class_session_id == participants.c.class_session_id,
+            consumed.c.student_id == participants.c.student_id,
+        )
+        .exists()
+    )
     return (
         select(
             participants,
@@ -232,7 +254,7 @@ def _candidates_query(
         )
         .join(subjects, subjects.c.id == participants.c.subject_id)
         .outerjoin(groups, groups.c.id == participants.c.group_id)
-        .where(~already_posted)
+        .where(~already_posted, ~already_consumed)
         .order_by(
             participants.c.starts_at,
             participants.c.class_session_id,
@@ -470,10 +492,12 @@ async def classify(
     groups: GroupPricing | None = None,
 ) -> list[Classification]:
     """The rules of the module docstring, for each candidate (in order):
-    package seam → tuition-priced group session (#93 K6) →
+    package coverage (#94) → tuition-priced group session (#93 K6) →
     enrollment-priced group session (#92 E2) → family → price. ``groups``
     is :func:`group_pricing` of the candidates (read here when not
     given)."""
+    individual = {c.class_session_id for c in candidates if c.kind == ELIGIBLE_KINDS[0]}
+    approved = await academics.approved_closeout_session_ids(session, individual)
     covered = await billing.package_covered_keys(
         session,
         [
@@ -483,6 +507,8 @@ async def classify(
                 subject_id=c.subject_id,
                 service_date=c.service_date,
                 scheduled_minutes=c.scheduled_minutes,
+                class_type=c.kind,
+                closeout_approved=c.class_session_id in approved,
             )
             for c in candidates
         ],
@@ -606,6 +632,8 @@ async def post_one(
         )
     except billing.StudentHasNoFamilyError:
         return "no_billing_account"
+    except billing.SessionSettledByPackageError:
+        return "package_covered"
     return "posted" if posted.created else "already_posted"
 
 
@@ -728,7 +756,8 @@ async def list_unbilled_items(
     id. Billing off: an empty page. No lock, no write; at most seven
     statements, three more when group sessions are candidates (their
     covering periods, the periods' ledger facts, #92 E4, and their linked
-    tuition plans, #93 K6), plus the memoized catalog lookups."""
+    tuition plans, #93 K6), at most four for the package coverage (#94),
+    plus the memoized catalog lookups."""
     empty = OffsetPage[UnbilledSessionItem](
         items=[], total=0, limit=page.limit, offset=page.offset
     )

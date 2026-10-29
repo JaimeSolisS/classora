@@ -399,3 +399,33 @@ class TuitionPauseNotOpenError(_Conflict):
 
     code = "tuition_pause_not_open"
     detail = "This plan has no open pause."
+
+
+# --- Prepaid packages (#94) ----------------------------------------------------------
+
+
+class PackageProductInactiveError(_Conflict):
+    """The package product is deactivated: it can't be sold (#94 C2)."""
+
+    code = "package_product_inactive"
+    detail = "This package is no longer sold. Choose an active one."
+
+
+class PackageNotOfferedError(_Conflict):
+    """The product has no price version in effect today, or the version in
+    effect says "not offered" (``null``) (#94 C2, L8)."""
+
+    code = "package_not_offered"
+    detail = "This package has no price today, so it can't be sold."
+
+
+class SessionSettledByPackageError(Exception):
+    """A ``session`` charge was asked for a ``(class_session_id,
+    student_id)`` a package already paid for (``consume`` row; #94 D3, I9).
+    A plain exception: the session sweeper counts it as ``package_covered``;
+    nothing was written."""
+
+    def __init__(self, class_session_id: uuid.UUID, student_id: uuid.UUID) -> None:
+        super().__init__("the session is settled by a package")
+        self.class_session_id = class_session_id
+        self.student_id = student_id

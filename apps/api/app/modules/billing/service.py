@@ -62,9 +62,9 @@ The billing account reads (#364) add :func:`account_of_family` and
 :func:`get_billing_settings`, :func:`billing_starts_on` (the billing start
 floor; ``lock=True`` reads the row ``FOR SHARE``, after the caller's
 scheduling locks and before the account lock) and
-:func:`package_covered_keys` (the package coverage seam, empty until #94;
-the session sweeper and the unbilled list in ``app.workflows.
-session_charges`` call it), and the unexecuted
+:func:`package_covered_keys` (the package coverage, #94 below; the session
+sweeper and the unbilled list in ``app.workflows.session_charges`` call
+it), and the unexecuted
 :func:`session_charge_key_columns` (the posted session keys the sweeper
 anti-joins). :func:`update_billing_settings` is the ``PATCH
 /api/v1/billing/settings`` write.
@@ -92,6 +92,34 @@ charge), :func:`pinned_base_prices` (many pinned base prices in two
 statements), and the unexecuted :func:`linked_plan_columns` with
 :func:`linked_plan_windows` (the K6 ``tuition_priced`` outcome of the #91
 and #92 classifications).
+
+**Prepaid packages** (#94; :mod:`~app.modules.billing.packages`, the pure
+:mod:`~app.modules.billing.package_rules`; the workflows
+``app.workflows.package_products``, ``app.workflows.packages``,
+``app.workflows.closeout_approval`` and ``app.workflows.package_expiry``).
+For other modules:
+
+- :func:`package_covered_keys` (``CoverageQuery`` with ``class_type`` and
+  ``closeout_approved``): the consumed keys, plus unapproved individual
+  sessions an eligible package of the student's current family can cover
+  whole (L2: by the session's local date; L4 plan). At most three
+  statements. The session sweeper and the unbilled list call it.
+- :func:`consume_session_credit` (``SessionCreditClaim`` →
+  ``ConsumeResult``: ``consumed | already_consumed | charged | short |
+  no_package``): first-expiring-first, all or nothing, under the account
+  lock (the last lock); the session's state is not checked (#99 consumes
+  for a cancelled session). Never raises for these outcomes.
+- :func:`package_remaining_units` and the pure :func:`package_status`
+  (``active | exhausted | expired``) and :func:`plan_consumption` (L4).
+- :class:`SessionSettledByPackageError`: :func:`post_charge` raises it for
+  a ``session`` charge whose key a package consumed (I9, on both sides
+  under the account lock); the sweeper counts it as ``package_covered``.
+- The unexecuted :func:`consumed_key_columns` (the consumed keys the
+  sweeper anti-joins); :func:`due_packages` and :func:`expire_package` (the
+  daily expiry job, L1).
+- ``ChargeDraft.package_id`` (the source of a ``package_purchase`` charge)
+  and a pinned ``PriceQuery`` for a ``package`` item (its ``subject_id``
+  may be ``None``).
 """
 
 from app.modules.billing.balances import account_balance as account_balance
@@ -181,6 +209,12 @@ from app.modules.billing.errors import (
     DiscountNameExistsError as DiscountNameExistsError,
 )
 from app.modules.billing.errors import (
+    PackageNotOfferedError as PackageNotOfferedError,
+)
+from app.modules.billing.errors import (
+    PackageProductInactiveError as PackageProductInactiveError,
+)
+from app.modules.billing.errors import (
     PriceCatalogValidationError as PriceCatalogValidationError,
 )
 from app.modules.billing.errors import (
@@ -192,6 +226,9 @@ from app.modules.billing.errors import (
 from app.modules.billing.errors import PriceVersionInUseError as PriceVersionInUseError
 from app.modules.billing.errors import (
     ServicePriceExistsError as ServicePriceExistsError,
+)
+from app.modules.billing.errors import (
+    SessionSettledByPackageError as SessionSettledByPackageError,
 )
 from app.modules.billing.errors import (
     StudentHasNoFamilyAccountError as StudentHasNoFamilyAccountError,
@@ -258,6 +295,53 @@ from app.modules.billing.ledger import (
 from app.modules.billing.ledger import (
     session_charge_states as session_charge_states,
 )
+from app.modules.billing.package_rules import PACKAGE_STATUSES as PACKAGE_STATUSES
+from app.modules.billing.package_rules import EligiblePackage as EligiblePackage
+from app.modules.billing.package_rules import PackageStatus as PackageStatus
+from app.modules.billing.package_rules import PackageUnit as PackageUnit
+from app.modules.billing.package_rules import package_status as package_status
+from app.modules.billing.package_rules import plan_consumption as plan_consumption
+from app.modules.billing.packages import DUE_PAGE as DUE_PAGE
+from app.modules.billing.packages import (
+    PACKAGE_PRICING_MODELS as PACKAGE_PRICING_MODELS,
+)
+from app.modules.billing.packages import ConsumeOutcome as ConsumeOutcome
+from app.modules.billing.packages import ConsumeResult as ConsumeResult
+from app.modules.billing.packages import DuePackage as DuePackage
+from app.modules.billing.packages import ExpireOutcome as ExpireOutcome
+from app.modules.billing.packages import PackageNames as PackageNames
+from app.modules.billing.packages import PackageRow as PackageRow
+from app.modules.billing.packages import ProductRow as ProductRow
+from app.modules.billing.packages import SessionCreditClaim as SessionCreditClaim
+from app.modules.billing.packages import TransactionRow as TransactionRow
+from app.modules.billing.packages import (
+    consume_session_credit as consume_session_credit,
+)
+from app.modules.billing.packages import (
+    consumed_key_columns as consumed_key_columns,
+)
+from app.modules.billing.packages import create_product as create_product
+from app.modules.billing.packages import due_packages as due_packages
+from app.modules.billing.packages import expire_package as expire_package
+from app.modules.billing.packages import get_package as get_package
+from app.modules.billing.packages import get_product as get_product
+from app.modules.billing.packages import grant_package as grant_package
+from app.modules.billing.packages import insert_package as insert_package
+from app.modules.billing.packages import list_packages as list_packages
+from app.modules.billing.packages import list_products as list_products
+from app.modules.billing.packages import (
+    lock_product_for_sale as lock_product_for_sale,
+)
+from app.modules.billing.packages import (
+    package_covered_keys as package_covered_keys,
+)
+from app.modules.billing.packages import (
+    package_remaining_units as package_remaining_units,
+)
+from app.modules.billing.packages import (
+    product_service_price_id as product_service_price_id,
+)
+from app.modules.billing.packages import update_product as update_product
 from app.modules.billing.prices import CATALOG_MODELS as CATALOG_MODELS
 from app.modules.billing.prices import CUSTOM_PRICE_MODELS as CUSTOM_PRICE_MODELS
 from app.modules.billing.prices import CatalogItemRow as CatalogItemRow
@@ -319,9 +403,6 @@ from app.modules.billing.schemas import StudentBalance as StudentBalance
 from app.modules.billing.settings import billing_starts_on as billing_starts_on
 from app.modules.billing.settings import (
     get_billing_settings as get_billing_settings,
-)
-from app.modules.billing.settings import (
-    package_covered_keys as package_covered_keys,
 )
 from app.modules.billing.settings import (
     update_billing_settings as update_billing_settings,

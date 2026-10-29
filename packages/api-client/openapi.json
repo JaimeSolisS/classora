@@ -21746,6 +21746,812 @@
         }
       }
     },
+    "/api/v1/billing/package-products": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Package Products",
+        "description": "The package products by name, with the price in effect today.",
+        "operationId": "list_package_products_api_v1_billing_package_products_get",
+        "parameters": [
+          {
+            "name": "is_active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Active"
+            }
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subject Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_PackageProductItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Create Package Product",
+        "description": "Create a package of sessions or minutes with its validity, an\noptional subject (none: any subject) and its first price version, which\nmay start on any date. A package covers individual sessions only. The\nunit, quantity, validity and subject can't change later: create another\nproduct instead.",
+        "operationId": "create_package_product_api_v1_billing_package_products_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackageProductCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageProductDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/package-products/{product_id}": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Get Package Product",
+        "description": "A package product with all its price versions, newest first.",
+        "operationId": "get_package_product_api_v1_billing_package_products__product_id__get",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Product Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageProductDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such package product (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Update Package Product",
+        "description": "Rename a package product, or deactivate (reactivate) it. A\ndeactivated product can't be sold; packages already sold keep working.",
+        "operationId": "update_package_product_api_v1_billing_package_products__product_id__patch",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Product Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackageProductUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageProductDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such package product (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The product changed since it was loaded (version_conflict).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/package-products/{product_id}/versions": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Add Package Product Version",
+        "description": "Add a price version. Versions are never edited: to change an upcoming\none, delete it and add another.",
+        "operationId": "add_package_product_version_api_v1_billing_package_products__product_id__versions_post",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Product Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PriceVersionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageProductDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such package product (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/package-products/{product_id}/versions/{price_version_id}": {
+      "delete": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Delete Package Product Version",
+        "description": "Delete an upcoming price version.",
+        "operationId": "delete_package_product_version_api_v1_billing_package_products__product_id__versions__price_version_id__delete",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Product Id"
+            }
+          },
+          {
+            "name": "price_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Price Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such product, or a version of another price (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Only an upcoming version can be deleted (price_version_in_effect); a version used by a charge or a package can't be (price_version_in_use).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/packages": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Purchase Package",
+        "description": "Sell a package to a student. It is bought today, at today's price\n(discounts included), on the account of the student's family: one\npackage purchase charge (due today plus the family's due-date offset)\nand the package's units. The units pay for the student's individual\nsessions, oldest-expiring package first, when each closeout is approved;\nthey are never shared with siblings. Send a new `Idempotency-Key` per\nsale and the same one to retry it.",
+        "operationId": "purchase_package_api_v1_billing_packages_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackagePurchase"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The package is deactivated (package_product_inactive); it has no price today (package_not_offered); the student isn't in a family (student_has_no_family).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ]
+      },
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Packages",
+        "description": "The sold packages, the earliest expiry first (then purchase date and\nid). `status` (active, exhausted, expired; for the center's today) may\nbe repeated.",
+        "operationId": "list_packages_api_v1_billing_packages_get",
+        "parameters": [
+          {
+            "name": "student_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Student Id"
+            }
+          },
+          {
+            "name": "family_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PackageStatus"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_PackageItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/packages/{package_id}": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Get Package",
+        "description": "A sold package with its unit movements (grant, consumptions with\ntheir sessions, expiry), oldest first.",
+        "operationId": "get_package_api_v1_billing_packages__package_id__get",
+        "parameters": [
+          {
+            "name": "package_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Package Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such package (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/available-slots": {
       "get": {
         "tags": [
@@ -40106,6 +40912,68 @@
         ],
         "title": "OffsetPage[OverdueCloseoutItem]"
       },
+      "OffsetPage_PackageItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PackageItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[PackageItem]"
+      },
+      "OffsetPage_PackageProductItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PackageProductItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[PackageProductItem]"
+      },
       "OffsetPage_ServicePriceItem_": {
         "properties": {
           "items": {
@@ -40610,6 +41478,548 @@
         ],
         "title": "OverridePair",
         "description": "One soft conflict of one occurrence (#236 B1; ADR-0005 D4):\n``occurrence_start`` is ``details.occurrence_start`` of the ``409``\n(for an edit, the occurrence's **new** instant)."
+      },
+      "PackageDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "student": {
+            "$ref": "#/components/schemas/PackageReference"
+          },
+          "family": {
+            "$ref": "#/components/schemas/PackageReference"
+          },
+          "product": {
+            "$ref": "#/components/schemas/PackageReference"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/PackageUnit"
+          },
+          "units_granted": {
+            "type": "integer",
+            "title": "Units Granted"
+          },
+          "remaining_units": {
+            "type": "integer",
+            "title": "Remaining Units"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PackageReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "purchased_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Purchased On"
+          },
+          "expires_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Expires On"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PackageStatus"
+          },
+          "purchase_charge_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Charge Id"
+          },
+          "transactions": {
+            "items": {
+              "$ref": "#/components/schemas/PackageTransactionItem"
+            },
+            "type": "array",
+            "title": "Transactions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "student",
+          "family",
+          "product",
+          "unit",
+          "units_granted",
+          "remaining_units",
+          "subject",
+          "purchased_on",
+          "expires_on",
+          "status",
+          "purchase_charge_id",
+          "transactions"
+        ],
+        "title": "PackageDetail",
+        "description": "A package with its unit movements, oldest first."
+      },
+      "PackageItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "student": {
+            "$ref": "#/components/schemas/PackageReference"
+          },
+          "family": {
+            "$ref": "#/components/schemas/PackageReference"
+          },
+          "product": {
+            "$ref": "#/components/schemas/PackageReference"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/PackageUnit"
+          },
+          "units_granted": {
+            "type": "integer",
+            "title": "Units Granted"
+          },
+          "remaining_units": {
+            "type": "integer",
+            "title": "Remaining Units"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PackageReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "purchased_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Purchased On"
+          },
+          "expires_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Expires On"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PackageStatus"
+          },
+          "purchase_charge_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Charge Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "student",
+          "family",
+          "product",
+          "unit",
+          "units_granted",
+          "remaining_units",
+          "subject",
+          "purchased_on",
+          "expires_on",
+          "status",
+          "purchase_charge_id"
+        ],
+        "title": "PackageItem",
+        "description": "One sold package (#94 D5). ``status`` is for the center's today:\n``expired`` (expired, or past ``expires_on``) → ``exhausted`` (no units\nleft) → ``active``."
+      },
+      "PackageProductCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/PackageUnit"
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          },
+          "validity_days": {
+            "type": "integer",
+            "title": "Validity Days"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective From"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "unit",
+          "quantity",
+          "validity_days",
+          "amount",
+          "effective_from"
+        ],
+        "title": "PackageProductCreate",
+        "description": "``POST /api/v1/billing/package-products`` (#94 B1, B2): the product\nand its first price version. Fields are in rule order."
+      },
+      "PackageProductDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/PackageUnit"
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          },
+          "validity_days": {
+            "type": "integer",
+            "title": "Validity Days"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PackageReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "current_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Amount"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/PriceVersionItem"
+            },
+            "type": "array",
+            "title": "Versions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "unit",
+          "quantity",
+          "validity_days",
+          "subject",
+          "is_active",
+          "current_amount",
+          "version",
+          "versions"
+        ],
+        "title": "PackageProductDetail",
+        "description": "A product with its price versions, newest ``effective_from`` first\n(the #89 version shape)."
+      },
+      "PackageProductItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/PackageUnit"
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          },
+          "validity_days": {
+            "type": "integer",
+            "title": "Validity Days"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PackageReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "current_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Amount"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "unit",
+          "quantity",
+          "validity_days",
+          "subject",
+          "is_active",
+          "current_amount",
+          "version"
+        ],
+        "title": "PackageProductItem",
+        "description": "One package product (#94 B1). ``subject: null`` = any subject;\n``current_amount`` is the price in effect today (``null``: none, or not\noffered)."
+      },
+      "PackageProductUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "PackageProductUpdate",
+        "description": "``PATCH /api/v1/billing/package-products/{id}`` (#94 B1): ``version``\nand the fields to change (absent or ``null`` = unchanged)."
+      },
+      "PackagePurchase": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "package_product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Package Product Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student_id",
+          "package_product_id"
+        ],
+        "title": "PackagePurchase",
+        "description": "``POST /api/v1/billing/packages`` (#94 C1)."
+      },
+      "PackageReference": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "PackageReference",
+        "description": "A record a package or product points at: its id and current name."
+      },
+      "PackageStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "exhausted",
+          "expired"
+        ]
+      },
+      "PackageTransactionItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PackageTransactionKind"
+          },
+          "units": {
+            "type": "integer",
+            "title": "Units"
+          },
+          "class_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Class Session Id"
+          },
+          "session_starts_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Starts At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "units",
+          "class_session_id",
+          "session_starts_at",
+          "created_at"
+        ],
+        "title": "PackageTransactionItem",
+        "description": "One unit movement (signed, in the package's unit). A ``consume``\nnames its session and the session's start."
+      },
+      "PackageTransactionKind": {
+        "type": "string",
+        "enum": [
+          "grant",
+          "consume",
+          "expire",
+          "reversal"
+        ]
+      },
+      "PackageUnit": {
+        "type": "string",
+        "enum": [
+          "sessions",
+          "minutes"
+        ]
       },
       "PasswordChange": {
         "properties": {

@@ -261,10 +261,15 @@ class PriceInEffect:
 # --- Ledger core (#90) ---------------------------------------------------------------
 
 type ChargeKind = Literal[
-    "session", "group_enrollment", "cohort_enrollment", "tuition_period", "manual"
+    "session",
+    "group_enrollment",
+    "cohort_enrollment",
+    "tuition_period",
+    "package_purchase",
+    "manual",
 ]
-"""The charge kinds of #90 (E3) and ``tuition_period`` (#93); #94 adds its
-own."""
+"""The charge kinds of #90 (E3), ``tuition_period`` (#93) and
+``package_purchase`` (#94)."""
 type AdjustmentKind = Literal[
     "duration_change",
     "cancellation_credit",
@@ -292,6 +297,7 @@ _CHARGE_SOURCES: Final[dict[str, str | None]] = {
     "group_enrollment": "group_enrollment_id",
     "cohort_enrollment": "cohort_enrollment_id",
     "tuition_period": "tuition_plan_id",
+    "package_purchase": "package_id",
     MANUAL: None,
 }
 """The source column each charge kind needs (``None``: no source)."""
@@ -300,6 +306,7 @@ _SOURCE_COLUMNS: Final = (
     "group_enrollment_id",
     "cohort_enrollment_id",
     "tuition_plan_id",
+    "package_id",
 )
 
 
@@ -340,6 +347,8 @@ class ChargeDraft:
     group_enrollment_id: uuid.UUID | None = None
     cohort_enrollment_id: uuid.UUID | None = None
     tuition_plan_id: uuid.UUID | None = None
+    package_id: uuid.UUID | None = None
+    """The source of a ``package_purchase`` charge (#94 A5)."""
     service_period_end: date | None = None
     scheduled_minutes: int | None = None
     price_version_id: uuid.UUID | None = None
@@ -648,16 +657,20 @@ class BillingSettingsUpdate(BaseModel):
 @dataclass(frozen=True)
 class CoverageQuery:
     """One ``(class_session_id, student_id)`` asked of
-    :func:`~app.modules.billing.service.package_covered_keys` (#91 G7):
-    with what #94 needs to find an eligible package (the student, the
-    subject, the session's local service date and its scheduled
-    minutes)."""
+    :func:`~app.modules.billing.service.package_covered_keys` (#91 G7, #94
+    D1): what an eligible package is matched against (the student, the
+    subject, the session's local service date and its scheduled minutes),
+    the session's class type (only ``individual`` sessions are ever
+    covered) and whether its closeout has an approval (an approved session
+    is covered only once consumed, #94 L3)."""
 
     class_session_id: uuid.UUID
     student_id: uuid.UUID
     subject_id: uuid.UUID
     service_date: date
     scheduled_minutes: int
+    class_type: str = "individual"
+    closeout_approved: bool = False
 
 
 # --- Price calculation (#95 B2-B4) ---------------------------------------------------
@@ -687,7 +700,10 @@ class PriceQuery:
     charge_kind: QuoteChargeKind
     class_type: ClassType
     pricing_model: str
-    subject_id: uuid.UUID
+    subject_id: uuid.UUID | None
+    """``None`` only for a pinned ``package`` item without a subject (#94:
+    an any-subject product; a discount limited to subjects never matches
+    it)."""
     on: date
     education_level_id: uuid.UUID | None = None
     duration_minutes: int | None = None

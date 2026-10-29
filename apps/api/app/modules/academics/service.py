@@ -5,7 +5,9 @@ in :mod:`~app.modules.academics.closeout_rules`): the ``session_closeouts``
 row (:class:`SessionCloseout`), :func:`create_session_closeout`,
 :func:`closeout_for_session`, :func:`closeouts_by_id`,
 :func:`closeout_session_keys` (joined by ``scheduling`` into the inbox
-summaries), :func:`summary_of`; the rules :func:`closeout_block`,
+summaries), :func:`summary_of`, :func:`approved_closeout_session_ids` (the
+sessions whose closeout has an approval revision, #94: the package coverage
+of the session sweeper and the expiry job); the rules :func:`closeout_block`,
 :func:`summary_errors`, :func:`all_marked_absent`, the record policy
 :func:`closeout_access` and :func:`sees_summary`; and the errors.
 ``app.workflows.session_closeout`` composes them with
@@ -247,6 +249,9 @@ from app.modules.academics.closeout_rules import on_behalf_block as on_behalf_bl
 from app.modules.academics.closeout_rules import review_block as review_block
 from app.modules.academics.closeout_rules import sees_summary as sees_summary
 from app.modules.academics.closeout_rules import summary_errors as summary_errors
+from app.modules.academics.closeouts import (
+    approved_closeout_session_ids as approved_closeout_session_ids,
+)
 from app.modules.academics.closeouts import (
     approved_summary_columns as approved_summary_columns,
 )

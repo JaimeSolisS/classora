@@ -515,9 +515,18 @@ def test_openapi_adds_the_header_once_and_only_to_decorated_routes():
     assert IDEMPOTENCY_HEADER not in json.dumps(plain)
 
 
-def test_the_real_app_has_no_decorated_route_yet():
-    # E4: the exported contract does not change in #88.
+def test_the_real_app_declares_only_the_package_purchase():
+    # E4: #88 changed no route; #94 declares the first one (the package
+    # purchase), and the header is documented only there.
     app = build_app(include_dev_routes=True)
 
-    assert not [c for c in api_contexts(app) if route_idempotency_rules(c)]
-    assert IDEMPOTENCY_HEADER not in json.dumps(app.openapi())
+    decorated = [c for c in api_contexts(app) if route_idempotency_rules(c)]
+    assert [(sorted(c.original_route.methods), c.path) for c in decorated] == [
+        (["POST"], "/api/v1/billing/packages")
+    ]
+    document = app.openapi()
+    for path, operations in document["paths"].items():
+        for method, operation in operations.items():
+            parameters = json.dumps(operation.get("parameters", []))
+            expected = (path, method) == ("/api/v1/billing/packages", "post")
+            assert (IDEMPOTENCY_HEADER in parameters) == expected, (path, method)

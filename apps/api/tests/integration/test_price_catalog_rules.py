@@ -290,11 +290,13 @@ def test_truncate_is_refused(module_seeded_url):
         # Since #90 ``charges`` references the table, so a TRUNCATE must
         # name the referencing tables too; price_versions comes first, so
         # its own trigger is the one that refuses it. Since #95
-        # charge_discounts references charges too.
+        # charge_discounts references charges too; since #94 packages
+        # reference price_versions and package_credit_transactions packages.
         run_sql(
             module_seeded_url,
             "TRUNCATE price_versions, charges, charge_adjustments,"
-            " payment_allocations, allocation_releases, charge_discounts",
+            " payment_allocations, allocation_releases, charge_discounts,"
+            " packages, package_credit_transactions",
         )
 
     assert _sqlstate(raised.value) == "42501"
