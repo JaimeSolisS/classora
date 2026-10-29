@@ -14,6 +14,7 @@ from app.modules.billing import service as billing
 from tests.integration import package_support as ps
 from tests.integration.catalog_support import count_statements
 from tests.integration.conftest import run_sql
+from tests.integration.lifecycle_support import in_uow
 
 DAY = date(2031, 3, 10)
 SOLD = date(2031, 3, 1)
@@ -121,9 +122,19 @@ def test_after_a_family_move_the_old_familys_package_is_never_used(
     url = module_seeded_url
     w = ps.world(url)
     package = ps.sell(url, w.student, ps.product(url), SOLD)
-    ps.move_to_new_family(url, w.student)
+    family = ps.move_to_new_family(url, w.student)
+    # The new family has an account too, so the lookup reaches the packages.
+    in_uow(url, lambda db: billing.ensure_billing_account(db, family))
     session = ps.session_for(url, w, DAY)
+    item = billing.CoverageQuery(
+        class_session_id=session,
+        student_id=w.student,
+        subject_id=w.subject,
+        service_date=DAY,
+        scheduled_minutes=60,
+    )
 
+    assert in_uow(url, lambda db: billing.package_covered_keys(db, [item])) == set()
     assert ps.consume(url, session, w.student).outcome == "no_package"
     assert ps.remaining(url, package) == 10
 

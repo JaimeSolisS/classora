@@ -132,6 +132,26 @@ def test_approved_with_too_little_credit_left_is_charged_by_the_next_run(
     no_key_has_both(url)
 
 
+def test_an_approved_unconsumed_session_stays_charged_by_the_sweeper(
+    module_seeded_url,
+):
+    # L3: approved with no credit, then a package bought for its date: the
+    # approval decided, so the sweeper charges it (never covered later).
+    url = module_seeded_url
+    w = ps.world(url)
+    session = ps.session_for(url, w, DAY)
+    ps.approved(url, session)
+    package = ps.sell(url, w.student, ps.product(url), SOLD)
+    ps.set_floor(url, FLOOR)
+
+    run = ps.sweep(url)
+
+    assert (run.posted, run.package_covered) == (1, 0)
+    assert len(ps.session_charges(url, session)) == 1
+    assert ps.remaining(url, package) == 10
+    no_key_has_both(url)
+
+
 def test_a_session_after_the_expiry_date_is_charged(module_seeded_url):
     url = module_seeded_url
     w = ps.world(url)
