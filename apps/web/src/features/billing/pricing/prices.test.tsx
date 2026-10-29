@@ -222,6 +222,7 @@ describe('access and navigation (A)', () => {
       ['Discounts', null],
       ['Custom prices', null],
       ['Tuition plans', null],
+      ['Packages', null],
       ['Unbilled', null],
       ['Settings', null],
     ]);

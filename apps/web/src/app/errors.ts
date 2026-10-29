@@ -367,6 +367,20 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['tuition_plan_has_charges', 'tuition_plan_has_charges'],
   ['tuition_pause_overlap', 'tuition_pause_overlap'],
   ['tuition_pause_not_open', 'tuition_pause_not_open'],
+  // Packages (#94, #377 F1), problem and field codes (student_unknown,
+  // student_has_no_family, subject_*, money_*, amount_negative,
+  // date_out_of_range and price_version_* are listed above).
+  ['package_product_inactive', 'package_product_inactive'],
+  ['package_not_offered', 'package_not_offered'],
+  ['package_product_unknown', 'package_product_unknown'],
+  ['quantity_out_of_range', 'quantity_out_of_range'],
+  ['quantity_step', 'quantity_step'],
+  ['validity_days_out_of_range', 'validity_days_out_of_range'],
+  // Idempotency keys (#88; the first web consumer is the package sale,
+  // #377 D2).
+  ['idempotency_key_required', 'idempotency_key_required'],
+  ['idempotency_key_invalid', 'idempotency_key_invalid'],
+  ['idempotency_key_reused', 'idempotency_key_reused'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

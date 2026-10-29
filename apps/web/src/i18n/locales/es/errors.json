@@ -348,5 +348,14 @@
   "tuition_plan_ended": "Este plan ya terminó. Crea un plan nuevo.",
   "tuition_plan_has_charges": "Este plan tiene periodos cobrados y no se puede eliminar. Termínalo en su lugar.",
   "tuition_pause_overlap": "Esta pausa se cruza con otra pausa del plan.",
-  "tuition_pause_not_open": "Este plan no tiene una pausa abierta para reanudar."
+  "tuition_pause_not_open": "Este plan no tiene una pausa abierta para reanudar.",
+  "package_product_inactive": "Este paquete ya no se vende. Elige otro.",
+  "package_not_offered": "Este paquete no tiene un precio vigente hoy, así que no se puede vender. Agrega un precio en su página.",
+  "package_product_unknown": "Este paquete ya no existe. Elige otro.",
+  "quantity_out_of_range": "Escribe de 1 a quinientas sesiones, o de un cuarto de hora a quinientas horas.",
+  "quantity_step": "Las horas van en pasos de un cuarto de hora (0.25).",
+  "validity_days_out_of_range": "Escribe una vigencia de 1 día a dos años (setecientos treinta días).",
+  "idempotency_key_required": "No pudimos enviar esto de forma segura. Recarga la página e inténtalo de nuevo.",
+  "idempotency_key_invalid": "No pudimos enviar esto de forma segura. Recarga la página e inténtalo de nuevo.",
+  "idempotency_key_reused": "Este envío ya se usó con otros datos. Cierra el diálogo y empieza de nuevo."
 }

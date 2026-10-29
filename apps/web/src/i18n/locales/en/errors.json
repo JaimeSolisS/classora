@@ -348,5 +348,14 @@
   "tuition_plan_ended": "This plan has ended. Create a new plan instead.",
   "tuition_plan_has_charges": "This plan has charged periods and can't be deleted. End it instead.",
   "tuition_pause_overlap": "This pause overlaps another pause of the plan.",
-  "tuition_pause_not_open": "This plan has no open pause to resume."
+  "tuition_pause_not_open": "This plan has no open pause to resume.",
+  "package_product_inactive": "This package is no longer sold. Choose another one.",
+  "package_not_offered": "This package has no price in effect today, so it can't be sold. Add a price on its page.",
+  "package_product_unknown": "This package doesn't exist anymore. Choose another one.",
+  "quantity_out_of_range": "Enter from 1 to five hundred sessions, or from a quarter hour to five hundred hours.",
+  "quantity_step": "Hours go in steps of a quarter hour (0.25).",
+  "validity_days_out_of_range": "Enter a validity from 1 day to two years (seven hundred thirty days).",
+  "idempotency_key_required": "We couldn't send this safely. Reload the page and try again.",
+  "idempotency_key_invalid": "We couldn't send this safely. Reload the page and try again.",
+  "idempotency_key_reused": "This submission was already used for different data. Close the dialog and start again."
 }
