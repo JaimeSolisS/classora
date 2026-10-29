@@ -4171,6 +4171,104 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/families/{family_id}/billing-account/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Family Payments
+         * @description The family's payments, the latest received first, with their
+         *     allocated, refunded and unallocated amounts. Staff with billing.view
+         *     see every family; a guardian only their own family, without the note
+         *     and the actor ids.
+         */
+        get: operations["list_family_payments_api_v1_families__family_id__billing_account_payments_get"];
+        put?: never;
+        /**
+         * Record Family Payment
+         * @description Record an external payment (cash, transfer or other) for a family
+         *     and allocate it: `oldest_first` (the earliest due date first, across
+         *     all the family's students), `explicit` (chosen charges and amounts,
+         *     each at most what is open) or `none`. Whatever isn't allocated stays as
+         *     account credit. The family's billing account is created with its first
+         *     payment. Send a new `Idempotency-Key` per payment and the same one to
+         *     retry it.
+         */
+        post: operations["record_family_payment_api_v1_families__family_id__billing_account_payments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/families/{family_id}/billing-account/allocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Allocate Family Credit
+         * @description Allocate the family's account credit to open charges, `oldest_first`
+         *     (up to `amount`, or all the credit) or `explicit`. The money comes from
+         *     the oldest payments with an unallocated remainder first. Send a new
+         *     `Idempotency-Key` per allocation and the same one to retry it.
+         */
+        post: operations["allocate_family_credit_api_v1_families__family_id__billing_account_allocations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/families/{family_id}/billing-account/payments/{payment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Family Payment
+         * @description One payment of the family with every allocation it has had, oldest
+         *     first (released ones have `is_valid: false`).
+         */
+        get: operations["get_family_payment_api_v1_families__family_id__billing_account_payments__payment_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/payment-methods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Payment Methods
+         * @description Every payment method by code, with whether it is active. Offer only
+         *     the active ones; labels come from the client catalogs.
+         */
+        get: operations["list_payment_methods_api_v1_billing_payment_methods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/settings": {
         parameters: {
             query?: never;
@@ -5020,6 +5118,26 @@ export interface components {
         };
         /** @enum {string} */
         AffectedSessionState: "offered" | "confirmed";
+        /**
+         * AllocationLineBody
+         * @description One explicit allocation line: a charge of the account and an amount
+         *     above zero (``amount_not_positive``).
+         */
+        AllocationLineBody: {
+            /**
+             * Charge Id
+             * Format: uuid
+             */
+            charge_id: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+        };
+        /** @enum {string} */
+        AllocationMode: "oldest_first" | "explicit" | "none";
         /** @enum {string} */
         ApprovalAction: "approve" | "reject" | "request_changes";
         /** @enum {string} */
@@ -9341,6 +9459,84 @@ export interface components {
             /** Assessments */
             assessments?: components["schemas"]["CourseTemplateAssessmentWrite"][];
         };
+        /**
+         * CreditAllocated
+         * @description ``201`` of allocating account credit (#96 C4): the rows written (one
+         *     chosen charge may get several, one per source payment, oldest payment
+         *     first), their total and the account credit afterwards.
+         */
+        CreditAllocated: {
+            /** Allocations */
+            allocations: components["schemas"]["CreditAllocationItem"][];
+            /**
+             * Allocated Total
+             * Format: decimal
+             * @example 1250.00
+             */
+            allocated_total: string;
+            /**
+             * Account Credit After
+             * Format: decimal
+             * @example 1250.00
+             */
+            account_credit_after: string;
+        };
+        /**
+         * CreditAllocationBody
+         * @description How to allocate account credit (#96 M4): ``oldest_first`` or
+         *     ``explicit`` (``lines`` as in :class:`PaymentAllocationBody`).
+         */
+        CreditAllocationBody: {
+            mode: components["schemas"]["CreditAllocationMode"];
+            /** Lines */
+            lines?: components["schemas"]["AllocationLineBody"][] | null;
+        };
+        /**
+         * CreditAllocationCreate
+         * @description ``POST /api/v1/families/{family_id}/billing-account/allocations``
+         *     (#96 C4, M4). ``amount`` (above zero) only with ``oldest_first``
+         *     (``amount_not_allowed``); without it the whole account credit is
+         *     allocated.
+         */
+        CreditAllocationCreate: {
+            allocation: components["schemas"]["CreditAllocationBody"];
+            /** Amount */
+            amount?: string | null;
+        };
+        /**
+         * CreditAllocationItem
+         * @description An allocation of account credit, with the payment it came from.
+         */
+        CreditAllocationItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Charge Id
+             * Format: uuid
+             */
+            charge_id: string;
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            /**
+             * Payment Id
+             * Format: uuid
+             */
+            payment_id: string;
+        };
+        /** @enum {string} */
+        CreditAllocationMode: "oldest_first" | "explicit";
         /** @enum {string} */
         CriteriaChargeKind: "session" | "group_enrollment" | "cohort_enrollment" | "tuition_period" | "package_purchase";
         /** @enum {string} */
@@ -12577,6 +12773,17 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** OffsetPage[PaymentItem] */
+        OffsetPage_PaymentItem_: {
+            /** Items */
+            items: components["schemas"]["PaymentItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /** OffsetPage[ServicePriceItem] */
         OffsetPage_ServicePriceItem_: {
             /** Items */
@@ -13113,6 +13320,239 @@ export interface components {
             token: string;
         };
         /**
+         * PaymentAllocationBody
+         * @description How to allocate a payment (#96 M3). ``lines`` (1 to 200, distinct
+         *     charges) only and always with ``explicit``.
+         */
+        PaymentAllocationBody: {
+            mode: components["schemas"]["AllocationMode"];
+            /** Lines */
+            lines?: components["schemas"]["AllocationLineBody"][] | null;
+        };
+        /**
+         * PaymentAllocationItem
+         * @description One allocation of a payment to a charge. ``is_valid`` is false once
+         *     a reversal or a credit released it (#90 E5); ``created_by_user_id`` is
+         *     ``null`` for a re-inserted remainder.
+         */
+        PaymentAllocationItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Charge Id
+             * Format: uuid
+             */
+            charge_id: string;
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By User Id */
+            created_by_user_id: string | null;
+            /** Is Valid */
+            is_valid: boolean;
+        };
+        /**
+         * PaymentCreate
+         * @description ``POST /api/v1/families/{family_id}/billing-account/payments`` (#96
+         *     C1, M5). ``amount`` above zero (``amount_not_positive``; ``money_*``);
+         *     ``received_on`` from 2000-01-01 (``date_out_of_range``; a date after
+         *     the center's today is the route's ``received_on_in_future``);
+         *     ``reference`` (≤ 100), ``payer_name`` (≤ 200) and ``note`` (≤ 500)
+         *     trimmed, blank → ``null``. Explicit lines may not add up to more than
+         *     the payment (``allocation_exceeds_payment``).
+         */
+        PaymentCreate: {
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            /**
+             * Received On
+             * Format: date
+             */
+            received_on: string;
+            /** Payment Method Code */
+            payment_method_code: string;
+            /** Reference */
+            reference?: string | null;
+            /** Payer Name */
+            payer_name?: string | null;
+            /** Note */
+            note?: string | null;
+            allocation: components["schemas"]["PaymentAllocationBody"];
+        };
+        /**
+         * PaymentDetail
+         * @description A payment with every allocation it has had, oldest first.
+         */
+        PaymentDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            /**
+             * Received On
+             * Format: date
+             */
+            received_on: string;
+            /** Payment Method Code */
+            payment_method_code: string;
+            /** Reference */
+            reference: string | null;
+            /** Payer Name */
+            payer_name: string | null;
+            /** Note */
+            note: string | null;
+            /** Recorded By User Id */
+            recorded_by_user_id: string | null;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /**
+             * Allocated Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            allocated_amount: string;
+            /**
+             * Refunded Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            refunded_amount: string;
+            /**
+             * Unallocated Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            unallocated_amount: string;
+            /** Is Reversed */
+            is_reversed: boolean;
+            /** Allocations */
+            allocations: components["schemas"]["PaymentAllocationItem"][];
+        };
+        /**
+         * PaymentItem
+         * @description A payment. ``unallocated_amount = amount − allocated_amount −
+         *     refunded_amount`` (valid allocations only); it is account credit only
+         *     while ``is_reversed`` is false. ``recorded_at`` is when it was
+         *     entered; ``received_on`` the center-local day the money came in.
+         */
+        PaymentItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            /**
+             * Received On
+             * Format: date
+             */
+            received_on: string;
+            /** Payment Method Code */
+            payment_method_code: string;
+            /** Reference */
+            reference: string | null;
+            /** Payer Name */
+            payer_name: string | null;
+            /** Note */
+            note: string | null;
+            /** Recorded By User Id */
+            recorded_by_user_id: string | null;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /**
+             * Allocated Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            allocated_amount: string;
+            /**
+             * Refunded Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            refunded_amount: string;
+            /**
+             * Unallocated Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            unallocated_amount: string;
+            /** Is Reversed */
+            is_reversed: boolean;
+        };
+        /**
+         * PaymentMethodItem
+         * @description A payment method (#96 M8). Labels come from the client catalogs
+         *     (``billing.paymentMethods.<code>``); only active ones are offered.
+         */
+        PaymentMethodItem: {
+            /** Code */
+            code: string;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /**
+         * PaymentRecorded
+         * @description ``201`` of recording a payment (#96 C3): the payment, the
+         *     allocations written now, the part left as account credit and the
+         *     account credit afterwards.
+         */
+        PaymentRecorded: {
+            payment: components["schemas"]["PaymentItem"];
+            /** Allocations */
+            allocations: components["schemas"]["RecordedAllocationItem"][];
+            /**
+             * Unallocated Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            unallocated_amount: string;
+            /**
+             * Account Credit After
+             * Format: decimal
+             * @example 1250.00
+             */
+            account_credit_after: string;
+        };
+        /**
          * PendingOffer
          * @description The pending offer of an ``offered`` session (#52 G3): its own, or the
          *     series offer that covers it (#233 F2).
@@ -13164,7 +13604,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "billing.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payroll.finalize" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "billing.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payment.record" | "payroll.finalize" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /** @enum {string} */
         PlanAction: "activate" | "complete" | "discontinue";
         /** @enum {string} */
@@ -14075,6 +14515,33 @@ export interface components {
              * @description When the 5-minute reauthentication window of this session ends (ISO 8601, UTC). Activity does not extend it.
              */
             reauthenticated_until: string;
+        };
+        /**
+         * RecordedAllocationItem
+         * @description An allocation written by the request.
+         */
+        RecordedAllocationItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Charge Id
+             * Format: uuid
+             */
+            charge_id: string;
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
         };
         /**
          * RegistrationCreate
@@ -31456,6 +31923,330 @@ export interface operations {
             };
             /** @description Validation Error */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_family_payments_api_v1_families__family_id__billing_account_payments_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                family_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_PaymentItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family or payment, or one whose account you can't see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    record_family_payment_api_v1_families__family_id__billing_account_payments_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID(). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                family_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentRecorded"];
+                };
+            };
+            /** @description The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description An allocation is more than what is still open on its charge (allocation_exceeds_open; details: charge_id, open). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    allocate_family_credit_api_v1_families__family_id__billing_account_allocations_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID(). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                family_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreditAllocationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditAllocated"];
+                };
+            };
+            /** @description The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description There is no account credit or no open charge (nothing_to_allocate); the amount or the lines are more than the account credit (insufficient_account_credit; details: account_credit); a line is more than what is open on its charge (allocation_exceeds_open). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_family_payment_api_v1_families__family_id__billing_account_payments__payment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                family_id: string;
+                payment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family or payment, or one whose account you can't see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_payment_methods_api_v1_billing_payment_methods_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentMethodItem"][];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

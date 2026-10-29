@@ -38,6 +38,7 @@ from sqlalchemy import (
     select,
     table,
     tuple_,
+    type_coerce,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -164,6 +165,7 @@ async def charge_balances(
         Charge.amount,
         adjustments.label("adjustments_total"),
         allocated.label("allocated"),
+        Charge.posted_at,
     ).where(Charge.billing_account_id == account_id)
     if student_id is not None:
         query = query.where(Charge.student_id == student_id)
@@ -186,35 +188,73 @@ async def charge_balances(
                 allocated=row.allocated,
                 open=net - row.allocated,
                 status=charge_status(net, row.allocated, row.effective_due_date, today),
+                posted_at=row.posted_at,
             )
         )
     return balances
 
 
+def _refunded(payment: Any = Payment) -> Any:
+    """Σ refunds of a payment row, as a correlated scalar subquery."""
+    return (
+        select(money_sum(Refund.amount))
+        .where(Refund.payment_id == payment.id)
+        .scalar_subquery()
+    )
+
+
+def _reversed(payment: Any = Payment) -> Any:
+    """Whether a payment row has a reversal (``EXISTS``)."""
+    return (
+        select(PaymentReversal.id)
+        .where(PaymentReversal.payment_id == payment.id)
+        .exists()
+    )
+
+
+def payment_remainder_column() -> Any:
+    """``amount − Σ valid allocations − Σ refunds`` of a ``payments`` row,
+    **not executed**: the one remainder expression behind
+    :func:`account_credit`, :func:`payment_remainders` (#96 M4) and the
+    payment reads. #100's refunds draw on it too (I3)."""
+    return (
+        Payment.amount
+        - _valid_allocated(PaymentAllocation.payment_id == Payment.id)
+        - _refunded()
+    )
+
+
 async def account_credit(session: AsyncSession, account_id: uuid.UUID) -> Money:
     """Σ over the account's payments without a reversal of ``amount − Σ
     valid allocations − Σ refunds`` (data-model §4.2). One statement."""
-    refunds = (
-        select(money_sum(Refund.amount))
-        .where(Refund.payment_id == Payment.id)
-        .scalar_subquery()
-    )
-    reversed_ = (
-        select(PaymentReversal.id)
-        .where(PaymentReversal.payment_id == Payment.id)
-        .exists()
-    )
-    remainder = (
-        Payment.amount
-        - _valid_allocated(PaymentAllocation.payment_id == Payment.id)
-        - refunds
-    )
     credit: Money | None = await session.scalar(
-        select(money_sum(remainder)).where(
-            Payment.billing_account_id == account_id, ~reversed_
+        select(money_sum(payment_remainder_column())).where(
+            Payment.billing_account_id == account_id, ~_reversed()
         )
     )
     return Money.zero() if credit is None else credit
+
+
+async def payment_remainders(
+    session: AsyncSession, account_id: uuid.UUID
+) -> list[tuple[uuid.UUID, Money]]:
+    """``(payment_id, remainder)`` of the account's payments without a
+    reversal whose remainder is above zero, oldest first by
+    ``received_on``, ``created_at``, ``id`` (#96 M4: the sources of a
+    credit allocation; their sum is :func:`account_credit`). One statement;
+    no lock (the caller holds the account lock)."""
+    remainder = type_coerce(payment_remainder_column(), MoneyType()).label("remainder")
+    inner = (
+        select(Payment.id, Payment.received_on, Payment.created_at, remainder)
+        .where(Payment.billing_account_id == account_id, ~_reversed())
+        .subquery("payment_remainders")
+    )
+    rows = await session.execute(
+        select(inner.c.id, inner.c.remainder)
+        .where(inner.c.remainder > literal(Money.zero(), MoneyType()))
+        .order_by(inner.c.received_on, inner.c.created_at, inner.c.id)
+    )
+    return [(row.id, Money(row.remainder)) for row in rows]
 
 
 def _by_status(charges: list[ChargeBalance], status: ChargeStatus) -> Money:

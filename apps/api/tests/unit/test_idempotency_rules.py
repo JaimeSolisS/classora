@@ -515,18 +515,28 @@ def test_openapi_adds_the_header_once_and_only_to_decorated_routes():
     assert IDEMPOTENCY_HEADER not in json.dumps(plain)
 
 
-def test_the_real_app_declares_only_the_package_purchase():
+DECORATED_ROUTES = {
+    ("/api/v1/billing/packages", "post"),
+    ("/api/v1/families/{family_id}/billing-account/payments", "post"),
+    ("/api/v1/families/{family_id}/billing-account/allocations", "post"),
+}
+
+
+def test_the_real_app_declares_only_the_ledger_posting_routes():
     # E4: #88 changed no route; #94 declares the first one (the package
-    # purchase), and the header is documented only there.
+    # purchase), #96 the payment and the credit allocation; the header is
+    # documented only there.
     app = build_app(include_dev_routes=True)
 
     decorated = [c for c in api_contexts(app) if route_idempotency_rules(c)]
-    assert [(sorted(c.original_route.methods), c.path) for c in decorated] == [
-        (["POST"], "/api/v1/billing/packages")
-    ]
+    assert {
+        (c.path, method.lower())
+        for c in decorated
+        for method in c.original_route.methods
+    } == DECORATED_ROUTES
     document = app.openapi()
     for path, operations in document["paths"].items():
         for method, operation in operations.items():
             parameters = json.dumps(operation.get("parameters", []))
-            expected = (path, method) == ("/api/v1/billing/packages", "post")
+            expected = (path, method) in DECORATED_ROUTES
             assert (IDEMPOTENCY_HEADER in parameters) == expected, (path, method)

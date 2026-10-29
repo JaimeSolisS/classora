@@ -120,6 +120,31 @@ For other modules:
 - ``ChargeDraft.package_id`` (the source of a ``package_purchase`` charge)
   and a pinned ``PriceQuery`` for a ``package`` item (its ``subject_id``
   may be ``None``).
+
+**Payments and allocations** (#96; :mod:`~app.modules.billing.payments`;
+the workflow ``app.workflows.billing_payments``). For other modules:
+
+- :func:`record_payment` (``PaymentDraft`` → ``RecordedPayment``) and
+  :func:`allocate_account_credit` (``CreditAllocationRequest`` →
+  ``CreditAllocation``): under :func:`lock_billing_account` (the last lock,
+  after the #88 idempotency claim), with I2/I3 checked on what they read
+  after it; both need the Unit of Work's actor and never commit. Modes
+  ``oldest_first | explicit | none`` (``AllocationRequest``; the credit
+  allocation has no ``none``). Oldest = effective due date, then
+  ``service_date``, ``posted_at``, ``id``; credit comes from the oldest
+  unreversed payment remainder first (:func:`payment_remainders`). Errors:
+  :class:`AllocationChargeNotFoundError` (``422``),
+  :class:`AllocationExceedsOpenError`,
+  :class:`InsufficientAccountCreditError` and
+  :class:`NothingToAllocateError` (``409``).
+- The pure :func:`plan_allocations` and :func:`split_across_payments`.
+- :func:`payment_methods_list`, :func:`active_payment_method`,
+  :func:`list_payments`, :func:`get_payment` (the reads; the record policy
+  and the guardian redaction live in the workflow) and the unexecuted
+  :func:`payment_remainder_column` (the one remainder expression: #100's
+  refunds reuse it).
+- **#98 seam:** the receipt is issued inside :func:`record_payment`, after
+  the payment and allocation inserts (E13), so a #88 replay returns it.
 """
 
 from app.modules.billing.balances import account_balance as account_balance
@@ -130,6 +155,10 @@ from app.modules.billing.balances import charge_details as charge_details
 from app.modules.billing.balances import charge_status as charge_status
 from app.modules.billing.balances import family_balance as family_balance
 from app.modules.billing.balances import ledger_entries as ledger_entries
+from app.modules.billing.balances import (
+    payment_remainder_column as payment_remainder_column,
+)
+from app.modules.billing.balances import payment_remainders as payment_remainders
 from app.modules.billing.custom_prices import (
     CUSTOM_PRICE_STATUSES as CUSTOM_PRICE_STATUSES,
 )
@@ -183,6 +212,12 @@ from app.modules.billing.discounts import (
 from app.modules.billing.discounts import matches as matches
 from app.modules.billing.discounts import select_discounts as select_discounts
 from app.modules.billing.errors import (
+    AllocationChargeNotFoundError as AllocationChargeNotFoundError,
+)
+from app.modules.billing.errors import (
+    AllocationExceedsOpenError as AllocationExceedsOpenError,
+)
+from app.modules.billing.errors import (
     AudienceNotAssignedError as AudienceNotAssignedError,
 )
 from app.modules.billing.errors import (
@@ -209,10 +244,19 @@ from app.modules.billing.errors import (
     DiscountNameExistsError as DiscountNameExistsError,
 )
 from app.modules.billing.errors import (
+    InsufficientAccountCreditError as InsufficientAccountCreditError,
+)
+from app.modules.billing.errors import (
+    NothingToAllocateError as NothingToAllocateError,
+)
+from app.modules.billing.errors import (
     PackageNotOfferedError as PackageNotOfferedError,
 )
 from app.modules.billing.errors import (
     PackageProductInactiveError as PackageProductInactiveError,
+)
+from app.modules.billing.errors import (
+    PaymentMethodUnavailableError as PaymentMethodUnavailableError,
 )
 from app.modules.billing.errors import (
     PriceCatalogValidationError as PriceCatalogValidationError,
@@ -224,6 +268,9 @@ from app.modules.billing.errors import (
     PriceVersionInEffectError as PriceVersionInEffectError,
 )
 from app.modules.billing.errors import PriceVersionInUseError as PriceVersionInUseError
+from app.modules.billing.errors import (
+    ReceivedOnInFutureError as ReceivedOnInFutureError,
+)
 from app.modules.billing.errors import (
     ServicePriceExistsError as ServicePriceExistsError,
 )
@@ -342,6 +389,22 @@ from app.modules.billing.packages import (
     product_service_price_id as product_service_price_id,
 )
 from app.modules.billing.packages import update_product as update_product
+from app.modules.billing.payments import (
+    active_payment_method as active_payment_method,
+)
+from app.modules.billing.payments import (
+    allocate_account_credit as allocate_account_credit,
+)
+from app.modules.billing.payments import get_payment as get_payment
+from app.modules.billing.payments import list_payments as list_payments
+from app.modules.billing.payments import (
+    payment_methods_list as payment_methods_list,
+)
+from app.modules.billing.payments import plan_allocations as plan_allocations
+from app.modules.billing.payments import record_payment as record_payment
+from app.modules.billing.payments import (
+    split_across_payments as split_across_payments,
+)
 from app.modules.billing.prices import CATALOG_MODELS as CATALOG_MODELS
 from app.modules.billing.prices import CUSTOM_PRICE_MODELS as CUSTOM_PRICE_MODELS
 from app.modules.billing.prices import CatalogItemRow as CatalogItemRow
@@ -369,6 +432,8 @@ from app.modules.billing.pricing import pinned_base_prices as pinned_base_prices
 from app.modules.billing.pricing import quote as quote
 from app.modules.billing.schemas import AccountBalance as AccountBalance
 from app.modules.billing.schemas import AdjustmentDraft as AdjustmentDraft
+from app.modules.billing.schemas import AllocationLine as AllocationLine
+from app.modules.billing.schemas import AllocationRequest as AllocationRequest
 from app.modules.billing.schemas import BasePrice as BasePrice
 from app.modules.billing.schemas import (
     BillingAccountReference as BillingAccountReference,
@@ -385,6 +450,10 @@ from app.modules.billing.schemas import ChargeDetailPage as ChargeDetailPage
 from app.modules.billing.schemas import ChargeDraft as ChargeDraft
 from app.modules.billing.schemas import ChargeStatus as ChargeStatus
 from app.modules.billing.schemas import CoverageQuery as CoverageQuery
+from app.modules.billing.schemas import CreditAllocation as CreditAllocation
+from app.modules.billing.schemas import (
+    CreditAllocationRequest as CreditAllocationRequest,
+)
 from app.modules.billing.schemas import CustomPriceCreate as CustomPriceCreate
 from app.modules.billing.schemas import CustomPriceUpdate as CustomPriceUpdate
 from app.modules.billing.schemas import (
@@ -393,12 +462,22 @@ from app.modules.billing.schemas import (
 from app.modules.billing.schemas import DiscountCreate as DiscountCreate
 from app.modules.billing.schemas import DiscountUpdate as DiscountUpdate
 from app.modules.billing.schemas import LedgerEntry as LedgerEntry
+from app.modules.billing.schemas import (
+    PaymentAllocationRow as PaymentAllocationRow,
+)
+from app.modules.billing.schemas import PaymentDraft as PaymentDraft
+from app.modules.billing.schemas import PaymentMethodRow as PaymentMethodRow
+from app.modules.billing.schemas import PaymentPage as PaymentPage
+from app.modules.billing.schemas import PaymentRow as PaymentRow
 from app.modules.billing.schemas import PeriodFrequency as PeriodFrequency
+from app.modules.billing.schemas import PlannedAllocation as PlannedAllocation
 from app.modules.billing.schemas import PostedAdjustment as PostedAdjustment
 from app.modules.billing.schemas import PostedCharge as PostedCharge
 from app.modules.billing.schemas import PriceInEffect as PriceInEffect
 from app.modules.billing.schemas import PriceQuery as PriceQuery
 from app.modules.billing.schemas import Quote as Quote
+from app.modules.billing.schemas import RecordedAllocation as RecordedAllocation
+from app.modules.billing.schemas import RecordedPayment as RecordedPayment
 from app.modules.billing.schemas import StudentBalance as StudentBalance
 from app.modules.billing.settings import billing_starts_on as billing_starts_on
 from app.modules.billing.settings import (
