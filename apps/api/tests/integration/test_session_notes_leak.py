@@ -1254,6 +1254,7 @@ PATH_PARAMS: dict[str, Callable[[LeakWorld], list[str]]] = {
     "closure_id": _unknown,
     "classroom_id": _unknown,
     "consent_id": _unknown,
+    "payment_id": _unknown,
     # #316: no family-reachable GET route takes it today (the schedule
     # routes are staff-only, PATCH /progress-report-schedules/{id} isn't a
     # GET); mapped so a future GET route is still walked.
