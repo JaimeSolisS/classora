@@ -199,6 +199,7 @@ describe('access (A1, A2)', () => {
     await renderAt('/billing/package-products');
 
     expect(tabs()).toEqual([
+      ['Accounts', null],
       ['Prices', null],
       ['Discounts', null],
       ['Custom prices', null],
@@ -240,6 +241,7 @@ describe('access (A1, A2)', () => {
     await renderAt('/billing/packages');
     expect(subNav()).toEqual([['Sold', 'page']]);
     expect(tabs().map(([name]) => name)).toEqual([
+      'Accounts',
       'Tuition plans',
       'Packages',
       'Unbilled',

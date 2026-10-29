@@ -357,5 +357,16 @@
   "validity_days_out_of_range": "Escribe una vigencia de 1 día a dos años (setecientos treinta días).",
   "idempotency_key_required": "No pudimos enviar esto de forma segura. Recarga la página e inténtalo de nuevo.",
   "idempotency_key_invalid": "No pudimos enviar esto de forma segura. Recarga la página e inténtalo de nuevo.",
-  "idempotency_key_reused": "Este envío ya se usó con otros datos. Cierra el diálogo y empieza de nuevo."
+  "idempotency_key_reused": "Este envío ya se usó con otros datos. Cierra el diálogo y empieza de nuevo.",
+  "allocation_exceeds_open": "Un importe es mayor que lo que queda por pagar en ese cargo. Se actualizaron los importes por pagar; revísalos e inténtalo de nuevo.",
+  "allocation_exceeds_payment": "Los importes suman más que el pago.",
+  "allocation_duplicate_charge": "Un cargo aparece más de una vez. Usa una fila por cargo.",
+  "allocation_charge_not_found": "Este cargo ya no está en la cuenta de la familia.",
+  "allocation_lines_required": "Escribe un importe para al menos un cargo.",
+  "allocation_lines_not_allowed": "Los cargos solo se eligen con \"Elegir cargos\".",
+  "amount_not_allowed": "El importe solo se indica con \"Del más antiguo\".",
+  "insufficient_account_credit": "Es más que el saldo a favor de la familia. Se actualizó el saldo; revísalo e inténtalo de nuevo.",
+  "nothing_to_allocate": "No hay saldo a favor o no hay cargos por pagar a los cuales aplicarlo. Se actualizó el saldo.",
+  "payment_method_unavailable": "Este método de pago ya no está disponible. Elige otro.",
+  "received_on_in_future": "La fecha no puede ser posterior a hoy."
 }

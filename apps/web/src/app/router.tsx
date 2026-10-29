@@ -923,6 +923,26 @@ export const routes: RouteObject[] = [
             }),
             handle: { permission: 'billing.manage' },
           },
+          // #379 A2: the family billing accounts (code-split), billing.view
+          // holders; recording a payment needs payment.record (on the page).
+          {
+            path: 'billing/accounts',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/billing/accounts/AccountsPage')
+              ).AccountsPage,
+            }),
+            handle: { permission: 'billing.view' },
+          },
+          {
+            path: 'billing/accounts/:familyId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/billing/accounts/AccountPage')
+              ).AccountPage,
+            }),
+            handle: { permission: 'billing.view' },
+          },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },
           // Any signed-in user, before and after accepting (#174 G1).

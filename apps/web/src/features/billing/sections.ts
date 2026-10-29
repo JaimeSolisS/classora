@@ -14,6 +14,13 @@ export interface BillingSection extends AccessRequirement {
 }
 
 export const BILLING_SECTIONS: readonly BillingSection[] = [
+  // #379 A1: the family accounts come first, so /billing opens them for
+  // every billing.view holder.
+  {
+    to: '/billing/accounts',
+    labelKey: 'billing.tabs.accounts',
+    permission: 'billing.view',
+  },
   {
     to: '/billing/prices',
     labelKey: 'billing.tabs.prices',

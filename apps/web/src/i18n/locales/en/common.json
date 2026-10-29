@@ -1268,7 +1268,8 @@
     "validation": {
       "nameRequired": "Enter the family name.",
       "nameTooLong": "It can have up to 200 characters."
-    }
+    },
+    "billingAccount": "Billing account"
   },
   "relationships": {
     "mother": "Mother",
@@ -4522,7 +4523,8 @@
       "unbilled": "Unbilled",
       "settings": "Settings",
       "tuitionPlans": "Tuition plans",
-      "packages": "Packages"
+      "packages": "Packages",
+      "accounts": "Accounts"
     },
     "prices": {
       "title": "Prices",
@@ -5428,6 +5430,206 @@
         "expiry": "Unused units expire the day after the expiry date.",
         "notConverted": "Sessions already charged before the purchase (for example, an already confirmed series) are not converted."
       }
+    },
+    "accounts": {
+      "back": "Back to family accounts",
+      "list": {
+        "title": "Family accounts",
+        "intro": "Find a family to see its balances, charges, history and payments.",
+        "filters": "Find a family",
+        "search": "Search by family name",
+        "noResults": "No families match this search.",
+        "empty": "No families match these filters.",
+        "columns": {
+          "family": "Family",
+          "status": "Status",
+          "students": "Students"
+        }
+      },
+      "page": {
+        "title": "Billing account: {{name}}",
+        "fallbackTitle": "Billing account",
+        "notFound": "Billing account not found",
+        "notFoundHelp": "This family doesn't exist, or you can't see it."
+      },
+      "summary": {
+        "title": "Balance",
+        "noAccount": "No charges or payments yet.",
+        "outstanding": "Outstanding",
+        "accountCredit": "Account credit",
+        "netBalance": "Net balance",
+        "pending": "Pending",
+        "partiallyPaid": "Partially paid",
+        "overdue": "Overdue",
+        "asOf": "Statuses as of {{date}}.",
+        "students": "By student"
+      },
+      "filters": {
+        "label": "Filter by student",
+        "student": "Student",
+        "allStudents": "All students",
+        "studentHelp": "Applies to Charges and History."
+      },
+      "charges": {
+        "title": "Charges",
+        "statusFilter": "Status",
+        "statusHelp": "None checked shows every status.",
+        "empty": "No charges yet.",
+        "emptyFiltered": "No charges match these filters.",
+        "pagination": "Charge pages",
+        "columns": {
+          "serviceDate": "Service date",
+          "student": "Student",
+          "kind": "Kind",
+          "description": "Description",
+          "net": "Net",
+          "allocated": "Paid",
+          "open": "Open",
+          "dueDate": "Due date",
+          "status": "Status"
+        }
+      },
+      "chargeKinds": {
+        "session": "Session",
+        "group_enrollment": "Group enrollment",
+        "cohort_enrollment": "Course enrollment",
+        "tuition_period": "Tuition",
+        "package_purchase": "Package purchase",
+        "manual": "Manual charge"
+      },
+      "adjustmentKinds": {
+        "duration_change": "Duration change",
+        "cancellation_credit": "Cancellation credit",
+        "closure_credit": "Closure credit",
+        "enrollment_removal": "Enrollment removal",
+        "withdrawal": "Withdrawal",
+        "manual": "Manual adjustment"
+      },
+      "ledger": {
+        "title": "History",
+        "intro": "Every movement of the account, newest first. Payments and refunds belong to the family, so a student filter leaves them out.",
+        "empty": "No movements yet.",
+        "more": "Load more",
+        "loading": "Loading…",
+        "columns": {
+          "date": "Date",
+          "type": "Movement",
+          "student": "Student",
+          "amount": "Amount",
+          "effect": "Balance effect"
+        },
+        "types": {
+          "charge": "Charge",
+          "adjustment": "Adjustment",
+          "payment": "Payment",
+          "payment_reversal": "Payment reversal",
+          "allocation": "Payment applied",
+          "allocation_release": "Payment released",
+          "refund": "Refund"
+        }
+      },
+      "payments": {
+        "title": "Payments",
+        "empty": "No payments yet.",
+        "pagination": "Payment pages",
+        "view": "View",
+        "viewFor": "View the payment of {{amount}} received {{date}}",
+        "detailTitle": "Payment",
+        "detailHelp": "The payment and the charges it was applied to, oldest first.",
+        "close": "Close",
+        "allocations": "Applied to",
+        "noAllocations": "Not applied to any charge: it is account credit.",
+        "allocatedOn": "Applied on",
+        "charge": "Charge",
+        "recordedAt": "Recorded on",
+        "reversed": "Reversed",
+        "released": "Released",
+        "columns": {
+          "receivedOn": "Received",
+          "method": "Method",
+          "amount": "Amount",
+          "allocated": "Applied",
+          "unallocated": "Not applied",
+          "reference": "Reference",
+          "payer": "Paid by",
+          "note": "Note",
+          "actions": "Actions"
+        }
+      },
+      "editor": {
+        "label": "Open charges",
+        "help": "Open charges, oldest due date first. Leave a row empty to skip it.",
+        "fill": "Fill oldest first",
+        "amount": "Amount to apply",
+        "amountFor": "Amount to apply to {{charge}} ({{student}}, due {{date}})",
+        "noCharges": "This family has no open charges.",
+        "total": "Applied: {{amount}}",
+        "remainderCredit": "Stays as account credit: {{amount}}",
+        "remainderUnused": "Credit left: {{amount}}",
+        "over": "That is {{amount}} more than is available."
+      },
+      "record": {
+        "action": "Record payment",
+        "title": "Record a payment",
+        "help": "The payment is applied to the family's charges as chosen below. Whatever isn't applied stays as account credit.",
+        "submit": "Record payment",
+        "saving": "Recording…",
+        "done": "Payment of {{amount}} recorded: {{allocated}} applied to charges. Account credit is now {{credit}}.",
+        "noneHelp": "The whole payment stays as account credit. You can apply it later.",
+        "noOpenCharges": "This family has no open charges: the whole payment stays as account credit.",
+        "estimateNeedsAmount": "Enter the amount to see how it would be applied.",
+        "estimate_one": "Estimate: {{amount}} to {{count}} charge; {{credit}} stays as account credit.",
+        "estimate_other": "Estimate: {{amount}} to {{count}} charges; {{credit}} stays as account credit.",
+        "estimateLine": "{{charge}} · {{student}}: {{amount}}",
+        "estimateNote": "An estimate from the charges shown: the server applies the payment to what is open when it records it.",
+        "fields": {
+          "amount": "Amount",
+          "receivedOn": "Received on",
+          "method": "Method",
+          "reference": "Reference (optional)",
+          "payerName": "Paid by (optional)",
+          "note": "Note (optional)",
+          "allocation": "Apply to"
+        },
+        "hints": {
+          "receivedOn": "The day the money came in. Not after today.",
+          "note": "Staff only; the family doesn't see it."
+        },
+        "modes": {
+          "oldest_first": "Oldest first",
+          "explicit": "Choose charges",
+          "none": "Keep as credit"
+        }
+      },
+      "credit": {
+        "action": "Apply account credit",
+        "title": "Apply account credit",
+        "help": "The family has {{amount}} of account credit.",
+        "submit": "Apply credit",
+        "saving": "Applying…",
+        "done": "{{allocated}} of account credit applied. Account credit is now {{credit}}.",
+        "fields": {
+          "amount": "Amount (optional)"
+        },
+        "hints": {
+          "amount": "Leave it empty to apply all of it ({{amount}})."
+        }
+      },
+      "validation": {
+        "amountRequired": "Enter the amount.",
+        "dateRequired": "Choose the date.",
+        "methodRequired": "Choose the method.",
+        "lineAboveOpen": "This is more than what is open on the charge.",
+        "linesRequired": "Enter an amount for at least one charge.",
+        "linesAbovePayment": "The amounts add up to more than the payment.",
+        "linesAboveCredit": "The amounts add up to more than the account credit.",
+        "amountAboveCredit": "This is more than the account credit."
+      }
+    },
+    "paymentMethods": {
+      "cash": "Cash",
+      "transfer": "Transfer",
+      "other": "Other"
     }
   }
 }

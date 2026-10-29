@@ -45,10 +45,11 @@ type Common = {
   };
   // #363 F4, F5: the price catalog; #366 E3: the Unbilled and Settings tabs;
   // #367 G3, G4: discounts and custom prices; #374 H3: tuition plans;
-  // #377 G3: packages.
+  // #377 G3: packages; #379 G3: the family accounts and payments.
   billing: {
     tabs: Record<
       | 'label'
+      | 'accounts'
       | 'prices'
       | 'discounts'
       | 'customPrices'
@@ -58,6 +59,23 @@ type Common = {
       | 'settings',
       string
     >;
+    accounts: {
+      list: { title: string; search: string };
+      page: { title: string };
+      summary: { title: string; accountCredit: string };
+      charges: { title: string; empty: string };
+      ledger: { title: string; empty: string };
+      payments: { title: string; empty: string };
+      record: {
+        action: string;
+        title: string;
+        submit: string;
+        fields: Record<'amount' | 'method', string>;
+        modes: Record<'oldest_first' | 'explicit' | 'none', string>;
+      };
+      credit: { action: string };
+    };
+    paymentMethods: Record<'cash' | 'transfer' | 'other', string>;
     packages: {
       units: { sessionsBalance_other: string };
       status: Record<'active' | 'exhausted' | 'expired', string>;
@@ -96,6 +114,8 @@ type Common = {
       status: Record<'scheduled' | 'active' | 'paused' | 'ended', string>;
       filters: { status: string; searchStudent: string };
       periodStates: Record<'paused', string>;
+      // #379 G3: a paid charge.
+      chargeStatus: Record<'paid', string>;
       pauses: { empty: string };
       pause: Record<'action' | 'title' | 'submit' | 'from', string>;
       resume: Record<'action' | 'title' | 'submit', string>;

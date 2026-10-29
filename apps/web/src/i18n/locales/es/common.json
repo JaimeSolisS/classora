@@ -1276,7 +1276,8 @@
     "validation": {
       "nameRequired": "Escribe el nombre de la familia.",
       "nameTooLong": "Puede tener hasta 200 caracteres."
-    }
+    },
+    "billingAccount": "Cuenta de cobro"
   },
   "relationships": {
     "mother": "Madre",
@@ -4620,7 +4621,8 @@
       "unbilled": "Sin cobrar",
       "settings": "Configuración",
       "tuitionPlans": "Colegiaturas",
-      "packages": "Paquetes"
+      "packages": "Paquetes",
+      "accounts": "Cuentas"
     },
     "prices": {
       "title": "Precios",
@@ -5533,6 +5535,207 @@
         "expiry": "Las unidades sin usar vencen el día después de la fecha de vencimiento.",
         "notConverted": "Las sesiones ya cobradas antes de la compra (por ejemplo, una serie ya confirmada) no se convierten."
       }
+    },
+    "accounts": {
+      "back": "Volver a cuentas de familias",
+      "list": {
+        "title": "Cuentas de familias",
+        "intro": "Busca una familia para ver sus saldos, cargos, historial y pagos.",
+        "filters": "Buscar una familia",
+        "search": "Buscar por nombre de familia",
+        "noResults": "Ninguna familia coincide con esta búsqueda.",
+        "empty": "Ninguna familia coincide con estos filtros.",
+        "columns": {
+          "family": "Familia",
+          "status": "Estado",
+          "students": "Estudiantes"
+        }
+      },
+      "page": {
+        "title": "Cuenta de cobro: {{name}}",
+        "fallbackTitle": "Cuenta de cobro",
+        "notFound": "No se encontró la cuenta de cobro",
+        "notFoundHelp": "Esta familia no existe o no puedes verla."
+      },
+      "summary": {
+        "title": "Saldo",
+        "noAccount": "Todavía no hay cargos ni pagos.",
+        "outstanding": "Por cobrar",
+        "accountCredit": "Saldo a favor",
+        "netBalance": "Saldo neto",
+        "pending": "Pendiente",
+        "partiallyPaid": "Pagado en parte",
+        "overdue": "Vencido",
+        "asOf": "Estados al {{date}}.",
+        "students": "Por estudiante"
+      },
+      "filters": {
+        "label": "Filtrar por estudiante",
+        "student": "Estudiante",
+        "allStudents": "Todos los estudiantes",
+        "studentHelp": "Se aplica a Cargos e Historial."
+      },
+      "charges": {
+        "title": "Cargos",
+        "statusFilter": "Estado",
+        "statusHelp": "Sin ninguno marcado se muestran todos los estados.",
+        "empty": "Todavía no hay cargos.",
+        "emptyFiltered": "Ningún cargo coincide con estos filtros.",
+        "pagination": "Páginas de cargos",
+        "columns": {
+          "serviceDate": "Fecha del servicio",
+          "student": "Estudiante",
+          "kind": "Tipo",
+          "description": "Descripción",
+          "net": "Neto",
+          "allocated": "Pagado",
+          "open": "Por pagar",
+          "dueDate": "Vencimiento",
+          "status": "Estado"
+        }
+      },
+      "chargeKinds": {
+        "session": "Sesión",
+        "group_enrollment": "Inscripción a grupo",
+        "cohort_enrollment": "Inscripción a curso",
+        "tuition_period": "Colegiatura",
+        "package_purchase": "Compra de paquete",
+        "manual": "Cargo manual"
+      },
+      "adjustmentKinds": {
+        "duration_change": "Cambio de duración",
+        "cancellation_credit": "Crédito por cancelación",
+        "closure_credit": "Crédito por cierre",
+        "enrollment_removal": "Baja de inscripción",
+        "withdrawal": "Baja",
+        "manual": "Ajuste manual"
+      },
+      "ledger": {
+        "title": "Historial",
+        "intro": "Todos los movimientos de la cuenta, del más reciente al más antiguo. Los pagos y reembolsos son de la familia, así que el filtro por estudiante no los muestra.",
+        "empty": "Todavía no hay movimientos.",
+        "more": "Cargar más",
+        "loading": "Cargando…",
+        "columns": {
+          "date": "Fecha",
+          "type": "Movimiento",
+          "student": "Estudiante",
+          "amount": "Importe",
+          "effect": "Efecto en el saldo"
+        },
+        "types": {
+          "charge": "Cargo",
+          "adjustment": "Ajuste",
+          "payment": "Pago",
+          "payment_reversal": "Reversión de pago",
+          "allocation": "Pago aplicado",
+          "allocation_release": "Pago liberado",
+          "refund": "Reembolso"
+        }
+      },
+      "payments": {
+        "title": "Pagos",
+        "empty": "Todavía no hay pagos.",
+        "pagination": "Páginas de pagos",
+        "view": "Ver",
+        "viewFor": "Ver el pago de {{amount}} recibido el {{date}}",
+        "detailTitle": "Pago",
+        "detailHelp": "El pago y los cargos a los que se aplicó, del más antiguo al más reciente.",
+        "close": "Cerrar",
+        "allocations": "Aplicado a",
+        "noAllocations": "No se aplicó a ningún cargo: es saldo a favor.",
+        "allocatedOn": "Aplicado el",
+        "charge": "Cargo",
+        "recordedAt": "Registrado el",
+        "reversed": "Revertido",
+        "released": "Liberado",
+        "columns": {
+          "receivedOn": "Recibido",
+          "method": "Método",
+          "amount": "Importe",
+          "allocated": "Aplicado",
+          "unallocated": "Sin aplicar",
+          "reference": "Referencia",
+          "payer": "Pagó",
+          "note": "Nota",
+          "actions": "Acciones"
+        }
+      },
+      "editor": {
+        "label": "Cargos por pagar",
+        "help": "Cargos por pagar, del vencimiento más antiguo al más reciente. Deja una fila vacía para no aplicarle nada.",
+        "fill": "Llenar del más antiguo",
+        "amount": "Importe a aplicar",
+        "amountFor": "Importe a aplicar a {{charge}} ({{student}}, vence el {{date}})",
+        "noCharges": "Esta familia no tiene cargos por pagar.",
+        "total": "Aplicado: {{amount}}",
+        "remainderCredit": "Queda como saldo a favor: {{amount}}",
+        "remainderUnused": "Saldo a favor restante: {{amount}}",
+        "over": "Son {{amount}} más de lo disponible."
+      },
+      "record": {
+        "action": "Registrar pago",
+        "title": "Registrar un pago",
+        "help": "El pago se aplica a los cargos de la familia como elijas abajo. Lo que no se aplique queda como saldo a favor.",
+        "submit": "Registrar pago",
+        "saving": "Registrando…",
+        "done": "Pago de {{amount}} registrado: {{allocated}} aplicado a cargos. El saldo a favor ahora es {{credit}}.",
+        "noneHelp": "Todo el pago queda como saldo a favor. Puedes aplicarlo después.",
+        "noOpenCharges": "Esta familia no tiene cargos por pagar: todo el pago queda como saldo a favor.",
+        "estimateNeedsAmount": "Escribe el importe para ver cómo se aplicaría.",
+        "estimate_one": "Estimado: {{amount}} a {{count}} cargo; {{credit}} queda como saldo a favor.",
+        "estimate_many": "Estimado: {{amount}} a {{count}} cargos; {{credit}} queda como saldo a favor.",
+        "estimate_other": "Estimado: {{amount}} a {{count}} cargos; {{credit}} queda como saldo a favor.",
+        "estimateLine": "{{charge}} · {{student}}: {{amount}}",
+        "estimateNote": "Es un estimado con los cargos mostrados: el servidor aplica el pago a lo que esté por pagar al registrarlo.",
+        "fields": {
+          "amount": "Importe",
+          "receivedOn": "Recibido el",
+          "method": "Método",
+          "reference": "Referencia (opcional)",
+          "payerName": "Pagó (opcional)",
+          "note": "Nota (opcional)",
+          "allocation": "Aplicar a"
+        },
+        "hints": {
+          "receivedOn": "El día en que llegó el dinero. No después de hoy.",
+          "note": "Solo para el personal; la familia no la ve."
+        },
+        "modes": {
+          "oldest_first": "Del más antiguo",
+          "explicit": "Elegir cargos",
+          "none": "Dejar como saldo a favor"
+        }
+      },
+      "credit": {
+        "action": "Aplicar saldo a favor",
+        "title": "Aplicar saldo a favor",
+        "help": "La familia tiene {{amount}} de saldo a favor.",
+        "submit": "Aplicar saldo",
+        "saving": "Aplicando…",
+        "done": "Se aplicaron {{allocated}} de saldo a favor. El saldo a favor ahora es {{credit}}.",
+        "fields": {
+          "amount": "Importe (opcional)"
+        },
+        "hints": {
+          "amount": "Déjalo vacío para aplicarlo todo ({{amount}})."
+        }
+      },
+      "validation": {
+        "amountRequired": "Escribe el importe.",
+        "dateRequired": "Elige la fecha.",
+        "methodRequired": "Elige el método.",
+        "lineAboveOpen": "Es más de lo que queda por pagar en el cargo.",
+        "linesRequired": "Escribe un importe para al menos un cargo.",
+        "linesAbovePayment": "Los importes suman más que el pago.",
+        "linesAboveCredit": "Los importes suman más que el saldo a favor.",
+        "amountAboveCredit": "Es más que el saldo a favor."
+      }
+    },
+    "paymentMethods": {
+      "cash": "Efectivo",
+      "transfer": "Transferencia",
+      "other": "Otro"
     }
   }
 }

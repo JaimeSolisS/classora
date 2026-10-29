@@ -1,0 +1,60 @@
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { expect, fn, within } from 'storybook/test';
+import { i18n } from '@/i18n';
+import { StoryRouter } from '@/test/StoryRouter';
+import {
+  ANA,
+  CHARGE_PAID,
+  CHARGE_PARTIAL,
+  LUIS,
+  PAYMENT_DETAIL,
+} from './fixtures';
+import { PaymentDetailDialog } from './PaymentDetailDialog';
+
+// A payment's detail (#379 G2): its fields and allocations, one released.
+// No request. The dialog is portalled to <body>. axe runs on each story in
+// both themes.
+
+const meta = {
+  title: 'Billing/Accounts/PaymentDetailDialog',
+  component: PaymentDetailDialog,
+  args: {
+    open: true,
+    state: {
+      status: 'ready',
+      payment: PAYMENT_DETAIL,
+      charges: {
+        [CHARGE_PARTIAL.id]: CHARGE_PARTIAL,
+        [CHARGE_PAID.id]: CHARGE_PAID,
+      },
+    },
+    studentNames: { [ANA.id]: ANA.name, [LUIS.id]: LUIS.name },
+    onClose: fn(),
+  },
+  render: (args) => (
+    <StoryRouter
+      path="/billing/accounts/x"
+      routes={[{ path: '*', element: <PaymentDetailDialog {...args} /> }]}
+    />
+  ),
+} satisfies Meta<typeof PaymentDetailDialog>;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+export const Ready: Story = {
+  play: async (context) => {
+    const dialog = await within(
+      context.canvasElement.ownerDocument.body,
+    ).findByRole('dialog', {
+      name: i18n.t('billing.accounts.payments.detailTitle'),
+    });
+    await expect(
+      within(dialog).getByText(i18n.t('billing.accounts.payments.released')),
+    ).toBeVisible();
+  },
+};
+
+export const Loading: Story = {
+  args: { state: { status: 'loading' } },
+};

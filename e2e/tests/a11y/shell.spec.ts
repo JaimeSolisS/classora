@@ -32,7 +32,8 @@ const THEMES = ['light', 'dark'] as const;
 // (once its form loaded, #61 H2), /billing/prices (#363 F5),
 // /billing/unbilled and /billing/settings (#366 E4), /billing/discounts
 // and /billing/custom-prices (#367 G4), /billing/tuition-plans (#374 H3),
-// /billing/packages (#377 G3),
+// /billing/packages (#377 G3), /billing/accounts and the account page of
+// a family the scan creates through the API first (#379 G3),
 // /students, /students/new and the detail of a student the scan creates
 // through the API first (#33 L2; with a linked guardian and a paper consent,
 // so the Login account and Consents sections show, #35 K4), /guardians, /guardians/new and the detail
@@ -76,6 +77,11 @@ interface ScannedRoute {
    * profile.
    */
   createsTutor?: boolean;
+  /**
+   * First create a family through the API; `path` is then its billing
+   * account (#379 G3), scanned once its sections loaded.
+   */
+  createsBillingFamily?: boolean;
   /** Wait for this labelled field (the page's data loaded) before scanning. */
   waitForField?: string;
   /**
@@ -158,6 +164,20 @@ const ROUTES: ScannedRoute[] = [
     signedIn: true,
     waitForField: common.billing.packages.sold.filters.searchStudent,
   },
+  // #379 G3: the Accounts tab and a family's billing account (no account
+  // yet: billing stays off and the family is new).
+  {
+    name: 'billing-accounts',
+    path: '/billing/accounts',
+    signedIn: true,
+    waitForField: common.billing.accounts.list.search,
+  },
+  {
+    name: 'billing-account',
+    path: '/billing/accounts/<created>',
+    signedIn: true,
+    createsBillingFamily: true,
+  },
   {
     name: 'catalog-level',
     path: '/catalog/education-levels',
@@ -225,6 +245,15 @@ const TEST_TIMEOUT_MS = 90_000;
 
 /** Every violation as `rule-id (impact): selector, selector`. */
 async function scan(page: Page): Promise<string[]> {
+  // Scan the resting state (#369): finite transitions and animations done.
+  await page.evaluate(() =>
+    Promise.allSettled(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity)
+        .map((a) => a.finished),
+    ),
+  );
   const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
   return results.violations.map(
     (violation) =>
@@ -297,6 +326,19 @@ for (const theme of THEMES) {
             }
           }
         }
+        if (route.createsBillingFamily) {
+          // The app origin first, so the API call carries the session.
+          await page.goto('/');
+          await expect(page.getByRole('heading', { level: 1 })).toBeVisible({
+            timeout: FIRST_RENDER_TIMEOUT_MS,
+          });
+          const sfx = `${theme}${testInfo.workerIndex}${Date.now().toString(36)}`;
+          const familyId = await createFamilyViaApi(
+            page,
+            `Familia Cobro Accesible ${sfx}`,
+          );
+          path = `/billing/accounts/${familyId}`;
+        }
         if (route.createsTutor) {
           // The app origin first, so the API call carries the session.
           await page.goto('/');
@@ -341,6 +383,20 @@ for (const theme of THEMES) {
               .locator('#availability')
               .getByText(common.tutors.availability.exceptionsEmpty),
           ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+        }
+        if (route.createsBillingFamily) {
+          // The charges, history and payments load after the heading.
+          const main = page.getByRole('main');
+          const accounts = common.billing.accounts;
+          for (const empty of [
+            accounts.charges.empty,
+            accounts.ledger.empty,
+            accounts.payments.empty,
+          ]) {
+            await expect(main.getByText(empty, { exact: true })).toBeVisible({
+              timeout: FIRST_RENDER_TIMEOUT_MS,
+            });
+          }
         }
         if (route.waitForField) {
           await expect(
