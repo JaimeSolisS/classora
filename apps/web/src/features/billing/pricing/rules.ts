@@ -2,6 +2,7 @@ import { ApiError } from '@/app/api';
 import { codeMessageKey } from '@/app/errors';
 import { isMoneyInput, normalizeMoneyInput } from '@/lib/money';
 import { addDays, type LocalDate } from '@/lib/time';
+import { PERIOD_FREQUENCIES, type PeriodFrequency } from '@/lib/tuition';
 import type {
   ClassType,
   PriceListFilters,
@@ -22,18 +23,21 @@ export const CLASS_TYPES: readonly ClassType[] = [
   'group',
   'course',
 ];
-/** The models this page lists and creates (per-period prices are #374's). */
+/** The models this page lists and creates (per-period since #374 B). */
 export const PRICING_MODELS = [
   'per_session',
   'full_course',
+  'per_period',
 ] as const satisfies readonly PricingModel[];
 
-/** The pricing models a class type takes (#89 B3). */
+/** The pricing models a class type takes (#89 B3, #93 K2). */
 export const MODELS_BY_CLASS: Record<ClassType, readonly PricingModel[]> = {
-  individual: ['per_session'],
-  group: ['per_session', 'full_course'],
+  individual: ['per_session', 'per_period'],
+  group: ['per_session', 'full_course', 'per_period'],
   course: ['full_course'],
 };
+
+export { PERIOD_FREQUENCIES };
 
 /** What a price of the class type can be scoped to, if anything. */
 export function scopeKindOf(classType: ClassType | ''): ScopeKind | null {
@@ -85,6 +89,8 @@ export interface PriceFormValues {
   levelId: string;
   /** As typed; '' for any duration. */
   duration: string;
+  /** A per-period price's period length (#93 K2); '' otherwise. */
+  periodFrequency: PeriodFrequency | '';
   effectiveFrom: string;
   amount: string;
 }
@@ -99,6 +105,7 @@ export const PRICE_FIELD_ORDER: readonly PriceField[] = [
   'scopeId',
   'levelId',
   'duration',
+  'periodFrequency',
   'effectiveFrom',
   'amount',
 ];
@@ -117,6 +124,7 @@ export function emptyPriceForm(today: LocalDate): PriceFormValues {
     scopeId: '',
     levelId: '',
     duration: '',
+    periodFrequency: '',
     effectiveFrom: today,
     amount: '',
   };
@@ -126,8 +134,8 @@ export function emptyPriceForm(today: LocalDate): PriceFormValues {
  * The values after one field changed, with the dependent fields kept
  * consistent: the model follows the class type (pre-selected when only one
  * applies), a scope clears the level and the duration, the scope clears
- * when the subject or the class type changes, and only per-session prices
- * have a duration.
+ * when the subject or the class type changes, only per-session prices
+ * have a duration and only per-period prices a frequency.
  */
 export function changePriceForm<K extends PriceField>(
   values: PriceFormValues,
@@ -153,6 +161,9 @@ export function changePriceForm<K extends PriceField>(
   }
   if (next.pricingModel !== 'per_session') {
     next.duration = '';
+  }
+  if (next.pricingModel !== 'per_period') {
+    next.periodFrequency = '';
   }
   return next;
 }
@@ -183,6 +194,9 @@ export function validatePriceForm(values: PriceFormValues): PriceErrors {
     errors.pricingModel = `${V}.pricingModelRequired`;
   }
   if (!values.subjectId) errors.subjectId = `${V}.subjectRequired`;
+  if (values.pricingModel === 'per_period' && !values.periodFrequency) {
+    errors.periodFrequency = `${V}.frequencyRequired`;
+  }
   const duration = values.duration.trim();
   if (duration !== '') {
     const minutes = Number(duration);
@@ -221,6 +235,9 @@ export function priceCreateBody(values: PriceFormValues): ServicePriceCreate {
     ...(duration && !values.scopeId && values.pricingModel === 'per_session'
       ? { duration_minutes: Number(duration) }
       : {}),
+    ...(values.pricingModel === 'per_period' && values.periodFrequency
+      ? { period_frequency: values.periodFrequency }
+      : {}),
     effective_from: values.effectiveFrom,
     amount: normalizeMoneyInput(values.amount),
   };
@@ -234,6 +251,7 @@ const BODY_FIELDS: Record<string, PriceField> = {
   group_id: 'scopeId',
   education_level_id: 'levelId',
   duration_minutes: 'duration',
+  period_frequency: 'periodFrequency',
   effective_from: 'effectiveFrom',
   amount: 'amount',
 };

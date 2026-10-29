@@ -297,6 +297,22 @@ const API_CODES = [
   'family_unknown',
   'service_price_unknown',
   'student_unknown',
+  'period_frequency_required',
+  'period_frequency_not_allowed',
+  'tuition_plan_price_invalid',
+  'tuition_plan_enrollment_invalid',
+  'tuition_plan_starts_on_invalid',
+  'tuition_plan_ends_on_invalid',
+  'tuition_pause_invalid',
+  'tuition_resume_invalid',
+  'student_has_no_family',
+  'tuition_plan_overlap',
+  'tuition_plan_enrollment_fee_charged',
+  'tuition_plan_sessions_charged',
+  'tuition_plan_ended',
+  'tuition_plan_has_charges',
+  'tuition_pause_overlap',
+  'tuition_pause_not_open',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

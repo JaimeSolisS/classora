@@ -62,6 +62,10 @@ function stub(
       jsonResponse(200, { items: [], total: 0, limit: 25, offset: 0 }),
     'GET /api/v1/billing/unbilled-enrollments': () =>
       jsonResponse(200, { items: [], total: 0, limit: 25, offset: 0 }),
+    'GET /api/v1/billing/unbilled-tuition-periods': () =>
+      jsonResponse(200, { items: [], total: 0, limit: 25, offset: 0 }),
+    'GET /api/v1/billing/tuition-plans': () =>
+      jsonResponse(200, { items: [], total: 0, limit: 25, offset: 0 }),
     'GET /api/v1/billing/service-prices': () =>
       jsonResponse(200, { items: [], total: 0, limit: 25, offset: 0 }),
     ...routes,
@@ -130,6 +134,7 @@ describe('navigation and access (A)', () => {
       ['Prices', null],
       ['Discounts', null],
       ['Custom prices', null],
+      ['Tuition plans', null],
       ['Unbilled', null],
       ['Settings', 'page'],
     ]);
@@ -147,6 +152,7 @@ describe('navigation and access (A)', () => {
     await renderSettings();
 
     expect(tabs()).toEqual([
+      ['Tuition plans', null],
       ['Unbilled', null],
       ['Settings', 'page'],
     ]);
@@ -157,8 +163,9 @@ describe('navigation and access (A)', () => {
     [
       'a billing.view-only holder',
       VIEWER,
-      '/billing/unbilled',
-      'Unbilled sessions and enrollments',
+      // #374 A1: Tuition plans is now the first billing.view tab.
+      '/billing/tuition-plans',
+      'Tuition plans',
     ],
   ] as const)(
     '/billing opens the first tab %s may open',
@@ -182,6 +189,9 @@ describe('navigation and access (A)', () => {
       expect(api.calls('GET /api/v1/billing/unbilled-items')).toHaveLength(0);
       expect(
         api.calls('GET /api/v1/billing/unbilled-enrollments'),
+      ).toHaveLength(0);
+      expect(
+        api.calls('GET /api/v1/billing/unbilled-tuition-periods'),
       ).toHaveLength(0);
       const labels = [...app!.container.querySelectorAll('header nav a')].map(
         (a) => a.textContent,
@@ -421,6 +431,7 @@ describe('Spanish (D1)', () => {
       'Precios',
       'Descuentos',
       'Precios especiales',
+      'Colegiaturas',
       'Sin cobrar',
       'Configuración',
     ]);

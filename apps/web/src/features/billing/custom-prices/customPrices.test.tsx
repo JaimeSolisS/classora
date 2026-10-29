@@ -187,6 +187,7 @@ describe('access (A)', () => {
       ['Prices', null],
       ['Discounts', null],
       ['Custom prices', 'page'],
+      ['Tuition plans', null],
       ['Unbilled', null],
       ['Settings', null],
     ]);

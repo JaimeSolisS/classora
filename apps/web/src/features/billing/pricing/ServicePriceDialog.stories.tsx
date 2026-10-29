@@ -16,7 +16,8 @@ import {
 import { ServicePriceDialog } from './ServicePriceDialog';
 
 // The "Add price" dialog (#363 F3): empty, a group price scoped to one
-// group (level and duration disabled), the client checks, the 409 link to
+// group (level and duration disabled), a per-period price (#374 B1: the
+// frequency instead of the duration), the client checks, the 409 link to
 // the existing price, and the subjects still loading. No request: every
 // call is a stub. The dialog is portalled to <body>. axe runs on each story
 // in both themes.
@@ -78,6 +79,7 @@ export const GroupScope: Story = {
       scopeId: GROUP_OPTIONS[0]!.id,
       levelId: '',
       duration: '',
+      periodFrequency: '',
       effectiveFrom: TODAY,
       amount: '1200.00',
     },
@@ -91,6 +93,30 @@ export const GroupScope: Story = {
     ).toBeInTheDocument();
     await expect(field(dialog, 'level')).toBeDisabled();
     await expect(field(dialog, 'duration')).toBeDisabled();
+  },
+};
+
+// #374 B1: a per-period price has a frequency and no duration.
+export const PerPeriod: Story = {
+  args: {
+    initialValues: {
+      classType: 'individual',
+      pricingModel: 'per_period',
+      subjectId: SUBJECT_ALGEBRA.id,
+      scopeId: '',
+      levelId: '',
+      duration: '',
+      periodFrequency: 'monthly',
+      effectiveFrom: TODAY,
+      amount: '1500.00',
+    },
+  },
+  play: async (context) => {
+    const dialog = await body(context).findByRole('dialog');
+    await expect(field(dialog, 'periodFrequency')).toHaveValue('monthly');
+    await expect(
+      within(dialog).queryByLabelText(i18n.t('billing.prices.fields.duration')),
+    ).toBeNull();
   },
 };
 
@@ -125,6 +151,7 @@ export const ExistingPrice: Story = {
       scopeId: '',
       levelId: '',
       duration: '60',
+      periodFrequency: '',
       effectiveFrom: TODAY,
       amount: '350.00',
     },

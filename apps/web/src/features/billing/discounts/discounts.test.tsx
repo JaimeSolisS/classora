@@ -248,6 +248,7 @@ describe('access and tabs (A)', () => {
       ['Prices', null],
       ['Discounts', 'page'],
       ['Custom prices', null],
+      ['Tuition plans', null],
       ['Unbilled', null],
       ['Settings', null],
     ]);
@@ -275,7 +276,11 @@ describe('access and tabs (A)', () => {
 
     expect(h1()).toBe("You don't have access to this page");
     await renderAt('/billing/unbilled');
-    expect(tabs().map(([name]) => name)).toEqual(['Unbilled', 'Settings']);
+    expect(tabs().map(([name]) => name)).toEqual([
+      'Tuition plans',
+      'Unbilled',
+      'Settings',
+    ]);
   });
 });
 

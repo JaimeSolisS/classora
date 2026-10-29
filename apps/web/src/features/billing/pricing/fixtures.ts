@@ -162,3 +162,38 @@ export const PRICE_DETAIL_WITHOUT_UPCOMING: ServicePriceDetail = {
   next: null,
   versions: [V_CURRENT, V_PAST],
 };
+
+/** #374 B: individual, per period, monthly, current 1,500.00. */
+export const PRICE_PER_PERIOD: ServicePrice = {
+  ...BASE,
+  id: '70000000-0000-4000-8000-000000000004',
+  class_type: 'individual',
+  pricing_model: 'per_period',
+  period_frequency: 'monthly',
+  subject: SUBJECT_ALGEBRA,
+  current: version(
+    '60000000-0000-4000-8000-000000000005',
+    '2026-08-01',
+    '1500.00',
+    'current',
+  ),
+  next: null,
+};
+
+/** #374 B: a group per-period price scoped to the Saturday group. */
+export const PRICE_GROUP_PER_PERIOD: ServicePrice = {
+  ...BASE,
+  id: '70000000-0000-4000-8000-000000000005',
+  class_type: 'group',
+  pricing_model: 'per_period',
+  period_frequency: 'biweekly',
+  subject: SUBJECT_ALGEBRA,
+  group: { id: GROUP_OPTIONS[0]!.id, name: GROUP_OPTIONS[0]!.name },
+  current: version(
+    '60000000-0000-4000-8000-000000000006',
+    '2026-08-01',
+    '700.00',
+    'current',
+  ),
+  next: null,
+};

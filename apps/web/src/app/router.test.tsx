@@ -144,6 +144,8 @@ describe('route tree', () => {
       'billing/discounts',
       'billing/discounts/:discountId',
       'billing/custom-prices',
+      'billing/tuition-plans',
+      'billing/tuition-plans/:planId',
       'account/password',
       'privacy-notice',
       '*',
@@ -384,10 +386,16 @@ describe('route tree', () => {
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
-    expect(children[90]!.handle).toBeUndefined();
+    // #374 A1: tuition plans (code-split), billing.view holders.
+    for (const index of [90, 91]) {
+      expect(children[index]!.handle).toEqual({ permission: 'billing.view' });
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    expect(children[92]!.handle).toBeUndefined();
     // #174 G1: any signed-in user, no permission.
-    expect(children[91]!.id).toBe('privacy-notice');
-    expect(children[91]!.handle).toBeUndefined();
+    expect(children[93]!.id).toBe('privacy-notice');
+    expect(children[93]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

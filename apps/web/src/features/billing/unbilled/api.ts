@@ -5,8 +5,11 @@ import { api, apiCall } from '@/app/api';
 // completed sessions since the billing start date that can't be charged,
 // optionally of one reason. The unbilled enrollments (#92 J9, #372 B): one
 // page of the group and course enrollment periods that have no fee charge,
-// with the same reason filter and their own page. Both are computed on read
-// by the API and empty while billing is off.
+// with the same reason filter and their own page. The unbilled tuition
+// periods (#93, #374 F): one page of the due tuition periods the daily job
+// skips, with their own page and the tab's reason where it overlaps
+// (no_price). All are computed on read by the API and empty while billing
+// is off.
 
 export type UnbilledItem = components['schemas']['UnbilledSessionItem'];
 export type UnbilledPage =
@@ -16,6 +19,11 @@ export type UnbilledEnrollment =
   components['schemas']['UnbilledEnrollmentItem'];
 export type UnbilledEnrollmentPage =
   components['schemas']['OffsetPage_UnbilledEnrollmentItem_'];
+export type UnbilledTuition = components['schemas']['UnbilledTuitionItem'];
+export type UnbilledTuitionPage =
+  components['schemas']['OffsetPage_UnbilledTuitionItem_'];
+export type TuitionUnbilledReason =
+  components['schemas']['TuitionUnbilledReason'];
 
 export const UNBILLED_REASONS: readonly UnbilledReason[] = [
   'no_billing_account',
@@ -38,6 +46,8 @@ export interface UnbilledFilters {
   page: number;
   /** The enrollments table's 1-based page. */
   enrollmentPage: number;
+  /** The tuition table's 1-based page. */
+  tuitionPage: number;
 }
 
 export function unbilledListKey(filters: UnbilledFilters) {
@@ -53,6 +63,47 @@ export function unbilledEnrollmentsKey(filters: UnbilledFilters) {
     'enrollments',
     { reason: filters.reason, page: filters.enrollmentPage },
   ] as const;
+}
+
+/**
+ * The tuition reason the tab's reason stands for (#374 F1: only no_price
+ * overlaps), null for every reason, or 'none' when the tab's reason has no
+ * tuition counterpart (the section then lists nothing).
+ */
+export function tuitionReasonOf(
+  reason: UnbilledReason | null,
+): TuitionUnbilledReason | null | 'none' {
+  if (reason === null) return null;
+  return reason === 'no_price' ? 'no_price' : 'none';
+}
+
+export function unbilledTuitionKey(filters: UnbilledFilters) {
+  return [
+    ...UNBILLED_QUERY_KEY,
+    'tuition',
+    { reason: tuitionReasonOf(filters.reason), page: filters.tuitionPage },
+  ] as const;
+}
+
+export function fetchUnbilledTuition(
+  filters: UnbilledFilters,
+  signal: AbortSignal,
+): Promise<UnbilledTuitionPage> {
+  const reason = tuitionReasonOf(filters.reason);
+  return apiCall(
+    () =>
+      api.GET('/api/v1/billing/unbilled-tuition-periods', {
+        params: {
+          query: {
+            ...(reason && reason !== 'none' ? { reason: [reason] } : {}),
+            limit: UNBILLED_PAGE_SIZE,
+            offset: (filters.tuitionPage - 1) * UNBILLED_PAGE_SIZE,
+          },
+        },
+        signal,
+      }),
+    { signal },
+  );
 }
 
 export function fetchUnbilledItems(
@@ -101,8 +152,8 @@ function pageParam(value: string | null): number {
 }
 
 /**
- * The filters in the URL (?reason=&page=&enrollment_page=); anything
- * unknown is dropped.
+ * The filters in the URL (?reason=&page=&enrollment_page=&tuition_page=);
+ * anything unknown is dropped.
  */
 export function unbilledFilters(params: URLSearchParams): UnbilledFilters {
   const reason =
@@ -111,6 +162,7 @@ export function unbilledFilters(params: URLSearchParams): UnbilledFilters {
     reason,
     page: pageParam(params.get('page')),
     enrollmentPage: pageParam(params.get('enrollment_page')),
+    tuitionPage: pageParam(params.get('tuition_page')),
   };
 }
 
@@ -120,6 +172,9 @@ export function unbilledParams(filters: UnbilledFilters): URLSearchParams {
   if (filters.page > 1) params.set('page', String(filters.page));
   if (filters.enrollmentPage > 1) {
     params.set('enrollment_page', String(filters.enrollmentPage));
+  }
+  if (filters.tuitionPage > 1) {
+    params.set('tuition_page', String(filters.tuitionPage));
   }
   return params;
 }

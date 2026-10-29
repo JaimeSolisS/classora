@@ -345,6 +345,28 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['family_unknown', 'family_unknown'],
   ['service_price_unknown', 'service_price_unknown'],
   ['student_unknown', 'student_unknown'],
+  // Per-period prices and tuition plans (#93, #374 G1), problem and field
+  // codes (student_unknown, student_inactive and date_out_of_range are
+  // listed above).
+  ['period_frequency_required', 'period_frequency_required'],
+  ['period_frequency_not_allowed', 'period_frequency_not_allowed'],
+  ['tuition_plan_price_invalid', 'tuition_plan_price_invalid'],
+  ['tuition_plan_enrollment_invalid', 'tuition_plan_enrollment_invalid'],
+  ['tuition_plan_starts_on_invalid', 'tuition_plan_starts_on_invalid'],
+  ['tuition_plan_ends_on_invalid', 'tuition_plan_ends_on_invalid'],
+  ['tuition_pause_invalid', 'tuition_pause_invalid'],
+  ['tuition_resume_invalid', 'tuition_resume_invalid'],
+  ['student_has_no_family', 'student_has_no_family'],
+  ['tuition_plan_overlap', 'tuition_plan_overlap'],
+  [
+    'tuition_plan_enrollment_fee_charged',
+    'tuition_plan_enrollment_fee_charged',
+  ],
+  ['tuition_plan_sessions_charged', 'tuition_plan_sessions_charged'],
+  ['tuition_plan_ended', 'tuition_plan_ended'],
+  ['tuition_plan_has_charges', 'tuition_plan_has_charges'],
+  ['tuition_pause_overlap', 'tuition_pause_overlap'],
+  ['tuition_pause_not_open', 'tuition_pause_not_open'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

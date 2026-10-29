@@ -12,15 +12,18 @@ import {
   ITEM_GROUP,
   ITEM_NO_FAMILY,
   ITEM_NO_PRICE,
+  EMPTY_UNBILLED_TUITION_PAGE,
   UNBILLED_ENROLLMENTS_PAGE,
   UNBILLED_PAGE,
+  UNBILLED_TUITION_PAGE,
 } from './fixtures';
 import { UnbilledView } from './UnbilledView';
 
 // The Unbilled tab without its queries (#366 E2, #372 D2): session rows
 // with both reasons, the Class column and their fix links above the
-// Enrollments section, rows without the links (no permission), billing off
-// (the Settings link, no Enrollments section), billing on with nothing
+// Enrollments and Tuition (#374 H2) sections, rows without the links (no
+// permission), billing off (the Settings link, no Enrollments or Tuition
+// section), billing on with nothing
 // unbilled, loading and a failed load. No request: every call is a stub.
 // axe runs on each story in both themes.
 
@@ -34,10 +37,16 @@ const meta = {
       startsOn: '2026-09-01',
       page: UNBILLED_ENROLLMENTS_PAGE,
     },
-    filters: { reason: null, page: 1, enrollmentPage: 1 },
+    tuition: {
+      status: 'ready',
+      startsOn: '2026-09-01',
+      page: UNBILLED_TUITION_PAGE,
+    },
+    filters: { reason: null, page: 1, enrollmentPage: 1, tuitionPage: 1 },
     onFilters: fn(),
     onPage: fn(),
     onEnrollmentPage: fn(),
+    onTuitionPage: fn(),
     canOpenFamilies: true,
     canManagePrices: true,
   },
@@ -109,6 +118,7 @@ export const EmptyBillingOff: Story = {
       page: EMPTY_UNBILLED_PAGE,
     },
     enrollments: { status: 'hidden' },
+    tuition: { status: 'hidden' },
   },
   play: async ({ canvas }) => {
     await expect(
@@ -139,6 +149,11 @@ export const EmptyBillingOn: Story = {
       startsOn: '2026-09-01',
       page: EMPTY_UNBILLED_ENROLLMENTS_PAGE,
     },
+    tuition: {
+      status: 'ready',
+      startsOn: '2026-09-01',
+      page: EMPTY_UNBILLED_TUITION_PAGE,
+    },
   },
   play: async ({ canvas, canvasElement }) => {
     await expect(canvas.queryByRole('table')).toBeNull();
@@ -148,11 +163,18 @@ export const EmptyBillingOn: Story = {
     await expect(
       canvasElement.querySelector('[data-unbilled-enrollments-empty="on"]'),
     ).toBeVisible();
+    await expect(
+      canvasElement.querySelector('[data-unbilled-tuition-empty="on"]'),
+    ).toBeVisible();
   },
 };
 
 export const Loading: Story = {
-  args: { state: { status: 'loading' }, enrollments: { status: 'loading' } },
+  args: {
+    state: { status: 'loading' },
+    enrollments: { status: 'loading' },
+    tuition: { status: 'loading' },
+  },
   play: async ({ canvasElement }) => {
     await expect(
       canvasElement.querySelector('[aria-busy="true"]'),
