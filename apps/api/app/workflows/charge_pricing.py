@@ -54,7 +54,7 @@ class PriceKey:
     """A catalog lookup (#91 C5 step 5; #92 adds the group sessions'
     ``group_id`` and the enrollment fees' scopes, with no duration)."""
 
-    subject_id: uuid.UUID
+    subject_id: uuid.UUID | None
     education_level_id: uuid.UUID | None
     duration_minutes: int | None
     on: date
@@ -97,6 +97,7 @@ class PriceMemo:
 
     async def lookup(self, key: PriceKey) -> billing.PriceInEffect | None:
         if key not in self.found:
+            assert key.subject_id is not None  # noqa: S101 - unpinned keys have one
             self.found[key] = await billing.lookup_price(
                 self.session,
                 class_type=key.class_type,

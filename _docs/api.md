@@ -231,7 +231,10 @@ Codes in use today:
 | `field_immutable` | 422 | Sending `kind` or `audience` in a discount `PATCH`, or anything but `version`/`expires_on` in a custom price `PATCH`. |
 | `tuition_plan_price_invalid` / `tuition_plan_enrollment_invalid` / `tuition_plan_starts_on_invalid` / `tuition_plan_ends_on_invalid` | 422 | A tuition plan's price, group enrollment, start or end is refused; the field error is on `service_price_id`, `group_enrollment_id`, `starts_on` or `ends_on` (see Tuition plans). |
 | `tuition_pause_invalid` / `tuition_resume_invalid` | 422 | A pause that doesn't start on an uncharged, not past period start (field `starts_on`) or doesn't end on a period end (field `ends_on`); a resume date that isn't a period start after the pause began and not in the past (field `resume_on`). |
-| `student_has_no_family` | 409 | A tuition plan for a student who isn't in a family (no account to bill). |
+| `student_has_no_family` | 409 | A tuition plan or a package sale for a student who isn't in a family (no account to bill). |
+| `package_product_inactive` / `package_not_offered` | 409 | Selling a deactivated package product, or one with no price version in effect today (or a `null` "not offered" version; see Packages). |
+| `package_product_unknown` | 422 | A package sale naming an unknown product; on `["body","package_product_id"]` (with `student_unknown` on `["body","student_id"]`; see Packages). |
+| `quantity_out_of_range` / `quantity_step` / `validity_days_out_of_range` | 422 | Field codes of a package product body: 1-500 sessions or 15-30000 minutes, minutes in steps of 15, a validity of 1-730 days (see Packages). |
 | `tuition_plan_overlap` | 409 | Another plan of the same group enrollment, or of the same student and price, overlaps the dates (also from the exclusion constraints). |
 | `tuition_plan_enrollment_fee_charged` / `tuition_plan_sessions_charged` | 409 | Linking a plan (or extending a linked plan) to a group enrollment whose flat fee is charged, or whose sessions inside the plan's dates are charged per session. |
 | `tuition_plan_ended` / `tuition_plan_has_charges` | 409 | Extending or pausing a plan that has ended; deleting a plan with charges. |
@@ -4352,8 +4355,9 @@ the approval revisions and corrections), the scheduling seams
 (`set_actual_minutes`, `closeout_attendance`,
 `register_completed_attendance_unlock`) and the workflow
 `app/workflows/session_closeout_review.py` (routes in
-`session_closeout_router.py`; the no-op `closeout_approval.on_closeout_approved`
-seam for M6/M7). No new permission. The staff session page's Closeout
+`session_closeout_router.py`; the `closeout_approval.on_closeout_approved`
+seam: since M6-09 revision 1 of an individual session consumes its package
+credit, see Packages; M7 adds pay). No new permission. The staff session page's Closeout
 section has the review actions and the history; the tutor's edit modes are
 M5-11b (#305).
 
@@ -6309,6 +6313,94 @@ daily job posts its charges on their natural key.
   {id, name}`, `family {id, name} | null` (the current family), `subject
   {id, name}`, `group {id, name} | null`, `reason`. Order: `period_start`,
   student name (case-insensitive), plan id.
+
+### Packages
+
+Implemented by M6-09 (#94; spec §6 packages, W4.1; ADR-0006 E1, E6, E7,
+E8, E10, E11; owner-delegated decisions L1-L11 (a); `_docs/data-model.md`
+§3.18-§3.20 and "Prepaid packages (#94)"). The rows and rules are
+`app/modules/billing/packages.py` and `package_rules.py`; the routes
+`app/workflows/package_products_router.py` and `packages_router.py`
+(workflow `packages.py`); the closeout hook
+`app/workflows/closeout_approval.py`; the job `app/workflows/package_expiry.py`.
+The web pages are M6-09b (#377).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/billing/package-products` | `require("billing.manage")` | Offset pagination; filters `is_active`, `subject_id`. Items are `PackageProductItem`, by name (case-insensitive) and id. |
+| `POST /api/v1/billing/package-products` | `require("billing.manage")` | Body `PackageProductCreate`. `201` with `PackageProductDetail`. |
+| `GET /api/v1/billing/package-products/{product_id}` | `require("billing.manage")` | `PackageProductDetail`; `404 not_found`. |
+| `PATCH /api/v1/billing/package-products/{product_id}` | `require("billing.manage")` | Body `{version, name?, is_active?}`; any other key is `422` (`extra_forbidden`): unit, quantity, validity and subject are fixed. `200` with `PackageProductDetail`; `409 version_conflict`. |
+| `POST /api/v1/billing/package-products/{product_id}/versions` | `require("billing.manage")` | Body `{effective_from, amount \| null}` (the #89 rules: `422 price_effective_from_invalid`). `201` with `PackageProductDetail`. |
+| `DELETE /api/v1/billing/package-products/{product_id}/versions/{price_version_id}` | `require("billing.manage")` | `204`; `409 price_version_in_effect` / `price_version_in_use` (a version a charge or a package used); `404` for another product's version. |
+| `POST /api/v1/billing/packages` | `require("billing.manage")` + `Idempotency-Key` | Body `{student_id, package_product_id}`. `201` with `PackageDetail`. |
+| `GET /api/v1/billing/packages` | `require("billing.view")` | Offset pagination; filters `student_id`, `family_id` (the account's family), `status` (`active`, `exhausted`, `expired`; repeatable). Items are `PackageItem`, by `expires_on`, `purchased_on`, `id`; two statements per page. |
+| `GET /api/v1/billing/packages/{package_id}` | `require("billing.view")` | `PackageDetail`; `404 not_found`. |
+
+Products are configuration (no reauthentication, no `Idempotency-Key`); a
+sale posts a ledger row, so it needs an `Idempotency-Key` (#88: a retry
+with the same key replays the first `201`, another body with that key is
+`422 idempotency_key_reused`). Reads are staff only; the family portal
+reads arrive with #102.
+
+- **Products.** A product has a `unit` (`sessions` or `minutes`), a
+  `quantity` (1-500 sessions, or 15-30000 minutes in steps of 15), a
+  `validity_days` (1-730), an optional `subject_id` (`null` = any
+  subject) and a price: the versions of its own `service_prices` row
+  (`individual`/`package`, never listed by the price catalog routes). A
+  product covers **individual sessions only**. Deactivating it stops sales;
+  sold packages keep working. There is no product `DELETE`.
+- **Sale** (order after the key and the body): the product (unknown →
+  `422 package_product_unknown` on `package_product_id`; inactive → `409
+  package_product_inactive`) → the student (unknown → `422
+  student_unknown` on `student_id`) → the student's current family (`409
+  student_has_no_family`) → the price: the product's version in effect on
+  the center's today, then the discounts (`charge_kind =
+  package_purchase`; no custom prices for packages); none or `null` → `409
+  package_not_offered`. Then, in one transaction: the package
+  (`purchased_on` = the center's today, no backdating; `expires_on =
+  purchased_on + validity_days`; unit, quantity and subject snapshotted),
+  the `package_purchase` charge (`service_date` = `purchased_on`,
+  `due_date` = `purchased_on` + the account's `due_offset_days`), and a
+  `grant` of the units. Billing off or a later `billing_starts_on` never
+  blocks a sale. A `0.00` price posts a zero charge and still grants the
+  units.
+- **Coverage.** An individual session of the student is covered (the
+  session sweeper posts no charge and the unbilled list doesn't show it)
+  while its closeout has no approval and a package of the student's current
+  family can pay for it whole: the package's subject (or any), the
+  session's local date between `purchased_on` and `expires_on`, not
+  expired, units left. A sibling's package, or one left in a former family,
+  is never used.
+- **Consumption.** When the closeout is approved (revision 1 only;
+  attendance doesn't matter), the units are taken **first-expiring-first**
+  (by `expires_on`, `purchased_on`, id): a sessions package gives 1 unit
+  whatever the length; minutes packages give the session's
+  `scheduled_minutes`, possibly from several packages; one session never
+  mixes the two kinds (if both can pay, the one whose package expires first
+  does). If the credit can't pay for the whole session, nothing is consumed
+  and the next sweeper run (within 15 minutes) posts the ordinary session
+  charge. Approving again or correcting the closeout consumes nothing more.
+  A session charged before the purchase stays charged.
+- **Expiry.** `billing:expire_packages` runs daily at 07:40 UTC. For each
+  package whose `expires_on` is before the center's today and that still
+  has units, it first consumes the student's pending covered sessions in
+  the package's dates (confirmed or completed, not charged, not consumed,
+  closeout not approved), then records one `expire` movement for what is
+  left. So a session that is never closed out is paid by its package at the
+  latest the day after the package expires.
+- **Shapes.** `PackageProductItem`: `id`, `name`, `unit`, `quantity`,
+  `validity_days`, `subject {id, name} | null`, `is_active`,
+  `current_amount` (Money or `null`: the version in effect today), `version`.
+  `PackageProductDetail` adds `versions` (the #89 `PriceVersionItem`, newest
+  first). `PackageItem`: `id`, `student {id, name}`, `family {id, name}`,
+  `product {id, name}`, `unit`, `units_granted`, `remaining_units`, `subject
+  {id, name} | null`, `purchased_on`, `expires_on`, `status` (for the
+  center's today: `expired` when expired or past `expires_on`, then
+  `exhausted` with no units left, else `active`), `purchase_charge_id`.
+  `PackageDetail` adds `transactions [{id, kind (grant, consume, expire,
+  reversal), units (signed), class_session_id | null, session_starts_at |
+  null, created_at}]`, oldest first.
 
 ### Discounts and custom prices
 

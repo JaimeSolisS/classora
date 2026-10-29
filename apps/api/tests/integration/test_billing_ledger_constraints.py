@@ -53,6 +53,7 @@ CHARGE_COLUMNS = (
     "group_enrollment_id",
     "cohort_enrollment_id",
     "tuition_plan_id",
+    "package_id",
     "service_date",
     "service_period_end",
     "scheduled_minutes",
@@ -78,6 +79,7 @@ def _charge(rows: LedgerRows, **overrides: Any) -> dict[str, Any]:
         "group_enrollment_id": None,
         "cohort_enrollment_id": None,
         "tuition_plan_id": None,
+        "package_id": None,
         "service_date": DAY,
         "service_period_end": None,
         "scheduled_minutes": None,
@@ -99,8 +101,26 @@ def test_a_valid_manual_charge_row_is_accepted(module_seeded_url, rows):
 @pytest.mark.parametrize(
     ("overrides", "constraint"),
     [
+        pytest.param({"kind": "refund"}, "ck_charges_kind", id="unknown-kind"),
         pytest.param(
-            {"kind": "package_purchase"}, "ck_charges_kind", id="kind-not-yet"
+            {"kind": "package_purchase", "description": None},
+            "ck_charges_one_source",
+            id="purchase-without-package",
+        ),
+        pytest.param(
+            {"package_id": "PACKAGE"},
+            "ck_charges_one_source",
+            id="package-on-manual",
+        ),
+        pytest.param(
+            {
+                "kind": "package_purchase",
+                "description": None,
+                "package_id": "PACKAGE",
+                "tuition_plan_id": "PLAN",
+            },
+            "ck_charges_one_source",
+            id="purchase-with-a-plan",
         ),
         pytest.param(
             {"kind": "tuition_period", "description": None},
@@ -208,10 +228,12 @@ def test_a_valid_manual_charge_row_is_accepted(module_seeded_url, rows):
     ],
 )
 def test_charge_checks(module_seeded_url, rows, session_id, overrides, constraint):
-    # "PLAN" is a made-up plan id: the CHECKs fire before the composite
-    # foreign key (#93 A5).
+    # "PLAN" and "PACKAGE" are made-up ids: the CHECKs fire before the
+    # composite foreign keys (#93 A5, #94 A5).
     values = {
-        k: session_id if v == "SESSION" else (uuid.uuid4() if v == "PLAN" else v)
+        k: session_id
+        if v == "SESSION"
+        else (uuid.uuid4() if v in ("PLAN", "PACKAGE") else v)
         for k, v in _charge(rows, **overrides).items()
     }
     message = fails_with(module_seeded_url, CHARGE_INSERT, CHECK, **values)

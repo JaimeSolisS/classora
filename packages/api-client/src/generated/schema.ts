@@ -4401,6 +4401,153 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/package-products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Package Products
+         * @description The package products by name, with the price in effect today.
+         */
+        get: operations["list_package_products_api_v1_billing_package_products_get"];
+        put?: never;
+        /**
+         * Create Package Product
+         * @description Create a package of sessions or minutes with its validity, an
+         *     optional subject (none: any subject) and its first price version, which
+         *     may start on any date. A package covers individual sessions only. The
+         *     unit, quantity, validity and subject can't change later: create another
+         *     product instead.
+         */
+        post: operations["create_package_product_api_v1_billing_package_products_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/package-products/{product_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Package Product
+         * @description A package product with all its price versions, newest first.
+         */
+        get: operations["get_package_product_api_v1_billing_package_products__product_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Package Product
+         * @description Rename a package product, or deactivate (reactivate) it. A
+         *     deactivated product can't be sold; packages already sold keep working.
+         */
+        patch: operations["update_package_product_api_v1_billing_package_products__product_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/billing/package-products/{product_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Package Product Version
+         * @description Add a price version. Versions are never edited: to change an upcoming
+         *     one, delete it and add another.
+         */
+        post: operations["add_package_product_version_api_v1_billing_package_products__product_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/package-products/{product_id}/versions/{price_version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Package Product Version
+         * @description Delete an upcoming price version.
+         */
+        delete: operations["delete_package_product_version_api_v1_billing_package_products__product_id__versions__price_version_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/packages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Packages
+         * @description The sold packages, the earliest expiry first (then purchase date and
+         *     id). `status` (active, exhausted, expired; for the center's today) may
+         *     be repeated.
+         */
+        get: operations["list_packages_api_v1_billing_packages_get"];
+        put?: never;
+        /**
+         * Purchase Package
+         * @description Sell a package to a student. It is bought today, at today's price
+         *     (discounts included), on the account of the student's family: one
+         *     package purchase charge (due today plus the family's due-date offset)
+         *     and the package's units. The units pay for the student's individual
+         *     sessions, oldest-expiring package first, when each closeout is approved;
+         *     they are never shared with siblings. Send a new `Idempotency-Key` per
+         *     sale and the same one to retry it.
+         */
+        post: operations["purchase_package_api_v1_billing_packages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/packages/{package_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Package
+         * @description A sold package with its unit movements (grant, consumptions with
+         *     their sessions, expiry), oldest first.
+         */
+        get: operations["get_package_api_v1_billing_packages__package_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/available-slots": {
         parameters: {
             query?: never;
@@ -12408,6 +12555,28 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** OffsetPage[PackageItem] */
+        OffsetPage_PackageItem_: {
+            /** Items */
+            items: components["schemas"]["PackageItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** OffsetPage[PackageProductItem] */
+        OffsetPage_PackageProductItem_: {
+            /** Items */
+            items: components["schemas"]["PackageProductItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /** OffsetPage[ServicePriceItem] */
         OffsetPage_ServicePriceItem_: {
             /** Items */
@@ -12637,6 +12806,230 @@ export interface components {
              */
             code: string;
         };
+        /**
+         * PackageDetail
+         * @description A package with its unit movements, oldest first.
+         */
+        PackageDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            student: components["schemas"]["PackageReference"];
+            family: components["schemas"]["PackageReference"];
+            product: components["schemas"]["PackageReference"];
+            unit: components["schemas"]["PackageUnit"];
+            /** Units Granted */
+            units_granted: number;
+            /** Remaining Units */
+            remaining_units: number;
+            subject: components["schemas"]["PackageReference"] | null;
+            /**
+             * Purchased On
+             * Format: date
+             */
+            purchased_on: string;
+            /**
+             * Expires On
+             * Format: date
+             */
+            expires_on: string;
+            status: components["schemas"]["PackageStatus"];
+            /** Purchase Charge Id */
+            purchase_charge_id: string | null;
+            /** Transactions */
+            transactions: components["schemas"]["PackageTransactionItem"][];
+        };
+        /**
+         * PackageItem
+         * @description One sold package (#94 D5). ``status`` is for the center's today:
+         *     ``expired`` (expired, or past ``expires_on``) → ``exhausted`` (no units
+         *     left) → ``active``.
+         */
+        PackageItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            student: components["schemas"]["PackageReference"];
+            family: components["schemas"]["PackageReference"];
+            product: components["schemas"]["PackageReference"];
+            unit: components["schemas"]["PackageUnit"];
+            /** Units Granted */
+            units_granted: number;
+            /** Remaining Units */
+            remaining_units: number;
+            subject: components["schemas"]["PackageReference"] | null;
+            /**
+             * Purchased On
+             * Format: date
+             */
+            purchased_on: string;
+            /**
+             * Expires On
+             * Format: date
+             */
+            expires_on: string;
+            status: components["schemas"]["PackageStatus"];
+            /** Purchase Charge Id */
+            purchase_charge_id: string | null;
+        };
+        /**
+         * PackageProductCreate
+         * @description ``POST /api/v1/billing/package-products`` (#94 B1, B2): the product
+         *     and its first price version. Fields are in rule order.
+         */
+        PackageProductCreate: {
+            /** Name */
+            name: string;
+            unit: components["schemas"]["PackageUnit"];
+            /** Quantity */
+            quantity: number;
+            /** Validity Days */
+            validity_days: number;
+            /** Subject Id */
+            subject_id?: string | null;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+        };
+        /**
+         * PackageProductDetail
+         * @description A product with its price versions, newest ``effective_from`` first
+         *     (the #89 version shape).
+         */
+        PackageProductDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            unit: components["schemas"]["PackageUnit"];
+            /** Quantity */
+            quantity: number;
+            /** Validity Days */
+            validity_days: number;
+            subject: components["schemas"]["PackageReference"] | null;
+            /** Is Active */
+            is_active: boolean;
+            /** Current Amount */
+            current_amount: string | null;
+            /** Version */
+            version: number;
+            /** Versions */
+            versions: components["schemas"]["PriceVersionItem"][];
+        };
+        /**
+         * PackageProductItem
+         * @description One package product (#94 B1). ``subject: null`` = any subject;
+         *     ``current_amount`` is the price in effect today (``null``: none, or not
+         *     offered).
+         */
+        PackageProductItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            unit: components["schemas"]["PackageUnit"];
+            /** Quantity */
+            quantity: number;
+            /** Validity Days */
+            validity_days: number;
+            subject: components["schemas"]["PackageReference"] | null;
+            /** Is Active */
+            is_active: boolean;
+            /** Current Amount */
+            current_amount: string | null;
+            /** Version */
+            version: number;
+        };
+        /**
+         * PackageProductUpdate
+         * @description ``PATCH /api/v1/billing/package-products/{id}`` (#94 B1): ``version``
+         *     and the fields to change (absent or ``null`` = unchanged).
+         */
+        PackageProductUpdate: {
+            /** Version */
+            version: number;
+            /** Name */
+            name?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
+        /**
+         * PackagePurchase
+         * @description ``POST /api/v1/billing/packages`` (#94 C1).
+         */
+        PackagePurchase: {
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /**
+             * Package Product Id
+             * Format: uuid
+             */
+            package_product_id: string;
+        };
+        /**
+         * PackageReference
+         * @description A record a package or product points at: its id and current name.
+         */
+        PackageReference: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** @enum {string} */
+        PackageStatus: "active" | "exhausted" | "expired";
+        /**
+         * PackageTransactionItem
+         * @description One unit movement (signed, in the package's unit). A ``consume``
+         *     names its session and the session's start.
+         */
+        PackageTransactionItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["PackageTransactionKind"];
+            /** Units */
+            units: number;
+            /** Class Session Id */
+            class_session_id: string | null;
+            /** Session Starts At */
+            session_starts_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** @enum {string} */
+        PackageTransactionKind: "grant" | "consume" | "expire" | "reversal";
+        /** @enum {string} */
+        PackageUnit: "sessions" | "minutes";
         /**
          * PasswordChange
          * @description The signed-in user's current and new password (``POST /auth/password``).
@@ -31811,6 +32204,549 @@ export interface operations {
             };
             /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_package_products_api_v1_billing_package_products_get: {
+        parameters: {
+            query?: {
+                is_active?: boolean | null;
+                subject_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_PackageProductItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_package_product_api_v1_billing_package_products_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PackageProductCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackageProductDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_package_product_api_v1_billing_package_products__product_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackageProductDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such package product (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_package_product_api_v1_billing_package_products__product_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PackageProductUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackageProductDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such package product (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The product changed since it was loaded (version_conflict). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    add_package_product_version_api_v1_billing_package_products__product_id__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PriceVersionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackageProductDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such package product (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    delete_package_product_version_api_v1_billing_package_products__product_id__versions__price_version_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+                price_version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such product, or a version of another price (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Only an upcoming version can be deleted (price_version_in_effect); a version used by a charge or a package can't be (price_version_in_use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_packages_api_v1_billing_packages_get: {
+        parameters: {
+            query?: {
+                student_id?: string | null;
+                family_id?: string | null;
+                status?: components["schemas"]["PackageStatus"][] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_PackageItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    purchase_package_api_v1_billing_packages_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID(). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PackagePurchase"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackageDetail"];
+                };
+            };
+            /** @description The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The package is deactivated (package_product_inactive); it has no price today (package_not_offered); the student isn't in a family (student_has_no_family). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_package_api_v1_billing_packages__package_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                package_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackageDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such package (not_found). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

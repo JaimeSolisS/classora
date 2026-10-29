@@ -442,6 +442,89 @@ allow = ["owner", "administrator", "finance_staff"]
 
 [[route]]
 method = "GET"
+path = "/api/v1/billing/package-products"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #94 B1 (L7): reads need billing.manage too. No reauthentication and no
+# Idempotency-Key: a product is configuration.
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/package-products"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #94 B1, B2: the empty body is 422 for the allowed roles. The 201 and the
+# field codes are in tests/integration/test_package_products_routes.py.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/package-products/{product_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #94 B1: the placeholder id is no product: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/billing/package-products/{product_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #94 B1: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/package-products/{product_id}/versions"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #94 B1 (#89 B5): the empty body is 422 for the allowed roles (before the
+# 404).
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/billing/package-products/{product_id}/versions/{price_version_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #94 B1 (#89 B6): the placeholder ids are no product: 404 for the allowed
+# roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/packages"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #94 D5 (L9): staff only; guardians read packages through #102.
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/packages"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+idempotency = true
+# #94 C1 (L8): a purchase posts a ledger row, so it needs an Idempotency-Key
+# (#88); without one the allowed roles get 400. Replays, the concurrent
+# duplicate and the codes: tests/integration/test_package_purchase.py.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/packages/{package_id}"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #94 D5: the placeholder id is no package: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
 path = "/api/v1/billing/service-prices"
 access = "permission"
 permission = "billing.manage"

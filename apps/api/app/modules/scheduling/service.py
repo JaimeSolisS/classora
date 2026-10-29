@@ -146,6 +146,9 @@ Session charges (#91, :mod:`~app.modules.scheduling.billing_context`):
 that changes a session's state, time, duration or participants takes it
 ``FOR UPDATE``, so a charge is posted from committed, current data).
 Since #92 the candidates include ``group`` sessions (with ``group_id``).
+Packages (#94) also use :func:`lock_session_for_billing` (the closeout
+approval's consumption and the expiry job's fallback) and
+:func:`session_starts` (the start of a consumed session).
 
 Enrollment charges (#92, :mod:`~app.modules.scheduling.enrollment_billing`):
 :func:`enrollment_session_counts` and :func:`owner_schedules` (the J3
@@ -319,6 +322,9 @@ from app.modules.scheduling.billing_context import (
 )
 from app.modules.scheduling.billing_context import (
     lock_session_for_billing as lock_session_for_billing,
+)
+from app.modules.scheduling.billing_context import (
+    session_starts as session_starts,
 )
 from app.modules.scheduling.booking import (
     create_class_session as create_class_session,

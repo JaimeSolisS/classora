@@ -115,6 +115,12 @@ TUITION_CHARGES_QUEUEING_LOCK: Final = "billing-post-tuition-charges"
 """At most one queued ``billing:post_tuition_charges`` job (the periodic
 tick shares it)."""
 
+PACKAGE_EXPIRY_TASK: Final = "billing:expire_packages"
+"""The daily package expiry with its fallback consumption (#94 F1)."""
+PACKAGE_EXPIRY_QUEUEING_LOCK: Final = "billing-expire-packages"
+"""At most one queued ``billing:expire_packages`` job (the periodic tick
+shares it)."""
+
 # Worker concurrency is fixed at 1 here; making it configurable and sizing it
 # (with the pools below and mem_limit) is M10-04 (ISSUE-I8).
 WORKER_CONCURRENCY = 1
@@ -244,12 +250,13 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     sessions, #25, and of expired idempotency keys, #88; the five-minute
     offer expiry, #52; the nightly series materialization, #53; the daily
     progress report placeholders, #316, the 15-minute session and
-    enrollment charge sweepers, #91 and #92, and the daily tuition charges,
-    #93, whose task files are
+    enrollment charge sweepers, #91 and #92, the daily tuition charges,
+    #93, and the daily package expiry, #94, whose task files are
     ``app/workflows/progress_report_schedule_tasks.py``,
     ``app/workflows/session_charge_tasks.py``,
-    ``app/workflows/enrollment_charge_tasks.py`` and
-    ``app/workflows/tuition_charge_tasks.py`` because they compose
+    ``app/workflows/enrollment_charge_tasks.py``,
+    ``app/workflows/tuition_charge_tasks.py`` and
+    ``app/workflows/package_expiry_tasks.py`` because they compose
     modules)
     are registered in every environment. The demo tasks
     (and the periodic demo) are registered only in :data:`DEMO_ENVIRONMENTS`.
@@ -261,6 +268,7 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     from app.modules.scheduling import tasks as scheduling_tasks
     from app.workflows import (
         enrollment_charge_tasks,
+        package_expiry_tasks,
         progress_report_schedule_tasks,
         session_charge_tasks,
         tuition_charge_tasks,
@@ -275,6 +283,7 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     session_charge_tasks.register(app)
     enrollment_charge_tasks.register(app)
     tuition_charge_tasks.register(app)
+    package_expiry_tasks.register(app)
     if app_env in DEMO_ENVIRONMENTS:
         demo_jobs.register(app)
     return app

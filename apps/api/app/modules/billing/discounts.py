@@ -126,7 +126,9 @@ class ChargeFacts:
 
     charge_kind: str
     class_type: str
-    subject_id: uuid.UUID
+    subject_id: uuid.UUID | None
+    """``None`` for an any-subject package purchase (#94): a ``subject_ids``
+    criterion never matches it."""
     education_level_id: uuid.UUID | None
     family_active_students: int | None = None
 

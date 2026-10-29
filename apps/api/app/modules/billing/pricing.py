@@ -121,7 +121,7 @@ def _check_arguments(
     group_id: uuid.UUID | None,
     pinned: bool = False,
 ) -> None:
-    if pricing_model == PACKAGE:
+    if pricing_model == PACKAGE and not pinned:
         raise ValueError("package prices are read through their product (#94)")
     if pricing_model == PER_PERIOD and not pinned:
         raise ValueError("per_period prices are read through the plan (#93)")
@@ -149,12 +149,12 @@ async def lookup_price(
     (see the module docstring for the ranks and the ``NULL`` rule).
 
     Raises :class:`ValueError` for ``pricing_model='package'`` (read
-    through the product, #94) and ``'per_period'`` (read through the plan,
-    #93: a plan pins its item, ``PriceQuery.service_price_id``; a weekly and
-    a monthly item share every other key column, so a rank search could
-    pick either), for a ``cohort_id`` with a class type other
-    than ``course`` or a ``group_id`` with one other than ``group``, and
-    for both scopes at once. One statement."""
+    through the product: a pinned :func:`quote`, #94 L8) and
+    ``'per_period'`` (read through the plan, #93: a plan pins its item,
+    ``PriceQuery.service_price_id``; a weekly and a monthly item share
+    every other key column, so a rank search could pick either), for a
+    ``cohort_id`` with a class type other than ``course`` or a ``group_id``
+    with one other than ``group``, and for both scopes at once. One statement."""
     _check_arguments(
         class_type=class_type,
         pricing_model=pricing_model,
@@ -241,6 +241,8 @@ def _target_condition(
 
 
 def _check_query(query: PriceQuery) -> None:
+    if query.subject_id is None and query.service_price_id is None:
+        raise ValueError("an unpinned query needs a subject_id")
     _check_arguments(
         class_type=query.class_type,
         pricing_model=query.pricing_model,
@@ -373,7 +375,9 @@ async def base_price(session: AsyncSession, query: PriceQuery) -> BasePrice | No
 
     With a pin (``query.service_price_id``, #93 B4): the custom-price step
     for that item only, then that item's version in effect on ``on``; the
-    rank search is skipped (still at most two statements)."""
+    rank search is skipped (still at most two statements). A ``package``
+    item (#94 L8: a package product's purchase price) is only priced
+    pinned; its ``subject_id`` may be ``None``."""
     _check_query(query)
     if query.service_price_id is not None:
         return await _pinned_base_price(session, query, query.service_price_id)
@@ -412,6 +416,7 @@ async def base_price(session: AsyncSession, query: PriceQuery) -> BasePrice | No
             source="custom_student" if row.student_id is not None else "custom_family",
             rank=int(row.rank),
         )
+    assert query.subject_id is not None  # noqa: S101 - _check_query
     price = await lookup_price(
         session,
         class_type=query.class_type,

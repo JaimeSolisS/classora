@@ -38,7 +38,8 @@ closeout_submitted_on_behalf`` (#301 E5) → the status check
 the approval request (``administration.service.decide_approval_request``,
 which the handler accepts because the closeout already has the target
 status) → the named audit event → :func:`~app.workflows.closeout_approval.
-on_closeout_approved` for a new revision → the tutor's notification.
+on_closeout_approved` for a new revision (revision 1 of an individual
+session consumes its package credit, #94 E1) → the tutor's notification.
 
 **Tutor order** (:func:`resubmit_closeout`, ``PUT``): ``404`` (the #77
 record policy, or no closeout) → ``403 closeout_tutor_only`` (visible staff,
@@ -266,6 +267,7 @@ async def _new_revision(
         session,
         approval_id=approval.id,
         supersedes_approval_id=approval.supersedes_approval_id,
+        class_session_id=locked.id,
     )
     return approval
 

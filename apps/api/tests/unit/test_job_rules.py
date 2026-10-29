@@ -226,6 +226,7 @@ MODULE_TASKS = {
     "billing:post_session_charges",
     "billing:post_enrollment_charges",
     "billing:post_tuition_charges",
+    "billing:expire_packages",
 }
 
 
@@ -367,6 +368,27 @@ def test_the_tuition_charges_run_daily_at_0730_utc():
     )
     assert jobs.TUITION_CHARGES_TASK == "billing:post_tuition_charges"
     assert jobs.task_parameter_types(app)["billing:post_tuition_charges"] == {
+        "timestamp": int
+    }
+
+
+def test_the_package_expiry_runs_daily_at_0740_utc():
+    # #94 F1: after the 07:30 tuition charges; one queued job at a time.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "billing:expire_packages"
+    ]
+    assert periodic.cron == "40 7 * * *"
+    assert periodic.periodic_id == "billing-expire-packages"
+    assert periodic.configure_kwargs["queueing_lock"] == "billing-expire-packages"
+    assert app.tasks["billing:expire_packages"].queueing_lock == (
+        jobs.PACKAGE_EXPIRY_QUEUEING_LOCK
+    )
+    assert jobs.PACKAGE_EXPIRY_TASK == "billing:expire_packages"
+    assert jobs.task_parameter_types(app)["billing:expire_packages"] == {
         "timestamp": int
     }
 

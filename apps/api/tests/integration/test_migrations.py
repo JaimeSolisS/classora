@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0065"
+HEAD = "0066"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -173,6 +173,8 @@ DISCOUNT_TABLES = [
 """The tables revision 0063 adds (#95 A2-A5)."""
 TUITION_TABLES = ["tuition_plans", "tuition_plan_pauses"]
 """The tables revision 0065 adds (#93 A3, A4)."""
+PACKAGE_TABLES = ["package_products", "packages", "package_credit_transactions"]
+"""The tables revision 0066 adds (#94 A2-A4)."""
 APPEND_ONLY_LEDGER_TABLES = [
     "charges",
     "charge_adjustments",
@@ -413,6 +415,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *BILLING_SETTINGS_TABLES,
             *DISCOUNT_TABLES,
             *TUITION_TABLES,
+            *PACKAGE_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4621,9 +4624,33 @@ def _of_0065(diff: Any) -> bool:
     return False
 
 
+def _of_0066(diff: Any) -> bool:
+    """A metadata difference that revision 0066 adds: the package tables and
+    their indexes, ``charges.package_id`` with its composite foreign key and
+    natural key (#94 A2-A5; CHECKs are not compared)."""
+    if diff[0] == "add_table":
+        return diff[1].name in PACKAGE_TABLES
+    if diff[0] == "add_index":
+        return diff[1].table.name in PACKAGE_TABLES or (
+            diff[1].name == "uq_charges_package_purchase"
+        )
+    if diff[0] == "add_column":
+        return (diff[2], diff[3].name) == ("charges", "package_id")
+    if diff[0] == "add_fk":
+        return diff[1].parent.name == "charges" and "package_id" in (
+            diff[1].column_keys
+        )
+    return False
+
+
+def _of_0065_on(diff: Any) -> bool:
+    """A metadata difference that revision 0065 or a later one adds."""
+    return _of_0065(diff) or _of_0066(diff)
+
+
 def _of_0064_on(diff: Any) -> bool:
     """A metadata difference that revision 0064 or a later one adds."""
-    return _of_0064(diff) or _of_0065(diff)
+    return _of_0064(diff) or _of_0065_on(diff)
 
 
 def _of_0063_on(diff: Any) -> bool:
@@ -10844,13 +10871,13 @@ def test_price_catalog_columns_constraints_indexes_and_guard(fresh_database_url)
         "price_versions_no_truncate",
     }
     # E2: the staged predicate; #90 (0061) replaced "SELECT false" with an
-    # EXISTS on charges (#94 adds packages).
+    # EXISTS on charges, #94 (0066) added packages.
     [body] = run_sql(
         dsn,
         "SELECT prosrc, provolatile::text AS provolatile FROM pg_proc"
         " WHERE proname = 'price_version_is_referenced'",
     )
-    assert body.prosrc.strip().endswith(CHARGES_PREDICATE)
+    assert body.prosrc.strip().endswith(PACKAGES_PREDICATE)
     assert body.provolatile == "v"
     [answer] = run_sql(
         dsn,
@@ -10865,6 +10892,11 @@ def test_price_catalog_columns_constraints_indexes_and_guard(fresh_database_url)
 CHARGES_PREDICATE = (
     "SELECT EXISTS (SELECT 1 FROM charges WHERE price_version_id = version_id)"
 )
+PACKAGES_PREDICATE = (
+    "SELECT EXISTS (SELECT 1 FROM charges WHERE price_version_id = version_id)\n"
+    "        OR EXISTS (SELECT 1 FROM packages WHERE price_version_id = version_id)"
+)
+"""The predicate body from revision 0066 (#94 A6)."""
 LEDGER_VIEW_COLUMNS = [
     "entry_type",
     "entry_id",
@@ -10975,10 +11007,11 @@ def test_ledger_columns_constraints_indexes_triggers_and_view(fresh_database_url
         "proration_remaining": ("smallint", "YES", None, None),
         "proration_total": ("smallint", "YES", None, None),
         "tuition_plan_id": uuid_null,
+        "package_id": uuid_null,
     }
     # E3: the staged columns come with their own issues (#95 added
-    # custom_price_id, #92 the proration, #93 tuition_plan_id).
-    assert "package_id" not in _columns(dsn, "charges")
+    # custom_price_id, #92 the proration, #93 tuition_plan_id, #94
+    # package_id; #101 adds refunds.withdrawal_id).
     assert "withdrawal_id" not in _columns(dsn, "refunds")
     assert _columns(dsn, "charge_adjustments") == {
         **standard,
@@ -11354,7 +11387,7 @@ def test_0064_adds_the_proration_and_downgrade_drops_it(fresh_database_url):
     command.upgrade(config, "0064")
 
     assert version_nums(dsn) == ["0064"]
-    assert [d for d in metadata_diff(dsn) if not _of_0065(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0065_on(d)] == []
     assert set(_columns(dsn, "charges")) - charge_columns == set(PRORATION_COLUMNS)
     assert "ck_charges_proration" in _constraints(dsn, "charges")
 
@@ -11407,7 +11440,7 @@ def test_0065_adds_tuition_plans_and_downgrade_restores_0064(fresh_database_url)
     command.upgrade(config, "0065")
 
     assert version_nums(dsn) == ["0065"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0066(d)] == []
     assert public_tables(dsn) - before == set(TUITION_TABLES)
     assert set(_columns(dsn, "charges")) - charge_columns == {"tuition_plan_id"}
     assert set(_columns(dsn, "service_prices")) - price_columns == {"period_frequency"}
@@ -11441,7 +11474,7 @@ def test_0065_adds_tuition_plans_and_downgrade_restores_0064(fresh_database_url)
         dsn, "service_prices"
     )
     assert _tuition_function(dsn) == set()
-    assert [d for d in metadata_diff(dsn) if not _of_0065(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0065_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -11519,3 +11552,194 @@ def test_tuition_columns_constraints_indexes_and_trigger(fresh_database_url):
     assert "WHERE ((kind)::text = 'tuition_period'::text)" in key
     assert _triggers(dsn, "tuition_plans") == {TUITION_TRIGGER}
     assert _triggers(dsn, "tuition_plan_pauses") == set()
+
+
+# --- 0066: prepaid packages (#94 A1-A7) ------------------------------------------
+
+PACKAGE_APPEND_ONLY = ["packages", "package_credit_transactions"]
+CHARGES_KIND_0065 = (
+    "CHECK (((kind)::text = ANY ((ARRAY['session'::character varying,"
+    " 'group_enrollment'::character varying, 'cohort_enrollment'::character"
+    " varying, 'tuition_period'::character varying, 'manual'::character"
+    " varying])::text[])))"
+)
+
+
+def test_0066_adds_packages_and_downgrade_restores_0065(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0065")
+    before = public_tables(dsn)
+    charge_columns = set(_columns(dsn, "charges"))
+    charge_checks = {
+        name: definition
+        for name, definition in _constraints(dsn, "charges").items()
+        if name in ("ck_charges_kind", "ck_charges_one_source")
+    }
+    assert charge_checks["ck_charges_kind"] == CHARGES_KIND_0065
+    predicate = _predicate_body(dsn)
+    assert predicate.endswith(CHARGES_PREDICATE)
+    functions = _append_only_functions(dsn)
+
+    command.upgrade(config, "0066")
+
+    assert version_nums(dsn) == ["0066"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(PACKAGE_TABLES)
+    assert set(_columns(dsn, "charges")) - charge_columns == {"package_id"}
+    assert _append_only_functions(dsn) - functions == {
+        f"{table}_append_only" for table in PACKAGE_APPEND_ONLY
+    }
+    constraints = _constraints(dsn, "charges")
+    assert "'package_purchase'" in constraints["ck_charges_kind"]
+    assert "'tuition_period'" in constraints["ck_charges_kind"]
+    one_source = constraints["ck_charges_one_source"]
+    assert "package_id" in one_source
+    assert "tuition_plan_id" in one_source
+    assert "service_period_end" in one_source
+    assert constraints["fk_charges_package"].startswith(
+        "FOREIGN KEY (package_id, billing_account_id, student_id) REFERENCES"
+        " packages(id, billing_account_id, student_id)"
+    )
+    assert "ON DELETE RESTRICT" in constraints["fk_charges_package"]
+    assert _predicate_body(dsn).endswith(PACKAGES_PREDICATE)
+
+    command.downgrade(config, "0065")
+
+    assert version_nums(dsn) == ["0065"]
+    assert public_tables(dsn) == before
+    assert set(_columns(dsn, "charges")) == charge_columns
+    restored = _constraints(dsn, "charges")
+    assert {
+        name: restored[name] for name in ("ck_charges_kind", "ck_charges_one_source")
+    } == charge_checks
+    assert "fk_charges_package" not in restored
+    assert "uq_charges_package_purchase" not in _indexes(dsn, "charges")
+    assert _predicate_body(dsn) == predicate
+    assert _append_only_functions(dsn) == functions
+    assert [d for d in metadata_diff(dsn) if not _of_0066(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_package_columns_constraints_indexes_and_triggers(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    uuid_ = ("uuid", "NO", None, None)
+    uuid_null = ("uuid", "YES", None, None)
+    standard = {k: v for k, v in STANDARD_COLUMNS.items() if k != "version"}
+    assert _columns(dsn, "package_products") == {
+        **STANDARD_COLUMNS,
+        "service_price_id": uuid_,
+        "name": ("character varying", "NO", 120, None),
+        "unit": ("character varying", "NO", 8, None),
+        "quantity": ("integer", "NO", None, None),
+        "validity_days": ("smallint", "NO", None, None),
+        "subject_id": uuid_null,
+        "is_active": ("boolean", "NO", None, "true"),
+    }
+    assert _columns(dsn, "packages") == {
+        **standard,
+        "billing_account_id": uuid_,
+        "student_id": uuid_,
+        "package_product_id": uuid_,
+        "price_version_id": uuid_,
+        "unit": ("character varying", "NO", 8, None),
+        "units_granted": ("integer", "NO", None, None),
+        "subject_id": uuid_null,
+        "purchased_on": ("date", "NO", None, None),
+        "expires_on": ("date", "NO", None, None),
+    }
+    assert _columns(dsn, "package_credit_transactions") == {
+        **standard,
+        "package_id": uuid_,
+        "kind": ("character varying", "NO", 16, None),
+        "units": ("integer", "NO", None, None),
+        "class_session_id": uuid_null,
+        "student_id": uuid_null,
+        "reverses_transaction_id": uuid_null,
+    }
+    # L10: withdrawal_id and the refund kind are #101's.
+    assert "withdrawal_id" not in _columns(dsn, "package_credit_transactions")
+    assert set(_constraints(dsn, "package_products")) == {
+        "pk_package_products",
+        "ck_package_products_name_valid",
+        "ck_package_products_unit_valid",
+        "ck_package_products_quantity_positive",
+        "ck_package_products_validity_days_positive",
+        "fk_package_products_service_price_id_service_prices",
+        "fk_package_products_subject_id_subjects",
+        "uq_package_products_service_price_id",
+    }
+    packages = _constraints(dsn, "packages")
+    assert set(packages) == {
+        "pk_packages",
+        "ck_packages_unit_valid",
+        "ck_packages_units_granted_positive",
+        "ck_packages_dates",
+        "fk_packages_billing_account_id_billing_accounts",
+        "fk_packages_student_id_students",
+        "fk_packages_package_product_id_package_products",
+        "fk_packages_price_version_id_price_versions",
+        "fk_packages_subject_id_subjects",
+        "uq_packages_id_account_student",
+    }
+    assert packages["uq_packages_id_account_student"] == (
+        "UNIQUE (id, billing_account_id, student_id)"
+    )
+    transactions = _constraints(dsn, "package_credit_transactions")
+    assert set(transactions) == {
+        "pk_package_credit_transactions",
+        "ck_package_credit_transactions_kind",
+        "ck_package_credit_transactions_units_sign",
+        "ck_package_credit_transactions_consume_session",
+        "ck_package_credit_transactions_consume_student",
+        "ck_package_credit_transactions_reversal_target",
+        "fk_package_credit_transactions_package_id_packages",
+        "fk_package_credit_transactions_class_session_id_class_sessions",
+        "fk_package_credit_transactions_student_id_students",
+        "fk_package_credit_transactions_reverses_transaction_id",
+    }
+    assert "'refund'" not in transactions["ck_package_credit_transactions_kind"]
+    for table in PACKAGE_TABLES:
+        for name, definition in _constraints(dsn, table).items():
+            if definition.startswith("FOREIGN KEY"):
+                assert "ON DELETE RESTRICT" in definition, (table, name)
+    assert "ix_packages_account_student_expires_on" in _indexes(dsn, "packages")
+    assert "ix_packages_price_version_id" in _indexes(dsn, "packages")
+    keys = _indexes(dsn, "package_credit_transactions")
+    for name, columns, kind in (
+        ("uq_package_credit_transactions_grant", "(package_id)", "grant"),
+        ("uq_package_credit_transactions_expire", "(package_id)", "expire"),
+        (
+            "uq_package_credit_transactions_consume",
+            "(package_id, class_session_id)",
+            "consume",
+        ),
+        (
+            "uq_package_credit_transactions_reversal",
+            "(reverses_transaction_id)",
+            "reversal",
+        ),
+    ):
+        assert "UNIQUE INDEX" in keys[name], name
+        assert columns in keys[name], name
+        assert f"WHERE ((kind)::text = '{kind}'::text)" in keys[name], name
+    assert "ix_package_credit_transactions_package_id" in keys
+    assert (
+        "(class_session_id, student_id)"
+        in (keys["ix_package_credit_transactions_session_student"])
+    )
+    purchase = _indexes(dsn, "charges")["uq_charges_package_purchase"]
+    assert "UNIQUE INDEX" in purchase
+    assert "(package_id)" in purchase
+    assert "WHERE ((kind)::text = 'package_purchase'::text)" in purchase
+    for table in PACKAGE_APPEND_ONLY:
+        assert _triggers(dsn, table) == {
+            f"{table}_no_update_delete",
+            f"{table}_no_truncate",
+        }
+    assert _triggers(dsn, "package_products") == set()

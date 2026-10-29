@@ -148,6 +148,25 @@ def approved_summary_columns() -> Select[
     )
 
 
+async def approved_closeout_session_ids(
+    session: AsyncSession, class_session_ids: Collection[uuid.UUID]
+) -> set[uuid.UUID]:
+    """#94 E2, L3: the sessions among ``class_session_ids`` whose closeout
+    has an approval revision (revision 1 and any later one; a closeout back
+    in review after a correction request still has its approval in force).
+    One statement (none for no ids), no lock. Billing reads it: an
+    approved individual session is covered by a package only once its
+    credit was consumed."""
+    if not class_session_ids:
+        return set()
+    rows = await session.scalars(
+        select(SessionCloseoutApproval.class_session_id)
+        .where(SessionCloseoutApproval.class_session_id.in_(set(class_session_ids)))
+        .distinct()
+    )
+    return set(rows)
+
+
 def closeout_sessions_of(tutor_user_id: uuid.UUID) -> Select[uuid.UUID]:
     """``SELECT class_session_id FROM session_closeouts`` of the closeouts
     ``tutor_user_id`` wrote (the closeout's tutor), **not executed**: the
