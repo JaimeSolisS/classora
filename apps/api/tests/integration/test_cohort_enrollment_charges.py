@@ -436,3 +436,33 @@ def test_a_late_fee_is_prorated_before_its_discount(
     assert f"{charge.list_amount:.2f}" == "700.00"
     assert f"{charge.discount_amount:.2f}" == "70.00"
     assert f"{charge.amount:.2f}" == "630.00"
+
+
+def test_an_earlier_period_is_not_charged_after_a_later_one(
+    module_seeded_url, client, subject, student
+):
+    # Engineer D1 (J5 broadened): the first period was enrolled with billing
+    # off and withdrawn; the second is charged at enrollment; the sweeper
+    # then reaches the first period and posts nothing (already_charged).
+    url = module_seeded_url
+    tl = timeline()
+    ec.add_family(url, student)
+    ec.set_floor(url, None)
+    with frozen_clock(tl.now):
+        cookie = owner_cookie(url, client)
+        cohort = ec.make_cohort(client, cookie, subject, tl.monday)
+        ec.cohort_fee(url, subject, "1000.00", cohort_id=uuid.UUID(cohort["id"]))
+        first = ec.enroll_cohort(client, cookie, cohort["id"], student)
+    with frozen_clock(tl.now + timedelta(minutes=5)):
+        cookie = owner_cookie(url, client)
+        ec.withdraw_cohort(url, client, cookie, cohort["id"], first["id"])
+    ec.set_floor(url, ec.floor_of(tl))
+    with frozen_clock(tl.now + timedelta(minutes=10)):
+        cookie = owner_cookie(url, client)
+        second = ec.enroll_cohort(client, cookie, cohort["id"], student)
+    assert len(ec.fees(url, cohort_enrollment=second["id"])) == 1
+
+    result = ec.run_enrollments(url)
+
+    assert (result.candidates, result.already_charged, result.posted) == (1, 1, 0)
+    assert ec.fees(url, cohort_enrollment=first["id"]) == []

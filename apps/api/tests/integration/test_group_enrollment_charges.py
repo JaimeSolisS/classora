@@ -5,7 +5,7 @@ period's confirmed sessions are charged by ``billing:post_session_charges``
 at ``group/per_session``; a group is never charged both ways."""
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import pytest
@@ -260,3 +260,34 @@ def test_individual_sessions_are_charged_as_before(module_seeded_url, subject):
     assert ec.run_sessions(url).posted == 1
     [charge] = sc.charges_of(url, it.session)
     assert f"{charge.amount:.2f}" == "250.00"
+
+
+def test_a_withdrawn_session_priced_period_never_gets_a_back_dated_fee(
+    module_seeded_url, client, subject
+):
+    # QA #92 D1: charged per session (8 × 150.00), withdrawn (the removal
+    # credits net them to 0.00), then a back-dated group/full_course price:
+    # the period stays session-priced, so no fee.
+    url = module_seeded_url
+    tl = timeline()
+    ec.set_floor(url, ec.floor_of(tl))
+    [a] = students(url, 1)
+    ec.group_session_price(url, subject, "150.00")
+    with frozen_clock(tl.now):
+        cookie = owner_cookie(url, client)
+        group = ec.make_group(client, cookie, subject, tl.monday, [a])
+    sessions = ec.sessions_of(url, group_id=group["id"])[:8]
+    ec.confirm_sessions(url, [s.id for s in sessions])
+    assert ec.run_sessions(url).posted == 8
+    period = ec.group_enrollment_id(url, group["id"], a)
+    with frozen_clock(tl.now + timedelta(hours=1)):
+        cookie = owner_cookie(url, client)
+        ec.withdraw_group(url, client, cookie, group["id"], period)
+    charges = ec.charges_of(url, a, "session")
+    assert all(ec.net_of(url, c.id) == "0.00" for c in charges)
+
+    ec.group_fee(url, subject, "900.00", effective_from=date(2000, 1, 1))
+    result = ec.run_enrollments(url)
+
+    assert (result.candidates, result.session_priced, result.posted) == (1, 1, 0)
+    assert ec.fees(url, group_enrollment=period) == []

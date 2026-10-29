@@ -24,7 +24,7 @@ from datetime import UTC, date, datetime, time
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.money import Money
@@ -204,8 +204,11 @@ class PeriodFacts:
 
     - ``fee_posted``: the period has its fee charge (step 1);
     - ``session_charged``: a group period has a ``session`` charge of the
-      student on a group session inside ``[enrolled_at, withdrawn_at)``
-      (step 3, J2: the period is priced per session);
+      student on a group session starting at or after its ``enrolled_at``,
+      whatever the charge's net after removal credits and including
+      sessions after ``withdrawn_at`` (step 3, J2 as refined by the
+      owner-delegated QA decision on #92: once charged per session, a
+      period is never fee-charged);
     - ``other_fee_positive``: another period of the student in the same
       group or cohort has a fee charge with a net above ``0.00`` (step 5,
       J5)."""
@@ -268,11 +271,9 @@ async def _facts_of_kind(
             .where(
                 posted.c.student_id == periods.c.student_id,
                 group_sessions.c.group_id == periods.c.owner_id,
+                # Not bounded by withdrawn_at: a withdrawal credits the
+                # charges, and the period stays session-priced (QA #92 D1).
                 group_sessions.c.starts_at >= periods.c.enrolled_at,
-                or_(
-                    periods.c.withdrawn_at.is_(None),
-                    group_sessions.c.starts_at < periods.c.withdrawn_at,
-                ),
             )
             .exists()
         )

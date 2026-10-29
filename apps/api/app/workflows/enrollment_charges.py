@@ -24,8 +24,9 @@ the sweeper skips with that reason), for a period in this order:
    ``billing_starts_on`` (history from before go-live is never charged; an
    advance enrollment for a course that starts after go-live is);
 3. **group:** ``session_priced`` (J2): a ``session`` charge of the student
-   exists on a group session inside the period (``[enrolled_at,
-   withdrawn_at)``), so the period is priced per session;
+   exists on a group session starting at or after the period's
+   ``enrolled_at`` (whatever its net after removal credits, sessions after
+   ``withdrawn_at`` included), so the period is priced per session;
 4. no fee price: ``billing.service.base_price`` of the period's fee
    (``course/full_course`` with the cohort, or ``group/full_course`` with
    the group; the owner's subject, ``on`` = the enrollment's local date,
