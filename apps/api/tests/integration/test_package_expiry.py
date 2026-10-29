@@ -11,6 +11,7 @@ from datetime import date, timedelta
 import pytest
 
 from tests.integration import package_support as ps
+from tests.integration.lifecycle_support import in_uow
 
 SOLD = date(2031, 3, 1)
 EXPIRES = date(2031, 3, 31)  # SOLD + 30 days
@@ -34,13 +35,20 @@ def test_the_day_after_expiry_the_remainder_expires_once(module_seeded_url, capl
 
     assert ps.expire(url, EXPIRES).packages == 0  # still valid on its last day
     with caplog.at_level(logging.INFO, logger="app.workflows.package_expiry"):
+        # Only this run's records: an earlier run (or test) may have logged
+        # at INFO already (QA #94 D1).
+        caplog.clear()
         run = ps.expire(url, AFTER)
 
     assert (run.packages, run.expired, run.failed) == (1, 1, 0)
     expired = [t for t in ps.transactions(url, package) if t.kind == "expire"]
     assert [t.units for t in expired] == [-4]
     assert ps.remaining(url, package) == 0
-    [line] = [r for r in caplog.records if r.message == "Expired packages"]
+    [line] = [
+        r
+        for r in caplog.records
+        if r.message == "Expired packages" and getattr(r, "packages_count", None) == 1
+    ]
     assert line.expired_count == 1  # type: ignore[attr-defined]
     rerun = ps.expire(url, AFTER + timedelta(days=1))
     assert (rerun.packages, rerun.expired) == (0, 0)
@@ -174,3 +182,30 @@ def test_a_failing_fallback_item_keeps_the_package_for_the_next_run(
 
     assert (retried.fallback_consumed, retried.expired) == (1, 1)
     assert len(ps.consumes(url, session)) == 1
+
+
+def test_the_fallback_rechecks_the_approval_under_the_session_lock(
+    module_seeded_url,
+):
+    # QA #94 O1: an approval committed after the pending read (approved and
+    # short, then a purchase that would now cover it) is never consumed by
+    # the fallback item; the expiry run consumes nothing for it either.
+    url = module_seeded_url
+    w = ps.world(url)
+    first = sold(url, w, unit="minutes", quantity=60)
+    session = ps.session_for(url, w, date(2031, 3, 20), minutes=90)
+    ps.approved(url, session)  # short at approval
+    second = sold(url, w, unit="minutes", quantity=60)  # 120 minutes now
+
+    outcome = in_uow(
+        url,
+        lambda db: ps.package_expiry.consume_pending(
+            db, session, w.student, zone="America/Mexico_City"
+        ),
+    )
+    run = ps.expire(url, AFTER)
+
+    assert outcome is None
+    assert ps.consumes(url, session) == []
+    assert (run.fallback_consumed, run.fallback_short, run.expired) == (0, 0, 2)
+    assert ps.remaining(url, first) == ps.remaining(url, second) == 0
