@@ -884,6 +884,45 @@ export const routes: RouteObject[] = [
             }),
             handle: { permission: 'billing.view' },
           },
+          // #377 A1: packages (code-split): the sold packages for
+          // billing.view holders (selling needs billing.manage, offered on
+          // the page), the products for billing.manage holders.
+          {
+            path: 'billing/packages',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/billing/packages/PackagesPage')
+              ).PackagesPage,
+            }),
+            handle: { permission: 'billing.view' },
+          },
+          {
+            path: 'billing/packages/:packageId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/billing/packages/PackagePage')
+              ).PackagePage,
+            }),
+            handle: { permission: 'billing.view' },
+          },
+          {
+            path: 'billing/package-products',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/billing/packages/ProductsPage')
+              ).ProductsPage,
+            }),
+            handle: { permission: 'billing.manage' },
+          },
+          {
+            path: 'billing/package-products/:productId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/billing/packages/ProductPage')
+              ).ProductPage,
+            }),
+            handle: { permission: 'billing.manage' },
+          },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },
           // Any signed-in user, before and after accepting (#174 G1).

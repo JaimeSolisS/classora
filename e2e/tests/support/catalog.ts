@@ -44,7 +44,8 @@ type Common = {
     billing: string;
   };
   // #363 F4, F5: the price catalog; #366 E3: the Unbilled and Settings tabs;
-  // #367 G3, G4: discounts and custom prices; #374 H3: tuition plans.
+  // #367 G3, G4: discounts and custom prices; #374 H3: tuition plans;
+  // #377 G3: packages.
   billing: {
     tabs: Record<
       | 'label'
@@ -52,10 +53,34 @@ type Common = {
       | 'discounts'
       | 'customPrices'
       | 'tuitionPlans'
+      | 'packages'
       | 'unbilled'
       | 'settings',
       string
     >;
+    packages: {
+      units: { sessionsBalance_other: string };
+      status: Record<'active' | 'exhausted' | 'expired', string>;
+      nav: Record<'sold' | 'products', string>;
+      fields: Record<
+        | 'name'
+        | 'quantitySessions'
+        | 'validity'
+        | 'amount'
+        | 'student'
+        | 'product',
+        string
+      >;
+      unitNames: Record<'sessions' | 'minutes', string>;
+      products: { title: string; add: string; create: string };
+      product: { activate: string; deactivate: string };
+      sold: {
+        title: string;
+        filters: { searchStudent: string };
+      };
+      sell: { action: string; title: string; submit: string };
+      history: { kinds: Record<'grant', string> };
+    };
     tuition: {
       title: string;
       add: string;
