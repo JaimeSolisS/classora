@@ -131,6 +131,7 @@ describe('navigation and access (A)', () => {
     await renderSettings();
 
     expect(tabs()).toEqual([
+      ['Accounts', null],
       ['Prices', null],
       ['Discounts', null],
       ['Custom prices', null],
@@ -153,6 +154,7 @@ describe('navigation and access (A)', () => {
     await renderSettings();
 
     expect(tabs()).toEqual([
+      ['Accounts', null],
       ['Tuition plans', null],
       ['Packages', null],
       ['Unbilled', null],
@@ -161,13 +163,13 @@ describe('navigation and access (A)', () => {
   });
 
   it.each([
-    ['Finance', FINANCE, '/billing/prices', 'Prices'],
+    // #379 A1: Accounts is now the first tab, for every billing.view holder.
+    ['Finance', FINANCE, '/billing/accounts', 'Family accounts'],
     [
       'a billing.view-only holder',
       VIEWER,
-      // #374 A1: Tuition plans is now the first billing.view tab.
-      '/billing/tuition-plans',
-      'Tuition plans',
+      '/billing/accounts',
+      'Family accounts',
     ],
   ] as const)(
     '/billing opens the first tab %s may open',
@@ -430,6 +432,7 @@ describe('Spanish (D1)', () => {
     await renderSettings();
 
     expect(tabs('Secciones de cobros').map(([label]) => label)).toEqual([
+      'Cuentas',
       'Precios',
       'Descuentos',
       'Precios especiales',

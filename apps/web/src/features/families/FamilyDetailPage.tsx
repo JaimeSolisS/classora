@@ -45,7 +45,8 @@ import type { SavedState } from './FamilyFormPages';
 // profile in Guardians (the server decides) and no controls. With
 // family.manage: "Add student" / "Add guardian" dialogs (the #34 picker),
 // "Remove" per row behind a confirmation, "Edit", and "Deactivate" /
-// "Reactivate" behind a confirmation. A 404 (missing or not visible) says
+// "Reactivate" behind a confirmation. With billing.view, a "Billing
+// account" link (#379 A3). A 404 (missing or not visible) says
 // "This family doesn't exist.".
 
 export function FamilyDetailPage() {
@@ -54,6 +55,7 @@ export function FamilyDetailPage() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const canManage = useCan('family.manage');
+  const canOpenBilling = useCan('billing.view');
   const key = familyDetailKey(familyId);
   const detail = useQuery({
     queryKey: key,
@@ -113,6 +115,7 @@ export function FamilyDetailPage() {
     <FamilyDetailView
       family={detail.data}
       canManage={canManage}
+      canOpenBilling={canOpenBilling}
       initiallySaved={arrivedSaved}
       onSetActive={setActive}
       onReload={async () => {
@@ -134,6 +137,8 @@ interface FamilyDetailViewProps {
   family: FamilyDetail;
   /** The caller holds family.manage (UX only; the API decides). */
   canManage: boolean;
+  /** billing.view: a link to the family's billing account (#379 A3). */
+  canOpenBilling?: boolean;
   /** Arrived from a save: announce "Changes saved.". */
   initiallySaved?: boolean;
   /** Deactivates (false) or reactivates (true); rejects with the error. */
@@ -164,6 +169,7 @@ interface Removing {
 export function FamilyDetailView({
   family,
   canManage,
+  canOpenBilling = false,
   initiallySaved = false,
   onSetActive,
   onReload,
@@ -270,6 +276,16 @@ export function FamilyDetailView({
         <p className="flex flex-wrap gap-2">
           <FamilyStatusBadge active={family.is_active} />
         </p>
+        {canOpenBilling ? (
+          <p>
+            <Link
+              to={`/billing/accounts/${family.id}`}
+              className={TEXT_LINK_CLASS}
+            >
+              {t('families.billingAccount')}
+            </Link>
+          </p>
+        ) : null}
         {canManage ? (
           <div className="flex flex-wrap items-center gap-3">
             <Link

@@ -322,6 +322,18 @@ const API_CODES = [
   'idempotency_key_required',
   'idempotency_key_invalid',
   'idempotency_key_reused',
+  // #379 F1: payments and allocations (#96).
+  'allocation_exceeds_open',
+  'allocation_exceeds_payment',
+  'allocation_duplicate_charge',
+  'allocation_charge_not_found',
+  'allocation_lines_required',
+  'allocation_lines_not_allowed',
+  'amount_not_allowed',
+  'insufficient_account_credit',
+  'nothing_to_allocate',
+  'payment_method_unavailable',
+  'received_on_in_future',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

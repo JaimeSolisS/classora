@@ -357,5 +357,16 @@
   "validity_days_out_of_range": "Enter a validity from 1 day to two years (seven hundred thirty days).",
   "idempotency_key_required": "We couldn't send this safely. Reload the page and try again.",
   "idempotency_key_invalid": "We couldn't send this safely. Reload the page and try again.",
-  "idempotency_key_reused": "This submission was already used for different data. Close the dialog and start again."
+  "idempotency_key_reused": "This submission was already used for different data. Close the dialog and start again.",
+  "allocation_exceeds_open": "An amount is more than what is still open on that charge. The open amounts were updated; check them and try again.",
+  "allocation_exceeds_payment": "The amounts add up to more than the payment.",
+  "allocation_duplicate_charge": "A charge appears more than once. Use one row per charge.",
+  "allocation_charge_not_found": "This charge isn't on the family's account any more.",
+  "allocation_lines_required": "Enter an amount for at least one charge.",
+  "allocation_lines_not_allowed": "Charges can only be chosen with \"Choose charges\".",
+  "amount_not_allowed": "An amount can only be given with \"Oldest first\".",
+  "insufficient_account_credit": "That is more than the family's account credit. The balance was updated; check it and try again.",
+  "nothing_to_allocate": "There is no account credit or no open charge to apply it to. The balance was updated.",
+  "payment_method_unavailable": "This payment method isn't available any more. Choose another.",
+  "received_on_in_future": "The date can't be after today."
 }

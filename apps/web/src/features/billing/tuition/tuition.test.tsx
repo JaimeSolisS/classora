@@ -207,6 +207,7 @@ describe('access (A1)', () => {
     await renderAt('/billing/tuition-plans');
 
     expect(tabs()).toEqual([
+      ['Accounts', null],
       ['Prices', null],
       ['Discounts', null],
       ['Custom prices', null],
@@ -244,6 +245,7 @@ describe('access (A1)', () => {
       [...main().querySelectorAll('button')].map((b) => b.textContent),
     ).not.toContain('New plan');
     expect(tabs().map(([name]) => name)).toEqual([
+      'Accounts',
       'Tuition plans',
       'Packages',
       'Unbilled',

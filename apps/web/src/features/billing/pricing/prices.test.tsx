@@ -218,6 +218,7 @@ describe('access and navigation (A)', () => {
       ),
     ].map((a) => [a.textContent, a.getAttribute('aria-current')]);
     expect(tabs).toEqual([
+      ['Accounts', null],
       ['Prices', 'page'],
       ['Discounts', null],
       ['Custom prices', null],

@@ -351,6 +351,11 @@ unless a bullet says otherwise.
   with eligibility rules and validity dates (Billing → Discounts), and
   custom prices per student or family (Billing → Custom prices); posted
   charges keep the price and discounts they were computed with.
+- They open a family's billing account (Billing → Accounts, or from the
+  family's page) to see its balances overall and per child, its charges
+  and its history, and record cash, transfer or other payments, applied
+  oldest first or to chosen charges; whatever isn't applied stays as
+  account credit, which they can apply to charges later.
 
 **Notifications**
 
@@ -381,9 +386,9 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** family balances, payments and the rest of billing,
-payroll, reporting and analytics, and deployment. See the
-[milestones](https://github.com/JaimeSolisS/classora/milestones) and
+**Not built yet:** receipts, refunds and the rest of billing (including
+the family billing portal), payroll, reporting and analytics, and
+deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 
 **Not in this version:** file uploads and documents (attachments, the shared

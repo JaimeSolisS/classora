@@ -184,6 +184,7 @@ describe('access (A)', () => {
       ),
     ].map((a) => [a.textContent, a.getAttribute('aria-current')]);
     expect(tabs).toEqual([
+      ['Accounts', null],
       ['Prices', null],
       ['Discounts', null],
       ['Custom prices', 'page'],

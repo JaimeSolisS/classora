@@ -381,6 +381,20 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['idempotency_key_required', 'idempotency_key_required'],
   ['idempotency_key_invalid', 'idempotency_key_invalid'],
   ['idempotency_key_reused', 'idempotency_key_reused'],
+  // Payments and allocations (#96, #379 F1), problem and field codes
+  // (amount_not_positive, money_*, date_out_of_range and too_long are
+  // listed above).
+  ['allocation_exceeds_open', 'allocation_exceeds_open'],
+  ['allocation_exceeds_payment', 'allocation_exceeds_payment'],
+  ['allocation_duplicate_charge', 'allocation_duplicate_charge'],
+  ['allocation_charge_not_found', 'allocation_charge_not_found'],
+  ['allocation_lines_required', 'allocation_lines_required'],
+  ['allocation_lines_not_allowed', 'allocation_lines_not_allowed'],
+  ['amount_not_allowed', 'amount_not_allowed'],
+  ['insufficient_account_credit', 'insufficient_account_credit'],
+  ['nothing_to_allocate', 'nothing_to_allocate'],
+  ['payment_method_unavailable', 'payment_method_unavailable'],
+  ['received_on_in_future', 'received_on_in_future'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],
