@@ -7421,7 +7421,7 @@ export interface components {
             warnings: components["schemas"]["SchedulingWarning"][];
         };
         /** @enum {string} */
-        "ClassType-Input": "individual" | "group" | "course";
+        ClassType: "individual" | "group" | "course";
         /**
          * ClassroomCreate
          * @description A new classroom (``POST /api/v1/classrooms``). It starts active;
@@ -9169,7 +9169,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            class_type: components["schemas"]["app__modules__billing__schemas__ClassType"];
+            class_type: components["schemas"]["ClassType"];
             pricing_model: components["schemas"]["CatalogPricingModel"];
             subject: components["schemas"]["PriceCatalogSubject"];
             education_level: components["schemas"]["PriceCatalogReference"] | null;
@@ -13973,7 +13973,7 @@ export interface components {
          *     version (#89 B3). Fields are in rule order (see the module docstring).
          */
         ServicePriceCreate: {
-            class_type: components["schemas"]["ClassType-Input"];
+            class_type: components["schemas"]["ClassType"];
             pricing_model: components["schemas"]["CatalogPricingModel"];
             /**
              * Subject Id
@@ -14010,7 +14010,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            class_type: components["schemas"]["app__modules__billing__schemas__ClassType"];
+            class_type: components["schemas"]["ClassType"];
             pricing_model: components["schemas"]["CatalogPricingModel"];
             subject: components["schemas"]["PriceCatalogSubject"];
             education_level: components["schemas"]["PriceCatalogReference"] | null;
@@ -14041,7 +14041,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            class_type: components["schemas"]["app__modules__billing__schemas__ClassType"];
+            class_type: components["schemas"]["ClassType"];
             pricing_model: components["schemas"]["CatalogPricingModel"];
             subject: components["schemas"]["PriceCatalogSubject"];
             education_level: components["schemas"]["PriceCatalogReference"] | null;
@@ -15971,6 +15971,8 @@ export interface components {
             /** Professional Experience */
             professional_experience?: string | null;
         };
+        /** @enum {string} */
+        UnbilledClassType: "individual" | "group";
         /**
          * UnbilledEnrollmentItem
          * @description One group or cohort enrollment period whose fee the enrollment sweeper
@@ -16061,7 +16063,7 @@ export interface components {
             family: components["schemas"]["UnbilledRecord"] | null;
             reason: components["schemas"]["UnbilledReason"];
             /** @description individual, or group for a session-priced group (#92). */
-            class_type: components["schemas"]["app__workflows__session_charge_schemas__ClassType"];
+            class_type: components["schemas"]["UnbilledClassType"];
             /** @description The group of a group session (else null). */
             group: components["schemas"]["UnbilledRecord"] | null;
         };
@@ -16264,8 +16266,6 @@ export interface components {
              */
             windows: components["schemas"]["AvailabilityWindow"][];
         };
-        /** @enum {string} */
-        app__modules__billing__schemas__ClassType: "individual" | "group" | "course";
         /**
          * ScheduleSubject
          * @description The session's subject with its level's name.
@@ -16291,8 +16291,6 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** @enum {string} */
-        app__workflows__session_charge_schemas__ClassType: "individual" | "group";
     };
     responses: never;
     parameters: never;
@@ -29430,7 +29428,7 @@ export interface operations {
     list_service_prices_api_v1_billing_service_prices_get: {
         parameters: {
             query?: {
-                class_type?: components["schemas"]["ClassType-Input"] | null;
+                class_type?: components["schemas"]["ClassType"] | null;
                 pricing_model?: components["schemas"]["CatalogPricingModel"] | null;
                 subject_id?: string | null;
                 limit?: number;

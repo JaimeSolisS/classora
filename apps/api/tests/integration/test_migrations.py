@@ -11090,7 +11090,7 @@ def test_0062_adds_the_billing_settings_and_downgrade_drops_it(fresh_database_ur
     command.upgrade(config, "0062")
 
     assert version_nums(dsn) == ["0062"]
-    assert [d for d in metadata_diff(dsn) if not _of_0063(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0063_on(d)] == []
     assert public_tables(dsn) - before == set(BILLING_SETTINGS_TABLES)
     rows = run_sql(
         dsn, "SELECT singleton, billing_starts_on, version FROM billing_settings"
@@ -11166,7 +11166,7 @@ def test_0063_adds_discounts_and_custom_prices_and_downgrade_drops_them(
     command.upgrade(config, "0063")
 
     assert version_nums(dsn) == ["0063"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0064(d)] == []
     assert public_tables(dsn) - before == set(DISCOUNT_TABLES)
     assert set(_columns(dsn, "charges")) - charge_columns == {"custom_price_id"}
     assert _discount_functions(dsn) == DISCOUNT_FUNCTIONS

@@ -18791,7 +18791,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "$ref": "#/components/schemas/ClassType-Input"
+                  "$ref": "#/components/schemas/ClassType"
                 },
                 {
                   "type": "null"
@@ -28457,7 +28457,7 @@
         "title": "ClassSessionUpdated",
         "description": "The moved session and its warnings."
       },
-      "ClassType-Input": {
+      "ClassType": {
         "type": "string",
         "enum": [
           "individual",
@@ -32203,7 +32203,7 @@
             "title": "Id"
           },
           "class_type": {
-            "$ref": "#/components/schemas/app__modules__billing__schemas__ClassType"
+            "$ref": "#/components/schemas/ClassType"
           },
           "pricing_model": {
             "$ref": "#/components/schemas/CatalogPricingModel"
@@ -42958,7 +42958,7 @@
       "ServicePriceCreate": {
         "properties": {
           "class_type": {
-            "$ref": "#/components/schemas/ClassType-Input"
+            "$ref": "#/components/schemas/ClassType"
           },
           "pricing_model": {
             "$ref": "#/components/schemas/CatalogPricingModel"
@@ -43050,7 +43050,7 @@
             "title": "Id"
           },
           "class_type": {
-            "$ref": "#/components/schemas/app__modules__billing__schemas__ClassType"
+            "$ref": "#/components/schemas/ClassType"
           },
           "pricing_model": {
             "$ref": "#/components/schemas/CatalogPricingModel"
@@ -43158,7 +43158,7 @@
             "title": "Id"
           },
           "class_type": {
-            "$ref": "#/components/schemas/app__modules__billing__schemas__ClassType"
+            "$ref": "#/components/schemas/ClassType"
           },
           "pricing_model": {
             "$ref": "#/components/schemas/CatalogPricingModel"
@@ -47284,6 +47284,13 @@
         "title": "TutorUpdate",
         "description": "A profile change (``PATCH /api/v1/tutors/{user_id}``). Fields not sent\nstay unchanged; ``\"\"`` or ``null`` clears ``email``, ``phone`` or\n``professional_experience``."
       },
+      "UnbilledClassType": {
+        "type": "string",
+        "enum": [
+          "individual",
+          "group"
+        ]
+      },
       "UnbilledEnrollmentItem": {
         "properties": {
           "kind": {
@@ -47478,7 +47485,7 @@
             "$ref": "#/components/schemas/UnbilledReason"
           },
           "class_type": {
-            "$ref": "#/components/schemas/app__workflows__session_charge_schemas__ClassType",
+            "$ref": "#/components/schemas/UnbilledClassType",
             "description": "individual, or group for a session-priced group (#92)."
           },
           "group": {
@@ -47907,14 +47914,6 @@
         "title": "WeeklyAvailabilityUpdate",
         "description": "The tutor's full list of weekly windows\n(``PUT /api/v1/tutors/{user_id}/availability/weekly``); ``[]`` clears\nthem."
       },
-      "app__modules__billing__schemas__ClassType": {
-        "type": "string",
-        "enum": [
-          "individual",
-          "group",
-          "course"
-        ]
-      },
       "app__modules__scheduling__schedule_schemas__ScheduleSubject": {
         "properties": {
           "id": {
@@ -47960,13 +47959,6 @@
           "name"
         ],
         "title": "ScheduleSubject"
-      },
-      "app__workflows__session_charge_schemas__ClassType": {
-        "type": "string",
-        "enum": [
-          "individual",
-          "group"
-        ]
       }
     }
   }

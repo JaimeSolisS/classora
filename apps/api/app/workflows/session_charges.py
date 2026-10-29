@@ -117,7 +117,7 @@ from app.workflows.charge_pricing import (
 )
 from app.workflows.session_charge_schemas import (
     BillableState,
-    ClassType,
+    UnbilledClassType,
     UnbilledReason,
     UnbilledRecord,
     UnbilledSessionItem,
@@ -309,7 +309,7 @@ def price_query(
         student_id=candidate.student_id,
         family_id=family_id,
         charge_kind="session",
-        class_type=cast(ClassType, key.class_type),
+        class_type=cast(UnbilledClassType, key.class_type),
         pricing_model=key.pricing_model,
         subject_id=key.subject_id,
         on=key.on,
@@ -783,7 +783,7 @@ async def list_unbilled_items(
                 ),
                 family=None if family is None else _record(family.id, family.name),
                 reason=cast(UnbilledReason, result.outcome),
-                class_type=cast(ClassType, candidate.kind),
+                class_type=cast(UnbilledClassType, candidate.kind),
                 group=(
                     None
                     if candidate.group_id is None

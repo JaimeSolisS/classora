@@ -408,8 +408,8 @@ def test_expected_skips_never_fail_the_enrollment(module_seeded_url, client, sub
 def test_a_late_fee_is_prorated_before_its_discount(
     module_seeded_url, client, subject, student
 ):
-    # B3: 1000.00 × 7/10 = 700.00, then a fixed 100.00 → 600.00 (discounting
-    # first would give (1000 − 100) × 7/10 = 630.00).
+    # B3: 1000.00 × 7/10 = 700.00, then 10 % → 630.00 (a discount computed
+    # on the full fee would take 100.00 off).
     url = module_seeded_url
     tl = timeline()
     ec.set_floor(url, ec.floor_of(tl))
@@ -423,7 +423,7 @@ def test_a_late_fee_is_prorated_before_its_discount(
         await persist_discount(
             session,
             kind="discount",
-            amount="100.00",
+            percent="10",
             eligibility={"subject_ids": [str(subject)]},
         )
 
@@ -434,5 +434,5 @@ def test_a_late_fee_is_prorated_before_its_discount(
 
     [charge] = ec.fees(url, cohort_enrollment=enrolled["id"])
     assert f"{charge.list_amount:.2f}" == "700.00"
-    assert f"{charge.discount_amount:.2f}" == "100.00"
-    assert f"{charge.amount:.2f}" == "600.00"
+    assert f"{charge.discount_amount:.2f}" == "70.00"
+    assert f"{charge.amount:.2f}" == "630.00"

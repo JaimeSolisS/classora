@@ -13,7 +13,7 @@ family (so no billing account), or the catalog has no price in effect on
 the service date (none, or "not offered")."""
 
 type BillableState = Literal["confirmed", "completed"]
-type ClassType = Literal["individual", "group"]
+type UnbilledClassType = Literal["individual", "group"]
 """The class type of a session charged per session (``group`` since #92)."""
 
 
@@ -45,7 +45,7 @@ class UnbilledSessionItem(BaseModel):
         description="The student's family (null: none, reason no_billing_account)."
     )
     reason: UnbilledReason
-    class_type: ClassType = Field(
+    class_type: UnbilledClassType = Field(
         description="individual, or group for a session-priced group (#92)."
     )
     group: UnbilledRecord | None = Field(
