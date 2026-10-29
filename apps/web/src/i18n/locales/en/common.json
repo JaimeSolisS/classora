@@ -4897,11 +4897,11 @@
       "deleted": "Custom price deleted."
     },
     "unbilled": {
-      "title": "Unbilled sessions",
-      "intro": "Confirmed and completed sessions since the billing start date that can't be charged, and why. Fix the cause and the session is charged.",
-      "delay": "New confirmations are billed within about 15 minutes.",
+      "title": "Unbilled sessions and enrollments",
+      "intro": "Confirmed and completed sessions, and group and course enrollments, since the billing start date that can't be charged, and why. Fix the cause and they are charged.",
+      "delay": "New confirmations and enrollments are billed within about 15 minutes.",
       "filters": {
-        "label": "Unbilled session filters",
+        "label": "Unbilled filters",
         "reason": "Reason",
         "all": "All"
       },
@@ -4914,12 +4914,14 @@
         "student": "Student",
         "subject": "Subject",
         "length": "Length",
+        "class": "Class",
         "family": "Family",
         "reason": "Reason",
         "actions": "Actions"
       },
       "minutes": "{{minutes}} min",
       "noFamily": "No family",
+      "individual": "Individual",
       "fix": {
         "family": "Open families",
         "familyFor": "Open families to add {{student}} to one",
@@ -4929,7 +4931,33 @@
       "emptyOff": "Billing is off; nothing is charged yet.",
       "openSettings": "Open billing settings",
       "emptyOn": "Every confirmed session since {{date}} is billed.",
-      "emptyFiltered": "No unbilled sessions with this reason."
+      "emptyFiltered": "No unbilled sessions with this reason.",
+      "sessions": {
+        "title": "Sessions",
+        "pagination": "Session pages"
+      },
+      "enrollments": {
+        "title": "Enrollments",
+        "note": "Group enrollments charged per session appear in the sessions table, not here.",
+        "columns": {
+          "date": "Enrollment date",
+          "scope": "Group or course"
+        },
+        "kinds": {
+          "group_enrollment": "Group",
+          "cohort_enrollment": "Course"
+        },
+        "reasons": {
+          "no_billing_account": "Not in a family",
+          "no_price": "No course or group fee"
+        },
+        "fix": {
+          "priceFor": "Open prices to add a fee for {{name}}"
+        },
+        "pagination": "Enrollment pages",
+        "emptyOn": "Every enrollment since {{date}} is charged.",
+        "emptyFiltered": "No unbilled enrollments with this reason."
+      }
     },
     "settings": {
       "title": "Billing settings",

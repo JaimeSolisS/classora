@@ -336,8 +336,9 @@ unless a bullet says otherwise.
   family, as are course fees and flat group fees when a student enrolls
   (prorated by the sessions left for a late enrollment); withdrawing a
   student from a group charged per session credits the future sessions.
-  Billing → Unbilled lists the sessions that can't be charged yet (no
-  family or no price) with a link to fix the cause.
+  Billing → Unbilled lists the sessions and the group or course
+  enrollments that can't be charged yet (no family or no price) with a
+  link to fix the cause.
 - They also keep discounts, scholarships, sibling discounts and promotions
   with eligibility rules and validity dates (Billing → Discounts), and
   custom prices per student or family (Billing → Custom prices); posted

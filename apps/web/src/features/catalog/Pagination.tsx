@@ -11,6 +11,8 @@ interface PaginationProps {
   total: number;
   /** Goes to another 1-based page. */
   onPage: (page: number) => void;
+  /** The navigation's name, when a page has more than one list. */
+  label?: string;
 }
 
 export function Pagination({
@@ -19,12 +21,13 @@ export function Pagination({
   shown,
   total,
   onPage,
+  label,
 }: PaginationProps) {
   const { t } = useTranslation();
   const page = Math.floor(offset / limit) + 1;
   return (
     <nav
-      aria-label={t('users.list.pagination')}
+      aria-label={label ?? t('users.list.pagination')}
       className="flex flex-wrap items-center gap-3"
     >
       <Button

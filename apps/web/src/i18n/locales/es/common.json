@@ -4998,11 +4998,11 @@
       "deleted": "Precio especial eliminado."
     },
     "unbilled": {
-      "title": "Sesiones sin cobrar",
-      "intro": "Sesiones confirmadas y completadas desde la fecha de inicio de cobros que no se pueden cobrar, y el motivo. Corrige la causa y la sesión se cobra.",
-      "delay": "Las confirmaciones nuevas se cobran en unos 15 minutos.",
+      "title": "Sesiones e inscripciones sin cobrar",
+      "intro": "Sesiones confirmadas y completadas, e inscripciones a grupos y cursos, desde la fecha de inicio de cobros que no se pueden cobrar, y el motivo. Corrige la causa y se cobran.",
+      "delay": "Las confirmaciones e inscripciones nuevas se cobran en unos 15 minutos.",
       "filters": {
-        "label": "Filtros de sesiones sin cobrar",
+        "label": "Filtros de pendientes de cobro",
         "reason": "Motivo",
         "all": "Todos"
       },
@@ -5015,12 +5015,14 @@
         "student": "Estudiante",
         "subject": "Materia",
         "length": "Duración",
+        "class": "Clase",
         "family": "Familia",
         "reason": "Motivo",
         "actions": "Acciones"
       },
       "minutes": "{{minutes}} min",
       "noFamily": "Sin familia",
+      "individual": "Individual",
       "fix": {
         "family": "Abrir familias",
         "familyFor": "Abrir familias para agregar a {{student}} a una",
@@ -5030,7 +5032,33 @@
       "emptyOff": "Los cobros están desactivados; todavía no se cobra nada.",
       "openSettings": "Abrir la configuración de cobros",
       "emptyOn": "Todas las sesiones confirmadas desde el {{date}} están cobradas.",
-      "emptyFiltered": "No hay sesiones sin cobrar con este motivo."
+      "emptyFiltered": "No hay sesiones sin cobrar con este motivo.",
+      "sessions": {
+        "title": "Sesiones",
+        "pagination": "Páginas de sesiones"
+      },
+      "enrollments": {
+        "title": "Inscripciones",
+        "note": "Las inscripciones a grupos que se cobran por sesión aparecen en la tabla de sesiones, no aquí.",
+        "columns": {
+          "date": "Fecha de inscripción",
+          "scope": "Grupo o curso"
+        },
+        "kinds": {
+          "group_enrollment": "Grupo",
+          "cohort_enrollment": "Curso"
+        },
+        "reasons": {
+          "no_billing_account": "No pertenece a una familia",
+          "no_price": "Sin cuota de curso o grupo"
+        },
+        "fix": {
+          "priceFor": "Abrir precios para agregar una cuota de {{name}}"
+        },
+        "pagination": "Páginas de inscripciones",
+        "emptyOn": "Todas las inscripciones desde el {{date}} están cobradas.",
+        "emptyFiltered": "No hay inscripciones sin cobrar con este motivo."
+      }
     },
     "settings": {
       "title": "Configuración de cobros",

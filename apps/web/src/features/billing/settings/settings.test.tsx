@@ -60,6 +60,8 @@ function stub(
     [SETTINGS]: () => jsonResponse(200, settings),
     'GET /api/v1/billing/unbilled-items': () =>
       jsonResponse(200, { items: [], total: 0, limit: 25, offset: 0 }),
+    'GET /api/v1/billing/unbilled-enrollments': () =>
+      jsonResponse(200, { items: [], total: 0, limit: 25, offset: 0 }),
     'GET /api/v1/billing/service-prices': () =>
       jsonResponse(200, { items: [], total: 0, limit: 25, offset: 0 }),
     ...routes,
@@ -156,7 +158,7 @@ describe('navigation and access (A)', () => {
       'a billing.view-only holder',
       VIEWER,
       '/billing/unbilled',
-      'Unbilled sessions',
+      'Unbilled sessions and enrollments',
     ],
   ] as const)(
     '/billing opens the first tab %s may open',
@@ -178,6 +180,9 @@ describe('navigation and access (A)', () => {
       expect(h1()).toBe("You don't have access to this page");
       expect(api.calls(SETTINGS)).toHaveLength(0);
       expect(api.calls('GET /api/v1/billing/unbilled-items')).toHaveLength(0);
+      expect(
+        api.calls('GET /api/v1/billing/unbilled-enrollments'),
+      ).toHaveLength(0);
       const labels = [...app!.container.querySelectorAll('header nav a')].map(
         (a) => a.textContent,
       );
