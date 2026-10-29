@@ -32,6 +32,7 @@ import {
   dialogServerErrors,
   endChoices,
   openPause,
+  pauseAfter,
   pauseEnds,
   pauseStarts,
   resumeStarts,
@@ -224,10 +225,17 @@ function PauseForm({
   const labels = useTuitionLabels();
   const id = useId();
   const starts = pauseStarts(plan);
+  // "Until resumed" would overlap a later pause (QA O2): then the pause
+  // must end before it, and the first end is chosen.
+  const defaultEnd = (from: string) =>
+    from && pauseAfter(plan, from)
+      ? (pauseEnds(plan, from)[0]?.period_end ?? '')
+      : '';
   const [start, setStart] = useState(starts[0]?.period_start ?? '');
-  const [end, setEnd] = useState('');
+  const [end, setEnd] = useState(() => defaultEnd(start));
   const [errors, setErrors] = useState<{ start?: string; end?: string }>({});
   const ends = start ? pauseEnds(plan, start) : [];
+  const openAllowed = !start || !pauseAfter(plan, start);
 
   return (
     <ActionDialog
@@ -236,8 +244,13 @@ function PauseForm({
       description={t('billing.tuition.pause.description')}
       submitLabel={t('billing.tuition.pause.submit')}
       validate={() => {
-        setErrors(start ? {} : { start: `${V}.pauseStartRequired` });
-        return start !== '';
+        const found = !start
+          ? { start: `${V}.pauseStartRequired` }
+          : !end && !openAllowed
+            ? { end: `${V}.endRequired` }
+            : {};
+        setErrors(found);
+        return Object.keys(found).length === 0;
       }}
       onSubmit={async () => {
         await onSubmit({
@@ -273,7 +286,7 @@ function PauseForm({
             aria-describedby={describedBy}
             onChange={(event) => {
               setStart(event.target.value);
-              setEnd('');
+              setEnd(defaultEnd(event.target.value));
             }}
           >
             {starts.map((period) => (
@@ -298,7 +311,9 @@ function PauseForm({
             aria-describedby={describedBy}
             onChange={(event) => setEnd(event.target.value)}
           >
-            <option value="">{t('billing.tuition.untilResumed')}</option>
+            {openAllowed ? (
+              <option value="">{t('billing.tuition.untilResumed')}</option>
+            ) : null}
             {ends.map((period) => (
               <option key={period.period_end} value={period.period_end}>
                 {labels.date(period.period_end)}

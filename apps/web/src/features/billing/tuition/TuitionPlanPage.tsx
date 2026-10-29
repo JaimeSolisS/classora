@@ -101,8 +101,10 @@ export function TuitionPlanPage() {
     queryKey: planKey(planId),
     queryFn: ({ signal }) => fetchPlan(planId, signal),
   });
+  // A malformed id is a 422 from the API: not found too (QA O6).
   const notFound =
-    detail.error instanceof ApiError && detail.error.status === 404;
+    detail.error instanceof ApiError &&
+    (detail.error.status === 404 || detail.error.status === 422);
   useDocumentTitle(
     notFound
       ? t('billing.tuition.notFound')
@@ -363,7 +365,7 @@ export function TuitionPlanPageView({
             </TableHeader>
             <TableBody>
               {plan.upcoming_periods.map((period) => {
-                const display = periodDisplay(period, plan.pauses);
+                const display = periodDisplay(period, plan);
                 return (
                   <TableRow
                     key={period.period_start}

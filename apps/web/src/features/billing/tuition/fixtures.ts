@@ -1,3 +1,4 @@
+import { addDays } from '@/lib/time';
 import {
   GROUP_OPTIONS,
   PRICE_GROUP_PER_PERIOD,
@@ -288,9 +289,22 @@ export const PLAN_PAUSED_DETAIL: TuitionPlanDetail = {
   ],
 };
 
+/** The `n` biweekly periods from `first` (a Monday), `YYYY-MM-DD`. */
+function biweeklyPeriods(first: string, n: number) {
+  return Array.from({ length: n }, (_, k) => ({
+    period_start: addDays(first, 14 * k),
+    period_end: addDays(first, 14 * k + 13),
+  }));
+}
+
+const CHARGE_WITHDRAWN = 'c0000000-0000-4000-8000-000000000005';
+
 /**
- * An ended group plan (withdrawn on the first day of October): its October
- * period is charged although the API reports enrollment_ended.
+ * An ended group plan, withdrawn on the first day of its current period
+ * (19 Oct), shaped as the API returns it (#374 QA D1): the 12 upcoming
+ * periods, the current one charged and reported enrollment_ended, the 11
+ * future ones reported not_due (the state order checks future dates
+ * first). The web shows them all as enrollment ended, the first charged.
  */
 export const PLAN_ENDED_DETAIL: TuitionPlanDetail = {
   ...PLAN_PAUSED,
@@ -298,8 +312,15 @@ export const PLAN_ENDED_DETAIL: TuitionPlanDetail = {
   status: 'ended',
   ends_on: null,
   pauses: [],
-  posted_through: '2026-10-18',
+  posted_through: '2026-11-01',
   recent_periods: [
+    {
+      period_start: '2026-10-19',
+      period_end: '2026-11-01',
+      charge_id: CHARGE_WITHDRAWN,
+      amount: '700.00',
+      status: 'pending',
+    },
     {
       period_start: '2026-10-05',
       period_end: '2026-10-18',
@@ -308,15 +329,16 @@ export const PLAN_ENDED_DETAIL: TuitionPlanDetail = {
       status: 'void',
     },
   ],
-  upcoming_periods: [
-    {
-      period_start: '2026-10-19',
-      period_end: '2026-11-01',
-      state: 'enrollment_ended',
-      charge_id: 'c0000000-0000-4000-8000-000000000005',
-      reason: null,
-    },
-  ],
+  upcoming_periods: biweeklyPeriods('2026-10-19', 12).map((period, k) =>
+    k === 0
+      ? {
+          ...period,
+          state: 'enrollment_ended' as const,
+          charge_id: CHARGE_WITHDRAWN,
+          reason: null,
+        }
+      : { ...period, state: 'not_due' as const, charge_id: null, reason: null },
+  ),
 };
 
 /** The student search of the stories: every fixture student matching q. */

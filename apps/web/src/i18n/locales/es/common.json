@@ -5320,7 +5320,7 @@
       "end": {
         "action": "Terminar",
         "title": "Terminar el plan",
-        "description": "Hoy termina el {{date}}.",
+        "description": "Actualmente termina el {{date}}.",
         "descriptionOpen": "Hoy no tiene fecha de fin.",
         "submit": "Guardar",
         "lastDay": "Último día",

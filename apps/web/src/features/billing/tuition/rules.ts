@@ -273,8 +273,9 @@ export function planServerErrors(error: unknown): PlanErrors | null {
       errors[field] = serverMessage(fieldError.code);
     }
   }
+  // The top-level code's field only when no field error says where (QA O3).
   const byCode = CODE_FIELDS[error.code];
-  if (byCode && !errors[byCode]) {
+  if (byCode && Object.keys(errors).length === 0) {
     errors[byCode] = serverMessage(error.code);
   }
   return Object.keys(errors).length > 0 ? errors : null;
@@ -301,7 +302,7 @@ export function dialogServerErrors<F extends string>(
     }
   }
   const byCode = codeField?.[error.code];
-  if (byCode && !errors[byCode]) {
+  if (byCode && Object.keys(errors).length === 0) {
     errors[byCode] = serverMessage(error.code);
   }
   return Object.keys(errors).length > 0 ? errors : null;
@@ -334,15 +335,26 @@ export type PeriodDisplay =
  * reports enrollment_ended with a charge); a period inside a pause is
  * paused even when the API reports a future one as not_due; a due period
  * without a charge is either posted by the next run or not charged for a
- * reason.
+ * reason. A linked plan that has ended with periods still listed ended
+ * through the enrollment's withdrawal (a plan's own end stops the list):
+ * its uncharged periods are shown as enrollment ended, also the future
+ * ones the API reports not_due (#374 QA D1, owner-delegated).
  */
 export function periodDisplay(
   period: UpcomingPeriod,
-  pauses: readonly TuitionPause[],
+  plan: Pick<TuitionPlanDetail, 'pauses' | 'status' | 'group_enrollment_id'>,
 ): PeriodDisplay {
   if (period.charge_id) return 'charged';
   if (period.state === 'after_end') return 'after_end';
-  if (period.state === 'paused' || inPause(period.period_start, pauses)) {
+  if (
+    plan.status === 'ended' &&
+    plan.group_enrollment_id !== null &&
+    period.state !== 'below_floor' &&
+    period.state !== 'due'
+  ) {
+    return 'enrollment_ended';
+  }
+  if (period.state === 'paused' || inPause(period.period_start, plan.pauses)) {
     return 'paused';
   }
   if (period.state === 'enrollment_ended') return 'enrollment_ended';
@@ -379,6 +391,11 @@ export function pauseStarts(plan: TuitionPlanDetail): UpcomingPeriod[] {
         period.period_start > plan.posted_through) &&
       !inPause(period.period_start, plan.pauses),
   );
+}
+
+/** A pause of the plan begins after `start` (an open pause would overlap it). */
+export function pauseAfter(plan: TuitionPlanDetail, start: string): boolean {
+  return plan.pauses.some((pause) => pause.starts_on > start);
 }
 
 /**

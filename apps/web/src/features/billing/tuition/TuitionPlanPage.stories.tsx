@@ -14,7 +14,8 @@ import { TuitionPlanPageView } from './TuitionPlanPage';
 
 // The plan page without its query (#374 H2): an active plan (a charged
 // period, upcoming ones, a future pause), a paused plan (Resume), an ended
-// plan (no actions), a plan with nothing charged (Delete), read-only, and
+// plan withdrawn from its group (no actions; its future periods read
+// enrollment ended, QA D1), a plan with nothing charged (Delete), read-only, and
 // the Pause dialog. No request: every call is a stub. axe runs on each
 // story in both themes.
 
@@ -94,6 +95,15 @@ export const Ended: Story = {
       canvas.getAllByText(i18n.t('billing.tuition.status.ended'))[0],
     ).toBeVisible();
     await expect(canvas.queryAllByRole('button')).toHaveLength(0);
+    // QA D1: the withdrawn plan's 11 future periods read enrollment ended.
+    await expect(
+      canvas.getAllByText(
+        i18n.t('billing.tuition.periodStates.enrollment_ended'),
+      ),
+    ).toHaveLength(11);
+    await expect(
+      canvas.queryByText(i18n.t('billing.tuition.periodStates.upcoming')),
+    ).toBeNull();
   },
 };
 

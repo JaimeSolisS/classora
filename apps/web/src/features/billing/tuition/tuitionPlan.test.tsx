@@ -214,6 +214,13 @@ describe('the plan page (E1-E3)', () => {
 
     expect(terms().Status).toBe('Ended');
     expect(cells(upcoming('2026-10-19'))[1]).toBe('Charged');
+    // QA D1: the future periods the API reports not_due are not upcoming.
+    const states = [...main().querySelectorAll('[data-upcoming-period]')].map(
+      (row) => cells(row)[1],
+    );
+    expect(states).toHaveLength(12);
+    expect(states.slice(1)).toEqual(Array(11).fill('Enrollment ended'));
+    expect(states).not.toContain('Upcoming');
     expect(actions()).toEqual([]);
   });
 
@@ -246,7 +253,7 @@ describe('the plan page (E1-E3)', () => {
 });
 
 describe('the actions (E4)', () => {
-  it('pauses from the next period until resumed, with the version', async () => {
+  it('pauses until resumed after the last pause, with the version', async () => {
     const paused: TuitionPlanDetail = {
       ...PLAN_ACTIVE_DETAIL,
       version: 4,
@@ -264,16 +271,16 @@ describe('the actions (E4)', () => {
       ['2026-12-01', 'Dec 1, 2026'],
       ['2027-02-01', 'Feb 1, 2027'],
     ]);
+    setFieldValue(select(dialog(), 'First paused period'), '2027-02-01');
     expect(optionValues(select(dialog(), 'Until'))).toEqual([
       ['', 'Until resumed'],
-      ['2026-11-30', 'Nov 30, 2026'],
-      ['2026-12-31', 'Dec 31, 2026'],
+      ['2027-02-28', 'Feb 28, 2027'],
     ]);
     await click(buttonNamed(dialog(), 'Pause'));
 
     expect(api.calls(pauses(PLAN_ACTIVE_DETAIL.id))[0]?.body).toEqual({
       version: 3,
-      starts_on: '2026-11-01',
+      starts_on: '2027-02-01',
     });
     expect(openDialog()).toBeNull();
     expect(statusText()).toContain('Plan paused.');
@@ -292,10 +299,8 @@ describe('the actions (E4)', () => {
     await open('Pause');
     setFieldValue(select(dialog(), 'First paused period'), '2026-12-01');
     expect(optionValues(select(dialog(), 'Until'))).toEqual([
-      ['', 'Until resumed'],
       ['2026-12-31', 'Dec 31, 2026'],
     ]);
-    setFieldValue(select(dialog(), 'Until'), '2026-12-31');
     await click(buttonNamed(dialog(), 'Pause'));
 
     expect(api.calls(pauses(PLAN_ACTIVE_DETAIL.id))[0]?.body).toEqual({
@@ -304,9 +309,48 @@ describe('the actions (E4)', () => {
       ends_on: '2026-12-31',
     });
     expect(select(dialog(), 'Until').getAttribute('aria-invalid')).toBe('true');
+    // QA O3: the field error says where; the start isn't marked too.
+    expect(
+      select(dialog(), 'First paused period').getAttribute('aria-invalid'),
+    ).toBeNull();
     expect(errorOf(select(dialog(), 'Until'))).toContain(
       'A pause starts on an uncharged period',
     );
+  });
+
+  it('requires an end before a later pause (no "Until resumed")', async () => {
+    const api = stub({
+      [pauses(PLAN_ACTIVE_DETAIL.id)]: () =>
+        jsonResponse(201, PLAN_ACTIVE_DETAIL),
+    });
+    await renderPlan(PLAN_ACTIVE_DETAIL);
+    await open('Pause');
+
+    // November: the January pause comes later.
+    expect(optionValues(select(dialog(), 'Until'))).toEqual([
+      ['2026-11-30', 'Nov 30, 2026'],
+      ['2026-12-31', 'Dec 31, 2026'],
+    ]);
+    // February: no later pause, so it can stay open.
+    setFieldValue(select(dialog(), 'First paused period'), '2027-02-01');
+    expect(select(dialog(), 'Until').value).toBe('');
+    setFieldValue(select(dialog(), 'First paused period'), '2026-12-01');
+    expect(select(dialog(), 'Until').value).toBe('2026-12-31');
+    await click(buttonNamed(dialog(), 'Pause'));
+
+    expect(api.calls(pauses(PLAN_ACTIVE_DETAIL.id))[0]?.body).toEqual({
+      version: 3,
+      starts_on: '2026-12-01',
+      ends_on: '2026-12-31',
+    });
+  });
+
+  it('says not found for a malformed plan id (422)', async () => {
+    stub({
+      [detail('not-a-uuid')]: () => problemWith(422, 'validation_error'),
+    });
+    app = await renderApp('/billing/tuition-plans/not-a-uuid');
+    await settleUntil(() => h1() === 'Tuition plan not found');
   });
 
   it('shows a 409 version_conflict and reloads the plan', async () => {
@@ -380,7 +424,9 @@ describe('the actions (E4)', () => {
     await renderPlan(PLAN_UNCHARGED_DETAIL);
     await open('End');
 
-    expect(dialog().textContent).toContain('It ends on Jan 31, 2027 today.');
+    expect(dialog().textContent).toContain(
+      'It currently ends on Jan 31, 2027.',
+    );
     expect(optionValues(select(dialog(), 'Last day'))).toEqual([
       ['2026-10-31', 'Oct 31, 2026'],
       ['2026-11-30', 'Nov 30, 2026'],

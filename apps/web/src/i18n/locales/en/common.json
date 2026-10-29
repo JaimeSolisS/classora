@@ -5218,7 +5218,7 @@
       "end": {
         "action": "End",
         "title": "End the plan",
-        "description": "It ends on {{date}} today.",
+        "description": "It currently ends on {{date}}.",
         "descriptionOpen": "It is open-ended today.",
         "submit": "Save",
         "lastDay": "Last day",
