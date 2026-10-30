@@ -26,7 +26,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Collection
 from datetime import date, datetime
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from sqlalchemy import (
     ColumnElement,
@@ -68,7 +68,10 @@ from app.modules.billing.models import (
 )
 from app.modules.billing.schemas import (
     AccountBalance,
+    AdjustmentKind,
+    AdjustmentRow,
     BillingAccountReference,
+    ChargeAllocationRow,
     ChargeBalance,
     ChargeDetail,
     ChargeDetailPage,
@@ -385,10 +388,13 @@ async def charge_details(
     student_id: uuid.UUID | None = None,
     statuses: Collection[ChargeStatus] | None = None,
     today: date | None = None,
+    charge_id: uuid.UUID | None = None,
 ) -> ChargeDetailPage:
     """A page of the account's charges (#364 B2), newest first by
     ``service_date``, ``posted_at``, ``id``, optionally of one student and
-    in some statuses (``today`` is the center's local date). One statement
+    in some statuses, or only the one charge ``charge_id`` (#100 C6: an
+    empty page when it isn't on the account; ``today`` is the center's
+    local date). One statement
     for the page with its total (a window count), one more for the total
     when the page is past the end, plus the center's today when not given.
     No lock."""
@@ -420,6 +426,8 @@ async def charge_details(
     ).where(Charge.billing_account_id == account_id)
     if student_id is not None:
         inner = inner.where(Charge.student_id == student_id)
+    if charge_id is not None:
+        inner = inner.where(Charge.id == charge_id)
     rows_of = inner.subquery("charge_rows")
     status = _status_expression(
         rows_of.c.amount + rows_of.c.adjustments_total,
@@ -483,6 +491,58 @@ async def charge_details(
             )
         )
     return ChargeDetailPage(items=tuple(items), total=total)
+
+
+async def charge_adjustments(
+    session: AsyncSession, charge_id: uuid.UUID
+) -> list[AdjustmentRow]:
+    """The charge's adjustments, oldest first (``posted_at``, ``id``; #100
+    R8). One statement, no lock."""
+    rows = await session.scalars(
+        select(ChargeAdjustment)
+        .where(ChargeAdjustment.charge_id == charge_id)
+        .order_by(ChargeAdjustment.posted_at, ChargeAdjustment.id)
+    )
+    return [
+        AdjustmentRow(
+            id=row.id,
+            kind=cast(AdjustmentKind, row.kind),
+            amount=row.amount,
+            reason=row.reason,
+            posted_at=row.posted_at,
+            posted_by_user_id=row.posted_by_user_id,
+        )
+        for row in rows
+    ]
+
+
+async def charge_allocations(
+    session: AsyncSession, charge_id: uuid.UUID
+) -> list[ChargeAllocationRow]:
+    """Every allocation to the charge, oldest first (``created_at``,
+    ``id``), released ones with ``is_valid = False`` (#100 R8). One
+    statement, no lock."""
+    rows = await session.execute(
+        select(
+            PaymentAllocation.id,
+            PaymentAllocation.payment_id,
+            PaymentAllocation.amount,
+            PaymentAllocation.created_at,
+            (~_released(PaymentAllocation.id)).label("is_valid"),
+        )
+        .where(PaymentAllocation.charge_id == charge_id)
+        .order_by(PaymentAllocation.created_at, PaymentAllocation.id)
+    )
+    return [
+        ChargeAllocationRow(
+            id=row.id,
+            payment_id=row.payment_id,
+            amount=row.amount,
+            created_at=row.created_at,
+            is_valid=bool(row.is_valid),
+        )
+        for row in rows
+    ]
 
 
 def _position(cursor: str) -> tuple[datetime, uuid.UUID]:

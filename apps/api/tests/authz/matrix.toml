@@ -559,6 +559,23 @@ permission = "billing.view"
 allow = ["owner", "administrator", "finance_staff"]
 # #94 D5: the placeholder id is no package: 404 for the allowed roles.
 
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/packages/{package_id}/cancellation"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+idempotency = true
+reauth = "finance.correction"
+# #100 C5 (R3 (a), R6 (a)): cancelling a package purchase posts ledger rows
+# (a reversal of its units and a credit), so it needs an Idempotency-Key (#88)
+# and a recent reauthentication; without a key the reauthenticated allowed
+# roles get 400. Rules, replays and concurrency:
+# tests/integration/test_billing_package_cancellation.py and
+# test_billing_corrections_concurrency.py.
+json = {}
+
 [[route]]
 method = "GET"
 path = "/api/v1/billing/payment-methods"
@@ -1551,6 +1568,45 @@ access = "authenticated"
 # 404 for every signed-in role. Roles and guardians:
 # tests/integration/test_billing_account_access.py.
 
+
+[[route]]
+method = "POST"
+path = "/api/v1/families/{family_id}/billing-account/charges"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+idempotency = true
+# #100 C1 (R7 (a)): a manual charge posts a ledger row, so it needs an
+# Idempotency-Key (#88); without one the allowed roles get 400. No
+# reauthentication (R3 (a)). Rules and replays:
+# tests/integration/test_billing_manual_charges.py.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/charges/{charge_id}"
+access = "authenticated"
+# #100 C6 (R8 (a)) one charge with its adjustments and allocations; #90b F1 (a)
+# record policy: billing.view holders (Owner, Administrator, Finance Staff) see
+# every family, a guardian only the family of their active profile (reasons
+# and actor ids null), anyone else 404. The placeholder ids are no family: 404
+# for every signed-in role. Roles and guardians:
+# tests/integration/test_billing_corrections_access.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/families/{family_id}/billing-account/charges/{charge_id}/adjustments"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+idempotency = true
+reauth = "finance.correction"
+# #100 C2 (R3 (a)): a manual adjustment (credit or debit) posts a ledger row,
+# so it needs an Idempotency-Key (#88) and a recent reauthentication; without a
+# key the reauthenticated allowed roles get 400. Rules and replays:
+# tests/integration/test_billing_manual_adjustments.py.
+json = {}
+
 [[route]]
 method = "GET"
 path = "/api/v1/families/{family_id}/billing-account/charges/{charge_id}/due-date-changes"
@@ -1615,6 +1671,38 @@ access = "authenticated"
 # (#90b F1 (a), #96 M7). The placeholder ids are no family: 404 for every
 # signed-in role. Roles and guardians:
 # tests/integration/test_billing_payments_access.py.
+
+
+[[route]]
+method = "POST"
+path = "/api/v1/families/{family_id}/billing-account/payments/{payment_id}/refunds"
+access = "permission"
+permission = "finance.refund.approve"
+allow = ["owner"]
+idempotency = true
+reauth = "finance.refund_or_reversal"
+# #100 C4 (R4 (a), R5 (a); ADR-0006 E8): a refund posts a ledger row, so it
+# needs an Idempotency-Key (#88) and a recent reauthentication; without a key
+# the reauthenticated Owner (and a delegated Administrator) get 400. Finance
+# Staff can't. Rules and replays: tests/integration/test_billing_refunds.py
+# and test_billing_corrections_access.py.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/families/{family_id}/billing-account/payments/{payment_id}/reversal"
+access = "permission"
+permission = "finance.refund.approve"
+allow = ["owner"]
+idempotency = true
+reauth = "finance.refund_or_reversal"
+# #100 C3 (R5 (a); ADR-0006 E8): a reversal posts ledger rows (the reversal and
+# its releases), so it needs an Idempotency-Key (#88) and a recent
+# reauthentication; without a key the reauthenticated Owner (and a delegated
+# Administrator) get 400. Finance Staff can't. Rules and replays:
+# tests/integration/test_billing_payment_reversals.py and
+# test_billing_corrections_access.py.
+json = {}
 
 [[route]]
 method = "GET"

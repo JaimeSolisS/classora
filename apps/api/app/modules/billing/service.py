@@ -148,6 +148,38 @@ the workflow ``app.workflows.billing_payments``). For other modules:
   ``PaymentRow.receipt_id``/``receipt_number`` carry it on the reads
   (``None`` for a payment recorded before #98).
 
+**Corrections, reversals and refunds** (#100;
+:mod:`~app.modules.billing.corrections`; the workflows
+``app.workflows.billing_corrections`` and ``app.workflows.packages``). For
+other modules, all under :func:`lock_billing_account` (the last lock, after
+the #88 idempotency claim), needing the Unit of Work's actor, never
+committing:
+
+- :func:`post_manual_charge` (``ManualChargeDraft`` → ``PostedCharge``): a
+  ``manual`` charge for a current member of the family (else
+  :class:`StudentNotInFamilyError`), no family offset, no discounts, no
+  billing floor.
+- :func:`post_manual_adjustment` (``ManualAdjustmentResult``): a signed
+  ``manual`` adjustment; ``package_purchase`` charges are refused
+  (:class:`PackagePurchaseNotAdjustableError`); I1 →
+  :class:`ChargeNetNegativeError`; E5 releases.
+- :func:`reverse_payment` (``PaymentReversalResult``): releases every valid
+  allocation; :class:`PaymentAlreadyReversedError`,
+  :class:`PaymentHasRefundsError`.
+- :func:`refund_payment` (``RefundDraft`` → ``RecordedRefund``): from one
+  payment's remainder (:func:`payment_remainder_column`);
+  :class:`PaymentReversedError`, :class:`RefundExceedsRemainderError`.
+  **#101's withdrawal refunds call it** (adding ``withdrawal_id`` to
+  ``RefundDraft`` with its column).
+- :func:`cancel_package` (``PackageCancellation``): the only writer of a
+  package ``reversal`` row, plus a ``package_cancellation`` adjustment
+  (key :data:`PACKAGE_CANCELLATION_KEY`; default credit
+  :func:`package_cancellation_credit`); :class:`PackageNotCancellableError`.
+  ``package_status`` then answers ``cancelled``.
+- Reads: :func:`charge_adjustments`, :func:`charge_allocations`,
+  :func:`payment_refunds`; ``charge_details(charge_id=…)`` for one charge;
+  ``PaymentRow.reversal_*`` (the reversal, joined into the payment reads).
+
 **Receipts** (#98; :mod:`~app.modules.billing.receipts`, the core
 :mod:`app.core.numbering`; the workflow ``app.workflows.billing_receipts``).
 For other modules:
@@ -219,6 +251,8 @@ the pure :mod:`~app.modules.billing.reminders` and
 from app.modules.billing.balances import account_balance as account_balance
 from app.modules.billing.balances import account_credit as account_credit
 from app.modules.billing.balances import account_of_family as account_of_family
+from app.modules.billing.balances import charge_adjustments as charge_adjustments
+from app.modules.billing.balances import charge_allocations as charge_allocations
 from app.modules.billing.balances import charge_balances as charge_balances
 from app.modules.billing.balances import charge_details as charge_details
 from app.modules.billing.balances import charge_status as charge_status
@@ -246,6 +280,19 @@ from app.modules.billing.cancellation_rules import (
 from app.modules.billing.cancellation_rules import (
     get_cancellation_rule_overview as get_cancellation_rule_overview,
 )
+from app.modules.billing.corrections import (
+    PACKAGE_CANCELLATION_KEY as PACKAGE_CANCELLATION_KEY,
+)
+from app.modules.billing.corrections import cancel_package as cancel_package
+from app.modules.billing.corrections import (
+    package_cancellation_credit as package_cancellation_credit,
+)
+from app.modules.billing.corrections import (
+    post_manual_adjustment as post_manual_adjustment,
+)
+from app.modules.billing.corrections import post_manual_charge as post_manual_charge
+from app.modules.billing.corrections import refund_payment as refund_payment
+from app.modules.billing.corrections import reverse_payment as reverse_payment
 from app.modules.billing.custom_prices import (
     CUSTOM_PRICE_STATUSES as CUSTOM_PRICE_STATUSES,
 )
@@ -351,14 +398,25 @@ from app.modules.billing.errors import (
     NothingToAllocateError as NothingToAllocateError,
 )
 from app.modules.billing.errors import (
+    PackageNotCancellableError as PackageNotCancellableError,
+)
+from app.modules.billing.errors import (
     PackageNotOfferedError as PackageNotOfferedError,
 )
 from app.modules.billing.errors import (
     PackageProductInactiveError as PackageProductInactiveError,
 )
 from app.modules.billing.errors import (
+    PackagePurchaseNotAdjustableError as PackagePurchaseNotAdjustableError,
+)
+from app.modules.billing.errors import (
+    PaymentAlreadyReversedError as PaymentAlreadyReversedError,
+)
+from app.modules.billing.errors import PaymentHasRefundsError as PaymentHasRefundsError
+from app.modules.billing.errors import (
     PaymentMethodUnavailableError as PaymentMethodUnavailableError,
 )
+from app.modules.billing.errors import PaymentReversedError as PaymentReversedError
 from app.modules.billing.errors import (
     PriceCatalogValidationError as PriceCatalogValidationError,
 )
@@ -373,6 +431,15 @@ from app.modules.billing.errors import (
     ReceivedOnInFutureError as ReceivedOnInFutureError,
 )
 from app.modules.billing.errors import (
+    RefundedOnBeforePaymentError as RefundedOnBeforePaymentError,
+)
+from app.modules.billing.errors import (
+    RefundedOnInFutureError as RefundedOnInFutureError,
+)
+from app.modules.billing.errors import (
+    RefundExceedsRemainderError as RefundExceedsRemainderError,
+)
+from app.modules.billing.errors import (
     ServicePriceExistsError as ServicePriceExistsError,
 )
 from app.modules.billing.errors import (
@@ -383,6 +450,9 @@ from app.modules.billing.errors import (
 )
 from app.modules.billing.errors import (
     StudentHasNoFamilyError as StudentHasNoFamilyError,
+)
+from app.modules.billing.errors import (
+    StudentNotInFamilyError as StudentNotInFamilyError,
 )
 from app.modules.billing.errors import (
     TuitionPauseInvalidError as TuitionPauseInvalidError,
@@ -506,6 +576,7 @@ from app.modules.billing.payments import list_payments as list_payments
 from app.modules.billing.payments import (
     payment_methods_list as payment_methods_list,
 )
+from app.modules.billing.payments import payment_refunds as payment_refunds
 from app.modules.billing.payments import plan_allocations as plan_allocations
 from app.modules.billing.payments import record_payment as record_payment
 from app.modules.billing.payments import (
@@ -599,6 +670,7 @@ from app.modules.billing.reminders import reminder_stage as reminder_stage
 from app.modules.billing.schemas import AccountBalance as AccountBalance
 from app.modules.billing.schemas import AccountSettings as AccountSettings
 from app.modules.billing.schemas import AdjustmentDraft as AdjustmentDraft
+from app.modules.billing.schemas import AdjustmentRow as AdjustmentRow
 from app.modules.billing.schemas import AgingBuckets as AgingBuckets
 from app.modules.billing.schemas import AllocationLine as AllocationLine
 from app.modules.billing.schemas import AllocationRequest as AllocationRequest
@@ -628,6 +700,7 @@ from app.modules.billing.schemas import (
 from app.modules.billing.schemas import (
     CancellationRuleValues as CancellationRuleValues,
 )
+from app.modules.billing.schemas import ChargeAllocationRow as ChargeAllocationRow
 from app.modules.billing.schemas import ChargeBalance as ChargeBalance
 from app.modules.billing.schemas import ChargeDetail as ChargeDetail
 from app.modules.billing.schemas import ChargeDetailPage as ChargeDetailPage
@@ -648,15 +721,25 @@ from app.modules.billing.schemas import DiscountUpdate as DiscountUpdate
 from app.modules.billing.schemas import DueDateChangeCreate as DueDateChangeCreate
 from app.modules.billing.schemas import DueDateChangeRow as DueDateChangeRow
 from app.modules.billing.schemas import LedgerEntry as LedgerEntry
+from app.modules.billing.schemas import ManualAdjustmentCreate as ManualAdjustmentCreate
+from app.modules.billing.schemas import ManualAdjustmentResult as ManualAdjustmentResult
+from app.modules.billing.schemas import ManualChargeCreate as ManualChargeCreate
+from app.modules.billing.schemas import ManualChargeDraft as ManualChargeDraft
 from app.modules.billing.schemas import OverdueAccountPage as OverdueAccountPage
 from app.modules.billing.schemas import OverdueAccountRow as OverdueAccountRow
 from app.modules.billing.schemas import OverdueTotals as OverdueTotals
+from app.modules.billing.schemas import PackageCancellation as PackageCancellation
+from app.modules.billing.schemas import (
+    PackageCancellationCreate as PackageCancellationCreate,
+)
 from app.modules.billing.schemas import (
     PaymentAllocationRow as PaymentAllocationRow,
 )
 from app.modules.billing.schemas import PaymentDraft as PaymentDraft
 from app.modules.billing.schemas import PaymentMethodRow as PaymentMethodRow
 from app.modules.billing.schemas import PaymentPage as PaymentPage
+from app.modules.billing.schemas import PaymentReversalCreate as PaymentReversalCreate
+from app.modules.billing.schemas import PaymentReversalResult as PaymentReversalResult
 from app.modules.billing.schemas import PaymentRow as PaymentRow
 from app.modules.billing.schemas import PeriodFrequency as PeriodFrequency
 from app.modules.billing.schemas import PlannedAllocation as PlannedAllocation
@@ -670,6 +753,11 @@ from app.modules.billing.schemas import (
     RecordedDueDateChange as RecordedDueDateChange,
 )
 from app.modules.billing.schemas import RecordedPayment as RecordedPayment
+from app.modules.billing.schemas import RecordedRefund as RecordedRefund
+from app.modules.billing.schemas import RefundCreate as RefundCreate
+from app.modules.billing.schemas import RefundDraft as RefundDraft
+from app.modules.billing.schemas import RefundRow as RefundRow
+from app.modules.billing.schemas import ReleasedAllocation as ReleasedAllocation
 from app.modules.billing.schemas import ReminderCharge as ReminderCharge
 from app.modules.billing.schemas import StudentBalance as StudentBalance
 from app.modules.billing.settings import billing_starts_on as billing_starts_on

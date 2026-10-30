@@ -18,8 +18,10 @@ between unit kinds:
   (a tie goes to sessions); one possible → that one; neither → ``None``
   (short: nothing is consumed, all or nothing, E10).
 
-**Status** (D4): ``expired`` (an ``expire`` row, or ``expires_on`` before
-today) → ``exhausted`` (no units left) → ``active``.
+**Status** (D4; #100 B7): ``cancelled`` (a ``reversal`` of the grant: a
+#100 package cancellation) → ``expired`` (an ``expire`` row, or
+``expires_on`` before today) → ``exhausted`` (no units left) →
+``active``.
 """
 
 import uuid
@@ -29,9 +31,14 @@ from datetime import date
 from typing import Final, Literal
 
 type PackageUnit = Literal["sessions", "minutes"]
-type PackageStatus = Literal["active", "exhausted", "expired"]
+type PackageStatus = Literal["active", "exhausted", "expired", "cancelled"]
 
-PACKAGE_STATUSES: Final[tuple[PackageStatus, ...]] = ("active", "exhausted", "expired")
+PACKAGE_STATUSES: Final[tuple[PackageStatus, ...]] = (
+    "active",
+    "exhausted",
+    "expired",
+    "cancelled",
+)
 
 
 @dataclass(frozen=True)
@@ -97,10 +104,18 @@ def plan_consumption(
 
 
 def package_status(
-    remaining: int, expires_on: date, *, has_expire_row: bool, today: date
+    remaining: int,
+    expires_on: date,
+    *,
+    has_expire_row: bool,
+    today: date,
+    cancelled: bool = False,
 ) -> PackageStatus:
-    """D4: ``expired`` wins (an ``expire`` row or ``expires_on < today``),
-    then ``exhausted`` (``remaining <= 0``), else ``active``."""
+    """D4: ``cancelled`` wins (#100 B7: the grant has a ``reversal``), then
+    ``expired`` (an ``expire`` row or ``expires_on < today``), then
+    ``exhausted`` (``remaining <= 0``), else ``active``."""
+    if cancelled:
+        return "cancelled"
     if has_expire_row or expires_on < today:
         return "expired"
     if remaining <= 0:

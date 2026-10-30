@@ -556,3 +556,88 @@ class CancellationRuleInEffectError(AppError):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+# --- Corrections, reversals and refunds (#100 B, C) ----------------------------------
+
+
+class StudentNotInFamilyError(_FieldRuleError):
+    """A manual charge names a student whose **current** family is not the
+    path family (another family's student, a student without a family, an
+    unknown id; #100 R7). Nothing is written."""
+
+    code = "student_not_in_family"
+    field = "student_id"
+    detail = "Choose a student of this family."
+
+
+class PackagePurchaseNotAdjustableError(_Conflict):
+    """A manual adjustment on a ``package_purchase`` charge: its money and
+    its units move together, through a package cancellation (#100 R6).
+    Nothing is written."""
+
+    code = "package_purchase_not_adjustable"
+    detail = "A package purchase can't be adjusted: cancel the package to credit it."
+
+
+class PaymentAlreadyReversedError(_Conflict):
+    """The payment has a reversal already (#100 R5). Nothing is written."""
+
+    code = "payment_already_reversed"
+    detail = "This payment was already reversed."
+
+
+class PaymentHasRefundsError(_Conflict):
+    """A payment with a refund can't be reversed (#100 R5, #90 QA O3: the
+    ledger sum identity). Nothing is written."""
+
+    code = "payment_has_refunds"
+    detail = "This payment has refunds, so it can't be reversed."
+
+
+class PaymentReversedError(_Conflict):
+    """A refund from a reversed payment (#100 R5). Nothing is written."""
+
+    code = "payment_reversed"
+    detail = "This payment was reversed, so nothing can be refunded from it."
+
+
+class RefundExceedsRemainderError(_Conflict):
+    """The refund is more than the payment's unallocated remainder (#100 R4;
+    I3). ``details.remainder`` is the remainder under the account lock.
+    Nothing is written."""
+
+    code = "refund_exceeds_remainder"
+    detail = "The refund is more than what is left unallocated on this payment."
+
+    def __init__(self, remainder: Money) -> None:
+        AppError.__init__(self, details={"remainder": str(remainder)})
+
+
+class RefundedOnInFutureError(_FieldRuleError):
+    """The refund is dated after the center's local today (#100 C4)."""
+
+    code = "refunded_on_in_future"
+    field = "refunded_on"
+    detail = "The refund date can't be after today."
+
+
+class RefundedOnBeforePaymentError(_FieldRuleError):
+    """The refund is dated before the payment was received (#100 C4)."""
+
+    code = "refunded_on_before_payment"
+    field = "refunded_on"
+    detail = "The refund date can't be before the payment date."
+
+
+class PackageNotCancellableError(_Conflict):
+    """The package can't be cancelled (#100 R6): ``details.reason`` is
+    ``cancelled`` (already cancelled), ``expired`` (an ``expire`` row or
+    past ``expires_on``) or ``exhausted`` (no units left). Nothing is
+    written."""
+
+    code = "package_not_cancellable"
+    detail = "This package is cancelled, expired or used up, so it can't be cancelled."
+
+    def __init__(self, reason: str) -> None:
+        AppError.__init__(self, details={"reason": reason})

@@ -5440,7 +5440,8 @@
       "status": {
         "active": "Activo",
         "exhausted": "Agotado",
-        "expired": "Vencido"
+        "expired": "Vencido",
+        "cancelled": "Cancelado"
       },
       "nav": {
         "label": "Páginas de paquetes",

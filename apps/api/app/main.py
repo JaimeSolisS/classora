@@ -123,6 +123,9 @@ from app.workflows.assignments_router import (
 from app.workflows.billing_accounts_router import (
     router as billing_accounts_router,
 )
+from app.workflows.billing_corrections_router import (
+    router as billing_corrections_router,
+)
 from app.workflows.billing_discounts_router import (
     router as billing_discounts_router,
 )
@@ -328,6 +331,7 @@ def build_app(
     app.include_router(custom_prices_router)
     app.include_router(billing_accounts_router)
     app.include_router(billing_payments_router)
+    app.include_router(billing_corrections_router)
     app.include_router(billing_receipts_router)
     app.include_router(billing_overdue_router)
     app.include_router(billing_settings_router)

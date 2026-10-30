@@ -160,6 +160,45 @@ async def get_summary(
     )
 
 
+def charge_item(
+    c: billing.ChargeDetail,
+    students: dict[uuid.UUID, BillingStudent],
+    *,
+    staff: bool,
+) -> ChargeItem:
+    """One charge's response item (B2; #100 reuses it): the actor id
+    ``null`` unless ``staff``."""
+    return ChargeItem(
+        id=c.charge_id,
+        student=_student(students, c.student_id),
+        kind=c.kind,
+        service_date=c.service_date,
+        due_date=c.due_date,
+        original_due_date=c.original_due_date,
+        description=c.description,
+        list_amount=c.list_amount,
+        discount_amount=c.discount_amount,
+        amount=c.amount,
+        adjustments_total=c.adjustments_total,
+        net=c.net,
+        allocated=c.allocated,
+        open=c.open,
+        status=c.status,
+        posted_at=c.posted_at,
+        posted_by_user_id=c.posted_by_user_id if staff else None,
+        class_session_id=c.class_session_id,
+        group_enrollment_id=c.group_enrollment_id,
+        cohort_enrollment_id=c.cohort_enrollment_id,
+    )
+
+
+async def students_by_id(
+    session: AsyncSession, ids: set[uuid.UUID]
+) -> dict[uuid.UUID, BillingStudent]:
+    """The students' display names by id (one statement), for #100."""
+    return await _students(session, ids)
+
+
 async def list_charges(
     session: AsyncSession,
     principal: Principal,
@@ -183,31 +222,7 @@ async def list_charges(
     students = await _students(session, {c.student_id for c in found.items})
     staff = sees_every_account(principal)
     return OffsetPage[ChargeItem](
-        items=[
-            ChargeItem(
-                id=c.charge_id,
-                student=_student(students, c.student_id),
-                kind=c.kind,
-                service_date=c.service_date,
-                due_date=c.due_date,
-                original_due_date=c.original_due_date,
-                description=c.description,
-                list_amount=c.list_amount,
-                discount_amount=c.discount_amount,
-                amount=c.amount,
-                adjustments_total=c.adjustments_total,
-                net=c.net,
-                allocated=c.allocated,
-                open=c.open,
-                status=c.status,
-                posted_at=c.posted_at,
-                posted_by_user_id=c.posted_by_user_id if staff else None,
-                class_session_id=c.class_session_id,
-                group_enrollment_id=c.group_enrollment_id,
-                cohort_enrollment_id=c.cohort_enrollment_id,
-            )
-            for c in found.items
-        ],
+        items=[charge_item(c, students, staff=staff) for c in found.items],
         total=found.total,
         limit=page.limit,
         offset=page.offset,

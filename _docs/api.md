@@ -239,6 +239,14 @@ Codes in use today:
 | `insufficient_account_credit` / `nothing_to_allocate` | 409 | A credit allocation asking for more than the account credit (`details.account_credit`); no account credit, no account, or no open charge to allocate it to (see Payments). |
 | `allocation_charge_not_found` | 422 | An explicit allocation line naming a charge that isn't on the family's account; one field error per line at `["body","allocation","lines",i,"charge_id"]` (see Payments). |
 | `payment_method_unavailable` / `received_on_in_future` | 422 | Recording a payment with an unknown or deactivated method (on `["body","payment_method_code"]`), or dated after the center's today (on `["body","received_on"]`; see Payments). |
+| `charge_net_negative` | 409 | An adjustment (a manual credit, a package cancellation's credit) that would take a charge's net below `0.00` (I1); `details` `{charge_id, net, amount}`. Nothing is written (see Corrections, reversals and refunds). |
+| `student_not_in_family` | 422 | A manual charge for a student who isn't a current member of the path family (another family's, none, unknown); on `["body","student_id"]` (see Corrections, reversals and refunds). |
+| `amount_zero` | 422 | Field code of a manual adjustment whose amount is `0.00` (see Corrections, reversals and refunds). |
+| `package_purchase_not_adjustable` | 409 | A manual adjustment on a `package_purchase` charge: cancel the package instead (see Corrections, reversals and refunds). |
+| `payment_already_reversed` / `payment_has_refunds` | 409 | Reversing a payment that was already reversed, or one with refunds (see Corrections, reversals and refunds). |
+| `payment_reversed` / `refund_exceeds_remainder` | 409 | A refund from a reversed payment, or above the payment's unallocated remainder (`details.remainder`; see Corrections, reversals and refunds). |
+| `refunded_on_in_future` / `refunded_on_before_payment` | 422 | A refund dated after the center's today or before the payment's `received_on`; on `["body","refunded_on"]` (see Corrections, reversals and refunds). |
+| `package_not_cancellable` | 409 | Cancelling a package that is cancelled, expired or used up (`details.reason`: `cancelled` \| `expired` \| `exhausted`; see Corrections, reversals and refunds). |
 | `charge_settled` / `due_date_unchanged` | 409 | Changing the due date of a `paid` or `void` charge, or to its current effective due date (`details.due_date`); nothing is written (see Due dates and overdue accounts). |
 | `allocation_exceeds_payment` / `allocation_duplicate_charge` / `allocation_lines_required` / `allocation_lines_not_allowed` / `amount_not_allowed` | 422 | Field codes of the payment and credit allocation bodies: explicit lines adding up to more than the payment, a charge twice, `lines` missing for `explicit` or sent for another mode, an `amount` on an explicit credit allocation (with `amount_not_positive` and `date_out_of_range`; see Payments). |
 | `tuition_plan_overlap` | 409 | Another plan of the same group enrollment, or of the same student and price, overlaps the dates (also from the exclusion constraints). |
@@ -6237,7 +6245,9 @@ below.
   so one chosen charge can get several allocation rows.
 - **Undoing.** There is no "un-allocate" route: an allocation ends only
   through a reversal (#100) or a credit on its charge (the newest
-  allocations are released, the freed money becomes account credit).
+  allocations are released, the freed money becomes account credit). A
+  mis-allocated payment is reversed and recorded again (see Corrections,
+  reversals and refunds).
 - **Record policy** (reads): the Billing accounts policy (`billing.view`
   sees every family; a guardian only their active profile's family;
   everyone else the `404` of an unknown family). A caller without
@@ -6250,11 +6260,17 @@ below.
   `recorded_by_user_id`, `recorded_at`, `allocated_amount` (valid
   allocations), `refunded_amount`, `unallocated_amount` (`amount −
   allocated − refunded`; account credit only while not reversed),
-  `is_reversed`, `receipt` (`{id, number}`, or `null` for a payment
+  `is_reversed`, `reversed_at` (#100; `null` while not reversed),
+  `receipt` (`{id, number}`, or `null` for a payment
   recorded before receipts, #98). `PaymentDetail` adds `allocations [{id, charge_id,
   student_id, amount, created_at, created_by_user_id, is_valid}]`, oldest
   first (released ones `is_valid: false`; a re-inserted remainder has
-  `created_by_user_id: null`). `PaymentRecorded`: `payment`
+  `created_by_user_id: null`), `reversal` (`{id, reason, reversed_at,
+  reversed_by_user_id}` or `null`) and `refunds [{id, amount, refunded_on,
+  payment_method_code, reference, reason, refunded_at,
+  refunded_by_user_id}]`, oldest first (#100 R8; `reason` and the actor
+  ids `null` without `billing.view`, `reference` shown). The detail costs
+  at most six statements. `PaymentRecorded`: `payment`
   (`PaymentItem`), `allocations [{id, charge_id, student_id, amount}]`,
   `unallocated_amount`, `account_credit_after`, `receipt` (`{id,
   number}`, #98). `CreditAllocated`:
@@ -6262,6 +6278,107 @@ below.
   `allocated_total`, `account_credit_after`.
 - Each payment and allocation row writes one `create` audit event by the
   caller; a family's first payment also audits the new account.
+
+### Corrections, reversals and refunds
+
+Implemented by M6-15 (#100; spec §6 refunds and corrections, §9, W4.4,
+W4.5; ADR-0006 E5, E6, E8, E10, E13; ADR-0007 D10; owner-delegated
+decisions R1-R10 (a); `_docs/data-model.md` §3.10, §3.13, §3.15, §3.16,
+§3.20, §4.1, §6). Mistakes are corrected with **new rows**; the original
+charge, payment, allocation, receipt and package rows never change. Rules:
+`app/modules/billing/corrections.py` (exported through `billing.service`);
+routes `app/workflows/billing_corrections_router.py` (workflow
+`billing_corrections.py`) and, for the package cancellation,
+`app/workflows/packages_router.py`. Migration 0070 adds the adjustment
+kind `package_cancellation`. The staff dialogs are M6-15b (#386).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `POST /api/v1/families/{family_id}/billing-account/charges` | `require("billing.manage")` + `Idempotency-Key` (no reauthentication) | A manual charge. Body `ManualChargeCreate`; `201` with `ManualChargePosted {charge: ChargeItem}`. |
+| `POST /api/v1/families/{family_id}/billing-account/charges/{charge_id}/adjustments` | `require("billing.manage")` + reauthentication `finance.correction` + `Idempotency-Key` | A manual credit (negative) or debit (positive). Body `ManualAdjustmentCreate`; `201` with `ManualAdjustmentPosted`. |
+| `POST /api/v1/families/{family_id}/billing-account/payments/{payment_id}/reversal` | `require("finance.refund.approve")` + reauthentication `finance.refund_or_reversal` + `Idempotency-Key` | Body `{reason}`; `201` with `PaymentReversed`. |
+| `POST /api/v1/families/{family_id}/billing-account/payments/{payment_id}/refunds` | `require("finance.refund.approve")` + reauthentication `finance.refund_or_reversal` + `Idempotency-Key` | Body `RefundCreate`; `201` with `RefundRecorded`. |
+| `POST /api/v1/billing/packages/{package_id}/cancellation` | `require("billing.manage")` + reauthentication `finance.correction` + `Idempotency-Key` | Body `{reason, credit_amount?}`; `201` with `PackageCancelled`. |
+| `GET /api/v1/families/{family_id}/billing-account/charges/{charge_id}` | `authenticated()` + record policy | `ChargeDetailItem`: the `ChargeItem` plus `adjustments` and `allocations`, oldest first. |
+
+`finance.refund.approve` is the Owner's, and an Administrator's when an
+Owner delegates it; Finance Staff can't reverse or refund (E8). **Every
+manual adjustment, credit or debit, and every package cancellation needs a
+recent reauthentication** (`finance.correction`; stricter than E8's
+wording, R3); a manual charge doesn't. Check order: `401` → `403
+csrf_failed` / `privacy_notice_required` / `permission_denied` → `403
+reauth_required` (before the key: nothing is stored, and after `POST
+/api/v1/auth/reauthenticate` the same key and body run) → `400
+idempotency_key_*` → replay / `422 idempotency_key_reused` → `422
+validation_error` (the body) → the rules below. No query parameters. Every
+inserted row (charge, adjustment, reversal, each release and re-inserted
+allocation, refund, package `reversal` row, an auto-created account)
+writes one `create` audit event by the caller, with the reason in its new
+values.
+
+- **Manual charge** (`student_id`, `description` trimmed 1-200, `amount`
+  above zero, `service_date`, `due_date`, both from 2000-01-01 to the
+  center's today + 366 days, `date_out_of_range`, in any order). The
+  family (`404`) → the dates → the student must be a **current** member of
+  the family (`422 student_not_in_family`; an inactive student is allowed)
+  → the account (created with the first charge) → `kind = 'manual'`,
+  `list_amount = amount`, no discounts, no price, the due date **as
+  entered** (no family offset, E11). Posted even while billing is off (the
+  floor gates automatic charges only). Later due-date changes use the #97
+  route.
+- **Manual adjustment** (`amount` signed, never `0.00`: `amount_zero`;
+  `reason` trimmed 1-500). The charge must be on the family's account
+  (else `404`). A credit below the net → `409 charge_net_negative`; a
+  credit on a paid charge releases its newest allocations, and the freed
+  money becomes account credit (E5); a `package_purchase` charge → `409
+  package_purchase_not_adjustable`. `ManualAdjustmentPosted`: `adjustment
+  {id, kind, amount, reason, posted_at, posted_by_user_id}`, `charge`
+  (`ChargeItem` afterwards), `released_allocation_ids`,
+  `account_credit_after`.
+- **Reversal** (`reason` 1-500). The payment must be on the family's
+  account (else `404`). Already reversed → `409 payment_already_reversed`;
+  any refund → `409 payment_has_refunds`. Every valid allocation is
+  released (its charge reopens) and the payment's remainder stops being
+  account credit; the payment and its receipt stay (the receipt PDF shows
+  the "reversed" banner, its number unchanged). `PaymentReversed`:
+  `reversal {id, reason, reversed_at, reversed_by_user_id}`, `payment`
+  (`PaymentItem`), `released [{allocation_id, charge_id, amount}]`,
+  `account_credit_after`. A mis-allocated payment is reversed and recorded
+  again (no "un-allocate").
+- **Refund** (`amount` above zero, `refunded_on`, `payment_method_code`,
+  `reference?` ≤ 100 blank → `null`, `reason` 1-500). From **one
+  payment's** unallocated remainder (`amount − Σ valid allocations − Σ
+  refunds`); several partial refunds are allowed. The payment on the
+  family's account (`404`) → an active method (`422
+  payment_method_unavailable`) → `refunded_on` not before the payment's
+  `received_on` (`422 refunded_on_before_payment`) nor after today (`422
+  refunded_on_in_future`) → a reversed payment `409 payment_reversed` →
+  above the remainder `409 refund_exceeds_remainder` (`details.remainder`).
+  A refund lowers the account credit only (outstanding charges don't
+  change) and never changes the receipt. **A refund can't be undone** in
+  this version. `RefundRecorded`: `refund {id, amount, refunded_on,
+  payment_method_code, reference, reason, refunded_at,
+  refunded_by_user_id}`, `payment` (`PaymentItem`), `account_credit_after`.
+- **Package cancellation** (`reason` 1-500, `credit_amount?` ≥ `0.00`:
+  `amount_negative`). Unknown package `404`; a package already cancelled,
+  expired (an expiry row or past `expires_on`) or used up → `409
+  package_not_cancellable` (`details.reason`). The remaining units are
+  taken back (one `reversal` movement) and the purchase charge is credited
+  with a `package_cancellation` adjustment: by default `net × remaining /
+  units granted`; `credit_amount` from `0.00` (no adjustment) to the net
+  overrides it (above → `409 charge_net_negative`). Released allocations
+  become account credit; money goes back only through a refund. Sessions
+  the package covered but hadn't used are charged by the next session
+  charge run. The package's `status` becomes `cancelled` (also a list
+  filter). `PackageCancelled`: `package` (`PackageDetail`),
+  `units_reversed`, `credit`, `adjustment_id` (`null` for a zero credit),
+  `account_credit_after`.
+- **Reads** (R8): the charge detail and the payment detail (see Payments)
+  use the Billing accounts record policy (`billing.view` every family; a
+  guardian their own; anyone else, another family's charge or payment, and
+  an unknown id the same `404`). Without `billing.view`, every `reason`
+  and actor id is `null`. The charge detail costs at most eight statements
+  whatever the number of adjustments.
 
 ### Receipts
 
@@ -6597,7 +6714,7 @@ The web pages are M6-09b (#377).
 | `POST /api/v1/billing/package-products/{product_id}/versions` | `require("billing.manage")` | Body `{effective_from, amount \| null}` (the #89 rules: `422 price_effective_from_invalid`). `201` with `PackageProductDetail`. |
 | `DELETE /api/v1/billing/package-products/{product_id}/versions/{price_version_id}` | `require("billing.manage")` | `204`; `409 price_version_in_effect` / `price_version_in_use` (a version a charge or a package used); `404` for another product's version. |
 | `POST /api/v1/billing/packages` | `require("billing.manage")` + `Idempotency-Key` | Body `{student_id, package_product_id}`. `201` with `PackageDetail`. |
-| `GET /api/v1/billing/packages` | `require("billing.view")` | Offset pagination; filters `student_id`, `family_id` (the account's family), `status` (`active`, `exhausted`, `expired`; repeatable). Items are `PackageItem`, by `expires_on`, `purchased_on`, `id`; two statements per page. |
+| `GET /api/v1/billing/packages` | `require("billing.view")` | Offset pagination; filters `student_id`, `family_id` (the account's family), `status` (`active`, `exhausted`, `expired`, `cancelled` (#100); repeatable). Items are `PackageItem`, by `expires_on`, `purchased_on`, `id`; two statements per page. |
 | `GET /api/v1/billing/packages/{package_id}` | `require("billing.view")` | `PackageDetail`; `404 not_found`. |
 
 Products are configuration (no reauthentication, no `Idempotency-Key`); a
@@ -6659,8 +6776,9 @@ reads arrive with #102.
   first). `PackageItem`: `id`, `student {id, name}`, `family {id, name}`,
   `product {id, name}`, `unit`, `units_granted`, `remaining_units`, `subject
   {id, name} | null`, `purchased_on`, `expires_on`, `status` (for the
-  center's today: `expired` when expired or past `expires_on`, then
-  `exhausted` with no units left, else `active`), `purchase_charge_id`.
+  center's today: `cancelled` after a #100 cancellation, then `expired`
+  when expired or past `expires_on`, then `exhausted` with no units left,
+  else `active`), `purchase_charge_id`.
   `PackageDetail` adds `transactions [{id, kind (grant, consume, expire,
   reversal), units (signed), class_session_id | null, session_starts_at |
   null, created_at}]`, oldest first.

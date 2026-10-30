@@ -267,6 +267,7 @@ export const PAYMENT: PaymentItem = {
   refunded_amount: '0.00',
   unallocated_amount: '300.00',
   is_reversed: false,
+  reversed_at: null,
   receipt: {
     id: '59000000-0000-4000-8000-000000000001',
     number: 'R-2026-000123',
@@ -302,6 +303,8 @@ export const EMPTY_PAYMENTS_PAGE: PaymentPage = {
 
 export const PAYMENT_DETAIL: PaymentDetail = {
   ...PAYMENT,
+  reversal: null,
+  refunds: [],
   allocations: [
     {
       id: '58000000-0000-4000-8000-000000000001',

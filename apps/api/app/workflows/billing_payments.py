@@ -27,9 +27,11 @@ allocation_charge_not_found`` / ``409 allocation_exceeds_open``).
 → every family; a guardian → their active profile's family; anyone else
 the same ``404``). A caller without ``billing.view`` gets ``note``,
 ``recorded_by_user_id`` and the allocations' ``created_by_user_id`` as
-``null`` (``sees_every_account``). The list costs at most four statements
-per page (the guardian's own family, the family, the account, the page),
-the detail at most five.
+``null`` (``sees_every_account``), and so the reversal's and refunds'
+``reason`` and actor ids (#100 R8). The list costs at most four statements
+per page (the guardian's own family, the family, the account, the page;
+the reversal is joined into the page), the detail at most six (#100: its
+refunds).
 """
 
 import uuid
@@ -51,8 +53,10 @@ from app.workflows.billing_payment_schemas import (
     PaymentItem,
     PaymentMethodItem,
     PaymentRecorded,
+    PaymentReversalItem,
     ReceiptReference,
     RecordedAllocationItem,
+    RefundItem,
 )
 
 
@@ -71,20 +75,58 @@ def _item(row: billing.PaymentRow, *, staff: bool) -> PaymentItem:
         refunded_amount=row.refunded_amount,
         unallocated_amount=row.unallocated_amount,
         is_reversed=row.is_reversed,
+        reversed_at=row.reversed_at,
         receipt=None
         if row.receipt_id is None or row.receipt_number is None
         else ReceiptReference(id=row.receipt_id, number=row.receipt_number),
     )
 
 
+def reversal_item(
+    row: billing.PaymentRow, *, staff: bool
+) -> PaymentReversalItem | None:
+    """The payment's reversal (#100 R8), staff text ``null`` unless
+    ``staff``."""
+    if row.reversal_id is None or row.reversed_at is None:
+        return None
+    return PaymentReversalItem(
+        id=row.reversal_id,
+        reason=row.reversal_reason if staff else None,
+        reversed_at=row.reversed_at,
+        reversed_by_user_id=row.reversed_by_user_id if staff else None,
+    )
+
+
+def refund_item(row: billing.RefundRow, *, staff: bool) -> RefundItem:
+    """One refund (#100 R8), staff text ``null`` unless ``staff``."""
+    return RefundItem(
+        id=row.id,
+        amount=row.amount,
+        refunded_on=row.refunded_on,
+        payment_method_code=row.payment_method_code,
+        reference=row.reference,
+        reason=row.reason if staff else None,
+        refunded_at=row.refunded_at,
+        refunded_by_user_id=row.refunded_by_user_id if staff else None,
+    )
+
+
+def payment_item(row: billing.PaymentRow, *, staff: bool) -> PaymentItem:
+    """The payment response item (#96 C6), for the #100 corrections."""
+    return _item(row, staff=staff)
+
+
 def _detail(
     row: billing.PaymentRow,
     allocations: list[billing.PaymentAllocationRow],
+    refunds: list[billing.RefundRow],
     *,
     staff: bool,
 ) -> PaymentDetail:
     return PaymentDetail(
         **_item(row, staff=staff).model_dump(),
+        reversal=reversal_item(row, staff=staff),
+        refunds=[refund_item(refund, staff=staff) for refund in refunds],
         allocations=[
             PaymentAllocationItem(
                 id=a.id,
@@ -223,7 +265,8 @@ async def get_payment(
     if found is None:
         raise RecordNotFoundError()
     row, allocations = found
-    return _detail(row, allocations, staff=sees_every_account(principal))
+    refunds = await billing.payment_refunds(session, payment_id)
+    return _detail(row, allocations, refunds, staff=sees_every_account(principal))
 
 
 async def list_payment_methods(session: AsyncSession) -> list[PaymentMethodItem]:

@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0069"
+HEAD = "0070"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -12579,3 +12579,77 @@ def test_0069_checks_keys_and_append_only(fresh_database_url):
             with pytest.raises(DBAPIError) as caught:
                 run_sql(dsn, statement, {"id": row})
             assert getattr(caught.value.orig, "sqlstate", "") == "42501", statement
+
+
+# --- 0070: corrections, the package_cancellation kind (#100 A1, R6) ----------------
+
+KIND_0061_TEXT = (
+    "CHECK (((kind)::text = ANY ((ARRAY['duration_change'::character varying,"
+    " 'cancellation_credit'::character varying, 'closure_credit'::character"
+    " varying, 'enrollment_removal'::character varying, 'withdrawal'::character"
+    " varying, 'manual'::character varying])::text[])))"
+)
+PACKAGE_CANCELLATION_INSERT = (
+    "INSERT INTO charge_adjustments (charge_id, billing_account_id, student_id,"
+    " kind, amount, reason, source_key, posted_at)"
+    " VALUES (:c, :a, :st, 'package_cancellation', -10, 'Cancelación', :k, now())"
+    " RETURNING id"
+)
+
+
+def test_0070_adds_package_cancellation_and_downgrade_restores_0069(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0069")
+    before = _constraints(dsn, "charge_adjustments")
+    tables = public_tables(dsn)
+    assert before["ck_charge_adjustments_kind"] == KIND_0061_TEXT
+    rows = _0069_rows(dsn)
+    params = {
+        "c": rows["charge"],
+        "a": rows["account"],
+        "st": rows["student"],
+        "k": f"package_cancellation:{uuid.uuid4()}",
+    }
+    with pytest.raises(DBAPIError) as caught:
+        run_sql(dsn, PACKAGE_CANCELLATION_INSERT, params)
+    assert getattr(caught.value.orig, "sqlstate", "") == "23514"
+
+    command.upgrade(config, "0070")
+
+    assert version_nums(dsn) == ["0070"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) == tables
+    after = _constraints(dsn, "charge_adjustments")
+    assert {k: v for k, v in after.items() if k != "ck_charge_adjustments_kind"} == {
+        k: v for k, v in before.items() if k != "ck_charge_adjustments_kind"
+    }
+    assert "'package_cancellation'" in after["ck_charge_adjustments_kind"]
+    assert "'manual'" in after["ck_charge_adjustments_kind"]
+    run_sql(dsn, PACKAGE_CANCELLATION_INSERT, params)
+
+    # The downgrade fails loudly while a package_cancellation row exists.
+    with pytest.raises(DBAPIError):
+        command.downgrade(config, "0069")
+    assert version_nums(dsn) == ["0070"]
+
+
+def test_0070_downgrade_restores_the_0061_check(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0070")
+
+    command.downgrade(config, "0069")
+
+    assert version_nums(dsn) == ["0069"]
+    assert (
+        _constraints(dsn, "charge_adjustments")["ck_charge_adjustments_kind"]
+        == KIND_0061_TEXT
+    )
+    assert metadata_diff(dsn) == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []

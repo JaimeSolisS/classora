@@ -5,7 +5,9 @@ allocating account credit.
 For a caller without ``billing.view`` (a guardian) ``note``,
 ``recorded_by_user_id`` and each allocation's ``created_by_user_id`` are
 ``null`` (#96 M7, #364 D4); ``reference`` and ``payer_name`` stay visible
-(the family gave them, and the receipt shows them).
+(the family gave them, and the receipt shows them). The same holds for
+the reversal's and the refunds' ``reason`` and actor ids (#100 R8); a
+refund's ``reference`` stays visible.
 """
 
 import uuid
@@ -38,7 +40,8 @@ class PaymentItem(BaseModel):
     while ``is_reversed`` is false. ``recorded_at`` is when it was
     entered; ``received_on`` the center-local day the money came in.
     ``receipt`` is ``null`` for a payment recorded before receipts (#98
-    C7)."""
+    C7). ``reversed_at`` is when it was reversed (#100 R8), ``null``
+    while ``is_reversed`` is false."""
 
     id: uuid.UUID
     amount: Money
@@ -53,6 +56,7 @@ class PaymentItem(BaseModel):
     refunded_amount: Money
     unallocated_amount: Money
     is_reversed: bool
+    reversed_at: datetime | None
     receipt: ReceiptReference | None
 
 
@@ -70,10 +74,42 @@ class PaymentAllocationItem(BaseModel):
     is_valid: bool
 
 
+class PaymentReversalItem(BaseModel):
+    """A payment's reversal (#100 R8). ``reason`` and
+    ``reversed_by_user_id`` are ``null`` for a caller without
+    billing.view."""
+
+    id: uuid.UUID
+    reason: str | None
+    reversed_at: datetime
+    reversed_by_user_id: uuid.UUID | None
+
+
+class RefundItem(BaseModel):
+    """Money paid back from a payment's unallocated remainder (#100 R4,
+    R8): ``refunded_on`` is the center-local day it went out,
+    ``refunded_at`` when it was entered. ``reason`` and
+    ``refunded_by_user_id`` are ``null`` for a caller without
+    billing.view."""
+
+    id: uuid.UUID
+    amount: Money
+    refunded_on: date
+    payment_method_code: str
+    reference: str | None
+    reason: str | None
+    refunded_at: datetime
+    refunded_by_user_id: uuid.UUID | None
+
+
 class PaymentDetail(PaymentItem):
-    """A payment with every allocation it has had, oldest first."""
+    """A payment with every allocation it has had, oldest first, its
+    reversal (``null`` without one) and its refunds, oldest first (#100
+    R8)."""
 
     allocations: list[PaymentAllocationItem]
+    reversal: PaymentReversalItem | None
+    refunds: list[RefundItem]
 
 
 class RecordedAllocationItem(BaseModel):
