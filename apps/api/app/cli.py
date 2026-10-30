@@ -49,6 +49,13 @@ Commands (one subparser each):
     password and ends every session of the Owner. Runs in every ``APP_ENV``,
     including ``prod`` (through SSM in AWS). Exit 0 on success, 1 on any
     refusal; a refusal writes nothing.
+
+``pdf-smoke``
+    Renders the sample document ``documents/smoke.html`` in es and en (#98a D5,
+    :mod:`app.core.pdf_smoke`) and prints each one's byte size and page count.
+    Needs no settings, database or ``.env``, so ``make check-pdf-image`` runs it
+    in a bare API image. Every warning is an error while it runs (a missing
+    ``libharfbuzz-subset`` included). Exit 0 on success, 1 on any failure.
 """
 
 import argparse
@@ -64,6 +71,7 @@ from typing import TextIO
 from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
+from app.core import pdf_smoke
 from app.core.audit import record_audit_event
 from app.core.config import ConfigurationError, Settings, get_settings
 from app.core.db import create_sessionmaker
@@ -333,6 +341,11 @@ COMMANDS: dict[str, Command] = {
 }
 """Subcommand name -> handler(args, settings, *, engine_factory, stdin, prompt)."""
 
+SETTINGS_FREE_COMMANDS: dict[str, Callable[[], int]] = {
+    "pdf-smoke": lambda: pdf_smoke.run(sys.stdout, sys.stderr),
+}
+"""Subcommands that need no settings or database (they run in a bare image)."""
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -357,6 +370,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print a one-time password-reset link for an existing active Owner.",
     )
     reset.add_argument("--username", required=True)
+    commands.add_parser(
+        "pdf-smoke",
+        help="Render the sample PDF document in es and en (no settings or database).",
+    )
     return parser
 
 
@@ -374,6 +391,8 @@ def main(
     # The approval inbox wiring (#40 D3), as in the API.
     register_approval_wiring()
     args = build_parser().parse_args(argv)
+    if args.command in SETTINGS_FREE_COMMANDS:
+        return SETTINGS_FREE_COMMANDS[args.command]()
     try:
         settings = get_settings()
     except ConfigurationError as exc:

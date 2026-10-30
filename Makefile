@@ -1,4 +1,4 @@
-.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-demo lint lint-api lint-web lint-e2e test test-api test-web test-unit test-integration test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image
+.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-demo lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -131,6 +131,12 @@ test-storybook:
 	$(PNPM) install --frozen-lockfile
 	$(PNPM) --filter @classora/web exec playwright install --only-shell chromium
 	$(PNPM) --filter @classora/web test-storybook
+
+## Build the API image and render the sample PDF in es and en inside it (ADR-0015).
+## Fails on a render error or a missing system library (warnings are errors). Needs Docker.
+check-pdf-image:
+	docker build -f infrastructure/docker/api.Dockerfile -t classora-api:pdf-check .
+	docker run --rm classora-api:pdf-check python -m app.cli pdf-smoke
 
 ## Playwright E2E (smoke and axe) against an isolated, freshly migrated and seeded Compose
 ## stack (project classora-e2e, own ports and volume; always torn down, E2E_KEEP=1 keeps it).

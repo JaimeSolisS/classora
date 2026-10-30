@@ -1,0 +1,11 @@
+{#- The PDF smoke document (`python -m app.cli pdf-smoke`, #98a D5): sample
+    center data, a name with accents, a date and an amount. -#}
+{% extends "documents/base.html" %}
+{% block title %}{{ t("common.smoke.title") }}{% endblock %}
+{% block content %}
+<table>
+  <tr><th>{{ t("common.smoke.name") }}</th><td>{{ name }}</td></tr>
+  <tr><th>{{ t("common.smoke.date") }}</th><td>{{ date(issued_on) }}</td></tr>
+  <tr><th>{{ t("common.smoke.amount") }}</th><td class="amount">{{ money(amount) }}</td></tr>
+</table>
+{% endblock %}

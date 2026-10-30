@@ -196,6 +196,7 @@ Open points: → ISSUE-FL1, FL2, FL3.
 - The UI uses react-i18next (es and en) and date-fns/date-fns-tz.
 - The center's configured time zone governs scheduling, local date boundaries, recurrence and due dates.
 - Recurrence expansion and DST handling (local wall-clock expansion, `fold=0`): see [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md).
+- Server-rendered text (PDF documents): JSON catalogs in `apps/api/app/i18n/locales/{es,en}/` read by `app/core/i18n.py`, Jinja2 and WeasyPrint in `app/core/pdf.py`, and the branded templates in `app/templates/documents/` ([ADR-0015](adr/0015-server-side-i18n.md), #98a).
 
 Open points: → ISSUE-D3. Server-rendered text (ISSUE-X1) is accepted in [ADR-0015](adr/0015-server-side-i18n.md).
 

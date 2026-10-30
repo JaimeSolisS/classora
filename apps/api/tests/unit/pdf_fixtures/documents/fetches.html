@@ -1,0 +1,10 @@
+{#- A test-only document that tries to fetch (#98a D3): every URL must be refused. -#}
+{% extends "documents/base.html" %}
+{% block title %}Fetches{% endblock %}
+{% block content %}
+<style>@import url("http://127.0.0.1:9/import.css");</style>
+<link rel="stylesheet" href="file:///etc/passwd">
+<img src="http://127.0.0.1:9/x.png" alt="remote">
+<img src="relative.png" alt="relative">
+<p>{{ name }}</p>
+{% endblock %}

@@ -105,6 +105,9 @@ jobs:
           enable-cache: true
           cache-dependency-glob: apps/api/uv.lock
 
+      - name: Install the PDF system libraries (ADR-0015)
+        run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core
+
       - name: make test-unit
         run: make test-unit
 
@@ -158,6 +161,9 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: apps/api/uv.lock
+
+      - name: Install the PDF system libraries (ADR-0015)
+        run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core
 
       - name: make test-integration SHARD=K/4
         run: make test-integration SHARD="$SHARD"
@@ -389,6 +395,11 @@ jobs:
 
       - name: make e2e
         run: make e2e
+
+      # The API image renders a PDF in es and en (ADR-0015); the image layers
+      # are already in the daemon cache from `make e2e`.
+      - name: make check-pdf-image
+        run: make check-pdf-image
 
       # Failure only: Playwright traces and screenshots, the HTML report and
       # compose.log (synthetic data; .env.example placeholder values only).
