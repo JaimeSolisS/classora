@@ -6137,6 +6137,13 @@
         "automatic_other": "{{count}} automatic session credits.",
         "snapshot": "The settlement as previewed",
         "close": "Close"
+      },
+      "plain": {
+        "noFamily": "The student isn't in a family, so there is no billing to settle.",
+        "nothing": "There is nothing to bill or credit for this enrollment.",
+        "help": "You can withdraw the student without a settlement, as before. They are removed from future sessions; past sessions are kept.",
+        "submit": "Withdraw without settlement",
+        "submitting": "Withdrawing…"
       }
     }
   }

@@ -6257,6 +6257,13 @@
         "automatic_other": "{{count}} créditos automáticos de sesión.",
         "snapshot": "La liquidación como se mostró",
         "close": "Cerrar"
+      },
+      "plain": {
+        "noFamily": "El estudiante no está en una familia, así que no hay cobros que liquidar.",
+        "nothing": "No hay nada que cobrar ni acreditar por esta inscripción.",
+        "help": "Puedes dar de baja al estudiante sin liquidación, como antes. Se le quita de las sesiones futuras; las pasadas se conservan.",
+        "submit": "Dar de baja sin liquidación",
+        "submitting": "Dando de baja…"
       }
     }
   }

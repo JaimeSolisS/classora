@@ -55,7 +55,9 @@ import { WithdrawalFlowDialog } from '@/features/billing/withdrawals/WithdrawalD
 // billing.view (and billing.manage or finance.refund.approve), Withdraw is
 // the two-step dialog (the reason, then the settlement that withdraws and
 // settles in one call), and a withdrawn row with no withdrawal settlement
-// gets "Settle billing"; a Coordinator keeps the plain withdrawal.
+// gets "Settle billing"; a Coordinator keeps the plain withdrawal. With
+// nothing to settle (no family, or billing off), step 2 offers "Withdraw
+// without settlement": the M4 route, no password (#387 QA D2).
 
 interface PageNotice {
   notice?: string;
@@ -335,6 +337,40 @@ function GroupPageContent({ groupId }: { groupId: string }) {
                 void refresh();
               }}
               onClose={() => setSettling(null)}
+              onWithdrawPlain={
+                settling?.withdraw
+                  ? async (reason) => {
+                      // The live roster row (its current version).
+                      const item =
+                        detail.roster?.find(
+                          (row) => row.id === settling.item.id,
+                        ) ?? settling.item;
+                      try {
+                        await withdrawEnrollment(
+                          detail.id,
+                          item.id,
+                          withdrawBody(item.version, reason),
+                        );
+                      } catch (caught) {
+                        if (
+                          caught instanceof ApiError &&
+                          caught.code === 'enrollment_not_active'
+                        ) {
+                          void refresh();
+                        }
+                        throw caught;
+                      }
+                      setSettling(null);
+                      announce(
+                        t('groups.withdraw.done', {
+                          name: item.student.display_name,
+                        }),
+                        true,
+                      );
+                      await refresh();
+                    }
+                  : undefined
+              }
             />
           ) : null}
           <EditGroupDialog

@@ -169,6 +169,43 @@ export const RosterFirstStep: Story = {
   },
 };
 
+/** #387 QA D2: nothing to settle → "Withdraw without settlement". */
+export const RosterNothingToSettle: Story = {
+  args: {
+    title: i18n.t('groups.withdraw.title'),
+    subjectName: 'Álgebra sábado',
+    initialStep: 'settle',
+    onWithdrawPlain: fn(() => Promise.resolve()),
+    state: {
+      status: 'ready',
+      preview: {
+        ...GROUP_PREVIEW,
+        family: null,
+        billing_account_id: null,
+        blocking: [{ code: 'student_has_no_family', details: {} }],
+      },
+    },
+    firstStep: {
+      description: i18n.t('groups.withdraw.description', {
+        name: 'Ana López',
+        group: 'Álgebra sábado',
+      }),
+      reason: i18n.t('billing.withdrawals.fields.reason'),
+      keep: i18n.t('groups.withdraw.keep'),
+      next: i18n.t('billing.withdrawals.dialog.next'),
+    },
+  },
+  play: async (context) => {
+    const dialog = await findDialog(context);
+    await context.userEvent.click(
+      dialog.getByRole('button', {
+        name: i18n.t('billing.withdrawals.plain.submit'),
+      }),
+    );
+    await expect(context.args.onWithdrawPlain).toHaveBeenCalledWith('');
+  },
+};
+
 // The panel alone, in a page (its stale and read-only states).
 
 type PanelStory = StoryObj<typeof WithdrawalSettlement>;

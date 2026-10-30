@@ -3,6 +3,7 @@ import { useId, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
+import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -34,6 +35,7 @@ import {
   type WithdrawalPreview,
   type WithdrawalRefundConfirm,
 } from './api';
+import { nothingToSettle } from './rules';
 import { WithdrawalSettlement } from './WithdrawalSettlement';
 
 // The withdrawal dialog (#387 B1-B3): the settlement panel for a subject,
@@ -49,7 +51,9 @@ import { WithdrawalSettlement } from './WithdrawalSettlement';
 // confirms, puts a stale answer's fresh preview in the query, and after
 // the 201 calls `onDone` (the caller closes it, announces it in its polite
 // status and refreshes its list) and invalidates the withdrawal reads and
-// the family's account (B5).
+// the family's account (B5). #387 QA D2: on a roster withdrawal with
+// nothing to settle (`nothingToSettle`), the second step offers
+// "Withdraw without settlement" instead (the M4 route, no password).
 
 export type PreviewState =
   | { status: 'loading' }
@@ -85,6 +89,12 @@ export interface WithdrawalDialogProps {
   onStale: (fresh: WithdrawalPreview) => void;
   onRefetch: () => void;
   onClose: () => void;
+  /**
+   * #387 QA D2: the M4 withdrawal without a settlement (the plain route,
+   * no password), offered on the settlement step of a roster withdrawal
+   * when there is nothing to settle (`nothingToSettle`).
+   */
+  onWithdrawPlain?: (reason: string) => Promise<void>;
   /** Stories: start on the settlement step. */
   initialStep?: 'withdraw' | 'settle';
 }
@@ -126,6 +136,7 @@ function Steps({
   onStale,
   onRefetch,
   onClose,
+  onWithdrawPlain,
   initialStep,
   busy,
 }: WithdrawalDialogProps & { busy: { current: boolean } }) {
@@ -186,6 +197,17 @@ function Steps({
     body = <LoadingState rows={6} />;
   } else if (state.status === 'error') {
     body = <ErrorAlert error={state.error} onRetry={state.onRetry} />;
+  } else if (firstStep && onWithdrawPlain && nothingToSettle(state.preview)) {
+    body = (
+      <PlainWithdrawal
+        preview={state.preview}
+        reason={reason}
+        onWithdraw={onWithdrawPlain}
+        onBack={() => setStep('withdraw')}
+        onCancel={onClose}
+        busyRef={busy}
+      />
+    );
   } else {
     body = (
       <WithdrawalSettlement
@@ -220,6 +242,96 @@ function Steps({
   );
 }
 
+/**
+ * #387 QA D2: nothing to settle (a student without a family, or an empty
+ * settlement): why, and "Withdraw without settlement", the M4 route with
+ * the reason of the first step. An error stays here as an alert.
+ */
+function PlainWithdrawal({
+  preview,
+  reason,
+  onWithdraw,
+  onBack,
+  onCancel,
+  busyRef,
+}: {
+  preview: WithdrawalPreview;
+  reason: string;
+  onWithdraw: (reason: string) => Promise<void>;
+  onBack: () => void;
+  onCancel: () => void;
+  busyRef: { current: boolean };
+}) {
+  const { t } = useTranslation();
+  const [failure, setFailure] = useState<unknown>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const noFamily = preview.blocking.some(
+    (item) => item.code === 'student_has_no_family',
+  );
+
+  async function withdraw() {
+    if (busyRef.current) return;
+    setFailure(null);
+    busyRef.current = true;
+    setSubmitting(true);
+    try {
+      await onWithdraw(reason);
+    } catch (caught) {
+      setFailure(caught);
+    } finally {
+      busyRef.current = false;
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="flex min-w-0 flex-col gap-4" data-withdrawal-plain>
+      <p className="text-sm">
+        {noFamily
+          ? t('billing.withdrawals.plain.noFamily')
+          : t('billing.withdrawals.plain.nothing')}
+      </p>
+      <p className="text-sm text-muted-foreground">
+        {t('billing.withdrawals.plain.help')}
+      </p>
+      {failure ? <ErrorAlert error={failure} /> : null}
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={submitting}
+          onClick={onBack}
+        >
+          {t('billing.withdrawals.back')}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={submitting}
+          onClick={onCancel}
+        >
+          {t('billing.withdrawals.cancel')}
+        </Button>
+        <Button
+          type="button"
+          variant="destructive"
+          disabled={submitting}
+          onClick={() => void withdraw()}
+        >
+          {submitting ? (
+            <Spinner
+              label={t('billing.withdrawals.plain.submitting')}
+              showLabel
+            />
+          ) : (
+            t('billing.withdrawals.plain.submit')
+          )}
+        </Button>
+      </DialogFooter>
+    </div>
+  );
+}
+
 export interface WithdrawalFlowDialogProps {
   /** The subject; null: closed. */
   subject: SubjectRef | null;
@@ -228,6 +340,8 @@ export interface WithdrawalFlowDialogProps {
   firstStep?: WithdrawStepLabels;
   onDone: (confirmed: WithdrawalConfirmed) => void;
   onClose: () => void;
+  /** #387 QA D2: the M4 withdrawal when there is nothing to settle. */
+  onWithdrawPlain?: (reason: string) => Promise<void>;
 }
 
 export function WithdrawalFlowDialog({
@@ -237,6 +351,7 @@ export function WithdrawalFlowDialog({
   firstStep,
   onDone,
   onClose,
+  onWithdrawPlain,
 }: WithdrawalFlowDialogProps) {
   const client = useQueryClient();
   const timeZone = useCenterTimeZone();
@@ -288,6 +403,7 @@ export function WithdrawalFlowDialog({
       }}
       onRefetch={() => void preview.refetch()}
       onClose={onClose}
+      onWithdrawPlain={onWithdrawPlain}
     />
   );
 }

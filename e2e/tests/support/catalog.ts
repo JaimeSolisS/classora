@@ -120,6 +120,9 @@ type Common = {
       totals: Record<'credit', string>;
       confirm: string;
       section: { title: string };
+      // #387 QA D1: the roster's two-step withdrawal with nothing to settle.
+      dialog: Record<'next', string>;
+      plain: Record<'submit', string>;
     };
     // #382 F3: the overdue accounts and the due-date dialogs.
     overdue: {

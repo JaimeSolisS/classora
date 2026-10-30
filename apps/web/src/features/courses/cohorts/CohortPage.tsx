@@ -108,7 +108,9 @@ import {
 // finance.refund.approve), Withdraw is the two-step dialog (the reason,
 // then the settlement that withdraws and settles in one call), and a shown
 // withdrawn row with no withdrawal settlement gets "Settle billing"; a
-// Coordinator keeps the plain withdrawal.
+// Coordinator keeps the plain withdrawal. With nothing to settle (no
+// family, or billing off), step 2 offers "Withdraw without settlement":
+// the M4 route, no password (#387 QA D2).
 
 /** The withdrawal answers that mean "the roster you saw is stale" (C2). */
 const STALE_WITHDRAWAL = new Set([
@@ -536,6 +538,41 @@ function CohortPageContent({ cohortId }: { cohortId: string }) {
                 void refresh();
               }}
               onClose={() => setSettling(null)}
+              onWithdrawPlain={
+                settling?.withdraw
+                  ? async (reason) => {
+                      // The live roster row (its current version).
+                      const item =
+                        (roster ?? []).find(
+                          (row) => row.id === settling.item.id,
+                        ) ?? settling.item;
+                      try {
+                        await withdrawFromCohort(
+                          cohortId,
+                          item.id,
+                          cohortWithdrawBody(item.version, reason),
+                        );
+                      } catch (caught) {
+                        if (
+                          caught instanceof ApiError &&
+                          caught.code &&
+                          STALE_WITHDRAWAL.has(caught.code)
+                        ) {
+                          void refresh();
+                        }
+                        throw caught;
+                      }
+                      setSettling(null);
+                      announce(
+                        t('courses.cohorts.enrollment.withdrawDialog.done', {
+                          name: item.student.display_name,
+                        }),
+                        true,
+                      );
+                      await refresh();
+                    }
+                  : undefined
+              }
             />
           ) : null}
           <WithdrawDialog

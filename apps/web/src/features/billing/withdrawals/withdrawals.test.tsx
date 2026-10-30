@@ -77,6 +77,7 @@ import {
   estimateTotals,
   mergeStale,
   minutesAsHours,
+  nothingToSettle,
   settlementBody,
   type SettlementValues,
 } from './rules';
@@ -105,6 +106,7 @@ const GROUP_DETAIL = `GET /api/v1/groups/${GROUP_ID}`;
 const GROUP_SESSIONS = `GET /api/v1/groups/${GROUP_ID}/sessions`;
 const GROUP_WITHDRAW = `POST /api/v1/groups/${GROUP_ID}/enrollments/${ACTIVE_ANA.id}/withdraw`;
 const COHORT_DETAIL = `GET /api/v1/cohorts/${COHORT_ID}`;
+const COHORT_WITHDRAW = `POST /api/v1/cohorts/${COHORT_ID}/enrollments/${COHORT_ANA.id}/withdraw`;
 const BASE = `/api/v1/families/${FAMILY_ID}/billing-account`;
 const TODAY_DATE = TODAY as LocalDate;
 
@@ -149,6 +151,27 @@ const FINANCE = user(
 );
 const REFUNDER = user(['owner'], ['billing.view', 'finance.refund.approve']);
 const VIEWER = user(['finance_staff'], ['billing.view']);
+
+/** Billing off: no line, no automatic credit, every total 0.00. */
+const EMPTY_GROUP_PREVIEW: WithdrawalPreview = {
+  ...GROUP_PREVIEW,
+  lines: [],
+  automatic_credits: [],
+  totals: {
+    credit: '0.00',
+    reduces_debt: '0.00',
+    refundable_cash: '0.00',
+    automatic_credits: '0.00',
+    account_credit_after_credit: '0.00',
+  },
+  warnings: [],
+};
+const NO_FAMILY_GROUP_PREVIEW: WithdrawalPreview = {
+  ...EMPTY_GROUP_PREVIEW,
+  family: null,
+  billing_account_id: null,
+  blocking: [{ code: 'student_has_no_family', details: {} }],
+};
 
 const PACKAGES_PAGE: PackagePage = {
   items: [PACKAGE_ACTIVE, PACKAGE_EXPIRED, PACKAGE_CANCELLED],
@@ -293,6 +316,35 @@ describe('the settlement rules (A1, A4, A5, A6)', () => {
       fingerprint: PACKAGE_PREVIEW.fingerprint,
       credit_overrides: [{ charge_id: PURCHASE_CHARGE_ID, amount: '1000.00' }],
     });
+  });
+
+  it('knows when there is nothing to settle (QA D2)', () => {
+    const noFamily = {
+      ...GROUP_PREVIEW,
+      family: null,
+      blocking: [{ code: 'student_has_no_family' as const, details: {} }],
+    };
+    expect(nothingToSettle(noFamily)).toBe(true);
+    expect(nothingToSettle(EMPTY_GROUP_PREVIEW)).toBe(true);
+    expect(nothingToSettle(GROUP_PREVIEW)).toBe(false);
+    for (const code of [
+      'withdrawal_exists',
+      'withdrawal_closeout_pending',
+      'package_not_withdrawable',
+      'withdrawal_spans_accounts',
+    ] as const) {
+      expect(nothingToSettle(blockedPreview(code))).toBe(false);
+    }
+    // A real blocking reason next to "no family" still needs staff action.
+    expect(
+      nothingToSettle({
+        ...noFamily,
+        blocking: [
+          ...noFamily.blocking,
+          { code: 'withdrawal_spans_accounts', details: {} },
+        ],
+      }),
+    ).toBe(false);
   });
 
   it('drops the overrides of changed lines after a stale answer', () => {
@@ -979,6 +1031,144 @@ describe('withdraw from a group roster (B1)', () => {
     expect(main().textContent).toContain(
       'Billing of Carla Méndez in Álgebra sábado settled',
     );
+  });
+});
+
+describe('withdraw without settlement when there is nothing to settle (QA D2)', () => {
+  const withdrawn = {
+    ...ACTIVE_ANA,
+    withdrawn_at: '2031-01-01T00:00:00Z',
+    withdrawn_by: ACTIVE_ANA.enrolled_by,
+    version: 2,
+  };
+
+  async function toStepTwo(reason: string) {
+    await click(buttonNamed(main(), 'Withdraw Ana López'));
+    await settleUntil(() => groupDialog());
+    setFieldValue(labelled(groupDialog()!, 'Reason'), reason);
+    await click(buttonNamed(groupDialog()!, 'Next: billing settlement'));
+  }
+
+  it.each([
+    [
+      'a student without a family',
+      NO_FAMILY_GROUP_PREVIEW,
+      "The student isn't in a family, so there is no billing to settle.",
+    ],
+    [
+      'an empty settlement (billing off)',
+      EMPTY_GROUP_PREVIEW,
+      'There is nothing to bill or credit for this enrollment.',
+    ],
+  ] as const)(
+    'withdraws %s through the M4 route, without a password',
+    async (_name, preview, text) => {
+      const api = stubGroup(OWNER, {
+        [PREVIEW]: previewOf({ [ACTIVE_ANA.id]: preview }),
+        [GROUP_WITHDRAW]: () => jsonResponse(200, withdrawn),
+      });
+      await renderGroup();
+      await toStepTwo(' Se mudó ');
+      await settleUntil(() =>
+        groupDialog()?.querySelector('[data-withdrawal-plain]'),
+      );
+      const dialog = groupDialog()!;
+      expect(dialog.textContent).toContain(text);
+      expect(buttonTexts(dialog)).not.toContain('Confirm withdrawal');
+      await click(buttonNamed(dialog, 'Withdraw without settlement'));
+      await settleUntil(() => groupDialog() === null);
+      expect(api.calls(GROUP_WITHDRAW).map((call) => call.body)).toEqual([
+        { version: ACTIVE_ANA.version, reason: 'Se mudó' },
+      ]);
+      expect(api.calls(CREDIT)).toHaveLength(0);
+      expect(api.calls(REAUTH)).toHaveLength(0);
+      expect(main().textContent).toContain('Ana López withdrawn.');
+    },
+  );
+
+  it('keeps the dialog with the error when the plain withdrawal fails', async () => {
+    stubGroup(OWNER, {
+      [PREVIEW]: previewOf({ [ACTIVE_ANA.id]: NO_FAMILY_GROUP_PREVIEW }),
+      [GROUP_WITHDRAW]: () => problem(409, 'enrollment_not_active'),
+    });
+    await renderGroup();
+    await toStepTwo('');
+    await settleUntil(() =>
+      groupDialog()?.querySelector('[data-withdrawal-plain]'),
+    );
+    await click(buttonNamed(groupDialog()!, 'Withdraw without settlement'));
+    await settleUntil(() => alerts(groupDialog()!).length > 0);
+  });
+
+  it('offers no plain withdrawal when a real blocking reason needs staff action', async () => {
+    stubGroup(OWNER, {
+      [PREVIEW]: previewOf({
+        [ACTIVE_ANA.id]: {
+          ...GROUP_PREVIEW,
+          blocking: [{ code: 'withdrawal_spans_accounts', details: {} }],
+        },
+      }),
+    });
+    await renderGroup();
+    await toStepTwo('');
+    await settleUntil(() =>
+      groupDialog()?.querySelector(
+        '[data-blocking="withdrawal_spans_accounts"]',
+      ),
+    );
+    expect(buttonTexts(groupDialog()!)).not.toContain(
+      'Withdraw without settlement',
+    );
+  });
+
+  it('withdraws a cohort student without a family the M4 way', async () => {
+    const api = stub(OWNER, {
+      [COHORT_DETAIL]: () => jsonResponse(200, ROSTER_COHORT),
+      [`GET /api/v1/cohorts/${COHORT_ID}/sessions`]: () =>
+        jsonResponse(200, { items: [] }),
+      [LIST]: withdrawalsOf([]),
+      [PREVIEW]: previewOf({
+        [COHORT_ANA.id]: {
+          ...NO_FAMILY_GROUP_PREVIEW,
+          subject: { kind: 'cohort_enrollment', id: COHORT_ANA.id },
+        },
+      }),
+      [COHORT_WITHDRAW]: () =>
+        jsonResponse(200, {
+          ...COHORT_ANA,
+          withdrawn_at: '2031-01-01T00:00:00Z',
+          withdrawn_by: COHORT_ANA.enrolled_by,
+          version: 2,
+        }),
+    });
+    app = await renderApp(`/courses/cohorts/${COHORT_ID}`);
+    await settleUntil(() => main().querySelector('h1'));
+    await settle();
+    await click(buttonNamed(main(), 'Withdraw Ana López'));
+    await settleUntil(() => dialogTitled('Withdraw student'));
+    await click(
+      buttonNamed(
+        dialogTitled('Withdraw student')!,
+        'Next: billing settlement',
+      ),
+    );
+    await settleUntil(() =>
+      dialogTitled('Withdraw student')?.querySelector(
+        '[data-withdrawal-plain]',
+      ),
+    );
+    await click(
+      buttonNamed(
+        dialogTitled('Withdraw student')!,
+        'Withdraw without settlement',
+      ),
+    );
+    await settleUntil(() => dialogTitled('Withdraw student') === null);
+    expect(api.calls(COHORT_WITHDRAW).map((call) => call.body)).toEqual([
+      { version: COHORT_ANA.version },
+    ]);
+    expect(api.calls(CREDIT)).toHaveLength(0);
+    expect(main().textContent).toContain('Withdrew Ana López.');
   });
 });
 

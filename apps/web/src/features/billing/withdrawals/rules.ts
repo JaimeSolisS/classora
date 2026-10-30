@@ -95,6 +95,38 @@ export function isBlocked(preview: Pick<WithdrawalPreview, 'blocking'>) {
   return preview.blocking.length > 0;
 }
 
+/**
+ * The blocking codes that mean "there is nothing to settle" (#387 QA D2):
+ * the enrollment can still be withdrawn the M4 way, without a settlement.
+ * The others need staff action first (or concern packages only).
+ */
+export const NOTHING_TO_SETTLE_CODES = ['student_has_no_family'] as const;
+
+/**
+ * #387 QA D2: nothing to settle, so a roster withdrawal offers the plain
+ * M4 withdrawal instead of a settlement: a blocking state of
+ * NOTHING_TO_SETTLE_CODES only, or no blocking state and an empty
+ * settlement (no line, no automatic credit, every total 0.00; for example
+ * billing off).
+ */
+export function nothingToSettle(
+  preview: Pick<
+    WithdrawalPreview,
+    'blocking' | 'lines' | 'automatic_credits' | 'totals'
+  >,
+): boolean {
+  if (preview.blocking.length > 0) {
+    return preview.blocking.every((item) =>
+      (NOTHING_TO_SETTLE_CODES as readonly string[]).includes(item.code),
+    );
+  }
+  return (
+    preview.lines.length === 0 &&
+    preview.automatic_credits.length === 0 &&
+    TOTAL_KEYS.every((key) => apiCents(preview.totals[key]) === 0)
+  );
+}
+
 /** The first outcome that can be chosen, or none. */
 export function defaultOutcome(
   availability: OutcomeAvailability,
