@@ -38,6 +38,31 @@ const TEST_TIMEOUT_MS = 90_000;
 // reauth_required before the password dialog.
 const EXPECTED_RESOURCE_ERROR =
   /Failed to load resource: the server responded with a status of 403/;
+// And the signed-out session probe of the fresh context before the login
+// (GET /api/v1/auth/me answers 401): only that request, by URL and status.
+const SIGNED_OUT_PROBE =
+  /Failed to load resource: the server responded with a status of 401/;
+const SESSION_PROBE_PATH = '/api/v1/auth/me';
+
+/**
+ * Whether a console error is one of the expected ones. A 401 is expected
+ * only when Chromium names the probe as its source or, without a source,
+ * when every 401 response so far was the probe (`unauthorized` lists the
+ * paths of the 401 responses; the test also asserts it).
+ */
+function isExpectedError(
+  text: string,
+  source: string,
+  unauthorized: readonly string[],
+): boolean {
+  if (EXPECTED_RESOURCE_ERROR.test(text)) return true;
+  if (!SIGNED_OUT_PROBE.test(text)) return false;
+  if (source) return new URL(source).pathname === SESSION_PROBE_PATH;
+  return (
+    unauthorized.length > 0 &&
+    unauthorized.every((path) => path === SESSION_PROBE_PATH)
+  );
+}
 
 test.use({ storageState: SIGNED_OUT_STATE });
 
@@ -100,10 +125,16 @@ test('corrections, reversals and refunds on a family account', async ({
   await recordCspViolations(page);
   const consoleErrors: string[] = [];
   page.on('pageerror', (error) => consoleErrors.push(error.message));
+  const unauthorized: string[] = [];
+  page.on('response', (response) => {
+    if (response.status() === 401) {
+      unauthorized.push(new URL(response.url()).pathname);
+    }
+  });
   page.on('console', (message) => {
     if (
       message.type() === 'error' &&
-      !EXPECTED_RESOURCE_ERROR.test(message.text())
+      !isExpectedError(message.text(), message.location().url, unauthorized)
     ) {
       consoleErrors.push(message.text());
     }
@@ -312,4 +343,6 @@ test('corrections, reversals and refunds on a family account', async ({
 
   expect(await cspViolations(page)).toEqual([]);
   expect(consoleErrors).toEqual([]);
+  // The only 401s are the signed-out session probe before the login.
+  expect(unauthorized.every((path) => path === SESSION_PROBE_PATH)).toBe(true);
 });
