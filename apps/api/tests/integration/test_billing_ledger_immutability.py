@@ -24,7 +24,11 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.money import Money
-from app.modules.billing.models import APPEND_ONLY_TABLES, Charge
+from app.modules.billing.models import (
+    APPEND_ONLY_TABLES,
+    DUE_DATE_APPEND_ONLY_TABLES,
+    Charge,
+)
 from tests.factories import billing as factories
 from tests.integration.billing_ledger_support import (
     LedgerRows,
@@ -93,8 +97,14 @@ def test_truncate_is_refused_by_the_tables_own_trigger(module_seeded_url, rows, 
     url = module_seeded_url
     row_id = rows.row_of(table)
     before = _snapshot(url, table, row_id)
-    # charge_discounts (#95) references charges, so it is truncated with them.
-    tables = [table, *(t for t in APPEND_ONLY_TABLES if t != table), "charge_discounts"]
+    # charge_discounts (#95) and the #97 due-date tables reference charges,
+    # so they are truncated with them.
+    tables = [
+        table,
+        *(t for t in APPEND_ONLY_TABLES if t != table),
+        "charge_discounts",
+        *DUE_DATE_APPEND_ONLY_TABLES,
+    ]
 
     message = fails_with(url, f"TRUNCATE {', '.join(tables)}", INSUFFICIENT_PRIVILEGE)
 

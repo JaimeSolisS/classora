@@ -292,7 +292,8 @@ async def _patch_then_post(url: str, w: dd.World) -> tuple[float, float, uuid.UU
                 )
                 holding.set()
                 await asyncio.sleep(HOLD_SECONDS)
-            ended["a"] = time.monotonic()
+                # Before the commit: B's step can't return before it.
+                ended["a"] = time.monotonic()
         finally:
             holding.set()
 
@@ -302,7 +303,8 @@ async def _patch_then_post(url: str, w: dd.World) -> tuple[float, float, uuid.UU
             posted = await factories.charge(
                 uow.session, w.student, due=TODAY, apply_family_offset=True
             )
-        ended["b"] = time.monotonic()
+            # B's posting returned, so it got A's lock (after A's commit).
+            ended["b"] = time.monotonic()
         return posted.charge_id
 
     try:

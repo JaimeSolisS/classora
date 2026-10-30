@@ -47,8 +47,11 @@ async def _hold_then(
 ) -> tuple[Any, Any, float, float]:
     """A runs ``first`` (as ``actor``) and holds its transaction for
     :data:`HOLD_SECONDS`; B (no actor, like the job) runs ``second`` once A
-    has run its step. Returns both results and when each transaction
-    ended."""
+    has run its step. Returns both results, A's release time (taken inside
+    its transaction, just before the commit) and when B's step returned
+    (inside its transaction). B's step blocks on A's lock until A commits,
+    so ``b_done >= a_releasing`` holds exactly when B waited for A; both
+    marks are taken before either commit, so they never race the commit."""
     engine_a, engine_b = short_lived_engine(url), short_lived_engine(url)
     holding = asyncio.Event()
     ended: dict[str, float] = {}
@@ -59,7 +62,7 @@ async def _hold_then(
                 result = await first(uow.session)
                 holding.set()
                 await asyncio.sleep(HOLD_SECONDS)
-            ended["a"] = time.monotonic()
+                ended["a"] = time.monotonic()
             return result
         finally:
             holding.set()
@@ -68,7 +71,7 @@ async def _hold_then(
         await holding.wait()
         async with UnitOfWork(create_sessionmaker(engine_b)) as uow:
             result = await second(uow.session)
-        ended["b"] = time.monotonic()
+            ended["b"] = time.monotonic()
         return result
 
     try:
