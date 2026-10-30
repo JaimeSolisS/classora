@@ -294,14 +294,15 @@ def test_truncate_is_refused(module_seeded_url):
         # reference price_versions and package_credit_transactions packages;
         # since #97 charge_due_date_changes and charge_reminders charges;
         # since #99 session_cancellation_decisions and
-        # charge_duration_repricings charges and adjustments.
+        # charge_duration_repricings charges and adjustments; since #101
+        # withdrawals references packages (and refunds withdrawals).
         run_sql(
             module_seeded_url,
             "TRUNCATE price_versions, charges, charge_adjustments,"
             " payment_allocations, allocation_releases, charge_discounts,"
             " packages, package_credit_transactions, charge_due_date_changes,"
             " charge_reminders, session_cancellation_decisions,"
-            " charge_duration_repricings",
+            " charge_duration_repricings, withdrawals, refunds",
         )
 
     assert _sqlstate(raised.value) == "42501"
