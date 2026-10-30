@@ -39,8 +39,9 @@ migration 0061 (#90) makes it ``EXISTS`` a charge with that
   ``allocation_releases``, ``refunds``.
 - Staged columns (#90 E3): ``charges.tuition_plan_id`` (#93),
   ``charges.package_id`` (#94), ``charges.custom_price_id`` (#95) and
-  ``refunds.withdrawal_id`` (#101) are added by those issues, which replace
-  the named ``ck_charges_kind`` and ``ck_charges_one_source`` CHECKs.
+  ``refunds.withdrawal_id`` (#101, migration 0071) are added by those
+  issues, which replace the named ``ck_charges_kind`` and
+  ``ck_charges_one_source`` CHECKs.
 - Composite foreign keys keep an allocation, its payment and its charge in
   one account (I4), and an adjustment on its charge's account and student
   (I5). The view ``billing_ledger_entries`` is defined only in the
@@ -91,7 +92,8 @@ singleton (mutable config, versioned) holding the billing start floor
   quantity, validity and subject are fixed after creation.
 - ``packages`` (append-only): one purchase for one account and one student.
 - ``package_credit_transactions`` (append-only): the signed unit movements
-  (``grant``, ``consume``, ``expire``, ``reversal``; #101 adds ``refund``).
+  (``grant``, ``consume``, ``expire``, ``reversal``, and #101's ``refund``
+  with its ``withdrawal_id``).
 - ``charges.package_id`` (column added by #94): the source of a
   ``package_purchase`` charge, with the composite foreign key to the
   package's ``(id, billing_account_id, student_id)``.
@@ -113,6 +115,10 @@ one per payment (``payment_id`` UNIQUE), numbered ``R-YYYY-NNNNNN``
 with its language, template version and frozen ``snapshot``
 (``billing.receipts.ReceiptSnapshotV1``); the composite foreign key keeps it
 on its payment's account (I4).
+
+**Withdrawals** (#101; data-model §3.23): ``withdrawals`` (append-only,
+audited): one settlement of exactly one group enrollment, cohort enrollment
+or package, with its outcome, amounts, reason and confirmed preview.
 
 Every model but ``ChargeReminder`` is ``Audited``; every foreign key is ``ON
 DELETE RESTRICT`` except ``tuition_plan_pauses.tuition_plan_id``
@@ -789,8 +795,9 @@ class AllocationRelease(Audited, Model):
 
 class Refund(Audited, Model):
     """Money paid back out of a payment's unallocated remainder (#90 A2;
-    data-model §3.16 without ``withdrawal_id``, added by #101). Append-only;
-    recorded from #100."""
+    data-model §3.16). Append-only; recorded from #100. ``withdrawal_id``
+    (column added by #101, migration 0071): the withdrawal that paid it out,
+    ``NULL`` for a #100 refund."""
 
     __tablename__ = "refunds"
     __table_args__ = (
@@ -801,6 +808,7 @@ class Refund(Audited, Model):
         CheckConstraint(staff_text_check("reason", REASON_MAX), name="reason_valid"),
         _payment_fk("refunds"),
         Index("ix_refunds_payment_id", "payment_id"),
+        Index("ix_refunds_withdrawal_id", "withdrawal_id"),
     )
 
     payment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
@@ -813,6 +821,7 @@ class Refund(Audited, Model):
     reference: Mapped[str | None] = mapped_column(String(REFERENCE_MAX), nullable=True)
     reason: Mapped[str] = mapped_column(String(REASON_MAX))
     refunded_by_user_id: Mapped[uuid.UUID] = _actor(nullable=False)
+    withdrawal_id: Mapped[uuid.UUID | None] = _uuid_fk("withdrawals", nullable=True)
 
 
 # --- Billing settings (#91) ----------------------------------------------------------
@@ -1116,10 +1125,16 @@ PACKAGE_UNITS: Final = ("sessions", "minutes")
 """A package's unit (#94 A2; ADR-0006 E10)."""
 PACKAGE_UNIT_MAX: Final = 8
 PACKAGE_NAME_MAX: Final = 120
-PACKAGE_TRANSACTION_KINDS: Final = ("grant", "consume", "expire", "reversal")
-"""The kinds of ``package_credit_transactions`` (#94 L10: ``refund`` and
-``withdrawal_id`` are added by #101, which replaces
-``ck_package_credit_transactions_kind``)."""
+PACKAGE_TRANSACTION_KINDS: Final = (
+    "grant",
+    "consume",
+    "expire",
+    "reversal",
+    "refund",
+)
+"""The kinds of ``package_credit_transactions`` (#94 L10; ``refund`` and
+``withdrawal_id`` since #101, migration 0071: a package withdrawal's
+``−remaining``)."""
 PACKAGE_APPEND_ONLY_TABLES: Final = ("packages", "package_credit_transactions")
 """The tables migration 0066 makes append-only (data-model §5.1)."""
 PACKAGE_COMPOSITE_KEY: Final = "uq_packages_id_account_student"
@@ -1127,6 +1142,7 @@ PACKAGE_GRANT_KEY: Final = "uq_package_credit_transactions_grant"
 PACKAGE_EXPIRE_KEY: Final = "uq_package_credit_transactions_expire"
 PACKAGE_CONSUME_KEY: Final = "uq_package_credit_transactions_consume"
 PACKAGE_REVERSAL_KEY: Final = "uq_package_credit_transactions_reversal"
+PACKAGE_REFUND_KEY: Final = "uq_package_credit_transactions_refund"
 PACKAGE_REVERSAL_FK: Final = "fk_package_credit_transactions_reverses_transaction_id"
 
 
@@ -1196,17 +1212,22 @@ class Package(Audited, Model):
 
 
 class PackageCreditTransaction(Audited, Model):
-    """One signed unit movement of a package (#94 A4; data-model §3.20,
-    without ``withdrawal_id``, added by #101). Append-only."""
+    """One signed unit movement of a package (#94 A4; data-model §3.20).
+    Append-only. A ``refund`` row (#101) is a package withdrawal's
+    ``−remaining``: one per package, with its ``withdrawal_id``."""
 
     __tablename__ = "package_credit_transactions"
     __table_args__ = (
         CheckConstraint(_in("kind", PACKAGE_TRANSACTION_KINDS), name="kind"),
         CheckConstraint(
             "(kind = 'grant' AND units > 0)"
-            " OR (kind IN ('consume', 'expire') AND units < 0)"
+            " OR (kind IN ('consume', 'expire', 'refund') AND units < 0)"
             " OR (kind = 'reversal' AND units <> 0)",
             name="units_sign",
+        ),
+        CheckConstraint(
+            "(kind = 'refund') = (withdrawal_id IS NOT NULL)",
+            name="refund_withdrawal",
         ),
         CheckConstraint(
             "(class_session_id IS NOT NULL) = (kind = 'consume')",
@@ -1244,6 +1265,12 @@ class PackageCreditTransaction(Audited, Model):
             unique=True,
             postgresql_where=text("kind = 'reversal'"),
         ),
+        Index(
+            PACKAGE_REFUND_KEY,
+            "package_id",
+            unique=True,
+            postgresql_where=text("kind = 'refund'"),
+        ),
         Index("ix_package_credit_transactions_package_id", "package_id"),
         Index(
             "ix_package_credit_transactions_session_student",
@@ -1269,6 +1296,92 @@ class PackageCreditTransaction(Audited, Model):
         ),
         nullable=True,
     )
+    withdrawal_id: Mapped[uuid.UUID | None] = _uuid_fk("withdrawals", nullable=True)
+
+
+# --- Withdrawals (#101) --------------------------------------------------------------
+
+WITHDRAWAL_OUTCOMES: Final = ("refund", "account_credit")
+"""A withdrawal's outcome (#101 S4)."""
+WITHDRAWAL_OUTCOME_MAX: Final = 16
+WITHDRAWAL_SUBJECT_KEYS: Final = {
+    "group_enrollment_id": "uq_withdrawals_group_enrollment",
+    "cohort_enrollment_id": "uq_withdrawals_cohort_enrollment",
+    "package_id": "uq_withdrawals_package",
+}
+_SUBJECT_PRESENT: Final = {
+    "group_enrollment_id": text("group_enrollment_id IS NOT NULL"),
+    "cohort_enrollment_id": text("cohort_enrollment_id IS NOT NULL"),
+    "package_id": text("package_id IS NOT NULL"),
+}
+"""The partial UNIQUE index of each subject column (at most one withdrawal
+per enrollment or package, #101 S2/S3)."""
+WITHDRAWAL_APPEND_ONLY_TABLES: Final = ("withdrawals",)
+"""The tables migration 0071 makes append-only (data-model §5.1)."""
+
+
+class Withdrawal(Audited, Model):
+    """One settlement of a withdrawal (#101 A2; data-model §3.23): exactly
+    one subject (a group enrollment, a cohort enrollment or a package), its
+    outcome, the applied credit (``amount``), the cash refunded
+    (``refund_amount``, above zero exactly for ``refund``), the instant used
+    (``withdrawn_at``), the staff reason and the confirmed ``preview``.
+    Append-only."""
+
+    __tablename__ = "withdrawals"
+    __table_args__ = (
+        CheckConstraint(
+            "num_nonnulls(group_enrollment_id, cohort_enrollment_id, package_id) = 1",
+            name="one_subject",
+        ),
+        CheckConstraint(_in("outcome", WITHDRAWAL_OUTCOMES), name="outcome_valid"),
+        CheckConstraint("amount >= 0", name="amount_non_negative"),
+        CheckConstraint("refund_amount >= 0", name="refund_amount_non_negative"),
+        CheckConstraint(
+            "(outcome = 'refund') = (refund_amount > 0)", name="refund_outcome"
+        ),
+        CheckConstraint(
+            f"length(btrim(reason)) BETWEEN 1 AND {REASON_MAX}"
+            " AND reason = btrim(reason)",
+            name="reason_valid",
+        ),
+        ForeignKeyConstraint(
+            ["package_id", "billing_account_id", "student_id"],
+            ["packages.id", "packages.billing_account_id", "packages.student_id"],
+            name="fk_withdrawals_package",
+            ondelete="RESTRICT",
+        ),
+        *(
+            Index(
+                name,
+                column,
+                unique=True,
+                postgresql_where=_SUBJECT_PRESENT[column],
+            )
+            for column, name in WITHDRAWAL_SUBJECT_KEYS.items()
+        ),
+        Index("ix_withdrawals_account_created_at", "billing_account_id", "created_at"),
+        Index("ix_withdrawals_student_id", "student_id"),
+    )
+
+    billing_account_id: Mapped[uuid.UUID] = _uuid_fk("billing_accounts")
+    student_id: Mapped[uuid.UUID] = _uuid_fk("students")
+    group_enrollment_id: Mapped[uuid.UUID | None] = _uuid_fk(
+        "group_enrollments", nullable=True
+    )
+    cohort_enrollment_id: Mapped[uuid.UUID | None] = _uuid_fk(
+        "cohort_enrollments", nullable=True
+    )
+    package_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    outcome: Mapped[str] = mapped_column(String(WITHDRAWAL_OUTCOME_MAX))
+    amount: Mapped[Money] = mapped_column(MoneyType())
+    refund_amount: Mapped[Money] = mapped_column(MoneyType())
+    withdrawn_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str] = mapped_column(String(REASON_MAX))
+    preview: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    confirmed_by_user_id: Mapped[uuid.UUID] = _actor(nullable=False)
 
 
 # --- Due dates and reminders (#97) ---------------------------------------------------

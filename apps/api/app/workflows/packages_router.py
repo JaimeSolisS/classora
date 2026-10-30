@@ -94,9 +94,9 @@ async def purchase_package(
         **IDEMPOTENCY_RESPONSES,
         404: problem_response_doc("No such package (not_found)."),
         409: problem_response_doc(
-            "The package is cancelled, expired or used up"
-            " (package_not_cancellable; details: reason cancelled | expired |"
-            " exhausted); the credit is more than the purchase charge's net"
+            "The package is cancelled, withdrawn, expired or used up"
+            " (package_not_cancellable; details: reason cancelled | withdrawn |"
+            " expired | exhausted); the credit is more than the purchase charge's net"
             " (charge_net_negative; details: charge_id, net, amount)."
         ),
         422: problem_response_doc(
@@ -144,8 +144,8 @@ async def list_packages(
     status: Annotated[list[PackageStatus] | None, Query()] = None,
 ) -> OffsetPage[PackageItem]:
     """The sold packages, the earliest expiry first (then purchase date and
-    id). `status` (active, exhausted, expired, cancelled; for the center's
-    today) may be repeated."""
+    id). `status` (active, exhausted, expired, cancelled, withdrawn; for the
+    center's today) may be repeated."""
     return await packages.list_packages(
         uow.session,
         student_id=student_id,

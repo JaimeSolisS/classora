@@ -8,7 +8,9 @@ scheduling_conflict`` adds ``conflicts`` (ADR-0005 wire format, #48); a few
 state errors add ``details``, a flat map of short codes (for example ``409
 offer_not_pending`` ``{"status": "accepted"}``, #52) or lists of ids (``409
 closeout_attendance_incomplete`` ``{"missing_student_ids": [...]}``, #77),
-never record data.
+never record data. One staff-only exception carries an object: ``409
+withdrawal_preview_stale`` ``{"preview": {...}}`` (the fresh preview, #101
+B7).
 
 Routes and dependencies raise :class:`AppError` (or a subclass); they never
 build Problem JSON by hand. A domain error defines only its class attributes::
@@ -77,7 +79,7 @@ class ProblemDetails(TypedDict):
     detail: NotRequired[str]
     errors: NotRequired[list[FieldError]]
     conflicts: NotRequired[list[SchedulingConflict]]
-    details: NotRequired[dict[str, str | list[str]]]
+    details: NotRequired[dict[str, str | list[str] | dict[str, Any]]]
 
 
 class AppError(Exception):
@@ -95,7 +97,7 @@ class AppError(Exception):
         *,
         errors: Sequence[FieldError] | None = None,
         conflicts: Sequence[SchedulingConflict] | None = None,
-        details: Mapping[str, str | list[str]] | None = None,
+        details: Mapping[str, str | list[str] | dict[str, Any]] | None = None,
     ) -> None:
         if detail is not None:
             self.detail = detail
@@ -138,7 +140,7 @@ def problem_response(
     *,
     errors: Sequence[FieldError] | None = None,
     conflicts: Sequence[SchedulingConflict] | None = None,
-    details: Mapping[str, str | list[str]] | None = None,
+    details: Mapping[str, str | list[str] | dict[str, Any]] | None = None,
     headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     """The single renderer for Problem Details responses."""

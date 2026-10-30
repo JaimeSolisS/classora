@@ -509,6 +509,7 @@ async def payment_refunds(
             reason=row.reason,
             refunded_at=row.created_at,
             refunded_by_user_id=row.refunded_by_user_id,
+            withdrawal_id=row.withdrawal_id,
         )
         for row in rows
     ]

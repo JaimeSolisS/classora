@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0070"
+HEAD = "0071"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -185,6 +185,8 @@ RECONCILIATION_TABLES = [
     "charge_duration_repricings",
 ]
 """The tables revision 0069 adds (#99 A1-A3)."""
+WITHDRAWAL_TABLES = ["withdrawals"]
+"""The table revision 0071 adds (#101 A2)."""
 APPEND_ONLY_LEDGER_TABLES = [
     "charges",
     "charge_adjustments",
@@ -429,6 +431,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *DUE_DATE_TABLES,
             *RECEIPT_TABLES,
             *RECONCILIATION_TABLES,
+            *WITHDRAWAL_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4686,9 +4689,37 @@ def _of_0069(diff: Any) -> bool:
     return False
 
 
+def _of_0071(diff: Any) -> bool:
+    """A metadata difference that revision 0071 adds: the withdrawals table
+    and its indexes, ``refunds.withdrawal_id`` and
+    ``package_credit_transactions.withdrawal_id`` with their foreign keys and
+    indexes (#101 A2-A4; CHECKs are not compared)."""
+    added = {
+        ("refunds", "withdrawal_id"),
+        ("package_credit_transactions", "withdrawal_id"),
+    }
+    if diff[0] == "add_table":
+        return diff[1].name == "withdrawals"
+    if diff[0] == "add_index":
+        return diff[1].table.name == "withdrawals" or diff[1].name in (
+            "ix_refunds_withdrawal_id",
+            "uq_package_credit_transactions_refund",
+        )
+    if diff[0] == "add_column":
+        return (diff[2], diff[3].name) in added
+    if diff[0] == "add_fk":
+        return (diff[1].parent.name, *diff[1].column_keys) in added
+    return False
+
+
+def _of_0069_on(diff: Any) -> bool:
+    """A metadata difference that revision 0069 or a later one adds."""
+    return _of_0069(diff) or _of_0071(diff)
+
+
 def _of_0068_on(diff: Any) -> bool:
     """A metadata difference that revision 0068 or a later one adds."""
-    return _of_0068(diff) or _of_0069(diff)
+    return _of_0068(diff) or _of_0069_on(diff)
 
 
 def _of_0067_on(diff: Any) -> bool:
@@ -11069,8 +11100,8 @@ def test_ledger_columns_constraints_indexes_triggers_and_view(fresh_database_url
     }
     # E3: the staged columns come with their own issues (#95 added
     # custom_price_id, #92 the proration, #93 tuition_plan_id, #94
-    # package_id; #101 adds refunds.withdrawal_id).
-    assert "withdrawal_id" not in _columns(dsn, "refunds")
+    # package_id, #101 refunds.withdrawal_id).
+    assert _columns(dsn, "refunds")["withdrawal_id"] == uuid_null
     assert _columns(dsn, "charge_adjustments") == {
         **standard,
         "charge_id": uuid_,
@@ -11126,6 +11157,7 @@ def test_ledger_columns_constraints_indexes_triggers_and_view(fresh_database_url
         "reference",
         "reason",
         "refunded_by_user_id",
+        "withdrawal_id",
     }
     charges = _constraints(dsn, "charges")
     assert {
@@ -11719,9 +11751,9 @@ def test_package_columns_constraints_indexes_and_triggers(fresh_database_url):
         "class_session_id": uuid_null,
         "student_id": uuid_null,
         "reverses_transaction_id": uuid_null,
+        # L10: withdrawal_id and the refund kind are #101's (0071).
+        "withdrawal_id": uuid_null,
     }
-    # L10: withdrawal_id and the refund kind are #101's.
-    assert "withdrawal_id" not in _columns(dsn, "package_credit_transactions")
     assert set(_constraints(dsn, "package_products")) == {
         "pk_package_products",
         "ck_package_products_name_valid",
@@ -11760,8 +11792,10 @@ def test_package_columns_constraints_indexes_and_triggers(fresh_database_url):
         "fk_package_credit_transactions_class_session_id_class_sessions",
         "fk_package_credit_transactions_student_id_students",
         "fk_package_credit_transactions_reverses_transaction_id",
+        "ck_package_credit_transactions_refund_withdrawal",
+        "fk_package_credit_transactions_withdrawal_id_withdrawals",
     }
-    assert "'refund'" not in transactions["ck_package_credit_transactions_kind"]
+    assert "'refund'" in transactions["ck_package_credit_transactions_kind"]
     for table in PACKAGE_TABLES:
         for name, definition in _constraints(dsn, table).items():
             if definition.startswith("FOREIGN KEY"):
@@ -11782,6 +11816,7 @@ def test_package_columns_constraints_indexes_and_triggers(fresh_database_url):
             "(reverses_transaction_id)",
             "reversal",
         ),
+        ("uq_package_credit_transactions_refund", "(package_id)", "refund"),
     ):
         assert "UNIQUE INDEX" in keys[name], name
         assert columns in keys[name], name
@@ -12047,7 +12082,7 @@ def test_0068_adds_receipt_tables_and_downgrade_restores_0067(fresh_database_url
     command.upgrade(config, "0068")
 
     assert version_nums(dsn) == ["0068"]
-    assert [d for d in metadata_diff(dsn) if not _of_0069(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0069_on(d)] == []
     assert public_tables(dsn) - before == set(RECEIPT_TABLES)
     assert _append_only_functions(dsn) - functions == {"receipts_append_only"}
     assert (_columns(dsn, "payments"), _constraints(dsn, "payments")) == payments
@@ -12252,7 +12287,7 @@ def test_0069_adds_reconciliation_tables_and_downgrade_restores_0068(
     command.upgrade(config, "0069")
 
     assert version_nums(dsn) == ["0069"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0071(d)] == []
     assert public_tables(dsn) - before == set(RECONCILIATION_TABLES)
     assert _append_only_functions(dsn) - functions == {
         f"{table}_append_only" for table in RECONCILIATION_APPEND_ONLY
@@ -12285,7 +12320,7 @@ def test_0069_adds_reconciliation_tables_and_downgrade_restores_0068(
         )
         == []
     )
-    assert [d for d in metadata_diff(dsn) if not _of_0069(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0069_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -12620,7 +12655,7 @@ def test_0070_adds_package_cancellation_and_downgrade_restores_0069(
     command.upgrade(config, "0070")
 
     assert version_nums(dsn) == ["0070"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0071(d)] == []
     assert public_tables(dsn) == tables
     after = _constraints(dsn, "charge_adjustments")
     assert {k: v for k, v in after.items() if k != "ck_charge_adjustments_kind"} == {
@@ -12648,7 +12683,199 @@ def test_0070_downgrade_restores_the_0061_check(fresh_database_url):
         _constraints(dsn, "charge_adjustments")["ck_charge_adjustments_kind"]
         == KIND_0061_TEXT
     )
+    assert [d for d in metadata_diff(dsn) if not _of_0071(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
     assert metadata_diff(dsn) == []
+
+
+# --- 0071: withdrawals (#101 A1-A5) -------------------------------------------------
+
+TRANSACTION_KIND_0066_TEXT = (
+    "CHECK (((kind)::text = ANY ((ARRAY['grant'::character varying,"
+    " 'consume'::character varying, 'expire'::character varying,"
+    " 'reversal'::character varying])::text[])))"
+)
+
+
+def _0070_package_rows(dsn: str) -> dict[str, Any]:
+    """A user, a package (with its grant) on an account, and a payment with
+    a refund-able remainder, on top of :func:`_0069_rows` (raw SQL)."""
+    rows = _0069_rows(dsn)
+    [user] = run_sql(
+        dsn,
+        "INSERT INTO users (username, email, password_hash, display_name)"
+        " VALUES ('retiros', 'retiros@example.com', 'x', 'Retiros') RETURNING id",
+    )
+    [service] = run_sql(
+        dsn,
+        "INSERT INTO service_prices (class_type, pricing_model, subject_id)"
+        " VALUES ('individual', 'package', NULL) RETURNING id",
+    )
+    [version] = run_sql(
+        dsn,
+        "INSERT INTO price_versions (service_price_id, effective_from, amount)"
+        " VALUES (:s, '2030-01-01', 1000) RETURNING id",
+        {"s": service.id},
+    )
+    [product] = run_sql(
+        dsn,
+        "INSERT INTO package_products (service_price_id, name, unit, quantity,"
+        " validity_days) VALUES (:s, 'Diez', 'sessions', 10, 90) RETURNING id",
+        {"s": service.id},
+    )
+    [package] = run_sql(
+        dsn,
+        "INSERT INTO packages (billing_account_id, student_id, package_product_id,"
+        " price_version_id, unit, units_granted, purchased_on, expires_on)"
+        " VALUES (:a, :st, :p, :v, 'sessions', 10, '2031-03-01', '2031-05-30')"
+        " RETURNING id",
+        {"a": rows["account"], "st": rows["student"], "p": product.id, "v": version.id},
+    )
+    run_sql(
+        dsn,
+        "INSERT INTO package_credit_transactions (package_id, kind, units)"
+        " VALUES (:p, 'grant', 10)",
+        {"p": package.id},
+    )
+    [payment] = run_sql(
+        dsn,
+        "INSERT INTO payments (billing_account_id, amount, received_on,"
+        " payment_method_code, recorded_by_user_id)"
+        " VALUES (:a, 500, '2031-03-10', 'cash', :u) RETURNING id",
+        {"a": rows["account"], "u": user.id},
+    )
+    return {**rows, "user": user.id, "package": package.id, "payment": payment.id}
+
+
+WITHDRAWAL_INSERT = (
+    "INSERT INTO withdrawals (billing_account_id, student_id, package_id, outcome,"
+    " amount, refund_amount, withdrawn_at, reason, preview, confirmed_by_user_id)"
+    " VALUES (:a, :st, :p, :o, :amount, :refund, now(), 'Se mudó', '{}', :u)"
+    " RETURNING id"
+)
+
+
+def test_0071_adds_withdrawals_and_downgrade_restores_0070(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0070")
+    tables = public_tables(dsn)
+    before = _constraints(dsn, "package_credit_transactions")
+    assert before["ck_package_credit_transactions_kind"] == TRANSACTION_KIND_0066_TEXT
+    rows = _0070_package_rows(dsn)
+
+    command.upgrade(config, "0071")
+
+    assert version_nums(dsn) == ["0071"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == {"withdrawals"}
+    assert "withdrawals_append_only" in _append_only_functions(dsn)
+    after = _constraints(dsn, "package_credit_transactions")
+    assert "'refund'" in after["ck_package_credit_transactions_kind"]
+    assert "'refund'" in after["ck_package_credit_transactions_units_sign"]
+    assert "ck_package_credit_transactions_refund_withdrawal" in after
+    assert {k: v for k, v in before.items() if "kind" not in k and "sign" not in k} == {
+        k: v
+        for k, v in after.items()
+        if "kind" not in k
+        and "sign" not in k
+        and k != ("ck_package_credit_transactions_refund_withdrawal")
+        and "withdrawal_id" not in k
+    }
+    params = {
+        "a": rows["account"],
+        "st": rows["student"],
+        "p": rows["package"],
+        "u": rows["user"],
+    }
+
+    def _fails(sql: str, state: str, **extra: Any) -> None:
+        with pytest.raises(DBAPIError) as caught:
+            run_sql(dsn, sql, {**params, **extra})
+        assert getattr(caught.value.orig, "sqlstate", "") == state, sql
+
+    # CHECKs: the outcome, the refund amount, a refund outcome without cash.
+    _fails(WITHDRAWAL_INSERT, "23514", o="cash", amount=0, refund=0)
+    _fails(WITHDRAWAL_INSERT, "23514", o="refund", amount=10, refund=0)
+    _fails(WITHDRAWAL_INSERT, "23514", o="account_credit", amount=10, refund=5)
+    _fails(WITHDRAWAL_INSERT, "23514", o="account_credit", amount=-1, refund=0)
+    # Two subjects at once.
+    _fails(
+        "INSERT INTO withdrawals (billing_account_id, student_id, package_id,"
+        " cohort_enrollment_id, outcome, amount, refund_amount, withdrawn_at,"
+        " reason, preview, confirmed_by_user_id) VALUES (:a, :st, :p, :p,"
+        " 'account_credit', 0, 0, now(), 'x', '{}', :u)",
+        "23514",
+    )
+    [made] = run_sql(
+        dsn,
+        WITHDRAWAL_INSERT,
+        {**params, "o": "account_credit", "amount": 10, "refund": 0},
+    )
+    _fails(WITHDRAWAL_INSERT, "23505", o="account_credit", amount=10, refund=0)
+    # A refund units row needs its withdrawal, and one per package.
+    _fails(
+        "INSERT INTO package_credit_transactions (package_id, kind, units)"
+        " VALUES (:p, 'refund', -10)",
+        "23514",
+    )
+    _fails(
+        "INSERT INTO package_credit_transactions (package_id, kind, units,"
+        " withdrawal_id) VALUES (:p, 'refund', 10, :w)",
+        "23514",
+        w=made.id,
+    )
+    run_sql(
+        dsn,
+        "INSERT INTO package_credit_transactions (package_id, kind, units,"
+        " withdrawal_id) VALUES (:p, 'refund', -10, :w)",
+        {"p": rows["package"], "w": made.id},
+    )
+    _fails(
+        "INSERT INTO package_credit_transactions (package_id, kind, units,"
+        " withdrawal_id) VALUES (:p, 'refund', -1, :w)",
+        "23505",
+        w=made.id,
+    )
+    run_sql(
+        dsn,
+        "INSERT INTO refunds (payment_id, billing_account_id, amount, refunded_on,"
+        " payment_method_code, reason, refunded_by_user_id, withdrawal_id)"
+        " VALUES (:pay, :a, 10, '2031-03-10', 'cash', 'Retiro', :u, :w)",
+        {"pay": rows["payment"], "a": rows["account"], "u": rows["user"], "w": made.id},
+    )
+    for statement in (
+        "UPDATE withdrawals SET reason = 'otro' WHERE id = :id",
+        "DELETE FROM withdrawals WHERE id = :id",
+        "TRUNCATE withdrawals CASCADE",
+    ):
+        _fails(statement, "42501", id=made.id)
+
+    # The downgrade fails loudly while a withdrawal exists.
+    with pytest.raises(DBAPIError):
+        command.downgrade(config, "0070")
+    assert version_nums(dsn) == ["0071"]
+
+
+def test_0071_downgrade_restores_the_0066_checks(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0071")
+
+    command.downgrade(config, "0070")
+
+    assert version_nums(dsn) == ["0070"]
+    assert "withdrawals" not in public_tables(dsn)
+    constraints = _constraints(dsn, "package_credit_transactions")
+    assert constraints["ck_package_credit_transactions_kind"] == (
+        TRANSACTION_KIND_0066_TEXT
+    )
+    assert "ck_package_credit_transactions_refund_withdrawal" not in constraints
+    assert "withdrawal_id" not in _columns(dsn, "refunds")
+    assert "withdrawal_id" not in _columns(dsn, "package_credit_transactions")
+    assert [d for d in metadata_diff(dsn) if not _of_0071(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]

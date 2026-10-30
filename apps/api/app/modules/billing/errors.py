@@ -1,10 +1,12 @@
 """Billing errors (#89 B9, #90 C6). Each ``AppError`` renders as Problem
 Details (``app.core.errors``) and carries no record data beyond the ids
-(and, for ``charge_net_negative``, the amounts) in ``details``."""
+(and, for ``charge_net_negative``, the amounts) in ``details``; a stale
+withdrawal preview carries the fresh preview (#101 B7, staff only)."""
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date
+from typing import Any
 
 from app.core.errors import AppError, FieldError
 from app.core.money import Money
@@ -632,12 +634,139 @@ class RefundedOnBeforePaymentError(_FieldRuleError):
 
 class PackageNotCancellableError(_Conflict):
     """The package can't be cancelled (#100 R6): ``details.reason`` is
-    ``cancelled`` (already cancelled), ``expired`` (an ``expire`` row or
-    past ``expires_on``) or ``exhausted`` (no units left). Nothing is
-    written."""
+    ``cancelled`` (already cancelled), ``withdrawn`` (a #101 withdrawal),
+    ``expired`` (an ``expire`` row or past ``expires_on``) or ``exhausted``
+    (no units left). Nothing is written."""
 
     code = "package_not_cancellable"
     detail = "This package is cancelled, expired or used up, so it can't be cancelled."
 
     def __init__(self, reason: str) -> None:
         AppError.__init__(self, details={"reason": reason})
+
+
+# --- Withdrawals (#101 B, C, D) ------------------------------------------------------
+
+
+class WithdrawalSubjectInvalidError(AppError):
+    """Not exactly one of ``group_enrollment_id``, ``cohort_enrollment_id``,
+    ``package_id`` (#101 D1, D2)."""
+
+    status = 422
+    code = "withdrawal_subject_invalid"
+    detail = "Name exactly one group enrollment, cohort enrollment or package."
+
+    def __init__(self, path: Sequence[str | int] = ("query",)) -> None:
+        super().__init__(
+            errors=[
+                {"path": list(path), "code": self.code, "message": self.detail or ""}
+            ]
+        )
+
+
+class WithdrawalSubjectNotFoundError(AppError):
+    """The named enrollment or package doesn't exist (#101 C2 step 1)."""
+
+    status = 404
+    code = "withdrawal_subject_not_found"
+    detail = "No such enrollment or package."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class WithdrawalExistsError(_Conflict):
+    """The subject was settled already (#101 S3: one withdrawal per
+    enrollment or package); ``details.withdrawal_id``. Nothing is written."""
+
+    code = "withdrawal_exists"
+    detail = "This enrollment or package was already settled."
+
+    def __init__(self, withdrawal_id: uuid.UUID | None) -> None:
+        AppError.__init__(
+            self,
+            details=None
+            if withdrawal_id is None
+            else {"withdrawal_id": str(withdrawal_id)},
+        )
+
+
+class WithdrawalPreviewStaleError(_Conflict):
+    """Something changed since the preview (its fingerprint differs under
+    the locks, or the real releases differ from the predicted ones; #101
+    B2, B7). ``details.preview`` is the fresh preview. Nothing is
+    written."""
+
+    code = "withdrawal_preview_stale"
+    detail = "The situation changed since the preview: review the new one."
+
+    def __init__(self, preview: Mapping[str, Any]) -> None:
+        AppError.__init__(self, details={"preview": dict(preview)})
+
+
+class WithdrawalNothingToRefundError(_Conflict):
+    """A refund outcome with no money freed by this withdrawal (#101 S4):
+    settle it as account credit. Nothing is written."""
+
+    code = "withdrawal_nothing_to_refund"
+    detail = "This withdrawal frees no paid money to refund: use account credit."
+
+
+class WithdrawalCloseoutPendingError(_Conflict):
+    """A started session the package covers waits for its closeout approval
+    (#101 S7); ``details.class_session_ids``. Nothing is written."""
+
+    code = "withdrawal_closeout_pending"
+    detail = "Approve the closeouts of the sessions this package covers first."
+
+    def __init__(self, class_session_ids: Sequence[uuid.UUID]) -> None:
+        AppError.__init__(
+            self, details={"class_session_ids": [str(i) for i in class_session_ids]}
+        )
+
+
+class WithdrawalSpansAccountsError(_Conflict):
+    """The charges to credit are on two billing accounts (the student moved
+    family between postings; #101 B6): correct them one by one (#100).
+    ``details.billing_account_ids``. Nothing is written."""
+
+    code = "withdrawal_spans_accounts"
+    detail = "The charges to credit are on more than one family account."
+
+    def __init__(self, account_ids: Sequence[uuid.UUID]) -> None:
+        AppError.__init__(
+            self,
+            details={"billing_account_ids": sorted(str(i) for i in account_ids)},
+        )
+
+
+class PackageNotWithdrawableError(_Conflict):
+    """The package can't be withdrawn (#101 S7): ``details.reason`` is
+    ``cancelled``, ``withdrawn``, ``expired`` or ``exhausted``. Nothing is
+    written."""
+
+    code = "package_not_withdrawable"
+    detail = "This package is cancelled, withdrawn, expired or used up."
+
+    def __init__(self, reason: str) -> None:
+        AppError.__init__(self, details={"reason": reason})
+
+
+class CreditOverrideUnknownChargeError(AppError):
+    """A credit override names a charge that is not a line of the
+    withdrawal (#101 C2 step 6). Nothing is written."""
+
+    status = 422
+    code = "credit_override_unknown_charge"
+    detail = "Override only the charges the withdrawal credits."
+
+    def __init__(self, index: int) -> None:
+        super().__init__(
+            errors=[
+                {
+                    "path": ["body", "credit_overrides", index, "charge_id"],
+                    "code": self.code,
+                    "message": self.detail or "",
+                }
+            ]
+        )

@@ -91,7 +91,9 @@ def test_the_package_tables_are_append_only(module_seeded_url, sold, table, stat
 @pytest.mark.parametrize(
     ("values", "constraint"),
     [
-        ({"kind": "refund"}, "ck_package_credit_transactions_kind"),
+        ({"kind": "gift"}, "ck_package_credit_transactions_kind"),
+        # #101: a refund row needs its withdrawal.
+        ({"kind": "refund"}, "ck_package_credit_transactions_refund_withdrawal"),
         ({"kind": "grant", "units": 0}, "ck_package_credit_transactions_units_sign"),
         ({"kind": "grant", "units": -1}, "ck_package_credit_transactions_units_sign"),
         ({"kind": "expire", "units": 1}, "ck_package_credit_transactions_units_sign"),

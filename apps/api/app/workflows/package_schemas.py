@@ -45,8 +45,11 @@ VALIDITY_MAX: Final = 730
 EFFECTIVE_FROM_MIN: Final = date(2000, 1, 1)
 EFFECTIVE_FROM_MAX: Final = date(2099, 12, 31)
 
-type PackageTransactionKind = Literal["grant", "consume", "expire", "reversal"]
-"""The unit movements of a package (#94 A4; ``refund`` arrives with #101)."""
+type PackageTransactionKind = Literal[
+    "grant", "consume", "expire", "reversal", "refund"
+]
+"""The unit movements of a package (#94 A4; ``refund``: a #101
+withdrawal's ``−remaining``)."""
 
 PackageProductName = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)
@@ -169,8 +172,9 @@ class PackageProductDetail(PackageProductItem):
 
 class PackageItem(BaseModel):
     """One sold package (#94 D5). ``status`` is for the center's today:
-    ``cancelled`` (#100: a package cancellation) → ``expired`` (expired, or
-    past ``expires_on``) → ``exhausted`` (no units left) → ``active``."""
+    ``cancelled`` (#100: a package cancellation) → ``withdrawn`` (#101: a
+    withdrawal) → ``expired`` (expired, or past ``expires_on``) →
+    ``exhausted`` (no units left) → ``active``."""
 
     id: uuid.UUID
     student: PackageReference

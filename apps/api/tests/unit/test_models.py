@@ -167,6 +167,7 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "cancellation_billing_rules",
         "session_cancellation_decisions",
         "charge_duration_repricings",
+        "withdrawals",
         "number_series",
         "account_tokens",
         "registration_requests",

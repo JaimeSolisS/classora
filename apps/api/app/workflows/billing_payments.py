@@ -108,6 +108,7 @@ def refund_item(row: billing.RefundRow, *, staff: bool) -> RefundItem:
         reason=row.reason if staff else None,
         refunded_at=row.refunded_at,
         refunded_by_user_id=row.refunded_by_user_id if staff else None,
+        withdrawal_id=row.withdrawal_id if staff else None,
     )
 
 

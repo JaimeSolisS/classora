@@ -745,6 +745,62 @@ allow = ["owner", "administrator", "finance_staff"]
 
 [[route]]
 method = "GET"
+path = "/api/v1/billing/withdrawal-preview"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #101 D1 (S5 (a)): read-only. The placeholder package is no package: 404
+# withdrawal_subject_not_found for the allowed roles.
+query = { package_id = "00000000-0000-0000-0000-000000000000" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/withdrawals"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #101 D3: staff only (#102 decides any guardian view).
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/withdrawals/account-credit"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+idempotency = true
+reauth = "finance.correction"
+# #101 D2 (S5 (a)): a withdrawal posts ledger rows, so it needs an
+# Idempotency-Key (#88) and a recent reauthentication; without a key the
+# reauthenticated allowed roles get 400. An enrollment subject also needs
+# schedule.manage, checked in the handler (403 permission_denied, so Finance
+# Staff can settle only packages): tests/integration/
+# test_billing_withdrawals_access.py.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/withdrawals/refund"
+access = "permission"
+permission = "finance.refund.approve"
+allow = ["owner"]
+idempotency = true
+reauth = "finance.refund_or_reversal"
+# #101 D2 (S5 (a); ADR-0006 E8): a refund outcome; the Owner (and a delegated
+# Administrator) only. Like the account-credit route, an enrollment subject
+# also needs schedule.manage, checked in the handler
+# (test_billing_withdrawals_access.py).
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/withdrawals/{withdrawal_id}"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #101 D3: the placeholder id is no withdrawal: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
 path = "/api/v1/business-settings"
 access = "authenticated"
 

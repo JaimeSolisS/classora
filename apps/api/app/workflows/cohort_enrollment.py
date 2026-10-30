@@ -77,8 +77,10 @@ same Unit of Work:
   sessions left (#92 J3; the rules are in
   :mod:`app.workflows.enrollment_charges`).
 - **M6-16 (#101)** calls :func:`withdraw_from_cohort` from its own
-  ``withdraw_enrollment`` workflow, in the same transaction as the refund
-  or credit: nothing here commits.
+  workflow (``app.workflows.withdrawals.confirm_withdrawal``), in the same
+  transaction as the refund or credit: nothing here commits. For an
+  enrollment already withdrawn (settle only) it takes the same locks
+  through :func:`lock_for_settlement`, without the change.
 
 There is no event bus and no job is enqueued. Enrollments and withdrawals
 take effect at the request instant (no future-dated changes).
@@ -105,6 +107,7 @@ __all__ = [
     "CohortEnrollmentChange",
     "apply_cohort_enrollment_change",
     "enroll_in_cohort",
+    "lock_for_settlement",
     "withdraw_from_cohort",
 ]
 
@@ -294,3 +297,27 @@ async def withdraw_from_cohort(
     )
     await apply_cohort_enrollment_change(session, change)
     return change
+
+
+async def lock_for_settlement(
+    uow: UnitOfWork, enrollment_id: uuid.UUID
+) -> courses.CohortEnrollmentRow | None:
+    """The withdrawal's lock sequence **without the change** (#101 C2 step
+    3, S3): the enrollment read unlocked → ``lock_students`` → zone ``FOR
+    SHARE`` → ``lock_cohort`` → the producing series ``FOR UPDATE`` → the
+    enrollment re-read ``FOR UPDATE``. ``None`` when the enrollment or its
+    cohort is unknown. An active enrollment is then withdrawn through
+    :func:`withdraw_from_cohort` in the same Unit of Work (the same locks,
+    already held). Never writes."""
+    session = uow.session
+    found = await courses.find_cohort_enrollment(session, enrollment_id)
+    if found is None:
+        return None
+    await scheduling.lock_students(session, [found.student_id])
+    zone = await administration.get_center_time_zone(session, for_share=True)
+    if await courses.lock_cohort(session, found.cohort_id) is None:
+        return None
+    await scheduling.lock_producing_series(
+        session, scheduling.SeriesOwner.cohort(found.cohort_id), clock.today_in(zone)
+    )
+    return await courses.lock_cohort_enrollment(session, enrollment_id)

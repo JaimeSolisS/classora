@@ -19,6 +19,9 @@ the sweeper and the unbilled read, so a listed period is exactly a period
 the sweeper skips with that reason), for a period in this order:
 
 1. ``posted_already``: the period has its fee charge;
+1a. ``withdrawal_settled`` (#101 S6): a withdrawal settled the period, so
+   its fee is never posted afterwards (a price added later can't charge a
+   family that already left) and the period is not listed;
 2. ``below_floor`` (J6): the due-date base ``max(enrollment local date,
    local date of the owner's first counted session)`` is before
    ``billing_starts_on`` (history from before go-live is never charged; an
@@ -64,7 +67,7 @@ plus the account's ``due_offset_days`` (E11).
 
 **Posting** (:func:`post_enrollment_fee`, B4): the student's family → its
 account (``ensure_billing_account``) → the account row ``FOR UPDATE`` →
-steps 1, 3, 4 and 6 re-read **under the lock** (J2, J5, #93 K6: a session
+steps 1, 1a, 3, 4 and 6 re-read **under the lock** (J2, J5, #93 K6: a session
 charge, a linked tuition plan and the fee of one period are all written
 under the family's account lock, so whichever commits first wins and the
 others post nothing) →
@@ -139,6 +142,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.core.db import create_sessionmaker
 from app.core.jobs import create_worker_engine
+from app.core.money import Money
 from app.core.pagination import OffsetPage, OffsetParams
 from app.core.uow import UnitOfWork
 from app.modules.administration import service as administration
@@ -174,6 +178,7 @@ restoration (``enrolled``)."""
 
 type Outcome = Literal[
     "posted_already",
+    "withdrawal_settled",
     "below_floor",
     "already_charged",
     "tuition_priced",
@@ -185,6 +190,7 @@ type Outcome = Literal[
 type FeeOutcome = Literal[
     "posted",
     "already_posted",
+    "withdrawal_settled",
     "below_floor",
     "already_charged",
     "tuition_priced",
@@ -286,6 +292,9 @@ async def classify_periods(
         if known.fee_posted:
             result.append(replace(outcome, outcome="posted_already"))
             continue
+        if known.withdrawal_settled:
+            result.append(replace(outcome, outcome="withdrawal_settled"))
+            continue
         if base < floor:
             result.append(replace(outcome, outcome="below_floor"))
             continue
@@ -384,6 +393,8 @@ async def post_enrollment_fee(
     )
     if known.fee_posted:
         return "already_posted"
+    if known.withdrawal_settled:
+        return "withdrawal_settled"
     if period.is_group and known.tuition_linked:
         return "tuition_priced"
     if period.is_group and known.session_charged:
@@ -433,6 +444,59 @@ async def charge_period(session: AsyncSession, period: Period) -> FeeOutcome:
 # --- Removal credits and restorations (J4) -------------------------------------------
 
 
+@dataclass(frozen=True)
+class RemovalCredit:
+    """One J4 removal credit: the ``session`` charge of a session the
+    student leaves and the credit (its whole net, above ``0.00``)."""
+
+    charge_id: uuid.UUID
+    class_session_id: uuid.UUID
+    amount: Money
+
+
+def removal_credits(
+    left: Sequence[uuid.UUID],
+    student_id: uuid.UUID,
+    states: dict[tuple[uuid.UUID, uuid.UUID], billing.SessionChargeState],
+) -> list[RemovalCredit]:
+    """The J4 selection, in one place (the hook posts it; the #101 preview
+    shows it, B5): each ``session`` charge of the student on a session in
+    ``left`` whose net is above ``0.00``, credited by its whole net."""
+    credits: list[RemovalCredit] = []
+    for class_session_id in left:
+        state = states.get((class_session_id, student_id))
+        if state is None or not state.net.is_positive():
+            continue
+        credits.append(RemovalCredit(state.charge_id, class_session_id, state.net))
+    return credits
+
+
+def removal_key(charge_id: uuid.UUID, enrollment_id: uuid.UUID, change: str) -> str:
+    """The J4 ``source_key`` of a removal credit or restoration."""
+    return REMOVAL_KEY.format(
+        charge_id=charge_id, enrollment_id=enrollment_id, change=change
+    )
+
+
+async def planned_removal_credits(
+    session: AsyncSession,
+    *,
+    group_id: uuid.UUID,
+    student_id: uuid.UUID,
+    at: datetime,
+) -> list[RemovalCredit]:
+    """The J4 credits a withdrawal of an **active** group enrollment at
+    ``at`` will post (#101 B5, read-only): the sessions after ``at`` the
+    student is a participant of in a state the withdrawal leaves (#56 B3),
+    through :func:`removal_credits`. Two statements."""
+    seats = await scheduling.group_sessions_after(session, group_id, student_id, at)
+    leaving = [s.class_session_id for s in seats if s.is_participant and s.affected]
+    states = await billing.session_charge_states(
+        session, [(class_session_id, student_id) for class_session_id in leaving]
+    )
+    return removal_credits(leaving, student_id, states)
+
+
 async def credit_removed_sessions(
     session: AsyncSession,
     *,
@@ -441,8 +505,9 @@ async def credit_removed_sessions(
     enrollment_id: uuid.UUID,
     effective_at: datetime,
 ) -> int:
-    """A group withdrawal's J4 credits (see the module docstring). Returns
-    the number of adjustments created."""
+    """A group withdrawal's J4 credits (see the module docstring), selected
+    by :func:`removal_credits`. Returns the number of adjustments
+    created."""
     seats = await scheduling.group_sessions_after(
         session, group_id, student_id, effective_at
     )
@@ -451,21 +516,14 @@ async def credit_removed_sessions(
         session, [(class_session_id, student_id) for class_session_id in left]
     )
     created = 0
-    for class_session_id in left:
-        state = states.get((class_session_id, student_id))
-        if state is None or not state.net.is_positive():
-            continue
+    for credit in removal_credits(left, student_id, states):
         posted = await billing.post_adjustment(
             session,
             billing.AdjustmentDraft(
-                charge_id=state.charge_id,
+                charge_id=credit.charge_id,
                 kind="enrollment_removal",
-                amount=-state.net,
-                source_key=REMOVAL_KEY.format(
-                    charge_id=state.charge_id,
-                    enrollment_id=enrollment_id,
-                    change="withdrawn",
-                ),
+                amount=-credit.amount,
+                source_key=removal_key(credit.charge_id, enrollment_id, "withdrawn"),
             ),
         )
         created += int(posted.created)
@@ -708,6 +766,8 @@ class EnrollmentChargeRunResult:
     candidates: int = 0
     posted: int = 0
     already_posted: int = 0
+    withdrawal_settled: int = 0
+    """Periods a #101 withdrawal settled (S6)."""
     below_floor: int = 0
     already_charged: int = 0
     tuition_priced: int = 0
@@ -776,6 +836,7 @@ async def run_post_enrollment_charges(
         candidates=candidates,
         posted=outcomes["posted"],
         already_posted=outcomes["already_posted"],
+        withdrawal_settled=outcomes["withdrawal_settled"],
         below_floor=outcomes["below_floor"],
         already_charged=outcomes["already_charged"],
         tuition_priced=outcomes["tuition_priced"],

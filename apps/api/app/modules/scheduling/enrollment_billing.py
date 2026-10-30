@@ -38,11 +38,13 @@ from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any, Final
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import Select, and_, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.catalog import service as catalog
+from app.modules.scheduling.groups_rules import AFFECTED_STATES
 from app.modules.scheduling.materialize import closed_dates
 from app.modules.scheduling.models import (
     ClassGroup,
@@ -67,29 +69,73 @@ group's ``total``; J6: not the "first session")."""
 class SessionCounts:
     """The counted sessions of an owner around an instant (J3).
     ``total`` is ``None`` for an open-ended owner; ``first_start`` is the
-    first counted occurrence, ``None`` when there is none."""
+    first counted occurrence, ``None`` when there is none.
+    ``remaining_minutes`` (#101 B3) sums the minutes of the ``remaining``
+    occurrences (a row's ``scheduled_minutes``, a projected occurrence's
+    series duration)."""
 
     total: int | None
     remaining: int
     first_start: datetime | None
+    remaining_minutes: int = 0
+
+
+@dataclass(frozen=True)
+class CountedSlot:
+    """One counted occurrence: its start and its minutes (#101 B3)."""
+
+    starts_at: datetime
+    minutes: int
 
 
 @dataclass
 class OwnerSchedule:
     """The counted occurrence starts of one owner (materialized and
-    projected), by start, and whether a series of it is open-ended."""
+    projected), by start, and whether a series of it is open-ended.
+    ``slots`` (#101 B3) are the same occurrences with their minutes, filled
+    by :func:`owner_schedules`."""
 
     starts: list[datetime] = field(default_factory=list)
     open_ended: bool = False
+    slots: list[CountedSlot] = field(default_factory=list)
 
-    def counts(self, at: datetime) -> SessionCounts:
+    def counts(
+        self,
+        at: datetime,
+        *,
+        local_window: tuple[date, date] | None = None,
+        zone: str | None = None,
+    ) -> SessionCounts:
         """The counts for an enrollment at ``at``: ``remaining`` = the
-        counted occurrences that start after ``at``."""
-        remaining = sum(1 for start in self.starts if start > at)
+        counted occurrences that start after ``at``. ``local_window`` (#101
+        B3, a tuition period; needs ``zone``) restricts every count to the
+        occurrences whose local date (in ``zone``) is inside it; without it
+        the #92 results are unchanged."""
+        if local_window is None:
+            remaining = sum(1 for start in self.starts if start > at)
+            return SessionCounts(
+                total=None if self.open_ended else len(self.starts),
+                remaining=remaining,
+                first_start=self.starts[0] if self.starts else None,
+                remaining_minutes=sum(
+                    slot.minutes for slot in self.slots if slot.starts_at > at
+                ),
+            )
+        if zone is None:
+            raise ValueError("a local window needs the zone")
+        tz = ZoneInfo(zone)
+        first, last = local_window
+        inside = [
+            slot
+            for slot in self.slots
+            if first <= slot.starts_at.astimezone(tz).date() <= last
+        ]
+        after = [slot for slot in inside if slot.starts_at > at]
         return SessionCounts(
-            total=None if self.open_ended else len(self.starts),
-            remaining=remaining,
-            first_start=self.starts[0] if self.starts else None,
+            total=len(inside),
+            remaining=len(after),
+            first_start=inside[0].starts_at if inside else None,
+            remaining_minutes=sum(slot.minutes for slot in after),
         )
 
 
@@ -98,6 +144,7 @@ class _Projected:
     owner: SeriesOwner
     starts_at: datetime
     local_date: date
+    minutes: int = 0
 
 
 def _owner_of(kind: str, group_id: Any, cohort_id: Any) -> SeriesOwner:
@@ -135,7 +182,12 @@ def _projected(
         instant = to_instant(local, series.time_zone)
         if instant < created or instant in materialized:
             continue
-        yield _Projected(owner=owner, starts_at=instant, local_date=local.date())
+        yield _Projected(
+            owner=owner,
+            starts_at=instant,
+            local_date=local.date(),
+            minutes=series.duration_minutes,
+        )
         if first_only:
             return
 
@@ -170,6 +222,7 @@ async def owner_schedules(
                 ClassSession.original_start,
                 ClassSession.starts_at,
                 ClassSession.state,
+                ClassSession.scheduled_minutes,
             ).where(
                 ClassSession.kind.in_(("group", "course")),
                 _owners_condition(owners, sessions=True),
@@ -184,7 +237,9 @@ async def owner_schedules(
             )
         owner = _owner_of(row.kind, row.group_id, row.cohort_id)
         if owner in found and row.state not in NOT_COUNTED_STATES:
-            found[owner].starts.append(row.starts_at.astimezone(UTC))
+            start = row.starts_at.astimezone(UTC)
+            found[owner].starts.append(start)
+            found[owner].slots.append(CountedSlot(start, row.scheduled_minutes))
     projected: list[_Projected] = []
     for series in series_rows:
         owner = _owner_of(series.kind, series.group_id, series.cohort_id)
@@ -212,20 +267,31 @@ async def owner_schedules(
         for item in projected:
             if item.local_date not in closed:
                 found[item.owner].starts.append(item.starts_at)
+                found[item.owner].slots.append(
+                    CountedSlot(item.starts_at, item.minutes)
+                )
     for schedule in found.values():
         schedule.starts.sort()
+        schedule.slots.sort(key=lambda slot: slot.starts_at)
     return found
 
 
 async def enrollment_session_counts(
-    session: AsyncSession, owner: SeriesOwner, at: datetime
+    session: AsyncSession,
+    owner: SeriesOwner,
+    at: datetime,
+    *,
+    local_window: tuple[date, date] | None = None,
+    zone: str | None = None,
 ) -> SessionCounts:
     """The J3 counts of ``owner`` for an enrollment at ``at`` (B2). At most
     three statements plus the pure rule expansion. For a cohort the caller
     takes the snapshot's ``session_count`` as the denominator
-    (``courses.service.cohort_session_count``) and clamps ``remaining``."""
+    (``courses.service.cohort_session_count``) and clamps ``remaining``.
+    ``local_window``/``zone`` (#101 B3): see :meth:`OwnerSchedule.counts`;
+    ``remaining_minutes`` sums the remaining occurrences' minutes."""
     schedules = await owner_schedules(session, [owner])
-    return schedules[owner].counts(at)
+    return schedules[owner].counts(at, local_window=local_window, zone=zone)
 
 
 # --- Groups --------------------------------------------------------------------------
@@ -364,11 +430,13 @@ def covers(period: GroupPeriod, starts_at: datetime) -> bool:
 @dataclass(frozen=True)
 class GroupSessionSeat:
     """A group session after an instant and whether the student is one of
-    its participants now (J4)."""
+    its participants now (J4). ``affected`` (#101 B5): its state is one a
+    withdrawal removes the student from (the #56 B3 states)."""
 
     class_session_id: uuid.UUID
     starts_at: datetime
     is_participant: bool
+    affected: bool = False
 
 
 async def group_sessions_after(
@@ -390,6 +458,7 @@ async def group_sessions_after(
             ClassSession.id,
             ClassSession.starts_at,
             ClassSessionParticipant.student_id.is_not(None).label("is_participant"),
+            ClassSession.state,
         )
         .outerjoin(ClassSessionParticipant, participant)
         .where(ClassSession.group_id == group_id, ClassSession.starts_at > after)
@@ -400,6 +469,7 @@ async def group_sessions_after(
             class_session_id=row.id,
             starts_at=row.starts_at.astimezone(UTC),
             is_participant=bool(row.is_participant),
+            affected=row.state in AFFECTED_STATES,
         )
         for row in rows
     ]

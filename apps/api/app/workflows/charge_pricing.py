@@ -216,12 +216,15 @@ class PeriodFacts:
       J5);
     - ``tuition_linked``: a tuition plan is linked to the group period
       (#93 K6, any window): the period is ``tuition_priced``, never
-      fee-charged."""
+      fee-charged;
+    - ``withdrawal_settled``: a #101 withdrawal settled the period (S6): its
+      fee is never posted afterwards."""
 
     fee_posted: bool = False
     session_charged: bool = False
     other_fee_positive: bool = False
     tuition_linked: bool = False
+    withdrawal_settled: bool = False
 
 
 async def period_facts(
@@ -261,10 +264,22 @@ async def _facts_of_kind(
         )
         .exists()
     )
+    settled_rows = billing.withdrawal_subject_columns().subquery("settled")
+    settled_column = (
+        settled_rows.c.group_enrollment_id
+        if kind == "group_enrollment"
+        else settled_rows.c.cohort_enrollment_id
+    )
+    settled = (
+        select(settled_rows.c.id)
+        .where(settled_column == periods.c.enrollment_id)
+        .exists()
+    )
     columns: list[Any] = [
         periods.c.enrollment_id,
         own_fee.label("fee_posted"),
         other_fee.label("other_fee_positive"),
+        settled.label("withdrawal_settled"),
     ]
     if kind == "group_enrollment":
         posted = billing.session_charge_key_columns().subquery("posted")
@@ -300,6 +315,7 @@ async def _facts_of_kind(
             session_charged=bool(getattr(row, "session_charged", False)),
             other_fee_positive=bool(row.other_fee_positive),
             tuition_linked=bool(getattr(row, "tuition_linked", False)),
+            withdrawal_settled=bool(row.withdrawal_settled),
         )
         for row in rows
     }

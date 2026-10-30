@@ -203,6 +203,7 @@ from app.workflows.unbilled_enrollments_router import (
 )
 from app.workflows.unbilled_items_router import router as unbilled_items_router
 from app.workflows.unbilled_tuition_router import router as unbilled_tuition_router
+from app.workflows.withdrawals_router import router as withdrawals_router
 
 
 @asynccontextmanager
@@ -342,6 +343,7 @@ def build_app(
     app.include_router(unbilled_tuition_router)
     app.include_router(package_products_router)
     app.include_router(packages_router)
+    app.include_router(withdrawals_router)
     app.include_router(available_slots_router)
     app.include_router(session_requests_router)
     app.include_router(session_request_review_router)

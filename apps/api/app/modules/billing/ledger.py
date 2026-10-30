@@ -221,12 +221,13 @@ def _net_column(charge: Any = Charge) -> Any:
 
 
 def enrollment_fee_columns() -> Select[Any]:
-    """``SELECT id, kind, enrollment_id, student_id, net FROM charges WHERE
-    kind IN ('group_enrollment', 'cohort_enrollment')`` (``enrollment_id`` =
-    the group or cohort enrollment id; ``net`` = amount + Σ adjustments),
-    **not executed**: the #92 enrollment sweeper anti-joins it, and its
-    classification reads the fees of a period and of the student's other
-    periods of the same group or cohort (J5)."""
+    """``SELECT id, kind, enrollment_id, student_id, net, posted_at FROM
+    charges WHERE kind IN ('group_enrollment', 'cohort_enrollment')``
+    (``enrollment_id`` = the group or cohort enrollment id; ``net`` = amount
+    + Σ adjustments), **not executed**: the #92 enrollment sweeper anti-joins
+    it, and its classification reads the fees of a period and of the
+    student's other periods of the same group or cohort (J5); #101 picks a
+    withdrawal's fee line from it (the latest ``posted_at``)."""
     return select(
         Charge.id.label("charge_id"),
         Charge.kind,
@@ -235,6 +236,7 @@ def enrollment_fee_columns() -> Select[Any]:
         ),
         Charge.student_id,
         _net_column(),
+        Charge.posted_at,
     ).where(Charge.kind.in_(ENROLLMENT_CHARGE_KINDS))
 
 

@@ -31,6 +31,13 @@ the expected skips write nothing and raise nothing):
   sessions the student just left. A flat group fee is never adjusted here
   (only #101).
 
+**Withdrawal settlements (#101).** ``app.workflows.withdrawals`` calls
+:func:`withdraw_student` for an active enrollment in its own Unit of Work
+(the hook's J4 credits are then shown in its preview through
+``enrollment_charges.removal_credits``, never posted twice); for an
+enrollment already withdrawn it takes the same locks through
+``scheduling.service.lock_group_enrollment_for_settlement``.
+
 The rules are in :mod:`app.workflows.enrollment_charges`; the periods a
 hook skips (billing off, no family) are found by
 ``billing:post_enrollment_charges`` (ISSUE-J1). There is no event bus and

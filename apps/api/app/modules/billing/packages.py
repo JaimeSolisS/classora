@@ -394,6 +394,19 @@ def _has_reversal_column() -> Any:
     )
 
 
+def _has_refund_column() -> Any:
+    """Whether the package has a ``refund`` row: a #101 withdrawal
+    (``EXISTS``, correlated)."""
+    return (
+        exists()
+        .where(
+            PackageCreditTransaction.package_id == Package.id,
+            PackageCreditTransaction.kind == "refund",
+        )
+        .correlate(Package)
+    )
+
+
 async def package_remaining_units(
     session: AsyncSession, package_ids: Collection[uuid.UUID]
 ) -> dict[uuid.UUID, int]:
@@ -590,6 +603,60 @@ async def package_covered_keys(
             service_date=item.service_date,
         )
         if eligible and plan_consumption(eligible, item.scheduled_minutes):
+            covered.add((item.class_session_id, item.student_id))
+    return covered
+
+
+async def keys_covered_by_package(
+    session: AsyncSession, package_id: uuid.UUID, items: Sequence[CoverageQuery]
+) -> set[tuple[uuid.UUID, uuid.UUID]]:
+    """The keys of ``items`` that this package would cover now (#101 S7):
+    unconsumed, unapproved ``individual`` sessions whose L4 plan over the
+    student's eligible packages (the :func:`package_covered_keys` rules)
+    takes units from ``package_id``. At most three statements."""
+    open_items = [
+        i for i in items if i.class_type == "individual" and not i.closeout_approved
+    ]
+    if not open_items:
+        return set()
+    consumed = await _consumed_keys(
+        session, {(i.class_session_id, i.student_id) for i in open_items}
+    )
+    open_items = [
+        i for i in open_items if (i.class_session_id, i.student_id) not in consumed
+    ]
+    if not open_items:
+        return set()
+    family_of = await families.families_of_students(
+        session, {i.student_id for i in open_items}
+    )
+    pairs = {
+        (family_of[i.student_id].id, i.student_id)
+        for i in open_items
+        if i.student_id in family_of
+    }
+    if not pairs:
+        return set()
+    candidates = await _candidates(
+        session,
+        pairs,
+        first=min(i.service_date for i in open_items),
+        last=max(i.service_date for i in open_items),
+    )
+    covered: set[tuple[uuid.UUID, uuid.UUID]] = set()
+    for item in open_items:
+        family = family_of.get(item.student_id)
+        if family is None:
+            continue
+        eligible = _eligible_for(
+            candidates,
+            family_id=family.id,
+            student_id=item.student_id,
+            subject_id=item.subject_id,
+            service_date=item.service_date,
+        )
+        plan = plan_consumption(eligible, item.scheduled_minutes) if eligible else None
+        if plan and any(used == package_id for used, _ in plan):
             covered.add((item.class_session_id, item.student_id))
     return covered
 
@@ -806,6 +873,7 @@ def _status_column(today: date) -> Any:
     """D4 in SQL (the twin of :func:`package_status`)."""
     return case(
         (_has_reversal_column(), literal("cancelled")),
+        (_has_refund_column(), literal("withdrawn")),
         (or_(_has_expire_column(), Package.expires_on < today), literal("expired")),
         (_remaining_column() <= 0, literal("exhausted")),
         else_=literal("active"),
@@ -833,6 +901,7 @@ def _named_packages(names: PackageNames) -> Select[Any]:
             _remaining_column().label("remaining"),
             _has_expire_column().label("has_expire"),
             _has_reversal_column().label("has_reversal"),
+            _has_refund_column().label("has_refund"),
             purchase.label("purchase_charge_id"),
         )
         .join(BillingAccount, BillingAccount.id == Package.billing_account_id)
@@ -868,6 +937,7 @@ def _package_row(found: Any, today: date) -> PackageRow:
             has_expire_row=bool(found.has_expire),
             today=today,
             cancelled=bool(found.has_reversal),
+            withdrawn=bool(found.has_refund),
         ),
         purchase_charge_id=found.purchase_charge_id,
     )
