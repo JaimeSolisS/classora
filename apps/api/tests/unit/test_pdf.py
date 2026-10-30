@@ -203,7 +203,8 @@ def test_the_smoke_command_fails_on_a_warning(monkeypatch, capsys):
 def test_weasyprint_is_not_imported_by_the_app():
     """Starting the API, the CLI and importing the PDF module load no Pango."""
     code = (
-        "import sys, app.main, app.cli, app.core.pdf, app.core.pdf_smoke; "
+        "import sys, app.main, app.cli, app.core.pdf, app.core.pdf_smoke, "
+        "app.modules.billing.receipts, app.workflows.billing_receipts; "
         "app.main.create_app(); "
         "assert 'weasyprint' not in sys.modules, 'weasyprint imported'"
     )

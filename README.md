@@ -357,6 +357,9 @@ unless a bullet says otherwise.
   and its history, and record cash, transfer or other payments, applied
   oldest first or to chosen charges; whatever isn't applied stays as
   account credit, which they can apply to charges later.
+- Each recorded payment gets a numbered, non-tax PDF receipt (Spanish or
+  English, in the family's language) that staff download from the family's
+  account page.
 - Billing → Overdue lists the families with overdue charges, with aging
   buckets (1–30, 31–60, 61–90 and over 90 days). On a family's account,
   staff can change an open charge's due date (with a reason, kept in its
@@ -395,7 +398,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** receipts, refunds and the rest of billing (including
+**Not built yet:** refunds and the rest of billing (including
 the family billing portal), payroll, reporting and analytics, and
 deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).

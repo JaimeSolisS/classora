@@ -25,10 +25,19 @@ export type PaymentPage = components['schemas']['OffsetPage_PaymentItem_'];
 export type PaymentMethod = components['schemas']['PaymentMethodItem'];
 export type PaymentCreate = components['schemas']['PaymentCreate'];
 export type PaymentRecorded = components['schemas']['PaymentRecorded'];
+export type ReceiptReference = components['schemas']['ReceiptReference'];
 export type CreditAllocationCreate =
   components['schemas']['CreditAllocationCreate'];
 export type CreditAllocated = components['schemas']['CreditAllocated'];
 export type AllocationLine = components['schemas']['AllocationLineBody'];
+
+/**
+ * The receipt PDF of a payment (#98 F1): a plain same-origin link (the
+ * session cookie authenticates it), so the browser downloads the file.
+ */
+export function receiptUrl(familyId: string, receiptId: string): string {
+  return `/api/v1/families/${encodeURIComponent(familyId)}/billing-account/receipts/${encodeURIComponent(receiptId)}/pdf`;
+}
 
 /** The charge statuses, in the filter's order. */
 export const CHARGE_STATUSES: readonly ChargeStatus[] = [

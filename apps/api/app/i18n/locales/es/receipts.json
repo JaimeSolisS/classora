@@ -1,0 +1,39 @@
+{
+  "v1": {
+    "title": "Recibo de pago",
+    "number": "Número",
+    "issued_on": "Fecha de emisión",
+    "received_from": "Recibido de",
+    "family": "Familia",
+    "received_on": "Fecha de pago",
+    "method": "Forma de pago",
+    "reference": "Referencia",
+    "amount": "Importe recibido",
+    "allocations": {
+      "title": "Aplicación del pago",
+      "student": "Estudiante",
+      "concept": "Concepto",
+      "amount": "Importe",
+      "none": "Este pago no se aplicó a ningún cargo.",
+      "allocated_total": "Total aplicado",
+      "credit": "Saldo a favor de la cuenta"
+    },
+    "methods": {
+      "cash": "Efectivo",
+      "transfer": "Transferencia",
+      "other": "Otra"
+    },
+    "kinds": {
+      "session": "Sesión del {date} ({minutes} min)",
+      "session_untimed": "Sesión del {date}",
+      "group_enrollment": "Inscripción a grupo",
+      "cohort_enrollment": "Inscripción a curso",
+      "tuition_period": "Colegiatura del {start} al {end}",
+      "tuition_period_open": "Colegiatura desde el {start}",
+      "package_purchase": "Compra de paquete del {date}",
+      "manual": "Cargo manual"
+    },
+    "reversed": "ANULADO el {date}",
+    "notice": "Este recibo no es un comprobante fiscal (CFDI)."
+  }
+}

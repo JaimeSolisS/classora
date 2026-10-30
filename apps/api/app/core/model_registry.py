@@ -10,6 +10,7 @@ for example::
 
 import app.core.audit  # noqa: F401  (audit_events)
 import app.core.idempotency_models  # noqa: F401  (idempotency_keys)
+import app.core.numbering_models  # noqa: F401  (number_series)
 import app.core.ratelimit_models  # noqa: F401  (rate_limit_counters)
 import app.modules.academics.models  # noqa: F401
 import app.modules.administration.models  # noqa: F401

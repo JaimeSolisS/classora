@@ -208,6 +208,7 @@ Permissions, not roles. None of the new ones is delegable, and each is seeded by
 - **The receipt row is a frozen snapshot:** `receipts (number UNIQUE, payment_id UNIQUE, billing_account_id, issued_at, language, template_version, snapshot JSONB)`. The snapshot holds the center name, address and contact from business settings; the family name and payer; the amount and method; and the allocations as charge ids, amounts and structured labels. Later changes to settings, templates (M8-04) or allocations don't change it.
 - **Reversed payments:** the receipt keeps its number. The PDF shows a "reversed" banner from the reversal row; the receipt row isn't touched.
 - **Payments recorded before #98 merges** get no receipt. #98 doesn't backfill them (DEV data only).
+- **Implementation clarification (#98, P4 and P5, 2026-10-30):** the receipt is issued inside `billing.service.record_payment`, as its last step after the payment and allocation inserts, so every caller gets exactly one receipt and a #88 replay returns it; the snapshot inputs are read before the `number_series` row lock. The receipt's language is the stored `user_preferences.language` of the first of the family's receipt recipients (active guardian profiles with a login in `family_guardians`, in membership order) that has one, else `es`; it is stored on the receipt and never changes (ADR-0015). These implement E13 and ADR-0015; they don't change them.
 
 ### Branding without uploads (E15 (a))
 

@@ -15,6 +15,7 @@ import {
   FAMILY_ID,
   LEDGER_ENTRIES,
   PAYMENTS_PAGE,
+  RECORDED_RECEIPT,
   SUMMARY,
   SUMMARY_NO_ACCOUNT,
 } from './fixtures';
@@ -150,5 +151,28 @@ export const ManageDueDates: Story = {
         name: new RegExp(`^${i18n.t('billing.dueDates.change.action')}: `),
       }),
     ).toHaveLength(2);
+  },
+};
+
+// #98 H1: each payment row shows its receipt (number and "Download
+// receipt"), or "—" for a payment recorded before receipts; after recording,
+// the new receipt follows the polite status.
+export const Receipts: Story = {
+  args: {
+    announcement: 'Payment recorded.',
+    recordedReceipt: RECORDED_RECEIPT,
+  },
+  play: async ({ canvas }) => {
+    const links = canvas.getAllByRole('link', {
+      name: new RegExp(
+        `^${i18n.t('billing.accounts.receipt.downloadFor', { number: 'R-' })}`,
+      ),
+    });
+    await expect(links).toHaveLength(2);
+    await expect(links[0]).toHaveAttribute(
+      'href',
+      `/api/v1/families/${FAMILY_ID}/billing-account/receipts/${RECORDED_RECEIPT.id}/pdf`,
+    );
+    await expect(canvas.getByText(RECORDED_RECEIPT.number)).toBeVisible();
   },
 };

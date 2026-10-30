@@ -5672,8 +5672,14 @@
           "reference": "Referencia",
           "payer": "Pagó",
           "note": "Nota",
+          "receipt": "Recibo",
           "actions": "Acciones"
         }
+      },
+      "receipt": {
+        "download": "Descargar recibo",
+        "downloadFor": "Descargar recibo {{number}}",
+        "recorded": "Recibo:"
       },
       "editor": {
         "label": "Cargos por pagar",

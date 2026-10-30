@@ -267,6 +267,10 @@ export const PAYMENT: PaymentItem = {
   refunded_amount: '0.00',
   unallocated_amount: '300.00',
   is_reversed: false,
+  receipt: {
+    id: '59000000-0000-4000-8000-000000000001',
+    number: 'R-2026-000123',
+  },
 };
 export const PAYMENT_OLD: PaymentItem = {
   ...PAYMENT,
@@ -280,6 +284,8 @@ export const PAYMENT_OLD: PaymentItem = {
   recorded_at: '2026-08-20T17:00:00Z',
   allocated_amount: '600.00',
   unallocated_amount: '0.00',
+  // Recorded before receipts (#98 C7).
+  receipt: null,
 };
 export const PAYMENTS_PAGE: PaymentPage = {
   items: [PAYMENT, PAYMENT_OLD],
@@ -324,6 +330,11 @@ export const PAYMENT_METHODS: PaymentMethod[] = [
   { code: 'transfer', is_active: true },
 ];
 
+export const RECORDED_RECEIPT = {
+  id: '59000000-0000-4000-8000-000000000009',
+  number: 'R-2026-000124',
+};
+
 export const RECORDED: PaymentRecorded = {
   payment: {
     ...PAYMENT,
@@ -336,8 +347,10 @@ export const RECORDED: PaymentRecorded = {
     note: null,
     allocated_amount: '2000.00',
     unallocated_amount: '0.00',
+    receipt: RECORDED_RECEIPT,
   },
   allocations: [],
   unallocated_amount: '0.00',
   account_credit_after: '300.00',
+  receipt: RECORDED_RECEIPT,
 };

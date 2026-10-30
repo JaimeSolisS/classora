@@ -1419,13 +1419,15 @@ class RecordedAllocation:
 @dataclass(frozen=True)
 class RecordedPayment:
     """The result of ``record_payment`` (#96 B1): the payment, its
-    allocations (in plan order), the part left as account credit and the
-    account credit afterwards."""
+    allocations (in plan order), the part left as account credit, the
+    account credit afterwards and its receipt (#98 C1)."""
 
     payment_id: uuid.UUID
     allocations: tuple[RecordedAllocation, ...]
     unallocated: Money
     account_credit_after: Money
+    receipt_id: uuid.UUID
+    receipt_number: str
 
 
 @dataclass(frozen=True)
@@ -1467,6 +1469,10 @@ class PaymentRow:
     refunded_amount: Money
     unallocated_amount: Money
     is_reversed: bool
+    receipt_id: uuid.UUID | None = None
+    """The payment's receipt (#98 G1); ``None`` for a payment recorded
+    before receipts (no backfill)."""
+    receipt_number: str | None = None
 
 
 @dataclass(frozen=True)

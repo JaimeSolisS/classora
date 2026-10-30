@@ -206,6 +206,17 @@ describe('the record dialog (D1, D2)', () => {
     expect(status()).toBe(
       'Payment of $2,000.00 recorded: $2,000.00 applied to charges. Account credit is now $300.00.',
     );
+    // #98 H1: the new receipt's number and its download link.
+    const receipt = main().querySelector<HTMLAnchorElement>(
+      `a[href$="/receipts/${RECORDED.receipt.id}/pdf"]`,
+    )!;
+    expect(receipt.getAttribute('href')).toBe(
+      `${BASE}/receipts/${RECORDED.receipt.id}/pdf`,
+    );
+    expect(receipt.getAttribute('download')).toBe('R-2026-000124.pdf');
+    expect(receipt.parentElement!.parentElement!.textContent).toBe(
+      'Receipt: R-2026-000124Download receipt',
+    );
     await settleUntil(() => api.calls(SUMMARY_ROUTE).length > summaries);
   });
 

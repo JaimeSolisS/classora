@@ -1590,6 +1590,17 @@ access = "authenticated"
 # tests/integration/test_billing_payments_access.py.
 
 [[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/receipts/{receipt_id}/pdf"
+access = "authenticated"
+# #98 F1, F2 (P9 (a)) a payment receipt as a PDF; the #364 record policy:
+# billing.view holders (Owner, Administrator, Finance Staff) download any
+# family's receipts, a guardian with an active profile only their own family's,
+# anyone else 404. The placeholder ids are no family: 404 for every signed-in
+# role. Roles, guardians and cross-family ids:
+# tests/integration/test_billing_receipts_routes.py.
+
+[[route]]
 method = "DELETE"
 path = "/api/v1/families/{family_id}/guardians/{guardian_id}"
 access = "permission"

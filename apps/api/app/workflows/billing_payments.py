@@ -51,6 +51,7 @@ from app.workflows.billing_payment_schemas import (
     PaymentItem,
     PaymentMethodItem,
     PaymentRecorded,
+    ReceiptReference,
     RecordedAllocationItem,
 )
 
@@ -70,6 +71,9 @@ def _item(row: billing.PaymentRow, *, staff: bool) -> PaymentItem:
         refunded_amount=row.refunded_amount,
         unallocated_amount=row.unallocated_amount,
         is_reversed=row.is_reversed,
+        receipt=None
+        if row.receipt_id is None or row.receipt_number is None
+        else ReceiptReference(id=row.receipt_id, number=row.receipt_number),
     )
 
 
@@ -140,6 +144,9 @@ async def record_payment(
         ],
         unallocated_amount=recorded.unallocated,
         account_credit_after=recorded.account_credit_after,
+        receipt=ReceiptReference(
+            id=recorded.receipt_id, number=recorded.receipt_number
+        ),
     )
 
 

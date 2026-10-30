@@ -31,8 +31,10 @@ import {
   LEDGER_PAGE,
   LEDGER_PAGE_2,
   LUIS,
+  PAYMENT as PAYMENT_ITEM,
   PAYMENT_DETAIL,
   PAYMENT_ID,
+  PAYMENT_OLD,
   PAYMENTS_PAGE,
   SUMMARY,
   SUMMARY_NO_ACCOUNT,
@@ -542,6 +544,27 @@ describe('the account page (C)', () => {
       ],
     ]);
     expect(api.calls(PAYMENT)).toHaveLength(1);
+  });
+
+  it('shows each payment receipt with a download link, or a dash (#98 H1)', async () => {
+    stub();
+    await renderAccount();
+
+    const withReceipt = row(`[data-payment-id="${PAYMENT_ID}"]`);
+    expect(cells(withReceipt)[8]).toBe('R-2026-000123Download receipt');
+    const link = withReceipt.querySelector('a[download]')!;
+    expect(link.getAttribute('href')).toBe(
+      `/api/v1/families/${FAMILY_ID}/billing-account/receipts/${PAYMENT_ITEM.receipt!.id}/pdf`,
+    );
+    expect(link.getAttribute('download')).toBe('R-2026-000123.pdf');
+    expect(link.getAttribute('aria-label')).toBe(
+      'Download receipt R-2026-000123',
+    );
+
+    // A payment recorded before receipts has none.
+    const older = row(`[data-payment-id="${PAYMENT_OLD.id}"]`);
+    expect(cells(older)[8]).toBe('—');
+    expect(older.querySelector('a[download]')).toBeNull();
   });
 
   it('is read-only without payment.record', async () => {

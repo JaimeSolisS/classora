@@ -12,7 +12,9 @@ lock, waits for A's commit, then decides from what A committed.
   ``409 insufficient_account_credit``;
 - a payment allocation vs a negative adjustment on the same charge, both
   orders: I2 holds and the freed money is account credit;
-- payments on two different accounts don't wait for each other.
+- an account lock doesn't block a payment on another account; two payments
+  on different accounts serialize only on the receipt counter (#98 B6),
+  without a deadlock, and get consecutive numbers.
 
 I2 and I3 are asserted over the account after every case. Each case runs
 5 times."""
@@ -251,7 +253,32 @@ def test_a_payment_and_a_credit_adjustment_on_one_charge(
 
 
 @pytest.mark.parametrize("attempt", range(REPEATS))
-def test_payments_on_two_accounts_dont_wait(module_seeded_url, actor, attempt):
+def test_an_account_lock_doesnt_block_another_accounts_payment(
+    module_seeded_url, actor, attempt
+):
+    url = module_seeded_url
+    _, account_x, [cx] = _setup(url, "100.00")
+    _, account_y, [cy] = _setup(url, "100.00")
+
+    async def lock_x(session: AsyncSession) -> None:
+        await billing.lock_billing_account(session, account_x)
+
+    a, b, a_end, b_end = asyncio.run(
+        _hold_then(url, actor, lock_x, _payment(account_y, "100.00", OLDEST))
+    )
+
+    assert b_end < a_end  # B committed while A still held account X
+    assert ps.valid_allocated(url, cy) == Money("100.00")
+    assert ps.valid_allocated(url, cx) == Money("0.00")
+
+
+@pytest.mark.parametrize("attempt", range(REPEATS))
+def test_payments_on_two_accounts_serialize_only_on_the_receipt_counter(
+    module_seeded_url, actor, attempt
+):
+    # #98 B6: a payment holds the receipt number_series row (the last lock)
+    # from its receipt to its commit, so a payment on another account waits
+    # for that commit (gap-free numbering, E13), then gets the next number.
     url = module_seeded_url
     _, account_x, [cx] = _setup(url, "100.00")
     _, account_y, [cy] = _setup(url, "100.00")
@@ -265,5 +292,8 @@ def test_payments_on_two_accounts_dont_wait(module_seeded_url, actor, attempt):
         )
     )
 
-    assert b_end < a_end  # B committed while A still held account X
+    assert a_end <= b_end
     assert ps.valid_allocated(url, cx) == ps.valid_allocated(url, cy) == Money("100.00")
+    first, second = (int(r.receipt_number[-6:]) for r in (a, b))
+    assert second == first + 1
+    assert a.receipt_number[:7] == b.receipt_number[:7]

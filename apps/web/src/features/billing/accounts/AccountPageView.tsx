@@ -28,8 +28,10 @@ import {
   type ChargePage,
   type LedgerEntry,
   type PaymentPage,
+  type ReceiptReference,
 } from './api';
 import { ReversedBadge } from './AccountBadges';
+import { ReceiptLink } from './ReceiptLink';
 import { apiCents } from './cents';
 import { useAccountLabels } from './labels';
 import { toggleStatus, type AccountView } from './rules';
@@ -82,6 +84,8 @@ export interface AccountPageViewProps {
   onChangeDueDate?: (charge: ChargeItem) => void;
   /** Read by the polite status (a recorded payment). */
   announcement?: string;
+  /** The receipt of the payment just recorded (#98 H1), shown below it. */
+  recordedReceipt?: ReceiptReference | null;
 }
 
 function stateBody<T>(
@@ -112,6 +116,7 @@ export function AccountPageView({
   onEditOffset,
   onChangeDueDate,
   announcement = '',
+  recordedReceipt = null,
 }: AccountPageViewProps) {
   const { t } = useTranslation();
   const labels = useAccountLabels();
@@ -357,6 +362,9 @@ export function AccountPageView({
                 {t('billing.accounts.payments.columns.note')}
               </TableHead>
               <TableHead scope="col">
+                {t('billing.accounts.payments.columns.receipt')}
+              </TableHead>
+              <TableHead scope="col">
                 <span className="sr-only">
                   {t('billing.accounts.payments.columns.actions')}
                 </span>
@@ -388,6 +396,12 @@ export function AccountPageView({
                 </TableCell>
                 <TableCell className="max-w-56 whitespace-normal break-words">
                   {payment.note ?? '—'}
+                </TableCell>
+                <TableCell>
+                  <ReceiptLink
+                    familyId={summary.family.id}
+                    receipt={payment.receipt}
+                  />
                 </TableCell>
                 <TableCell className="text-right">
                   <Button
@@ -469,6 +483,15 @@ export function AccountPageView({
         <p role="status" className="text-sm font-medium">
           {announcement}
         </p>
+        {recordedReceipt !== null ? (
+          <p className="text-sm">
+            {t('billing.accounts.receipt.recorded')}{' '}
+            <ReceiptLink
+              familyId={summary.family.id}
+              receipt={recordedReceipt}
+            />
+          </p>
+        ) : null}
       </div>
 
       <section aria-labelledby={ids.summary} className="flex flex-col gap-4">

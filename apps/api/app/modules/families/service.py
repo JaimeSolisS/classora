@@ -27,7 +27,9 @@ students, the sibling rule) and the unexecuted :func:`family_name_columns`
 and :func:`student_name_columns` (names joined by billing reads). For due
 dates and reminders (#97): the unexecuted :func:`family_status_columns`
 (the overdue accounts list) and :func:`family_billing_recipients` (the
-logins of a family's active guardian profiles, the reminder recipients).
+logins of a family's active guardian profiles, the reminder recipients);
+for receipts (#98): :func:`family_receipt_recipients` (the same logins of
+one family in membership order).
 
 **Name search** (ISSUE-D6, accepted on #33): with ``n(x) =
 public.f_unaccent(lower(x))`` and ``name = given_names || ' ' ||
@@ -188,6 +190,7 @@ __all__ = [
     "families_of_students",
     "family_of_student",
     "family_billing_recipients",
+    "family_receipt_recipients",
     "family_name_columns",
     "family_status_columns",
     "family_record_reference",
@@ -266,6 +269,9 @@ family_status_columns = _groupings.family_status_columns
 family_billing_recipients = _groupings.family_billing_recipients
 """The logins of each family's active guardian profiles (#97 N3: the
 reminder recipients; one statement; no access check)."""
+family_receipt_recipients = _groupings.receipt_recipients
+"""The same logins of one family in membership order (#98 P5: the receipt
+language; one statement; no access check)."""
 
 # --- References (#48) -------------------------------------------------------------
 

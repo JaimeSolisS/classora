@@ -75,6 +75,8 @@ type Common = {
         modes: Record<'oldest_first' | 'explicit' | 'none', string>;
       };
       credit: { action: string };
+      // #98 H3: the payment row's receipt link.
+      receipt: { download: string; downloadFor: string; recorded: string };
     };
     // #382 F3: the overdue accounts and the due-date dialogs.
     overdue: {
