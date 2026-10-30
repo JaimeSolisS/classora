@@ -164,6 +164,29 @@ For other modules:
   the stored ``template_version`` (:func:`template_for`; unknown →
   :class:`UnknownReceiptTemplateError`) and ``language``.
 
+**Schedule reconciliation** (#99; :mod:`~app.modules.billing.cancellation_rules`,
+:mod:`~app.modules.billing.reconciliation`; the workflow
+``app.workflows.schedule_reconciliation`` and its job
+``billing:reconcile_session_charges``). For other modules:
+
+- :func:`cancellation_rule_at` (the rule version in force at an aware
+  instant, one statement) and the pure :func:`cancellation_outcome` (a
+  makeup → ``credit``; otherwise the rule's column for the
+  classification); the rule routes' :func:`get_cancellation_rule_overview`,
+  :func:`create_cancellation_rule` and :func:`delete_cancellation_rule`.
+- The unexecuted :func:`session_charge_reconciliation_columns` (each
+  ``session`` charge with its net, ``closure_credit`` total and billed
+  minutes) and :func:`cancellation_decision_key_columns`;
+  :func:`session_charge_of_key`, :func:`reconciliation_charge` (read after
+  :func:`lock_billing_account`), :func:`has_cancellation_decision`,
+  :func:`record_cancellation_decision`, :func:`has_repricing` and
+  :func:`record_repricing` (append-only rows, a natural-key violation →
+  ``False``).
+- The source keys :data:`CANCELLATION_CREDIT_KEY`,
+  :data:`CLOSURE_CREDIT_KEY` (numbered per charge: odd = credit, even =
+  restoration) and :data:`DURATION_CHANGE_KEY` (per session version). Every
+  correction is a :func:`post_adjustment`; a charge row never changes.
+
 **Due dates, overdue accounts and reminders** (#97;
 :mod:`~app.modules.billing.due_dates`, :mod:`~app.modules.billing.overdue`,
 the pure :mod:`~app.modules.billing.reminders` and
@@ -208,6 +231,21 @@ from app.modules.billing.balances import (
     payment_remainder_column as payment_remainder_column,
 )
 from app.modules.billing.balances import payment_remainders as payment_remainders
+from app.modules.billing.cancellation_rules import (
+    cancellation_outcome as cancellation_outcome,
+)
+from app.modules.billing.cancellation_rules import (
+    cancellation_rule_at as cancellation_rule_at,
+)
+from app.modules.billing.cancellation_rules import (
+    create_cancellation_rule as create_cancellation_rule,
+)
+from app.modules.billing.cancellation_rules import (
+    delete_cancellation_rule as delete_cancellation_rule,
+)
+from app.modules.billing.cancellation_rules import (
+    get_cancellation_rule_overview as get_cancellation_rule_overview,
+)
 from app.modules.billing.custom_prices import (
     CUSTOM_PRICE_STATUSES as CUSTOM_PRICE_STATUSES,
 )
@@ -513,6 +551,42 @@ from app.modules.billing.receipts import (
     render_receipt_document as render_receipt_document,
 )
 from app.modules.billing.receipts import template_for as template_for
+from app.modules.billing.reconciliation import (
+    CANCELLATION_CREDIT_KEY as CANCELLATION_CREDIT_KEY,
+)
+from app.modules.billing.reconciliation import (
+    CLOSURE_CREDIT_KEY as CLOSURE_CREDIT_KEY,
+)
+from app.modules.billing.reconciliation import (
+    DURATION_CHANGE_KEY as DURATION_CHANGE_KEY,
+)
+from app.modules.billing.reconciliation import (
+    CancellationDecisionDraft as CancellationDecisionDraft,
+)
+from app.modules.billing.reconciliation import (
+    ReconciliationCharge as ReconciliationCharge,
+)
+from app.modules.billing.reconciliation import RepricingDraft as RepricingDraft
+from app.modules.billing.reconciliation import (
+    cancellation_decision_key_columns as cancellation_decision_key_columns,
+)
+from app.modules.billing.reconciliation import (
+    has_cancellation_decision as has_cancellation_decision,
+)
+from app.modules.billing.reconciliation import has_repricing as has_repricing
+from app.modules.billing.reconciliation import (
+    reconciliation_charge as reconciliation_charge,
+)
+from app.modules.billing.reconciliation import (
+    record_cancellation_decision as record_cancellation_decision,
+)
+from app.modules.billing.reconciliation import record_repricing as record_repricing
+from app.modules.billing.reconciliation import (
+    session_charge_of_key as session_charge_of_key,
+)
+from app.modules.billing.reconciliation import (
+    session_charge_reconciliation_columns as session_charge_reconciliation_columns,
+)
 from app.modules.billing.reminder_log import ACCOUNT_PAGE as ACCOUNT_PAGE
 from app.modules.billing.reminder_log import charges_to_remind as charges_to_remind
 from app.modules.billing.reminder_log import record_reminders as record_reminders
@@ -538,6 +612,21 @@ from app.modules.billing.schemas import (
 )
 from app.modules.billing.schemas import (
     BillingSettingsUpdate as BillingSettingsUpdate,
+)
+from app.modules.billing.schemas import (
+    CancellationOutcome as CancellationOutcome,
+)
+from app.modules.billing.schemas import (
+    CancellationRuleCreate as CancellationRuleCreate,
+)
+from app.modules.billing.schemas import (
+    CancellationRuleItem as CancellationRuleItem,
+)
+from app.modules.billing.schemas import (
+    CancellationRuleOverview as CancellationRuleOverview,
+)
+from app.modules.billing.schemas import (
+    CancellationRuleValues as CancellationRuleValues,
 )
 from app.modules.billing.schemas import ChargeBalance as ChargeBalance
 from app.modules.billing.schemas import ChargeDetail as ChargeDetail

@@ -29,7 +29,9 @@ actor.
 (#232) skips the series' future rows on dates closed since they were
 created and re-checks the skipped ones whose date reopened. A closure write
 also queues this task after its commit
-(``app.core.jobs.defer_series_materialization``). A failing series never
+(``app.core.jobs.defer_series_materialization``). After a run the task
+queues one ``billing:reconcile_session_charges`` run
+(``app.core.jobs.defer_schedule_reconciliation``, #99 D9). A failing series never
 blocks the others: its error is logged with the series id and the error
 class, and the next run retries it. A **group** series whose participants
 changed between the participant read and the series lock (an enrollment
@@ -64,6 +66,7 @@ from app.core.jobs import (
     MATERIALIZE_SERIES_QUEUEING_LOCK,
     MATERIALIZE_SERIES_TASK,
     create_worker_engine,
+    defer_schedule_reconciliation,
     ids_only,
 )
 from app.core.uow import UnitOfWork
@@ -272,10 +275,18 @@ async def run_materialization(
     return result
 
 
-@ids_only
-async def materialize_class_series(timestamp: int) -> None:
-    """The periodic task: one run with the process's settings."""
-    await run_materialization(get_settings())
+def materialization_task(app: App) -> Any:
+    """The periodic task bound to ``app``: one run with the process's
+    settings, then (after every series' commit) one queued
+    ``billing:reconcile_session_charges`` run (#99 D9: closures and series
+    changes reconcile their charges without waiting for the next tick)."""
+
+    @ids_only
+    async def materialize_class_series(timestamp: int) -> None:
+        await run_materialization(get_settings())
+        await defer_schedule_reconciliation(app)
+
+    return materialize_class_series
 
 
 def register(app: App) -> None:
@@ -292,6 +303,6 @@ def register(app: App) -> None:
         queueing_lock=MATERIALIZE_QUEUEING_LOCK,
     )(
         app.task(name=MATERIALIZE_TASK_NAME, queueing_lock=MATERIALIZE_QUEUEING_LOCK)(
-            materialize_class_series
+            materialization_task(app)
         )
     )

@@ -66,6 +66,9 @@ from app.modules.administration.router import router as administration_router
 from app.modules.administration.settings_router import (
     router as business_settings_router,
 )
+from app.modules.billing.cancellation_rules_router import (
+    router as cancellation_rules_router,
+)
 from app.modules.billing.settings_router import router as billing_settings_router
 from app.modules.catalog.classrooms_router import router as classrooms_router
 from app.modules.catalog.periods_router import router as periods_router
@@ -328,6 +331,7 @@ def build_app(
     app.include_router(billing_receipts_router)
     app.include_router(billing_overdue_router)
     app.include_router(billing_settings_router)
+    app.include_router(cancellation_rules_router)
     app.include_router(unbilled_items_router)
     app.include_router(unbilled_enrollments_router)
     app.include_router(tuition_plans_router)

@@ -71,7 +71,7 @@ Resolves architecture §10 **ISSUE-F1** (when lesson charges are posted), **ISSU
 
 ### Cancellation outcomes (E3 (a), spec §3, W4.5, product)
 
-- A billing-owned rule table, `cancellation_billing_rules`, effective-dated (`effective_from TIMESTAMPTZ UNIQUE`) and append-only, stores one outcome per classification (`excused`, `on_time`, `late`, `no_show`): `credit` (the full charge is credited) or `charge` (the charge stands).
+- A billing-owned rule table, `cancellation_billing_rules`, effective-dated (`effective_from TIMESTAMPTZ UNIQUE`) and never edited (an upcoming version may be deleted, #99 Q6), stores one outcome per classification (`excused`, `on_time`, `late`, `no_show`): `credit` (the full charge is credited) or `charge` (the charge stands).
 - **Seeded defaults:** `excused` credit, `on_time` credit, `late` charge, `no_show` charge.
 - **Makeup allowed:** when the scheduling policy outcome allows a makeup, the outcome is always `credit`, and the makeup is billed as an ordinary session. No session-to-makeup link is needed.
 - **Which rule applies:** the rule in effect at the change's classification instant. For a #62 request that is the request's `created_at` and its stored classification, read through `get_change_request_outcome`. For a center cancellation (#55, `on_session_cancelled`) it is the cancellation instant, classified `excused`.
@@ -276,6 +276,18 @@ Permissions, not roles. None of the new ones is delegable, and each is seeded by
 ## Implementation notes (M6-03)
 
 - **#88, 2026-10-27, owner-delegated (E2):** a key whose `expires_at` has passed but that the hourly purge hasn't deleted yet counts as **absent**. The claim is one `INSERT … ON CONFLICT (user_id, endpoint, key) DO UPDATE … WHERE expires_at <= now RETURNING id`, which replaces an expired row atomically, so retention is exactly 7 days whatever the purge timing. The E6 decision above is otherwise unchanged.
+
+## Implementation notes (M6-14)
+
+Owner-delegated recommended decisions of #99 (2026-10-28, Q1–Q10 (a)). No accepted rule changes.
+
+- **Q1, where it runs:** reconciliation is the job `billing:reconcile_session_charges` (every 15 minutes, `queueing_lock`), a state-derived sweeper over **committed** schedule state; it is also queued after commit by the routes that change sessions, the billing settings `PATCH` and the series materialization. Nothing posts in a scheduling transaction (E1), and `on_session_cancelled` / `on_session_rescheduled` stay billing no-ops (M7-04 keeps them). Consequence: two duration edits between two runs (60 → 45 → 30) give **one** repricing to the final duration; E2's "one delta adjustment per edit" is read as "per duration observed", and the `source_key` holds the session `version` the job saw.
+- **Q2, the delta's base (E2):** delta = target − (`charges.amount` + Σ `duration_change`), not "minus the current net", so manual (#100), `enrollment_removal` (#92), withdrawal (#101) and cancellation/closure adjustments survive a later repricing. The target is `charges.amount` for the charge's own minutes, else `base_price` for the new minutes with the charge's discount snapshot re-applied (never re-selected), else pro rata. If the net would go below `0.00`, the delta is `−net` (I1 never raises). Each repricing is a `charge_duration_repricings` row (a `0.00` delta included), which records the billed minutes.
+- **Q3, a reopened closure:** when a closure-credited occurrence is `confirmed` or `completed` again (or cancelled with a `charge` outcome), a positive `closure_credit` restores exactly the credited amount; keys `closure_credit:<charge>:<n>` (odd credit, even restore). While the occurrence is `unassigned`/`offered`/`conflict` the credit stays.
+- **Q4:** a `0.00` charge is never adjusted (no credit, closure credit or repricing).
+- **Q7, the floor:** credits, closure credits, restorations and repricings apply to any existing charge whatever `billing_starts_on` says. A `charge` outcome on an uncharged session posts through the #91 classification only from the floor on; billing off, before the floor, no family or no price is retried (no decision row). Package consumption ignores the floor (#94 L5).
+- **Q8:** attendance and closeout never reconcile; `no_show_outcome` applies only to a cancellation classified `no_show`, which no M4 path produces today.
+- **Q9:** a `charge` outcome on a package-covered, unconsumed key consumes its units (`consume_session_credit`, also for a cancelled session); `short`/`no_package` charge the session. A consumed key is never cancelled, skipped or re-timed afterwards, so #99 writes no package `reversal` (#100 owns reversals).
 
 ## References
 

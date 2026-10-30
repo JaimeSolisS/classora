@@ -276,8 +276,8 @@ Codes in use today:
 | `consent_already_given` | 409 | An active consent for the same student, guardian and scope already exists. |
 | `consent_already_revoked` | 409 | Revoking a consent that was already revoked. |
 | `tz_change_requires_migration` | 409 | A business-settings change of the center time zone while scheduled data exists (see Business settings); nothing changes. The body never names the data. |
-| `invalid_effective_from` | 422 | A new scheduling policy version whose `effective_from` (now when omitted) is in the past or not later than every existing version; nothing is created (see Scheduling policies). |
-| `policy_version_in_effect` | 409 | Deleting a scheduling policy version that is in force or in the past; only an upcoming version can be deleted (see Scheduling policies). |
+| `invalid_effective_from` | 422 | A new scheduling policy version or cancellation billing rule version whose `effective_from` (now when omitted) is in the past or not later than every existing version; nothing is created (see Scheduling policies and Cancellation billing rules). |
+| `policy_version_in_effect` | 409 | Deleting a scheduling policy version or a cancellation billing rule version that is in force or in the past; only an upcoming version can be deleted (see Scheduling policies and Cancellation billing rules). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
 | `permission_not_delegable` | 422 | The identity service was asked to delegate a permission outside the four delegable ones (the route's body enum answers `validation_error` first). |
@@ -6327,6 +6327,7 @@ pages are M6-06b (#366).
   reauthentication and no `Idempotency-Key`: the setting posts nothing by
   itself, and moving it later or back to `null` never changes posted
   charges. After the commit, a `PATCH` whose result is a date queues one
+  `billing:reconcile_session_charges` run (#99), one
   `billing:post_session_charges` run and one
   `billing:post_enrollment_charges` run (M6-07).
 - **Session charges** (the `billing:post_session_charges` job, every 15
@@ -6361,6 +6362,58 @@ pages are M6-06b (#366).
   per distinct price key.
 - **Check order of the list:** `401` → `403 privacy_notice_required` →
   `403 permission_denied` → `422` (the query). No new error code.
+
+### Cancellation billing rules and schedule reconciliation
+
+Implemented by M6-14 (#99; spec §3, §6 reconciliation, W4.5; ADR-0006 E2,
+E3, E10 and its M6-14 implementation notes; owner-delegated decisions
+Q1-Q10 (a)). The routes are in
+`app/modules/billing/cancellation_rules_router.py` (table
+`cancellation_billing_rules`, `_docs/data-model.md` §3.22); the job is
+`app/workflows/schedule_reconciliation.py`. The web card is M6-14b.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/billing/cancellation-rules` | `require("billing.view")` | `CancellationRuleOverview`: `current`, `upcoming[]` (oldest first), `history[]` (newest first, at most 50). Two statements. |
+| `POST /api/v1/billing/cancellation-rules` | `require("billing.manage")` | Body `CancellationRuleCreate` `{based_on_id, effective_from?, excused_outcome, on_time_outcome, late_outcome, no_show_outcome}` (each `credit` \| `charge`; unknown fields `422`). `201` with the `CancellationRuleItem`. |
+| `DELETE /api/v1/billing/cancellation-rules/{rule_id}` | `require("billing.manage")` | `204`; only an upcoming version. |
+
+- **Items** carry `id`, `effective_from`, the four outcomes,
+  `created_by_user_id` (`null` for the seeded version) and `created_at`.
+  The seeded version is effective from 2000-01-01: credit, credit, charge,
+  charge.
+- **`POST`** check order: `401` → `403 csrf_failed` → `403
+  privacy_notice_required` → `403 permission_denied` → `422` (body) → the
+  advisory lock → `409 version_conflict` (`based_on_id` isn't the latest
+  version) → `422 invalid_effective_from` (in the past, or not later than
+  every version) → insert. **`DELETE`**: `404 not_found` → `409
+  policy_version_in_effect` → delete. No reauthentication and no
+  `Idempotency-Key` (configuration). The audit events are the automatic
+  `create`/`delete` events with the staff actor.
+- **What the rules do.** A cancelled session that allows a makeup is always
+  credited. Otherwise its charge is credited or stands by the outcome of its
+  classification in the version in force at the classification instant: an
+  approved change request's `created_at`, else (a center cancellation,
+  classified `excused` with a makeup) the session's `cancelled_at`. Since
+  every excused cancellation allows a makeup, `excused_outcome` has no
+  effect today. A version never changes once written; cancellations already
+  decided keep their outcome.
+- **Reconciliation** (no route): the job `billing:reconcile_session_charges`
+  (every 15 minutes, and queued after the commit of `POST
+  /class-sessions/{id}/cancel`, `PATCH /class-sessions/{id}`, `POST
+  /class-series/{id}/edits` and `…/cancellations`, `POST
+  /change-requests/{id}/approve`, `PATCH /billing/settings`, and at the end
+  of the series materialization) posts, for `individual` and `group`
+  session charges: a `cancellation_credit` of the net (or the charge, units
+  or nothing per the rules), a `closure_credit` of the net when a charged
+  occurrence is skipped for a closure (restored with a positive one when it
+  is confirmed again), and a `duration_change` when `scheduled_minutes`
+  changes (catalog price for the new minutes with the charge's discount
+  snapshot, else pro rata; a reschedule with the same minutes keeps the
+  charge). The outcome of each cancellation is a
+  `session_cancellation_decisions` row; credits appear as ordinary
+  adjustments in the ledger. Zero charges, course sessions, attendance and
+  closeout are never adjusted.
 
 ### Enrollment charges and unbilled enrollments
 

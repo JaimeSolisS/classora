@@ -75,12 +75,19 @@
 - ``POST /api/v1/class-sessions/{class_session_id}/cancel`` (#55 C1):
   ``require("schedule.manage")`` (Owners and Administrators); cancels one
   session or occurrence (:mod:`~app.modules.scheduling.cancellation`).
+
+After a successful cancel, session ``PATCH``, series edit or series
+cancellation, the route queues one ``billing:reconcile_session_charges`` run
+(``app.core.jobs.defer_schedule_reconciliation``, a background task after
+the response, so after the commit; #99 D9). Nothing billing-related runs in
+the scheduling transaction.
 """
 
 import uuid
 from typing import Annotated, Final
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from procrastinate import App
 
 from app.core.authz import (
     PERMISSION_RESPONSES,
@@ -91,6 +98,7 @@ from app.core.authz import (
 )
 from app.core.config import Settings, get_settings
 from app.core.errors import problem_response_doc
+from app.core.jobs import defer_schedule_reconciliation, get_job_app
 from app.core.uow import UnitOfWorkDep
 from app.modules.scheduling import service
 from app.modules.scheduling.schemas import (
@@ -145,6 +153,8 @@ suggestions_router = APIRouter(
 )
 series_router = APIRouter(prefix="/api/v1/class-series", tags=["class-series"])
 offers_router = APIRouter(prefix="/api/v1/assignment-offers", tags=["class-sessions"])
+
+JobAppDep = Annotated[App, Depends(get_job_app)]
 
 TUTOR_OPTIONS_DEFAULT_LIMIT: Final = 20
 TUTOR_OPTIONS_MAX_LIMIT: Final = 50
@@ -318,6 +328,8 @@ async def update_class_session(
     class_session_id: uuid.UUID,
     body: ClassSessionUpdate,
     uow: UnitOfWorkDep,
+    background: BackgroundTasks,
+    job_app: JobAppDep,
 ) -> ClassSessionUpdated:
     """Move one session (a one-off session or one occurrence of a series) to
     new times and, optionally, another room (`classroom_id` absent keeps the
@@ -333,9 +345,12 @@ async def update_class_session(
     tutor's workload warnings at the new time."""
     if body.override is not None:
         ensure_permission(principal, SCHEDULE_OVERRIDE)
-    return await service.update_class_session(
+    updated = await service.update_class_session(
         uow.session, class_session_id, body, actor_id=principal.user_id
     )
+    # #99 D9: after the commit, a new duration is repriced by a queued job.
+    background.add_task(defer_schedule_reconciliation, job_app)
+    return updated
 
 
 @router.post(
@@ -589,6 +604,8 @@ async def edit_class_series(
     body: ClassSeriesEdit,
     uow: UnitOfWorkDep,
     settings: Annotated[Settings, Depends(get_settings)],
+    background: BackgroundTasks,
+    job_app: JobAppDep,
 ) -> ClassSeriesEdited:
     """Change a series' time, duration, room or weekly rule from a date on
     (`following`) or from its next occurrence that hasn't begun (`all`).
@@ -606,13 +623,17 @@ async def edit_class_series(
     empty for now."""
     if body.override is not None:
         ensure_permission(principal, SCHEDULE_OVERRIDE)
-    return await service.edit_class_series(
+    edited = await service.edit_class_series(
         uow.session,
         class_series_id,
         body,
         horizon_weeks=settings.scheduling_horizon_weeks,
         actor_id=principal.user_id,
     )
+    # #99 D9: after the commit, cancelled or re-timed occurrences' charges
+    # are reconciled by a queued job.
+    background.add_task(defer_schedule_reconciliation, job_app)
+    return edited
 
 
 @series_router.post(
@@ -639,6 +660,8 @@ async def cancel_class_series(
     class_series_id: uuid.UUID,
     body: ClassSeriesCancel,
     uow: UnitOfWorkDep,
+    background: BackgroundTasks,
+    job_app: JobAppDep,
 ) -> ClassSeriesCancelled:
     """Cancel a series' occurrences from a date on (`following`) or from its
     next occurrence that hasn't begun (`all`), with a reason. Occurrences
@@ -646,9 +669,12 @@ async def cancel_class_series(
     series ends the day before the date. A pending tutor offer of the series
     is withdrawn. The tutor (offered or confirmed) and the family
     (confirmed) are notified."""
-    return await service.cancel_class_series(
+    cancelled = await service.cancel_class_series(
         uow.session, class_series_id, body, actor_id=principal.user_id
     )
+    # #99 D9: after the commit, the occurrences' charges are reconciled.
+    background.add_task(defer_schedule_reconciliation, job_app)
+    return cancelled
 
 
 @series_router.post(
@@ -963,6 +989,8 @@ async def cancel_class_session(
     class_session_id: uuid.UUID,
     body: ClassSessionCancel,
     uow: UnitOfWorkDep,
+    background: BackgroundTasks,
+    job_app: JobAppDep,
 ) -> ClassSessionDetail:
     """Cancel one session or one occurrence of a series that hasn't begun,
     with a reason. Its pending offers and substitution are withdrawn and its
@@ -976,4 +1004,7 @@ async def cancel_class_session(
         reason=body.reason,
         by_user_id=principal.user_id,
     )
+    # #99 D9: after the commit, the charge is credited or stands by the
+    # cancellation rules, posted by a queued job.
+    background.add_task(defer_schedule_reconciliation, job_app)
     return await service.get_class_session(uow.session, class_session_id)

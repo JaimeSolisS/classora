@@ -27,6 +27,7 @@ from app.core.money import Money
 from app.modules.billing.models import (
     APPEND_ONLY_TABLES,
     DUE_DATE_APPEND_ONLY_TABLES,
+    RECONCILIATION_APPEND_ONLY_TABLES,
     Charge,
 )
 from tests.factories import billing as factories
@@ -98,14 +99,16 @@ def test_truncate_is_refused_by_the_tables_own_trigger(module_seeded_url, rows, 
     row_id = rows.row_of(table)
     before = _snapshot(url, table, row_id)
     # charge_discounts (#95) and the #97 due-date tables reference charges,
-    # and the #98 receipts reference payments, so they are truncated with
-    # them.
+    # the #98 receipts reference payments, and the #99 decisions and
+    # repricings reference charges and adjustments, so they are truncated
+    # with them.
     tables = [
         table,
         *(t for t in APPEND_ONLY_TABLES if t != table),
         "charge_discounts",
         *DUE_DATE_APPEND_ONLY_TABLES,
         "receipts",
+        *RECONCILIATION_APPEND_ONLY_TABLES,
     ]
 
     message = fails_with(url, f"TRUNCATE {', '.join(tables)}", INSUFFICIENT_PRIVILEGE)

@@ -1365,3 +1365,183 @@ class Receipt(Audited, Model):
     language: Mapped[str] = mapped_column(String(2))
     template_version: Mapped[int] = mapped_column(SmallInteger)
     snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+# --- Schedule reconciliation (#99) ---------------------------------------------------
+
+CANCELLATION_OUTCOMES: Final = ("credit", "charge")
+"""What a cancellation does to a session charge (ADR-0006 E3)."""
+CANCELLATION_CLASSIFICATIONS: Final = ("on_time", "late", "no_show", "excused")
+"""The #61 classifications, one rule column each."""
+CANCELLATION_INITIATORS: Final = ("center", "family", "tutor")
+CREDIT_RESULTS: Final = ("credited", "no_charge", "zero_charge", "already_zero")
+"""The results of a ``credit`` outcome (#99 D4)."""
+CHARGE_RESULTS: Final = ("charge_stands", "charged", "package_consumed")
+"""The results of a ``charge`` outcome (#99 D4)."""
+CANCELLATION_RESULTS: Final = CREDIT_RESULTS + CHARGE_RESULTS
+REPRICING_METHODS: Final = ("original", "catalog", "pro_rata")
+"""How a repricing target was found (#99 D6, Q2)."""
+OUTCOME_MAX: Final = 8
+RESULT_MAX: Final = 16
+RECONCILIATION_APPEND_ONLY_TABLES: Final = (
+    "session_cancellation_decisions",
+    "charge_duration_repricings",
+)
+"""The tables migration 0069 makes append-only (data-model §5.1)."""
+CANCELLATION_DECISION_KEY: Final = "uq_session_cancellation_decisions_key"
+REPRICING_KEY: Final = "uq_charge_duration_repricings_charge_version"
+RULE_OUTCOME_FIELDS: Final = (
+    "excused_outcome",
+    "on_time_outcome",
+    "late_outcome",
+    "no_show_outcome",
+)
+
+
+def _outcome_column() -> Mapped[str]:
+    return mapped_column(String(OUTCOME_MAX))
+
+
+def _named_fk(target: str, name: str, *, nullable: bool = False) -> Mapped[Any]:
+    """A ``RESTRICT`` foreign key with an explicit name (the convention's
+    would pass PostgreSQL's 63 characters)."""
+    return mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{target}.id", ondelete="RESTRICT", name=name),
+        nullable=nullable,
+    )
+
+
+class CancellationBillingRule(Audited, Model):
+    """One version of the cancellation billing rules (#99 A1; data-model
+    §3.22; ADR-0006 E3): the outcome per classification, in force from its
+    unique ``effective_from`` until the next one's. **Guarded** (migration
+    0069's ``cancellation_billing_rules_guard()``): ``UPDATE`` is always
+    refused, ``DELETE`` only for an upcoming version, ``TRUNCATE`` always
+    (SQLSTATE 42501). Version 1 (2000-01-01: credit, credit, charge, charge)
+    is seeded by the migration."""
+
+    __tablename__ = "cancellation_billing_rules"
+    __table_args__ = tuple(
+        CheckConstraint(_in(field, CANCELLATION_OUTCOMES), name=field)
+        for field in RULE_OUTCOME_FIELDS
+    )
+
+    effective_from: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), unique=True
+    )
+    excused_outcome: Mapped[str] = _outcome_column()
+    on_time_outcome: Mapped[str] = _outcome_column()
+    late_outcome: Mapped[str] = _outcome_column()
+    no_show_outcome: Mapped[str] = _outcome_column()
+    created_by_user_id: Mapped[uuid.UUID | None] = _actor(nullable=True)
+
+
+class SessionCancellationDecision(Audited, Model):
+    """The billing outcome of one cancelled session for one participant
+    (#99 A2, Q5): the classification and rule it was decided with, and what
+    was posted (``charge_id``/``charge_adjustment_id``). Append-only; at most
+    one per ``(class_session_id, student_id)``."""
+
+    __tablename__ = "session_cancellation_decisions"
+    __table_args__ = (
+        UniqueConstraint(
+            "class_session_id", "student_id", name=CANCELLATION_DECISION_KEY
+        ),
+        CheckConstraint(
+            _in("initiated_by", CANCELLATION_INITIATORS), name="initiated_by"
+        ),
+        CheckConstraint(
+            _in("classification", CANCELLATION_CLASSIFICATIONS), name="classification"
+        ),
+        CheckConstraint(_in("outcome", CANCELLATION_OUTCOMES), name="outcome"),
+        CheckConstraint(_in("result", CANCELLATION_RESULTS), name="result"),
+        CheckConstraint(
+            "(result = 'credited') = (charge_adjustment_id IS NOT NULL)",
+            name="credited_iff_adjustment",
+        ),
+        CheckConstraint(
+            f"outcome <> 'credit' OR {_in('result', CREDIT_RESULTS)}",
+            name="credit_results",
+        ),
+        CheckConstraint(
+            f"outcome <> 'charge' OR {_in('result', CHARGE_RESULTS)}",
+            name="charge_results",
+        ),
+    )
+
+    class_session_id: Mapped[uuid.UUID] = _named_fk(
+        "class_sessions", "fk_session_cancellation_decisions_class_session_id"
+    )
+    student_id: Mapped[uuid.UUID] = _uuid_fk("students")
+    initiated_by: Mapped[str] = mapped_column(String(OUTCOME_MAX))
+    change_request_id: Mapped[uuid.UUID | None] = _named_fk(
+        "session_change_requests",
+        "fk_session_cancellation_decisions_change_request_id",
+        nullable=True,
+    )
+    classification: Mapped[str] = mapped_column(String(OUTCOME_MAX))
+    makeup_allowed: Mapped[bool] = mapped_column(Boolean)
+    classified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    rule_id: Mapped[uuid.UUID] = _named_fk(
+        "cancellation_billing_rules", "fk_session_cancellation_decisions_rule_id"
+    )
+    outcome: Mapped[str] = _outcome_column()
+    result: Mapped[str] = mapped_column(String(RESULT_MAX))
+    charge_id: Mapped[uuid.UUID | None] = _uuid_fk("charges", nullable=True)
+    charge_adjustment_id: Mapped[uuid.UUID | None] = _named_fk(
+        "charge_adjustments",
+        "fk_session_cancellation_decisions_charge_adjustment_id",
+        nullable=True,
+    )
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ChargeDurationRepricing(Audited, Model):
+    """One repricing of a session charge to its session's new duration (#99
+    A3, Q2): the minutes before and after, the target amount, the delta
+    (``0.00`` allowed: then no adjustment) and how the target was found.
+    Append-only; one per ``(charge_id, session_version)``. The latest row
+    (``created_at``, ``id``) holds the charge's billed minutes."""
+
+    __tablename__ = "charge_duration_repricings"
+    __table_args__ = (
+        UniqueConstraint("charge_id", "session_version", name=REPRICING_KEY),
+        CheckConstraint(_in("method", REPRICING_METHODS), name="method"),
+        CheckConstraint(
+            f"scheduled_minutes BETWEEN {SCHEDULED_MINUTES_MIN}"
+            f" AND {SCHEDULED_MINUTES_MAX}"
+            f" AND previous_minutes BETWEEN {SCHEDULED_MINUTES_MIN}"
+            f" AND {SCHEDULED_MINUTES_MAX}",
+            name="minutes_range",
+        ),
+        CheckConstraint(
+            "scheduled_minutes <> previous_minutes", name="minutes_changed"
+        ),
+        CheckConstraint("target_amount >= 0", name="target_non_negative"),
+        CheckConstraint(
+            "(delta_amount <> 0) = (charge_adjustment_id IS NOT NULL)",
+            name="delta_iff_adjustment",
+        ),
+        Index(
+            "ix_charge_duration_repricings_charge_latest",
+            "charge_id",
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
+    )
+
+    charge_id: Mapped[uuid.UUID] = _uuid_fk("charges")
+    class_session_id: Mapped[uuid.UUID] = _uuid_fk("class_sessions")
+    session_version: Mapped[int] = mapped_column(Integer)
+    previous_minutes: Mapped[int] = mapped_column(SmallInteger)
+    scheduled_minutes: Mapped[int] = mapped_column(SmallInteger)
+    target_amount: Mapped[Money] = mapped_column(MoneyType())
+    delta_amount: Mapped[Money] = mapped_column(MoneyType())
+    method: Mapped[str] = mapped_column(String(OUTCOME_MAX))
+    clamped: Mapped[bool] = mapped_column(Boolean)
+    charge_adjustment_id: Mapped[uuid.UUID | None] = _named_fk(
+        "charge_adjustments",
+        "fk_charge_duration_repricings_charge_adjustment_id",
+        nullable=True,
+    )

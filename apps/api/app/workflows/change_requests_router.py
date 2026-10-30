@@ -20,7 +20,8 @@ cancellation requests"), so they are outside the record policy of
 import uuid
 from typing import Annotated, Final
 
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks, Depends
+from procrastinate import App
 
 from app.core.authz import (
     PERMISSION_RESPONSES,
@@ -29,6 +30,7 @@ from app.core.authz import (
     require,
 )
 from app.core.errors import FieldError, problem_response_doc
+from app.core.jobs import defer_schedule_reconciliation, get_job_app
 from app.core.uow import UnitOfWorkDep
 from app.modules.scheduling import service as scheduling
 from app.modules.scheduling.change_request_schemas import (
@@ -104,6 +106,8 @@ async def approve_change_request(
     change_request_id: uuid.UUID,
     body: ChangeRequestApprove,
     uow: UnitOfWorkDep,
+    background: BackgroundTasks,
+    job_app: Annotated[App, Depends(get_job_app)],
 ) -> ChangeRequestApproved:
     """Approve a pending request: a cancellation cancels the session, a
     reschedule moves it to the proposed time (optionally to another room)
@@ -120,9 +124,13 @@ async def approve_change_request(
         raise SessionValidationError([error])
     if body.override is not None:
         ensure_permission(principal, SCHEDULE_OVERRIDE)
-    return await workflow.approve_change_request(
+    approved = await workflow.approve_change_request(
         uow.session, principal, change_request_id, body
     )
+    # #99 D9: after the commit (a background task runs after the response),
+    # the session's charge is reconciled by a queued job.
+    background.add_task(defer_schedule_reconciliation, job_app)
+    return approved
 
 
 @router.post(

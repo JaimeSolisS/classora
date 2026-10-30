@@ -526,3 +526,33 @@ class DueDateUnchangedError(_Conflict):
 
     def __init__(self, due_date: date) -> None:
         AppError.__init__(self, details={"due_date": due_date.isoformat()})
+
+
+# --- Cancellation billing rules (#99 B3) ---------------------------------------------
+
+
+class CancellationRuleEffectiveFromError(AppError):
+    """A new cancellation billing rule version would take effect in the
+    past, or not after every existing version (#99 B3; the #61 code)."""
+
+    status = 422
+    code = "invalid_effective_from"
+    detail = (
+        "A new cancellation billing rule must take effect now or later, and"
+        " after every upcoming change."
+    )
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class CancellationRuleInEffectError(AppError):
+    """Only an upcoming cancellation billing rule version can be deleted
+    (#99 B3; the #61 code)."""
+
+    status = 409
+    code = "policy_version_in_effect"
+    detail = "This rule is already in effect, so it can't be deleted."
+
+    def __init__(self) -> None:
+        super().__init__()

@@ -7,17 +7,22 @@ transition and in the same transaction (registered by ``app.wiring`` with
 imports this package).
 
 Today it is a **no-op**: a center cancellation stores no policy
-classification (#55 E3). The steps to add here:
+classification (#55 E3).
 
-- **M6-14** (billing adjustment): evaluate the scheduling policy
-  (``administration.service.classify_change``) for the cancellation and
-  adjust the family's charges;
-- **M7-04** (tutor pay): apply the cancellation pay rule to the tutor of
-  the session.
+- **Billing (M6-14, #99) is not done here.** The job
+  ``billing:reconcile_session_charges``
+  (:mod:`app.workflows.schedule_reconciliation`) reads the committed
+  cancellation (``scheduling.service.cancellation_classification``) and
+  credits the charge or lets it stand by the cancellation billing rules,
+  outside the scheduling transaction (#99 Q1: a billing failure never rolls
+  a cancellation back). The cancel and change-request approval routes queue
+  it after their commit.
+- **M7-04** (tutor pay) adds its step here: apply the cancellation pay rule
+  to the tutor of the session.
 
 ``initiated_by`` is ``"center"`` for an administrator's cancel (#55) and
 ``"family"`` / ``"tutor"`` for an approved request (#62, M4-17), which also
-passes its ``change_request_id`` (``None`` otherwise). M6-14 and M7-04 read
+passes its ``change_request_id`` (``None`` otherwise). M7-04 reads
 the request's effective outcome (classification, makeup) with
 ``scheduling.service.get_change_request_outcome(session, change_request_id)``
 instead of classifying the cancellation again.
@@ -40,6 +45,7 @@ async def on_session_cancelled(
     by_user_id: uuid.UUID | None,
     change_request_id: uuid.UUID | None = None,
 ) -> None:
-    """Run the billing and pay steps of one cancelled session (none yet)."""
+    """Run the pay steps of one cancelled session (none yet; billing runs in
+    the #99 job)."""
     del session, class_session_id, initiated_by, cancelled_at, by_user_id
     del change_request_id

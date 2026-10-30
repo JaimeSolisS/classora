@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0068"
+HEAD = "0069"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -179,6 +179,12 @@ DUE_DATE_TABLES = ["charge_due_date_changes", "charge_reminders"]
 """The tables revision 0067 adds (#97 A1, A2)."""
 RECEIPT_TABLES = ["number_series", "receipts"]
 """The tables revision 0068 adds (#98 A1, A2)."""
+RECONCILIATION_TABLES = [
+    "cancellation_billing_rules",
+    "session_cancellation_decisions",
+    "charge_duration_repricings",
+]
+"""The tables revision 0069 adds (#99 A1-A3)."""
 APPEND_ONLY_LEDGER_TABLES = [
     "charges",
     "charge_adjustments",
@@ -422,6 +428,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *PACKAGE_TABLES,
             *DUE_DATE_TABLES,
             *RECEIPT_TABLES,
+            *RECONCILIATION_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4669,9 +4676,24 @@ def _of_0068(diff: Any) -> bool:
     return False
 
 
+def _of_0069(diff: Any) -> bool:
+    """A metadata difference that revision 0069 adds: the cancellation rules,
+    decisions and repricings tables and their index (#99 A1-A3)."""
+    if diff[0] == "add_table":
+        return diff[1].name in RECONCILIATION_TABLES
+    if diff[0] == "add_index":
+        return diff[1].table.name in RECONCILIATION_TABLES
+    return False
+
+
+def _of_0068_on(diff: Any) -> bool:
+    """A metadata difference that revision 0068 or a later one adds."""
+    return _of_0068(diff) or _of_0069(diff)
+
+
 def _of_0067_on(diff: Any) -> bool:
     """A metadata difference that revision 0067 or a later one adds."""
-    return _of_0067(diff) or _of_0068(diff)
+    return _of_0067(diff) or _of_0068_on(diff)
 
 
 def _of_0066_on(diff: Any) -> bool:
@@ -11797,7 +11819,7 @@ def test_0067_adds_due_date_tables_and_downgrade_restores_0066(fresh_database_ur
     command.upgrade(config, "0067")
 
     assert version_nums(dsn) == ["0067"]
-    assert [d for d in metadata_diff(dsn) if not _of_0068(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0068_on(d)] == []
     assert public_tables(dsn) - before == set(DUE_DATE_TABLES)
     assert _append_only_functions(dsn) - functions == {
         f"{table}_append_only" for table in DUE_DATE_APPEND_ONLY
@@ -12025,7 +12047,7 @@ def test_0068_adds_receipt_tables_and_downgrade_restores_0067(fresh_database_url
     command.upgrade(config, "0068")
 
     assert version_nums(dsn) == ["0068"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0069(d)] == []
     assert public_tables(dsn) - before == set(RECEIPT_TABLES)
     assert _append_only_functions(dsn) - functions == {"receipts_append_only"}
     assert (_columns(dsn, "payments"), _constraints(dsn, "payments")) == payments
@@ -12037,7 +12059,7 @@ def test_0068_adds_receipt_tables_and_downgrade_restores_0067(fresh_database_url
     assert version_nums(dsn) == ["0067"]
     assert public_tables(dsn) == before
     assert _append_only_functions(dsn) == functions
-    assert [d for d in metadata_diff(dsn) if not _of_0068(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0068_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -12204,3 +12226,356 @@ def test_0068_checks_and_keys(fresh_database_url):
     with pytest.raises(DBAPIError) as caught:
         run_sql(dsn, series, {"c": "R", "y": 2031, "v": 5})
     assert getattr(caught.value.orig, "sqlstate", "") == "23505"
+
+
+# --- 0069: schedule reconciliation (#99 A1-A5) --------------------------------------
+
+RECONCILIATION_APPEND_ONLY = [
+    "session_cancellation_decisions",
+    "charge_duration_repricings",
+]
+
+
+def test_0069_adds_reconciliation_tables_and_downgrade_restores_0068(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0068")
+    before = public_tables(dsn)
+    functions = _append_only_functions(dsn)
+    ledger = {
+        table: (_columns(dsn, table), _constraints(dsn, table))
+        for table in ("charges", "charge_adjustments")
+    }
+
+    command.upgrade(config, "0069")
+
+    assert version_nums(dsn) == ["0069"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(RECONCILIATION_TABLES)
+    assert _append_only_functions(dsn) - functions == {
+        f"{table}_append_only" for table in RECONCILIATION_APPEND_ONLY
+    }
+    # A4: the ledger tables are unchanged (the kinds exist since 0061).
+    assert {
+        table: (_columns(dsn, table), _constraints(dsn, table))
+        for table in ("charges", "charge_adjustments")
+    } == ledger
+    [seed] = run_sql(dsn, "SELECT * FROM cancellation_billing_rules")
+    assert seed.effective_from == datetime(2000, 1, 1, tzinfo=UTC)
+    assert (
+        seed.excused_outcome,
+        seed.on_time_outcome,
+        seed.late_outcome,
+        seed.no_show_outcome,
+        seed.created_by_user_id,
+    ) == ("credit", "credit", "charge", "charge", None)
+
+    command.downgrade(config, "0068")
+
+    assert version_nums(dsn) == ["0068"]
+    assert public_tables(dsn) == before
+    assert _append_only_functions(dsn) == functions
+    assert (
+        run_sql(
+            dsn,
+            "SELECT proname FROM pg_proc WHERE proname ="
+            " 'cancellation_billing_rules_guard'",
+        )
+        == []
+    )
+    assert [d for d in metadata_diff(dsn) if not _of_0069(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_0069_columns_constraints_indexes_and_triggers(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    uuid_ = ("uuid", "NO", None, None)
+    instant = ("timestamp with time zone", "NO", None, None)
+    word = ("character varying", "NO", 8, None)
+    standard = {k: v for k, v in STANDARD_COLUMNS.items() if k != "version"}
+    assert _columns(dsn, "cancellation_billing_rules") == {
+        **standard,
+        "effective_from": instant,
+        "excused_outcome": word,
+        "on_time_outcome": word,
+        "late_outcome": word,
+        "no_show_outcome": word,
+        "created_by_user_id": ("uuid", "YES", None, None),
+    }
+    assert _columns(dsn, "session_cancellation_decisions") == {
+        **standard,
+        "class_session_id": uuid_,
+        "student_id": uuid_,
+        "initiated_by": word,
+        "change_request_id": ("uuid", "YES", None, None),
+        "classification": word,
+        "makeup_allowed": ("boolean", "NO", None, None),
+        "classified_at": instant,
+        "rule_id": uuid_,
+        "outcome": word,
+        "result": ("character varying", "NO", 16, None),
+        "charge_id": ("uuid", "YES", None, None),
+        "charge_adjustment_id": ("uuid", "YES", None, None),
+        "decided_at": instant,
+    }
+    assert _columns(dsn, "charge_duration_repricings") == {
+        **standard,
+        "charge_id": uuid_,
+        "class_session_id": uuid_,
+        "session_version": ("integer", "NO", None, None),
+        "previous_minutes": ("smallint", "NO", None, None),
+        "scheduled_minutes": ("smallint", "NO", None, None),
+        "target_amount": ("numeric", "NO", None, None),
+        "delta_amount": ("numeric", "NO", None, None),
+        "method": word,
+        "clamped": ("boolean", "NO", None, None),
+        "charge_adjustment_id": ("uuid", "YES", None, None),
+    }
+    rules = _constraints(dsn, "cancellation_billing_rules")
+    assert rules["uq_cancellation_billing_rules_effective_from"] == (
+        "UNIQUE (effective_from)"
+    )
+    assert rules["fk_cancellation_billing_rules_created_by_user_id_users"].endswith(
+        "REFERENCES users(id) ON DELETE RESTRICT"
+    )
+    decisions = _constraints(dsn, "session_cancellation_decisions")
+    assert decisions["uq_session_cancellation_decisions_key"] == (
+        "UNIQUE (class_session_id, student_id)"
+    )
+    repricings = _constraints(dsn, "charge_duration_repricings")
+    assert repricings["uq_charge_duration_repricings_charge_version"] == (
+        "UNIQUE (charge_id, session_version)"
+    )
+    for constraints in (rules, decisions, repricings):
+        for name, definition in constraints.items():
+            if name.startswith("fk_"):
+                assert definition.endswith("ON DELETE RESTRICT"), name
+    assert _triggers(dsn, "cancellation_billing_rules") == {
+        "cancellation_billing_rules_no_change",
+        "cancellation_billing_rules_no_truncate",
+    }
+    for table in RECONCILIATION_APPEND_ONLY:
+        assert _triggers(dsn, table) == {
+            f"{table}_no_update_delete",
+            f"{table}_no_truncate",
+        }
+    index = _indexes(dsn, "charge_duration_repricings")[
+        "ix_charge_duration_repricings_charge_latest"
+    ]
+    assert "(charge_id, created_at DESC, id DESC)" in index
+
+
+def test_0069_the_rules_guard(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    [seed] = run_sql(dsn, "SELECT id FROM cancellation_billing_rules")
+    insert = (
+        "INSERT INTO cancellation_billing_rules (effective_from, excused_outcome,"
+        " on_time_outcome, late_outcome, no_show_outcome)"
+        " VALUES (:at, 'credit', 'credit', :late, 'charge') RETURNING id"
+    )
+    with pytest.raises(DBAPIError) as caught:
+        run_sql(dsn, insert, {"at": datetime(2031, 1, 1, tzinfo=UTC), "late": "refund"})
+    assert getattr(caught.value.orig, "sqlstate", "") == "23514"
+    [upcoming] = run_sql(
+        dsn, insert, {"at": datetime(2099, 1, 1, tzinfo=UTC), "late": "credit"}
+    )
+    for statement, row in (
+        (
+            "UPDATE cancellation_billing_rules SET late_outcome = 'credit'"
+            " WHERE id = :id",
+            seed.id,
+        ),
+        (
+            "UPDATE cancellation_billing_rules SET late_outcome = 'charge'"
+            " WHERE id = :id",
+            upcoming.id,
+        ),
+        ("DELETE FROM cancellation_billing_rules WHERE id = :id", seed.id),
+        ("TRUNCATE cancellation_billing_rules CASCADE", seed.id),
+    ):
+        with pytest.raises(DBAPIError) as caught:
+            run_sql(dsn, statement, {"id": row})
+        assert getattr(caught.value.orig, "sqlstate", "") == "42501", statement
+    run_sql(
+        dsn,
+        "DELETE FROM cancellation_billing_rules WHERE id = :id",
+        {"id": upcoming.id},
+    )
+    assert [
+        r.id for r in run_sql(dsn, "SELECT id FROM cancellation_billing_rules")
+    ] == [seed.id]
+
+
+def _0069_rows(dsn: str) -> Any:
+    """A session charge with one adjustment, its session and student, and the
+    seeded rule (raw SQL)."""
+    [level] = run_sql(
+        dsn,
+        "INSERT INTO education_levels (name, sort_order) VALUES ('Primaria', 1)"
+        " RETURNING id",
+    )
+    [subject] = run_sql(
+        dsn,
+        "INSERT INTO subjects (name, education_level_id) VALUES ('Mate', :l)"
+        " RETURNING id",
+        {"l": level.id},
+    )
+    [session] = run_sql(
+        dsn,
+        "INSERT INTO class_sessions (kind, state, subject_id, starts_at, ends_at,"
+        " scheduled_minutes) VALUES ('individual', 'unassigned', :s,"
+        " '2031-03-10 16:00+00', '2031-03-10 17:00+00', 60) RETURNING id",
+        {"s": subject.id},
+    )
+    [family] = run_sql(
+        dsn, "INSERT INTO families (name) VALUES ('Familia Ajustes') RETURNING id"
+    )
+    [student] = run_sql(
+        dsn,
+        "INSERT INTO students (given_names, family_names, birthdate)"
+        " VALUES ('Ana', 'Ajustes', '2015-01-01') RETURNING id",
+    )
+    [account] = run_sql(
+        dsn,
+        "INSERT INTO billing_accounts (family_id) VALUES (:f) RETURNING id",
+        {"f": family.id},
+    )
+    [charge] = run_sql(
+        dsn,
+        "INSERT INTO charges (billing_account_id, student_id, kind, class_session_id,"
+        " scheduled_minutes, service_date, list_amount, amount, due_date, posted_at)"
+        " VALUES (:a, :st, 'session', :cs, 60, '2031-03-10', 100, 100, '2031-03-10',"
+        " now()) RETURNING id",
+        {"a": account.id, "st": student.id, "cs": session.id},
+    )
+    [credit] = run_sql(
+        dsn,
+        "INSERT INTO charge_adjustments (charge_id, billing_account_id, student_id,"
+        " kind, amount, source_key, posted_at)"
+        " VALUES (:c, :a, :st, 'closure_credit', -100, :k, now()) RETURNING id",
+        {"c": charge.id, "a": account.id, "st": student.id, "k": f"cc:{charge.id}:1"},
+    )
+    [rule] = run_sql(dsn, "SELECT id FROM cancellation_billing_rules")
+    return {
+        "session": session.id,
+        "student": student.id,
+        "account": account.id,
+        "charge": charge.id,
+        "adjustment": credit.id,
+        "rule": rule.id,
+    }
+
+
+DECISION_INSERT = (
+    "INSERT INTO session_cancellation_decisions (class_session_id, student_id,"
+    " initiated_by, classification, makeup_allowed, classified_at, rule_id,"
+    " outcome, result, charge_id, charge_adjustment_id, decided_at)"
+    " VALUES (:session, :student, :initiated_by, :classification, true, now(),"
+    " :rule, :outcome, :result, :charge, :adjustment, now()) RETURNING id"
+)
+REPRICING_INSERT = (
+    "INSERT INTO charge_duration_repricings (charge_id, class_session_id,"
+    " session_version, previous_minutes, scheduled_minutes, target_amount,"
+    " delta_amount, method, clamped, charge_adjustment_id)"
+    " VALUES (:charge, :session, :version, :previous, :minutes, :target, :delta,"
+    " :method, false, :adjustment) RETURNING id"
+)
+
+
+def test_0069_checks_keys_and_append_only(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    rows = _0069_rows(dsn)
+    decision = {
+        **rows,
+        "initiated_by": "center",
+        "classification": "excused",
+        "outcome": "credit",
+        "result": "credited",
+    }
+    for override in (
+        {"initiated_by": "staff"},
+        {"classification": "early"},
+        {"outcome": "refund"},
+        {"result": "refunded"},
+        {"adjustment": None},  # credited without an adjustment
+        {"result": "no_charge"},  # an adjustment without credited
+        {"outcome": "charge"},  # credited is not a charge result
+        {"outcome": "credit", "result": "charge_stands", "adjustment": None},
+    ):
+        with pytest.raises(DBAPIError) as caught:
+            run_sql(dsn, DECISION_INSERT, {**decision, **override})
+        assert getattr(caught.value.orig, "sqlstate", "") == "23514", override
+    [made] = run_sql(dsn, DECISION_INSERT, decision)
+    with pytest.raises(DBAPIError) as caught:
+        run_sql(
+            dsn,
+            DECISION_INSERT,
+            {**decision, "outcome": "charge", "result": "charged", "adjustment": None},
+        )
+    assert getattr(caught.value.orig, "sqlstate", "") == "23505"
+
+    repricing = {
+        "charge": rows["charge"],
+        "session": rows["session"],
+        "version": 2,
+        "previous": 60,
+        "minutes": 45,
+        "target": "75.00",
+        "delta": "-25.00",
+        "method": "catalog",
+        "adjustment": rows["adjustment"],
+    }
+    for override in (
+        {"minutes": 60},  # unchanged
+        {"minutes": 10},
+        {"previous": 500},
+        {"target": "-1.00"},
+        {"method": "guess"},
+        {"delta": "0.00"},  # a zero delta never has an adjustment
+        {"adjustment": None},  # a non-zero delta always has one
+    ):
+        with pytest.raises(DBAPIError) as caught:
+            run_sql(dsn, REPRICING_INSERT, {**repricing, **override})
+        assert getattr(caught.value.orig, "sqlstate", "") == "23514", override
+    [zero] = run_sql(
+        dsn, REPRICING_INSERT, {**repricing, "delta": "0.00", "adjustment": None}
+    )
+    with pytest.raises(DBAPIError) as caught:
+        run_sql(dsn, REPRICING_INSERT, repricing)
+    assert getattr(caught.value.orig, "sqlstate", "") == "23505"
+
+    # A4: a positive closure_credit (a restoration) is allowed.
+    run_sql(
+        dsn,
+        "INSERT INTO charge_adjustments (charge_id, billing_account_id, student_id,"
+        " kind, amount, source_key, posted_at)"
+        " VALUES (:c, :a, :st, 'closure_credit', 100, :k, now())",
+        {
+            "c": rows["charge"],
+            "a": rows["account"],
+            "st": rows["student"],
+            "k": f"cc:{rows['charge']}:2",
+        },
+    )
+
+    for table, row in (
+        ("session_cancellation_decisions", made.id),
+        ("charge_duration_repricings", zero.id),
+    ):
+        for statement in (
+            f"UPDATE {table} SET created_at = now() WHERE id = :id",  # noqa: S608
+            f"DELETE FROM {table} WHERE id = :id",  # noqa: S608
+            f"TRUNCATE {table}",
+        ):
+            with pytest.raises(DBAPIError) as caught:
+                run_sql(dsn, statement, {"id": row})
+            assert getattr(caught.value.orig, "sqlstate", "") == "42501", statement

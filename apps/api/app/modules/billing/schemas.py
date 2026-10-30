@@ -31,6 +31,7 @@ from typing import Annotated, Any, Final, Literal
 
 from pydantic import (
     AfterValidator,
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -1619,3 +1620,86 @@ class ReminderCharge:
     stage: str
     due_date: date
     open: Money
+
+
+# --- Cancellation billing rules (#99 B3) ---------------------------------------------
+
+CancellationOutcome = Literal["credit", "charge"]
+"""What a cancellation does to a session charge (ADR-0006 E3)."""
+
+
+class CancellationRuleOutcomes(BaseModel):
+    """The outcome of each cancellation classification."""
+
+    excused_outcome: CancellationOutcome = Field(
+        description=(
+            "An excused cancellation (a center cancellation, an exception, a"
+            " tutor request). Always credited while a makeup is allowed, which"
+            " every excused cancellation gets today."
+        )
+    )
+    on_time_outcome: CancellationOutcome = Field(
+        description="A family cancellation made inside the notice window."
+    )
+    late_outcome: CancellationOutcome = Field(
+        description="A family cancellation made after the notice deadline."
+    )
+    no_show_outcome: CancellationOutcome = Field(
+        description="A cancellation classified as a no-show."
+    )
+
+
+class CancellationRuleItem(CancellationRuleOutcomes):
+    """One rule version, in force from ``effective_from`` until the next
+    version's ``effective_from``."""
+
+    id: uuid.UUID
+    effective_from: datetime
+    created_by_user_id: uuid.UUID | None
+    created_at: datetime
+
+
+class CancellationRuleOverview(BaseModel):
+    """The version in force now, the upcoming ones and the past ones."""
+
+    current: CancellationRuleItem
+    upcoming: list[CancellationRuleItem] = Field(
+        description="Versions that take effect later, oldest first."
+    )
+    history: list[CancellationRuleItem] = Field(
+        description="Versions no longer in force, newest first (at most 50)."
+    )
+
+
+class CancellationRuleCreate(CancellationRuleOutcomes):
+    """A new version: every outcome, the latest version it replaces and when
+    it takes effect."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    based_on_id: uuid.UUID = Field(
+        description=(
+            "The id of the latest version (the current one or the last"
+            " upcoming one); otherwise 409 version_conflict."
+        )
+    )
+    effective_from: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "When it takes effect: now when omitted; otherwise not in the past"
+            " and later than every existing version (422"
+            " invalid_effective_from)."
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class CancellationRuleValues:
+    """A rule version as the reconciliation reads it (#99 B1)."""
+
+    id: uuid.UUID
+    effective_from: datetime
+    excused_outcome: CancellationOutcome
+    on_time_outcome: CancellationOutcome
+    late_outcome: CancellationOutcome
+    no_show_outcome: CancellationOutcome

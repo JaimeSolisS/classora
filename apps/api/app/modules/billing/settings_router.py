@@ -15,7 +15,9 @@ queues one ``billing:post_session_charges`` run
 (``app.core.jobs.defer_session_charges``) and one
 ``billing:post_enrollment_charges`` run (``defer_enrollment_charges``,
 #92 D1) and one ``billing:post_tuition_charges`` run
-(``defer_tuition_charges``, #93 E1), so staff see the charges without
+(``defer_tuition_charges``, #93 E1) and one
+``billing:reconcile_session_charges`` run (``defer_schedule_reconciliation``,
+#99 D9: a cancellation charged late waits for billing), so staff see the charges without
 waiting for the next tick; a failed ``PATCH`` queues nothing.
 """
 
@@ -28,6 +30,7 @@ from app.core.authz import PERMISSION_RESPONSES, Principal, require
 from app.core.errors import problem_response_doc
 from app.core.jobs import (
     defer_enrollment_charges,
+    defer_schedule_reconciliation,
     defer_session_charges,
     defer_tuition_charges,
     get_job_app,
@@ -88,4 +91,5 @@ async def change_billing_settings(
         background.add_task(defer_session_charges, job_app)
         background.add_task(defer_enrollment_charges, job_app)
         background.add_task(defer_tuition_charges, job_app)
+        background.add_task(defer_schedule_reconciliation, job_app)
     return updated

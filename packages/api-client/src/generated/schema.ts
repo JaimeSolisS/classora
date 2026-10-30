@@ -4381,6 +4381,57 @@ export interface paths {
         patch: operations["change_billing_settings_api_v1_billing_settings_patch"];
         trace?: never;
     };
+    "/api/v1/billing/cancellation-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cancellation Rules
+         * @description The cancellation billing rules in force now, the upcoming versions
+         *     (oldest first) and the past ones (newest first, at most 50). A cancelled
+         *     session that allows a makeup is always credited; otherwise its charge is
+         *     credited or stands by the outcome of its classification in the version
+         *     in force when the cancellation was requested (or made by the center).
+         */
+        get: operations["get_cancellation_rules_api_v1_billing_cancellation_rules_get"];
+        put?: never;
+        /**
+         * Post Cancellation Rule
+         * @description Publish a new rule version, in force from `effective_from` (now when
+         *     omitted). Versions are never edited: to change an upcoming one, delete
+         *     it and create another. Cancellations already decided keep their
+         *     outcome.
+         */
+        post: operations["post_cancellation_rule_api_v1_billing_cancellation_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/cancellation-rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Cancellation Rule
+         * @description Delete an upcoming rule version.
+         */
+        delete: operations["remove_cancellation_rule_api_v1_billing_cancellation_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/unbilled-items": {
         parameters: {
             query?: never;
@@ -6575,6 +6626,113 @@ export interface components {
             name: string;
             /** Education Level Name */
             education_level_name: string;
+        };
+        /**
+         * CancellationRuleCreate
+         * @description A new version: every outcome, the latest version it replaces and when
+         *     it takes effect.
+         */
+        CancellationRuleCreate: {
+            /**
+             * Excused Outcome
+             * @description An excused cancellation (a center cancellation, an exception, a tutor request). Always credited while a makeup is allowed, which every excused cancellation gets today.
+             * @enum {string}
+             */
+            excused_outcome: "credit" | "charge";
+            /**
+             * On Time Outcome
+             * @description A family cancellation made inside the notice window.
+             * @enum {string}
+             */
+            on_time_outcome: "credit" | "charge";
+            /**
+             * Late Outcome
+             * @description A family cancellation made after the notice deadline.
+             * @enum {string}
+             */
+            late_outcome: "credit" | "charge";
+            /**
+             * No Show Outcome
+             * @description A cancellation classified as a no-show.
+             * @enum {string}
+             */
+            no_show_outcome: "credit" | "charge";
+            /**
+             * Based On Id
+             * Format: uuid
+             * @description The id of the latest version (the current one or the last upcoming one); otherwise 409 version_conflict.
+             */
+            based_on_id: string;
+            /**
+             * Effective From
+             * @description When it takes effect: now when omitted; otherwise not in the past and later than every existing version (422 invalid_effective_from).
+             */
+            effective_from?: string | null;
+        };
+        /**
+         * CancellationRuleItem
+         * @description One rule version, in force from ``effective_from`` until the next
+         *     version's ``effective_from``.
+         */
+        CancellationRuleItem: {
+            /**
+             * Excused Outcome
+             * @description An excused cancellation (a center cancellation, an exception, a tutor request). Always credited while a makeup is allowed, which every excused cancellation gets today.
+             * @enum {string}
+             */
+            excused_outcome: "credit" | "charge";
+            /**
+             * On Time Outcome
+             * @description A family cancellation made inside the notice window.
+             * @enum {string}
+             */
+            on_time_outcome: "credit" | "charge";
+            /**
+             * Late Outcome
+             * @description A family cancellation made after the notice deadline.
+             * @enum {string}
+             */
+            late_outcome: "credit" | "charge";
+            /**
+             * No Show Outcome
+             * @description A cancellation classified as a no-show.
+             * @enum {string}
+             */
+            no_show_outcome: "credit" | "charge";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Effective From
+             * Format: date-time
+             */
+            effective_from: string;
+            /** Created By User Id */
+            created_by_user_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * CancellationRuleOverview
+         * @description The version in force now, the upcoming ones and the past ones.
+         */
+        CancellationRuleOverview: {
+            current: components["schemas"]["CancellationRuleItem"];
+            /**
+             * Upcoming
+             * @description Versions that take effect later, oldest first.
+             */
+            upcoming: components["schemas"]["CancellationRuleItem"][];
+            /**
+             * History
+             * @description Versions no longer in force, newest first (at most 50).
+             */
+            history: components["schemas"]["CancellationRuleItem"][];
         };
         /** @enum {string} */
         CatalogPricingModel: "per_session" | "full_course" | "per_period";
@@ -33019,6 +33177,169 @@ export interface operations {
                 };
             };
             /** @description The settings changed since they were loaded (version_conflict); reload and retry. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_cancellation_rules_api_v1_billing_cancellation_rules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancellationRuleOverview"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    post_cancellation_rule_api_v1_billing_cancellation_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancellationRuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancellationRuleItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description based_on_id is not the latest version: the rules changed since they were loaded (version_conflict); reload and retry. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    remove_cancellation_rule_api_v1_billing_cancellation_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such rule version (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The version is in force or in the past; only an upcoming version can be deleted (policy_version_in_effect). */
             409: {
                 headers: {
                     [name: string]: unknown;
