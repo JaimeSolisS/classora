@@ -189,6 +189,18 @@ type Common = {
         startsOn: string;
         modes: Record<'on' | 'off', string>;
       };
+      // #385 D3: the cancellation charges card.
+      cancellation: {
+        title: string;
+        classes: Record<'onTime' | 'late' | 'noShow' | 'excused', string>;
+        outcomes: Record<'credit' | 'charge', string>;
+        upcoming: { empty: string; takesEffect: string; deleteFor: string };
+        schedule: string;
+        dialog: { title: string; effectiveDate: string };
+        deleteDialog: { title: string; confirm: string };
+        saved: string;
+        deleted: string;
+      };
     };
     unbilled: {
       title: string;

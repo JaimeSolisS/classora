@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
@@ -12,7 +12,8 @@ import type { BillingSettings } from './api';
 // "Billing is off" or "Billing charges sessions from {date}", the rules
 // (sessions before the date are never charged; turning billing off never
 // removes posted charges) and, for billing.manage holders, "Change". The
-// page's save notice is announced in the status line under the card.
+// cards below it (the cancellation charges, #385) come as `children`. The
+// page's save notices are announced in the status line under the cards.
 
 export type BillingSettingsState =
   | { status: 'loading' }
@@ -26,6 +27,8 @@ export interface BillingSettingsViewProps {
   onChange: () => void;
   /** The last save's notice (a polite status message), or empty. */
   announcement?: string;
+  /** The cards under the billing start date card. */
+  children?: ReactNode;
 }
 
 export function BillingSettingsView({
@@ -33,6 +36,7 @@ export function BillingSettingsView({
   canManage,
   onChange,
   announcement = '',
+  children,
 }: BillingSettingsViewProps) {
   const { t } = useTranslation();
   const { formatLocalDate } = useFormatters();
@@ -87,6 +91,7 @@ export function BillingSettingsView({
         </p>
       </div>
       {body}
+      {children}
       <p role="status" className="text-sm">
         {announcement}
       </p>

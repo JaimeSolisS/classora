@@ -5040,7 +5040,66 @@
       "save": "Save",
       "saving": "Saving…",
       "reload": "Reload",
-      "saved": "Billing settings saved."
+      "saved": "Billing settings saved.",
+      "cancellation": {
+        "title": "Cancellation charges",
+        "facts": {
+          "makeup": "A cancellation that allows a makeup (see the scheduling policies) is always credited, whatever the rule below.",
+          "closure": "A center closure always credits the class.",
+          "reschedule": "A rescheduled class keeps its charge."
+        },
+        "inForce": "The rule in force",
+        "columns": {
+          "classification": "Cancellation",
+          "outcome": "Outcome",
+          "since": "Since"
+        },
+        "classes": {
+          "onTime": "On time",
+          "late": "Late",
+          "noShow": "No-show",
+          "excused": "Excused (center or tutor)"
+        },
+        "outcomes": {
+          "credit": "Credited",
+          "charge": "Charged"
+        },
+        "excusedAlways": "Always credited (makeup allowed)",
+        "value": "{{label}}: {{value}}",
+        "upcoming": {
+          "title": "Upcoming changes",
+          "empty": "No change is scheduled.",
+          "takesEffect": "Takes effect {{date}}",
+          "delete": "Delete",
+          "deleteFor": "Delete the change from {{date}}"
+        },
+        "history": {
+          "show": "Show earlier versions ({{count}})",
+          "hide": "Hide earlier versions",
+          "empty": "No earlier version.",
+          "range": "From {{from}} to {{until}}"
+        },
+        "schedule": "Schedule a change",
+        "dialog": {
+          "title": "Schedule a change to cancellation charges",
+          "hint": "A change applies to cancellations requested from its date on; earlier ones keep the rule they were made under.",
+          "excused": "Excused cancellations (center or tutor) are always credited while a makeup is allowed.",
+          "effectiveDate": "Takes effect on",
+          "dateHelp": "Leave it empty to apply the change now. A date starts at 00:00 in {{zone}}."
+        },
+        "deleteDialog": {
+          "title": "Delete this scheduled change?",
+          "body": "The change from {{date}} will not take effect.",
+          "confirm": "Delete"
+        },
+        "validation": {
+          "dateInvalid": "Choose a valid date.",
+          "dateAfterToday": "Choose a date after today."
+        },
+        "saved": "Cancellation charges change scheduled.",
+        "deleted": "Scheduled change deleted.",
+        "alreadyInForce": "This version is already in force."
+      }
     },
     "targets": {
       "kinds": {
