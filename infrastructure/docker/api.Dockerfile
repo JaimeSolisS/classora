@@ -8,8 +8,12 @@ FROM python:3.14-slim
 # libpq for psycopg (used only by Procrastinate, ADR-0003): Debian's runtime
 # library, OS-patched and visible to image scanners. The psycopg[binary] wheel
 # is a dev-only dependency, so the --no-dev install below does not contain it.
+# Pango, HarfBuzz subsetting and DejaVu fonts for WeasyPrint's server-rendered
+# PDFs (_docs/adr/0015-server-side-i18n.md); the worker shares this image, so
+# it renders PDFs too. `make check-pdf-image` checks them. Keep the list equal
+# to the CI apt step in .github/workflows/ci.yml.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpq5 \
+    && apt-get install -y --no-install-recommends libpq5 libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:0.9.13 /uv /usr/local/bin/uv

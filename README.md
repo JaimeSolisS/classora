@@ -12,8 +12,9 @@ FastAPI modular monolith with a React single-page client, backed by PostgreSQL.
 there is no deployed environment yet. The stack is a FastAPI API with
 liveness and readiness health checks, a PostgreSQL database reached through
 PgBouncer (schema managed with Alembic migrations), a background worker for
-queued and periodic jobs (Procrastinate) and a React + TypeScript + Vite web
-app. The web app has a routed shell (layout with navigation, a 404 page and
+queued and periodic jobs (Procrastinate), server-rendered PDF documents
+(Jinja2 and WeasyPrint) with es/en server message catalogs, and a React +
+TypeScript + Vite web app. The web app has a routed shell (layout with navigation, a 404 page and
 central error handling), a TanStack Query data layer, a typed API client
 generated from the API's OpenAPI document, a design system foundation
 (central design tokens, Tailwind CSS, shadcn/ui components catalogued in
@@ -411,6 +412,10 @@ planned for a later version.
 - [Node.js](https://nodejs.org/) 24 (see `.nvmrc`; with nvm, run `nvm use`). pnpm
   runs through Corepack, which ships with Node 24, so no global pnpm install is
   needed. Other Node majors are rejected with an engine error.
+- Pango, for server-rendered PDFs (receipts). macOS: `brew install pango`; on
+  Apple Silicon also export `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib`.
+  Debian/Ubuntu: `libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0
+  fonts-dejavu-core`. The Docker images already include it.
 
 ## Getting started
 
@@ -707,7 +712,8 @@ If your `.env` was copied before a variable was added, refresh it from
 Docker must be running: API integration tests start a throwaway PostgreSQL
 container (and a PgBouncer container built from this repository) with
 [Testcontainers](https://testcontainers.com/). The Compose
-stack and `.env` are not needed.
+stack and `.env` are not needed. The API unit tests render PDFs, so they need
+Pango (see [Prerequisites](#prerequisites)).
 
 ```bash
 make test              # all tests: API (unit + integration) then web (Vitest)
@@ -816,7 +822,7 @@ command:
 | `web` | `make lint-web`, `make test-web`, `make build-web` |
 | `web-storybook` | `make test-storybook` |
 | `api-client` | `make check-api-client` |
-| `e2e` | `make lint-e2e`, `make e2e` (on failure, uploads traces, the HTML report and the Compose logs as the `e2e-report` artifact) |
+| `e2e` | `make lint-e2e`, `make e2e`, `make check-pdf-image` (builds the API image and renders a sample PDF in es and en inside it) (on failure, uploads traces, the HTML report and the Compose logs as the `e2e-report` artifact) |
 | `security-deps` | `make audit-deps` (pip-audit and `pnpm audit` over both lockfiles) |
 | `security-secrets` | `make scan-secrets` (gitleaks, full history); on pull requests also `make scan-secrets-diff BASE=<sha> HEAD=<sha>` |
 | `security-sast` | `make sast` (Semgrep); Ruff's security (`S`) rules run in `make lint-api` |
