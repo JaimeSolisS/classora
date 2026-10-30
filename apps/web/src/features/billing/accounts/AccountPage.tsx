@@ -29,11 +29,14 @@ import {
   type LedgerState,
   type PageState,
 } from './AccountPageView';
+import { AdjustChargeDialog } from './AdjustChargeDialog';
 import { AllocateCreditDialog } from './AllocateCreditDialog';
 import {
   accountKey,
   allocateCredit,
+  chargeKey,
   chargesKey,
+  fetchCharge,
   fetchCharges,
   fetchChargesByIds,
   fetchLedger,
@@ -47,20 +50,33 @@ import {
   PAYMENT_METHODS_KEY,
   paymentKey,
   paymentsKey,
+  postAdjustment,
+  postManualCharge,
   recordPayment,
+  refundPayment,
+  reversePayment,
   summaryKey,
+  type ChargeDetail,
   type ChargeItem,
   type ChargePage,
+  type PaymentDetail,
   type PaymentPage,
   type ReceiptReference,
 } from './api';
 import { apiCents, centsText, type Cents } from './cents';
+import {
+  ChargeDetailDialog,
+  type ChargeDetailState,
+} from './ChargeDetailDialog';
 import { useAccountLabels } from './labels';
+import { ManualChargeDialog } from './ManualChargeDialog';
 import {
   PaymentDetailDialog,
   type PaymentDetailState,
 } from './PaymentDetailDialog';
 import { RecordPaymentDialog } from './RecordPaymentDialog';
+import { RefundDialog } from './RefundDialog';
+import { ReversePaymentDialog } from './ReversePaymentDialog';
 import { accountView, accountViewParams, oldestFirst } from './rules';
 
 // /billing/accounts/:familyId (#379 C, D, E), for billing.view holders: the
@@ -77,6 +93,13 @@ import { accountView, accountViewParams, oldestFirst } from './rules';
 // date (its history loads when the dialog opens); after the server answers,
 // the dialog closes, the polite status says what changed and the family's
 // queries are invalidated. Never optimistic (spec §6, ADR-0006 E11).
+// #386: "Add charge" (billing.manage), a charge's detail with "Adjust"
+// (billing.manage; the password dialog comes from apiCall), and on the
+// payment detail "Reverse payment" and "Refund" (finance.refund.approve).
+// Each posts with the dialog's Idempotency-Key; after the 201 the action
+// dialog closes, the page's status (and the open detail's own status) say
+// what changed, and every query of the family is invalidated (summary,
+// charges, the charge and payment details, the ledger, the payments).
 // #98 H1: each payment row shows its receipt number and a download link,
 // and after recording, the new receipt's number and link follow the polite
 // status.
@@ -124,6 +147,7 @@ export function AccountPage() {
   const today = todayInZone(timeZone);
   const canRecord = useCan('payment.record');
   const canManage = useCan('billing.manage');
+  const canApproveRefunds = useCan('finance.refund.approve');
   const [searchParams, setSearchParams] = useSearchParams();
   const view = useMemo(() => accountView(searchParams), [searchParams]);
   const [recording, setRecording] = useState(false);
@@ -131,6 +155,16 @@ export function AccountPage() {
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [editingOffset, setEditingOffset] = useState(false);
   const [dueCharge, setDueCharge] = useState<ChargeItem | null>(null);
+  const [addingCharge, setAddingCharge] = useState(false);
+  const [chargeId, setChargeId] = useState<string | null>(null);
+  // The ids only: the open action dialog reads the charge or payment from
+  // its query, so a refetch (after a 409) shows the current amounts.
+  const [adjustingId, setAdjustingId] = useState<string | null>(null);
+  const [reversingId, setReversingId] = useState<string | null>(null);
+  const [refundingId, setRefundingId] = useState<string | null>(null);
+  // What an action changed, read inside the open detail (#386).
+  const [chargeNotice, setChargeNotice] = useState('');
+  const [paymentNotice, setPaymentNotice] = useState('');
   const [announcement, setAnnouncementText] = useState('');
   // The receipt of the payment just recorded (#98 H1); any other
   // announcement (or a new action) replaces it.
@@ -189,12 +223,18 @@ export function AccountPage() {
   const methods = useQuery({
     queryKey: PAYMENT_METHODS_KEY,
     queryFn: ({ signal }) => fetchPaymentMethods(signal),
-    enabled: recording,
+    enabled: recording || refundingId !== null,
   });
   const payment = useQuery({
     queryKey: paymentKey(familyId, paymentId ?? ''),
     queryFn: ({ signal }) => fetchPayment(familyId, paymentId!, signal),
     enabled: paymentId !== null,
+  });
+  const chargeDetail = useQuery({
+    queryKey: chargeKey(familyId, chargeId ?? ''),
+    queryFn: ({ signal }) => fetchCharge(familyId, chargeId!, signal),
+    enabled: chargeId !== null,
+    retry: false,
   });
   const dueDateChanges = useQuery({
     queryKey: dueDateChangesKey(familyId, dueCharge?.id ?? ''),
@@ -310,6 +350,25 @@ export function AccountPage() {
         }
       : { status: 'loading' };
 
+  const adjusting: ChargeDetail | null =
+    adjustingId !== null && chargeDetail.data?.id === adjustingId
+      ? chargeDetail.data
+      : null;
+  const paymentFor = (id: string | null): PaymentDetail | null =>
+    id !== null && payment.data?.id === id ? payment.data : null;
+  const reversing = paymentFor(reversingId);
+  const refunding = paymentFor(refundingId);
+
+  const chargeState: ChargeDetailState = chargeDetail.data
+    ? { status: 'ready', charge: chargeDetail.data }
+    : chargeDetail.isError
+      ? {
+          status: 'error',
+          error: chargeDetail.error,
+          onRetry: () => void chargeDetail.refetch(),
+        }
+      : { status: 'loading' };
+
   const historyState: HistoryState = dueDateChanges.data
     ? { status: 'ready', items: dueDateChanges.data }
     : dueDateChanges.isError
@@ -342,7 +401,18 @@ export function AccountPage() {
           setAnnouncement('');
           setCrediting(true);
         }}
-        onOpenPayment={setPaymentId}
+        onOpenPayment={(id) => {
+          setPaymentNotice('');
+          setPaymentId(id);
+        }}
+        onOpenCharge={(charge) => {
+          setChargeNotice('');
+          setChargeId(charge.id);
+        }}
+        onAddCharge={() => {
+          setAnnouncement('');
+          setAddingCharge(true);
+        }}
         canManage={canManage}
         onEditOffset={() => {
           setAnnouncement('');
@@ -377,6 +447,45 @@ export function AccountPage() {
             }}
             onConflict={() => void summary.refetch()}
             onClose={() => setEditingOffset(false)}
+          />
+          <ManualChargeDialog
+            open={addingCharge}
+            today={today}
+            students={summary.data.students.map((item) => item.student)}
+            onSubmit={async (body, key) => {
+              const posted = await postManualCharge(familyId, body, key);
+              setAddingCharge(false);
+              setAnnouncement(
+                t('billing.accounts.manualCharge.done', {
+                  amount: labels.money(posted.charge.amount),
+                  student: posted.charge.student.name,
+                }),
+              );
+              refresh();
+            }}
+            onClose={() => setAddingCharge(false)}
+          />
+          <AdjustChargeDialog
+            open={adjustingId !== null}
+            charge={adjusting}
+            onSubmit={async (body, key) => {
+              const posted = await postAdjustment(
+                familyId,
+                adjustingId!,
+                body,
+                key,
+              );
+              setAdjustingId(null);
+              const done = t('billing.accounts.adjust.done', {
+                amount: labels.signed(posted.adjustment.amount),
+                net: labels.money(posted.charge.net),
+              });
+              setChargeNotice(done);
+              setAnnouncement(done);
+              refresh();
+            }}
+            onStale={refresh}
+            onClose={() => setAdjustingId(null)}
           />
           <DueDateDialog
             open={dueCharge !== null}
@@ -465,12 +574,81 @@ export function AccountPage() {
           />
         </>
       ) : null}
+      <ChargeDetailDialog
+        open={chargeId !== null}
+        state={chargeState}
+        canManage={canManage}
+        onAdjust={(charge) => setAdjustingId(charge.id)}
+        onViewPayment={(id) => {
+          setChargeId(null);
+          setPaymentNotice('');
+          setPaymentId(id);
+        }}
+        notice={chargeNotice}
+        onClose={() => setChargeId(null)}
+      />
       <PaymentDetailDialog
         open={paymentId !== null}
         state={paymentState}
         studentNames={studentNames}
         onClose={() => setPaymentId(null)}
+        canApproveRefunds={canApproveRefunds}
+        onReverse={(item) => setReversingId(item.id)}
+        onRefund={(item) => setRefundingId(item.id)}
+        notice={paymentNotice}
       />
+      {canApproveRefunds ? (
+        <>
+          <ReversePaymentDialog
+            open={reversingId !== null}
+            payment={reversing}
+            onSubmit={async (body, key) => {
+              const reversed = await reversePayment(
+                familyId,
+                reversingId!,
+                body,
+                key,
+              );
+              setReversingId(null);
+              const done = t('billing.accounts.reverse.done', {
+                amount: labels.money(reversed.payment.amount),
+                credit: labels.money(reversed.account_credit_after),
+              });
+              setPaymentNotice(done);
+              setAnnouncement(done);
+              refresh();
+            }}
+            onStale={refresh}
+            onClose={() => setReversingId(null)}
+          />
+          <RefundDialog
+            open={refundingId !== null}
+            today={today}
+            payment={refunding}
+            methods={methods.data ?? null}
+            methodsError={methods.error ?? undefined}
+            onRetryMethods={() => void methods.refetch()}
+            onSubmit={async (body, key) => {
+              const refunded = await refundPayment(
+                familyId,
+                refundingId!,
+                body,
+                key,
+              );
+              setRefundingId(null);
+              const done = t('billing.accounts.refund.done', {
+                amount: labels.money(refunded.refund.amount),
+                credit: labels.money(refunded.account_credit_after),
+              });
+              setPaymentNotice(done);
+              setAnnouncement(done);
+              refresh();
+            }}
+            onStale={refresh}
+            onClose={() => setRefundingId(null)}
+          />
+        </>
+      ) : null}
     </>
   );
 }

@@ -50,7 +50,10 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * for it; the #76 attendance, #77 closeout, #78 review, #305
  * resubmission, #322 progress and #323 course completion steps reuse the
  * contexts and the shared Owner session: 0 more; scheduling/overdue-closeouts.spec.ts (#301b) runs on the shared
- * Owner session: 0) = 49 attempts,
+ * Owner session: 0), billing/corrections.spec.ts 1 (the demo Owner in
+ * its own context, for the password dialog of a correction; the shared
+ * session is never reauthenticated; #386) = 50 attempts, the whole
+ * `login.ip` budget: a new spec that needs a login must rebalance,
  * 2 failures for
  * `demo.owner`. Specs on the shared session add none (for example
  * courses/cohorts.spec.ts, #243 and #323). Keep the total well under both limits;
@@ -74,7 +77,7 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * tutors/qualifications.spec.ts does with createApprovedTutor, #44) or
  * rebalance.
  */
-export const LOGIN_ATTEMPTS_PER_RUN = 49;
+export const LOGIN_ATTEMPTS_PER_RUN = 50;
 
 /** Invitation and reset lookups and redemptions in one run (see above). */
 export const TOKEN_REDEMPTIONS_PER_RUN = 20;

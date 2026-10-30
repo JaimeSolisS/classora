@@ -371,6 +371,12 @@ unless a bullet says otherwise.
   family's charge automatically. A rule per cancellation type (on time,
   late, no-show) decides whether a cancelled class is credited or still
   charged; it changes from a date and is edited under Billing → Settings.
+- Staff add manual charges and correct posted charges with credits or
+  debits (with a reason), and cancel a package purchase (Billing →
+  Packages); an Owner, or an administrator they delegate, reverses
+  payments and refunds account credit. Corrections ask for a password
+  confirmation (except a manual charge) and never change the original
+  records.
 
 **Notifications**
 
@@ -402,7 +408,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** refunds and the rest of billing (including
+**Not built yet:** the rest of billing (including withdrawals and
 the family billing portal), payroll, reporting and analytics, and
 deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).

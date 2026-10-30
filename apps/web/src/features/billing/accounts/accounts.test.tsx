@@ -383,7 +383,8 @@ describe('the account page (C)', () => {
       '$800.00',
       'Oct 5, 2026',
       'Partially paid',
-      'Change due date',
+      // #386: every row opens its detail.
+      'DetailsChange due date',
     ]);
     expect(cells(row(`[data-charge-id="${CHARGE_OVERDUE.id}"]`))).toEqual([
       'Sep 1, 2026',
@@ -395,12 +396,12 @@ describe('the account page (C)', () => {
       '$1,500.00',
       'Sep 15, 2026',
       'Overdue',
-      'Change due date',
+      'DetailsChange due date',
     ]);
     // #382 D2: no "Change due date" on a paid charge.
     expect(
       cells(row(`[data-charge-id="${CHARGE_PAID.id}"]`)).slice(-2),
-    ).toEqual(['Paid', '']);
+    ).toEqual(['Paid', 'Details']);
   });
 
   it('keeps the student and status filters in the URL and sends them', async () => {

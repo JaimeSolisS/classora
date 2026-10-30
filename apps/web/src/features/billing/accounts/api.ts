@@ -30,6 +30,22 @@ export type CreditAllocationCreate =
   components['schemas']['CreditAllocationCreate'];
 export type CreditAllocated = components['schemas']['CreditAllocated'];
 export type AllocationLine = components['schemas']['AllocationLineBody'];
+// Corrections, reversals and refunds (#100, #386).
+export type ChargeDetail = components['schemas']['ChargeDetailItem'];
+export type AdjustmentItem = components['schemas']['AdjustmentItem'];
+export type ChargeAllocation = components['schemas']['ChargeAllocationItem'];
+export type ManualChargeCreate = components['schemas']['ManualChargeCreate'];
+export type ManualChargePosted = components['schemas']['ManualChargePosted'];
+export type ManualAdjustmentCreate =
+  components['schemas']['ManualAdjustmentCreate'];
+export type ManualAdjustmentPosted =
+  components['schemas']['ManualAdjustmentPosted'];
+export type PaymentReversalCreate =
+  components['schemas']['PaymentReversalCreate'];
+export type PaymentReversed = components['schemas']['PaymentReversed'];
+export type RefundCreate = components['schemas']['RefundCreate'];
+export type RefundRecorded = components['schemas']['RefundRecorded'];
+export type RefundItem = components['schemas']['RefundItem'];
 
 /**
  * The receipt PDF of a payment (#98 F1): a plain same-origin link (the
@@ -99,6 +115,11 @@ export function paymentsKey(familyId: string, page: number) {
 
 export function paymentKey(familyId: string, paymentId: string) {
   return [...accountKey(familyId), 'payment', paymentId] as const;
+}
+
+/** A charge's detail (its adjustments and allocations, #386 A2). */
+export function chargeKey(familyId: string, chargeId: string) {
+  return [...accountKey(familyId), 'charge', chargeId] as const;
 }
 
 export const PAYMENT_METHODS_KEY = ['billing', 'payment-methods'] as const;
@@ -275,6 +296,25 @@ export function fetchPayment(
   );
 }
 
+/** A charge with its adjustments and allocations, oldest first (#100). */
+export function fetchCharge(
+  familyId: string,
+  chargeId: string,
+  signal: AbortSignal,
+): Promise<ChargeDetail> {
+  return apiCall(
+    () =>
+      api.GET(
+        '/api/v1/families/{family_id}/billing-account/charges/{charge_id}',
+        {
+          params: { path: { family_id: familyId, charge_id: chargeId } },
+          signal,
+        },
+      ),
+    { signal },
+  );
+}
+
 /** Every payment method (the dialog offers the active ones). */
 export function fetchPaymentMethods(
   signal: AbortSignal,
@@ -317,5 +357,90 @@ export function allocateCredit(
       body,
       params: { path: { family_id: familyId }, header: headers },
     }),
+  );
+}
+
+// #386: the corrections (#100). Each posts ledger rows, so each sends the
+// dialog's `Idempotency-Key`, computed before the call: apiCall's retry
+// after `reauth_required` (the password dialog, #26) resends the same key.
+
+/** A manual charge (#100 C1; no password confirmation). */
+export function postManualCharge(
+  familyId: string,
+  body: ManualChargeCreate,
+  idempotencyKey: string,
+): Promise<ManualChargePosted> {
+  const headers = idempotencyHeaders(idempotencyKey);
+  return apiCall(() =>
+    api.POST('/api/v1/families/{family_id}/billing-account/charges', {
+      body,
+      params: { path: { family_id: familyId }, header: headers },
+    }),
+  );
+}
+
+/** A manual credit (negative) or debit (positive) on a charge (#100 C2). */
+export function postAdjustment(
+  familyId: string,
+  chargeId: string,
+  body: ManualAdjustmentCreate,
+  idempotencyKey: string,
+): Promise<ManualAdjustmentPosted> {
+  const headers = idempotencyHeaders(idempotencyKey);
+  return apiCall(() =>
+    api.POST(
+      '/api/v1/families/{family_id}/billing-account/charges/{charge_id}/adjustments',
+      {
+        body,
+        params: {
+          path: { family_id: familyId, charge_id: chargeId },
+          header: headers,
+        },
+      },
+    ),
+  );
+}
+
+/** Reverses a payment (#100 C3). */
+export function reversePayment(
+  familyId: string,
+  paymentId: string,
+  body: PaymentReversalCreate,
+  idempotencyKey: string,
+): Promise<PaymentReversed> {
+  const headers = idempotencyHeaders(idempotencyKey);
+  return apiCall(() =>
+    api.POST(
+      '/api/v1/families/{family_id}/billing-account/payments/{payment_id}/reversal',
+      {
+        body,
+        params: {
+          path: { family_id: familyId, payment_id: paymentId },
+          header: headers,
+        },
+      },
+    ),
+  );
+}
+
+/** Refunds part of a payment's unallocated remainder (#100 C4). */
+export function refundPayment(
+  familyId: string,
+  paymentId: string,
+  body: RefundCreate,
+  idempotencyKey: string,
+): Promise<RefundRecorded> {
+  const headers = idempotencyHeaders(idempotencyKey);
+  return apiCall(() =>
+    api.POST(
+      '/api/v1/families/{family_id}/billing-account/payments/{payment_id}/refunds',
+      {
+        body,
+        params: {
+          path: { family_id: familyId, payment_id: paymentId },
+          header: headers,
+        },
+      },
+    ),
   );
 }

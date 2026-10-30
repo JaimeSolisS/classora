@@ -64,9 +64,16 @@ type Common = {
       list: { title: string; search: string };
       page: { title: string };
       summary: { title: string; accountCredit: string };
-      charges: { title: string; empty: string };
+      charges: { title: string; empty: string; add: string; view: string };
       ledger: { title: string; empty: string };
-      payments: { title: string; empty: string };
+      payments: {
+        title: string;
+        empty: string;
+        view: string;
+        detailTitle: string;
+        close: string;
+        reversed: string;
+      };
       record: {
         action: string;
         title: string;
@@ -77,6 +84,31 @@ type Common = {
       credit: { action: string };
       // #98 H3: the payment row's receipt link.
       receipt: { download: string; downloadFor: string; recorded: string };
+      // #386 F3: the corrections, reversals and refunds.
+      manualCharge: {
+        title: string;
+        submit: string;
+        fields: Record<'student' | 'description' | 'amount', string>;
+      };
+      chargeDetail: { title: string; close: string };
+      adjust: {
+        action: string;
+        title: string;
+        submit: string;
+        fields: Record<'amount' | 'reason', string>;
+      };
+      reverse: {
+        action: string;
+        title: string;
+        submit: string;
+        fields: Record<'reason', string>;
+      };
+      refund: {
+        action: string;
+        title: string;
+        submit: string;
+        fields: Record<'amount' | 'method' | 'reason', string>;
+      };
     };
     // #382 F3: the overdue accounts and the due-date dialogs.
     overdue: {

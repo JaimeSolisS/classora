@@ -337,6 +337,17 @@ const API_CODES = [
   // #382 E1: due dates (#97).
   'charge_settled',
   'due_date_unchanged',
+  // #386 D3: corrections, reversals and refunds (#100).
+  'charge_net_negative',
+  'student_not_in_family',
+  'package_purchase_not_adjustable',
+  'payment_already_reversed',
+  'payment_has_refunds',
+  'payment_reversed',
+  'refund_exceeds_remainder',
+  'refunded_on_in_future',
+  'refunded_on_before_payment',
+  'package_not_cancellable',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [
@@ -358,6 +369,8 @@ const RENAMED_CODES: Record<string, string> = {
   milestones_too_many: 'milestones_limit',
   // #313: the homework recipient limit.
   recipients_too_many: 'recipients_limit',
+  // #386: a catalog key can't end in a plural suffix ("_zero").
+  amount_zero: 'amount_zero_invalid',
 };
 
 afterEach(() => {

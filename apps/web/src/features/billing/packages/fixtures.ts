@@ -4,9 +4,11 @@ import {
   V_PAST,
   V_UPCOMING,
 } from '../pricing/fixtures';
+import type { ChargeDetail } from '../accounts/api';
 import { STUDENT_ANA, STUDENT_BRUNO } from '../tuition/fixtures';
 import type {
   ChargeItem,
+  PackageCancelled,
   PackageDetail,
   PackagePage,
   PackageProduct,
@@ -277,3 +279,29 @@ export function searchFixtureFamilies(q = '') {
     ),
   );
 }
+
+// #386 C1: a cancelled package, and the purchase charge's detail (the
+// cancellation estimate reads its net).
+export const PACKAGE_CANCELLED: SoldPackage = {
+  ...PACKAGE_ACTIVE,
+  id: 'd0000000-0000-4000-8000-000000000004',
+  remaining_units: 0,
+  status: 'cancelled',
+  purchase_charge_id: 'e0000000-0000-4000-8000-000000000004',
+};
+export const PURCHASE_CHARGE_DETAIL: ChargeDetail = {
+  ...PURCHASE_CHARGE,
+  adjustments: [],
+  allocations: [],
+};
+export const CANCELLED: PackageCancelled = {
+  package: {
+    ...PACKAGE_ACTIVE_DETAIL,
+    remaining_units: 0,
+    status: 'cancelled',
+  },
+  units_reversed: 8,
+  credit: '1440.00',
+  adjustment_id: 'a2000000-0000-4000-8000-000000000001',
+  account_credit_after: '0.00',
+};
