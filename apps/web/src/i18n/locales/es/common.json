@@ -5145,7 +5145,66 @@
       "save": "Guardar",
       "saving": "Guardando…",
       "reload": "Recargar",
-      "saved": "Configuración de cobros guardada."
+      "saved": "Configuración de cobros guardada.",
+      "cancellation": {
+        "title": "Cobro de cancelaciones",
+        "facts": {
+          "makeup": "Una cancelación que permite reponer la clase (consulta las políticas de agenda) siempre se acredita, sin importar la regla de abajo.",
+          "closure": "Un cierre del centro siempre acredita la clase.",
+          "reschedule": "Una clase reprogramada conserva su cargo."
+        },
+        "inForce": "La regla vigente",
+        "columns": {
+          "classification": "Cancelación",
+          "outcome": "Resultado",
+          "since": "Desde"
+        },
+        "classes": {
+          "onTime": "A tiempo",
+          "late": "Tardía",
+          "noShow": "Inasistencia",
+          "excused": "Justificada (centro o tutor)"
+        },
+        "outcomes": {
+          "credit": "Se acredita",
+          "charge": "Se cobra"
+        },
+        "excusedAlways": "Siempre se acredita (permite reponer)",
+        "value": "{{label}}: {{value}}",
+        "upcoming": {
+          "title": "Cambios programados",
+          "empty": "No hay cambios programados.",
+          "takesEffect": "Entra en vigor el {{date}}",
+          "delete": "Eliminar",
+          "deleteFor": "Eliminar el cambio del {{date}}"
+        },
+        "history": {
+          "show": "Mostrar versiones anteriores ({{count}})",
+          "hide": "Ocultar versiones anteriores",
+          "empty": "No hay versiones anteriores.",
+          "range": "Del {{from}} al {{until}}"
+        },
+        "schedule": "Programar un cambio",
+        "dialog": {
+          "title": "Programar un cambio en el cobro de cancelaciones",
+          "hint": "Un cambio se aplica a las cancelaciones solicitadas desde su fecha; las anteriores conservan la regla con la que se hicieron.",
+          "excused": "Las cancelaciones justificadas (centro o tutor) siempre se acreditan mientras permitan reponer la clase.",
+          "effectiveDate": "Entra en vigor el",
+          "dateHelp": "Déjala vacía para aplicar el cambio ahora. Una fecha empieza a las 00:00 en {{zone}}."
+        },
+        "deleteDialog": {
+          "title": "¿Eliminar este cambio programado?",
+          "body": "El cambio del {{date}} no entrará en vigor.",
+          "confirm": "Eliminar"
+        },
+        "validation": {
+          "dateInvalid": "Elige una fecha válida.",
+          "dateAfterToday": "Elige una fecha posterior a hoy."
+        },
+        "saved": "Cambio en el cobro de cancelaciones programado.",
+        "deleted": "Cambio programado eliminado.",
+        "alreadyInForce": "Esta versión ya está vigente."
+      }
     },
     "targets": {
       "kinds": {

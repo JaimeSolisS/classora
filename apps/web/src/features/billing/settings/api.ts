@@ -24,3 +24,45 @@ export function updateBillingSettings(
 ): Promise<BillingSettings> {
   return apiCall(() => api.PATCH('/api/v1/billing/settings', { body }));
 }
+
+// The cancellation billing rules (#99, #385): the overview (in force,
+// upcoming oldest first, history newest first) is a query of the Settings
+// tab; scheduling a version and deleting an upcoming one are direct calls
+// after which the page invalidates the overview.
+
+export type CancellationRule = components['schemas']['CancellationRuleItem'];
+export type CancellationRuleOverview =
+  components['schemas']['CancellationRuleOverview'];
+export type CancellationRuleCreate =
+  components['schemas']['CancellationRuleCreate'];
+export type CancellationOutcome = CancellationRule['late_outcome'];
+
+export const CANCELLATION_RULES_KEY = [
+  'billing',
+  'cancellation-rules',
+] as const;
+
+export function fetchCancellationRules(
+  signal: AbortSignal,
+): Promise<CancellationRuleOverview> {
+  return apiCall(
+    () => api.GET('/api/v1/billing/cancellation-rules', { signal }),
+    { signal },
+  );
+}
+
+export function createCancellationRule(
+  body: CancellationRuleCreate,
+): Promise<CancellationRule> {
+  return apiCall(() =>
+    api.POST('/api/v1/billing/cancellation-rules', { body }),
+  );
+}
+
+export async function deleteCancellationRule(ruleId: string): Promise<void> {
+  await apiCall(() =>
+    api.DELETE('/api/v1/billing/cancellation-rules/{rule_id}', {
+      params: { path: { rule_id: ruleId } },
+    }),
+  );
+}

@@ -367,6 +367,10 @@ unless a bullet says otherwise.
 - While billing is on, families receive in-app reminders before and after
   their charges fall due (a few days before, once overdue, and again two
   weeks later), sent once per charge and stage to the family's guardians.
+- Cancellations, closures and changes to a class's length correct the
+  family's charge automatically. A rule per cancellation type (on time,
+  late, no-show) decides whether a cancelled class is credited or still
+  charged; it changes from a date and is edited under Billing → Settings.
 
 **Notifications**
 
