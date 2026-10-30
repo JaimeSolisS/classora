@@ -943,6 +943,17 @@ export const routes: RouteObject[] = [
             }),
             handle: { permission: 'billing.view' },
           },
+          // #382 A2: the overdue accounts (code-split), billing.view holders;
+          // changing due dates happens on the account page (billing.manage).
+          {
+            path: 'billing/overdue',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/billing/overdue/OverduePage')
+              ).OverduePage,
+            }),
+            handle: { permission: 'billing.view' },
+          },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },
           // Any signed-in user, before and after accepting (#174 G1).

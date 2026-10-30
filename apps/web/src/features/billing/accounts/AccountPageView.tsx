@@ -18,10 +18,13 @@ import { Pagination } from '@/features/catalog/Pagination';
 import { FamilyStatusBadge } from '@/features/families/FamilyBadges';
 import { SELECT_CLASS } from '@/features/students/styles';
 import { BillingTabs } from '../BillingTabs';
+import { DueDateCell } from '../due-dates/DueDateCell';
+import { canChangeDueDate } from '../due-dates/rules';
 import { ChargeStatusBadge } from '../tuition/TuitionBadges';
 import {
   CHARGE_STATUSES,
   type AccountSummary,
+  type ChargeItem,
   type ChargePage,
   type LedgerEntry,
   type PaymentPage,
@@ -40,7 +43,10 @@ import { toggleStatus, type AccountView } from './rules';
 // then Charges (status filter, pagination), History (the ledger, newest
 // first, "Load more") and Payments (a row opens its detail). Sections with
 // in-page headings, not nested tabs. Below `md` each table scrolls inside
-// its own container (SC 1.4.10 data-table exception).
+// its own container (SC 1.4.10 data-table exception). #382: the header
+// shows the family's due-date offset ("Edit" for billing.manage holders),
+// a moved due date carries the "changed" marker, and billing.manage holders
+// get "Change due date" on each charge with something open.
 
 export type PageState<T> =
   | { status: 'loading' }
@@ -70,6 +76,10 @@ export interface AccountPageViewProps {
   onRecord: () => void;
   onApplyCredit: () => void;
   onOpenPayment: (paymentId: string) => void;
+  /** billing.manage: the offset's "Edit" and "Change due date" (#382). */
+  canManage?: boolean;
+  onEditOffset?: () => void;
+  onChangeDueDate?: (charge: ChargeItem) => void;
   /** Read by the polite status (a recorded payment). */
   announcement?: string;
 }
@@ -98,6 +108,9 @@ export function AccountPageView({
   onRecord,
   onApplyCredit,
   onOpenPayment,
+  canManage = false,
+  onEditOffset,
+  onChangeDueDate,
   announcement = '',
 }: AccountPageViewProps) {
   const { t } = useTranslation();
@@ -171,6 +184,13 @@ export function AccountPageView({
               <TableHead scope="col">
                 {t('billing.accounts.charges.columns.status')}
               </TableHead>
+              {canManage ? (
+                <TableHead scope="col">
+                  <span className="sr-only">
+                    {t('billing.accounts.charges.columns.actions')}
+                  </span>
+                </TableHead>
+              ) : null}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -187,10 +207,31 @@ export function AccountPageView({
                 <TableCell>{labels.money(charge.net)}</TableCell>
                 <TableCell>{labels.money(charge.allocated)}</TableCell>
                 <TableCell>{labels.money(charge.open)}</TableCell>
-                <TableCell>{labels.date(charge.due_date)}</TableCell>
+                <TableCell>
+                  <DueDateCell charge={charge} />
+                </TableCell>
                 <TableCell>
                   <ChargeStatusBadge status={charge.status} />
                 </TableCell>
+                {canManage ? (
+                  <TableCell className="text-right">
+                    {canChangeDueDate(charge) ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        aria-label={t('billing.dueDates.change.actionFor', {
+                          charge: labels.chargeLabel(charge),
+                          student: charge.student.name,
+                          date: labels.date(charge.service_date),
+                        })}
+                        onClick={() => onChangeDueDate?.(charge)}
+                      >
+                        {t('billing.dueDates.change.action')}
+                      </Button>
+                    ) : null}
+                  </TableCell>
+                ) : null}
               </TableRow>
             ))}
           </TableBody>
@@ -407,6 +448,24 @@ export function AccountPageView({
         <p className="flex flex-wrap gap-2">
           <FamilyStatusBadge active={summary.family.is_active} />
         </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <p data-due-offset={summary.due_offset_days}>
+            {t('billing.dueDates.offset.label', {
+              count: summary.due_offset_days,
+            })}
+          </p>
+          {canManage ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-label={t('billing.dueDates.offset.editLabel')}
+              onClick={onEditOffset}
+            >
+              {t('billing.dueDates.offset.edit')}
+            </Button>
+          ) : null}
+        </div>
         <p role="status" className="text-sm font-medium">
           {announcement}
         </p>

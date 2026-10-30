@@ -34,6 +34,7 @@ const THEMES = ['light', 'dark'] as const;
 // and /billing/custom-prices (#367 G4), /billing/tuition-plans (#374 H3),
 // /billing/packages (#377 G3), /billing/accounts and the account page of
 // a family the scan creates through the API first (#379 G3),
+// /billing/overdue (#382 F3),
 // /students, /students/new and the detail of a student the scan creates
 // through the API first (#33 L2; with a linked guardian and a paper consent,
 // so the Login account and Consents sections show, #35 K4), /guardians, /guardians/new and the detail
@@ -177,6 +178,13 @@ const ROUTES: ScannedRoute[] = [
     path: '/billing/accounts/<created>',
     signedIn: true,
     createsBillingFamily: true,
+  },
+  // #382 F3: the Overdue tab.
+  {
+    name: 'billing-overdue',
+    path: '/billing/overdue',
+    signedIn: true,
+    waitForField: common.billing.overdue.filters.minDays,
   },
   {
     name: 'catalog-level',

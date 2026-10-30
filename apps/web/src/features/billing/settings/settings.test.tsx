@@ -132,6 +132,7 @@ describe('navigation and access (A)', () => {
 
     expect(tabs()).toEqual([
       ['Accounts', null],
+      ['Overdue', null],
       ['Prices', null],
       ['Discounts', null],
       ['Custom prices', null],
@@ -155,6 +156,7 @@ describe('navigation and access (A)', () => {
 
     expect(tabs()).toEqual([
       ['Accounts', null],
+      ['Overdue', null],
       ['Tuition plans', null],
       ['Packages', null],
       ['Unbilled', null],
@@ -433,6 +435,7 @@ describe('Spanish (D1)', () => {
 
     expect(tabs('Secciones de cobros').map(([label]) => label)).toEqual([
       'Cuentas',
+      'Vencidos',
       'Precios',
       'Descuentos',
       'Precios especiales',

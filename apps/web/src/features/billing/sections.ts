@@ -21,6 +21,12 @@ export const BILLING_SECTIONS: readonly BillingSection[] = [
     labelKey: 'billing.tabs.accounts',
     permission: 'billing.view',
   },
+  // #382 A1: the overdue accounts, right after Accounts.
+  {
+    to: '/billing/overdue',
+    labelKey: 'billing.tabs.overdue',
+    permission: 'billing.view',
+  },
   {
     to: '/billing/prices',
     labelKey: 'billing.tabs.prices',

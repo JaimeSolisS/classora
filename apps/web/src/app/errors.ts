@@ -395,6 +395,9 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['nothing_to_allocate', 'nothing_to_allocate'],
   ['payment_method_unavailable', 'payment_method_unavailable'],
   ['received_on_in_future', 'received_on_in_future'],
+  // Due dates (#97, #382 E1).
+  ['charge_settled', 'charge_settled'],
+  ['due_date_unchanged', 'due_date_unchanged'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

@@ -4,8 +4,11 @@ import { i18n } from '@/i18n';
 import { StoryAuth } from '@/test/StoryAuth';
 import { StoryRouter } from '@/test/StoryRouter';
 import { FINANCE_SESSION } from '../storySession';
+import { CHARGE_MOVED } from '../due-dates/fixtures';
 import { AccountPageView } from './AccountPageView';
 import {
+  CHARGE_PAID,
+  CHARGE_PENDING,
   CHARGES_PAGE,
   EMPTY_CHARGES_PAGE,
   EMPTY_PAYMENTS_PAGE,
@@ -114,5 +117,38 @@ export const ReadOnly: Story = {
         name: i18n.t('billing.accounts.record.action'),
       }),
     ).toBeNull();
+  },
+};
+
+// #382: billing.manage holders get the offset's "Edit" and "Change due
+// date" on open charges; a moved due date carries the "changed" marker.
+export const ManageDueDates: Story = {
+  args: {
+    canManage: true,
+    onEditOffset: fn(),
+    onChangeDueDate: fn(),
+    charges: {
+      status: 'ready',
+      page: {
+        ...CHARGES_PAGE,
+        items: [CHARGE_PENDING, CHARGE_MOVED, CHARGE_PAID],
+        total: 3,
+      },
+    },
+  },
+  play: async ({ canvas, canvasElement }) => {
+    await expect(
+      canvas.getByRole('button', {
+        name: i18n.t('billing.dueDates.offset.editLabel'),
+      }),
+    ).toBeVisible();
+    const markers = canvasElement.querySelectorAll('[data-due-date-changed]');
+    await expect(markers).toHaveLength(1);
+    await expect(markers[0]).toBeVisible();
+    await expect(
+      canvas.getAllByRole('button', {
+        name: new RegExp(`^${i18n.t('billing.dueDates.change.action')}: `),
+      }),
+    ).toHaveLength(2);
   },
 };

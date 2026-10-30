@@ -17,6 +17,14 @@ import { CATALOG_LINK_CLASS } from '@/features/catalog/LevelsTable';
 import { todayInZone } from '@/lib/time';
 import { BillingTabs } from '../BillingTabs';
 import {
+  dueDateChangesKey,
+  fetchDueDateChanges,
+  recordDueDateChange,
+  updateDueOffset,
+} from '../due-dates/api';
+import { DueDateDialog, type HistoryState } from '../due-dates/DueDateDialog';
+import { DueOffsetDialog } from '../due-dates/DueOffsetDialog';
+import {
   AccountPageView,
   type LedgerState,
   type PageState,
@@ -41,6 +49,7 @@ import {
   paymentsKey,
   recordPayment,
   summaryKey,
+  type ChargeItem,
   type ChargePage,
   type PaymentPage,
 } from './api';
@@ -62,7 +71,11 @@ import { accountView, accountViewParams, oldestFirst } from './rules';
 // (#96 AC 4): after a 201 the dialog closes, the polite status reads what
 // was allocated and the account credit now, and every query of the family
 // is invalidated. An unknown family (404, or a malformed id: 422) is the
-// not-found state.
+// not-found state. #382: billing.manage holders edit the family's due-date
+// offset (sending the summary's version) and change an open charge's due
+// date (its history loads when the dialog opens); after the server answers,
+// the dialog closes, the polite status says what changed and the family's
+// queries are invalidated. Never optimistic (spec §6, ADR-0006 E11).
 
 function NotFoundOrError({
   error,
@@ -106,11 +119,14 @@ export function AccountPage() {
   const timeZone = useCenterTimeZone();
   const today = todayInZone(timeZone);
   const canRecord = useCan('payment.record');
+  const canManage = useCan('billing.manage');
   const [searchParams, setSearchParams] = useSearchParams();
   const view = useMemo(() => accountView(searchParams), [searchParams]);
   const [recording, setRecording] = useState(false);
   const [crediting, setCrediting] = useState(false);
   const [paymentId, setPaymentId] = useState<string | null>(null);
+  const [editingOffset, setEditingOffset] = useState(false);
+  const [dueCharge, setDueCharge] = useState<ChargeItem | null>(null);
   const [announcement, setAnnouncement] = useState('');
 
   const summary = useQuery({
@@ -164,6 +180,14 @@ export function AccountPage() {
     queryKey: paymentKey(familyId, paymentId ?? ''),
     queryFn: ({ signal }) => fetchPayment(familyId, paymentId!, signal),
     enabled: paymentId !== null,
+  });
+  const dueDateChanges = useQuery({
+    queryKey: dueDateChangesKey(familyId, dueCharge?.id ?? ''),
+    queryFn: ({ signal }) =>
+      fetchDueDateChanges(familyId, dueCharge!.id, signal),
+    enabled: dueCharge !== null,
+    staleTime: 0,
+    retry: false,
   });
   const allocatedIds = useMemo(
     () =>
@@ -271,6 +295,16 @@ export function AccountPage() {
         }
       : { status: 'loading' };
 
+  const historyState: HistoryState = dueDateChanges.data
+    ? { status: 'ready', items: dueDateChanges.data }
+    : dueDateChanges.isError
+      ? {
+          status: 'error',
+          error: dueDateChanges.error,
+          onRetry: () => void dueDateChanges.refetch(),
+        }
+      : { status: 'loading' };
+
   const studentNames = Object.fromEntries(
     summary.data.students.map((item) => [item.student.id, item.student.name]),
   );
@@ -294,8 +328,69 @@ export function AccountPage() {
           setCrediting(true);
         }}
         onOpenPayment={setPaymentId}
+        canManage={canManage}
+        onEditOffset={() => {
+          setAnnouncement('');
+          setEditingOffset(true);
+        }}
+        onChangeDueDate={(charge) => {
+          setAnnouncement('');
+          setDueCharge(charge);
+        }}
         announcement={announcement}
       />
+      {canManage ? (
+        <>
+          <DueOffsetDialog
+            open={editingOffset}
+            current={summary.data.due_offset_days}
+            onSubmit={async (days) => {
+              const saved = await updateDueOffset(familyId, {
+                version: summary.data.version,
+                due_offset_days: days,
+              });
+              setEditingOffset(false);
+              setAnnouncement(
+                t('billing.dueDates.offset.done', {
+                  count: saved.due_offset_days,
+                }),
+              );
+              void queryClient.invalidateQueries({
+                queryKey: summaryKey(familyId),
+              });
+            }}
+            onConflict={() => void summary.refetch()}
+            onClose={() => setEditingOffset(false)}
+          />
+          <DueDateDialog
+            open={dueCharge !== null}
+            charge={dueCharge}
+            today={summary.data.today}
+            history={historyState}
+            onSubmit={async (body) => {
+              const changed = await recordDueDateChange(
+                familyId,
+                dueCharge!.id,
+                body,
+              );
+              setDueCharge(null);
+              setAnnouncement(
+                t('billing.dueDates.change.done', {
+                  date: labels.date(changed.due_date),
+                  status: t(`billing.tuition.chargeStatus.${changed.status}`),
+                }),
+              );
+              refresh();
+            }}
+            onStale={() =>
+              void queryClient.invalidateQueries({
+                queryKey: [...accountKey(familyId), 'charges'],
+              })
+            }
+            onClose={() => setDueCharge(null)}
+          />
+        </>
+      ) : null}
       {canRecord ? (
         <>
           <RecordPaymentDialog

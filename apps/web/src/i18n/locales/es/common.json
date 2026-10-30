@@ -4634,7 +4634,8 @@
       "settings": "Configuración",
       "tuitionPlans": "Colegiaturas",
       "packages": "Paquetes",
-      "accounts": "Cuentas"
+      "accounts": "Cuentas",
+      "overdue": "Vencidos"
     },
     "prices": {
       "title": "Precios",
@@ -5603,7 +5604,8 @@
           "allocated": "Pagado",
           "open": "Por pagar",
           "dueDate": "Vencimiento",
-          "status": "Estado"
+          "status": "Estado",
+          "actions": "Acciones"
         }
       },
       "chargeKinds": {
@@ -5748,6 +5750,103 @@
       "cash": "Efectivo",
       "transfer": "Transferencia",
       "other": "Otro"
+    },
+    "overdue": {
+      "title": "Cuentas vencidas",
+      "intro": "Familias con cargos que ya pasaron su fecha de vencimiento, primero las de mayor atraso. El saldo a favor se muestra, no se resta: aplícalo desde la cuenta de la familia.",
+      "filters": {
+        "label": "Filtrar cuentas vencidas",
+        "minDays": "Atraso mínimo",
+        "minDaysOptions": {
+          "d1": "Cualquiera",
+          "d31": "31 días o más",
+          "d61": "61 días o más",
+          "d91": "91 días o más"
+        },
+        "status": "Estado de la familia"
+      },
+      "totals": {
+        "title": "Totales",
+        "accounts": "Cuentas",
+        "overdueTotal": "Total vencido",
+        "asOf": "Al {{date}}."
+      },
+      "buckets": {
+        "days_1_30": "1 a 30 días",
+        "days_31_60": "31 a 60 días",
+        "days_61_90": "61 a 90 días",
+        "days_over_90": "Más de 90 días"
+      },
+      "columns": {
+        "family": "Familia",
+        "overdueTotal": "Vencido",
+        "overdueCharges": "Cargos vencidos",
+        "oldestDueDate": "Vencimiento más antiguo",
+        "daysOverdue": "Días de atraso",
+        "outstanding": "Por pagar",
+        "accountCredit": "Saldo a favor",
+        "lastReminder": "Último recordatorio"
+      },
+      "days_one": "{{count}} día",
+      "days_many": "{{count}} días",
+      "days_other": "{{count}} días",
+      "aging": "Antigüedad y saldo",
+      "empty": "No hay cuentas vencidas.",
+      "pagination": "Páginas de cuentas vencidas"
+    },
+    "dueDates": {
+      "cancel": "Cancelar",
+      "saving": "Guardando…",
+      "offset": {
+        "label_one": "Plazo adicional de vencimiento: {{count}} día",
+        "label_many": "Plazo adicional de vencimiento: {{count}} días",
+        "label_other": "Plazo adicional de vencimiento: {{count}} días",
+        "edit": "Editar",
+        "editLabel": "Editar plazo adicional de vencimiento",
+        "title": "Plazo adicional de vencimiento",
+        "help": "Días que se suman a la fecha de vencimiento de los cargos de esta familia.",
+        "field": "Días adicionales (0 a 60)",
+        "hint": "Se aplica a los cargos que se registren a partir de ahora; los vencimientos existentes no cambian.",
+        "save": "Guardar",
+        "conflict": "Esta cuenta cambió. Se volvió a cargar; revisa el valor y guarda de nuevo.",
+        "done_one": "Plazo adicional de vencimiento: {{count}} día.",
+        "done_many": "Plazo adicional de vencimiento: {{count}} días.",
+        "done_other": "Plazo adicional de vencimiento: {{count}} días."
+      },
+      "change": {
+        "action": "Cambiar vencimiento",
+        "actionFor": "Cambiar vencimiento: {{charge}}, {{student}}, {{date}}",
+        "title": "Cambiar vencimiento",
+        "help": "La nueva fecha se aplica solo a este cargo. Su estado sigue a la nueva fecha.",
+        "student": "Estudiante",
+        "kind": "Tipo",
+        "description": "Descripción",
+        "open": "Por pagar",
+        "current": "Vencimiento actual",
+        "original": "Vencimiento original",
+        "newDate": "Nuevo vencimiento",
+        "pastWarning": "La fecha es anterior a hoy: este cargo quedará vencido.",
+        "reason": "Motivo",
+        "reasonHint": "Solo para el personal; la familia no lo ve.",
+        "submit": "Cambiar vencimiento",
+        "done": "Vencimiento cambiado al {{date}}; estado: {{status}}."
+      },
+      "history": {
+        "title": "Historial de cambios",
+        "empty": "Todavía no hay cambios.",
+        "line": "{{from}} → {{to}}",
+        "changedOn": "Cambiado el {{date}}"
+      },
+      "marker": {
+        "label": "Cambiado. Vencimiento original: {{date}}",
+        "tooltip": "Original: {{date}}"
+      },
+      "validation": {
+        "offsetInvalid": "Escribe un número entero del 0 al 60.",
+        "dateRequired": "Elige una fecha.",
+        "reasonRequired": "Escribe el motivo del cambio.",
+        "reasonTooLong": "El motivo puede tener como máximo 500 caracteres."
+      }
     }
   }
 }

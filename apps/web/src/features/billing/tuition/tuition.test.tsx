@@ -208,6 +208,7 @@ describe('access (A1)', () => {
 
     expect(tabs()).toEqual([
       ['Accounts', null],
+      ['Overdue', null],
       ['Prices', null],
       ['Discounts', null],
       ['Custom prices', null],
@@ -246,6 +247,7 @@ describe('access (A1)', () => {
     ).not.toContain('New plan');
     expect(tabs().map(([name]) => name)).toEqual([
       'Accounts',
+      'Overdue',
       'Tuition plans',
       'Packages',
       'Unbilled',

@@ -4532,7 +4532,8 @@
       "settings": "Settings",
       "tuitionPlans": "Tuition plans",
       "packages": "Packages",
-      "accounts": "Accounts"
+      "accounts": "Accounts",
+      "overdue": "Overdue"
     },
     "prices": {
       "title": "Prices",
@@ -5494,7 +5495,8 @@
           "allocated": "Paid",
           "open": "Open",
           "dueDate": "Due date",
-          "status": "Status"
+          "status": "Status",
+          "actions": "Actions"
         }
       },
       "chargeKinds": {
@@ -5638,6 +5640,100 @@
       "cash": "Cash",
       "transfer": "Transfer",
       "other": "Other"
+    },
+    "overdue": {
+      "title": "Overdue accounts",
+      "intro": "Families with charges past their due date, longest overdue first. Account credit is shown, not subtracted: apply it from the family's account.",
+      "filters": {
+        "label": "Filter overdue accounts",
+        "minDays": "Minimum days overdue",
+        "minDaysOptions": {
+          "d1": "Any",
+          "d31": "31 or more",
+          "d61": "61 or more",
+          "d91": "91 or more"
+        },
+        "status": "Family status"
+      },
+      "totals": {
+        "title": "Totals",
+        "accounts": "Accounts",
+        "overdueTotal": "Overdue total",
+        "asOf": "As of {{date}}."
+      },
+      "buckets": {
+        "days_1_30": "1–30 days",
+        "days_31_60": "31–60 days",
+        "days_61_90": "61–90 days",
+        "days_over_90": "Over 90 days"
+      },
+      "columns": {
+        "family": "Family",
+        "overdueTotal": "Overdue",
+        "overdueCharges": "Overdue charges",
+        "oldestDueDate": "Oldest due date",
+        "daysOverdue": "Days overdue",
+        "outstanding": "Outstanding",
+        "accountCredit": "Account credit",
+        "lastReminder": "Last reminder"
+      },
+      "days_one": "{{count}} day",
+      "days_other": "{{count}} days",
+      "aging": "Aging and balance",
+      "empty": "No overdue accounts.",
+      "pagination": "Overdue accounts pages"
+    },
+    "dueDates": {
+      "cancel": "Cancel",
+      "saving": "Saving…",
+      "offset": {
+        "label_one": "Extra days to pay: {{count}} day",
+        "label_other": "Extra days to pay: {{count}} days",
+        "edit": "Edit",
+        "editLabel": "Edit extra days to pay",
+        "title": "Extra days to pay",
+        "help": "Days added to the due date of this family's charges.",
+        "field": "Extra days (0–60)",
+        "hint": "Applies to charges posted from now on; existing due dates don't change.",
+        "save": "Save",
+        "conflict": "This account changed. It was reloaded; check the value and save again.",
+        "done_one": "Extra days to pay set to {{count}} day.",
+        "done_other": "Extra days to pay set to {{count}} days."
+      },
+      "change": {
+        "action": "Change due date",
+        "actionFor": "Change due date: {{charge}}, {{student}}, {{date}}",
+        "title": "Change due date",
+        "help": "The new date applies to this charge only. Its status follows the new date.",
+        "student": "Student",
+        "kind": "Kind",
+        "description": "Description",
+        "open": "Open",
+        "current": "Current due date",
+        "original": "Original due date",
+        "newDate": "New due date",
+        "pastWarning": "This date is before today: this charge will be overdue.",
+        "reason": "Reason",
+        "reasonHint": "Staff only; the family doesn't see it.",
+        "submit": "Change due date",
+        "done": "Due date changed to {{date}}; status: {{status}}."
+      },
+      "history": {
+        "title": "Change history",
+        "empty": "No changes yet.",
+        "line": "{{from}} → {{to}}",
+        "changedOn": "Changed on {{date}}"
+      },
+      "marker": {
+        "label": "Changed. Original due date: {{date}}",
+        "tooltip": "Original: {{date}}"
+      },
+      "validation": {
+        "offsetInvalid": "Enter a whole number from 0 to 60.",
+        "dateRequired": "Choose a date.",
+        "reasonRequired": "Write the reason for the change.",
+        "reasonTooLong": "The reason can have at most 500 characters."
+      }
     }
   }
 }

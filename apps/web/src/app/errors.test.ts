@@ -334,6 +334,9 @@ const API_CODES = [
   'nothing_to_allocate',
   'payment_method_unavailable',
   'received_on_in_future',
+  // #382 E1: due dates (#97).
+  'charge_settled',
+  'due_date_unchanged',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [
