@@ -180,6 +180,28 @@ committing:
   :func:`payment_refunds`; ``charge_details(charge_id=…)`` for one charge;
   ``PaymentRow.reversal_*`` (the reversal, joined into the payment reads).
 
+**Withdrawals** (#101; :mod:`~app.modules.billing.withdrawals`; the
+workflow ``app.workflows.withdrawals``). For other modules:
+
+- the pure :func:`withdrawal_credit` (S1: ``net × U / D``, the policies
+  ``pro_rata | nothing_delivered | open_ended_fee | fully_used``),
+  :func:`plan_freed_cash` (B2: what E5 releases per charge and payment)
+  and :func:`fingerprint` / :func:`canonical_json` (B7);
+- the reads :func:`line_charges` (net + valid allocations),
+  :func:`keys_covered_by_package` (the sessions one package would cover),
+  :func:`valid_allocations`, :func:`tuition_period_charge_ids`,
+  :func:`package_facts`, :func:`withdrawal_of_subject`,
+  :func:`get_withdrawal`, :func:`list_withdrawals`,
+  :func:`adjustment_ids_by_key`, :func:`freed_by_adjustments` and the
+  unexecuted :func:`withdrawal_subject_columns` (the #92
+  ``withdrawal_settled`` outcome);
+- the writes :func:`insert_withdrawal` (needs the actor) and
+  :func:`record_package_refund` (the ``refund`` units row). The credits
+  are ``post_adjustment(kind='withdrawal', source_key=WITHDRAWAL_KEY)`` and
+  the refunds :func:`refund_payment` with ``RefundDraft.withdrawal_id``,
+  all under :func:`lock_billing_account`. Never on a ``session`` or
+  ``manual`` charge.
+
 **Receipts** (#98; :mod:`~app.modules.billing.receipts`, the core
 :mod:`app.core.numbering`; the workflow ``app.workflows.billing_receipts``).
 For other modules:
@@ -370,6 +392,9 @@ from app.modules.billing.errors import (
 from app.modules.billing.errors import ChargeNetNegativeError as ChargeNetNegativeError
 from app.modules.billing.errors import ChargeSettledError as ChargeSettledError
 from app.modules.billing.errors import (
+    CreditOverrideUnknownChargeError as CreditOverrideUnknownChargeError,
+)
+from app.modules.billing.errors import (
     CustomPriceEffectiveFromInvalidError as CustomPriceEffectiveFromInvalidError,
 )
 from app.modules.billing.errors import (
@@ -402,6 +427,9 @@ from app.modules.billing.errors import (
 )
 from app.modules.billing.errors import (
     PackageNotOfferedError as PackageNotOfferedError,
+)
+from app.modules.billing.errors import (
+    PackageNotWithdrawableError as PackageNotWithdrawableError,
 )
 from app.modules.billing.errors import (
     PackageProductInactiveError as PackageProductInactiveError,
@@ -491,6 +519,25 @@ from app.modules.billing.errors import (
 from app.modules.billing.errors import (
     TuitionResumeInvalidError as TuitionResumeInvalidError,
 )
+from app.modules.billing.errors import (
+    WithdrawalCloseoutPendingError as WithdrawalCloseoutPendingError,
+)
+from app.modules.billing.errors import WithdrawalExistsError as WithdrawalExistsError
+from app.modules.billing.errors import (
+    WithdrawalNothingToRefundError as WithdrawalNothingToRefundError,
+)
+from app.modules.billing.errors import (
+    WithdrawalPreviewStaleError as WithdrawalPreviewStaleError,
+)
+from app.modules.billing.errors import (
+    WithdrawalSpansAccountsError as WithdrawalSpansAccountsError,
+)
+from app.modules.billing.errors import (
+    WithdrawalSubjectInvalidError as WithdrawalSubjectInvalidError,
+)
+from app.modules.billing.errors import (
+    WithdrawalSubjectNotFoundError as WithdrawalSubjectNotFoundError,
+)
 from app.modules.billing.ledger import (
     ENROLLMENT_REMOVAL as ENROLLMENT_REMOVAL,
 )
@@ -550,6 +597,9 @@ from app.modules.billing.packages import get_package as get_package
 from app.modules.billing.packages import get_product as get_product
 from app.modules.billing.packages import grant_package as grant_package
 from app.modules.billing.packages import insert_package as insert_package
+from app.modules.billing.packages import (
+    keys_covered_by_package as keys_covered_by_package,
+)
 from app.modules.billing.packages import list_packages as list_packages
 from app.modules.billing.packages import list_products as list_products
 from app.modules.billing.packages import (
@@ -814,6 +864,46 @@ from app.modules.billing.tuition_plans import posted_through as posted_through
 from app.modules.billing.tuition_plans import recent_periods as recent_periods
 from app.modules.billing.tuition_plans import tuition_candidates as tuition_candidates
 from app.modules.billing.tuition_plans import update_plan as update_plan
+from app.modules.billing.withdrawals import WITHDRAWAL_KEY as WITHDRAWAL_KEY
+from app.modules.billing.withdrawals import AllocationFact as AllocationFact
+from app.modules.billing.withdrawals import ChargeAfter as ChargeAfter
+from app.modules.billing.withdrawals import CreditPolicy as CreditPolicy
+from app.modules.billing.withdrawals import FreedCash as FreedCash
+from app.modules.billing.withdrawals import LineCharge as LineCharge
+from app.modules.billing.withdrawals import LineCredit as LineCredit
+from app.modules.billing.withdrawals import PackageFacts as PackageFacts
+from app.modules.billing.withdrawals import SubjectKind as SubjectKind
+from app.modules.billing.withdrawals import WithdrawalDraft as WithdrawalDraft
+from app.modules.billing.withdrawals import WithdrawalOutcome as WithdrawalOutcome
+from app.modules.billing.withdrawals import WithdrawalRow as WithdrawalRow
+from app.modules.billing.withdrawals import (
+    adjustment_ids_by_key as adjustment_ids_by_key,
+)
+from app.modules.billing.withdrawals import canonical_json as canonical_json
+from app.modules.billing.withdrawals import fingerprint as fingerprint
+from app.modules.billing.withdrawals import (
+    freed_by_adjustments as freed_by_adjustments,
+)
+from app.modules.billing.withdrawals import get_withdrawal as get_withdrawal
+from app.modules.billing.withdrawals import insert_withdrawal as insert_withdrawal
+from app.modules.billing.withdrawals import line_charges as line_charges
+from app.modules.billing.withdrawals import list_withdrawals as list_withdrawals
+from app.modules.billing.withdrawals import package_facts as package_facts
+from app.modules.billing.withdrawals import plan_freed_cash as plan_freed_cash
+from app.modules.billing.withdrawals import (
+    record_package_refund as record_package_refund,
+)
+from app.modules.billing.withdrawals import (
+    tuition_period_charge_ids as tuition_period_charge_ids,
+)
+from app.modules.billing.withdrawals import valid_allocations as valid_allocations
+from app.modules.billing.withdrawals import withdrawal_credit as withdrawal_credit
+from app.modules.billing.withdrawals import (
+    withdrawal_of_subject as withdrawal_of_subject,
+)
+from app.modules.billing.withdrawals import (
+    withdrawal_subject_columns as withdrawal_subject_columns,
+)
 
 ChargeDiscountLine = DiscountLine
 """A charge's snapshot line (:func:`charge_discount_lines`, #95 B6)."""

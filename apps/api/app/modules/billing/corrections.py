@@ -328,6 +328,7 @@ async def refund_payment(session: AsyncSession, draft: RefundDraft) -> RecordedR
         reference=draft.reference,
         reason=draft.reason,
         refunded_by_user_id=actor,
+        withdrawal_id=draft.withdrawal_id,
     )
     session.add(refund)
     await session.flush()
@@ -387,7 +388,9 @@ async def cancel_package(
         await session.execute(
             select(PackageCreditTransaction.id, PackageCreditTransaction.kind).where(
                 PackageCreditTransaction.package_id == package_id,
-                PackageCreditTransaction.kind.in_(("grant", "expire", "reversal")),
+                PackageCreditTransaction.kind.in_(
+                    ("grant", "expire", "reversal", "refund")
+                ),
             )
         )
     ).all()
@@ -402,6 +405,9 @@ async def cancel_package(
     )
     if "reversal" in kinds:
         raise PackageNotCancellableError("cancelled")
+    if "refund" in kinds:
+        # #101: a withdrawn package has nothing left to cancel.
+        raise PackageNotCancellableError("withdrawn")
     if "expire" in kinds or package.expires_on < today:
         raise PackageNotCancellableError("expired")
     if remaining <= 0:

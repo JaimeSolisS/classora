@@ -299,6 +299,16 @@ Owner-delegated recommended decisions of #100 (2026-10-28, R1–R10 (a)). No acc
 - **R6, package-purchase cancellation (E10):** one `reversal` movement of `−remaining` against the grant (the only writer of that kind) plus a `package_cancellation` adjustment on the purchase charge (new kind, migration 0070), default credit `net × remaining / units_granted` (`Money.prorate`, consistent with E7's deferred-revenue reading), overridable from `0.00` to the net. Generic manual adjustments refuse `package_purchase` charges, so money and units always move together; #94's status gains `cancelled`.
 - **R9, receipts (E13):** no receipt change. A reversal shows #98's live "reversed" banner; a refund doesn't change the receipt (no refund banner, no receipt v2): the refund is its own ledger row with its own method and reference.
 
+## Implementation notes (M6-16)
+
+Owner-delegated recommended decisions of #101 (2026-10-28, S1–S8 (a)). No accepted rule changes.
+
+- **S1 is the withdrawal policy** (closes #86 QA O3, the "policy-based" amount of spec §6): each line (the period's fee or the J5 earlier fee, a linked tuition period ending on or after the withdrawal date, a package's purchase charge) is credited `net × unused / deliverable` with `Money.prorate`, counting the owner's sessions that aren't cancelled or skipped (materialized and projected); a tuition period counts inside its window; a package uses remaining / granted units. An open-ended group fee is not credited (#92 J3); nothing deliverable credits the whole net; staff may override a line from `0.00` to its net with the reason. A configurable withdrawal-policy table stays a possible follow-up (S1 (b)).
+- **S2 adds package withdrawals:** a third subject (`withdrawals.package_id`), one `refund` units row of `−remaining` (E10) and a `withdrawal` adjustment on the purchase charge; the package status becomes `withdrawn`. #100's cancellation stays the correction path.
+- **S4: a refund is the freed money.** Both outcomes post the credits first (E5 releases); a `refund` also pays back exactly the money freed in that transaction (by #101's credits and #92's J4 credits), one `refunds` row per source payment through `refund_payment`. Unrelated older credit is not refunded here, and the account-credit outcome never allocates.
+- **S5 adds reauthentication on the account-credit outcome** (`finance.correction`), stricter than E8's wording; a refund needs `finance.refund.approve` + `finance.refund_or_reversal`; an enrollment subject also needs `schedule.manage`. A clarification, not a rule change.
+- **S6 adds the `withdrawal_settled` guard:** the confirm posts a billable unposted fee and the due tuition periods in the same transaction, then credits them; afterwards the #92 classification never posts a fee for a settled period. E9 holds: per-session group charges are credited only by #92 J4, flat and course fees and posted tuition periods only by #101.
+
 ## References
 
 - [`../architecture.md`](../architecture.md) §4.2, §4.4, §5, §6, §10.4 ISSUE-J4, §10.6 ISSUE-F1–F7, §11, §12

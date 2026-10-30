@@ -4840,8 +4840,8 @@ export interface paths {
         /**
          * List Packages
          * @description The sold packages, the earliest expiry first (then purchase date and
-         *     id). `status` (active, exhausted, expired, cancelled; for the center's
-         *     today) may be repeated.
+         *     id). `status` (active, exhausted, expired, cancelled, withdrawn; for the
+         *     center's today) may be repeated.
          */
         get: operations["list_packages_api_v1_billing_packages_get"];
         put?: never;
@@ -4902,6 +4902,125 @@ export interface paths {
          *     their sessions, expiry), oldest first.
          */
         get: operations["get_package_api_v1_billing_packages__package_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/withdrawal-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Withdrawal
+         * @description What withdrawing a student from a group, a course cohort or a
+         *     package would credit: the consumed and unused sessions (or units), each
+         *     fee, tuition period or package charge credited and why, the automatic
+         *     session credits of a group, how much lowers the debt and how much paid
+         *     money could be refunded. An enrollment already withdrawn is settled as
+         *     of its withdrawal. Nothing is written; a blocked withdrawal is still
+         *     shown with its reasons. Send the `fingerprint` with the confirm.
+         */
+        get: operations["preview_withdrawal_api_v1_billing_withdrawal_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/withdrawals/account-credit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Account Credit
+         * @description Confirm a withdrawal as account credit: an active enrollment is
+         *     withdrawn now, the due fee or tuition is posted, and each line is
+         *     credited (as previewed, or as overridden, with the reason). Paid money
+         *     the credits free stays on the account as credit. Withdrawing an
+         *     enrollment also needs schedule.manage. Needs a password
+         *     reauthentication in the last 5 minutes. Send a new `Idempotency-Key`
+         *     per withdrawal and the same one to retry it.
+         */
+        post: operations["confirm_account_credit_api_v1_billing_withdrawals_account_credit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/withdrawals/refund": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Refund
+         * @description Confirm a withdrawal as a refund: the same as account credit, then
+         *     the paid money the credits free is paid back (one refund per source
+         *     payment, with the date, method and reference). Older, unrelated credit
+         *     isn't refunded. Withdrawing an enrollment also needs schedule.manage.
+         *     Needs a password reauthentication in the last 5 minutes.
+         */
+        post: operations["confirm_refund_api_v1_billing_withdrawals_refund_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/withdrawals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Withdrawals
+         * @description The confirmed withdrawals, newest first, optionally of one family,
+         *     student, enrollment or package.
+         */
+        get: operations["list_withdrawals_api_v1_billing_withdrawals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/withdrawals/{withdrawal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Withdrawal
+         * @description One withdrawal with the preview it was confirmed on, its outcome and
+         *     amounts, the ids of its credits, refunds and automatic session credits,
+         *     who confirmed it and why.
+         */
+        get: operations["get_withdrawal_api_v1_billing_withdrawals__withdrawal_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6202,6 +6321,30 @@ export interface components {
             request_id: string | null;
         };
         /**
+         * AutomaticCredit
+         * @description A #92 removal credit the group withdrawal posts by itself (the whole
+         *     net of a session charge the student leaves); never part of the
+         *     withdrawal's amount.
+         */
+        AutomaticCredit: {
+            /**
+             * Charge Id
+             * Format: uuid
+             */
+            charge_id: string;
+            /**
+             * Class Session Id
+             * Format: uuid
+             */
+            class_session_id: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+        };
+        /**
          * AvailabilityChange
          * @description What a change request changes: the full wanted weekly windows
          *     (``weekly``) or the exception added or deleted.
@@ -6693,6 +6836,8 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** @enum {string} */
+        BlockingCode: "withdrawal_exists" | "withdrawal_closeout_pending" | "package_not_withdrawable" | "student_has_no_family" | "withdrawal_spans_accounts";
         /**
          * BusinessSettingsDetail
          * @description The center's business settings (``GET /api/v1/business-settings``).
@@ -10135,6 +10280,27 @@ export interface components {
         };
         /** @enum {string} */
         CreditAllocationMode: "oldest_first" | "explicit";
+        /**
+         * CreditOverride
+         * @description The applied credit of one line instead of the computed one: from
+         *     ``0.00`` (``amount_negative``) to the charge's net (``409
+         *     charge_net_negative`` above it).
+         */
+        CreditOverride: {
+            /**
+             * Charge Id
+             * Format: uuid
+             */
+            charge_id: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+        };
+        /** @enum {string} */
+        CreditPolicy: "pro_rata" | "nothing_delivered" | "open_ended_fee" | "fully_used";
         /** @enum {string} */
         CriteriaChargeKind: "session" | "group_enrollment" | "cohort_enrollment" | "tuition_period" | "package_purchase";
         /** @enum {string} */
@@ -13038,6 +13204,19 @@ export interface components {
         /** @enum {string} */
         LedgerEntryType: "charge" | "adjustment" | "payment" | "payment_reversal" | "allocation" | "allocation_release" | "refund";
         /**
+         * LineBasis
+         * @description The counts behind a line's credit: ``credit = net × unused /
+         *     denominator`` (S1).
+         */
+        LineBasis: {
+            /** Consumed */
+            consumed: number;
+            /** Unused */
+            unused: number;
+            /** Denominator */
+            denominator: number;
+        };
+        /**
          * LoginRequest
          * @description Username and password. The bounds do not depend on any account.
          */
@@ -13662,6 +13841,17 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** OffsetPage[WithdrawalItem] */
+        OffsetPage_WithdrawalItem_: {
+            /** Items */
+            items: components["schemas"]["WithdrawalItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /**
          * OperatingHoursItem
          * @description The opening interval of one weekday, in the center's local time.
@@ -13950,8 +14140,9 @@ export interface components {
         /**
          * PackageItem
          * @description One sold package (#94 D5). ``status`` is for the center's today:
-         *     ``cancelled`` (#100: a package cancellation) → ``expired`` (expired, or
-         *     past ``expires_on``) → ``exhausted`` (no units left) → ``active``.
+         *     ``cancelled`` (#100: a package cancellation) → ``withdrawn`` (#101: a
+         *     withdrawal) → ``expired`` (expired, or past ``expires_on``) →
+         *     ``exhausted`` (no units left) → ``active``.
          */
         PackageItem: {
             /**
@@ -14107,7 +14298,7 @@ export interface components {
             name: string;
         };
         /** @enum {string} */
-        PackageStatus: "active" | "exhausted" | "expired" | "cancelled";
+        PackageStatus: "active" | "exhausted" | "expired" | "cancelled" | "withdrawn";
         /**
          * PackageTransactionItem
          * @description One unit movement (signed, in the package's unit). A ``consume``
@@ -14133,7 +14324,7 @@ export interface components {
             created_at: string;
         };
         /** @enum {string} */
-        PackageTransactionKind: "grant" | "consume" | "expire" | "reversal";
+        PackageTransactionKind: "grant" | "consume" | "expire" | "reversal" | "refund";
         /** @enum {string} */
         PackageUnit: "sessions" | "minutes";
         /**
@@ -14573,6 +14764,121 @@ export interface components {
         /** @enum {string} */
         PlanStatus: "draft" | "active" | "completed" | "discontinued";
         /**
+         * PreviewBlocking
+         * @description Why the withdrawal can't be confirmed (the confirm answers this code
+         *     as its error).
+         */
+        PreviewBlocking: {
+            code: components["schemas"]["BlockingCode"];
+            /**
+             * Details
+             * @default {}
+             */
+            details: {
+                [key: string]: string | string[];
+            };
+        };
+        /**
+         * PreviewRecord
+         * @description A record's id and name.
+         */
+        PreviewRecord: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * PreviewSessions
+         * @description The owner's counted sessions of the period (S1): ``consumed`` before
+         *     the withdrawal instant, ``unused`` after it, and their minutes.
+         */
+        PreviewSessions: {
+            /** Consumed */
+            consumed: number;
+            /** Unused */
+            unused: number;
+            /** Consumed Minutes */
+            consumed_minutes: number;
+            /** Unused Minutes */
+            unused_minutes: number;
+        };
+        /**
+         * PreviewTotals
+         * @description ``credit`` = Σ computed credits; ``reduces_debt`` = the part of it
+         *     that lowers what is owed; ``refundable_cash`` = the paid money the
+         *     credits (and the automatic credits) free; ``automatic_credits`` = Σ the
+         *     automatic credits; ``account_credit_after_credit`` = the account credit
+         *     once everything is posted (before any refund).
+         */
+        PreviewTotals: {
+            /**
+             * Credit
+             * Format: decimal
+             * @example 1250.00
+             */
+            credit: string;
+            /**
+             * Reduces Debt
+             * Format: decimal
+             * @example 1250.00
+             */
+            reduces_debt: string;
+            /**
+             * Refundable Cash
+             * Format: decimal
+             * @example 1250.00
+             */
+            refundable_cash: string;
+            /**
+             * Automatic Credits
+             * Format: decimal
+             * @example 1250.00
+             */
+            automatic_credits: string;
+            /**
+             * Account Credit After Credit
+             * Format: decimal
+             * @example 1250.00
+             */
+            account_credit_after_credit: string;
+        };
+        /**
+         * PreviewUnits
+         * @description A package's units: granted, consumed (or expired) and remaining.
+         */
+        PreviewUnits: {
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "sessions" | "minutes";
+            /** Granted */
+            granted: number;
+            /** Consumed */
+            consumed: number;
+            /** Remaining */
+            remaining: number;
+        };
+        /**
+         * PreviewWarning
+         * @description Something to know before confirming (``class_session_ids`` for
+         *     ``future_covered_sessions``).
+         */
+        PreviewWarning: {
+            code: components["schemas"]["WarningCode"];
+            /** Count */
+            count: number;
+            /**
+             * Class Session Ids
+             * @default []
+             */
+            class_session_ids: string[];
+        };
+        /**
          * PriceCatalogReference
          * @description A level, cohort or group an item points at: its id and current
          *     name.
@@ -14732,7 +15038,9 @@ export interface components {
             conflicts?: components["schemas"]["SchedulingConflict"][];
             /** Details */
             details?: {
-                [key: string]: string | string[];
+                [key: string]: string | string[] | {
+                    [key: string]: unknown;
+                };
             };
         };
         /** ProgressAttendance */
@@ -15555,9 +15863,10 @@ export interface components {
          * RefundItem
          * @description Money paid back from a payment's unallocated remainder (#100 R4,
          *     R8): ``refunded_on`` is the center-local day it went out,
-         *     ``refunded_at`` when it was entered. ``reason`` and
-         *     ``refunded_by_user_id`` are ``null`` for a caller without
-         *     billing.view.
+         *     ``refunded_at`` when it was entered. ``withdrawal_id`` is the #101
+         *     withdrawal that paid it out (``null`` for a #100 refund). ``reason``,
+         *     ``refunded_by_user_id`` and ``withdrawal_id`` are ``null`` for a caller
+         *     without billing.view.
          */
         RefundItem: {
             /**
@@ -15589,6 +15898,8 @@ export interface components {
             refunded_at: string;
             /** Refunded By User Id */
             refunded_by_user_id: string | null;
+            /** Withdrawal Id */
+            withdrawal_id: string | null;
         };
         /**
          * RefundRecorded
@@ -15604,6 +15915,23 @@ export interface components {
              * @example 1250.00
              */
             account_credit_after: string;
+        };
+        /**
+         * RefundTerms
+         * @description How the refund went out: its date (from 2000-01-01, not after today,
+         *     not before the latest source payment), an active method and an optional
+         *     reference.
+         */
+        RefundTerms: {
+            /**
+             * Refunded On
+             * Format: date
+             */
+            refunded_on: string;
+            /** Payment Method Code */
+            payment_method_code: string;
+            /** Reference */
+            reference?: string | null;
         };
         /**
          * RegistrationCreate
@@ -17656,6 +17984,8 @@ export interface components {
              */
             updated_at: string;
         };
+        /** @enum {string} */
+        SubjectKind: "group_enrollment" | "cohort_enrollment" | "package";
         /**
          * SubjectUpdate
          * @description A change to a subject (``PATCH /api/v1/subjects/{subject_id}``) with
@@ -18669,6 +18999,8 @@ export interface components {
             /** Phone */
             phone?: string | null;
         };
+        /** @enum {string} */
+        WarningCode: "future_covered_sessions" | "fee_posted_now" | "tuition_posted_now" | "open_ended_fee";
         /**
          * WeeklyAvailabilityUpdate
          * @description The tutor's full list of weekly windows
@@ -18686,6 +19018,319 @@ export interface components {
              * @description At most 42 windows; windows of one weekday may touch but not overlap. Local wall-clock times of the center.
              */
             windows: components["schemas"]["AvailabilityWindow"][];
+        };
+        /**
+         * WithdrawalConfirmed
+         * @description ``201`` of a confirm (#101 C2): the withdrawal, the package
+         *     ``refund`` units row (packages), the account credit afterwards and the
+         *     family's account summary.
+         */
+        WithdrawalConfirmed: {
+            withdrawal: components["schemas"]["WithdrawalDetail"];
+            /** Package Refund Transaction Id */
+            package_refund_transaction_id: string | null;
+            /**
+             * Account Credit After
+             * Format: decimal
+             * @example 1250.00
+             */
+            account_credit_after: string;
+            account: components["schemas"]["BillingAccountSummary"];
+        };
+        /**
+         * WithdrawalCreditConfirm
+         * @description ``POST /api/v1/billing/withdrawals/account-credit`` (#101 D2): the
+         *     subject, the enrollment's ``version`` (required for an active
+         *     enrollment, ignored otherwise), the reason (trimmed, 1-500), the
+         *     preview's ``fingerprint`` and optional per-line overrides (unique
+         *     charges: ``credit_override_duplicate``).
+         */
+        WithdrawalCreditConfirm: {
+            subject: components["schemas"]["WithdrawalSubjectBody"];
+            /** Version */
+            version?: number | null;
+            /** Reason */
+            reason: string;
+            /** Fingerprint */
+            fingerprint: string;
+            /**
+             * Credit Overrides
+             * @default []
+             */
+            credit_overrides: components["schemas"]["CreditOverride"][];
+        };
+        /**
+         * WithdrawalDetail
+         * @description A withdrawal with the preview it was confirmed on (the applied
+         *     amounts, the overrides and the outcome included).
+         */
+        WithdrawalDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            subject: components["schemas"]["WithdrawalSubject"];
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /**
+             * Family Id
+             * Format: uuid
+             */
+            family_id: string;
+            /**
+             * Billing Account Id
+             * Format: uuid
+             */
+            billing_account_id: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "refund" | "account_credit";
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            /**
+             * Refund Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            refund_amount: string;
+            /**
+             * Withdrawn At
+             * Format: date-time
+             */
+            withdrawn_at: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Confirmed By User Id
+             * Format: uuid
+             */
+            confirmed_by_user_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Adjustment Ids */
+            adjustment_ids: string[];
+            /** Refund Ids */
+            refund_ids: string[];
+            /** Automatic Credit Adjustment Ids */
+            automatic_credit_adjustment_ids: string[];
+            /** Preview */
+            preview: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * WithdrawalItem
+         * @description One withdrawal (#101 D3): its subject, outcome, applied credit
+         *     (``amount``), cash refunded, the instant used, the reason and who
+         *     confirmed it, with the ids of its adjustments, its refunds and the #92
+         *     automatic credits it caused.
+         */
+        WithdrawalItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            subject: components["schemas"]["WithdrawalSubject"];
+            /**
+             * Student Id
+             * Format: uuid
+             */
+            student_id: string;
+            /**
+             * Family Id
+             * Format: uuid
+             */
+            family_id: string;
+            /**
+             * Billing Account Id
+             * Format: uuid
+             */
+            billing_account_id: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "refund" | "account_credit";
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            /**
+             * Refund Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            refund_amount: string;
+            /**
+             * Withdrawn At
+             * Format: date-time
+             */
+            withdrawn_at: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Confirmed By User Id
+             * Format: uuid
+             */
+            confirmed_by_user_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Adjustment Ids */
+            adjustment_ids: string[];
+            /** Refund Ids */
+            refund_ids: string[];
+            /** Automatic Credit Adjustment Ids */
+            automatic_credit_adjustment_ids: string[];
+        };
+        /**
+         * WithdrawalLine
+         * @description One charge the withdrawal credits (S1). ``posting: "now"``: the
+         *     charge is due but not posted yet; the confirm posts it first (S6), so
+         *     ``charge_id`` is ``null`` until then. ``allocated`` is the valid
+         *     allocations; ``computed_credit`` the rule's credit before overrides.
+         */
+        WithdrawalLine: {
+            /** Charge Id */
+            charge_id: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "group_enrollment" | "cohort_enrollment" | "tuition_period" | "package_purchase";
+            /**
+             * Service Date
+             * Format: date
+             */
+            service_date: string;
+            /** Service Period End */
+            service_period_end: string | null;
+            /**
+             * Net
+             * Format: decimal
+             * @example 1250.00
+             */
+            net: string;
+            /**
+             * Allocated
+             * Format: decimal
+             * @example 1250.00
+             */
+            allocated: string;
+            basis: components["schemas"]["LineBasis"];
+            policy: components["schemas"]["CreditPolicy"];
+            /**
+             * Computed Credit
+             * Format: decimal
+             * @example 1250.00
+             */
+            computed_credit: string;
+            /**
+             * Posting
+             * @enum {string}
+             */
+            posting: "posted" | "now";
+        };
+        /**
+         * WithdrawalPreview
+         * @description ``GET /api/v1/billing/withdrawal-preview`` (#101 C1). ``at`` is the
+         *     withdrawal instant (now for an active enrollment or a package, the
+         *     enrollment's ``withdrawn_at`` to settle a withdrawn one). Send
+         *     ``fingerprint`` with the confirm: a different one under the locks is
+         *     ``409 withdrawal_preview_stale`` with the fresh preview.
+         */
+        WithdrawalPreview: {
+            subject: components["schemas"]["WithdrawalSubject"];
+            student: components["schemas"]["PreviewRecord"];
+            family: components["schemas"]["PreviewRecord"] | null;
+            /** Billing Account Id */
+            billing_account_id: string | null;
+            /** Enrollment Status */
+            enrollment_status: ("active" | "withdrawn") | null;
+            /** Enrollment Version */
+            enrollment_version: number | null;
+            /** Enrolled At */
+            enrolled_at: string | null;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            sessions: components["schemas"]["PreviewSessions"] | null;
+            units: components["schemas"]["PreviewUnits"] | null;
+            /** Lines */
+            lines: components["schemas"]["WithdrawalLine"][];
+            /** Automatic Credits */
+            automatic_credits: components["schemas"]["AutomaticCredit"][];
+            totals: components["schemas"]["PreviewTotals"];
+            /** Warnings */
+            warnings: components["schemas"]["PreviewWarning"][];
+            /** Blocking */
+            blocking: components["schemas"]["PreviewBlocking"][];
+            /** Fingerprint */
+            fingerprint: string;
+        };
+        /**
+         * WithdrawalRefundConfirm
+         * @description ``POST /api/v1/billing/withdrawals/refund`` (#101 D2): the same plus
+         *     the refund's date, method and reference.
+         */
+        WithdrawalRefundConfirm: {
+            subject: components["schemas"]["WithdrawalSubjectBody"];
+            /** Version */
+            version?: number | null;
+            /** Reason */
+            reason: string;
+            /** Fingerprint */
+            fingerprint: string;
+            /**
+             * Credit Overrides
+             * @default []
+             */
+            credit_overrides: components["schemas"]["CreditOverride"][];
+            refund: components["schemas"]["RefundTerms"];
+        };
+        /**
+         * WithdrawalSubject
+         * @description The enrollment or package being withdrawn.
+         */
+        WithdrawalSubject: {
+            kind: components["schemas"]["SubjectKind"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /**
+         * WithdrawalSubjectBody
+         * @description Exactly one subject (``withdrawal_subject_invalid`` otherwise).
+         */
+        WithdrawalSubjectBody: {
+            /** Group Enrollment Id */
+            group_enrollment_id?: string | null;
+            /** Cohort Enrollment Id */
+            cohort_enrollment_id?: string | null;
+            /** Package Id */
+            package_id?: string | null;
         };
         /**
          * ScheduleSubject
@@ -35517,7 +36162,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The package is cancelled, expired or used up (package_not_cancellable; details: reason cancelled | expired | exhausted); the credit is more than the purchase charge's net (charge_net_negative; details: charge_id, net, amount). */
+            /** @description The package is cancelled, withdrawn, expired or used up (package_not_cancellable; details: reason cancelled | withdrawn | expired | exhausted); the credit is more than the purchase charge's net (charge_net_negative; details: charge_id, net, amount). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -35576,6 +36221,341 @@ export interface operations {
                 };
             };
             /** @description No such package (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    preview_withdrawal_api_v1_billing_withdrawal_preview_get: {
+        parameters: {
+            query?: {
+                group_enrollment_id?: string | null;
+                cohort_enrollment_id?: string | null;
+                package_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WithdrawalPreview"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such enrollment or package (withdrawal_subject_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    confirm_account_credit_api_v1_billing_withdrawals_account_credit_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID(). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WithdrawalCreditConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WithdrawalConfirmed"];
+                };
+            };
+            /** @description The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such enrollment or package (withdrawal_subject_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Settled already (withdrawal_exists; details: withdrawal_id); the situation changed since the preview (withdrawal_preview_stale; details: preview, the fresh one); the enrollment changed (version_conflict) or isn't active (enrollment_not_active); the package is cancelled, withdrawn, expired or used up (package_not_withdrawable; details: reason); a covered session awaits its closeout approval (withdrawal_closeout_pending; details: class_session_ids); the student isn't in a family (student_has_no_family); the charges are on two accounts (withdrawal_spans_accounts); an override above the net (charge_net_negative). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    confirm_refund_api_v1_billing_withdrawals_refund_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID(). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WithdrawalRefundConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WithdrawalConfirmed"];
+                };
+            };
+            /** @description The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such enrollment or package (withdrawal_subject_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Settled already (withdrawal_exists; details: withdrawal_id); the situation changed since the preview (withdrawal_preview_stale; details: preview, the fresh one); the enrollment changed (version_conflict) or isn't active (enrollment_not_active); the package is cancelled, withdrawn, expired or used up (package_not_withdrawable; details: reason); a covered session awaits its closeout approval (withdrawal_closeout_pending; details: class_session_ids); the student isn't in a family (student_has_no_family); the charges are on two accounts (withdrawal_spans_accounts); an override above the net (charge_net_negative); nothing paid is freed (withdrawal_nothing_to_refund). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_withdrawals_api_v1_billing_withdrawals_get: {
+        parameters: {
+            query?: {
+                family_id?: string | null;
+                student_id?: string | null;
+                group_enrollment_id?: string | null;
+                cohort_enrollment_id?: string | null;
+                package_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_WithdrawalItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_withdrawal_api_v1_billing_withdrawals__withdrawal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                withdrawal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WithdrawalDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such withdrawal (not_found). */
             404: {
                 headers: {
                     [name: string]: unknown;

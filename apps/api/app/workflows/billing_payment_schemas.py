@@ -88,9 +88,10 @@ class PaymentReversalItem(BaseModel):
 class RefundItem(BaseModel):
     """Money paid back from a payment's unallocated remainder (#100 R4,
     R8): ``refunded_on`` is the center-local day it went out,
-    ``refunded_at`` when it was entered. ``reason`` and
-    ``refunded_by_user_id`` are ``null`` for a caller without
-    billing.view."""
+    ``refunded_at`` when it was entered. ``withdrawal_id`` is the #101
+    withdrawal that paid it out (``null`` for a #100 refund). ``reason``,
+    ``refunded_by_user_id`` and ``withdrawal_id`` are ``null`` for a caller
+    without billing.view."""
 
     id: uuid.UUID
     amount: Money
@@ -100,6 +101,7 @@ class RefundItem(BaseModel):
     reason: str | None
     refunded_at: datetime
     refunded_by_user_id: uuid.UUID | None
+    withdrawal_id: uuid.UUID | None
 
 
 class PaymentDetail(PaymentItem):

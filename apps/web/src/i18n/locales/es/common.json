@@ -5441,7 +5441,8 @@
         "active": "Activo",
         "exhausted": "Agotado",
         "expired": "Vencido",
-        "cancelled": "Cancelado"
+        "cancelled": "Cancelado",
+        "withdrawn": "Retirado"
       },
       "nav": {
         "label": "Páginas de paquetes",
@@ -5598,7 +5599,8 @@
           "grant": "Otorgado",
           "consume": "Usado en la sesión del {{date}}",
           "expire": "Vencido",
-          "reversal": "Reversión"
+          "reversal": "Reversión",
+          "refund": "Devuelto por retiro"
         }
       },
       "rules": {

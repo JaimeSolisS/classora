@@ -462,6 +462,7 @@ export const PAYMENT_REFUNDED_DETAIL: PaymentDetail = {
       reason: 'Pago de más',
       refunded_at: '2026-10-14T17:00:00Z',
       refunded_by_user_id: STAFF_ID,
+      withdrawal_id: null,
     },
   ],
 };

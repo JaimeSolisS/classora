@@ -1069,10 +1069,13 @@ def test_the_sample_app_has_an_idempotent_route():
 
 def test_the_real_matrix_lists_the_idempotent_routes():
     # #94 adds the first one (the package purchase); #96 the payment and the
-    # credit allocation; #100 the five corrections; later issues add theirs.
+    # credit allocation; #100 the five corrections; #101 the two withdrawal
+    # confirms; later issues add theirs.
     assert [e.label for e in load_matrix() if e.is_idempotent] == [
         "POST /api/v1/billing/packages",
         "POST /api/v1/billing/packages/{package_id}/cancellation",
+        "POST /api/v1/billing/withdrawals/account-credit",
+        "POST /api/v1/billing/withdrawals/refund",
         "POST /api/v1/families/{family_id}/billing-account/allocations",
         "POST /api/v1/families/{family_id}/billing-account/charges",
         "POST /api/v1/families/{family_id}/billing-account/charges/{charge_id}"

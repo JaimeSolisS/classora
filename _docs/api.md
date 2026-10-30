@@ -246,7 +246,16 @@ Codes in use today:
 | `payment_already_reversed` / `payment_has_refunds` | 409 | Reversing a payment that was already reversed, or one with refunds (see Corrections, reversals and refunds). |
 | `payment_reversed` / `refund_exceeds_remainder` | 409 | A refund from a reversed payment, or above the payment's unallocated remainder (`details.remainder`; see Corrections, reversals and refunds). |
 | `refunded_on_in_future` / `refunded_on_before_payment` | 422 | A refund dated after the center's today or before the payment's `received_on`; on `["body","refunded_on"]` (see Corrections, reversals and refunds). |
-| `package_not_cancellable` | 409 | Cancelling a package that is cancelled, expired or used up (`details.reason`: `cancelled` \| `expired` \| `exhausted`; see Corrections, reversals and refunds). |
+| `package_not_cancellable` | 409 | Cancelling a package that is cancelled, withdrawn, expired or used up (`details.reason`: `cancelled` \| `withdrawn` \| `expired` \| `exhausted`; see Corrections, reversals and refunds). |
+| `withdrawal_subject_invalid` | 422 | Not exactly one of `group_enrollment_id`, `cohort_enrollment_id`, `package_id` (the preview's query, or the confirm's `subject`; see Withdrawals). |
+| `withdrawal_subject_not_found` | 404 | No such enrollment or package (see Withdrawals). |
+| `withdrawal_exists` | 409 | The enrollment or package was already settled (`details.withdrawal_id`; see Withdrawals). |
+| `withdrawal_preview_stale` | 409 | The situation changed since the preview (fingerprint, or the real releases differ from the predicted ones); `details.preview` is the fresh preview (an object). Nothing is written (see Withdrawals). |
+| `withdrawal_nothing_to_refund` | 409 | A refund outcome when the withdrawal frees no paid money; use account credit (see Withdrawals). |
+| `withdrawal_closeout_pending` | 409 | A started session the package covers waits for its closeout approval (`details.class_session_ids`; see Withdrawals). |
+| `withdrawal_spans_accounts` | 409 | The charges to credit are on two family accounts (`details.billing_account_ids`); correct them with #100 (see Withdrawals). |
+| `package_not_withdrawable` | 409 | Withdrawing a package that is cancelled, withdrawn, expired or used up (`details.reason`; see Withdrawals). |
+| `credit_override_unknown_charge` | 422 | A credit override naming a charge that isn't a line of the withdrawal; on `["body","credit_overrides",i,"charge_id"]` (see Withdrawals). `credit_override_duplicate` is the field code of an override listed twice. |
 | `charge_settled` / `due_date_unchanged` | 409 | Changing the due date of a `paid` or `void` charge, or to its current effective due date (`details.due_date`); nothing is written (see Due dates and overdue accounts). |
 | `allocation_exceeds_payment` / `allocation_duplicate_charge` / `allocation_lines_required` / `allocation_lines_not_allowed` / `amount_not_allowed` | 422 | Field codes of the payment and credit allocation bodies: explicit lines adding up to more than the payment, a charge twice, `lines` missing for `explicit` or sent for another mode, an `amount` on an explicit credit allocation (with `amount_not_positive` and `date_out_of_range`; see Payments). |
 | `tuition_plan_overlap` | 409 | Another plan of the same group enrollment, or of the same student and price, overlaps the dates (also from the exclusion constraints). |
@@ -6268,8 +6277,10 @@ below.
   `created_by_user_id: null`), `reversal` (`{id, reason, reversed_at,
   reversed_by_user_id}` or `null`) and `refunds [{id, amount, refunded_on,
   payment_method_code, reference, reason, refunded_at,
-  refunded_by_user_id}]`, oldest first (#100 R8; `reason` and the actor
-  ids `null` without `billing.view`, `reference` shown). The detail costs
+  refunded_by_user_id, withdrawal_id}]`, oldest first (#100 R8;
+  `withdrawal_id` is the #101 withdrawal that paid it out; `reason`, the
+  actor ids and `withdrawal_id` `null` without `billing.view`, `reference`
+  shown). The detail costs
   at most six statements. `PaymentRecorded`: `payment`
   (`PaymentItem`), `allocations [{id, charge_id, student_id, amount}]`,
   `unallocated_amount`, `account_credit_after`, `receipt` (`{id,
@@ -6379,6 +6390,89 @@ values.
   an unknown id the same `404`). Without `billing.view`, every `reason`
   and actor id is `null`. The charge detail costs at most eight statements
   whatever the number of adjustments.
+
+### Withdrawals
+
+Implemented by M6-16 (#101; spec §1, §3, §6 withdrawals, refunds and
+corrections, W4.4, W4.5; ADR-0006 E5, E6, E8, E9, E10; owner-delegated
+decisions S1-S8 (a); `_docs/data-model.md` §3.23, §6). The rules are
+`app/modules/billing/withdrawals.py` (exported through `billing.service`);
+the workflow `app/workflows/withdrawals.py`, the routes
+`app/workflows/withdrawals_router.py`. Migration 0071 adds `withdrawals`,
+`refunds.withdrawal_id` and the package `refund` kind. Staff only; the web
+is M6-16b (#387).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/billing/withdrawal-preview?group_enrollment_id=…\|cohort_enrollment_id=…\|package_id=…` | `require("billing.view")` | Exactly one parameter (`422 withdrawal_subject_invalid`); unknown → `404 withdrawal_subject_not_found`. `200 WithdrawalPreview`; read-only, at most 20 statements. |
+| `POST /api/v1/billing/withdrawals/account-credit` | `require("billing.manage")` + reauthentication `finance.correction` + `Idempotency-Key` | Body `WithdrawalCreditConfirm`; `201 WithdrawalConfirmed`. |
+| `POST /api/v1/billing/withdrawals/refund` | `require("finance.refund.approve")` + reauthentication `finance.refund_or_reversal` + `Idempotency-Key` | Body `WithdrawalRefundConfirm` (adds `refund {refunded_on, payment_method_code, reference?}`); `201 WithdrawalConfirmed`. |
+| `GET /api/v1/billing/withdrawals` | `require("billing.view")` | Offset pagination, newest first; filters `family_id`, `student_id`, `group_enrollment_id`, `cohort_enrollment_id`, `package_id`. Items `WithdrawalItem`. |
+| `GET /api/v1/billing/withdrawals/{withdrawal_id}` | `require("billing.view")` | `WithdrawalDetail` (the item plus the stored `preview`); `404 not_found`. |
+
+- **Who (S5):** an enrollment subject also needs `schedule.manage`, checked
+  in the handler (`403 permission_denied` before any write), because the
+  confirm withdraws the enrollment. So: enrollment + credit = Owner,
+  Administrator; enrollment + refund = Owner or a delegated Administrator;
+  package + credit = Owner, Administrator, Finance Staff; package + refund
+  = Owner or a delegated Administrator. Both confirms need a recent
+  reauthentication (before the key, so a `403 reauth_required` stores
+  nothing).
+- **Preview (`WithdrawalPreview`):** `subject {kind, id}`, `student`,
+  `family`, `billing_account_id`, `enrollment_status` (`active` |
+  `withdrawn`, `null` for a package), `enrollment_version`, `enrolled_at`,
+  `at` (now, or the enrollment's `withdrawn_at` to settle an M4 withdrawal),
+  `sessions {consumed, unused, consumed_minutes, unused_minutes}` or
+  `units {unit, granted, consumed, remaining}`, `lines[]` (`charge_id`
+  (`null` while `posting` is `now`), `kind`, `service_date`,
+  `service_period_end`, `net`, `allocated`, `basis {consumed, unused,
+  denominator}`, `policy` (`pro_rata | nothing_delivered | open_ended_fee |
+  fully_used`), `computed_credit`, `posting`), `automatic_credits[]` (the
+  #92 removal credits a group withdrawal posts by itself: `charge_id`,
+  `class_session_id`, `amount`), `totals {credit, reduces_debt,
+  refundable_cash, automatic_credits, account_credit_after_credit}`,
+  `warnings[]` (`future_covered_sessions`, `fee_posted_now`,
+  `tuition_posted_now`, `open_ended_fee`), `blocking[]` (the codes the
+  confirm would answer: `withdrawal_exists`, `withdrawal_closeout_pending`,
+  `package_not_withdrawable`, `student_has_no_family`,
+  `withdrawal_spans_accounts`; a blocked preview is still `200`) and
+  `fingerprint`.
+- **The rule (S1):** per line `credit = net × unused / deliverable`
+  (`Money.prorate`), counting the owner's sessions that aren't cancelled or
+  skipped (materialized and projected); a tuition period counts inside its
+  window; a package uses remaining / granted units. Lines: the fee of the
+  period (or #92 J5's earlier fee), the posted periods of a linked tuition
+  plan ending on or after the withdrawal date, a package's purchase charge.
+  Never a session or manual charge.
+- **Confirm body:** `subject` (exactly one), `version` (required for an
+  active enrollment), `reason` (trimmed 1-500), `fingerprint` (64 hex),
+  `credit_overrides?: [{charge_id, amount}]` (unique charges, `0.00..net`;
+  above the net `409 charge_net_negative`, an unknown charge `422
+  credit_override_unknown_charge`). No query parameter.
+- **Fingerprint / stale flow:** the confirm recomputes the preview under
+  the locks; a different `fingerprint` (it covers the subject, the
+  enrollment's status and version, `at` to the minute, every line with its
+  allocations and counts, the automatic credits and the refundable cash)
+  is `409 withdrawal_preview_stale` with `details.preview`, the fresh
+  preview; show it and confirm again with its fingerprint. A billing write
+  between the locks and the account lock that changes the real releases
+  gives the same `409`.
+- **Effects:** an active enrollment is withdrawn (the M4 change, with the
+  reason); due fees and tuition periods are posted (S6); each line with a
+  credit gets a `withdrawal` adjustment (E5 releases the newest
+  allocations above the new net). `account_credit` leaves the freed money
+  as account credit (no automatic allocation). `refund` also pays back the
+  money freed in this transaction, one `refunds` row per source payment
+  (oldest first; `withdrawal_id` set); nothing freed → `409
+  withdrawal_nothing_to_refund`; the date and method are checked like a
+  #100 refund. A package also gets a `refund` units row (`−remaining`) and
+  the status `withdrawn`. `WithdrawalConfirmed`: `withdrawal`
+  (`WithdrawalDetail` with `adjustment_ids`, `refund_ids`,
+  `automatic_credit_adjustment_ids`), `package_refund_transaction_id`,
+  `account_credit_after`, `account` (`BillingAccountSummary`).
+- **After a settlement** the #92 classification answers
+  `withdrawal_settled` for the period: no fee is posted later (it isn't
+  listed as unbilled either).
 
 ### Receipts
 
@@ -6714,7 +6808,7 @@ The web pages are M6-09b (#377).
 | `POST /api/v1/billing/package-products/{product_id}/versions` | `require("billing.manage")` | Body `{effective_from, amount \| null}` (the #89 rules: `422 price_effective_from_invalid`). `201` with `PackageProductDetail`. |
 | `DELETE /api/v1/billing/package-products/{product_id}/versions/{price_version_id}` | `require("billing.manage")` | `204`; `409 price_version_in_effect` / `price_version_in_use` (a version a charge or a package used); `404` for another product's version. |
 | `POST /api/v1/billing/packages` | `require("billing.manage")` + `Idempotency-Key` | Body `{student_id, package_product_id}`. `201` with `PackageDetail`. |
-| `GET /api/v1/billing/packages` | `require("billing.view")` | Offset pagination; filters `student_id`, `family_id` (the account's family), `status` (`active`, `exhausted`, `expired`, `cancelled` (#100); repeatable). Items are `PackageItem`, by `expires_on`, `purchased_on`, `id`; two statements per page. |
+| `GET /api/v1/billing/packages` | `require("billing.view")` | Offset pagination; filters `student_id`, `family_id` (the account's family), `status` (`active`, `exhausted`, `expired`, `cancelled` (#100), `withdrawn` (#101); repeatable). Items are `PackageItem`, by `expires_on`, `purchased_on`, `id`; two statements per page. |
 | `GET /api/v1/billing/packages/{package_id}` | `require("billing.view")` | `PackageDetail`; `404 not_found`. |
 
 Products are configuration (no reauthentication, no `Idempotency-Key`); a
@@ -6776,11 +6870,12 @@ reads arrive with #102.
   first). `PackageItem`: `id`, `student {id, name}`, `family {id, name}`,
   `product {id, name}`, `unit`, `units_granted`, `remaining_units`, `subject
   {id, name} | null`, `purchased_on`, `expires_on`, `status` (for the
-  center's today: `cancelled` after a #100 cancellation, then `expired`
+  center's today: `cancelled` after a #100 cancellation, then `withdrawn`
+  after a #101 withdrawal, then `expired`
   when expired or past `expires_on`, then `exhausted` with no units left,
   else `active`), `purchase_charge_id`.
   `PackageDetail` adds `transactions [{id, kind (grant, consume, expire,
-  reversal), units (signed), class_session_id | null, session_starts_at |
+  reversal, refund (#101)), units (signed), class_session_id | null, session_starts_at |
   null, created_at}]`, oldest first.
 
 ### Discounts and custom prices

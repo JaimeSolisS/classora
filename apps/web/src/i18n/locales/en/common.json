@@ -5332,7 +5332,8 @@
         "active": "Active",
         "exhausted": "Used up",
         "expired": "Expired",
-        "cancelled": "Cancelled"
+        "cancelled": "Cancelled",
+        "withdrawn": "Withdrawn"
       },
       "nav": {
         "label": "Package pages",
@@ -5489,7 +5490,8 @@
           "grant": "Granted",
           "consume": "Used for session on {{date}}",
           "expire": "Expired",
-          "reversal": "Reversal"
+          "reversal": "Reversal",
+          "refund": "Returned at withdrawal"
         }
       },
       "rules": {

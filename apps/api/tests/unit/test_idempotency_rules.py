@@ -533,6 +533,8 @@ DECORATED_ROUTES = {
         "post",
     ),
     ("/api/v1/billing/packages/{package_id}/cancellation", "post"),
+    ("/api/v1/billing/withdrawals/account-credit", "post"),
+    ("/api/v1/billing/withdrawals/refund", "post"),
 }
 
 
@@ -540,7 +542,8 @@ def test_the_real_app_declares_only_the_ledger_posting_routes():
     # E4: #88 changed no route; #94 declares the first one (the package
     # purchase), #96 the payment and the credit allocation, #100 declares the
     # corrections (manual charge, adjustment, reversal, refund, package
-    # cancellation); the header is documented only there.
+    # cancellation), #101 the withdrawal confirms (account credit, refund);
+    # the header is documented only there.
     app = build_app(include_dev_routes=True)
 
     decorated = [c for c in api_contexts(app) if route_idempotency_rules(c)]

@@ -1880,8 +1880,9 @@ class RefundDraft:
     :func:`app.modules.billing.service.refund_payment` (#100 B4, R4): from
     one payment's unallocated remainder. ``amount`` above zero; ``reason``
     trimmed staff text (1-500); ``reference`` ``None`` or trimmed (1-100).
-    #101 adds ``withdrawal_id``. The dates and the method are the caller's
-    checks. Rule breaks raise :class:`ValueError` when built."""
+    ``withdrawal_id`` (#101): the withdrawal paying it out. The dates and
+    the method are the caller's checks. Rule breaks raise
+    :class:`ValueError` when built."""
 
     payment_id: uuid.UUID
     amount: Money
@@ -1889,6 +1890,7 @@ class RefundDraft:
     payment_method_code: str
     reason: str
     reference: str | None = None
+    withdrawal_id: uuid.UUID | None = None
 
     def __post_init__(self) -> None:
         if not _require_money(self.amount, "amount").is_positive():
@@ -1959,3 +1961,5 @@ class RefundRow:
     reason: str
     refunded_at: datetime
     refunded_by_user_id: uuid.UUID
+    withdrawal_id: uuid.UUID | None = None
+    """The #101 withdrawal that paid it out (``None``: a #100 refund)."""

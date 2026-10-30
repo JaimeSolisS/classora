@@ -169,7 +169,11 @@ by ``app.workflows.enrollment_charges``), :func:`group_enrollment_period`,
 session's participant) and :func:`group_sessions_after` (the J4 removal
 credits and re-enrollment restorations). Tuition plans (#93) add
 :func:`named_group_periods` (group periods by id or student, with the
-group's name).
+group's name). Withdrawals (#101) add the optional ``local_window`` and
+the ``remaining_minutes`` of the counts, ``GroupSessionSeat.affected`` (the
+B3 states a withdrawal leaves), :func:`group_enrollment_state` and
+:func:`lock_group_enrollment_for_settlement` (the M4 withdrawal's lock
+sequence without the change).
 
 Closure changes on existing occurrences (#232,
 :mod:`~app.modules.scheduling.closure_changes`): the nightly job runs
@@ -500,6 +504,7 @@ from app.modules.scheduling.course_series import (
 from app.modules.scheduling.course_series import (
     list_cohort_sessions as list_cohort_sessions,
 )
+from app.modules.scheduling.enrollment_billing import CountedSlot as CountedSlot
 from app.modules.scheduling.enrollment_billing import (
     GroupForBilling as GroupForBilling,
 )
@@ -613,8 +618,17 @@ from app.modules.scheduling.groups import GroupCreation as GroupCreation
 from app.modules.scheduling.groups import (
     GroupEnrollmentChange as GroupEnrollmentChange,
 )
+from app.modules.scheduling.groups import (
+    GroupEnrollmentState as GroupEnrollmentState,
+)
 from app.modules.scheduling.groups import create_group as create_group
 from app.modules.scheduling.groups import enroll_in_group as enroll_in_group
+from app.modules.scheduling.groups import (
+    group_enrollment_state as group_enrollment_state,
+)
+from app.modules.scheduling.groups import (
+    lock_group_enrollment_for_settlement as lock_group_enrollment_for_settlement,
+)
 from app.modules.scheduling.groups import update_group as update_group
 from app.modules.scheduling.groups import (
     withdraw_from_group as withdraw_from_group,

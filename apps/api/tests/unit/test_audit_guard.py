@@ -63,6 +63,7 @@ from app.modules.billing.models import (
     SessionCancellationDecision,
     TuitionPlan,
     TuitionPlanPause,
+    Withdrawal,
 )
 from app.modules.catalog.models import (
     AcademicPeriod,
@@ -240,6 +241,7 @@ def test_the_guard_scans_the_real_audited_models():
         User,
         UserDelegation,
         UserRole,
+        Withdrawal,
     ]
     assert AuditedThing in audited_classes(TestBase)
     assert User.__audit_exclude__ == {"password_hash"}

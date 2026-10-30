@@ -567,3 +567,76 @@ async def withdraw_from_group(
         effective_at=now,
         actor_user_id=actor_id,
     )
+
+
+# --- Withdrawal settlement (#101 C2 step 3) ------------------------------------------
+
+
+@dataclass(frozen=True)
+class GroupEnrollmentState:
+    """A group enrollment period's state for a withdrawal settlement (#101):
+    its group, student, ``version`` and ``withdrawn_at`` (``None``:
+    active)."""
+
+    enrollment_id: uuid.UUID
+    group_id: uuid.UUID
+    student_id: uuid.UUID
+    enrolled_at: datetime
+    withdrawn_at: datetime | None
+    version: int
+
+
+def _state(enrollment: GroupEnrollment) -> GroupEnrollmentState:
+    return GroupEnrollmentState(
+        enrollment_id=enrollment.id,
+        group_id=enrollment.group_id,
+        student_id=enrollment.student_id,
+        enrolled_at=enrollment.enrolled_at,
+        withdrawn_at=enrollment.withdrawn_at,
+        version=enrollment.version,
+    )
+
+
+async def group_enrollment_state(
+    session: AsyncSession, enrollment_id: uuid.UUID
+) -> GroupEnrollmentState | None:
+    """The period re-read without a lock (the withdrawal preview), or
+    ``None`` when unknown. One statement."""
+    enrollment = await session.scalar(
+        select(GroupEnrollment)
+        .where(GroupEnrollment.id == enrollment_id)
+        .execution_options(populate_existing=True)
+    )
+    return None if enrollment is None else _state(enrollment)
+
+
+async def lock_group_enrollment_for_settlement(
+    session: AsyncSession, enrollment_id: uuid.UUID
+) -> GroupEnrollmentState | None:
+    """The M4 withdrawal's lock sequence **without the change** (#101 C2
+    step 3, S3): the enrollment's student read unlocked → student lock →
+    zone ``FOR SHARE`` → group ``FOR UPDATE`` → producing series ``FOR
+    UPDATE`` → the enrollment re-read ``FOR UPDATE``. ``None`` when the
+    enrollment (or its group) is unknown. An active enrollment is then
+    withdrawn through :func:`withdraw_from_group` in the same Unit of Work
+    (it takes the same locks again, already held); an already withdrawn one
+    is only settled. Never writes."""
+    found = await session.get(GroupEnrollment, enrollment_id)
+    if found is None:
+        return None
+    await lock_students(session, [found.student_id])
+    zone = await administration.get_center_time_zone(session, for_share=True)
+    if await lock_group(session, found.group_id) is None:
+        return None
+    await lock_producing_series(
+        session,
+        SeriesOwner.group(found.group_id),
+        clock.now().astimezone(ZoneInfo(zone)).date(),
+    )
+    enrollment = await session.scalar(
+        select(GroupEnrollment)
+        .where(GroupEnrollment.id == enrollment_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return None if enrollment is None else _state(enrollment)
