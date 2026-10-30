@@ -210,7 +210,11 @@ test('an Owner creates a group, enrolls over the maximum and withdraws', async (
     groups.roster.overridden,
   );
 
-  // 3. Withdraw the first student with a reason.
+  // 3. Withdraw the first student with a reason. The Owner holds billing
+  // permissions, so it is the #387 two-step dialog: the reason, then the
+  // settlement step; the student has no family (and billing is off), so
+  // there is nothing to settle and it offers "Withdraw without
+  // settlement" (the M4 route, no password; #387 QA D1, D2).
   await main
     .getByRole('button', {
       name: fill(groups.roster.withdrawOf, { name: first }),
@@ -221,10 +225,20 @@ test('an Owner creates a group, enrolls over the maximum and withdraws', async (
     name: groups.withdraw.title,
   });
   await withdrawDialog
-    .getByLabel(groups.withdraw.reason, { exact: true })
+    .getByLabel(common.billing.withdrawals.fields.reason, { exact: true })
     .fill('Cambió de horario escolar.');
   await withdrawDialog
-    .getByRole('button', { name: groups.withdraw.submit, exact: true })
+    .getByRole('button', {
+      name: common.billing.withdrawals.dialog.next,
+      exact: true,
+    })
+    .click();
+  await withdrawDialog
+    .locator('[data-slot="dialog-footer"]')
+    .getByRole('button', {
+      name: common.billing.withdrawals.plain.submit,
+      exact: true,
+    })
     .click();
   await expect(withdrawDialog).toBeHidden();
   await expect(main.getByRole('status')).toContainText(

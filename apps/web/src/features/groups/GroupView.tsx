@@ -47,6 +47,9 @@ export interface GroupViewProps {
   focusNotice?: boolean;
   onEnroll: () => void;
   onWithdraw: (item: GroupEnrollmentItem) => void;
+  /** #387 B1: "Settle billing" on these withdrawn enrollments. */
+  settleIds?: ReadonlySet<string>;
+  onSettle?: (item: GroupEnrollmentItem) => void;
   onEdit: () => void;
   /** The student's "My sessions" section (the student view). */
   mySessions?: ReactNode;
@@ -61,6 +64,8 @@ export function GroupView({
   focusNotice = false,
   onEnroll,
   onWithdraw,
+  settleIds,
+  onSettle,
   onEdit,
   mySessions,
 }: GroupViewProps) {
@@ -228,6 +233,8 @@ export function GroupView({
             roster={group.roster ?? []}
             timeZone={timeZone}
             onWithdraw={actions.withdraw ? onWithdraw : undefined}
+            settleIds={settleIds}
+            onSettle={canManage ? onSettle : undefined}
           />
         </>
       ) : (

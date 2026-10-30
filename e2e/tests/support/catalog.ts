@@ -109,6 +109,20 @@ type Common = {
         submit: string;
         fields: Record<'amount' | 'method' | 'reason', string>;
       };
+      // #387 D3: the ledger's withdrawal adjustment.
+      adjustmentKinds: Record<'withdrawal', string>;
+    };
+    // #387 D3: a package withdrawal and the account's Withdrawals section.
+    withdrawals: {
+      package: Record<'action' | 'title', string>;
+      fields: Record<'reason', string>;
+      outcomes: Record<'account_credit', string>;
+      totals: Record<'credit', string>;
+      confirm: string;
+      section: { title: string };
+      // #387 QA D1: the roster's two-step withdrawal with nothing to settle.
+      dialog: Record<'next', string>;
+      plain: Record<'submit', string>;
     };
     // #382 F3: the overdue accounts and the due-date dialogs.
     overdue: {
@@ -133,8 +147,9 @@ type Common = {
     };
     paymentMethods: Record<'cash' | 'transfer' | 'other', string>;
     packages: {
-      units: { sessionsBalance_other: string };
-      status: Record<'active' | 'exhausted' | 'expired', string>;
+      units: { sessionsBalance_other: string; sessions_other: string };
+      // #387 D3: a withdrawn package.
+      status: Record<'active' | 'exhausted' | 'expired' | 'withdrawn', string>;
       nav: Record<'sold' | 'products', string>;
       fields: Record<
         | 'name'

@@ -5958,6 +5958,193 @@
         "reasonRequired": "Write the reason for the change.",
         "reasonTooLong": "The reason can have at most 500 characters."
       }
+    },
+    "withdrawals": {
+      "subjectKinds": {
+        "group_enrollment": "Group",
+        "cohort_enrollment": "Course",
+        "package": "Package"
+      },
+      "policies": {
+        "pro_rata": "Unused share (pro rata)",
+        "nothing_delivered": "Nothing delivered yet: full credit",
+        "open_ended_fee": "Open-ended fee: no credit",
+        "fully_used": "Fully used: no credit"
+      },
+      "outcomes": {
+        "account_credit": "Account credit",
+        "refund": "Refund"
+      },
+      "header": {
+        "student": "Student",
+        "family": "Family",
+        "noFamily": "No family",
+        "subject": "Subject",
+        "at": "Withdrawal date"
+      },
+      "counts": {
+        "consumed": "Consumed",
+        "unused": "Unused",
+        "sessions_one": "{{count}} session ({{hours}} h)",
+        "sessions_other": "{{count}} sessions ({{hours}} h)",
+        "granted": "Granted",
+        "consumedUnits": "Used or expired",
+        "remaining": "Unused"
+      },
+      "lines": {
+        "title": "What is credited",
+        "none": "There is nothing to credit.",
+        "columns": {
+          "kind": "Charge",
+          "period": "Date or period",
+          "net": "Net",
+          "paid": "Paid",
+          "basis": "Basis",
+          "policy": "Why",
+          "credit": "Credit"
+        },
+        "period": "{{from}} – {{to}}",
+        "basis_one": "{{unused}} of {{count}} session unused",
+        "basis_other": "{{unused}} of {{count}} sessions unused",
+        "basisUnits": "{{unused}} of {{total}} unused",
+        "postedNow": "Posted now"
+      },
+      "adjust": {
+        "toggle": "Adjust lines",
+        "hide": "Hide the adjustments",
+        "fieldFor": "Credit for {{line}}",
+        "help": "From $0.00 to {{net}}."
+      },
+      "automatic": {
+        "summary_one": "{{count}} automatic session credit: {{total}}",
+        "summary_other": "{{count}} automatic session credits: {{total}}",
+        "note": "Credited automatically, not part of this settlement.",
+        "session": "Session"
+      },
+      "totals": {
+        "title": "Totals",
+        "credit": "Credit",
+        "reducesDebt": "Reduces what is owed",
+        "refundableCash": "Refundable in cash",
+        "accountCreditAfter": "Account credit after",
+        "estimate": "Estimate with your adjustments; the server decides.",
+        "changed": "changed"
+      },
+      "warnings": {
+        "title": "Before you confirm",
+        "future_covered_sessions_one": "{{count}} future session this package covers will be charged normally unless it is cancelled.",
+        "future_covered_sessions_other": "{{count}} future sessions this package covers will be charged normally unless they are cancelled.",
+        "fee_posted_now": "The enrollment fee isn't posted yet: confirming posts it and then credits it.",
+        "tuition_posted_now_one": "{{count}} due tuition period isn't posted yet: confirming posts it and then credits it.",
+        "tuition_posted_now_other": "{{count}} due tuition periods aren't posted yet: confirming posts them and then credits them.",
+        "open_ended_fee": "The group has no end date, so its enrollment fee isn't credited.",
+        "session": "Session"
+      },
+      "blocking": {
+        "title": "This withdrawal can't be confirmed",
+        "withdrawal_exists": "This was already settled.",
+        "viewWithdrawal": "See the withdrawal",
+        "withdrawal_closeout_pending": "A session this package covered is waiting for its closeout approval.",
+        "closeoutSession": "Closeout of session",
+        "package_not_withdrawable": "This package can't be withdrawn: {{reason}}.",
+        "packageReasons": {
+          "cancelled": "it is cancelled",
+          "withdrawn": "it is already withdrawn",
+          "expired": "it has expired",
+          "exhausted": "it is used up"
+        },
+        "student_has_no_family": "The student isn't in a family, so there's no account to credit.",
+        "openStudent": "Open the student's family section",
+        "withdrawal_spans_accounts": "The charges are on two family accounts: use the corrections on the account page."
+      },
+      "outcome": {
+        "legend": "Settle as",
+        "refundHint": "Nothing paid is freed, so there's nothing to refund.",
+        "readOnly": "You can see this settlement but can't confirm it."
+      },
+      "fields": {
+        "reason": "Reason",
+        "refundedOn": "Refund date",
+        "method": "Method",
+        "reference": "Reference (optional)"
+      },
+      "validation": {
+        "reasonRequired": "Enter the reason.",
+        "outcomeRequired": "Choose account credit or refund.",
+        "creditRequired": "Enter the credit, or {{net}} at most.",
+        "aboveNet": "The credit can't be more than the net ({{net}})."
+      },
+      "passwordNote": "You'll be asked for your password to confirm.",
+      "stale": "Something changed; review and confirm again.",
+      "confirm": "Confirm withdrawal",
+      "confirming": "Confirming…",
+      "cancel": "Cancel",
+      "close": "Close",
+      "back": "Back",
+      "dialog": {
+        "help": "Review the settlement, choose how to settle it and confirm.",
+        "stepOne": "Step 1 of 2: the withdrawal. Next you'll see its billing settlement.",
+        "stepTwo": "Step 2 of 2: the billing settlement. Confirming withdraws the student and settles it in one step.",
+        "next": "Next: billing settlement"
+      },
+      "settle": {
+        "title": "Settle billing",
+        "action": "Settle billing",
+        "actionFor": "Settle billing of {{name}}"
+      },
+      "package": {
+        "title": "Withdraw unused units",
+        "action": "Withdraw (unused units)",
+        "actionFor": "Withdraw (unused units) {{name}} of {{student}}",
+        "hint": "Cancel = the purchase was entered by mistake; Withdraw = the family leaves."
+      },
+      "done": "{{student}} withdrawn from {{subject}}: {{credit}} credited, {{refund}} refunded. Account credit is now {{after}}.",
+      "settled": "Billing of {{student}} in {{subject}} settled: {{credit}} credited, {{refund}} refunded. Account credit is now {{after}}.",
+      "fromWithdrawal": "From a withdrawal",
+      "section": {
+        "title": "Withdrawals",
+        "empty": "No withdrawals.",
+        "columns": {
+          "date": "Date",
+          "student": "Student",
+          "subject": "Subject",
+          "outcome": "Outcome",
+          "credit": "Credit",
+          "refund": "Refunded",
+          "actions": "Actions"
+        },
+        "view": "Details",
+        "viewFor": "Details of the withdrawal of {{student}} on {{date}}"
+      },
+      "detail": {
+        "title": "Withdrawal",
+        "help": "What was settled and the settlement as it was previewed.",
+        "outcome": "Outcome",
+        "credit": "Credit",
+        "refund": "Refunded",
+        "confirmed": "Confirmed",
+        "byYou": "by you on {{date}}",
+        "byOther": "by another staff member on {{date}}",
+        "reason": "Reason",
+        "applied": "Credited charges",
+        "nothingApplied": "No charge was credited.",
+        "appliedLine": "{{kind}}: {{amount}}",
+        "viewCharge": "View charge",
+        "viewChargeFor": "View charge: {{kind}}",
+        "refunds_one": "{{amount}} refunded in {{count}} refund; see it in the payment details.",
+        "refunds_other": "{{amount}} refunded in {{count}} refunds; see them in the payment details.",
+        "automatic_one": "{{count}} automatic session credit.",
+        "automatic_other": "{{count}} automatic session credits.",
+        "snapshot": "The settlement as previewed",
+        "close": "Close"
+      },
+      "plain": {
+        "noFamily": "The student isn't in a family, so there is no billing to settle.",
+        "nothing": "There is nothing to bill or credit for this enrollment.",
+        "help": "You can withdraw the student without a settlement, as before. They are removed from future sessions; past sessions are kept.",
+        "submit": "Withdraw without settlement",
+        "submitting": "Withdrawing…"
+      }
     }
   }
 }

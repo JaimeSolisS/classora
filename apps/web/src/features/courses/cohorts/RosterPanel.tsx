@@ -25,7 +25,9 @@ import { cohortCapacity, enrollmentControls, rosterParts } from './rules';
 // "Overridden" and "Inactive student" as text), and with "Show withdrawn"
 // (a checkbox; the page keeps it in the URL) the withdrawn ones with their
 // reason. schedule.manage holders get "Enroll student" (not once the
-// cohort has ended) and "Withdraw" on each active row.
+// cohort has ended) and "Withdraw" on each active row. #387 B2: a shown
+// withdrawn row with no withdrawal settlement yet gets "Settle billing"
+// (`settleIds`, `onSettle`) for billing users.
 
 export interface RosterPanelProps {
   cohort: CohortDetail;
@@ -38,6 +40,9 @@ export interface RosterPanelProps {
   onShowWithdrawnChange: (shown: boolean) => void;
   onEnroll: () => void;
   onWithdraw: (item: CohortEnrollmentItem) => void;
+  /** #387 B2: the withdrawn enrollments that can be settled. */
+  settleIds?: ReadonlySet<string>;
+  onSettle?: (item: CohortEnrollmentItem) => void;
 }
 
 const BADGE =
@@ -53,6 +58,8 @@ export function RosterPanel({
   onShowWithdrawnChange,
   onEnroll,
   onWithdraw,
+  settleIds,
+  onSettle,
 }: RosterPanelProps) {
   const { t } = useTranslation();
   const { formatLocalDate } = useFormatters();
@@ -227,6 +234,13 @@ export function RosterPanel({
                   <TableHead scope="col">
                     {t('courses.cohorts.enrollment.reason')}
                   </TableHead>
+                  {onSettle ? (
+                    <TableHead scope="col">
+                      <span className="sr-only">
+                        {t('courses.cohorts.enrollment.actions')}
+                      </span>
+                    </TableHead>
+                  ) : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -245,6 +259,24 @@ export function RosterPanel({
                       {item.withdrawal_reason ??
                         t('courses.cohorts.enrollment.noReason')}
                     </TableCell>
+                    {onSettle ? (
+                      <TableCell>
+                        {settleIds?.has(item.id) ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            aria-label={t(
+                              'billing.withdrawals.settle.actionFor',
+                              { name: item.student.display_name },
+                            )}
+                            onClick={() => onSettle(item)}
+                          >
+                            {t('billing.withdrawals.settle.action')}
+                          </Button>
+                        ) : null}
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))}
               </TableBody>

@@ -381,5 +381,15 @@
   "refund_exceeds_remainder": "That is more than what the payment hasn't applied. The payment was reloaded; check the amount and try again.",
   "refunded_on_in_future": "The refund date can't be after today.",
   "refunded_on_before_payment": "The refund date can't be before the day the payment was received.",
-  "package_not_cancellable": "This package is already cancelled, expired or used up. The list was reloaded."
+  "package_not_cancellable": "This package is already cancelled, expired or used up. The list was reloaded.",
+  "withdrawal_subject_invalid": "Choose exactly one enrollment or package to withdraw.",
+  "withdrawal_subject_not_found": "That enrollment or package no longer exists. Reload the page.",
+  "withdrawal_exists": "This withdrawal was already settled. Open it from the family's account page.",
+  "withdrawal_preview_stale": "Something changed since the settlement was shown. Review it and confirm again.",
+  "withdrawal_nothing_to_refund": "Nothing paid is freed by this withdrawal, so there's nothing to refund. Settle it as account credit.",
+  "withdrawal_closeout_pending": "A session this package covered is waiting for its closeout approval. Approve it first. The settlement was reloaded.",
+  "withdrawal_spans_accounts": "The charges are on two family accounts. Use the corrections on the account page instead.",
+  "package_not_withdrawable": "This package is cancelled, withdrawn, expired or used up. The settlement was reloaded.",
+  "credit_override_unknown_charge": "An adjusted line isn't part of this withdrawal any more. The settlement was reloaded.",
+  "credit_override_duplicate": "Each line can be adjusted only once."
 }

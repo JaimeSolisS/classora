@@ -381,5 +381,15 @@
   "refund_exceeds_remainder": "Es más de lo que el pago no ha aplicado. El pago se volvió a cargar; revisa el importe e inténtalo de nuevo.",
   "refunded_on_in_future": "La fecha del reembolso no puede ser posterior a hoy.",
   "refunded_on_before_payment": "La fecha del reembolso no puede ser anterior al día en que se recibió el pago.",
-  "package_not_cancellable": "Este paquete ya está cancelado, vencido o agotado. La lista se volvió a cargar."
+  "package_not_cancellable": "Este paquete ya está cancelado, vencido o agotado. La lista se volvió a cargar.",
+  "withdrawal_subject_invalid": "Elige exactamente una inscripción o un paquete para dar de baja.",
+  "withdrawal_subject_not_found": "Esa inscripción o ese paquete ya no existe. Vuelve a cargar la página.",
+  "withdrawal_exists": "Esta baja ya se liquidó. Ábrela desde la página de la cuenta de la familia.",
+  "withdrawal_preview_stale": "Algo cambió desde que se mostró la liquidación. Revísala y confirma de nuevo.",
+  "withdrawal_nothing_to_refund": "Esta baja no libera nada pagado, así que no hay nada que reembolsar. Liquídala como saldo a favor.",
+  "withdrawal_closeout_pending": "Una sesión que cubría este paquete espera la aprobación de su cierre. Apruébala primero. La liquidación se volvió a cargar.",
+  "withdrawal_spans_accounts": "Los cargos están en dos cuentas familiares. Usa las correcciones de la página de la cuenta.",
+  "package_not_withdrawable": "Este paquete está cancelado, dado de baja, vencido o agotado. La liquidación se volvió a cargar.",
+  "credit_override_unknown_charge": "Una línea ajustada ya no forma parte de esta baja. La liquidación se volvió a cargar.",
+  "credit_override_duplicate": "Cada línea se puede ajustar una sola vez."
 }

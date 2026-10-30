@@ -11,6 +11,7 @@ import {
   ROOM_LIMITED_GROUP,
   SESSIONS,
   TUTOR_GROUP,
+  WITHDRAWN_CARLA,
   TUTOR_SESSIONS,
 } from './fixtures';
 import { GroupView, type GroupViewProps } from './GroupView';
@@ -23,7 +24,8 @@ import { MySessionsSection } from './MySessionsSection';
 // the response carries them). #246 B6: the group's tutor ("Students" by
 // name, their sessions with the students), a guardian of two children
 // ("For: …", the "My schedule" states, no roster), each at 320 px, and an
-// empty "My sessions". No request; axe runs in light and dark.
+// empty "My sessions". #387 D2: "Settle billing" on an unsettled
+// withdrawn row. No request; axe runs in light and dark.
 
 const ZONE = 'America/Mexico_City';
 
@@ -74,6 +76,21 @@ const meta = {
 
 export default meta;
 type Story = StoryObj<typeof meta>;
+
+export const StaffSettleBilling: Story = {
+  args: { settleIds: new Set([WITHDRAWN_CARLA.id]), onSettle: fn() },
+  play: async ({ canvasElement, args, userEvent }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      canvas.getByRole('button', {
+        name: i18n.t('billing.withdrawals.settle.actionFor', {
+          name: WITHDRAWN_CARLA.student.display_name,
+        }),
+      }),
+    );
+    await expect(args.onSettle).toHaveBeenCalled();
+  },
+};
 
 export const StaffActive: Story = {
   play: async ({ canvasElement }) => {

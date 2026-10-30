@@ -479,16 +479,29 @@ test('an Owner enrolls over the maximum with an override, then withdraws', async
   const withdrawDialog = page.getByRole('dialog', {
     name: enrollment.withdrawDialog.title,
   });
+  // The Owner holds billing permissions: the #387 two-step dialog. The
+  // student has no family (and billing is off), so the settlement step
+  // offers "Withdraw without settlement" (the M4 route, no password; #387
+  // QA D1, D2).
   await withdrawDialog
-    .getByLabel(enrollment.withdrawDialog.reason, { exact: true })
+    .getByLabel(common.billing.withdrawals.fields.reason, { exact: true })
     .fill('Cambió de horario escolar.');
   await expectNoAxeViolations(page);
   await withdrawDialog
     .getByRole('button', {
-      name: enrollment.withdrawDialog.submit,
+      name: common.billing.withdrawals.dialog.next,
       exact: true,
     })
     .click();
+  const withoutSettlement = withdrawDialog
+    .locator('[data-slot="dialog-footer"]')
+    .getByRole('button', {
+      name: common.billing.withdrawals.plain.submit,
+      exact: true,
+    });
+  await expect(withoutSettlement).toBeVisible();
+  await expectNoAxeViolations(page);
+  await withoutSettlement.click();
   await expect(withdrawDialog).toBeHidden();
   await expect(
     notice(fill(enrollment.withdrawDialog.done, { name: first })),
