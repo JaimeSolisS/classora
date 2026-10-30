@@ -126,7 +126,13 @@ test('recording payments on a family account', async ({ page }, testInfo) => {
   await main
     .getByLabel(accounts.list.search, { exact: true })
     .fill(`Pagos ${suffix}`);
-  await main.getByRole('link', { name: familyName, exact: true }).click();
+  // Wait for the filtered list (the search is in the URL and the family's
+  // row is shown) before clicking, so the click doesn't race the filter's
+  // URL update and re-render.
+  await expect(page).toHaveURL(/[?&]q=/);
+  const familyLink = main.getByRole('link', { name: familyName, exact: true });
+  await expect(familyLink).toBeVisible();
+  await familyLink.click();
   await expect(page).toHaveURL(`/billing/accounts/${familyId}`);
   await expect(
     main.getByRole('heading', {
