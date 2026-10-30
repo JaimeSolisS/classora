@@ -209,7 +209,9 @@ test('corrections, reversals and refunds on a family account', async ({
   await expect(
     detail.locator('[data-charge-adjustment="manual"]'),
   ).toContainText(reason);
+  // The footer's "Close" (the corner icon has the same accessible name).
   await detail
+    .locator('[data-slot="dialog-footer"]')
     .getByRole('button', { name: accounts.chargeDetail.close, exact: true })
     .click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -252,6 +254,7 @@ test('corrections, reversals and refunds on a family account', async ({
     reason,
   );
   await payment
+    .locator('[data-slot="dialog-footer"]')
     .getByRole('button', { name: accounts.payments.close, exact: true })
     .click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -301,6 +304,7 @@ test('corrections, reversals and refunds on a family account', async ({
     money(40_000),
   );
   await payment
+    .locator('[data-slot="dialog-footer"]')
     .getByRole('button', { name: accounts.payments.close, exact: true })
     .click();
   await expect(page.getByRole('dialog')).toHaveCount(0);

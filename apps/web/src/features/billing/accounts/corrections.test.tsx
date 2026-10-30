@@ -543,6 +543,31 @@ describe('adjust a charge (A3, D1-D3)', () => {
     );
   });
 
+  it('shows the reloaded net in the open dialog after a 409 (QA D2)', async () => {
+    const api = stub({
+      [CHARGE(CHARGE_OVERDUE.id)]: [
+        () => jsonResponse(200, CHARGE_DETAIL),
+        () => jsonResponse(200, { ...CHARGE_DETAIL, net: '1250.00' }),
+      ],
+      [ADJUST(CHARGE_OVERDUE.id)]: () =>
+        problemWith(409, 'charge_net_negative'),
+    });
+    await renderAccount();
+    await openAdjust();
+    fillAdjustment('1400');
+    await saveAdjustment();
+    const dialog = titled('Adjust the charge');
+    await settleUntil(() =>
+      dialog.textContent?.includes('Current net: $1,250.00'),
+    );
+    // The client cap now uses the reloaded net.
+    await saveAdjustment();
+    expect(dialog.textContent).toContain(
+      "A credit can't be more than the charge's net.",
+    );
+    expect(api.calls(ADJUST(CHARGE_OVERDUE.id))).toHaveLength(1);
+  });
+
   it('puts amount_zero on the amount and shows permission_denied as an alert', async () => {
     stub({
       [ADJUST(CHARGE_OVERDUE.id)]: [
@@ -808,6 +833,31 @@ describe('refund a payment (B3)', () => {
         "The refund date can't be before the day the payment was received.",
       ),
     );
+  });
+
+  it('shows the reloaded unallocated amount after a 409 (QA D2)', async () => {
+    const api = stub({
+      [PAYMENT]: [
+        () => jsonResponse(200, PAYMENT_DETAIL),
+        () =>
+          jsonResponse(200, {
+            ...PAYMENT_DETAIL,
+            unallocated_amount: '100.00',
+          }),
+      ],
+      [REFUND]: () => problemWith(409, 'refund_exceeds_remainder'),
+    });
+    const dialog = await openRefund();
+    setFieldValue(labelled(dialog, 'Method'), 'cash');
+    setFieldValue(labelled(dialog, 'Reason'), 'Pago de más');
+    await click(buttonNamed(dialog, 'Record refund'));
+    await settleUntil(() => dialog.textContent?.includes('At most $100.00.'));
+    expect(dialog.textContent).toContain("hasn't applied ($100.00)");
+    await click(buttonNamed(dialog, 'Record refund'));
+    expect(dialog.textContent).toContain(
+      "This is more than what the payment hasn't applied.",
+    );
+    expect(api.calls(REFUND)).toHaveLength(1);
   });
 
   it.each([

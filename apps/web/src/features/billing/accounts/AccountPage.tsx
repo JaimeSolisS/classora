@@ -157,9 +157,11 @@ export function AccountPage() {
   const [dueCharge, setDueCharge] = useState<ChargeItem | null>(null);
   const [addingCharge, setAddingCharge] = useState(false);
   const [chargeId, setChargeId] = useState<string | null>(null);
-  const [adjusting, setAdjusting] = useState<ChargeDetail | null>(null);
-  const [reversing, setReversing] = useState<PaymentDetail | null>(null);
-  const [refunding, setRefunding] = useState<PaymentDetail | null>(null);
+  // The ids only: the open action dialog reads the charge or payment from
+  // its query, so a refetch (after a 409) shows the current amounts.
+  const [adjustingId, setAdjustingId] = useState<string | null>(null);
+  const [reversingId, setReversingId] = useState<string | null>(null);
+  const [refundingId, setRefundingId] = useState<string | null>(null);
   // What an action changed, read inside the open detail (#386).
   const [chargeNotice, setChargeNotice] = useState('');
   const [paymentNotice, setPaymentNotice] = useState('');
@@ -221,7 +223,7 @@ export function AccountPage() {
   const methods = useQuery({
     queryKey: PAYMENT_METHODS_KEY,
     queryFn: ({ signal }) => fetchPaymentMethods(signal),
-    enabled: recording || refunding !== null,
+    enabled: recording || refundingId !== null,
   });
   const payment = useQuery({
     queryKey: paymentKey(familyId, paymentId ?? ''),
@@ -348,6 +350,15 @@ export function AccountPage() {
         }
       : { status: 'loading' };
 
+  const adjusting: ChargeDetail | null =
+    adjustingId !== null && chargeDetail.data?.id === adjustingId
+      ? chargeDetail.data
+      : null;
+  const paymentFor = (id: string | null): PaymentDetail | null =>
+    id !== null && payment.data?.id === id ? payment.data : null;
+  const reversing = paymentFor(reversingId);
+  const refunding = paymentFor(refundingId);
+
   const chargeState: ChargeDetailState = chargeDetail.data
     ? { status: 'ready', charge: chargeDetail.data }
     : chargeDetail.isError
@@ -455,16 +466,16 @@ export function AccountPage() {
             onClose={() => setAddingCharge(false)}
           />
           <AdjustChargeDialog
-            open={adjusting !== null}
+            open={adjustingId !== null}
             charge={adjusting}
             onSubmit={async (body, key) => {
               const posted = await postAdjustment(
                 familyId,
-                adjusting!.id,
+                adjustingId!,
                 body,
                 key,
               );
-              setAdjusting(null);
+              setAdjustingId(null);
               const done = t('billing.accounts.adjust.done', {
                 amount: labels.signed(posted.adjustment.amount),
                 net: labels.money(posted.charge.net),
@@ -474,7 +485,7 @@ export function AccountPage() {
               refresh();
             }}
             onStale={refresh}
-            onClose={() => setAdjusting(null)}
+            onClose={() => setAdjustingId(null)}
           />
           <DueDateDialog
             open={dueCharge !== null}
@@ -567,7 +578,7 @@ export function AccountPage() {
         open={chargeId !== null}
         state={chargeState}
         canManage={canManage}
-        onAdjust={setAdjusting}
+        onAdjust={(charge) => setAdjustingId(charge.id)}
         onViewPayment={(id) => {
           setChargeId(null);
           setPaymentNotice('');
@@ -582,23 +593,23 @@ export function AccountPage() {
         studentNames={studentNames}
         onClose={() => setPaymentId(null)}
         canApproveRefunds={canApproveRefunds}
-        onReverse={setReversing}
-        onRefund={setRefunding}
+        onReverse={(item) => setReversingId(item.id)}
+        onRefund={(item) => setRefundingId(item.id)}
         notice={paymentNotice}
       />
       {canApproveRefunds ? (
         <>
           <ReversePaymentDialog
-            open={reversing !== null}
+            open={reversingId !== null}
             payment={reversing}
             onSubmit={async (body, key) => {
               const reversed = await reversePayment(
                 familyId,
-                reversing!.id,
+                reversingId!,
                 body,
                 key,
               );
-              setReversing(null);
+              setReversingId(null);
               const done = t('billing.accounts.reverse.done', {
                 amount: labels.money(reversed.payment.amount),
                 credit: labels.money(reversed.account_credit_after),
@@ -608,10 +619,10 @@ export function AccountPage() {
               refresh();
             }}
             onStale={refresh}
-            onClose={() => setReversing(null)}
+            onClose={() => setReversingId(null)}
           />
           <RefundDialog
-            open={refunding !== null}
+            open={refundingId !== null}
             today={today}
             payment={refunding}
             methods={methods.data ?? null}
@@ -620,11 +631,11 @@ export function AccountPage() {
             onSubmit={async (body, key) => {
               const refunded = await refundPayment(
                 familyId,
-                refunding!.id,
+                refundingId!,
                 body,
                 key,
               );
-              setRefunding(null);
+              setRefundingId(null);
               const done = t('billing.accounts.refund.done', {
                 amount: labels.money(refunded.refund.amount),
                 credit: labels.money(refunded.account_credit_after),
@@ -634,7 +645,7 @@ export function AccountPage() {
               refresh();
             }}
             onStale={refresh}
-            onClose={() => setRefunding(null)}
+            onClose={() => setRefundingId(null)}
           />
         </>
       ) : null}
