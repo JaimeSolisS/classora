@@ -18,6 +18,7 @@ import {
   type PackageProduct,
   type PackageProductCreate,
   type ProductListFilters,
+  type SoldPackage,
 } from './api';
 
 // The package pages' client rules (#377 B-D): the list filters in the URL,
@@ -286,4 +287,102 @@ export function sellServerErrors(error: unknown): SellErrors | null {
 /** Whether an error says the data changed since it was read. */
 export function isVersionConflict(error: unknown): boolean {
   return error instanceof ApiError && error.code === 'version_conflict';
+}
+
+// ------------------------------------------- cancellation (#386 C1)
+
+/** The reason's limit (PackageCancellationCreate). */
+export const CANCEL_REASON_MAX = 500;
+
+/**
+ * The proposed credit in cents, as the server computes it by default
+ * (#100 R6, `Money.prorate`): net × remaining / granted, rounded once half
+ * away from zero. Integer arithmetic, never a float. An estimate: the
+ * server decides under the account lock.
+ */
+export function proposedCreditCents(
+  netCents: number,
+  remaining: number,
+  granted: number,
+): number {
+  if (granted <= 0 || netCents <= 0 || remaining <= 0) return 0;
+  const numerator = netCents * remaining;
+  return Math.floor((2 * numerator + granted) / (2 * granted));
+}
+
+/** Whether a sold package shows "Cancel" (billing.manage and active). */
+export function isCancellable(pkg: Pick<SoldPackage, 'status'>): boolean {
+  return pkg.status === 'active';
+}
+
+export interface CancelFormValues {
+  /** Empty: the proposed credit. */
+  credit: string;
+  reason: string;
+}
+
+export type CancelField = keyof CancelFormValues;
+export type CancelErrors = Partial<Record<CancelField, PackageMessage>>;
+
+export const EMPTY_CANCEL_FORM: CancelFormValues = { credit: '', reason: '' };
+
+/** The credit override from 0.00 to the purchase charge's net. */
+export function validateCancelForm(
+  values: CancelFormValues,
+  netCents: number | null,
+): CancelErrors {
+  const errors: CancelErrors = {};
+  const credit = normalizeMoneyInput(values.credit);
+  if (credit !== '') {
+    if (!isMoneyInput(credit)) {
+      errors.credit = 'errors:money_invalid';
+    } else if (netCents !== null && moneyCents(credit) > netCents) {
+      errors.credit = 'billing.packages.cancel.creditAboveNet';
+    }
+  }
+  const reason = values.reason.trim();
+  if (reason === '') {
+    errors.reason = 'billing.accounts.validation.reasonRequired';
+  } else if (reason.length > CANCEL_REASON_MAX) {
+    errors.reason = 'errors:too_long';
+  }
+  return errors;
+}
+
+/** Whole cents of a valid money input ("12.5" → 1250). */
+export function moneyCents(text: string): number {
+  const [whole = '0', fraction = ''] = text.trim().split('.');
+  return (
+    Number.parseInt(whole, 10) * 100 +
+    Number.parseInt(fraction.padEnd(2, '0').slice(0, 2), 10)
+  );
+}
+
+export function cancelBody(values: CancelFormValues): {
+  reason: string;
+  credit_amount?: string;
+} {
+  const credit = normalizeMoneyInput(values.credit);
+  return {
+    reason: values.reason.trim(),
+    ...(credit !== '' ? { credit_amount: credit } : {}),
+  };
+}
+
+/** A cancellation's 422s on the dialog's fields, or null. */
+export function cancelServerErrors(error: unknown): CancelErrors | null {
+  if (!(error instanceof ApiError) || error.status !== 422) {
+    return null;
+  }
+  const errors: CancelErrors = {};
+  for (const fieldError of error.fieldErrors) {
+    const [where, key] = fieldError.path;
+    if (where !== 'body') continue;
+    const field =
+      key === 'credit_amount' ? 'credit' : key === 'reason' ? 'reason' : null;
+    if (field && !errors[field]) {
+      errors[field] = serverMessage(fieldError.code);
+    }
+  }
+  return Object.keys(errors).length > 0 ? errors : null;
 }

@@ -370,5 +370,16 @@
   "payment_method_unavailable": "Este método de pago ya no está disponible. Elige otro.",
   "received_on_in_future": "La fecha no puede ser posterior a hoy.",
   "charge_settled": "Este cargo ya está pagado o anulado, así que su vencimiento no puede cambiar. Se volvieron a cargar los cargos.",
-  "due_date_unchanged": "Elige otra fecha: esta ya es la fecha de vencimiento."
+  "due_date_unchanged": "Elige otra fecha: esta ya es la fecha de vencimiento.",
+  "charge_net_negative": "Esto dejaría el cargo por debajo de $0.00. Los importes se volvieron a cargar; revísalos e inténtalo de nuevo.",
+  "student_not_in_family": "Este estudiante no es miembro actual de la familia.",
+  "amount_zero_invalid": "Escribe un importe distinto de 0.",
+  "package_purchase_not_adjustable": "La compra de un paquete no se puede ajustar. Cancela el paquete en Cobros → Paquetes.",
+  "payment_already_reversed": "Este pago ya se revirtió. El pago se volvió a cargar.",
+  "payment_has_refunds": "Un pago con reembolsos no se puede revertir. El pago se volvió a cargar.",
+  "payment_reversed": "Este pago se revirtió, así que no se puede reembolsar. El pago se volvió a cargar.",
+  "refund_exceeds_remainder": "Es más de lo que el pago no ha aplicado. El pago se volvió a cargar; revisa el importe e inténtalo de nuevo.",
+  "refunded_on_in_future": "La fecha del reembolso no puede ser posterior a hoy.",
+  "refunded_on_before_payment": "La fecha del reembolso no puede ser anterior al día en que se recibió el pago.",
+  "package_not_cancellable": "Este paquete ya está cancelado, vencido o agotado. La lista se volvió a cargar."
 }

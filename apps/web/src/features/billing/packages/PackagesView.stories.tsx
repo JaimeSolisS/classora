@@ -9,6 +9,8 @@ import { searchFixtureStudents } from '../tuition/fixtures';
 import {
   EMPTY_PACKAGES_PAGE,
   FAMILY_LOPEZ,
+  PACKAGE_ACTIVE,
+  PACKAGE_CANCELLED,
   PACKAGES_PAGE,
   searchFixtureFamilies,
   STUDENT_ANA,
@@ -17,7 +19,8 @@ import { PackagesView } from './PackagesView';
 
 // The sold package list without its query (#377 G2): rows with each
 // status, filtered by a student and a family, empty, read-only
-// (billing.view only) and loading. No request: every call is a stub. axe
+// (billing.view only) and loading. #386 F2: "Cancel" on the active row,
+// and a cancelled package with the polite status after a cancellation. No request: every call is a stub. axe
 // runs on each story in both themes.
 
 const meta = {
@@ -74,6 +77,35 @@ export const Rows: Story = {
         name: new RegExp(`^${i18n.t('billing.packages.sold.view')}:`),
       }),
     ).toHaveLength(3);
+  },
+};
+
+export const AfterCancel: Story = {
+  args: {
+    state: {
+      status: 'ready',
+      page: {
+        ...PACKAGES_PAGE,
+        items: [PACKAGE_CANCELLED, ...PACKAGES_PAGE.items],
+      },
+    },
+    onCancel: fn(),
+    announcement: i18n.t('billing.packages.cancel.done', {
+      name: PACKAGE_ACTIVE.product.name,
+      student: PACKAGE_ACTIVE.student.name,
+      credit: '$1,440.00',
+      after: '$0.00',
+    }),
+  },
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.getAllByRole('button', {
+        name: new RegExp(`^${i18n.t('billing.packages.cancel.action')} `),
+      }),
+    ).toHaveLength(1);
+    await expect(
+      canvas.getAllByText(i18n.t('billing.packages.status.cancelled')).length,
+    ).toBeGreaterThan(0);
   },
 };
 

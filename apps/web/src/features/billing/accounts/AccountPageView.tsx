@@ -48,7 +48,9 @@ import { toggleStatus, type AccountView } from './rules';
 // its own container (SC 1.4.10 data-table exception). #382: the header
 // shows the family's due-date offset ("Edit" for billing.manage holders),
 // a moved due date carries the "changed" marker, and billing.manage holders
-// get "Change due date" on each charge with something open.
+// get "Change due date" on each charge with something open. #386: every
+// charge row has "Details" (its adjustments and allocations), and
+// billing.manage holders "Add charge" on the Charges section.
 
 export type PageState<T> =
   | { status: 'loading' }
@@ -82,6 +84,9 @@ export interface AccountPageViewProps {
   canManage?: boolean;
   onEditOffset?: () => void;
   onChangeDueDate?: (charge: ChargeItem) => void;
+  /** #386: a charge row opens its detail; billing.manage adds a charge. */
+  onOpenCharge?: (charge: ChargeItem) => void;
+  onAddCharge?: () => void;
   /** Read by the polite status (a recorded payment). */
   announcement?: string;
   /** The receipt of the payment just recorded (#98 H1), shown below it. */
@@ -115,6 +120,8 @@ export function AccountPageView({
   canManage = false,
   onEditOffset,
   onChangeDueDate,
+  onOpenCharge,
+  onAddCharge,
   announcement = '',
   recordedReceipt = null,
 }: AccountPageViewProps) {
@@ -189,13 +196,11 @@ export function AccountPageView({
               <TableHead scope="col">
                 {t('billing.accounts.charges.columns.status')}
               </TableHead>
-              {canManage ? (
-                <TableHead scope="col">
-                  <span className="sr-only">
-                    {t('billing.accounts.charges.columns.actions')}
-                  </span>
-                </TableHead>
-              ) : null}
+              <TableHead scope="col">
+                <span className="sr-only">
+                  {t('billing.accounts.charges.columns.actions')}
+                </span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -218,9 +223,22 @@ export function AccountPageView({
                 <TableCell>
                   <ChargeStatusBadge status={charge.status} />
                 </TableCell>
-                {canManage ? (
-                  <TableCell className="text-right">
-                    {canChangeDueDate(charge) ? (
+                <TableCell className="text-right">
+                  <span className="inline-flex flex-wrap justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-label={t('billing.accounts.charges.viewFor', {
+                        charge: labels.chargeLabel(charge),
+                        student: charge.student.name,
+                        date: labels.date(charge.service_date),
+                      })}
+                      onClick={() => onOpenCharge?.(charge)}
+                    >
+                      {t('billing.accounts.charges.view')}
+                    </Button>
+                    {canManage && canChangeDueDate(charge) ? (
                       <Button
                         type="button"
                         variant="outline"
@@ -235,8 +253,8 @@ export function AccountPageView({
                         {t('billing.dueDates.change.action')}
                       </Button>
                     ) : null}
-                  </TableCell>
-                ) : null}
+                  </span>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -381,7 +399,7 @@ export function AccountPageView({
                 <TableCell>
                   <span className="inline-flex flex-wrap items-center gap-2">
                     {labels.money(payment.amount)}
-                    {payment.is_reversed ? <ReversedBadge /> : null}
+                    {payment.reversed_at !== null ? <ReversedBadge /> : null}
                   </span>
                 </TableCell>
                 <TableCell>{labels.money(payment.allocated_amount)}</TableCell>
@@ -591,9 +609,16 @@ export function AccountPageView({
       ) : null}
 
       <section aria-labelledby={ids.charges} className="flex flex-col gap-4">
-        <h2 id={ids.charges} className="text-lg font-semibold">
-          {t('billing.accounts.charges.title')}
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h2 id={ids.charges} className="text-lg font-semibold">
+            {t('billing.accounts.charges.title')}
+          </h2>
+          {canManage ? (
+            <Button type="button" variant="outline" onClick={onAddCharge}>
+              {t('billing.accounts.charges.add')}
+            </Button>
+          ) : null}
+        </div>
         <fieldset className="flex min-w-0 flex-col gap-2">
           <legend className="mb-2 text-sm font-medium">
             {t('billing.accounts.charges.statusFilter')}

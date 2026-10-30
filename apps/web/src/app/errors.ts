@@ -398,6 +398,19 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   // Due dates (#97, #382 E1).
   ['charge_settled', 'charge_settled'],
   ['due_date_unchanged', 'due_date_unchanged'],
+  // Corrections, reversals and refunds (#100, #386 D3).
+  ['charge_net_negative', 'charge_net_negative'],
+  ['student_not_in_family', 'student_not_in_family'],
+  // The catalog key can't end in a plural suffix ("_zero").
+  ['amount_zero', 'amount_zero_invalid'],
+  ['package_purchase_not_adjustable', 'package_purchase_not_adjustable'],
+  ['payment_already_reversed', 'payment_already_reversed'],
+  ['payment_has_refunds', 'payment_has_refunds'],
+  ['payment_reversed', 'payment_reversed'],
+  ['refund_exceeds_remainder', 'refund_exceeds_remainder'],
+  ['refunded_on_in_future', 'refunded_on_in_future'],
+  ['refunded_on_before_payment', 'refunded_on_before_payment'],
+  ['package_not_cancellable', 'package_not_cancellable'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

@@ -10,9 +10,11 @@ import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { useCenterTimeZone } from '@/features/auth/useCenterTimeZone';
 import { useCan } from '@/features/auth/useSession';
 import { todayInZone } from '@/lib/time';
+import { accountKey, chargeKey, fetchCharge } from '../accounts/api';
 import { fetchStudentOption, type StudentOption } from '../tuition/api';
 import {
   ACTIVE_PRODUCTS_KEY,
+  cancelPackage,
   familyOptionKey,
   fetchActiveProducts,
   fetchFamilyOption,
@@ -23,7 +25,13 @@ import {
   studentOptionKey,
   type NamedOption,
   type PackageListFilters,
+  type SoldPackage,
 } from './api';
+import {
+  CancelPackageDialog,
+  type PurchaseChargeState,
+} from './CancelPackageDialog';
+import { usePackageLabels } from './labels';
 import { PackagesView, type PackagesState } from './PackagesView';
 import { packageListFilters, packageListParams } from './rules';
 import { SellPackageDialog } from './SellPackageDialog';
@@ -35,7 +43,11 @@ import { SellPackageDialog } from './SellPackageDialog';
 // when it opens). A sale sends its Idempotency-Key, invalidates the
 // package queries and opens the new package's page, which announces the
 // sale in its polite status (the app has no toast; the CourseTemplatePages
-// `state: { saved }` pattern).
+// `state: { saved }` pattern). #386 C1: billing.manage holders cancel an
+// active package (its purchase charge's net loads when the dialog opens,
+// for the estimate); after the 201 the dialog closes, the page's polite
+// status says what was credited, and the package and family account
+// queries are invalidated.
 
 export function PackagesPage() {
   const { t } = useTranslation();
@@ -57,6 +69,9 @@ export function PackagesPage() {
   );
   const [pickedFamily, setPickedFamily] = useState<NamedOption | null>(null);
   const [selling, setSelling] = useState(false);
+  const [cancelling, setCancelling] = useState<SoldPackage | null>(null);
+  const [announcement, setAnnouncement] = useState('');
+  const labels = usePackageLabels();
 
   const list = useQuery({
     queryKey: packagesListKey(filters),
@@ -85,6 +100,29 @@ export function PackagesPage() {
     queryFn: ({ signal }) => fetchActiveProducts(signal),
     enabled: selling,
   });
+
+  const cancelChargeId = cancelling?.purchase_charge_id ?? null;
+  const cancelFamilyId = cancelling?.family.id ?? '';
+  const purchaseCharge = useQuery({
+    queryKey: chargeKey(cancelFamilyId, cancelChargeId ?? ''),
+    queryFn: ({ signal }) =>
+      fetchCharge(cancelFamilyId, cancelChargeId!, signal),
+    enabled: cancelChargeId !== null,
+    staleTime: 0,
+    retry: false,
+  });
+  const chargeState: PurchaseChargeState =
+    cancelling !== null && cancelChargeId === null
+      ? { status: 'ready', net: null }
+      : purchaseCharge.data
+        ? { status: 'ready', net: purchaseCharge.data.net }
+        : purchaseCharge.isError
+          ? {
+              status: 'error',
+              error: purchaseCharge.error,
+              onRetry: () => void purchaseCharge.refetch(),
+            }
+          : { status: 'loading' };
 
   const params = packageListParams(filters).toString();
   const listSearch = params ? `?${params}` : '';
@@ -128,7 +166,44 @@ export function PackagesPage() {
         canFilterFamilies={canFilterFamilies}
         onSell={() => setSelling(true)}
         listSearch={listSearch}
+        onCancel={(pkg) => {
+          setAnnouncement('');
+          setCancelling(pkg);
+        }}
+        announcement={announcement}
       />
+      {canManage ? (
+        <CancelPackageDialog
+          open={cancelling !== null}
+          pkg={cancelling}
+          charge={chargeState}
+          onSubmit={async (body, key) => {
+            const pkg = cancelling!;
+            const cancelled = await cancelPackage(pkg.id, body, key);
+            setCancelling(null);
+            setAnnouncement(
+              t('billing.packages.cancel.done', {
+                name: pkg.product.name,
+                student: pkg.student.name,
+                credit: labels.money(cancelled.credit),
+                after: labels.money(cancelled.account_credit_after),
+              }),
+            );
+            void queryClient.invalidateQueries({
+              queryKey: PACKAGES_QUERY_KEY,
+            });
+            void queryClient.invalidateQueries({
+              queryKey: accountKey(pkg.family.id),
+            });
+          }}
+          onStale={() =>
+            void queryClient.invalidateQueries({
+              queryKey: PACKAGES_QUERY_KEY,
+            })
+          }
+          onClose={() => setCancelling(null)}
+        />
+      ) : null}
       {canManage ? (
         <SellPackageDialog
           open={selling}

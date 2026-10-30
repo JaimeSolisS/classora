@@ -5498,6 +5498,31 @@
         "short": "A session that the remaining units can't fully cover is charged normally.",
         "expiry": "Unused units expire the day after the expiry date.",
         "notConverted": "Sessions already charged before the purchase (for example, an already confirmed series) are not converted."
+      },
+      "cancel": {
+        "action": "Cancel",
+        "actionFor": "Cancel {{name}} of {{student}}",
+        "title": "Cancel the package",
+        "help": "{{name}} of {{student}}. The units left are taken back and the purchase charge is credited.",
+        "remaining": "Units left: {{remaining}} of {{granted}}.",
+        "net": "Purchase charge net: {{amount}}.",
+        "estimate": "Proposed credit: {{amount}}.",
+        "estimateNote": "An estimate (net × units left ÷ units granted): the server works out the credit.",
+        "noCharge": "This package has no purchase charge, so nothing is credited.",
+        "fields": {
+          "credit": "Credit (optional)",
+          "reason": "Reason"
+        },
+        "hints": {
+          "credit": "From $0.00 to {{amount}}. Leave it empty for the proposed credit."
+        },
+        "warning": "Sessions this package covered but hadn't used yet will be charged normally.",
+        "passwordNote": "You'll be asked to confirm your password.",
+        "creditAboveNet": "The credit can't be more than the purchase charge's net.",
+        "keep": "Keep the package",
+        "submit": "Cancel package",
+        "saving": "Cancelling…",
+        "done": "{{name}} of {{student}} cancelled: {{credit}} credited. Account credit is now {{after}}."
       }
     },
     "accounts": {
@@ -5557,7 +5582,10 @@
           "dueDate": "Due date",
           "status": "Status",
           "actions": "Actions"
-        }
+        },
+        "add": "Add charge",
+        "view": "Details",
+        "viewFor": "Details of {{charge}} for {{student}}, {{date}}"
       },
       "chargeKinds": {
         "session": "Session",
@@ -5573,7 +5601,8 @@
         "closure_credit": "Closure credit",
         "enrollment_removal": "Enrollment removal",
         "withdrawal": "Withdrawal",
-        "manual": "Manual adjustment"
+        "manual": "Manual adjustment",
+        "package_cancellation": "Package cancellation"
       },
       "ledger": {
         "title": "History",
@@ -5625,7 +5654,19 @@
           "note": "Note",
           "receipt": "Receipt",
           "actions": "Actions"
-        }
+        },
+        "reversal": "Reversal",
+        "reversedOn": "Reversed on",
+        "reason": "Reason",
+        "refunds": "Refunds",
+        "refundColumns": {
+          "date": "Refunded on",
+          "amount": "Amount",
+          "method": "Method",
+          "reference": "Reference",
+          "reason": "Reason"
+        },
+        "refunded": "Refunded"
       },
       "receipt": {
         "download": "Download receipt",
@@ -5699,7 +5740,122 @@
         "linesRequired": "Enter an amount for at least one charge.",
         "linesAbovePayment": "The amounts add up to more than the payment.",
         "linesAboveCredit": "The amounts add up to more than the account credit.",
-        "amountAboveCredit": "This is more than the account credit."
+        "amountAboveCredit": "This is more than the account credit.",
+        "reasonRequired": "Enter the reason.",
+        "descriptionRequired": "Enter the description.",
+        "studentRequired": "Choose the student."
+      },
+      "manualCharge": {
+        "title": "Add a charge",
+        "help": "A one-off charge on the family's account for one student. It doesn't need a password confirmation.",
+        "submit": "Add charge",
+        "saving": "Adding…",
+        "done": "Charge of {{amount}} added for {{student}}.",
+        "fields": {
+          "student": "Student",
+          "description": "Description",
+          "amount": "Amount",
+          "serviceDate": "Service date",
+          "dueDate": "Due date"
+        },
+        "hints": {
+          "dueDate": "Kept as entered: the family's due-date offset doesn't apply.",
+          "description": "Up to 200 characters."
+        }
+      },
+      "chargeDetail": {
+        "title": "Charge",
+        "help": "The charge's amounts, its adjustments and the payments applied to it, oldest first.",
+        "close": "Close",
+        "amounts": {
+          "amount": "Amount",
+          "adjustments": "Adjustments",
+          "net": "Net",
+          "allocated": "Paid",
+          "open": "Open",
+          "status": "Status",
+          "serviceDate": "Service date",
+          "dueDate": "Due date",
+          "student": "Student"
+        },
+        "adjustments": "Adjustments",
+        "noAdjustments": "No adjustments.",
+        "allocations": "Payments applied",
+        "noAllocations": "No payment applied yet.",
+        "columns": {
+          "date": "Date",
+          "kind": "Kind",
+          "amount": "Amount",
+          "reason": "Reason",
+          "payment": "Payment"
+        },
+        "viewPayment": "View payment",
+        "viewPaymentFor": "View payment applied on {{date}}",
+        "packageHint": "A package purchase is corrected by cancelling the package in Billing → Packages."
+      },
+      "adjust": {
+        "action": "Adjust",
+        "title": "Adjust the charge",
+        "help": "A credit reduces the charge and a debit increases it; the original charge doesn't change. You'll be asked to confirm your password.",
+        "direction": "Adjustment",
+        "directions": {
+          "credit": "Credit (reduce)",
+          "debit": "Debit (increase)"
+        },
+        "currentNet": "Current net: {{amount}}",
+        "fields": {
+          "amount": "Amount",
+          "reason": "Reason"
+        },
+        "hints": {
+          "amount": "A credit can be at most the current net.",
+          "reason": "Kept with the adjustment and shown in the charge's detail."
+        },
+        "aboveNet": "A credit can't be more than the charge's net.",
+        "submit": "Save adjustment",
+        "saving": "Saving…",
+        "done": "Adjustment of {{amount}} saved. The charge's net is now {{net}}."
+      },
+      "reverse": {
+        "action": "Reverse payment",
+        "title": "Reverse the payment",
+        "help": "Reversing a payment of {{amount}} received {{date}}:",
+        "effects": {
+          "charges": "Every charge it paid is released and reopens.",
+          "credit": "What it hadn't applied stops being account credit.",
+          "receipt": "The payment stays in the history and its receipt is marked as reversed."
+        },
+        "misallocation": "To fix a mis-allocation, reverse the payment and record it again.",
+        "passwordNote": "You'll be asked to confirm your password.",
+        "hasRefunds": "A payment with refunds can't be reversed.",
+        "fields": {
+          "reason": "Reason"
+        },
+        "submit": "Reverse payment",
+        "saving": "Reversing…",
+        "done": "Payment of {{amount}} reversed. Account credit is now {{credit}}."
+      },
+      "refund": {
+        "action": "Refund",
+        "title": "Refund from the payment",
+        "help": "Money paid back to the family from what this payment hasn't applied ({{amount}}).",
+        "fields": {
+          "amount": "Amount",
+          "refundedOn": "Refunded on",
+          "method": "Method",
+          "reference": "Reference (optional)",
+          "reason": "Reason"
+        },
+        "hints": {
+          "amount": "At most {{amount}}.",
+          "refundedOn": "Not before the payment ({{date}}) and not after today."
+        },
+        "final": "A refund can't be undone.",
+        "passwordNote": "You'll be asked to confirm your password.",
+        "aboveUnallocated": "This is more than what the payment hasn't applied.",
+        "submit": "Record refund",
+        "saving": "Recording…",
+        "done": "Refund of {{amount}} recorded. Account credit is now {{credit}}."
       }
     },
     "paymentMethods": {

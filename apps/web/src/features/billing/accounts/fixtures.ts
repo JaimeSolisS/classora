@@ -1,8 +1,11 @@
 import type { FamilyListPage } from '@/features/families/api';
 import type {
   AccountSummary,
+  ChargeDetail,
   ChargeItem,
   ChargePage,
+  ManualAdjustmentPosted,
+  ManualChargePosted,
   LedgerEntry,
   LedgerPage,
   PaymentDetail,
@@ -10,6 +13,8 @@ import type {
   PaymentMethod,
   PaymentPage,
   PaymentRecorded,
+  PaymentReversed,
+  RefundRecorded,
 } from './api';
 
 // Family account fixtures (#379 G1, G2) for the tests and the stories. The
@@ -194,7 +199,7 @@ export const SUMMARY_NO_ACCOUNT: AccountSummary = {
 };
 
 export const PAYMENT_ID = '55000000-0000-4000-8000-000000000001';
-const PAYMENT_OLD_ID = '55000000-0000-4000-8000-000000000002';
+export const PAYMENT_OLD_ID = '55000000-0000-4000-8000-000000000002';
 
 export const LEDGER_ENTRIES: LedgerEntry[] = [
   {
@@ -356,4 +361,135 @@ export const RECORDED: PaymentRecorded = {
   unallocated_amount: '0.00',
   account_credit_after: '300.00',
   receipt: RECORDED_RECEIPT,
+};
+
+// ------------------------------------------- corrections (#386)
+
+const STAFF_ID = '00000000-0000-4000-8000-000000000001';
+
+/** CHARGE_OVERDUE with a cancellation credit and two allocations. */
+export const CHARGE_DETAIL: ChargeDetail = {
+  ...CHARGE_OVERDUE,
+  amount: '1600.00',
+  list_amount: '1600.00',
+  adjustments_total: '-100.00',
+  net: '1500.00',
+  allocated: '0.00',
+  open: '1500.00',
+  adjustments: [
+    {
+      id: '5a000000-0000-4000-8000-000000000001',
+      kind: 'cancellation_credit',
+      amount: '-100.00',
+      reason: 'Clase cancelada por el centro',
+      posted_at: '2026-09-10T16:00:00Z',
+      posted_by_user_id: STAFF_ID,
+    },
+  ],
+  allocations: [
+    {
+      id: '5b000000-0000-4000-8000-000000000001',
+      payment_id: PAYMENT_ID,
+      amount: '200.00',
+      created_at: '2026-10-12T17:00:00Z',
+      is_valid: false,
+    },
+  ],
+};
+/** A package purchase: corrected by cancelling the package. */
+export const CHARGE_PACKAGE_DETAIL: ChargeDetail = {
+  ...CHARGE_PARTIAL,
+  adjustments: [],
+  allocations: [],
+};
+
+export const MANUAL_CHARGE_POSTED: ManualChargePosted = {
+  charge: {
+    ...CHARGE_PENDING,
+    id: '53000000-0000-4000-8000-000000000009',
+    kind: 'manual',
+    description: 'Material de laboratorio',
+    service_date: TODAY,
+    due_date: TODAY,
+    original_due_date: TODAY,
+    list_amount: '350.00',
+    amount: '350.00',
+    net: '350.00',
+    open: '350.00',
+    student: LUIS,
+  },
+};
+
+export const ADJUSTMENT_POSTED: ManualAdjustmentPosted = {
+  adjustment: {
+    id: '5a000000-0000-4000-8000-000000000009',
+    kind: 'manual',
+    amount: '-250.00',
+    reason: 'Error de captura',
+    posted_at: '2026-10-20T18:00:00Z',
+    posted_by_user_id: STAFF_ID,
+  },
+  charge: { ...CHARGE_OVERDUE, adjustments_total: '-350.00', net: '1250.00' },
+  released_allocation_ids: [],
+  account_credit_after: '300.00',
+};
+
+export const PAYMENT_REVERSED_DETAIL: PaymentDetail = {
+  ...PAYMENT_DETAIL,
+  is_reversed: true,
+  reversed_at: '2026-10-15T17:00:00Z',
+  allocated_amount: '0.00',
+  unallocated_amount: '1500.00',
+  reversal: {
+    id: '5c000000-0000-4000-8000-000000000001',
+    reason: 'Transferencia rechazada por el banco',
+    reversed_at: '2026-10-15T17:00:00Z',
+    reversed_by_user_id: STAFF_ID,
+  },
+};
+
+export const PAYMENT_REFUNDED_DETAIL: PaymentDetail = {
+  ...PAYMENT_DETAIL,
+  refunded_amount: '100.00',
+  unallocated_amount: '200.00',
+  refunds: [
+    {
+      id: '5d000000-0000-4000-8000-000000000001',
+      amount: '100.00',
+      refunded_on: '2026-10-14',
+      payment_method_code: 'cash',
+      reference: 'Caja 2',
+      reason: 'Pago de más',
+      refunded_at: '2026-10-14T17:00:00Z',
+      refunded_by_user_id: STAFF_ID,
+    },
+  ],
+};
+
+/** Fully applied: nothing to refund. */
+export const PAYMENT_APPLIED_DETAIL: PaymentDetail = {
+  ...PAYMENT_DETAIL,
+  allocated_amount: '1500.00',
+  unallocated_amount: '0.00',
+};
+
+export const REVERSED: PaymentReversed = {
+  reversal: PAYMENT_REVERSED_DETAIL.reversal!,
+  payment: {
+    ...PAYMENT,
+    is_reversed: true,
+    reversed_at: '2026-10-20T18:00:00Z',
+  },
+  released: [],
+  account_credit_after: '0.00',
+};
+
+export const REFUNDED: RefundRecorded = {
+  refund: { ...PAYMENT_REFUNDED_DETAIL.refunds[0]!, amount: '300.00' },
+  payment: {
+    ...PAYMENT,
+    unallocated_amount: '0.00',
+    refunded_amount: '300.00',
+  },
+  account_credit_after: '0.00',
 };

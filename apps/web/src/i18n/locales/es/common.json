@@ -5607,6 +5607,31 @@
         "short": "Una sesión que las unidades restantes no cubren por completo se cobra normalmente.",
         "expiry": "Las unidades sin usar vencen el día después de la fecha de vencimiento.",
         "notConverted": "Las sesiones ya cobradas antes de la compra (por ejemplo, una serie ya confirmada) no se convierten."
+      },
+      "cancel": {
+        "action": "Cancelar",
+        "actionFor": "Cancelar {{name}} de {{student}}",
+        "title": "Cancelar el paquete",
+        "help": "{{name}} de {{student}}. Las unidades restantes se retiran y el cargo de la compra recibe un crédito.",
+        "remaining": "Unidades restantes: {{remaining}} de {{granted}}.",
+        "net": "Neto del cargo de la compra: {{amount}}.",
+        "estimate": "Crédito propuesto: {{amount}}.",
+        "estimateNote": "Es un estimado (neto × unidades restantes ÷ unidades otorgadas): el servidor calcula el crédito.",
+        "noCharge": "Este paquete no tiene cargo de compra, así que no se acredita nada.",
+        "fields": {
+          "credit": "Crédito (opcional)",
+          "reason": "Motivo"
+        },
+        "hints": {
+          "credit": "De $0.00 a {{amount}}. Déjalo vacío para usar el crédito propuesto."
+        },
+        "warning": "Las sesiones que el paquete cubría pero aún no usaba se cobrarán normalmente.",
+        "passwordNote": "Se te pedirá confirmar tu contraseña.",
+        "creditAboveNet": "El crédito no puede ser mayor que el neto del cargo de la compra.",
+        "keep": "Conservar el paquete",
+        "submit": "Cancelar paquete",
+        "saving": "Cancelando…",
+        "done": "{{name}} de {{student}} cancelado: {{credit}} acreditado. El saldo a favor ahora es {{after}}."
       }
     },
     "accounts": {
@@ -5666,7 +5691,10 @@
           "dueDate": "Vencimiento",
           "status": "Estado",
           "actions": "Acciones"
-        }
+        },
+        "add": "Agregar cargo",
+        "view": "Detalle",
+        "viewFor": "Detalle de {{charge}} de {{student}}, {{date}}"
       },
       "chargeKinds": {
         "session": "Sesión",
@@ -5682,7 +5710,8 @@
         "closure_credit": "Crédito por cierre",
         "enrollment_removal": "Baja de inscripción",
         "withdrawal": "Baja",
-        "manual": "Ajuste manual"
+        "manual": "Ajuste manual",
+        "package_cancellation": "Cancelación de paquete"
       },
       "ledger": {
         "title": "Historial",
@@ -5734,7 +5763,19 @@
           "note": "Nota",
           "receipt": "Recibo",
           "actions": "Acciones"
-        }
+        },
+        "reversal": "Reversión",
+        "reversedOn": "Revertido el",
+        "reason": "Motivo",
+        "refunds": "Reembolsos",
+        "refundColumns": {
+          "date": "Reembolsado el",
+          "amount": "Importe",
+          "method": "Método",
+          "reference": "Referencia",
+          "reason": "Motivo"
+        },
+        "refunded": "Reembolsado"
       },
       "receipt": {
         "download": "Descargar recibo",
@@ -5809,7 +5850,122 @@
         "linesRequired": "Escribe un importe para al menos un cargo.",
         "linesAbovePayment": "Los importes suman más que el pago.",
         "linesAboveCredit": "Los importes suman más que el saldo a favor.",
-        "amountAboveCredit": "Es más que el saldo a favor."
+        "amountAboveCredit": "Es más que el saldo a favor.",
+        "reasonRequired": "Escribe el motivo.",
+        "descriptionRequired": "Escribe la descripción.",
+        "studentRequired": "Elige el estudiante."
+      },
+      "manualCharge": {
+        "title": "Agregar un cargo",
+        "help": "Un cargo único en la cuenta de la familia para un estudiante. No pide confirmar la contraseña.",
+        "submit": "Agregar cargo",
+        "saving": "Agregando…",
+        "done": "Cargo de {{amount}} agregado para {{student}}.",
+        "fields": {
+          "student": "Estudiante",
+          "description": "Descripción",
+          "amount": "Importe",
+          "serviceDate": "Fecha del servicio",
+          "dueDate": "Vencimiento"
+        },
+        "hints": {
+          "dueDate": "Se guarda como la escribes: no se aplican los días de gracia de la familia.",
+          "description": "Hasta 200 caracteres."
+        }
+      },
+      "chargeDetail": {
+        "title": "Cargo",
+        "help": "Los importes del cargo, sus ajustes y los pagos aplicados, del más antiguo al más reciente.",
+        "close": "Cerrar",
+        "amounts": {
+          "amount": "Importe",
+          "adjustments": "Ajustes",
+          "net": "Neto",
+          "allocated": "Pagado",
+          "open": "Por pagar",
+          "status": "Estado",
+          "serviceDate": "Fecha del servicio",
+          "dueDate": "Vencimiento",
+          "student": "Estudiante"
+        },
+        "adjustments": "Ajustes",
+        "noAdjustments": "Sin ajustes.",
+        "allocations": "Pagos aplicados",
+        "noAllocations": "Todavía no se aplica ningún pago.",
+        "columns": {
+          "date": "Fecha",
+          "kind": "Tipo",
+          "amount": "Importe",
+          "reason": "Motivo",
+          "payment": "Pago"
+        },
+        "viewPayment": "Ver pago",
+        "viewPaymentFor": "Ver pago aplicado el {{date}}",
+        "packageHint": "La compra de un paquete se corrige cancelando el paquete en Cobros → Paquetes."
+      },
+      "adjust": {
+        "action": "Ajustar",
+        "title": "Ajustar el cargo",
+        "help": "Un crédito reduce el cargo y un débito lo aumenta; el cargo original no cambia. Se te pedirá confirmar tu contraseña.",
+        "direction": "Ajuste",
+        "directions": {
+          "credit": "Crédito (reducir)",
+          "debit": "Débito (aumentar)"
+        },
+        "currentNet": "Neto actual: {{amount}}",
+        "fields": {
+          "amount": "Importe",
+          "reason": "Motivo"
+        },
+        "hints": {
+          "amount": "Un crédito puede ser como máximo el neto actual.",
+          "reason": "Se guarda con el ajuste y se muestra en el detalle del cargo."
+        },
+        "aboveNet": "Un crédito no puede ser mayor que el neto del cargo.",
+        "submit": "Guardar ajuste",
+        "saving": "Guardando…",
+        "done": "Ajuste de {{amount}} guardado. El neto del cargo ahora es {{net}}."
+      },
+      "reverse": {
+        "action": "Revertir pago",
+        "title": "Revertir el pago",
+        "help": "Al revertir el pago de {{amount}} recibido el {{date}}:",
+        "effects": {
+          "charges": "Cada cargo que pagó se libera y vuelve a quedar por pagar.",
+          "credit": "Lo que no había aplicado deja de ser saldo a favor.",
+          "receipt": "El pago sigue en el historial y su recibo se marca como revertido."
+        },
+        "misallocation": "Para corregir un pago mal aplicado, revierte el pago y vuelve a registrarlo.",
+        "passwordNote": "Se te pedirá confirmar tu contraseña.",
+        "hasRefunds": "Un pago con reembolsos no se puede revertir.",
+        "fields": {
+          "reason": "Motivo"
+        },
+        "submit": "Revertir pago",
+        "saving": "Revirtiendo…",
+        "done": "Pago de {{amount}} revertido. El saldo a favor ahora es {{credit}}."
+      },
+      "refund": {
+        "action": "Reembolsar",
+        "title": "Reembolsar del pago",
+        "help": "Dinero que se devuelve a la familia de lo que este pago no ha aplicado ({{amount}}).",
+        "fields": {
+          "amount": "Importe",
+          "refundedOn": "Reembolsado el",
+          "method": "Método",
+          "reference": "Referencia (opcional)",
+          "reason": "Motivo"
+        },
+        "hints": {
+          "amount": "Como máximo {{amount}}.",
+          "refundedOn": "No antes del pago ({{date}}) ni después de hoy."
+        },
+        "final": "Un reembolso no se puede deshacer.",
+        "passwordNote": "Se te pedirá confirmar tu contraseña.",
+        "aboveUnallocated": "Es más de lo que el pago no ha aplicado.",
+        "submit": "Registrar reembolso",
+        "saving": "Registrando…",
+        "done": "Reembolso de {{amount}} registrado. El saldo a favor ahora es {{credit}}."
       }
     },
     "paymentMethods": {

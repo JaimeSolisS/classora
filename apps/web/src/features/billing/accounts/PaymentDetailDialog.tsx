@@ -22,13 +22,19 @@ import {
 import { useReturnFocus } from '@/features/scheduling/series/hooks';
 import type { ChargeItem, PaymentDetail } from './api';
 import { ReleasedBadge, ReversedBadge } from './AccountBadges';
+import { canRefund, reversalBlock } from './corrections';
 import { useAccountLabels } from './labels';
 
 // A payment's detail (#379 C4), without any query: the payment's fields
 // and every allocation it has had, oldest first (charge, student, amount,
 // date; a released one is marked "Released"). The charges are read from
 // the account's charges; one that couldn't be read shows its kind as
-// "Charge".
+// "Charge". #386 B1-B3: the reversal (date, reason, "Reversed") and the
+// refunds (date, amount, method, reference, reason); finance.refund.approve
+// holders get "Reverse payment" (not on a reversed payment, nor on one with
+// refunds, which says why) and "Refund" (not reversed, something
+// unallocated). The polite status inside the dialog reads what an action
+// changed (the page behind the modal is hidden from assistive technology).
 
 export type PaymentDetailState =
   | { status: 'loading' }
@@ -46,6 +52,12 @@ export interface PaymentDetailDialogProps {
   /** Student id → name (the summary's students). */
   studentNames: Readonly<Record<string, string>>;
   onClose: () => void;
+  /** finance.refund.approve: "Reverse payment" and "Refund" (#386). */
+  canApproveRefunds?: boolean;
+  onReverse?: (payment: PaymentDetail) => void;
+  onRefund?: (payment: PaymentDetail) => void;
+  /** Read by the dialog's polite status (a reversal or refund just saved). */
+  notice?: string;
 }
 
 export function PaymentDetailDialog({
@@ -53,6 +65,10 @@ export function PaymentDetailDialog({
   state,
   studentNames,
   onClose,
+  canApproveRefunds = false,
+  onReverse,
+  onRefund,
+  notice = '',
 }: PaymentDetailDialogProps) {
   const { t } = useTranslation();
   const labels = useAccountLabels();
@@ -97,6 +113,38 @@ export function PaymentDetailDialog({
         labels.instantDate(payment.recorded_at),
       ],
     ];
+    const blocked = reversalBlock(payment);
+    const refundable = canRefund(payment);
+    const actions =
+      canApproveRefunds && (blocked !== 'reversed' || refundable) ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap gap-3">
+            {blocked === null ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onReverse?.(payment)}
+              >
+                {t('billing.accounts.reverse.action')}
+              </Button>
+            ) : null}
+            {refundable ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onRefund?.(payment)}
+              >
+                {t('billing.accounts.refund.action')}
+              </Button>
+            ) : null}
+          </div>
+          {blocked === 'hasRefunds' ? (
+            <p className="text-sm text-muted-foreground">
+              {t('billing.accounts.reverse.hasRefunds')}
+            </p>
+          ) : null}
+        </div>
+      ) : null;
     content = (
       <div className="flex flex-col gap-4">
         {payment.is_reversed ? (
@@ -114,6 +162,69 @@ export function PaymentDetailDialog({
             </div>
           ))}
         </dl>
+        {actions}
+        {payment.reversal ? (
+          <div className="flex flex-col gap-2" data-payment-reversal="">
+            <h3 className="font-semibold">
+              {t('billing.accounts.payments.reversal')}
+            </h3>
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-[max-content_minmax(0,1fr)]">
+              <dt className="text-sm font-medium text-muted-foreground">
+                {t('billing.accounts.payments.reversedOn')}
+              </dt>
+              <dd>{labels.instantDate(payment.reversal.reversed_at)}</dd>
+              <dt className="text-sm font-medium text-muted-foreground">
+                {t('billing.accounts.payments.reason')}
+              </dt>
+              <dd className="break-words">{payment.reversal.reason ?? '—'}</dd>
+            </dl>
+          </div>
+        ) : null}
+        {payment.refunds.length > 0 ? (
+          <>
+            <h3 className="font-semibold">
+              {t('billing.accounts.payments.refunds')}
+            </h3>
+            <Table aria-label={t('billing.accounts.payments.refunds')}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">
+                    {t('billing.accounts.payments.refundColumns.date')}
+                  </TableHead>
+                  <TableHead scope="col">
+                    {t('billing.accounts.payments.refundColumns.amount')}
+                  </TableHead>
+                  <TableHead scope="col">
+                    {t('billing.accounts.payments.refundColumns.method')}
+                  </TableHead>
+                  <TableHead scope="col">
+                    {t('billing.accounts.payments.refundColumns.reference')}
+                  </TableHead>
+                  <TableHead scope="col">
+                    {t('billing.accounts.payments.refundColumns.reason')}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {payment.refunds.map((refund) => (
+                  <TableRow key={refund.id} data-payment-refund={refund.id}>
+                    <TableCell>{labels.date(refund.refunded_on)}</TableCell>
+                    <TableCell>{labels.money(refund.amount)}</TableCell>
+                    <TableCell>
+                      {labels.method(refund.payment_method_code)}
+                    </TableCell>
+                    <TableCell className="max-w-40 whitespace-normal break-words">
+                      {refund.reference ?? '—'}
+                    </TableCell>
+                    <TableCell className="max-w-56 whitespace-normal break-words">
+                      {refund.reason ?? '—'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </>
+        ) : null}
         <h3 className="font-semibold">
           {t('billing.accounts.payments.allocations')}
         </h3>
@@ -200,6 +311,9 @@ export function PaymentDetailDialog({
               {t('billing.accounts.payments.detailHelp')}
             </DialogDescription>
           </DialogHeader>
+          <p role="status" className="text-sm font-medium">
+            {notice}
+          </p>
           {content}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>

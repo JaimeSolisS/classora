@@ -27,11 +27,15 @@ export type PackageStatus = components['schemas']['PackageStatus'];
 export type PackageTransaction =
   components['schemas']['PackageTransactionItem'];
 export type ChargeItem = components['schemas']['ChargeItem'];
+export type PackageCancellationCreate =
+  components['schemas']['PackageCancellationCreate'];
+export type PackageCancelled = components['schemas']['PackageCancelled'];
 
 export const PACKAGE_STATUSES: readonly PackageStatus[] = [
   'active',
   'exhausted',
   'expired',
+  'cancelled',
 ];
 
 /** Rows per page of both lists (the API default). */
@@ -301,6 +305,26 @@ export async function fetchPurchaseCharge(
     }
   }
   return null;
+}
+
+/**
+ * Cancels a package purchase (#100 C5; #386 C1): the units left are taken
+ * back and the purchase charge is credited. The key as in
+ * `purchasePackage`; the route needs a recent password confirmation (the
+ * apiCall dialog, then the same key again).
+ */
+export function cancelPackage(
+  packageId: string,
+  body: PackageCancellationCreate,
+  idempotencyKey: string,
+): Promise<PackageCancelled> {
+  const headers = idempotencyHeaders(idempotencyKey);
+  return apiCall(() =>
+    api.POST('/api/v1/billing/packages/{package_id}/cancellation', {
+      body,
+      params: { path: { package_id: packageId }, header: headers },
+    }),
+  );
 }
 
 export function purchaseChargeKey(packageId: string) {

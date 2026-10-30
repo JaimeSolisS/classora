@@ -25,10 +25,12 @@ import {
   type PackageListFilters,
   type PackagePage,
   type PackageStatus,
+  type SoldPackage,
 } from './api';
 import { usePackageLabels } from './labels';
 import { PackageStatusBadge } from './PackageBadges';
 import { PackagesNav } from './PackagesNav';
+import { isCancellable } from './rules';
 
 // The sold package list (#377 C), without any query (stories render each
 // state): the Billing tabs, the Packages sub-navigation, the title with
@@ -36,7 +38,9 @@ import { PackagesNav } from './PackagesNav';
 // (the #34 search picker, or the chosen one with "Show all"), the status
 // checkboxes (none = every status; the page keeps every filter in the
 // URL), the table and the pagination. Below `md` the table scrolls inside
-// its own container (SC 1.4.10 data-table exception).
+// its own container (SC 1.4.10 data-table exception). #386 C1: an active
+// package's row has "Cancel" for billing.manage holders, and the polite
+// status reads a cancellation.
 
 export type PackagesState =
   | { status: 'loading' }
@@ -60,6 +64,10 @@ export interface PackagesViewProps {
   onSell: () => void;
   /** The list's search string, carried to the package page's back link. */
   listSearch: string;
+  /** billing.manage: "Cancel" on an active package's row (#386). */
+  onCancel?: (pkg: SoldPackage) => void;
+  /** Read by the polite status (a cancelled package). */
+  announcement?: string;
   /** Stories: the pickers' searches instead of the API. */
   searchStudent?: (q: string, signal: AbortSignal) => Promise<StudentOption[]>;
   searchFamily?: (q: string, signal: AbortSignal) => Promise<NamedOption[]>;
@@ -78,6 +86,8 @@ export function PackagesView({
   canFilterFamilies,
   onSell,
   listSearch,
+  onCancel,
+  announcement = '',
   searchStudent = searchStudents,
   searchFamily = searchFamilies,
 }: PackagesViewProps) {
@@ -174,17 +184,33 @@ export function PackagesView({
                   <PackageStatusBadge status={item.status} />
                 </TableCell>
                 <TableCell className="text-right">
-                  <Link
-                    to={`/billing/packages/${item.id}`}
-                    state={{ listSearch }}
-                    className={LINK_BUTTON_CLASS}
-                    aria-label={t('billing.packages.sold.viewFor', {
-                      student: item.student.name,
-                      name: item.product.name,
-                    })}
-                  >
-                    {t('billing.packages.sold.view')}
-                  </Link>
+                  <span className="inline-flex flex-wrap justify-end gap-2">
+                    {canManage && isCancellable(item) ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        aria-label={t('billing.packages.cancel.actionFor', {
+                          student: item.student.name,
+                          name: item.product.name,
+                        })}
+                        onClick={() => onCancel?.(item)}
+                      >
+                        {t('billing.packages.cancel.action')}
+                      </Button>
+                    ) : null}
+                    <Link
+                      to={`/billing/packages/${item.id}`}
+                      state={{ listSearch }}
+                      className={LINK_BUTTON_CLASS}
+                      aria-label={t('billing.packages.sold.viewFor', {
+                        student: item.student.name,
+                        name: item.product.name,
+                      })}
+                    >
+                      {t('billing.packages.sold.view')}
+                    </Link>
+                  </span>
                 </TableCell>
               </TableRow>
             ))}
@@ -218,6 +244,9 @@ export function PackagesView({
         </div>
         <p className="text-sm text-muted-foreground">
           {t('billing.packages.sold.intro')}
+        </p>
+        <p role="status" className="text-sm font-medium">
+          {announcement}
         </p>
       </div>
       <div

@@ -370,5 +370,16 @@
   "payment_method_unavailable": "This payment method isn't available any more. Choose another.",
   "received_on_in_future": "The date can't be after today.",
   "charge_settled": "This charge is already paid or void, so its due date can't change. The charges were reloaded.",
-  "due_date_unchanged": "Choose a different date: this is already the due date."
+  "due_date_unchanged": "Choose a different date: this is already the due date.",
+  "charge_net_negative": "This would take the charge below $0.00. The amounts were reloaded; check them and try again.",
+  "student_not_in_family": "This student isn't a current member of the family.",
+  "amount_zero_invalid": "Enter an amount other than 0.",
+  "package_purchase_not_adjustable": "A package purchase can't be adjusted. Cancel the package in Billing → Packages instead.",
+  "payment_already_reversed": "This payment was already reversed. The payment was reloaded.",
+  "payment_has_refunds": "A payment with refunds can't be reversed. The payment was reloaded.",
+  "payment_reversed": "This payment was reversed, so it can't be refunded. The payment was reloaded.",
+  "refund_exceeds_remainder": "That is more than what the payment hasn't applied. The payment was reloaded; check the amount and try again.",
+  "refunded_on_in_future": "The refund date can't be after today.",
+  "refunded_on_before_payment": "The refund date can't be before the day the payment was received.",
+  "package_not_cancellable": "This package is already cancelled, expired or used up. The list was reloaded."
 }
