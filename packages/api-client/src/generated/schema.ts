@@ -4306,6 +4306,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/families/{family_id}/billing-account/receipts/{receipt_id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Receipt
+         * @description Download a payment receipt as a PDF (non-tax: not a CFDI), in the
+         *     language it was issued in. Staff with billing.view download any
+         *     family's receipts; a guardian only their own family's.
+         */
+        get: operations["download_receipt_api_v1_families__family_id__billing_account_receipts__receipt_id__pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/overdue-accounts": {
         parameters: {
             query?: never;
@@ -13771,6 +13793,7 @@ export interface components {
             unallocated_amount: string;
             /** Is Reversed */
             is_reversed: boolean;
+            receipt: components["schemas"]["ReceiptReference"] | null;
             /** Allocations */
             allocations: components["schemas"]["PaymentAllocationItem"][];
         };
@@ -13780,6 +13803,8 @@ export interface components {
          *     refunded_amount`` (valid allocations only); it is account credit only
          *     while ``is_reversed`` is false. ``recorded_at`` is when it was
          *     entered; ``received_on`` the center-local day the money came in.
+         *     ``receipt`` is ``null`` for a payment recorded before receipts (#98
+         *     C7).
          */
         PaymentItem: {
             /**
@@ -13833,6 +13858,7 @@ export interface components {
             unallocated_amount: string;
             /** Is Reversed */
             is_reversed: boolean;
+            receipt: components["schemas"]["ReceiptReference"] | null;
         };
         /**
          * PaymentMethodItem
@@ -13848,8 +13874,8 @@ export interface components {
         /**
          * PaymentRecorded
          * @description ``201`` of recording a payment (#96 C3): the payment, the
-         *     allocations written now, the part left as account credit and the
-         *     account credit afterwards.
+         *     allocations written now, the part left as account credit, the account
+         *     credit afterwards and the payment's receipt (#98 G1).
          */
         PaymentRecorded: {
             payment: components["schemas"]["PaymentItem"];
@@ -13867,6 +13893,7 @@ export interface components {
              * @example 1250.00
              */
             account_credit_after: string;
+            receipt: components["schemas"]["ReceiptReference"];
         };
         /**
          * PendingOffer
@@ -14831,6 +14858,23 @@ export interface components {
              * @description When the 5-minute reauthentication window of this session ends (ISO 8601, UTC). Activity does not extend it.
              */
             reauthenticated_until: string;
+        };
+        /**
+         * ReceiptReference
+         * @description A payment's receipt (#98 G1): download it from ``GET
+         *     /api/v1/families/{family_id}/billing-account/receipts/{id}/pdf``.
+         */
+        ReceiptReference: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Number
+             * @example R-2026-000123
+             */
+            number: string;
         };
         /**
          * RecordedAllocationItem
@@ -32765,6 +32809,74 @@ export interface operations {
             };
             /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    download_receipt_api_v1_families__family_id__billing_account_receipts__receipt_id__pdf_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                family_id: string;
+                receipt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The receipt as a PDF attachment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family or receipt, or one whose account you can't see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The receipt could not be rendered (internal_error). */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -10,11 +10,12 @@ call them). Every row they write is audited (``create``).
 
 **Lock order (data-model §6).** The API claims its idempotency key first
 (#88); then :func:`~app.modules.billing.ledger.lock_billing_account` (the
-account row ``FOR UPDATE``, the last business lock); #98 will take the
-receipt ``number_series`` after it. Everything an allocation depends on is
-read **after** the lock, so a concurrent payment, credit allocation or
-adjustment (:func:`~app.modules.billing.ledger.post_adjustment`, which
-takes the same lock) is either fully seen or waits:
+account row ``FOR UPDATE``, the last business lock); a recorded payment's
+receipt (#98) takes its ``number_series`` row after it. Everything an
+allocation depends on is read **after** the lock, so a concurrent
+payment, credit allocation or adjustment
+(:func:`~app.modules.billing.ledger.post_adjustment`, which takes the same
+lock) is either fully seen or waits:
 
 - **I2** (per charge, Σ valid allocations ≤ net): each line is at most the
   charge's ``open`` read under the lock;
@@ -78,7 +79,9 @@ from app.modules.billing.models import (
     Payment,
     PaymentAllocation,
     PaymentMethod,
+    Receipt,
 )
+from app.modules.billing.receipts import issue_receipt
 from app.modules.billing.schemas import (
     AllocationRequest,
     ChargeBalance,
@@ -236,9 +239,11 @@ async def record_payment(session: AsyncSession, draft: PaymentDraft) -> Recorded
     ``open`` amounts (under the lock) → the plan (:func:`plan_allocations`;
     errors raise before any write) → the ``payments`` row
     (``recorded_by_user_id`` = the actor) and its ``payment_allocations``
-    rows → flush → the account credit afterwards. The part not allocated
-    is account credit. #98 adds the receipt after the inserts (E13). Never
-    commits. An unknown account is a :class:`ValueError`."""
+    rows → flush → the account credit afterwards → the receipt
+    (:func:`~app.modules.billing.receipts.issue_receipt`, #98 C1: its
+    ``number_series`` row is the last lock). The part not allocated is
+    account credit. Never commits. An unknown account is a
+    :class:`ValueError`."""
     actor = _actor(session)
     await lock_billing_account(session, draft.billing_account_id)
     charges = await charge_balances(session, draft.billing_account_id)
@@ -264,11 +269,16 @@ async def record_payment(session: AsyncSession, draft: PaymentDraft) -> Recorded
     await session.flush()
     allocated = Money.total(line.amount for line in planned)
     students = {c.charge_id: c.student_id for c in charges}
+    credit_after = await account_credit(session, draft.billing_account_id)
+    # Last (#98 C1, P4): the receipt's number_series row is the last lock.
+    receipt = await issue_receipt(session, payment.id)
     return RecordedPayment(
         payment_id=payment.id,
         allocations=_recorded(allocations, students),
         unallocated=draft.amount - allocated,
-        account_credit_after=await account_credit(session, draft.billing_account_id),
+        account_credit_after=credit_after,
+        receipt_id=receipt.receipt_id,
+        receipt_number=receipt.number,
     )
 
 
@@ -360,7 +370,9 @@ def _payment_columns() -> Any:
         refunded.label("refunded_amount"),
         type_coerce(payment_remainder_column(), MoneyType()).label("unallocated"),
         _reversed().label("is_reversed"),
-    )
+        Receipt.id.label("receipt_id"),
+        Receipt.number.label("receipt_number"),
+    ).outerjoin_from(Payment, Receipt, Receipt.payment_id == Payment.id)
 
 
 def _payment_row(row: Any) -> PaymentRow:
@@ -378,6 +390,8 @@ def _payment_row(row: Any) -> PaymentRow:
         refunded_amount=row.refunded_amount,
         unallocated_amount=row.unallocated,
         is_reversed=bool(row.is_reversed),
+        receipt_id=row.receipt_id,
+        receipt_number=row.receipt_number,
     )
 
 

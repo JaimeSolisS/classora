@@ -21292,6 +21292,101 @@
         }
       }
     },
+    "/api/v1/families/{family_id}/billing-account/receipts/{receipt_id}/pdf": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Download Receipt",
+        "description": "Download a payment receipt as a PDF (non-tax: not a CFDI), in the\nlanguage it was issued in. Staff with billing.view download any\nfamily's receipts; a guardian only their own family's.",
+        "operationId": "download_receipt_api_v1_families__family_id__billing_account_receipts__receipt_id__pdf_get",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "receipt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Receipt Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The receipt as a PDF attachment.",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The privacy notice must be accepted first (privacy_notice_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family or receipt, or one whose account you can't see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The receipt could not be rendered (internal_error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/overdue-accounts": {
       "get": {
         "tags": [
@@ -43901,6 +43996,16 @@
             "type": "boolean",
             "title": "Is Reversed"
           },
+          "receipt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReceiptReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "allocations": {
             "items": {
               "$ref": "#/components/schemas/PaymentAllocationItem"
@@ -43924,6 +44029,7 @@
           "refunded_amount",
           "unallocated_amount",
           "is_reversed",
+          "receipt",
           "allocations"
         ],
         "title": "PaymentDetail",
@@ -44034,6 +44140,16 @@
           "is_reversed": {
             "type": "boolean",
             "title": "Is Reversed"
+          },
+          "receipt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReceiptReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -44050,10 +44166,11 @@
           "allocated_amount",
           "refunded_amount",
           "unallocated_amount",
-          "is_reversed"
+          "is_reversed",
+          "receipt"
         ],
         "title": "PaymentItem",
-        "description": "A payment. ``unallocated_amount = amount − allocated_amount −\nrefunded_amount`` (valid allocations only); it is account credit only\nwhile ``is_reversed`` is false. ``recorded_at`` is when it was\nentered; ``received_on`` the center-local day the money came in."
+        "description": "A payment. ``unallocated_amount = amount − allocated_amount −\nrefunded_amount`` (valid allocations only); it is account credit only\nwhile ``is_reversed`` is false. ``recorded_at`` is when it was\nentered; ``received_on`` the center-local day the money came in.\n``receipt`` is ``null`` for a payment recorded before receipts (#98\nC7)."
       },
       "PaymentMethodItem": {
         "properties": {
@@ -44103,6 +44220,9 @@
             "examples": [
               "1250.00"
             ]
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/ReceiptReference"
           }
         },
         "type": "object",
@@ -44110,10 +44230,11 @@
           "payment",
           "allocations",
           "unallocated_amount",
-          "account_credit_after"
+          "account_credit_after",
+          "receipt"
         ],
         "title": "PaymentRecorded",
-        "description": "``201`` of recording a payment (#96 C3): the payment, the\nallocations written now, the part left as account credit and the\naccount credit afterwards."
+        "description": "``201`` of recording a payment (#96 C3): the payment, the\nallocations written now, the part left as account credit, the account\ncredit afterwards and the payment's receipt (#98 G1)."
       },
       "PendingOffer": {
         "properties": {
@@ -46331,6 +46452,29 @@
         ],
         "title": "ReauthenticateResponse",
         "description": "The end of the session's reauthentication window (#26).\n\nHolds no token, hash or session id."
+      },
+      "ReceiptReference": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "number": {
+            "type": "string",
+            "title": "Number",
+            "examples": [
+              "R-2026-000123"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "number"
+        ],
+        "title": "ReceiptReference",
+        "description": "A payment's receipt (#98 G1): download it from ``GET\n/api/v1/families/{family_id}/billing-account/receipts/{id}/pdf``."
       },
       "RecordedAllocationItem": {
         "properties": {

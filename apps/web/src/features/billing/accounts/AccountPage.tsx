@@ -52,6 +52,7 @@ import {
   type ChargeItem,
   type ChargePage,
   type PaymentPage,
+  type ReceiptReference,
 } from './api';
 import { apiCents, centsText, type Cents } from './cents';
 import { useAccountLabels } from './labels';
@@ -76,6 +77,9 @@ import { accountView, accountViewParams, oldestFirst } from './rules';
 // date (its history loads when the dialog opens); after the server answers,
 // the dialog closes, the polite status says what changed and the family's
 // queries are invalidated. Never optimistic (spec §6, ADR-0006 E11).
+// #98 H1: each payment row shows its receipt number and a download link,
+// and after recording, the new receipt's number and link follow the polite
+// status.
 
 function NotFoundOrError({
   error,
@@ -127,7 +131,18 @@ export function AccountPage() {
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [editingOffset, setEditingOffset] = useState(false);
   const [dueCharge, setDueCharge] = useState<ChargeItem | null>(null);
-  const [announcement, setAnnouncement] = useState('');
+  const [announcement, setAnnouncementText] = useState('');
+  // The receipt of the payment just recorded (#98 H1); any other
+  // announcement (or a new action) replaces it.
+  const [recordedReceipt, setRecordedReceipt] =
+    useState<ReceiptReference | null>(null);
+  const setAnnouncement = (
+    text: string,
+    receipt: ReceiptReference | null = null,
+  ) => {
+    setAnnouncementText(text);
+    setRecordedReceipt(receipt);
+  };
 
   const summary = useQuery({
     queryKey: summaryKey(familyId),
@@ -338,6 +353,7 @@ export function AccountPage() {
           setDueCharge(charge);
         }}
         announcement={announcement}
+        recordedReceipt={recordedReceipt}
       />
       {canManage ? (
         <>
@@ -418,6 +434,7 @@ export function AccountPage() {
                   allocated: labels.money(centsText(allocated)),
                   credit: labels.money(recorded.account_credit_after),
                 }),
+                recorded.receipt,
               );
               refresh();
             }}

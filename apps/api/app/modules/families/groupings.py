@@ -171,6 +171,31 @@ async def family_billing_recipients(
     return {family_id: sorted(users) for family_id, users in found.items()}
 
 
+async def receipt_recipients(
+    session: AsyncSession, family_id: uuid.UUID
+) -> list[uuid.UUID]:
+    """The logins of the family's **active** guardian profiles (the
+    :func:`family_billing_recipients` set, #97 N3) in membership order,
+    ``family_guardians.created_at`` then ``id`` (#98 P5: the first one with
+    a stored language picks the receipt's). One statement; no access
+    check."""
+    rows = await session.execute(
+        select(Guardian.user_id)
+        .join(FamilyGuardian, FamilyGuardian.guardian_id == Guardian.id)
+        .where(
+            FamilyGuardian.family_id == family_id,
+            Guardian.is_active.is_(True),
+            Guardian.user_id.is_not(None),
+        )
+        .order_by(FamilyGuardian.created_at, FamilyGuardian.id)
+    )
+    found: list[uuid.UUID] = []
+    for (user_id,) in rows:
+        if user_id is not None and user_id not in found:
+            found.append(user_id)
+    return found
+
+
 async def family_of_guardian(
     session: AsyncSession, guardian_id: uuid.UUID
 ) -> FamilyReference | None:

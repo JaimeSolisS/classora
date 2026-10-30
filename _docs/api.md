@@ -6250,16 +6250,56 @@ below.
   `recorded_by_user_id`, `recorded_at`, `allocated_amount` (valid
   allocations), `refunded_amount`, `unallocated_amount` (`amount −
   allocated − refunded`; account credit only while not reversed),
-  `is_reversed`. `PaymentDetail` adds `allocations [{id, charge_id,
+  `is_reversed`, `receipt` (`{id, number}`, or `null` for a payment
+  recorded before receipts, #98). `PaymentDetail` adds `allocations [{id, charge_id,
   student_id, amount, created_at, created_by_user_id, is_valid}]`, oldest
   first (released ones `is_valid: false`; a re-inserted remainder has
   `created_by_user_id: null`). `PaymentRecorded`: `payment`
   (`PaymentItem`), `allocations [{id, charge_id, student_id, amount}]`,
-  `unallocated_amount`, `account_credit_after`. `CreditAllocated`:
+  `unallocated_amount`, `account_credit_after`, `receipt` (`{id,
+  number}`, #98). `CreditAllocated`:
   `allocations [{id, payment_id, charge_id, student_id, amount}]`,
   `allocated_total`, `account_credit_after`.
 - Each payment and allocation row writes one `create` audit event by the
   caller; a family's first payment also audits the new account.
+
+### Receipts
+
+Implemented by M6-13 (#98; spec §1, §6; ADR-0006 E13, E15; ADR-0015;
+owner-delegated decisions P1-P9 (a); `_docs/data-model.md` §3.21, §3.25,
+§6). Rules: `app/modules/billing/receipts.py` and `app/core/numbering.py`;
+the route `app/workflows/billing_receipts_router.py` (workflow
+`billing_receipts.py`); templates `app/templates/receipts/vN/` with the
+catalog keys `receipts.vN.*` (`app/i18n/locales/{es,en}/receipts.json`).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/families/{family_id}/billing-account/receipts/{receipt_id}/pdf` | `authenticated()` + record policy | `200 application/pdf`, `Content-Disposition: attachment; filename="R-2026-000123.pdf"`, `Cache-Control: no-store`. |
+
+- **Issued with the payment.** `POST …/payments` issues the payment's
+  receipt in the same transaction (gap-free yearly number `R-YYYY-NNNNNN`,
+  the center-local year of the issue instant), so `PaymentRecorded` and
+  every payment read carry `receipt: {id, number}`; an idempotent replay
+  returns the same receipt. Payments recorded before #98 have `receipt:
+  null` (no backfill). There is no receipts list route.
+- **Access** is the Billing accounts record policy: `billing.view` (Owner,
+  Administrator, Finance Staff) downloads any family's receipts; a guardian
+  with an active profile only their own family's (`family_guardians`;
+  a guardian linked to a student only is not enough). Everyone else, an
+  unknown family or receipt, a family without an account and a receipt of
+  another family's account get the same `404 not_found`. Check order `401`
+  → `403 privacy_notice_required` → `422` (a malformed id) → `404` → `200`.
+- **Contents.** A branded, non-tax PDF ("Este recibo no es un comprobante
+  fiscal (CFDI)."), built only from the receipt's frozen snapshot (center,
+  family, payer, payment, allocations at payment time and totals) in the
+  receipt's stored language (`es`/`en`, the first family guardian with a
+  stored language, else `es`) and stored template version, whoever
+  downloads it. A reversed payment's receipt keeps its number and shows a
+  "reversed" banner with the reversal's date. No staff note, no actor
+  names.
+- Rendered on request (never stored), off the event loop after the read
+  transaction; a render failure is `500 internal_error`. Downloads are not
+  audited and not rate limited.
 
 ### Billing settings and unbilled session items
 

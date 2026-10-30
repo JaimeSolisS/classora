@@ -129,6 +129,9 @@ from app.workflows.billing_overdue_router import (
 from app.workflows.billing_payments_router import (
     router as billing_payments_router,
 )
+from app.workflows.billing_receipts_router import (
+    router as billing_receipts_router,
+)
 from app.workflows.change_requests_router import (
     router as change_request_review_router,
 )
@@ -322,6 +325,7 @@ def build_app(
     app.include_router(custom_prices_router)
     app.include_router(billing_accounts_router)
     app.include_router(billing_payments_router)
+    app.include_router(billing_receipts_router)
     app.include_router(billing_overdue_router)
     app.include_router(billing_settings_router)
     app.include_router(unbilled_items_router)

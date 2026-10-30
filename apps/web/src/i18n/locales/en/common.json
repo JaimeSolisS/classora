@@ -5563,8 +5563,14 @@
           "reference": "Reference",
           "payer": "Paid by",
           "note": "Note",
+          "receipt": "Receipt",
           "actions": "Actions"
         }
+      },
+      "receipt": {
+        "download": "Download receipt",
+        "downloadFor": "Download receipt {{number}}",
+        "recorded": "Receipt:"
       },
       "editor": {
         "label": "Open charges",

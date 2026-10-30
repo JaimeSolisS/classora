@@ -145,6 +145,24 @@ the workflow ``app.workflows.billing_payments``). For other modules:
   refunds reuse it).
 - **#98 seam:** the receipt is issued inside :func:`record_payment`, after
   the payment and allocation inserts (E13), so a #88 replay returns it.
+  ``PaymentRow.receipt_id``/``receipt_number`` carry it on the reads
+  (``None`` for a payment recorded before #98).
+
+**Receipts** (#98; :mod:`~app.modules.billing.receipts`, the core
+:mod:`app.core.numbering`; the workflow ``app.workflows.billing_receipts``).
+For other modules:
+
+- :func:`issue_receipt` (``payment_id`` → ``IssuedReceipt``): the snapshot
+  inputs, then the ``R`` ``number_series`` row (gap-free, center-local
+  year, the last lock), then the append-only ``receipts`` row. Only
+  :func:`record_payment` calls it; a second call for one payment raises
+  :class:`ReceiptAlreadyIssuedError`.
+- :func:`get_receipt` (an account's receipt with its reversal date, or
+  ``None``) and the synchronous :func:`render_receipt` /
+  :func:`render_receipt_document` (CPU-bound: call them through
+  ``anyio.to_thread.run_sync`` after the read transaction). Rendering uses
+  the stored ``template_version`` (:func:`template_for`; unknown →
+  :class:`UnknownReceiptTemplateError`) and ``language``.
 
 **Due dates, overdue accounts and reminders** (#97;
 :mod:`~app.modules.billing.due_dates`, :mod:`~app.modules.billing.overdue`,
@@ -480,6 +498,21 @@ from app.modules.billing.pricing import lookup_price as lookup_price
 from app.modules.billing.pricing import make_quote as make_quote
 from app.modules.billing.pricing import pinned_base_prices as pinned_base_prices
 from app.modules.billing.pricing import quote as quote
+from app.modules.billing.receipts import IssuedReceipt as IssuedReceipt
+from app.modules.billing.receipts import (
+    ReceiptAlreadyIssuedError as ReceiptAlreadyIssuedError,
+)
+from app.modules.billing.receipts import StoredReceipt as StoredReceipt
+from app.modules.billing.receipts import (
+    UnknownReceiptTemplateError as UnknownReceiptTemplateError,
+)
+from app.modules.billing.receipts import get_receipt as get_receipt
+from app.modules.billing.receipts import issue_receipt as issue_receipt
+from app.modules.billing.receipts import render_receipt as render_receipt
+from app.modules.billing.receipts import (
+    render_receipt_document as render_receipt_document,
+)
+from app.modules.billing.receipts import template_for as template_for
 from app.modules.billing.reminder_log import ACCOUNT_PAGE as ACCOUNT_PAGE
 from app.modules.billing.reminder_log import charges_to_remind as charges_to_remind
 from app.modules.billing.reminder_log import record_reminders as record_reminders

@@ -98,12 +98,14 @@ def test_truncate_is_refused_by_the_tables_own_trigger(module_seeded_url, rows, 
     row_id = rows.row_of(table)
     before = _snapshot(url, table, row_id)
     # charge_discounts (#95) and the #97 due-date tables reference charges,
-    # so they are truncated with them.
+    # and the #98 receipts reference payments, so they are truncated with
+    # them.
     tables = [
         table,
         *(t for t in APPEND_ONLY_TABLES if t != table),
         "charge_discounts",
         *DUE_DATE_APPEND_ONLY_TABLES,
+        "receipts",
     ]
 
     message = fails_with(url, f"TRUNCATE {', '.join(tables)}", INSUFFICIENT_PRIVILEGE)

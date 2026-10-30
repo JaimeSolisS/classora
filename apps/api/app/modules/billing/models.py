@@ -107,6 +107,13 @@ singleton (mutable config, versioned) holding the billing start floor
   CONFLICT DO NOTHING``, which the audit guard refuses on audited tables):
   one row per ``(charge_id, stage)`` the reminder job sent.
 
+**Receipts** (#98; data-model §3.21): ``receipts`` (append-only, audited):
+one per payment (``payment_id`` UNIQUE), numbered ``R-YYYY-NNNNNN``
+(``number`` UNIQUE) from the core ``number_series`` (``app.core.numbering``),
+with its language, template version and frozen ``snapshot``
+(``billing.receipts.ReceiptSnapshotV1``); the composite foreign key keeps it
+on its payment's account (I4).
+
 Every model but ``ChargeReminder`` is ``Audited``; every foreign key is ``ON
 DELETE RESTRICT`` except ``tuition_plan_pauses.tuition_plan_id``
 (``CASCADE``).
@@ -1318,3 +1325,43 @@ class ChargeReminder(Model):
     stage: Mapped[str] = mapped_column(String(REMINDER_STAGE_MAX))
     due_date: Mapped[date] = mapped_column(Date)
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+RECEIPT_LANGUAGES: Final = ("es", "en")
+"""The receipt languages (ADR-0015; ``app.core.i18n.LANGUAGES``)."""
+RECEIPT_NUMBER_MAX: Final = 16
+RECEIPT_NUMBER_PATTERN: Final = "^R-[0-9]{4}-[0-9]{6}$"
+"""``R-YYYY-NNNNNN`` (#98 A2, B2)."""
+
+
+class Receipt(Audited, Model):
+    """The receipt of one payment, issued in the payment's transaction (#98
+    A2; data-model §3.21; ADR-0006 E13). Append-only (migration 0068's
+    ``receipts_append_only()`` triggers, SQLSTATE 42501). ``snapshot`` is a
+    ``billing.receipts.ReceiptSnapshotV1`` (``"v": 1``); the PDF is built
+    from the row alone, plus the payment's reversal (if any) for the banner.
+    ``language`` and ``template_version`` never change."""
+
+    __tablename__ = "receipts"
+    __table_args__ = (
+        CheckConstraint(f"number ~ '{RECEIPT_NUMBER_PATTERN}'", name="number_format"),
+        CheckConstraint(_in("language", RECEIPT_LANGUAGES), name="language"),
+        CheckConstraint("template_version > 0", name="template_version_positive"),
+        CheckConstraint("jsonb_typeof(snapshot) = 'object'", name="snapshot_object"),
+        UniqueConstraint("number", name="uq_receipts_number"),
+        UniqueConstraint("payment_id", name="uq_receipts_payment_id"),
+        _payment_fk("receipts"),
+        Index(
+            "ix_receipts_billing_account_id_issued_at",
+            "billing_account_id",
+            "issued_at",
+        ),
+    )
+
+    number: Mapped[str] = mapped_column(String(RECEIPT_NUMBER_MAX))
+    payment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    billing_account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    language: Mapped[str] = mapped_column(String(2))
+    template_version: Mapped[int] = mapped_column(SmallInteger)
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB)

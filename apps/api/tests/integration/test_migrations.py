@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0067"
+HEAD = "0068"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -177,6 +177,8 @@ PACKAGE_TABLES = ["package_products", "packages", "package_credit_transactions"]
 """The tables revision 0066 adds (#94 A2-A4)."""
 DUE_DATE_TABLES = ["charge_due_date_changes", "charge_reminders"]
 """The tables revision 0067 adds (#97 A1, A2)."""
+RECEIPT_TABLES = ["number_series", "receipts"]
+"""The tables revision 0068 adds (#98 A1, A2)."""
 APPEND_ONLY_LEDGER_TABLES = [
     "charges",
     "charge_adjustments",
@@ -419,6 +421,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *TUITION_TABLES,
             *PACKAGE_TABLES,
             *DUE_DATE_TABLES,
+            *RECEIPT_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4656,9 +4659,24 @@ def _of_0067(diff: Any) -> bool:
     return False
 
 
+def _of_0068(diff: Any) -> bool:
+    """A metadata difference that revision 0068 adds: the number series and
+    receipts tables and their index (#98 A1, A2)."""
+    if diff[0] == "add_table":
+        return diff[1].name in RECEIPT_TABLES
+    if diff[0] == "add_index":
+        return diff[1].table.name in RECEIPT_TABLES
+    return False
+
+
+def _of_0067_on(diff: Any) -> bool:
+    """A metadata difference that revision 0067 or a later one adds."""
+    return _of_0067(diff) or _of_0068(diff)
+
+
 def _of_0066_on(diff: Any) -> bool:
     """A metadata difference that revision 0066 or a later one adds."""
-    return _of_0066(diff) or _of_0067(diff)
+    return _of_0066(diff) or _of_0067_on(diff)
 
 
 def _of_0065_on(diff: Any) -> bool:
@@ -11602,7 +11620,7 @@ def test_0066_adds_packages_and_downgrade_restores_0065(fresh_database_url):
     command.upgrade(config, "0066")
 
     assert version_nums(dsn) == ["0066"]
-    assert [d for d in metadata_diff(dsn) if not _of_0067(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0067_on(d)] == []
     assert public_tables(dsn) - before == set(PACKAGE_TABLES)
     assert set(_columns(dsn, "charges")) - charge_columns == {"package_id"}
     assert _append_only_functions(dsn) - functions == {
@@ -11779,7 +11797,7 @@ def test_0067_adds_due_date_tables_and_downgrade_restores_0066(fresh_database_ur
     command.upgrade(config, "0067")
 
     assert version_nums(dsn) == ["0067"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0068(d)] == []
     assert public_tables(dsn) - before == set(DUE_DATE_TABLES)
     assert _append_only_functions(dsn) - functions == {
         f"{table}_append_only" for table in DUE_DATE_APPEND_ONLY
@@ -11792,7 +11810,7 @@ def test_0067_adds_due_date_tables_and_downgrade_restores_0066(fresh_database_ur
     assert version_nums(dsn) == ["0066"]
     assert public_tables(dsn) == before
     assert _append_only_functions(dsn) == functions
-    assert [d for d in metadata_diff(dsn) if not _of_0067(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0067_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -11991,3 +12009,198 @@ def test_0067_checks_and_keys(fresh_database_url):
         )
         == []
     )
+
+
+# --- 0068: receipts and the number series (#98 A1-A3) -------------------------------
+
+
+def test_0068_adds_receipt_tables_and_downgrade_restores_0067(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0067")
+    before = public_tables(dsn)
+    functions = _append_only_functions(dsn)
+    payments = (_columns(dsn, "payments"), _constraints(dsn, "payments"))
+
+    command.upgrade(config, "0068")
+
+    assert version_nums(dsn) == ["0068"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(RECEIPT_TABLES)
+    assert _append_only_functions(dsn) - functions == {"receipts_append_only"}
+    assert (_columns(dsn, "payments"), _constraints(dsn, "payments")) == payments
+    # No seed rows: a year's row is created by its first receipt.
+    assert run_sql(dsn, "SELECT * FROM number_series") == []
+
+    command.downgrade(config, "0067")
+
+    assert version_nums(dsn) == ["0067"]
+    assert public_tables(dsn) == before
+    assert _append_only_functions(dsn) == functions
+    assert [d for d in metadata_diff(dsn) if not _of_0068(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_0068_columns_constraints_indexes_and_triggers(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    uuid_ = ("uuid", "NO", None, None)
+    standard = {k: v for k, v in STANDARD_COLUMNS.items() if k != "version"}
+    assert _columns(dsn, "number_series") == {
+        "code": ("text", "NO", None, None),
+        "year": ("smallint", "NO", None, None),
+        "last_value": ("integer", "NO", None, "0"),
+    }
+    assert _columns(dsn, "receipts") == {
+        **standard,
+        "number": ("character varying", "NO", 16, None),
+        "payment_id": uuid_,
+        "billing_account_id": uuid_,
+        "issued_at": ("timestamp with time zone", "NO", None, None),
+        "language": ("character varying", "NO", 2, None),
+        "template_version": ("smallint", "NO", None, None),
+        "snapshot": ("jsonb", "NO", None, None),
+    }
+    series = _constraints(dsn, "number_series")
+    assert set(series) == {
+        "pk_number_series",
+        "ck_number_series_code",
+        "ck_number_series_year_range",
+        "ck_number_series_last_value_non_negative",
+    }
+    assert series["pk_number_series"] == "PRIMARY KEY (code, year)"
+    receipts = _constraints(dsn, "receipts")
+    assert set(receipts) == {
+        "pk_receipts",
+        "ck_receipts_number_format",
+        "ck_receipts_language",
+        "ck_receipts_template_version_positive",
+        "ck_receipts_snapshot_object",
+        "fk_receipts_payment_id_payments",
+        "uq_receipts_number",
+        "uq_receipts_payment_id",
+    }
+    assert receipts["fk_receipts_payment_id_payments"] == (
+        "FOREIGN KEY (payment_id, billing_account_id) REFERENCES"
+        " payments(id, billing_account_id) ON DELETE RESTRICT"
+    )
+    assert receipts["uq_receipts_payment_id"] == "UNIQUE (payment_id)"
+    assert receipts["uq_receipts_number"] == "UNIQUE (number)"
+    assert _triggers(dsn, "receipts") == {
+        "receipts_no_update_delete",
+        "receipts_no_truncate",
+    }
+    assert _triggers(dsn, "number_series") == set()
+    index = _indexes(dsn, "receipts")["ix_receipts_billing_account_id_issued_at"]
+    assert "(billing_account_id, issued_at)" in index
+
+
+def _0068_payment(dsn: str) -> Any:
+    """A payment on a new account (raw SQL); returns its id and account."""
+    [user] = run_sql(
+        dsn,
+        "INSERT INTO users (username, display_name, state)"
+        " VALUES ('receipts', 'Receipts Tester', 'active') RETURNING id",
+    )
+    [family] = run_sql(
+        dsn, "INSERT INTO families (name) VALUES ('Familia Recibos') RETURNING id"
+    )
+    [account] = run_sql(
+        dsn,
+        "INSERT INTO billing_accounts (family_id) VALUES (:f) RETURNING id",
+        {"f": family.id},
+    )
+    [payment] = run_sql(
+        dsn,
+        "INSERT INTO payments (billing_account_id, amount, received_on,"
+        " payment_method_code, recorded_by_user_id)"
+        " VALUES (:a, 100, '2031-03-10', 'cash', :u)"
+        " RETURNING id, billing_account_id",
+        {"a": account.id, "u": user.id},
+    )
+    return payment
+
+
+RECEIPT_INSERT = (
+    "INSERT INTO receipts (number, payment_id, billing_account_id, issued_at,"
+    " language, template_version, snapshot)"
+    " VALUES (:n, :p, :a, now(), :l, :v, CAST(:s AS jsonb)) RETURNING id"
+)
+
+
+def _receipt_params(payment: Any, **overrides: Any) -> dict[str, Any]:
+    return {
+        "n": "R-2031-000001",
+        "p": payment.id,
+        "a": payment.billing_account_id,
+        "l": "es",
+        "v": 1,
+        "s": '{"v": 1}',
+        **overrides,
+    }
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "UPDATE receipts SET language = 'en' WHERE id = :id",
+        "DELETE FROM receipts WHERE id = :id",
+        "TRUNCATE receipts",
+    ],
+)
+def test_0068_receipts_are_append_only(fresh_database_url, statement):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    payment = _0068_payment(dsn)
+    [receipt] = run_sql(dsn, RECEIPT_INSERT, _receipt_params(payment))
+
+    with pytest.raises(DBAPIError) as caught:
+        run_sql(dsn, statement, {"id": receipt.id})
+    assert getattr(caught.value.orig, "sqlstate", "") == "42501"
+
+
+def test_0068_checks_and_keys(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    payment = _0068_payment(dsn)
+    [other] = run_sql(dsn, "INSERT INTO families (name) VALUES ('Otra') RETURNING id")
+    [other_account] = run_sql(
+        dsn,
+        "INSERT INTO billing_accounts (family_id) VALUES (:f) RETURNING id",
+        {"f": other.id},
+    )
+    for override, sqlstate in (
+        ({"n": "R-2031-1"}, "23514"),  # not six digits
+        ({"n": "P-2031-000001"}, "23514"),  # not the receipt series
+        ({"l": "fr"}, "23514"),
+        ({"v": 0}, "23514"),
+        ({"s": "[1]"}, "23514"),  # not an object
+        ({"a": other_account.id}, "23503"),  # another account (composite FK)
+        ({"p": uuid.uuid4()}, "23503"),
+    ):
+        with pytest.raises(DBAPIError) as caught:
+            run_sql(dsn, RECEIPT_INSERT, _receipt_params(payment, **override))
+        assert getattr(caught.value.orig, "sqlstate", "") == sqlstate, override
+    run_sql(dsn, RECEIPT_INSERT, _receipt_params(payment))
+    for override in ({}, {"n": "R-2031-000002"}):  # one per payment
+        with pytest.raises(DBAPIError) as caught:
+            run_sql(dsn, RECEIPT_INSERT, _receipt_params(payment, **override))
+        assert getattr(caught.value.orig, "sqlstate", "") == "23505", override
+    series = "INSERT INTO number_series (code, year, last_value) VALUES (:c, :y, :v)"
+    for params in (
+        {"c": "X", "y": 2031, "v": 0},
+        {"c": "R", "y": 1999, "v": 0},
+        {"c": "R", "y": 2031, "v": -1},
+    ):
+        with pytest.raises(DBAPIError) as caught:
+            run_sql(dsn, series, params)
+        assert getattr(caught.value.orig, "sqlstate", "") == "23514", params
+    run_sql(dsn, series, {"c": "R", "y": 2031, "v": 0})
+    run_sql(dsn, series, {"c": "P", "y": 2031, "v": 0})
+    with pytest.raises(DBAPIError) as caught:
+        run_sql(dsn, series, {"c": "R", "y": 2031, "v": 5})
+    assert getattr(caught.value.orig, "sqlstate", "") == "23505"

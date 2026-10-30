@@ -81,7 +81,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # discounts, discount_assignments and charge_discounts, M6-10;
     # tuition_plans and tuition_plan_pauses, M6-08; package_products,
     # packages and package_credit_transactions, M6-09;
-    # charge_due_date_changes and charge_reminders, M6-12).
+    # charge_due_date_changes and charge_reminders, M6-12; receipts, M6-13);
+    # number_series (M6-13) is shared infrastructure.
     assert target_metadata is Base.metadata
     assert set(Base.metadata.tables) == {
         "audit_events",
@@ -160,6 +161,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "package_credit_transactions",
         "charge_due_date_changes",
         "charge_reminders",
+        "receipts",
+        "number_series",
         "account_tokens",
         "registration_requests",
         "education_levels",

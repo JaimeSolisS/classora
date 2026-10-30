@@ -99,6 +99,7 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/families/{family_id}/billing-account/ledger",
         "/api/v1/families/{family_id}/billing-account/payments",
         "/api/v1/families/{family_id}/billing-account/payments/{payment_id}",
+        "/api/v1/families/{family_id}/billing-account/receipts/{receipt_id}/pdf",
         "/api/v1/families/{family_id}/billing-account/allocations",
         "/api/v1/billing/payment-methods",
         "/api/v1/families/{family_id}/billing-account/charges/{charge_id}/due-date-changes",

@@ -11,7 +11,7 @@ For a caller without ``billing.view`` (a guardian) ``note``,
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.money import Money
 
@@ -24,11 +24,21 @@ class PaymentMethodItem(BaseModel):
     is_active: bool
 
 
+class ReceiptReference(BaseModel):
+    """A payment's receipt (#98 G1): download it from ``GET
+    /api/v1/families/{family_id}/billing-account/receipts/{id}/pdf``."""
+
+    id: uuid.UUID
+    number: str = Field(examples=["R-2026-000123"])
+
+
 class PaymentItem(BaseModel):
     """A payment. ``unallocated_amount = amount − allocated_amount −
     refunded_amount`` (valid allocations only); it is account credit only
     while ``is_reversed`` is false. ``recorded_at`` is when it was
-    entered; ``received_on`` the center-local day the money came in."""
+    entered; ``received_on`` the center-local day the money came in.
+    ``receipt`` is ``null`` for a payment recorded before receipts (#98
+    C7)."""
 
     id: uuid.UUID
     amount: Money
@@ -43,6 +53,7 @@ class PaymentItem(BaseModel):
     refunded_amount: Money
     unallocated_amount: Money
     is_reversed: bool
+    receipt: ReceiptReference | None
 
 
 class PaymentAllocationItem(BaseModel):
@@ -76,13 +87,14 @@ class RecordedAllocationItem(BaseModel):
 
 class PaymentRecorded(BaseModel):
     """``201`` of recording a payment (#96 C3): the payment, the
-    allocations written now, the part left as account credit and the
-    account credit afterwards."""
+    allocations written now, the part left as account credit, the account
+    credit afterwards and the payment's receipt (#98 G1)."""
 
     payment: PaymentItem
     allocations: list[RecordedAllocationItem]
     unallocated_amount: Money
     account_credit_after: Money
+    receipt: ReceiptReference
 
 
 class CreditAllocationItem(RecordedAllocationItem):

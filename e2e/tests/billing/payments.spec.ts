@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 import { api, csrfTokenOf } from '../support/api';
 import { cspViolations, recordCspViolations } from '../support/auth';
@@ -11,10 +12,12 @@ import { createStudentViaApi } from '../support/students';
 // (a package sold to the student, the #377 path). Then from Billing →
 // Accounts: find the family, record a payment larger than the charge
 // "Oldest first" (the charge is then Paid, the difference is account
-// credit, the payment and its allocation are in the history), record a
-// second payment kept as credit, and "Apply account credit" is offered.
-// This posts a charge, two payments and an allocation in the shared E2E
-// database on a family no other spec uses; billing stays off (#366).
+// credit, the payment and its allocation are in the history), its receipt
+// number and PDF download (#98 H3), record a second payment kept as
+// credit, and "Apply account credit" is offered.
+// This posts a charge, two payments (with their receipts) and an allocation
+// in the shared E2E database on a family no other spec uses; billing stays
+// off (#366).
 
 const billing = common.billing;
 const accounts = billing.accounts;
@@ -160,6 +163,25 @@ test('recording payments on a family account', async ({ page }, testInfo) => {
   await expect(main.locator('[data-ledger-entry="payment"]')).toHaveCount(1);
   await expect(main.locator('[data-ledger-entry="allocation"]')).toHaveCount(1);
   await expect(main.locator('[data-payment-id]')).toHaveCount(1);
+
+  // 4b. #98 H3: the payment row shows its receipt number, and its link
+  // downloads `<number>.pdf`, a PDF (numbers depend on earlier specs, so
+  // only the pattern is checked).
+  const row = main.locator('[data-payment-id]');
+  await expect(row).toContainText(/R-\d{4}-\d{6}/);
+  const number = (await row.textContent())!.match(/R-\d{4}-\d{6}/)![0];
+  await expect(main.getByText(accounts.receipt.recorded)).toContainText(number);
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    row
+      .getByRole('link', {
+        name: accounts.receipt.downloadFor.replace('{{number}}', number),
+      })
+      .click(),
+  ]);
+  expect(download.suggestedFilename()).toBe(`${number}.pdf`);
+  const file = await readFile((await download.path())!);
+  expect(file.subarray(0, 5).toString('latin1')).toBe('%PDF-');
 
   // 5. A second payment kept as credit; applying credit is offered.
   await main.getByRole('button', { name: accounts.record.action }).click();
