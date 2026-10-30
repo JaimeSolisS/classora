@@ -4122,7 +4122,15 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update Family Billing Account
+         * @description Set the family's due-date offset (0–60 days added to the due date of
+         *     every charge posted from now on; posted charges keep their due dates).
+         *     Send the account's `version` from the billing account read, or `null`
+         *     when the family has no account yet (it is created). Sending the current
+         *     value changes nothing. An inactive family may be changed.
+         */
+        patch: operations["update_family_billing_account_api_v1_families__family_id__billing_account_patch"];
         trace?: never;
     };
     "/api/v1/families/{family_id}/billing-account/charges": {
@@ -4165,6 +4173,35 @@ export interface paths {
         get: operations["list_family_billing_ledger_api_v1_families__family_id__billing_account_ledger_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/families/{family_id}/billing-account/charges/{charge_id}/due-date-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Charge Due Date Changes
+         * @description Every due-date change of the charge with its reason and who made it,
+         *     oldest first. Staff only.
+         */
+        get: operations["list_charge_due_date_changes_api_v1_families__family_id__billing_account_charges__charge_id__due_date_changes_get"];
+        put?: never;
+        /**
+         * Change Charge Due Date
+         * @description Move an open charge's due date (earlier or later) with a reason. The
+         *     posted charge never changes: the change is recorded, and the charge's
+         *     status, the overdue amounts, reminders and the oldest-first payment
+         *     order follow the new date. Returns the change with the charge's status
+         *     after it.
+         */
+        post: operations["change_charge_due_date_api_v1_families__family_id__billing_account_charges__charge_id__due_date_changes_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4261,6 +4298,29 @@ export interface paths {
          *     the active ones; labels come from the client catalogs.
          */
         get: operations["list_payment_methods_api_v1_billing_payment_methods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/overdue-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Overdue Accounts
+         * @description The families whose accounts have charges past their due date (the
+         *     center's local date), most days overdue first, then the largest overdue
+         *     total, then the family name. Account credit is shown but not subtracted
+         *     from the overdue amounts until staff allocate it.
+         */
+        get: operations["list_overdue_accounts_api_v1_billing_overdue_accounts_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5118,6 +5178,37 @@ export interface components {
         };
         /** @enum {string} */
         AffectedSessionState: "offered" | "confirmed";
+        /**
+         * AgingBucketsItem
+         * @description Overdue open amounts by days past the effective due date (#97 E1):
+         *     1–30, 31–60, 61–90 and more than 90 days, inclusive as named.
+         */
+        AgingBucketsItem: {
+            /**
+             * Days 1 30
+             * Format: decimal
+             * @example 1250.00
+             */
+            days_1_30: string;
+            /**
+             * Days 31 60
+             * Format: decimal
+             * @example 1250.00
+             */
+            days_31_60: string;
+            /**
+             * Days 61 90
+             * Format: decimal
+             * @example 1250.00
+             */
+            days_61_90: string;
+            /**
+             * Days Over 90
+             * Format: decimal
+             * @example 1250.00
+             */
+            days_over_90: string;
+        };
         /**
          * AllocationLineBody
          * @description One explicit allocation line: a charge of the account and an amount
@@ -6200,6 +6291,27 @@ export interface components {
         /** @enum {string} */
         BillableState: "confirmed" | "completed";
         /**
+         * BillingAccountSettings
+         * @description The family's account settings after ``PATCH …/billing-account``
+         *     (#97 C1). ``due_offset_days`` applies to charges posted afterwards.
+         */
+        BillingAccountSettings: {
+            /**
+             * Family Id
+             * Format: uuid
+             */
+            family_id: string;
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Due Offset Days */
+            due_offset_days: number;
+            /** Version */
+            version: number;
+        };
+        /**
          * BillingAccountSummary
          * @description A family's billing account (#364 B1). ``account_id`` is ``null`` (and
          *     every amount zero) while the family has no account yet. ``outstanding =
@@ -6214,6 +6326,8 @@ export interface components {
             account_id: string | null;
             /** Due Offset Days */
             due_offset_days: number;
+            /** Version */
+            version: number | null;
             /**
              * Outstanding
              * Format: decimal
@@ -6257,6 +6371,19 @@ export interface components {
              * Format: date
              */
             today: string;
+        };
+        /**
+         * BillingAccountUpdate
+         * @description ``PATCH /api/v1/families/{family_id}/billing-account`` (#97 C1, N6).
+         *     ``version`` is the account's version, or ``null`` for a family without
+         *     an account yet (it is created); ``due_offset_days`` 0–60 applies to
+         *     charges posted afterwards only.
+         */
+        BillingAccountUpdate: {
+            /** Version */
+            version: number | null;
+            /** Due Offset Days */
+            due_offset_days: number;
         };
         /**
          * BillingFamily
@@ -6826,7 +6953,8 @@ export interface components {
         /**
          * ChargeItem
          * @description One charge with its derived values (#364 B2). ``due_date`` is the
-         *     effective due date; ``net = amount + adjustments_total``; ``open = net −
+         *     effective due date (the latest due-date change, else the posted one,
+         *     #97); ``net = amount + adjustments_total``; ``open = net −
          *     allocated``. ``posted_by_user_id`` is ``null`` for a job-posted charge
          *     and for a caller without billing.view. At most one of the source ids is
          *     set (none for a manual charge).
@@ -6850,6 +6978,11 @@ export interface components {
              * Format: date
              */
             due_date: string;
+            /**
+             * Original Due Date
+             * Format: date
+             */
+            original_due_date: string;
             /** Description */
             description: string | null;
             /**
@@ -9915,6 +10048,99 @@ export interface components {
         /** @enum {string} */
         Due: "upcoming" | "past";
         /**
+         * DueDateChangeCreate
+         * @description ``POST …/charges/{charge_id}/due-date-changes`` (#97 D1, N5).
+         *     ``due_date`` from 2000-01-01 to 2099-12-31 (``date_out_of_range``), past
+         *     dates included; ``reason`` trimmed, 1 to 500 characters.
+         */
+        DueDateChangeCreate: {
+            /**
+             * Due Date
+             * Format: date
+             */
+            due_date: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * DueDateChangeItem
+         * @description One change of a charge's due date (#97 D2; staff only).
+         *     ``previous_due_date`` is the effective due date before it.
+         */
+        DueDateChangeItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Charge Id
+             * Format: uuid
+             */
+            charge_id: string;
+            /**
+             * Previous Due Date
+             * Format: date
+             */
+            previous_due_date: string;
+            /**
+             * Due Date
+             * Format: date
+             */
+            due_date: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Changed By User Id
+             * Format: uuid
+             */
+            changed_by_user_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * DueDateChangeRecorded
+         * @description A recorded change (#97 D1) with the charge's ``status`` after it.
+         */
+        DueDateChangeRecorded: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Charge Id
+             * Format: uuid
+             */
+            charge_id: string;
+            /**
+             * Previous Due Date
+             * Format: date
+             */
+            previous_due_date: string;
+            /**
+             * Due Date
+             * Format: date
+             */
+            due_date: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Changed By User Id
+             * Format: uuid
+             */
+            changed_by_user_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            status: components["schemas"]["ChargeStatus"];
+        };
+        /**
          * EducationLevelCreate
          * @description A new education level (``POST /api/v1/education-levels``). Without
          *     ``sort_order`` the level goes last (the current maximum + 10, at most
@@ -12916,6 +13142,81 @@ export interface components {
             closes_at: string;
         };
         /**
+         * OverdueAccountItem
+         * @description One family account with overdue charges (#97 E1). ``overdue_total``
+         *     = Σ buckets; ``days_overdue`` = today − ``oldest_due_date``.
+         *     ``account_credit`` is shown but not subtracted from the overdue amounts
+         *     (staff allocate it); ``net_balance = outstanding − account_credit``.
+         *     ``last_reminded_at`` is the latest reminder sent for any of its
+         *     charges.
+         */
+        OverdueAccountItem: {
+            family: components["schemas"]["BillingFamily"];
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /**
+             * Overdue Total
+             * Format: decimal
+             * @example 1250.00
+             */
+            overdue_total: string;
+            /** Overdue Charges */
+            overdue_charges: number;
+            /**
+             * Oldest Due Date
+             * Format: date
+             */
+            oldest_due_date: string;
+            /** Days Overdue */
+            days_overdue: number;
+            buckets: components["schemas"]["AgingBucketsItem"];
+            /**
+             * Outstanding
+             * Format: decimal
+             * @example 1250.00
+             */
+            outstanding: string;
+            /**
+             * Account Credit
+             * Format: decimal
+             * @example 1250.00
+             */
+            account_credit: string;
+            /**
+             * Net Balance
+             * Format: decimal
+             * @example 1250.00
+             */
+            net_balance: string;
+            /** Last Reminded At */
+            last_reminded_at: string | null;
+        };
+        /**
+         * OverdueAccountsPage
+         * @description ``GET /api/v1/billing/overdue-accounts`` (#97 E1): a page of
+         *     accounts, the total count, the filtered totals and the center-local
+         *     ``today`` the amounts were computed for.
+         */
+        OverdueAccountsPage: {
+            /** Items */
+            items: components["schemas"]["OverdueAccountItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
+            totals: components["schemas"]["OverdueTotalsItem"];
+        };
+        /**
          * OverdueCloseoutAttendance
          * @description How many participants have an attendance mark.
          */
@@ -12980,6 +13281,21 @@ export interface components {
             display_name: string;
             /** Can Submit */
             can_submit: boolean;
+        };
+        /**
+         * OverdueTotalsItem
+         * @description The totals over every account that matches the filters (all pages).
+         */
+        OverdueTotalsItem: {
+            /** Accounts */
+            accounts: number;
+            /**
+             * Overdue Total
+             * Format: decimal
+             * @example 1250.00
+             */
+            overdue_total: string;
+            buckets: components["schemas"]["AgingBucketsItem"];
         };
         /**
          * OverrideActor
@@ -31797,6 +32113,77 @@ export interface operations {
             };
         };
     };
+    update_family_billing_account_api_v1_families__family_id__billing_account_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                family_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingAccountUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAccountSettings"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The account changed since it was loaded, or `version` doesn't match whether the family has an account (version_conflict); reload and retry. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     list_family_billing_charges_api_v1_families__family_id__billing_account_charges_get: {
         parameters: {
             query?: {
@@ -31914,6 +32301,137 @@ export interface operations {
             };
             /** @description No such family, or one whose account you can't see (not_found). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_charge_due_date_changes_api_v1_families__family_id__billing_account_charges__charge_id__due_date_changes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                family_id: string;
+                charge_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DueDateChangeItem"][];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family, or the charge is not on its account (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    change_charge_due_date_api_v1_families__family_id__billing_account_charges__charge_id__due_date_changes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                family_id: string;
+                charge_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DueDateChangeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DueDateChangeRecorded"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family, or the charge is not on its account (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The charge is paid or void (charge_settled), or already due on that date (due_date_unchanged; details: due_date). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -32247,6 +32765,60 @@ export interface operations {
             };
             /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_overdue_accounts_api_v1_billing_overdue_accounts_get: {
+        parameters: {
+            query?: {
+                /** @description Only charges at least this many days past their due date. */
+                min_days_overdue?: number;
+                /** @description Active, inactive or all families. */
+                family_status?: components["schemas"]["FamilyStatus"];
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverdueAccountsPage"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

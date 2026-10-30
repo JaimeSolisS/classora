@@ -356,6 +356,9 @@ unless a bullet says otherwise.
   and its history, and record cash, transfer or other payments, applied
   oldest first or to chosen charges; whatever isn't applied stays as
   account credit, which they can apply to charges later.
+- While billing is on, families receive in-app reminders before and after
+  their charges fall due (a few days before, once overdue, and again two
+  weeks later), sent once per charge and stage to the family's guardians.
 
 **Notifications**
 
@@ -365,7 +368,8 @@ unless a bullet says otherwise.
   connection isn't available, the bell checks every 30 seconds instead.
 - Today they tell tutors about qualification decisions and revocations and
   new session offers, tell staff when an offer is declined or expires, and
-  tell tutors and families about substitutions and cancelled sessions. In
+  tell tutors and families about substitutions and cancelled sessions, and
+  remind families of charges that are due soon or overdue. In
   local and dev, signed-in users can create a test notification for
   themselves.
 

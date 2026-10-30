@@ -24,7 +24,10 @@ current student ids; no access check) and :func:`own_family_id` (the family
 of the caller's active guardian profile, the #172 rule). For discounts and
 custom prices (#95): :func:`active_student_count` (a family's active
 students, the sibling rule) and the unexecuted :func:`family_name_columns`
-and :func:`student_name_columns` (names joined by billing reads).
+and :func:`student_name_columns` (names joined by billing reads). For due
+dates and reminders (#97): the unexecuted :func:`family_status_columns`
+(the overdue accounts list) and :func:`family_billing_recipients` (the
+logins of a family's active guardian profiles, the reminder recipients).
 
 **Name search** (ISSUE-D6, accepted on #33): with ``n(x) =
 public.f_unaccent(lower(x))`` and ``name = given_names || ' ' ||
@@ -184,7 +187,9 @@ __all__ = [
     "create_student",
     "families_of_students",
     "family_of_student",
+    "family_billing_recipients",
     "family_name_columns",
+    "family_status_columns",
     "family_record_reference",
     "family_schedule_facts",
     "get_consents",
@@ -257,6 +262,10 @@ active_student_count = _groupings.active_student_count
 """A family's number of active students (one statement; no access check;
 #95 H3)."""
 family_name_columns = _groupings.family_name_columns
+family_status_columns = _groupings.family_status_columns
+family_billing_recipients = _groupings.family_billing_recipients
+"""The logins of each family's active guardian profiles (#97 N3: the
+reminder recipients; one statement; no access check)."""
 
 # --- References (#48) -------------------------------------------------------------
 

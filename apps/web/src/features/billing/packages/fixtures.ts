@@ -252,6 +252,7 @@ export const PURCHASE_CHARGE: ChargeItem = {
   kind: 'package_purchase',
   service_date: '2026-10-01',
   due_date: '2026-10-01',
+  original_due_date: '2026-10-01',
   description: null,
   list_amount: '2000.00',
   discount_amount: '200.00',

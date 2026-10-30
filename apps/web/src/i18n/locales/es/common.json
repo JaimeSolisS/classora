@@ -1518,7 +1518,19 @@
       "academics_progress_report_approved": "Se aprobó un informe de progreso del {{period_start}} al {{period_end}}.",
       "academics_progress_report_changes_requested": "Un revisor pidió cambios en tu informe de progreso.",
       "academics_progress_report_retracted": "Se retiró tu informe de progreso.",
-      "academics_progress_report_due": "Tu borrador de informe de progreso del {{period_start}} al {{period_end}} está listo para escribirse."
+      "academics_progress_report_due": "Tu borrador de informe de progreso del {{period_start}} al {{period_end}} está listo para escribirse.",
+      "billing_payment_reminder_one": "Tienes {{count}} cargo por {{open_total}} pendiente de pago.",
+      "billing_payment_reminder_many": "Tienes {{count}} cargos por {{open_total}} pendientes de pago.",
+      "billing_payment_reminder_other": "Tienes {{count}} cargos por {{open_total}} pendientes de pago.",
+      "billing_payment_reminder_due_soon_one": "Tienes {{count}} cargo por {{open_total}} que vence el {{due_on}}.",
+      "billing_payment_reminder_due_soon_many": "Tienes {{count}} cargos por {{open_total}} por vencer; el primero vence el {{due_on}}.",
+      "billing_payment_reminder_due_soon_other": "Tienes {{count}} cargos por {{open_total}} por vencer; el primero vence el {{due_on}}.",
+      "billing_payment_reminder_overdue_one": "Tienes {{count}} cargo por {{open_total}} vencido desde el {{due_on}}.",
+      "billing_payment_reminder_overdue_many": "Tienes {{count}} cargos por {{open_total}} vencidos; el primero desde el {{due_on}}.",
+      "billing_payment_reminder_overdue_other": "Tienes {{count}} cargos por {{open_total}} vencidos; el primero desde el {{due_on}}.",
+      "billing_payment_reminder_overdue_followup_one": "Recordatorio: {{count}} cargo por {{open_total}} sigue pendiente desde el {{due_on}}.",
+      "billing_payment_reminder_overdue_followup_many": "Recordatorio: {{count}} cargos por {{open_total}} siguen pendientes; el primero desde el {{due_on}}.",
+      "billing_payment_reminder_overdue_followup_other": "Recordatorio: {{count}} cargos por {{open_total}} siguen pendientes; el primero desde el {{due_on}}."
     }
   },
   "scheduling": {

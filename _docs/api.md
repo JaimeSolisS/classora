@@ -239,6 +239,7 @@ Codes in use today:
 | `insufficient_account_credit` / `nothing_to_allocate` | 409 | A credit allocation asking for more than the account credit (`details.account_credit`); no account credit, no account, or no open charge to allocate it to (see Payments). |
 | `allocation_charge_not_found` | 422 | An explicit allocation line naming a charge that isn't on the family's account; one field error per line at `["body","allocation","lines",i,"charge_id"]` (see Payments). |
 | `payment_method_unavailable` / `received_on_in_future` | 422 | Recording a payment with an unknown or deactivated method (on `["body","payment_method_code"]`), or dated after the center's today (on `["body","received_on"]`; see Payments). |
+| `charge_settled` / `due_date_unchanged` | 409 | Changing the due date of a `paid` or `void` charge, or to its current effective due date (`details.due_date`); nothing is written (see Due dates and overdue accounts). |
 | `allocation_exceeds_payment` / `allocation_duplicate_charge` / `allocation_lines_required` / `allocation_lines_not_allowed` / `amount_not_allowed` | 422 | Field codes of the payment and credit allocation bodies: explicit lines adding up to more than the payment, a charge twice, `lines` missing for `explicit` or sent for another mode, an `amount` on an explicit credit allocation (with `amount_not_positive` and `date_out_of_range`; see Payments). |
 | `tuition_plan_overlap` | 409 | Another plan of the same group enrollment, or of the same student and price, overlaps the dates (also from the exclusion constraints). |
 | `tuition_plan_enrollment_fee_charged` / `tuition_plan_sessions_charged` | 409 | Linking a plan (or extending a linked plan) to a group enrollment whose flat fee is charged, or whose sessions inside the plan's dates are charged per session. |
@@ -917,6 +918,12 @@ tutor's page) and `scheduling.reassignment_needed` `{tutor_user_id,
 tutor_name, session_count, first_starts_at}` (M4-18, to the
 `schedule.assign` holders; link: the calendar filtered by the tutor on the
 first local date). See Tutor availability.
+`billing.payment_reminder` `{family_id, kind, count, open_total, due_on}`
+(#97, see Due dates and overdue accounts; `kind` is the reminder stage
+`due_soon | overdue | overdue_followup`, `open_total` a money string,
+`due_on` the earliest effective due date; to the logins of the family's
+active guardian profiles; plural on `count`, `open_total` shown as money;
+no link until #102).
 
 **Adding a type** (later issues: #44 qualification decisions, M4 offers and
 reminders):
@@ -6076,7 +6083,8 @@ owner-delegated decision #90b F1 (a)) on top of the M6-05 ledger core
   empty pages (any ledger `cursor` is `400 invalid_cursor`). Reads never
   create an account and take no lock.
 - **`BillingAccountSummary`:** `family {id, name, is_active}`,
-  `account_id`, `due_offset_days`, `outstanding`, `account_credit`,
+  `account_id`, `due_offset_days`, `version` (the account's, for the #97
+  offset `PATCH`; `null` without an account), `outstanding`, `account_credit`,
   `net_balance`, `pending`, `partially_paid`, `overdue` (Money strings;
   `outstanding = pending + partially_paid + overdue`, `net_balance =
   outstanding − account_credit`), `students` (every student with a charge
@@ -6084,7 +6092,8 @@ owner-delegated decision #90b F1 (a)) on top of the M6-05 ledger core
   outstanding, pending, partially_paid, overdue}`, by name then id) and
   `today` (the center-local date of the statuses).
 - **`ChargeItem`:** `id`, `student {id, name}`, `kind`, `service_date`,
-  `due_date` (effective), `description`, `list_amount`,
+  `due_date` (effective: the latest due-date change, else the posted one,
+  #97), `original_due_date` (as posted, #97), `description`, `list_amount`,
   `discount_amount`, `amount`, `adjustments_total`, `net`, `allocated`,
   `open`, `status`, `posted_at`, `posted_by_user_id`, and the source ids
   `class_session_id`, `group_enrollment_id`, `cohort_enrollment_id`.
@@ -6095,6 +6104,73 @@ owner-delegated decision #90b F1 (a)) on top of the M6-05 ledger core
   `payment_id`, `amount`, `balance_effect` and `occurred_at`.
   Payment-level rows have no `student_id`, so the student filter leaves
   them out.
+
+### Due dates and overdue accounts
+
+Implemented by M6-12 (#97; spec §1, §6; ADR-0006 E8, E11; owner-delegated
+decisions N1–N8 (a)). Routes in `app/workflows/billing_accounts_router.py`
+and `app/workflows/billing_overdue_router.py`; the rules in
+`billing.service` (`update_due_offset`, `record_due_date_change`,
+`overdue_accounts`). Neither write moves money: no `Idempotency-Key`, no
+reauthentication.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `PATCH /api/v1/families/{family_id}/billing-account` | `billing.manage` | Body `BillingAccountUpdate {version: int \| null, due_offset_days: 0–60}` (`extra="forbid"`). `200 BillingAccountSettings {family_id, account_id, due_offset_days, version}`. |
+| `POST /api/v1/families/{family_id}/billing-account/charges/{charge_id}/due-date-changes` | `billing.manage` | Body `DueDateChangeCreate {due_date, reason}`. `201 DueDateChangeItem` plus `status` (the charge's status after the change). |
+| `GET /api/v1/families/{family_id}/billing-account/charges/{charge_id}/due-date-changes` | `billing.view` | `list[DueDateChangeItem]`, oldest first (`created_at`, `id`). Staff only: guardians get `403` (the reasons are staff text). Two statements. |
+| `GET /api/v1/billing/overdue-accounts` | `billing.view` | `OverdueAccountsPage`. Query `min_days_overdue` (1–3650, default 1), `family_status` (`active \| inactive \| all`, default `all`), `limit`/`offset`. |
+
+- **Effective due date.** A charge's `due_date` in every read is the
+  `due_date` of its latest `charge_due_date_changes` row (by `created_at`,
+  `id`), else the posted `charges.due_date`; `original_due_date` is the
+  posted one. Statuses (`overdue` from the day after the effective due date
+  in the center's local date), the account's pending/partially
+  paid/overdue split, the `status` filter, the #96 oldest-first allocation
+  order, the overdue list and the reminders all follow it.
+- **Family offset (`PATCH`).** Check order: `401` → `403 csrf_failed` →
+  `403 permission_denied` → `422` → unknown family `404 not_found` → `409
+  version_conflict` (a non-null `version` for a family without an account,
+  `null` for one that has one, or a stale version, checked under the
+  account's `FOR UPDATE`) → the update. `version: null` creates the
+  account. The offset applies **only to charges posted afterwards**;
+  posted due dates never move. Sending the current value writes nothing
+  and keeps the version. An inactive family may be changed. One `update`
+  audit event on `billing_accounts`.
+- **Due-date change (`POST`).** `due_date` from 2000-01-01 to 2099-12-31
+  (`422 validation_error`, field code `date_out_of_range` at
+  `["body","due_date"]`; earlier dates are allowed, to correct a mistake);
+  `reason` trimmed, 1–500 characters. Check order: `401` → `403` → `422`
+  → `404 not_found` (an unknown family, or a charge that isn't on the
+  family's account: the same body) → the account row `FOR UPDATE` → the
+  charge re-read under it → `paid`/`void` → `409 charge_settled` → the
+  current effective date → `409 due_date_unchanged` (`details.due_date`)
+  → one append-only, audited row (`create` event with the actor,
+  `previous_due_date` and `due_date`).
+- **`DueDateChangeItem`:** `id`, `charge_id`, `previous_due_date` (the
+  effective date before the change), `due_date`, `reason`,
+  `changed_by_user_id`, `created_at`.
+- **Overdue accounts.** A charge counts when its open amount is above zero
+  and `today − effective due date ≥ min_days_overdue`. One
+  `OverdueAccountItem` per account with a counted charge: `family {id,
+  name, is_active}`, `account_id`, `overdue_total`, `overdue_charges`,
+  `oldest_due_date`, `days_overdue` (today − `oldest_due_date`),
+  `buckets {days_1_30, days_31_60, days_61_90, days_over_90}` (the counted
+  open amounts by days past due, inclusive as named; Σ = `overdue_total`),
+  `outstanding`, `account_credit` (shown, **not netted**: it isn't
+  allocated until staff do it), `net_balance` and `last_reminded_at` (the
+  latest reminder of its charges, or `null`). Order: `days_overdue` desc,
+  `overdue_total` desc, family name, account id. The page also has
+  `today` and `totals {accounts, overdue_total, buckets}` over every
+  matching account; `total` is the number of matching accounts. A
+  constant number of statements per page.
+- **Reminders** (no route): the daily job `billing:send_charge_reminders`
+  (15:00 UTC) sends `billing.payment_reminder` (see Notifications) while
+  billing is on (`billing_starts_on` not `null`): stages `due_soon` (D−3
+  to D), `overdue` (D+1 to D+13) and `overdue_followup` (from D+14) of the
+  effective due date D, at most once per charge and stage, only for
+  charges with something open; one notification per guardian, account and
+  stage per run. See `_docs/data-model.md` §3.27.
 
 ### Payments
 

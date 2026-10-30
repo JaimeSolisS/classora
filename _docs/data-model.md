@@ -79,6 +79,7 @@ One billing account per family (E4). Created on first use (`billing.service.ensu
 
 - **Access:** the guardians in `family_guardians` for `family_id` see the account (record policy, #102). Students and tutors see nothing in M6.
 - **Lock:** every financial mutation locks this row `FOR UPDATE` as its last lock (§6).
+- **Editing `due_offset_days` (#97 N6):** `PATCH /api/v1/families/{family_id}/billing-account` (`billing.manage`), body `{version | null, due_offset_days}`; `version: null` creates the account of a family that has none. The row is taken `FOR UPDATE`, then the version is checked (`409 version_conflict`); the same value writes nothing. The offset applies **only to charges posted afterwards** (`post_charge` reads it under the same lock, E11 "set at posting"); posted due dates never move.
 
 ### 3.2 `billing_settings`
 
@@ -339,12 +340,18 @@ Signed corrections against one charge (E2, E3, E5, E8, E9). A credit is a negati
 | Column | Type | Null | Check / note |
 |---|---|---|---|
 | `id` | UUID | no | PK |
-| `charge_id` | UUID | no | FK `charges` |
-| `due_date` | DATE | no | the new due date |
-| `reason` | VARCHAR(500) | no | staff text |
-| `changed_by_user_id` | UUID | no | FK `users` |
+| `charge_id` | UUID | no | composite FK `(charge_id, billing_account_id)` → `charges (id, billing_account_id)` (I4 style) |
+| `billing_account_id` | UUID | no | the charge's account |
+| `previous_due_date` | DATE | no | the effective due date before this change; `CHECK (due_date <> previous_due_date)` |
+| `due_date` | DATE | no | the new due date; `CHECK (due_date BETWEEN '2000-01-01' AND '2099-12-31')` |
+| `reason` | VARCHAR(500) | no | staff text (`staff_text_check`, trimmed 1–500) |
+| `changed_by_user_id` | UUID | no | FK `users` `RESTRICT` |
+| `created_at` | TIMESTAMPTZ | no | from `app.core.clock` |
 
-The effective due date of a charge is the `due_date` of its latest change (by `created_at`, `id`), or `charges.due_date` when there is none. Index `(charge_id, created_at)`.
+The effective due date of a charge is the `due_date` of its latest change (by `created_at`, `id`), or `charges.due_date` when there is none (`billing.balances._effective_due_date()`; every status, the #96 oldest-first order, the overdue list and the reminders read it, never `charges.due_date` directly). Index `(charge_id, created_at, id)`. Created by migration 0067; `Audited` (one `create` event with the actor) and append-only (§5.1).
+
+- **Writes (#97 N5):** `POST …/charges/{charge_id}/due-date-changes` (`billing.manage`, no `Idempotency-Key`, no reauthentication) under the account row `FOR UPDATE`; the charge's balance is re-read under the lock: `paid`/`void` → `409 charge_settled`; the current effective date → `409 due_date_unchanged`. Earlier dates are allowed.
+- **Reads:** `GET …/due-date-changes` is staff only (`billing.view`): guardians never see the reasons. The charge reads carry `original_due_date` (`charges.due_date`) beside the effective `due_date`.
 
 ### 3.12 `payments`
 
@@ -658,16 +665,20 @@ A read-only `UNION ALL` of the money rows of one account, for the cursor-paginat
 
 ### 3.27 `charge_reminders` (#97)
 
-One row per charge and reminder stage, so the reminder job is idempotent (E11, natural key `(charge_id, stage)`). The in-app notifications to the account's guardians (`family_guardians` → `guardians.user_id`) are inserted in the same transaction through `create_notification`, as `{type, params}` ([ADR-0015](adr/0015-server-side-i18n.md)). The `notifications` table itself has no dedup key, and one charge stage notifies several guardians, so the key lives here.
+One row per charge and reminder stage, so the reminder job is idempotent (E11, natural key `(charge_id, stage)`). The in-app notifications to the account's guardians are inserted in the same transaction through `create_notification`, as `{type, params}` ([ADR-0015](adr/0015-server-side-i18n.md)). The `notifications` table itself has no dedup key, and one charge stage notifies several guardians, so the key lives here.
 
 | Column | Type | Null | Check / note |
 |---|---|---|---|
 | `id` | UUID | no | PK |
-| `charge_id` | UUID | no | FK `charges` |
-| `stage` | VARCHAR(24) | no | the reminder stage; #97 defines the stage codes and their offsets from the effective due date |
+| `charge_id` | UUID | no | FK `charges` `RESTRICT` |
+| `stage` | VARCHAR(24) | no | `CHECK (stage IN ('due_soon', 'overdue', 'overdue_followup'))`, generated from `billing.reminders.REMINDER_STAGES` |
+| `due_date` | DATE | no | the effective due date the stage was computed from |
 | `sent_at` | TIMESTAMPTZ | no | |
 
-- **Natural key:** `UNIQUE (charge_id, stage)`; the job inserts with `INSERT … ON CONFLICT DO NOTHING` and notifies only when the row was inserted.
+- **Stages and windows (#97 N1):** with D the charge's **effective** due date (§3.11) and today the center's local date: `due_soon` D−3..D, `overdue` D+1..D+13, `overdue_followup` from D+14. A charge gets only the stage of the window it is in at the run; a missed window is never caught up; a due-date change after a stage was sent never re-sends that stage (the extended charge gets only the stages it hasn't had).
+- **Natural key:** `UNIQUE (charge_id, stage)` (`uq_charge_reminders_charge_stage`); the job inserts with `INSERT … ON CONFLICT DO NOTHING RETURNING` and notifies only for the rows inserted now.
+- **Not `Audited`** (#97 N4): an operational log like `notifications`; the audit guard refuses `ON CONFLICT DO NOTHING` on audited tables.
+- **Notifications (#97 N2, N3):** one `billing.payment_reminder` `{family_id, kind: <stage>, count, open_total, due_on}` per recipient, account and stage per run (`due_on` is the earliest effective due date of those charges). The recipients are the logins of the **active** guardian profiles in the account's family (`family_guardians` → `guardians.is_active` → `guardians.user_id`); students' own logins are not notified. With no recipient nothing is written, so the charge is reconsidered on the next run while it is still in a window. Only charges with open > 0 are reminded; inactive families and students are still reminded while money is open.
 - **Immutability:** append-only (§5.1 triggers).
 - **Index:** the unique key serves the lookup by charge.
 
@@ -740,8 +751,9 @@ Privileges alone can't do it: the local, test and CI database role is a superuse
 
   The App invariants of §4.1 are checked after step 2.
 - **Payments (#96):** the `idempotency_keys` row → the family's account (created if missing) → the account row `FOR UPDATE` → the charges' `open` amounts and the payment remainders, read under it → the payment and allocation rows → (#98) `number_series`. A credit allocation takes the same order without creating an account. Two payments, credit allocations or adjustments (`post_adjustment`) on one account serialize on the account row; different accounts don't wait.
+- **Due dates (#97):** the offset `PATCH` and a due-date change take the account row `FOR UPDATE` (a racing `post_charge` sees the old or the new offset, never a torn value). The reminder job's Unit of Work per account: `billing_settings` `FOR SHARE` (billing off stops the run) → the account row **`FOR SHARE`** (`billing.service.share_lock_billing_account`; it waits for every `FOR UPDATE` writer: payments, adjustments, due-date changes, postings) → the open amounts and effective due dates re-read under it → `charge_reminders` `ON CONFLICT DO NOTHING` → the notifications, committed together.
 - **API requests:** the `idempotency_keys` row is inserted first in the business transaction, before any lock. A concurrent duplicate blocks on the unique index until the first commits, then reads the stored response (E6).
-- **Jobs and sweepers:** insert on the natural keys and treat a conflict as success. On `Audited` tables (every ledger table) that is not `INSERT … ON CONFLICT DO NOTHING`, which the audit guard refuses: the posting primitives (`post_charge`, `post_adjustment`, `ensure_billing_account`; #90 E4) check the key under the account lock and insert through the ORM in a savepoint, and a violation of a named natural-key index rolls the savepoint back and returns the existing row (`created = False`). The non-audited `number_series` keeps `ON CONFLICT DO NOTHING`; periodic tasks use a Procrastinate `queueing_lock` (ADR-0003). They never use `idempotency_keys`. The jobs: `billing:post_session_charges` (every 15 minutes, #91; in `app/workflows/session_charge_tasks.py`, logic in `app/workflows/session_charges.py`), `billing:post_enrollment_charges` (every 15 minutes, #92; in `app/workflows/enrollment_charge_tasks.py`, logic in `app/workflows/enrollment_charges.py`), `billing:post_tuition_charges` (daily at 07:30 UTC, #93; in `app/workflows/tuition_charge_tasks.py`, logic in `app/workflows/tuition_charges.py`), the daily package expiry `billing:expire_packages` (07:40 UTC, #94; in `app/workflows/package_expiry_tasks.py`, logic in `app/workflows/package_expiry.py`), the reminder job (#97, natural key `charge_reminders (charge_id, stage)`) and `idempotency:purge_keys` (hourly, #88).
+- **Jobs and sweepers:** insert on the natural keys and treat a conflict as success. On `Audited` tables (every ledger table) that is not `INSERT … ON CONFLICT DO NOTHING`, which the audit guard refuses: the posting primitives (`post_charge`, `post_adjustment`, `ensure_billing_account`; #90 E4) check the key under the account lock and insert through the ORM in a savepoint, and a violation of a named natural-key index rolls the savepoint back and returns the existing row (`created = False`). The non-audited `number_series` keeps `ON CONFLICT DO NOTHING`; periodic tasks use a Procrastinate `queueing_lock` (ADR-0003). They never use `idempotency_keys`. The jobs: `billing:post_session_charges` (every 15 minutes, #91; in `app/workflows/session_charge_tasks.py`, logic in `app/workflows/session_charges.py`), `billing:post_enrollment_charges` (every 15 minutes, #92; in `app/workflows/enrollment_charge_tasks.py`, logic in `app/workflows/enrollment_charges.py`), `billing:post_tuition_charges` (daily at 07:30 UTC, #93; in `app/workflows/tuition_charge_tasks.py`, logic in `app/workflows/tuition_charges.py`), the daily package expiry `billing:expire_packages` (07:40 UTC, #94; in `app/workflows/package_expiry_tasks.py`, logic in `app/workflows/package_expiry.py`), the reminder job `billing:send_charge_reminders` (daily at 15:00 UTC, #97; in `app/workflows/charge_reminder_tasks.py`, logic in `app/workflows/charge_reminders.py`; natural key `charge_reminders (charge_id, stage)`) and `idempotency:purge_keys` (hourly, #88).
 - **Session charges (#91):** one Unit of Work per candidate `(class_session_id, student_id)`, in this order: the session row `FOR SHARE` (`scheduling.service.lock_session_for_billing`; every scheduling writer that changes a session's state, time, duration or participants takes it `FOR UPDATE`; the participants are read after the lock) → `billing_settings` `FOR SHARE` → `billing_accounts` `FOR UPDATE` (in `post_charge`, last). A group session re-checks the J2 rule after the account lock (#92 E3).
 - **Enrollment charges (#92):** the sweeper's Unit of Work per candidate period takes the group row (`scheduling.service.lock_group_for_billing`) or the cohort row (`courses.service.lock_cohort_for_billing`) `FOR SHARE` → `billing_settings` `FOR SHARE` → `billing_accounts` `FOR UPDATE` (last), and re-reads the J2/J5 facts under the account lock. The hooks run after the M4 locks (students → zone → group or cohort `FOR UPDATE` → series → sessions) → `billing_settings` `FOR SHARE` (enrollments only) → `billing_accounts` `FOR UPDATE`. The M4 writers take the group or cohort row `FOR UPDATE`, so a sweeper step and an enrollment change serialize.
 - **Tuition charges (#93):** the job's Unit of Work per plan takes (linked) the group row `FOR SHARE` (`scheduling.service.lock_group_for_billing`) → the plan row `FOR SHARE` → `billing_settings` `FOR SHARE` → `billing_accounts` `FOR UPDATE` (in `post_charge`, last). The plan writes (`PATCH`, `DELETE`, pauses, resume) take (linked) the group `FOR SHARE` then the plan row `FOR UPDATE`, so a pause waits for a posting (or the posting for the pause). A linked plan create takes the group `FOR SHARE` → the account `FOR UPDATE`, then checks the K6 refusals; the #91 session step and the #92 fee step re-check `tuition_priced` after the same account lock.
@@ -847,7 +859,7 @@ Each M6 issue, the ADR-0006 / ADR-0015 decision items it relies on, and the tabl
 | #94 M6-09 Packages | E1 (purchase; the floor gates only session charges, L5), E6 (purchase key), E7 (`expire` rows), E10 (coverage by service date, first-expiring-first, consumption at approval revision 1, the L1 expiry fallback), E11 (purchase date) | `package_products`, `packages`, `package_credit_transactions` (no `withdrawal_id`/`refund` yet, L10), `service_prices` (`package` items), `charges` (`package_id`) |
 | #95 M6-10 Discounts, custom prices | E8 (`billing.manage`), E9 (precedence step 1, stacking, discount snapshot equation) | `custom_prices`, `discounts`, `discount_assignments`, `charge_discounts`, `charges` (`custom_price_id`) |
 | #96 M6-11 Payments, allocations | E5 (allocations, account credit, I2/I3), E6, E8 (`payment.record`, seeded by `make seed`; no reauthentication), E12 (method from the seeded table); no migration (the tables exist since 0061) | `payment_methods`, `payments`, `payment_allocations` |
-| #97 M6-12 Due dates, reminders | E11 (rules, family override, `charge_due_date_changes`, local-date overdue, `(charge_id, stage)`) | `charge_due_date_changes`, `charge_reminders` |
+| #97 M6-12 Due dates, reminders | E11 (rules, family override, `charge_due_date_changes`, local-date overdue, `(charge_id, stage)`); migration 0067 | `charge_due_date_changes`, `charge_reminders`, `billing_accounts` (`due_offset_days` edits) |
 | #98 M6-13 Receipts | E13 (`number_series`, snapshot incl. template version, one per payment), E14, E15 | `receipts`, `number_series` |
 | #99 M6-14 Reconciliation | E2 (delta adjustment), E3 (rules, outcomes, closures), E10 (`charge` debits units) | `cancellation_billing_rules`, `charge_adjustments` |
 | #100 M6-15 Reversals, refunds | E5 (reversal releases allocations, refunds from the remainder, I3), E6, E8 (`finance.refund.approve`, `finance.refund_or_reversal`, `finance.correction`) | `payment_reversals`, `allocation_releases`, `refunds` |

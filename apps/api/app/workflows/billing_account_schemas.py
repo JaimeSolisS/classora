@@ -53,6 +53,9 @@ class BillingAccountSummary(BaseModel):
     family: BillingFamily
     account_id: uuid.UUID | None
     due_offset_days: int
+    version: int | None
+    """The account's version, for ``PATCH …/billing-account`` (#97 C2);
+    ``null`` without an account."""
     outstanding: Money
     account_credit: Money
     net_balance: Money
@@ -65,7 +68,8 @@ class BillingAccountSummary(BaseModel):
 
 class ChargeItem(BaseModel):
     """One charge with its derived values (#364 B2). ``due_date`` is the
-    effective due date; ``net = amount + adjustments_total``; ``open = net −
+    effective due date (the latest due-date change, else the posted one,
+    #97); ``net = amount + adjustments_total``; ``open = net −
     allocated``. ``posted_by_user_id`` is ``null`` for a job-posted charge
     and for a caller without billing.view. At most one of the source ids is
     set (none for a manual charge)."""
@@ -75,6 +79,9 @@ class ChargeItem(BaseModel):
     kind: str
     service_date: date
     due_date: date
+    original_due_date: date
+    """The due date as posted (#97 B2): it differs from ``due_date`` once
+    staff changed it."""
     description: str | None
     list_amount: Money
     discount_amount: Money
@@ -106,3 +113,87 @@ class LedgerEntryItem(BaseModel):
     amount: Money
     balance_effect: Money
     occurred_at: datetime
+
+
+# --- Due dates and overdue accounts (#97) --------------------------------------------
+
+
+class BillingAccountSettings(BaseModel):
+    """The family's account settings after ``PATCH …/billing-account``
+    (#97 C1). ``due_offset_days`` applies to charges posted afterwards."""
+
+    family_id: uuid.UUID
+    account_id: uuid.UUID
+    due_offset_days: int
+    version: int
+
+
+class DueDateChangeItem(BaseModel):
+    """One change of a charge's due date (#97 D2; staff only).
+    ``previous_due_date`` is the effective due date before it."""
+
+    id: uuid.UUID
+    charge_id: uuid.UUID
+    previous_due_date: date
+    due_date: date
+    reason: str
+    changed_by_user_id: uuid.UUID
+    created_at: datetime
+
+
+class DueDateChangeRecorded(DueDateChangeItem):
+    """A recorded change (#97 D1) with the charge's ``status`` after it."""
+
+    status: ChargeStatus
+
+
+class AgingBucketsItem(BaseModel):
+    """Overdue open amounts by days past the effective due date (#97 E1):
+    1–30, 31–60, 61–90 and more than 90 days, inclusive as named."""
+
+    days_1_30: Money
+    days_31_60: Money
+    days_61_90: Money
+    days_over_90: Money
+
+
+class OverdueAccountItem(BaseModel):
+    """One family account with overdue charges (#97 E1). ``overdue_total``
+    = Σ buckets; ``days_overdue`` = today − ``oldest_due_date``.
+    ``account_credit`` is shown but not subtracted from the overdue amounts
+    (staff allocate it); ``net_balance = outstanding − account_credit``.
+    ``last_reminded_at`` is the latest reminder sent for any of its
+    charges."""
+
+    family: BillingFamily
+    account_id: uuid.UUID
+    overdue_total: Money
+    overdue_charges: int
+    oldest_due_date: date
+    days_overdue: int
+    buckets: AgingBucketsItem
+    outstanding: Money
+    account_credit: Money
+    net_balance: Money
+    last_reminded_at: datetime | None
+
+
+class OverdueTotalsItem(BaseModel):
+    """The totals over every account that matches the filters (all pages)."""
+
+    accounts: int
+    overdue_total: Money
+    buckets: AgingBucketsItem
+
+
+class OverdueAccountsPage(BaseModel):
+    """``GET /api/v1/billing/overdue-accounts`` (#97 E1): a page of
+    accounts, the total count, the filtered totals and the center-local
+    ``today`` the amounts were computed for."""
+
+    items: list[OverdueAccountItem]
+    total: int
+    limit: int
+    offset: int
+    today: date
+    totals: OverdueTotalsItem

@@ -19,14 +19,36 @@ cursor).
   pagination; filter ``student_id``.
 
 Reads only: no ``Idempotency-Key``, no reauthentication.
+
+**Due dates** (#97 C, D; N5, N6): staff routes, ``require`` with no record
+policy beyond the family's existence. Neither moves money, so neither
+takes an ``Idempotency-Key`` (a repeated due-date change is ``409
+due_date_unchanged``; a repeated offset is a no-op) nor reauthentication.
+
+- ``PATCH /api/v1/families/{family_id}/billing-account``
+  (``billing.manage``): the family's due-date offset, ``{version | null,
+  due_offset_days}``; it applies to charges posted afterwards. Check order
+  ``401`` → ``403 csrf_failed`` → ``403 permission_denied`` → ``422`` →
+  ``404`` → ``409 version_conflict``.
+- ``POST …/charges/{charge_id}/due-date-changes`` (``billing.manage``):
+  ``{due_date, reason}`` → ``201``; ``404`` (no family, or the charge isn't
+  on its account) → ``409 charge_settled`` / ``409 due_date_unchanged``.
+- ``GET …/charges/{charge_id}/due-date-changes`` (``billing.view``; staff
+  only: the reasons are staff text), oldest first.
 """
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Final
 
 from fastapi import APIRouter, Query
 
-from app.core.authz import AUTH_RESPONSES, Principal, authenticated
+from app.core.authz import (
+    AUTH_RESPONSES,
+    PERMISSION_RESPONSES,
+    Principal,
+    authenticated,
+    require,
+)
 from app.core.errors import problem_response_doc
 from app.core.pagination import (
     CursorPage,
@@ -35,13 +57,23 @@ from app.core.pagination import (
     OffsetPagination,
 )
 from app.core.uow import UnitOfWorkDep
-from app.modules.billing.schemas import ChargeStatus
+from app.modules.billing.schemas import (
+    BillingAccountUpdate,
+    ChargeStatus,
+    DueDateChangeCreate,
+)
 from app.workflows import billing_accounts
 from app.workflows.billing_account_schemas import (
+    BillingAccountSettings,
     BillingAccountSummary,
     ChargeItem,
+    DueDateChangeItem,
+    DueDateChangeRecorded,
     LedgerEntryItem,
 )
+
+BILLING_VIEW: Final = "billing.view"
+BILLING_MANAGE: Final = "billing.manage"
 
 router = APIRouter(prefix="/api/v1/families", tags=["billing"])
 
@@ -139,4 +171,94 @@ async def list_family_billing_ledger(
     (payment-level rows have no student)."""
     return await billing_accounts.list_ledger(
         uow.session, principal, family_id, params=page, student_id=student_id
+    )
+
+
+@router.patch(
+    "/{family_id}/billing-account",
+    responses={
+        **PERMISSION_RESPONSES,
+        404: problem_response_doc("No such family (not_found)."),
+        409: problem_response_doc(
+            "The account changed since it was loaded, or `version` doesn't"
+            " match whether the family has an account (version_conflict);"
+            " reload and retry."
+        ),
+        422: problem_response_doc(
+            "The body is not valid (validation_error): a missing `version`, or"
+            " `due_offset_days` not from 0 to 60, or an unknown field."
+        ),
+    },
+)
+async def update_family_billing_account(
+    principal: Annotated[Principal, require(BILLING_MANAGE)],
+    family_id: uuid.UUID,
+    body: BillingAccountUpdate,
+    uow: UnitOfWorkDep,
+) -> BillingAccountSettings:
+    """Set the family's due-date offset (0–60 days added to the due date of
+    every charge posted from now on; posted charges keep their due dates).
+    Send the account's `version` from the billing account read, or `null`
+    when the family has no account yet (it is created). Sending the current
+    value changes nothing. An inactive family may be changed."""
+    return await billing_accounts.update_offset(uow.session, family_id, body)
+
+
+_NO_CHARGE = problem_response_doc(
+    "No such family, or the charge is not on its account (not_found)."
+)
+
+
+@router.post(
+    "/{family_id}/billing-account/charges/{charge_id}/due-date-changes",
+    status_code=201,
+    responses={
+        **PERMISSION_RESPONSES,
+        404: _NO_CHARGE,
+        409: problem_response_doc(
+            "The charge is paid or void (charge_settled), or already due on"
+            " that date (due_date_unchanged; details: due_date)."
+        ),
+        422: problem_response_doc(
+            "The body is not valid (validation_error): `due_date` missing or"
+            " outside 2000-2099 (date_out_of_range), `reason` blank or longer"
+            " than 500 characters, or an unknown field."
+        ),
+    },
+)
+async def change_charge_due_date(
+    principal: Annotated[Principal, require(BILLING_MANAGE)],
+    family_id: uuid.UUID,
+    charge_id: uuid.UUID,
+    body: DueDateChangeCreate,
+    uow: UnitOfWorkDep,
+) -> DueDateChangeRecorded:
+    """Move an open charge's due date (earlier or later) with a reason. The
+    posted charge never changes: the change is recorded, and the charge's
+    status, the overdue amounts, reminders and the oldest-first payment
+    order follow the new date. Returns the change with the charge's status
+    after it."""
+    return await billing_accounts.record_due_date_change(
+        uow.session, family_id, charge_id, body
+    )
+
+
+@router.get(
+    "/{family_id}/billing-account/charges/{charge_id}/due-date-changes",
+    responses={
+        **PERMISSION_RESPONSES,
+        404: _NO_CHARGE,
+        422: problem_response_doc("An id is not a UUID (validation_error)."),
+    },
+)
+async def list_charge_due_date_changes(
+    principal: Annotated[Principal, require(BILLING_VIEW)],
+    family_id: uuid.UUID,
+    charge_id: uuid.UUID,
+    uow: UnitOfWorkDep,
+) -> list[DueDateChangeItem]:
+    """Every due-date change of the charge with its reason and who made it,
+    oldest first. Staff only."""
+    return await billing_accounts.list_due_date_changes(
+        uow.session, family_id, charge_id
     )

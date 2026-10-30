@@ -4,6 +4,7 @@ Details (``app.core.errors``) and carries no record data beyond the ids
 
 import uuid
 from collections.abc import Sequence
+from datetime import date
 
 from app.core.errors import AppError, FieldError
 from app.core.money import Money
@@ -503,3 +504,25 @@ class ReceivedOnInFutureError(_FieldRuleError):
     code = "received_on_in_future"
     field = "received_on"
     detail = "The payment date can't be after today."
+
+
+# --- Due dates (#97 D1; N5) ----------------------------------------------------------
+
+
+class ChargeSettledError(_Conflict):
+    """The charge is ``paid`` or ``void`` under the account lock: its due
+    date can't change (#97 D1, N5). Nothing is written."""
+
+    code = "charge_settled"
+    detail = "This charge is paid or void: its due date can't change."
+
+
+class DueDateUnchangedError(_Conflict):
+    """The new due date is the charge's current effective due date (#97
+    D1). ``details.due_date`` is that date. Nothing is written."""
+
+    code = "due_date_unchanged"
+    detail = "The charge is already due on that date."
+
+    def __init__(self, due_date: date) -> None:
+        AppError.__init__(self, details={"due_date": due_date.isoformat()})

@@ -10,7 +10,9 @@ reads take no lock and write nothing.
   without a reversal of ``amount − Σ valid allocations − Σ refunds``;
   **net balance** = outstanding − account credit.
 - **Status** (:func:`charge_status`): ``void`` → ``paid`` → ``overdue`` →
-  ``partially_paid`` → ``pending``, with "today" the center's local date.
+  ``partially_paid`` → ``pending``, with "today" the center's local date
+  and the **effective** due date (the latest ``charge_due_date_changes``
+  row, else ``charges.due_date``; #97 B1).
 - **Charge list** (:func:`charge_details`, #364 B2): a page of charges
   with their stored fields, derived values and status, filtered by student
   and status in SQL (the same status rule as :func:`charge_status`).
@@ -58,6 +60,7 @@ from app.modules.billing.models import (
     BillingAccount,
     Charge,
     ChargeAdjustment,
+    ChargeDueDateChange,
     Payment,
     PaymentAllocation,
     PaymentReversal,
@@ -111,10 +114,27 @@ def charge_status(
     return "pending"
 
 
-def _effective_due_date() -> ColumnElement[date]:
-    """The charge's effective due date: ``charges.due_date`` until #97 adds
-    the latest ``charge_due_date_changes`` row (data-model §3.11)."""
-    return Charge.due_date.expression
+def _effective_due_date(charge: Any = Charge) -> ColumnElement[date]:
+    """The charge's effective due date (#97 B1; data-model §3.11): the
+    ``due_date`` of its latest ``charge_due_date_changes`` row (by
+    ``created_at``, ``id``), else ``charges.due_date``, as a correlated
+    expression (not executed). Every status, order and reminder reads it;
+    nothing reads ``charges.due_date`` directly for those."""
+    latest = (
+        select(ChargeDueDateChange.due_date)
+        .where(ChargeDueDateChange.charge_id == charge.id)
+        .order_by(ChargeDueDateChange.created_at.desc(), ChargeDueDateChange.id.desc())
+        .limit(1)
+        .correlate(charge)
+        .scalar_subquery()
+    )
+    return func.coalesce(latest, charge.due_date)
+
+
+def effective_due_date_column(charge: Any = Charge) -> ColumnElement[date]:
+    """:func:`_effective_due_date`, public for the other billing files (the
+    overdue list and the reminder job)."""
+    return _effective_due_date(charge)
 
 
 def _released(allocation_id: Any) -> Any:
@@ -143,12 +163,13 @@ async def charge_balances(
     account_id: uuid.UUID,
     *,
     student_id: uuid.UUID | None = None,
+    charge_id: uuid.UUID | None = None,
     today: date | None = None,
 ) -> list[ChargeBalance]:
-    """Every charge of the account (or of one of its students) with its
-    derived values and status (#90 D1), ordered by ``service_date``,
-    ``posted_at``, ``id``. One statement (two when ``today`` is read from
-    the center's settings)."""
+    """Every charge of the account (or of one of its students, or the one
+    charge ``charge_id``, #97 D1) with its derived values and status (#90
+    D1), ordered by ``service_date``, ``posted_at``, ``id``. One statement
+    (two when ``today`` is read from the center's settings)."""
     today = await _today(session, today)
     adjustments = (
         select(money_sum(ChargeAdjustment.amount))
@@ -169,6 +190,8 @@ async def charge_balances(
     ).where(Charge.billing_account_id == account_id)
     if student_id is not None:
         query = query.where(Charge.student_id == student_id)
+    if charge_id is not None:
+        query = query.where(Charge.id == charge_id)
     rows = await session.execute(
         query.order_by(Charge.service_date, Charge.posted_at, Charge.id)
     )
@@ -312,13 +335,17 @@ async def account_of_family(
                 BillingAccount.id,
                 BillingAccount.family_id,
                 BillingAccount.due_offset_days,
+                BillingAccount.version,
             ).where(BillingAccount.family_id == family_id)
         )
     ).first()
     if row is None:
         return None
     return BillingAccountReference(
-        id=row.id, family_id=row.family_id, due_offset_days=row.due_offset_days
+        id=row.id,
+        family_id=row.family_id,
+        due_offset_days=row.due_offset_days,
+        version=row.version,
     )
 
 
@@ -378,6 +405,7 @@ async def charge_details(
         Charge.kind,
         Charge.service_date,
         _effective_due_date().label("due_date"),
+        Charge.due_date.label("original_due_date"),
         Charge.description,
         Charge.list_amount,
         Charge.discount_amount,
@@ -437,6 +465,7 @@ async def charge_details(
                 kind=row.kind,
                 service_date=row.service_date,
                 due_date=row.due_date,
+                original_due_date=row.original_due_date,
                 description=row.description,
                 list_amount=row.list_amount,
                 discount_amount=row.discount_amount,

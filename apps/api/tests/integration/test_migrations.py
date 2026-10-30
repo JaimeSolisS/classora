@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0066"
+HEAD = "0067"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -175,6 +175,8 @@ TUITION_TABLES = ["tuition_plans", "tuition_plan_pauses"]
 """The tables revision 0065 adds (#93 A3, A4)."""
 PACKAGE_TABLES = ["package_products", "packages", "package_credit_transactions"]
 """The tables revision 0066 adds (#94 A2-A4)."""
+DUE_DATE_TABLES = ["charge_due_date_changes", "charge_reminders"]
+"""The tables revision 0067 adds (#97 A1, A2)."""
 APPEND_ONLY_LEDGER_TABLES = [
     "charges",
     "charge_adjustments",
@@ -416,6 +418,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *DISCOUNT_TABLES,
             *TUITION_TABLES,
             *PACKAGE_TABLES,
+            *DUE_DATE_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4643,9 +4646,24 @@ def _of_0066(diff: Any) -> bool:
     return False
 
 
+def _of_0067(diff: Any) -> bool:
+    """A metadata difference that revision 0067 adds: the due-date change and
+    reminder tables and their index (#97 A1, A2)."""
+    if diff[0] == "add_table":
+        return diff[1].name in DUE_DATE_TABLES
+    if diff[0] == "add_index":
+        return diff[1].table.name in DUE_DATE_TABLES
+    return False
+
+
+def _of_0066_on(diff: Any) -> bool:
+    """A metadata difference that revision 0066 or a later one adds."""
+    return _of_0066(diff) or _of_0067(diff)
+
+
 def _of_0065_on(diff: Any) -> bool:
     """A metadata difference that revision 0065 or a later one adds."""
-    return _of_0065(diff) or _of_0066(diff)
+    return _of_0065(diff) or _of_0066_on(diff)
 
 
 def _of_0064_on(diff: Any) -> bool:
@@ -11440,7 +11458,7 @@ def test_0065_adds_tuition_plans_and_downgrade_restores_0064(fresh_database_url)
     command.upgrade(config, "0065")
 
     assert version_nums(dsn) == ["0065"]
-    assert [d for d in metadata_diff(dsn) if not _of_0066(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0066_on(d)] == []
     assert public_tables(dsn) - before == set(TUITION_TABLES)
     assert set(_columns(dsn, "charges")) - charge_columns == {"tuition_plan_id"}
     assert set(_columns(dsn, "service_prices")) - price_columns == {"period_frequency"}
@@ -11584,7 +11602,7 @@ def test_0066_adds_packages_and_downgrade_restores_0065(fresh_database_url):
     command.upgrade(config, "0066")
 
     assert version_nums(dsn) == ["0066"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0067(d)] == []
     assert public_tables(dsn) - before == set(PACKAGE_TABLES)
     assert set(_columns(dsn, "charges")) - charge_columns == {"package_id"}
     assert _append_only_functions(dsn) - functions == {
@@ -11617,7 +11635,7 @@ def test_0066_adds_packages_and_downgrade_restores_0065(fresh_database_url):
     assert "uq_charges_package_purchase" not in _indexes(dsn, "charges")
     assert _predicate_body(dsn) == predicate
     assert _append_only_functions(dsn) == functions
-    assert [d for d in metadata_diff(dsn) if not _of_0066(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0066_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -11743,3 +11761,233 @@ def test_package_columns_constraints_indexes_and_triggers(fresh_database_url):
             f"{table}_no_truncate",
         }
     assert _triggers(dsn, "package_products") == set()
+
+
+# --- 0067: due-date changes and charge reminders (#97 A1-A3) ---------------------
+
+DUE_DATE_APPEND_ONLY = ["charge_due_date_changes", "charge_reminders"]
+
+
+def test_0067_adds_due_date_tables_and_downgrade_restores_0066(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0066")
+    before = public_tables(dsn)
+    functions = _append_only_functions(dsn)
+    charges = (_columns(dsn, "charges"), _constraints(dsn, "charges"))
+
+    command.upgrade(config, "0067")
+
+    assert version_nums(dsn) == ["0067"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - before == set(DUE_DATE_TABLES)
+    assert _append_only_functions(dsn) - functions == {
+        f"{table}_append_only" for table in DUE_DATE_APPEND_ONLY
+    }
+    # Charges stay as they were: the effective due date is derived.
+    assert (_columns(dsn, "charges"), _constraints(dsn, "charges")) == charges
+
+    command.downgrade(config, "0066")
+
+    assert version_nums(dsn) == ["0066"]
+    assert public_tables(dsn) == before
+    assert _append_only_functions(dsn) == functions
+    assert [d for d in metadata_diff(dsn) if not _of_0067(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_0067_columns_constraints_indexes_and_triggers(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    uuid_ = ("uuid", "NO", None, None)
+    date_ = ("date", "NO", None, None)
+    standard = {k: v for k, v in STANDARD_COLUMNS.items() if k != "version"}
+    assert _columns(dsn, "charge_due_date_changes") == {
+        **standard,
+        "charge_id": uuid_,
+        "billing_account_id": uuid_,
+        "previous_due_date": date_,
+        "due_date": date_,
+        "reason": ("character varying", "NO", 500, None),
+        "changed_by_user_id": uuid_,
+    }
+    assert _columns(dsn, "charge_reminders") == {
+        **standard,
+        "charge_id": uuid_,
+        "stage": ("character varying", "NO", 24, None),
+        "due_date": date_,
+        "sent_at": ("timestamp with time zone", "NO", None, None),
+    }
+    changes = _constraints(dsn, "charge_due_date_changes")
+    assert set(changes) == {
+        "pk_charge_due_date_changes",
+        "ck_charge_due_date_changes_due_date_range",
+        "ck_charge_due_date_changes_due_date_changed",
+        "ck_charge_due_date_changes_reason_valid",
+        "fk_charge_due_date_changes_charge_id_charges",
+        "fk_charge_due_date_changes_changed_by_user_id_users",
+    }
+    assert changes["fk_charge_due_date_changes_charge_id_charges"].startswith(
+        "FOREIGN KEY (charge_id, billing_account_id) REFERENCES"
+        " charges(id, billing_account_id)"
+    )
+    assert "'2000-01-01'" in changes["ck_charge_due_date_changes_due_date_range"]
+    assert "'2099-12-31'" in changes["ck_charge_due_date_changes_due_date_range"]
+    assert changes["ck_charge_due_date_changes_due_date_changed"] == (
+        "CHECK ((due_date <> previous_due_date))"
+    )
+    reminders = _constraints(dsn, "charge_reminders")
+    assert set(reminders) == {
+        "pk_charge_reminders",
+        "ck_charge_reminders_stage",
+        "fk_charge_reminders_charge_id_charges",
+        "uq_charge_reminders_charge_stage",
+    }
+    assert reminders["uq_charge_reminders_charge_stage"] == (
+        "UNIQUE (charge_id, stage)"
+    )
+    for stage in ("due_soon", "overdue", "overdue_followup"):
+        assert f"'{stage}'" in reminders["ck_charge_reminders_stage"]
+    for table in DUE_DATE_TABLES:
+        for name, definition in _constraints(dsn, table).items():
+            if definition.startswith("FOREIGN KEY"):
+                assert "ON DELETE RESTRICT" in definition, (table, name)
+        assert _triggers(dsn, table) == {
+            f"{table}_no_update_delete",
+            f"{table}_no_truncate",
+        }
+    index = _indexes(dsn, "charge_due_date_changes")[
+        "ix_charge_due_date_changes_charge_created"
+    ]
+    assert "(charge_id, created_at, id)" in index
+
+
+def _0067_rows(dsn: str) -> tuple[str, str]:
+    """One due-date change and one reminder on a manual charge (raw SQL)."""
+    [user] = run_sql(
+        dsn,
+        "INSERT INTO users (username, display_name, state)"
+        " VALUES ('due.dates', 'Due Dates Tester', 'active') RETURNING id",
+    )
+    [family] = run_sql(
+        dsn, "INSERT INTO families (name) VALUES ('Familia Fechas') RETURNING id"
+    )
+    [student] = run_sql(
+        dsn,
+        "INSERT INTO students (given_names, family_names, birthdate)"
+        " VALUES ('Ana', 'Fechas', '2015-01-01') RETURNING id",
+    )
+    [account] = run_sql(
+        dsn,
+        "INSERT INTO billing_accounts (family_id) VALUES (:f) RETURNING id",
+        {"f": family.id},
+    )
+    [charge] = run_sql(
+        dsn,
+        "INSERT INTO charges (billing_account_id, student_id, kind, service_date,"
+        " list_amount, amount, due_date, description, posted_at)"
+        " VALUES (:a, :s, 'manual', '2031-03-10', 100, 100, '2031-03-10',"
+        " 'Cargo', now()) RETURNING id",
+        {"a": account.id, "s": student.id},
+    )
+    [change] = run_sql(
+        dsn,
+        "INSERT INTO charge_due_date_changes (charge_id, billing_account_id,"
+        " previous_due_date, due_date, reason, changed_by_user_id)"
+        " VALUES (:c, :a, '2031-03-10', '2031-03-20', 'Acuerdo', :u) RETURNING id",
+        {"c": charge.id, "a": account.id, "u": user.id},
+    )
+    [reminder] = run_sql(
+        dsn,
+        "INSERT INTO charge_reminders (charge_id, stage, due_date, sent_at)"
+        " VALUES (:c, 'due_soon', '2031-03-20', now()) RETURNING id",
+        {"c": charge.id},
+    )
+    return str(change.id), str(reminder.id)
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "UPDATE {table} SET due_date = '2031-04-01' WHERE id = :id",
+        "DELETE FROM {table} WHERE id = :id",
+        "TRUNCATE {table}",
+    ],
+)
+def test_0067_tables_are_append_only(fresh_database_url, statement):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    change, reminder = _0067_rows(dsn)
+
+    for table, row in (
+        ("charge_due_date_changes", change),
+        ("charge_reminders", reminder),
+    ):
+        with pytest.raises(DBAPIError) as caught:
+            run_sql(dsn, statement.format(table=table), {"id": row})
+        assert getattr(caught.value.orig, "sqlstate", "") == "42501", table
+
+
+def test_0067_checks_and_keys(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    _0067_rows(dsn)
+    [row] = run_sql(
+        dsn,
+        "SELECT c.id AS charge_id, c.billing_account_id AS account_id,"
+        " d.changed_by_user_id AS user_id FROM charges c"
+        " JOIN charge_due_date_changes d ON d.charge_id = c.id",
+    )
+    [other] = run_sql(dsn, "INSERT INTO families (name) VALUES ('Otra') RETURNING id")
+    [other_account] = run_sql(
+        dsn,
+        "INSERT INTO billing_accounts (family_id) VALUES (:f) RETURNING id",
+        {"f": other.id},
+    )
+    change = (
+        "INSERT INTO charge_due_date_changes (charge_id, billing_account_id,"
+        " previous_due_date, due_date, reason, changed_by_user_id)"
+        " VALUES (:c, :a, :p, :d, :r, :u)"
+    )
+    base = {
+        "c": row.charge_id,
+        "a": row.account_id,
+        "p": date(2031, 3, 20),
+        "d": date(2031, 3, 25),
+        "r": "Acuerdo",
+        "u": row.user_id,
+    }
+    for override, sqlstate in (
+        ({"d": date(2031, 3, 20)}, "23514"),  # unchanged
+        ({"d": date(1999, 12, 31)}, "23514"),  # out of range
+        ({"d": date(2100, 1, 1)}, "23514"),
+        ({"r": " Acuerdo"}, "23514"),  # untrimmed
+        ({"r": ""}, "23514"),
+        ({"a": other_account.id}, "23503"),  # another account (composite FK)
+    ):
+        with pytest.raises(DBAPIError) as caught:
+            run_sql(dsn, change, {**base, **override})
+        assert getattr(caught.value.orig, "sqlstate", "") == sqlstate, override
+    reminder = (
+        "INSERT INTO charge_reminders (charge_id, stage, due_date, sent_at)"
+        " VALUES (:c, :s, '2031-03-20', now())"
+    )
+    for stage, sqlstate in (("due_soon", "23505"), ("late", "23514")):
+        with pytest.raises(DBAPIError) as caught:
+            run_sql(dsn, reminder, {"c": row.charge_id, "s": stage})
+        assert getattr(caught.value.orig, "sqlstate", "") == sqlstate, stage
+    run_sql(dsn, reminder, {"c": row.charge_id, "s": "overdue"})
+    assert (
+        run_sql(
+            dsn,
+            "INSERT INTO charge_reminders (charge_id, stage, due_date, sent_at)"
+            " VALUES (:c, 'overdue', '2031-03-20', now())"
+            " ON CONFLICT (charge_id, stage) DO NOTHING RETURNING id",
+            {"c": row.charge_id},
+        )
+        == []
+    )

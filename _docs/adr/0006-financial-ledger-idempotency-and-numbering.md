@@ -193,6 +193,7 @@ Permissions, not roles. None of the new ones is delegable, and each is seeded by
 - **Changing a posted charge's due date:** an append-only `charge_due_date_changes` row (new date, reason, actor). The effective due date is the latest one.
 - **Overdue** is computed against today in the center zone ([ADR-0004](0004-money-time-and-date-representation.md)).
 - **Reminders (#97):** in-app only, `{type, params}` notifications, with natural key `(charge_id, stage)`.
+  - Clarification (#97, 2026-10-28): three stages around the effective due date D, each sent only inside its window: `due_soon` D−3..D, `overdue` D+1..D+13, `overdue_followup` from D+14; no catch-up of a missed window, and a due-date change never re-sends a stage already sent (the fixed key). One `billing.payment_reminder` per recipient, account and stage per run summarises the charges (count, open total, earliest due date). `charge_reminders` is not `Audited` (an operational log written with `ON CONFLICT DO NOTHING`); the daily job takes `billing_settings` `FOR SHARE` then the account row `FOR SHARE`, and re-reads the open amounts under it. A due-date change is refused on a `paid` or `void` charge (`409 charge_settled`). No accepted rule changes.
 
 ### Payment methods (E12 (a), spec §6)
 
