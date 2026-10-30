@@ -289,6 +289,16 @@ Owner-delegated recommended decisions of #99 (2026-10-28, Q1–Q10 (a)). No acce
 - **Q8:** attendance and closeout never reconcile; `no_show_outcome` applies only to a cancellation classified `no_show`, which no M4 path produces today.
 - **Q9:** a `charge` outcome on a package-covered, unconsumed key consumes its units (`consume_session_credit`, also for a cancelled session); `short`/`no_package` charge the session. A consumed key is never cancelled, skipped or re-timed afterwards, so #99 writes no package `reversal` (#100 owns reversals).
 
+## Implementation notes (M6-15)
+
+Owner-delegated recommended decisions of #100 (2026-10-28, R1–R10 (a)). No accepted rule changes.
+
+- **R3, reauthentication (a clarification, stricter than E8's wording):** every manual adjustment, a credit **or** a debit, needs `billing.manage` plus `finance.correction` (an unconditional `require_recent_auth`): a debit also rewrites what a posted charge means, and one rule is easier to test and explain. A package-purchase cancellation (a credit) needs it too. A manual charge needs `billing.manage` only, as E8 says.
+- **R4, refunds are payment-scoped:** one `refunds` row per request, drawn on one payment's remainder (`amount − Σ valid allocations − Σ refunds`, the #96 expression), several partial refunds per payment allowed. #101's withdrawal refunds reuse the same primitive.
+- **R5, no refund undo in M6:** a recorded refund stays (no `refund_reversals` table); a payment with a refund can't be reversed (`409 payment_has_refunds`), so the §3.26 ledger identity holds. There is no "un-allocate": a mis-allocated payment is reversed and recorded again.
+- **R6, package-purchase cancellation (E10):** one `reversal` movement of `−remaining` against the grant (the only writer of that kind) plus a `package_cancellation` adjustment on the purchase charge (new kind, migration 0070), default credit `net × remaining / units_granted` (`Money.prorate`, consistent with E7's deferred-revenue reading), overridable from `0.00` to the net. Generic manual adjustments refuse `package_purchase` charges, so money and units always move together; #94's status gains `cancelled`.
+- **R9, receipts (E13):** no receipt change. A reversal shows #98's live "reversed" banner; a refund doesn't change the receipt (no refund banner, no receipt v2): the refund is its own ledger row with its own method and reference.
+
 ## References
 
 - [`../architecture.md`](../architecture.md) §4.2, §4.4, §5, §6, §10.4 ISSUE-J4, §10.6 ISSUE-F1–F7, §11, §12

@@ -447,7 +447,8 @@ def test_the_reads_cost_a_bounded_number_of_statements(module_seeded_url, users,
             url,
             lambda s, p=principal: billing_payments.get_payment(s, p, world.a, first),
         )
-        assert count <= 5, principal
+        # #100 C6: #96's bound + 1 (the refunds; the reversal is joined).
+        assert count <= 6, principal
         assert len(detail.allocations) == 2
 
 

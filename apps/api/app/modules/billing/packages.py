@@ -381,6 +381,19 @@ def _has_expire_column() -> Any:
     )
 
 
+def _has_reversal_column() -> Any:
+    """Whether the package has a ``reversal`` row: a #100 cancellation
+    (``EXISTS``, correlated)."""
+    return (
+        exists()
+        .where(
+            PackageCreditTransaction.package_id == Package.id,
+            PackageCreditTransaction.kind == "reversal",
+        )
+        .correlate(Package)
+    )
+
+
 async def package_remaining_units(
     session: AsyncSession, package_ids: Collection[uuid.UUID]
 ) -> dict[uuid.UUID, int]:
@@ -792,6 +805,7 @@ class TransactionRow:
 def _status_column(today: date) -> Any:
     """D4 in SQL (the twin of :func:`package_status`)."""
     return case(
+        (_has_reversal_column(), literal("cancelled")),
         (or_(_has_expire_column(), Package.expires_on < today), literal("expired")),
         (_remaining_column() <= 0, literal("exhausted")),
         else_=literal("active"),
@@ -818,6 +832,7 @@ def _named_packages(names: PackageNames) -> Select[Any]:
             subjects.c.name.label("subject_name"),
             _remaining_column().label("remaining"),
             _has_expire_column().label("has_expire"),
+            _has_reversal_column().label("has_reversal"),
             purchase.label("purchase_charge_id"),
         )
         .join(BillingAccount, BillingAccount.id == Package.billing_account_id)
@@ -852,6 +867,7 @@ def _package_row(found: Any, today: date) -> PackageRow:
             package.expires_on,
             has_expire_row=bool(found.has_expire),
             today=today,
+            cancelled=bool(found.has_reversal),
         ),
         purchase_charge_id=found.purchase_charge_id,
     )

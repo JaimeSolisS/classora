@@ -51,7 +51,7 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import func, select, type_coerce
+from sqlalchemy import func, outerjoin, select, type_coerce
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import current_actor_id
@@ -60,7 +60,6 @@ from app.core.pagination import OffsetParams
 from app.modules.billing.balances import (
     _refunded,
     _released,
-    _reversed,
     _valid_allocated,
     account_credit,
     charge_balances,
@@ -79,7 +78,9 @@ from app.modules.billing.models import (
     Payment,
     PaymentAllocation,
     PaymentMethod,
+    PaymentReversal,
     Receipt,
+    Refund,
 )
 from app.modules.billing.receipts import issue_receipt
 from app.modules.billing.schemas import (
@@ -95,6 +96,7 @@ from app.modules.billing.schemas import (
     PlannedAllocation,
     RecordedAllocation,
     RecordedPayment,
+    RefundRow,
 )
 
 # --- The pure planner (B3) -----------------------------------------------------------
@@ -369,10 +371,20 @@ def _payment_columns() -> Any:
         allocated.label("allocated_amount"),
         refunded.label("refunded_amount"),
         type_coerce(payment_remainder_column(), MoneyType()).label("unallocated"),
-        _reversed().label("is_reversed"),
+        # The reversal is joined (at most one per payment, UNIQUE), so
+        # "reversed" is its id being there (#100 R8).
+        PaymentReversal.id.isnot(None).label("is_reversed"),
         Receipt.id.label("receipt_id"),
         Receipt.number.label("receipt_number"),
-    ).outerjoin_from(Payment, Receipt, Receipt.payment_id == Payment.id)
+        PaymentReversal.id.label("reversal_id"),
+        PaymentReversal.reason.label("reversal_reason"),
+        PaymentReversal.created_at.label("reversed_at"),
+        PaymentReversal.reversed_by_user_id,
+    ).select_from(
+        outerjoin(Payment, Receipt, Receipt.payment_id == Payment.id).outerjoin(
+            PaymentReversal, PaymentReversal.payment_id == Payment.id
+        )
+    )
 
 
 def _payment_row(row: Any) -> PaymentRow:
@@ -392,6 +404,10 @@ def _payment_row(row: Any) -> PaymentRow:
         is_reversed=bool(row.is_reversed),
         receipt_id=row.receipt_id,
         receipt_number=row.receipt_number,
+        reversal_id=row.reversal_id,
+        reversal_reason=row.reversal_reason,
+        reversed_at=row.reversed_at,
+        reversed_by_user_id=row.reversed_by_user_id,
     )
 
 
@@ -470,4 +486,29 @@ async def get_payment(
             is_valid=bool(a.is_valid),
         )
         for a in allocations
+    ]
+
+
+async def payment_refunds(
+    session: AsyncSession, payment_id: uuid.UUID
+) -> list[RefundRow]:
+    """The payment's refunds, oldest first (``created_at``, ``id``; #100
+    R8). One statement, no lock."""
+    rows = await session.scalars(
+        select(Refund)
+        .where(Refund.payment_id == payment_id)
+        .order_by(Refund.created_at, Refund.id)
+    )
+    return [
+        RefundRow(
+            id=row.id,
+            amount=row.amount,
+            refunded_on=row.refunded_on,
+            payment_method_code=row.payment_method_code,
+            reference=row.reference,
+            reason=row.reason,
+            refunded_at=row.created_at,
+            refunded_by_user_id=row.refunded_by_user_id,
+        )
+        for row in rows
     ]

@@ -306,8 +306,12 @@ ADJUSTMENT_KINDS: Final = (
     "enrollment_removal",
     "withdrawal",
     "manual",
+    "package_cancellation",
 )
+"""The adjustment kinds (#90 E3; ``package_cancellation`` since #100 R6,
+migration 0070: the credit of a package-purchase cancellation)."""
 MANUAL: Final = "manual"
+PACKAGE_CANCELLATION: Final = "package_cancellation"
 
 SCHEDULED_MINUTES_MIN: Final = 15
 SCHEDULED_MINUTES_MAX: Final = 480

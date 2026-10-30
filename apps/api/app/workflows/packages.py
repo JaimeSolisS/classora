@@ -52,6 +52,7 @@ from app.modules.families import service as families
 from app.modules.scheduling import service as scheduling
 from app.workflows.charge_pricing import local_date
 from app.workflows.package_schemas import (
+    PackageCancelled,
     PackageDetail,
     PackageItem,
     PackageProductCreate,
@@ -376,4 +377,33 @@ async def get_package(session: AsyncSession, package_id: uuid.UUID) -> PackageDe
             )
             for t in transactions
         ],
+    )
+
+
+# --- Cancellation (#100 C5, R6) ------------------------------------------------------
+
+
+async def cancel_package(
+    session: AsyncSession,
+    package_id: uuid.UUID,
+    body: billing.PackageCancellationCreate,
+) -> PackageCancelled:
+    """``POST /api/v1/billing/packages/{package_id}/cancellation`` (#100
+    C5): ``billing.cancel_package`` (unknown → ``404``; the account lock;
+    ``409 package_not_cancellable``, ``409 charge_net_negative``) against
+    the center's today, then the package read. Never commits."""
+    today = await administration.center_today(session)
+    result = await billing.cancel_package(
+        session,
+        package_id,
+        reason=body.reason,
+        credit_amount=body.credit_amount,
+        today=today,
+    )
+    return PackageCancelled(
+        package=await get_package(session, package_id),
+        units_reversed=result.units_reversed,
+        credit=result.credit,
+        adjustment_id=result.adjustment_id,
+        account_credit_after=result.account_credit_after,
     )

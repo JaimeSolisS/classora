@@ -60,6 +60,7 @@ from app.modules.billing.models import (
     DURATION_MIN,
     MANUAL,
     NOTE_MAX,
+    PACKAGE_CANCELLATION,
     PAYER_NAME_MAX,
     PAYMENT_METHOD_CODE_MAX,
     REASON_MAX,
@@ -284,7 +285,10 @@ type AdjustmentKind = Literal[
     "enrollment_removal",
     "withdrawal",
     "manual",
+    "package_cancellation",
 ]
+"""``package_cancellation`` (#100 R6): the credit a package-purchase
+cancellation posts on its ``package_purchase`` charge."""
 type ChargeStatus = Literal["void", "paid", "overdue", "partially_paid", "pending"]
 type LedgerEntryType = Literal[
     "charge",
@@ -481,7 +485,8 @@ class AdjustmentDraft:
     :func:`app.modules.billing.service.post_adjustment` (#90 C4). A credit
     is a negative ``amount``; ``amount`` is never zero. ``source_key`` is
     required for every kind but ``manual`` (its idempotency key, data-model
-    §3.10); ``reason`` is required for ``manual``. Rule breaks raise
+    §3.10); ``reason`` is required for ``manual`` and
+    ``package_cancellation`` (#100 A2: the staff reason). Rule breaks raise
     :class:`ValueError` when the draft is built."""
 
     charge_id: uuid.UUID
@@ -496,8 +501,8 @@ class AdjustmentDraft:
         if _require_money(self.amount, "amount").is_zero():
             raise ValueError("an adjustment amount is never zero")
         _check_staff_text(self.reason, "reason", REASON_MAX)
-        if self.kind == MANUAL and self.reason is None:
-            raise ValueError("a manual adjustment needs a reason")
+        if self.kind in (MANUAL, PACKAGE_CANCELLATION) and self.reason is None:
+            raise ValueError(f"a {self.kind} adjustment needs a reason")
         if self.kind != MANUAL and self.source_key is None:
             raise ValueError("a generated adjustment needs a source_key")
         if self.source_key is not None and not (
@@ -1474,6 +1479,12 @@ class PaymentRow:
     """The payment's receipt (#98 G1); ``None`` for a payment recorded
     before receipts (no backfill)."""
     receipt_number: str | None = None
+    reversal_id: uuid.UUID | None = None
+    """The payment's reversal (#100 R8), ``None`` while it has none; its
+    ``reason`` (staff text), instant and actor follow."""
+    reversal_reason: str | None = None
+    reversed_at: datetime | None = None
+    reversed_by_user_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -1703,3 +1714,248 @@ class CancellationRuleValues:
     on_time_outcome: CancellationOutcome
     late_outcome: CancellationOutcome
     no_show_outcome: CancellationOutcome
+
+
+# --- Corrections, reversals and refunds (#100 B, C; R3-R8) ---------------------------
+
+DescriptionText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=DESCRIPTION_MAX),
+]
+"""A manual charge's description (#100 R7): trimmed, 1 to 200 characters."""
+
+
+def _amount_not_zero(value: Money) -> Money:
+    if value.is_zero():
+        raise PydanticCustomError("amount_zero", "The amount can't be 0.")
+    return value
+
+
+def _amount_not_negative(value: Money | None) -> Money | None:
+    if value is not None and value.is_negative():
+        raise PydanticCustomError("amount_negative", "The amount can't be negative.")
+    return value
+
+
+class ManualChargeCreate(BaseModel):
+    """``POST /api/v1/families/{family_id}/billing-account/charges`` (#100
+    C1, R7). ``amount`` above zero (``amount_not_positive``; ``money_*``);
+    ``service_date`` and ``due_date`` from 2000-01-01 (``date_out_of_range``;
+    more than 366 days after the center's today is the route's
+    ``date_out_of_range``), in any order; ``description`` trimmed, 1 to 200
+    characters. The student must be a current member of the path family
+    (the route's ``student_not_in_family``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    student_id: uuid.UUID
+    description: DescriptionText
+    amount: Money
+    service_date: date
+    due_date: date
+
+    _positive = field_validator("amount")(_amount_positive)
+    _dates = field_validator("service_date", "due_date")(_received_on)
+
+
+class ManualAdjustmentCreate(BaseModel):
+    """``POST …/billing-account/charges/{charge_id}/adjustments`` (#100 C2,
+    R3). ``amount`` is signed: a credit is negative, a debit positive, never
+    ``0`` (``amount_zero``; ``money_*``); ``reason`` trimmed, 1 to 500
+    characters."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    amount: Money
+    reason: ReasonText
+
+    _not_zero = field_validator("amount")(_amount_not_zero)
+
+
+class PaymentReversalCreate(BaseModel):
+    """``POST …/billing-account/payments/{payment_id}/reversal`` (#100 C3):
+    ``reason`` trimmed, 1 to 500 characters."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: ReasonText
+
+
+class RefundCreate(BaseModel):
+    """``POST …/billing-account/payments/{payment_id}/refunds`` (#100 C4,
+    R4). ``amount`` above zero (``amount_not_positive``; ``money_*``);
+    ``refunded_on`` from 2000-01-01 (``date_out_of_range``; the route checks
+    it against the payment's date and the center's today); ``reference``
+    trimmed, at most 100 characters, blank → ``null``; ``reason`` trimmed,
+    1 to 500 characters."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    amount: Money
+    refunded_on: date
+    payment_method_code: Annotated[
+        str, StringConstraints(min_length=1, max_length=PAYMENT_METHOD_CODE_MAX)
+    ]
+    reference: ReferenceText = None
+    reason: ReasonText
+
+    _positive = field_validator("amount")(_amount_positive)
+    _date = field_validator("refunded_on")(_received_on)
+
+
+class PackageCancellationCreate(BaseModel):
+    """``POST /api/v1/billing/packages/{package_id}/cancellation`` (#100
+    C5, R6). ``credit_amount`` (optional, ``0.00`` or more:
+    ``amount_negative``; ``money_*``) overrides the pro-rata credit; more
+    than the purchase charge's net is ``409 charge_net_negative``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: ReasonText
+    credit_amount: Money | None = None
+
+    _not_negative = field_validator("credit_amount")(_amount_not_negative)
+
+
+@dataclass(frozen=True, kw_only=True)
+class ManualChargeDraft:
+    """A manual charge to post with
+    :func:`app.modules.billing.service.post_manual_charge` (#100 B1, R7):
+    the student must be a current member of ``family_id``. ``amount`` above
+    zero; ``description`` trimmed staff text (1-200). Rule breaks raise
+    :class:`ValueError` when built."""
+
+    family_id: uuid.UUID
+    student_id: uuid.UUID
+    description: str
+    amount: Money
+    service_date: date
+    due_date: date
+
+    def __post_init__(self) -> None:
+        if not _require_money(self.amount, "amount").is_positive():
+            raise ValueError("a manual charge amount is above zero")
+        _check_staff_text(self.description, "description", DESCRIPTION_MAX)
+
+
+@dataclass(frozen=True)
+class ManualAdjustmentResult:
+    """The result of ``post_manual_adjustment`` (#100 B2): the adjustment,
+    the allocations it released (newest first) and the smaller one it
+    re-inserted (E5), the charge's net, open amount and status afterwards,
+    and the account credit afterwards."""
+
+    adjustment_id: uuid.UUID
+    released_allocation_ids: tuple[uuid.UUID, ...]
+    reinserted_allocation_id: uuid.UUID | None
+    net: Money
+    open: Money
+    status: ChargeStatus
+    account_credit_after: Money
+
+
+@dataclass(frozen=True)
+class ReleasedAllocation:
+    """One allocation a reversal released (#100 B3)."""
+
+    allocation_id: uuid.UUID
+    charge_id: uuid.UUID
+    amount: Money
+
+
+@dataclass(frozen=True)
+class PaymentReversalResult:
+    """The result of ``reverse_payment`` (#100 B3): the reversal, the
+    allocations it released (oldest first) and the account credit
+    afterwards (the payment's remainder no longer counts)."""
+
+    reversal_id: uuid.UUID
+    released: tuple[ReleasedAllocation, ...]
+    account_credit_after: Money
+
+
+@dataclass(frozen=True, kw_only=True)
+class RefundDraft:
+    """A refund to record with
+    :func:`app.modules.billing.service.refund_payment` (#100 B4, R4): from
+    one payment's unallocated remainder. ``amount`` above zero; ``reason``
+    trimmed staff text (1-500); ``reference`` ``None`` or trimmed (1-100).
+    #101 adds ``withdrawal_id``. The dates and the method are the caller's
+    checks. Rule breaks raise :class:`ValueError` when built."""
+
+    payment_id: uuid.UUID
+    amount: Money
+    refunded_on: date
+    payment_method_code: str
+    reason: str
+    reference: str | None = None
+
+    def __post_init__(self) -> None:
+        if not _require_money(self.amount, "amount").is_positive():
+            raise ValueError("a refund amount is above zero")
+        _check_staff_text(self.reason, "reason", REASON_MAX)
+        _check_staff_text(self.reference, "reference", REFERENCE_MAX)
+
+
+@dataclass(frozen=True)
+class RecordedRefund:
+    """The result of ``refund_payment`` (#100 B4): the refund, the
+    payment's remainder and the account credit afterwards."""
+
+    refund_id: uuid.UUID
+    remainder_after: Money
+    account_credit_after: Money
+
+
+@dataclass(frozen=True)
+class PackageCancellation:
+    """The result of ``cancel_package`` (#100 B5): the ``reversal``
+    transaction and the units it took back, the credit (``0.00`` → no
+    adjustment), the ``package_cancellation`` adjustment, the allocations
+    it released and the account credit afterwards."""
+
+    package_id: uuid.UUID
+    transaction_id: uuid.UUID
+    units_reversed: int
+    credit: Money
+    adjustment_id: uuid.UUID | None
+    released_allocation_ids: tuple[uuid.UUID, ...]
+    account_credit_after: Money
+
+
+@dataclass(frozen=True)
+class AdjustmentRow:
+    """One adjustment of a charge (#100 R8; ``reason`` is staff text)."""
+
+    id: uuid.UUID
+    kind: AdjustmentKind
+    amount: Money
+    reason: str | None
+    posted_at: datetime
+    posted_by_user_id: uuid.UUID | None
+
+
+@dataclass(frozen=True)
+class ChargeAllocationRow:
+    """One allocation to a charge, valid or released (#100 R8)."""
+
+    id: uuid.UUID
+    payment_id: uuid.UUID
+    amount: Money
+    created_at: datetime
+    is_valid: bool
+
+
+@dataclass(frozen=True)
+class RefundRow:
+    """One refund of a payment (#100 R8; ``reason`` is staff text,
+    ``refunded_at`` the row's ``created_at``)."""
+
+    id: uuid.UUID
+    amount: Money
+    refunded_on: date
+    payment_method_code: str
+    reference: str | None
+    reason: str
+    refunded_at: datetime
+    refunded_by_user_id: uuid.UUID

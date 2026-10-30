@@ -20512,6 +20512,111 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Post Manual Charge",
+        "description": "Post a manual charge for a student of the family: a description, an\namount, a service date and a due date (used as entered: no family\noffset, no discounts). It is posted even while automatic billing is off.\nThe family's billing account is created with its first charge. Send a\nnew `Idempotency-Key` per charge and the same one to retry it.",
+        "operationId": "post_manual_charge_api_v1_families__family_id__billing_account_charges_post",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualChargeCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualChargePosted"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/families/{family_id}/billing-account/ledger": {
@@ -21281,6 +21386,471 @@
           },
           "403": {
             "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/families/{family_id}/billing-account/charges/{charge_id}/adjustments": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Post Manual Adjustment",
+        "description": "Correct a posted charge with a credit (a negative amount) or a debit\n(a positive one) and a reason. A credit on a paid charge releases its\nnewest allocations; that money becomes account credit. Needs a password\nreauthentication in the last 5 minutes. Send a new `Idempotency-Key`\nper adjustment and the same one to retry it.",
+        "operationId": "post_manual_adjustment_api_v1_families__family_id__billing_account_charges__charge_id__adjustments_post",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "charge_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Charge Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualAdjustmentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualAdjustmentPosted"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family, or the charge isn't on its account (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The credit would take the charge below zero (charge_net_negative; details: charge_id, net, amount); a package purchase is corrected by cancelling the package (package_purchase_not_adjustable).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/families/{family_id}/billing-account/payments/{payment_id}/reversal": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Reverse Payment",
+        "description": "Reverse a payment (a bounced transfer, a payment recorded by\nmistake) with a reason: every allocation it still has is released, so\nits charges reopen, and its unallocated remainder stops being account\ncredit. The payment and its receipt stay, marked reversed. A payment\nwith refunds can't be reversed. To fix a wrong allocation, reverse the\npayment and record it again. Needs a password reauthentication in the\nlast 5 minutes.",
+        "operationId": "reverse_payment_api_v1_families__family_id__billing_account_payments__payment_id__reversal_post",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Payment Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentReversalCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentReversed"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family, or the payment isn't on its account (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The payment was already reversed (payment_already_reversed); it has refunds (payment_has_refunds).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/families/{family_id}/billing-account/payments/{payment_id}/refunds": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Refund Payment",
+        "description": "Record money paid back to the family from a payment's unallocated\nremainder, with its date, method, reference and reason. It lowers the\naccount credit; open charges don't change. A refund can't be undone.\nNeeds a password reauthentication in the last 5 minutes.",
+        "operationId": "refund_payment_api_v1_families__family_id__billing_account_payments__payment_id__refunds_post",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Payment Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundRecorded"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family, or the payment isn't on its account (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The payment was reversed (payment_reversed); the refund is more than its unallocated remainder (refund_exceeds_remainder; details: remainder).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/families/{family_id}/billing-account/charges/{charge_id}": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Get Family Charge",
+        "description": "One charge of the family with its adjustments (credits negative,\nwith their reasons) and every allocation it has had, oldest first.\nStaff with billing.view see every family; a guardian only their own\nfamily, without the reasons and the actor ids.",
+        "operationId": "get_family_charge_api_v1_families__family_id__billing_account_charges__charge_id__get",
+        "parameters": [
+          {
+            "name": "family_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Family Id"
+            }
+          },
+          {
+            "name": "charge_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Charge Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChargeDetailItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The privacy notice must be accepted first (privacy_notice_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such family or charge, or one whose account you can't see (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -23481,7 +24051,7 @@
           "billing"
         ],
         "summary": "List Packages",
-        "description": "The sold packages, the earliest expiry first (then purchase date and\nid). `status` (active, exhausted, expired; for the center's today) may\nbe repeated.",
+        "description": "The sold packages, the earliest expiry first (then purchase date and\nid). `status` (active, exhausted, expired, cancelled; for the center's\ntoday) may be repeated.",
         "operationId": "list_packages_api_v1_billing_packages_get",
         "parameters": [
           {
@@ -23594,6 +24164,123 @@
           },
           "422": {
             "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/packages/{package_id}/cancellation": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Cancel Package",
+        "description": "Cancel a package purchase with a reason: its remaining units are\ntaken back and its purchase charge is credited, by default in\nproportion to the units left (`credit_amount` from 0.00 to the charge's\nnet overrides it). Sessions it covered but hadn't used yet are charged\nby the next session charge run. Money goes back to the family only\nthrough a refund. Needs a password reauthentication in the last 5\nminutes. Send a new `Idempotency-Key` per cancellation and the same one\nto retry it.",
+        "operationId": "cancel_package_api_v1_billing_packages__package_id__cancellation_post",
+        "parameters": [
+          {
+            "name": "package_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Package Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackageCancellationCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageCancelled"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such package (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The package is cancelled, expired or used up (package_not_cancellable; details: reason cancelled | expired | exhausted); the credit is more than the purchase charge's net (charge_net_negative; details: charge_id, net, amount).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -25336,6 +26023,78 @@
         ],
         "title": "AccountName",
         "description": "A user named in an approval request: the id and the display name only."
+      },
+      "AdjustmentItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AdjustmentKind"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "posted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Posted At"
+          },
+          "posted_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posted By User Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "amount",
+          "reason",
+          "posted_at",
+          "posted_by_user_id"
+        ],
+        "title": "AdjustmentItem",
+        "description": "One adjustment of a charge: a credit is negative, a debit positive.\n``reason`` (staff text) and ``posted_by_user_id`` are ``null`` for a\ncaller without billing.view; ``posted_by_user_id`` is also ``null`` for\na job's adjustment."
+      },
+      "AdjustmentKind": {
+        "type": "string",
+        "enum": [
+          "duration_change",
+          "cancellation_credit",
+          "closure_credit",
+          "enrollment_removal",
+          "withdrawal",
+          "manual",
+          "package_cancellation"
+        ]
       },
       "AffectedSessionItem": {
         "properties": {
@@ -29409,6 +30168,250 @@
           "rejected",
           "cancelled"
         ]
+      },
+      "ChargeAllocationItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "payment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Payment Id"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "is_valid": {
+            "type": "boolean",
+            "title": "Is Valid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "payment_id",
+          "amount",
+          "created_at",
+          "is_valid"
+        ],
+        "title": "ChargeAllocationItem",
+        "description": "One allocation to the charge; ``is_valid`` is false once a reversal\nor a credit released it."
+      },
+      "ChargeDetailItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "student": {
+            "$ref": "#/components/schemas/BillingStudent"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "service_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Service Date"
+          },
+          "due_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Due Date"
+          },
+          "original_due_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Original Due Date"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "list_amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "List Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "discount_amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Discount Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "adjustments_total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Adjustments Total",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "net": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Net",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "allocated": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Allocated",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "open": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Open",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ChargeStatus"
+          },
+          "posted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Posted At"
+          },
+          "posted_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posted By User Id"
+          },
+          "class_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Class Session Id"
+          },
+          "group_enrollment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Enrollment Id"
+          },
+          "cohort_enrollment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Enrollment Id"
+          },
+          "adjustments": {
+            "items": {
+              "$ref": "#/components/schemas/AdjustmentItem"
+            },
+            "type": "array",
+            "title": "Adjustments"
+          },
+          "allocations": {
+            "items": {
+              "$ref": "#/components/schemas/ChargeAllocationItem"
+            },
+            "type": "array",
+            "title": "Allocations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "student",
+          "kind",
+          "service_date",
+          "due_date",
+          "original_due_date",
+          "description",
+          "list_amount",
+          "discount_amount",
+          "amount",
+          "adjustments_total",
+          "net",
+          "allocated",
+          "open",
+          "status",
+          "posted_at",
+          "posted_by_user_id",
+          "class_session_id",
+          "group_enrollment_id",
+          "cohort_enrollment_id",
+          "adjustments",
+          "allocations"
+        ],
+        "title": "ChargeDetailItem",
+        "description": "A charge with its adjustments and allocations, oldest first (#100\nC6, R8)."
       },
       "ChargeItem": {
         "properties": {
@@ -41687,6 +42690,127 @@
         "title": "LoginRequest",
         "description": "Username and password. The bounds do not depend on any account."
       },
+      "ManualAdjustmentCreate": {
+        "properties": {
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount",
+          "reason"
+        ],
+        "title": "ManualAdjustmentCreate",
+        "description": "``POST …/billing-account/charges/{charge_id}/adjustments`` (#100 C2,\nR3). ``amount`` is signed: a credit is negative, a debit positive, never\n``0`` (``amount_zero``; ``money_*``); ``reason`` trimmed, 1 to 500\ncharacters."
+      },
+      "ManualAdjustmentPosted": {
+        "properties": {
+          "adjustment": {
+            "$ref": "#/components/schemas/AdjustmentItem"
+          },
+          "charge": {
+            "$ref": "#/components/schemas/ChargeItem"
+          },
+          "released_allocation_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Released Allocation Ids"
+          },
+          "account_credit_after": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Account Credit After",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "adjustment",
+          "charge",
+          "released_allocation_ids",
+          "account_credit_after"
+        ],
+        "title": "ManualAdjustmentPosted",
+        "description": "``201`` of a manual adjustment (#100 C2): the adjustment, the charge\nafterwards, the allocations the credit released (newest first; the\nmoney becomes account credit, E5) and the account credit afterwards."
+      },
+      "ManualChargeCreate": {
+        "properties": {
+          "student_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Student Id"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Description"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "service_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Service Date"
+          },
+          "due_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Due Date"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "student_id",
+          "description",
+          "amount",
+          "service_date",
+          "due_date"
+        ],
+        "title": "ManualChargeCreate",
+        "description": "``POST /api/v1/families/{family_id}/billing-account/charges`` (#100\nC1, R7). ``amount`` above zero (``amount_not_positive``; ``money_*``);\n``service_date`` and ``due_date`` from 2000-01-01 (``date_out_of_range``;\nmore than 366 days after the center's today is the route's\n``date_out_of_range``), in any order; ``description`` trimmed, 1 to 200\ncharacters. The student must be a current member of the path family\n(the route's ``student_not_in_family``)."
+      },
+      "ManualChargePosted": {
+        "properties": {
+          "charge": {
+            "$ref": "#/components/schemas/ChargeItem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "charge"
+        ],
+        "title": "ManualChargePosted",
+        "description": "``201`` of a manual charge (#100 C1)."
+      },
       "MarkerCode": {
         "type": "string",
         "enum": [
@@ -43414,6 +44538,90 @@
         "title": "OverridePair",
         "description": "One soft conflict of one occurrence (#236 B1; ADR-0005 D4):\n``occurrence_start`` is ``details.occurrence_start`` of the ``409``\n(for an edit, the occurrence's **new** instant)."
       },
+      "PackageCancellationCreate": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "credit_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit Amount"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "PackageCancellationCreate",
+        "description": "``POST /api/v1/billing/packages/{package_id}/cancellation`` (#100\nC5, R6). ``credit_amount`` (optional, ``0.00`` or more:\n``amount_negative``; ``money_*``) overrides the pro-rata credit; more\nthan the purchase charge's net is ``409 charge_net_negative``."
+      },
+      "PackageCancelled": {
+        "properties": {
+          "package": {
+            "$ref": "#/components/schemas/PackageDetail"
+          },
+          "units_reversed": {
+            "type": "integer",
+            "title": "Units Reversed"
+          },
+          "credit": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Credit",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "adjustment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Id"
+          },
+          "account_credit_after": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Account Credit After",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "package",
+          "units_reversed",
+          "credit",
+          "adjustment_id",
+          "account_credit_after"
+        ],
+        "title": "PackageCancelled",
+        "description": "``201`` of a package cancellation (#100 C5, R6): the package\nafterwards (``cancelled``, no units left), the units taken back, the\ncredit on its purchase charge (``0.00``: no adjustment, so\n``adjustment_id`` is ``null``) and the account credit afterwards (a\ncredit on a paid purchase frees its newest allocations as account\ncredit)."
+      },
       "PackageDetail": {
         "properties": {
           "id": {
@@ -43582,7 +44790,7 @@
           "purchase_charge_id"
         ],
         "title": "PackageItem",
-        "description": "One sold package (#94 D5). ``status`` is for the center's today:\n``expired`` (expired, or past ``expires_on``) → ``exhausted`` (no units\nleft) → ``active``."
+        "description": "One sold package (#94 D5). ``status`` is for the center's today:\n``cancelled`` (#100: a package cancellation) → ``expired`` (expired, or\npast ``expires_on``) → ``exhausted`` (no units left) → ``active``."
       },
       "PackageProductCreate": {
         "properties": {
@@ -43881,7 +45089,8 @@
         "enum": [
           "active",
           "exhausted",
-          "expired"
+          "expired",
+          "cancelled"
         ]
       },
       "PackageTransactionItem": {
@@ -44366,6 +45575,18 @@
             "type": "boolean",
             "title": "Is Reversed"
           },
+          "reversed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversed At"
+          },
           "receipt": {
             "anyOf": [
               {
@@ -44382,6 +45603,23 @@
             },
             "type": "array",
             "title": "Allocations"
+          },
+          "reversal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaymentReversalItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "refunds": {
+            "items": {
+              "$ref": "#/components/schemas/RefundItem"
+            },
+            "type": "array",
+            "title": "Refunds"
           }
         },
         "type": "object",
@@ -44399,11 +45637,14 @@
           "refunded_amount",
           "unallocated_amount",
           "is_reversed",
+          "reversed_at",
           "receipt",
-          "allocations"
+          "allocations",
+          "reversal",
+          "refunds"
         ],
         "title": "PaymentDetail",
-        "description": "A payment with every allocation it has had, oldest first."
+        "description": "A payment with every allocation it has had, oldest first, its\nreversal (``null`` without one) and its refunds, oldest first (#100\nR8)."
       },
       "PaymentItem": {
         "properties": {
@@ -44511,6 +45752,18 @@
             "type": "boolean",
             "title": "Is Reversed"
           },
+          "reversed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversed At"
+          },
           "receipt": {
             "anyOf": [
               {
@@ -44537,10 +45790,11 @@
           "refunded_amount",
           "unallocated_amount",
           "is_reversed",
+          "reversed_at",
           "receipt"
         ],
         "title": "PaymentItem",
-        "description": "A payment. ``unallocated_amount = amount − allocated_amount −\nrefunded_amount`` (valid allocations only); it is account credit only\nwhile ``is_reversed`` is false. ``recorded_at`` is when it was\nentered; ``received_on`` the center-local day the money came in.\n``receipt`` is ``null`` for a payment recorded before receipts (#98\nC7)."
+        "description": "A payment. ``unallocated_amount = amount − allocated_amount −\nrefunded_amount`` (valid allocations only); it is account credit only\nwhile ``is_reversed`` is false. ``recorded_at`` is when it was\nentered; ``received_on`` the center-local day the money came in.\n``receipt`` is ``null`` for a payment recorded before receipts (#98\nC7). ``reversed_at`` is when it was reversed (#100 R8), ``null``\nwhile ``is_reversed`` is false."
       },
       "PaymentMethodItem": {
         "properties": {
@@ -44605,6 +45859,104 @@
         ],
         "title": "PaymentRecorded",
         "description": "``201`` of recording a payment (#96 C3): the payment, the\nallocations written now, the part left as account credit, the account\ncredit afterwards and the payment's receipt (#98 G1)."
+      },
+      "PaymentReversalCreate": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "PaymentReversalCreate",
+        "description": "``POST …/billing-account/payments/{payment_id}/reversal`` (#100 C3):\n``reason`` trimmed, 1 to 500 characters."
+      },
+      "PaymentReversalItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reversed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Reversed At"
+          },
+          "reversed_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversed By User Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "reason",
+          "reversed_at",
+          "reversed_by_user_id"
+        ],
+        "title": "PaymentReversalItem",
+        "description": "A payment's reversal (#100 R8). ``reason`` and\n``reversed_by_user_id`` are ``null`` for a caller without\nbilling.view."
+      },
+      "PaymentReversed": {
+        "properties": {
+          "reversal": {
+            "$ref": "#/components/schemas/PaymentReversalItem"
+          },
+          "payment": {
+            "$ref": "#/components/schemas/PaymentItem"
+          },
+          "released": {
+            "items": {
+              "$ref": "#/components/schemas/ReleasedAllocationItem"
+            },
+            "type": "array",
+            "title": "Released"
+          },
+          "account_credit_after": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Account Credit After",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "reversal",
+          "payment",
+          "released",
+          "account_credit_after"
+        ],
+        "title": "PaymentReversed",
+        "description": "``201`` of a payment reversal (#100 C3): the reversal, the payment\nafterwards, the allocations released and the account credit afterwards\n(the payment's remainder no longer counts)."
       },
       "PendingOffer": {
         "properties": {
@@ -46883,6 +48235,164 @@
         "title": "RecordedAllocationItem",
         "description": "An allocation written by the request."
       },
+      "RefundCreate": {
+        "properties": {
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "refunded_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Refunded On"
+          },
+          "payment_method_code": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Payment Method Code"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount",
+          "refunded_on",
+          "payment_method_code",
+          "reason"
+        ],
+        "title": "RefundCreate",
+        "description": "``POST …/billing-account/payments/{payment_id}/refunds`` (#100 C4,\nR4). ``amount`` above zero (``amount_not_positive``; ``money_*``);\n``refunded_on`` from 2000-01-01 (``date_out_of_range``; the route checks\nit against the payment's date and the center's today); ``reference``\ntrimmed, at most 100 characters, blank → ``null``; ``reason`` trimmed,\n1 to 500 characters."
+      },
+      "RefundItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "refunded_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Refunded On"
+          },
+          "payment_method_code": {
+            "type": "string",
+            "title": "Payment Method Code"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "refunded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Refunded At"
+          },
+          "refunded_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refunded By User Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "amount",
+          "refunded_on",
+          "payment_method_code",
+          "reference",
+          "reason",
+          "refunded_at",
+          "refunded_by_user_id"
+        ],
+        "title": "RefundItem",
+        "description": "Money paid back from a payment's unallocated remainder (#100 R4,\nR8): ``refunded_on`` is the center-local day it went out,\n``refunded_at`` when it was entered. ``reason`` and\n``refunded_by_user_id`` are ``null`` for a caller without\nbilling.view."
+      },
+      "RefundRecorded": {
+        "properties": {
+          "refund": {
+            "$ref": "#/components/schemas/RefundItem"
+          },
+          "payment": {
+            "$ref": "#/components/schemas/PaymentItem"
+          },
+          "account_credit_after": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Account Credit After",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "refund",
+          "payment",
+          "account_credit_after"
+        ],
+        "title": "RefundRecorded",
+        "description": "``201`` of a refund (#100 C4): the refund, the payment afterwards and\nthe account credit afterwards. Outstanding charges don't change."
+      },
       "RegistrationCreate": {
         "properties": {
           "username": {
@@ -46939,6 +48449,37 @@
         ],
         "title": "RegistrationSubmitted",
         "description": "The answer to a registration request (``202``). Holds no id."
+      },
+      "ReleasedAllocationItem": {
+        "properties": {
+          "allocation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Allocation Id"
+          },
+          "charge_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Charge Id"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "allocation_id",
+          "charge_id",
+          "amount"
+        ],
+        "title": "ReleasedAllocationItem",
+        "description": "An allocation a reversal released (its charge reopens)."
       },
       "ReportKind": {
         "type": "string",

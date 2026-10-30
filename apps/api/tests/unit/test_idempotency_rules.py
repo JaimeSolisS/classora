@@ -519,13 +519,28 @@ DECORATED_ROUTES = {
     ("/api/v1/billing/packages", "post"),
     ("/api/v1/families/{family_id}/billing-account/payments", "post"),
     ("/api/v1/families/{family_id}/billing-account/allocations", "post"),
+    ("/api/v1/families/{family_id}/billing-account/charges", "post"),
+    (
+        "/api/v1/families/{family_id}/billing-account/charges/{charge_id}/adjustments",
+        "post",
+    ),
+    (
+        "/api/v1/families/{family_id}/billing-account/payments/{payment_id}/reversal",
+        "post",
+    ),
+    (
+        "/api/v1/families/{family_id}/billing-account/payments/{payment_id}/refunds",
+        "post",
+    ),
+    ("/api/v1/billing/packages/{package_id}/cancellation", "post"),
 }
 
 
 def test_the_real_app_declares_only_the_ledger_posting_routes():
     # E4: #88 changed no route; #94 declares the first one (the package
-    # purchase), #96 the payment and the credit allocation; the header is
-    # documented only there.
+    # purchase), #96 the payment and the credit allocation, #100 declares the
+    # corrections (manual charge, adjustment, reversal, refund, package
+    # cancellation); the header is documented only there.
     app = build_app(include_dev_routes=True)
 
     decorated = [c for c in api_contexts(app) if route_idempotency_rules(c)]

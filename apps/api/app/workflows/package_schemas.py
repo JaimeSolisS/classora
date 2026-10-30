@@ -169,8 +169,8 @@ class PackageProductDetail(PackageProductItem):
 
 class PackageItem(BaseModel):
     """One sold package (#94 D5). ``status`` is for the center's today:
-    ``expired`` (expired, or past ``expires_on``) → ``exhausted`` (no units
-    left) → ``active``."""
+    ``cancelled`` (#100: a package cancellation) → ``expired`` (expired, or
+    past ``expires_on``) → ``exhausted`` (no units left) → ``active``."""
 
     id: uuid.UUID
     student: PackageReference
@@ -202,3 +202,18 @@ class PackageDetail(PackageItem):
     """A package with its unit movements, oldest first."""
 
     transactions: list[PackageTransactionItem]
+
+
+class PackageCancelled(BaseModel):
+    """``201`` of a package cancellation (#100 C5, R6): the package
+    afterwards (``cancelled``, no units left), the units taken back, the
+    credit on its purchase charge (``0.00``: no adjustment, so
+    ``adjustment_id`` is ``null``) and the account credit afterwards (a
+    credit on a paid purchase frees its newest allocations as account
+    credit)."""
+
+    package: PackageDetail
+    units_reversed: int
+    credit: Money
+    adjustment_id: uuid.UUID | None
+    account_credit_after: Money

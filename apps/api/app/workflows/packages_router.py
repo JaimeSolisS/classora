@@ -11,6 +11,10 @@ ADR-0006 E1, E6, E8, E10).
   idempotency_key_reused`` → ``422`` (the body) → the rules of
   ``app.workflows.packages``. The route never commits; it ends with
   ``idem.respond``. No reauthentication (M6).
+- ``POST /api/v1/billing/packages/{package_id}/cancellation`` (#100 C5,
+  R6; ``billing.manage`` + reauthentication ``finance.correction`` + an
+  ``Idempotency-Key``): cancel a package purchase. The reauthentication
+  comes before the key, so a ``403 reauth_required`` stores nothing.
 - ``GET /api/v1/billing/packages`` and ``GET …/{package_id}``
   (``billing.view``): staff only (#94 L9; the family portal reads arrive
   with #102).
@@ -25,13 +29,20 @@ from app.core.authz import PERMISSION_RESPONSES, Principal, require
 from app.core.errors import problem_response_doc
 from app.core.idempotency import IDEMPOTENCY_RESPONSES, IdempotentRequest, idempotent
 from app.core.pagination import OffsetPage, OffsetPagination
+from app.core.reauth import REAUTH_RESPONSES, require_recent_auth
 from app.core.uow import UnitOfWorkDep
-from app.modules.billing.service import PackageStatus
+from app.modules.billing.service import PackageCancellationCreate, PackageStatus
 from app.workflows import packages
-from app.workflows.package_schemas import PackageDetail, PackageItem, PackagePurchase
+from app.workflows.package_schemas import (
+    PackageCancelled,
+    PackageDetail,
+    PackageItem,
+    PackagePurchase,
+)
 
 BILLING_VIEW: Final = "billing.view"
 BILLING_MANAGE: Final = "billing.manage"
+CORRECTION: Final = "finance.correction"
 
 router = APIRouter(prefix="/api/v1/billing/packages", tags=["billing"])
 
@@ -73,6 +84,47 @@ async def purchase_package(
     return await idem.respond(detail, status_code=201)
 
 
+@router.post(
+    "/{package_id}/cancellation",
+    status_code=201,
+    response_model=PackageCancelled,
+    dependencies=[require_recent_auth(CORRECTION)],
+    responses={
+        **REAUTH_RESPONSES,
+        **IDEMPOTENCY_RESPONSES,
+        404: problem_response_doc("No such package (not_found)."),
+        409: problem_response_doc(
+            "The package is cancelled, expired or used up"
+            " (package_not_cancellable; details: reason cancelled | expired |"
+            " exhausted); the credit is more than the purchase charge's net"
+            " (charge_net_negative; details: charge_id, net, amount)."
+        ),
+        422: problem_response_doc(
+            "The body is not valid (validation_error: amount_negative,"
+            " money_*, string_too_short, …); or the Idempotency-Key was"
+            " already used for a different request (idempotency_key_reused)."
+        ),
+    },
+)
+async def cancel_package(
+    principal: Annotated[Principal, require(BILLING_MANAGE)],
+    idem: Annotated[IdempotentRequest, idempotent()],
+    package_id: uuid.UUID,
+    body: PackageCancellationCreate,
+    uow: UnitOfWorkDep,
+) -> Response:
+    """Cancel a package purchase with a reason: its remaining units are
+    taken back and its purchase charge is credited, by default in
+    proportion to the units left (`credit_amount` from 0.00 to the charge's
+    net overrides it). Sessions it covered but hadn't used yet are charged
+    by the next session charge run. Money goes back to the family only
+    through a refund. Needs a password reauthentication in the last 5
+    minutes. Send a new `Idempotency-Key` per cancellation and the same one
+    to retry it."""
+    cancelled = await packages.cancel_package(uow.session, package_id, body)
+    return await idem.respond(cancelled, status_code=201)
+
+
 @router.get(
     "",
     responses={
@@ -92,8 +144,8 @@ async def list_packages(
     status: Annotated[list[PackageStatus] | None, Query()] = None,
 ) -> OffsetPage[PackageItem]:
     """The sold packages, the earliest expiry first (then purchase date and
-    id). `status` (active, exhausted, expired; for the center's today) may
-    be repeated."""
+    id). `status` (active, exhausted, expired, cancelled; for the center's
+    today) may be repeated."""
     return await packages.list_packages(
         uow.session,
         student_id=student_id,

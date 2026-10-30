@@ -74,6 +74,7 @@ from tests.authz.harness import (
     MatrixUser,
     NoticeCase,
     ReauthCase,
+    actors_for,
     all_actors,
     csrf_cases,
     load_matrix,
@@ -211,8 +212,14 @@ def test_real_app_reauth(real_client: TestClient, users) -> None:
 def test_real_app_cases_cover_every_entry_and_actor():
     entries = load_matrix()
 
-    assert len(REAL_CASES) == len(entries) * (1 + len(ROLE_CODES))
-    assert {c.actor for c in REAL_CASES} == {ANONYMOUS, *map(Actor, ROLE_CODES)}
+    # #100: the reversal and refund routes require the delegable
+    # finance.refund.approve, so each also gets a delegated Administrator.
+    assert len(REAL_CASES) == sum(len(actors_for(entry)) for entry in entries)
+    assert {c.actor for c in REAL_CASES} == {
+        ANONYMOUS,
+        *map(Actor, ROLE_CODES),
+        Actor(ADMINISTRATOR, delegation="finance.refund.approve"),
+    }
 
 
 def test_principals_come_from_real_users(users):
