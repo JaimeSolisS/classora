@@ -208,6 +208,8 @@ def test_production_app_has_no_demo_route(
         "/api/v1/billing/service-prices/{service_price_id}/versions",
         "/api/v1/billing/service-prices/{service_price_id}/versions/{price_version_id}",
         "/api/v1/billing/settings",
+        "/api/v1/billing/cancellation-rules",
+        "/api/v1/billing/cancellation-rules/{rule_id}",
         "/api/v1/billing/unbilled-items",
         "/api/v1/billing/unbilled-enrollments",
         "/api/v1/billing/tuition-plans",

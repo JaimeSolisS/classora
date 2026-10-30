@@ -51,7 +51,10 @@ closure writes' after-commit trigger of ``scheduling:materialize_series``;
 billing settings ``PATCH``'s triggers of ``billing:post_session_charges``
 (#91 B4) and ``billing:post_enrollment_charges`` (#92 D1);
 :func:`defer_tuition_charges` the trigger of ``billing:post_tuition_charges``
-after the settings ``PATCH`` and the tuition plan writes (#93 E1).
+after the settings ``PATCH`` and the tuition plan writes (#93 E1);
+:func:`defer_schedule_reconciliation` the trigger of
+``billing:reconcile_session_charges`` after the session-changing routes,
+the settings ``PATCH`` and the series materialization (#99 D9).
 """
 
 import functools
@@ -120,6 +123,14 @@ PACKAGE_EXPIRY_TASK: Final = "billing:expire_packages"
 PACKAGE_EXPIRY_QUEUEING_LOCK: Final = "billing-expire-packages"
 """At most one queued ``billing:expire_packages`` job (the periodic tick
 shares it)."""
+
+SCHEDULE_RECONCILIATION_TASK: Final = "billing:reconcile_session_charges"
+"""The 15-minute schedule reconciliation (#99 D1), also deferred after the
+routes that change sessions, the billing settings ``PATCH`` and the series
+materialization (D9)."""
+SCHEDULE_RECONCILIATION_QUEUEING_LOCK: Final = "billing-reconcile-session-charges"
+"""At most one queued ``billing:reconcile_session_charges`` job (the periodic
+tick shares it)."""
 
 CHARGE_REMINDERS_TASK: Final = "billing:send_charge_reminders"
 """The daily in-app payment reminders to families (#97 F2)."""
@@ -258,13 +269,14 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     progress report placeholders, #316, the 15-minute session and
     enrollment charge sweepers, #91 and #92, the daily tuition charges,
     #93, the daily package expiry, #94, and the daily charge reminders,
-    #97, whose task files are
+    #97, and the 15-minute schedule reconciliation, #99, whose task files are
     ``app/workflows/progress_report_schedule_tasks.py``,
     ``app/workflows/session_charge_tasks.py``,
     ``app/workflows/enrollment_charge_tasks.py``,
     ``app/workflows/tuition_charge_tasks.py``,
-    ``app/workflows/package_expiry_tasks.py`` and
-    ``app/workflows/charge_reminder_tasks.py`` because they compose
+    ``app/workflows/package_expiry_tasks.py``,
+    ``app/workflows/charge_reminder_tasks.py`` and
+    ``app/workflows/schedule_reconciliation_tasks.py`` because they compose
     modules)
     are registered in every environment. The demo tasks
     (and the periodic demo) are registered only in :data:`DEMO_ENVIRONMENTS`.
@@ -279,6 +291,7 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
         enrollment_charge_tasks,
         package_expiry_tasks,
         progress_report_schedule_tasks,
+        schedule_reconciliation_tasks,
         session_charge_tasks,
         tuition_charge_tasks,
     )
@@ -294,6 +307,7 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     tuition_charge_tasks.register(app)
     package_expiry_tasks.register(app)
     charge_reminder_tasks.register(app)
+    schedule_reconciliation_tasks.register(app)
     if app_env in DEMO_ENVIRONMENTS:
         demo_jobs.register(app)
     return app
@@ -409,4 +423,32 @@ async def defer_tuition_charges(job_app: App) -> None:
         logger.error(
             "Deferring the tuition charges failed",
             extra={"task_name": TUITION_CHARGES_TASK, "error": type(exc).__name__},
+        )
+
+
+async def defer_schedule_reconciliation(job_app: App) -> None:
+    """Queue one ``billing:reconcile_session_charges`` run now (#99 D9).
+
+    The same contract as :func:`defer_session_charges`: only after the Unit
+    of Work has committed (the session-changing routes and the billing
+    settings ``PATCH`` add it as a background task; the series
+    materialization calls it after its run); a run already queued is a
+    no-op (``AlreadyEnqueued`` is ignored); any other failure is logged and
+    swallowed (the next 15-minute tick reconciles).
+    """
+    try:
+        await job_app.configure_task(
+            SCHEDULE_RECONCILIATION_TASK,
+            allow_unknown=False,
+            queueing_lock=SCHEDULE_RECONCILIATION_QUEUEING_LOCK,
+        ).defer_async(timestamp=int(time.time()))
+    except AlreadyEnqueued:
+        return
+    except Exception as exc:  # noqa: BLE001 - the write must still answer 2xx
+        logger.error(
+            "Deferring the schedule reconciliation failed",
+            extra={
+                "task_name": SCHEDULE_RECONCILIATION_TASK,
+                "error": type(exc).__name__,
+            },
         )

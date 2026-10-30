@@ -21601,6 +21601,195 @@
         }
       }
     },
+    "/api/v1/billing/cancellation-rules": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Get Cancellation Rules",
+        "description": "The cancellation billing rules in force now, the upcoming versions\n(oldest first) and the past ones (newest first, at most 50). A cancelled\nsession that allows a makeup is always credited; otherwise its charge is\ncredited or stands by the outcome of its classification in the version\nin force when the cancellation was requested (or made by the center).",
+        "operationId": "get_cancellation_rules_api_v1_billing_cancellation_rules_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancellationRuleOverview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Post Cancellation Rule",
+        "description": "Publish a new rule version, in force from `effective_from` (now when\nomitted). Versions are never edited: to change an upcoming one, delete\nit and create another. Cancellations already decided keep their\noutcome.",
+        "operationId": "post_cancellation_rule_api_v1_billing_cancellation_rules_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancellationRuleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancellationRuleItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "based_on_id is not the latest version: the rules changed since they were loaded (version_conflict); reload and retry.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/cancellation-rules/{rule_id}": {
+      "delete": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Remove Cancellation Rule",
+        "description": "Delete an upcoming rule version.",
+        "operationId": "remove_cancellation_rule_api_v1_billing_cancellation_rules__rule_id__delete",
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such rule version (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The version is in force or in the past; only an upcoming version can be deleted (policy_version_in_effect).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/unbilled-items": {
       "get": {
         "tags": [
@@ -28062,6 +28251,187 @@
         ],
         "title": "CalendarSubject",
         "description": "The session's subject with its level's name."
+      },
+      "CancellationRuleCreate": {
+        "properties": {
+          "excused_outcome": {
+            "type": "string",
+            "enum": [
+              "credit",
+              "charge"
+            ],
+            "title": "Excused Outcome",
+            "description": "An excused cancellation (a center cancellation, an exception, a tutor request). Always credited while a makeup is allowed, which every excused cancellation gets today."
+          },
+          "on_time_outcome": {
+            "type": "string",
+            "enum": [
+              "credit",
+              "charge"
+            ],
+            "title": "On Time Outcome",
+            "description": "A family cancellation made inside the notice window."
+          },
+          "late_outcome": {
+            "type": "string",
+            "enum": [
+              "credit",
+              "charge"
+            ],
+            "title": "Late Outcome",
+            "description": "A family cancellation made after the notice deadline."
+          },
+          "no_show_outcome": {
+            "type": "string",
+            "enum": [
+              "credit",
+              "charge"
+            ],
+            "title": "No Show Outcome",
+            "description": "A cancellation classified as a no-show."
+          },
+          "based_on_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Based On Id",
+            "description": "The id of the latest version (the current one or the last upcoming one); otherwise 409 version_conflict."
+          },
+          "effective_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective From",
+            "description": "When it takes effect: now when omitted; otherwise not in the past and later than every existing version (422 invalid_effective_from)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "excused_outcome",
+          "on_time_outcome",
+          "late_outcome",
+          "no_show_outcome",
+          "based_on_id"
+        ],
+        "title": "CancellationRuleCreate",
+        "description": "A new version: every outcome, the latest version it replaces and when\nit takes effect."
+      },
+      "CancellationRuleItem": {
+        "properties": {
+          "excused_outcome": {
+            "type": "string",
+            "enum": [
+              "credit",
+              "charge"
+            ],
+            "title": "Excused Outcome",
+            "description": "An excused cancellation (a center cancellation, an exception, a tutor request). Always credited while a makeup is allowed, which every excused cancellation gets today."
+          },
+          "on_time_outcome": {
+            "type": "string",
+            "enum": [
+              "credit",
+              "charge"
+            ],
+            "title": "On Time Outcome",
+            "description": "A family cancellation made inside the notice window."
+          },
+          "late_outcome": {
+            "type": "string",
+            "enum": [
+              "credit",
+              "charge"
+            ],
+            "title": "Late Outcome",
+            "description": "A family cancellation made after the notice deadline."
+          },
+          "no_show_outcome": {
+            "type": "string",
+            "enum": [
+              "credit",
+              "charge"
+            ],
+            "title": "No Show Outcome",
+            "description": "A cancellation classified as a no-show."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Effective From"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "excused_outcome",
+          "on_time_outcome",
+          "late_outcome",
+          "no_show_outcome",
+          "id",
+          "effective_from",
+          "created_by_user_id",
+          "created_at"
+        ],
+        "title": "CancellationRuleItem",
+        "description": "One rule version, in force from ``effective_from`` until the next\nversion's ``effective_from``."
+      },
+      "CancellationRuleOverview": {
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/CancellationRuleItem"
+          },
+          "upcoming": {
+            "items": {
+              "$ref": "#/components/schemas/CancellationRuleItem"
+            },
+            "type": "array",
+            "title": "Upcoming",
+            "description": "Versions that take effect later, oldest first."
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/CancellationRuleItem"
+            },
+            "type": "array",
+            "title": "History",
+            "description": "Versions no longer in force, newest first (at most 50)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "current",
+          "upcoming",
+          "history"
+        ],
+        "title": "CancellationRuleOverview",
+        "description": "The version in force now, the upcoming ones and the past ones."
       },
       "CatalogPricingModel": {
         "type": "string",

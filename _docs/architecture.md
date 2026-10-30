@@ -448,7 +448,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - Rolling **12-week** horizon (`SCHEDULING_HORIZON_WEEKS`, 4–26), extended nightly at 08:00 UTC. Inserts use `UNIQUE (series_id, original_start)` with `ON CONFLICT DO NOTHING`; `is_exception` rows survive regeneration.
   - "This and future" edits set `UNTIL` to the local day before the split and start a new series; matching future occurrences move (keeping their id), the others become `cancelled` (`series_changed`). Past, completed and cancelled occurrences are never rewritten.
   - A series create refuses on any conflict; the nightly extension inserts a failing occurrence as `conflict` and raises an inbox item.
-  - A center closure turns the affected series occurrence into `skipped_closure` (holds nothing, never deleted). Product decision: **no makeup obligation**; a skipped occurrence is **never billable** (M6-14 reverses a posted charge) and courses and tuition plans are not prorated. Makeups are ordinary sessions.
+  - A center closure turns the affected series occurrence into `skipped_closure` (holds nothing, never deleted). Product decision: **no makeup obligation**; a skipped occurrence is **never billable** (M6-14: its reconciliation job credits a posted charge with a `closure_credit` and restores it if the date reopens) and courses and tuition plans are not prorated. Makeups are ordinary sessions.
   - Library approved: `python-dateutil>=2.9.0.post0,<3` (lockfile 2.9.0.post0) with `types-python-dateutil`, backend only, added by #53. No JavaScript `rrule`.
 
 #### ISSUE-SC3 — Effective capacity (A)

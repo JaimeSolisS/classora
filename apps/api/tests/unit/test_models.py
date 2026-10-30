@@ -81,7 +81,9 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # discounts, discount_assignments and charge_discounts, M6-10;
     # tuition_plans and tuition_plan_pauses, M6-08; package_products,
     # packages and package_credit_transactions, M6-09;
-    # charge_due_date_changes and charge_reminders, M6-12; receipts, M6-13);
+    # charge_due_date_changes and charge_reminders, M6-12; receipts, M6-13;
+    # cancellation_billing_rules, session_cancellation_decisions and
+    # charge_duration_repricings, M6-14);
     # number_series (M6-13) is shared infrastructure.
     assert target_metadata is Base.metadata
     assert set(Base.metadata.tables) == {
@@ -162,6 +164,9 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "charge_due_date_changes",
         "charge_reminders",
         "receipts",
+        "cancellation_billing_rules",
+        "session_cancellation_decisions",
+        "charge_duration_repricings",
         "number_series",
         "account_tokens",
         "registration_requests",

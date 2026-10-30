@@ -16,7 +16,21 @@
   a session's state, time, duration or participants takes that row ``FOR
   UPDATE``, so a charge waits for it, or it waits for the charge's
   transaction; either way the charge is posted from committed, current
-  data.
+  data. Since #99 it also carries the ``version``, ``cohort_id``,
+  ``first_confirmed_at`` and ``cancelled_at``.
+
+Schedule reconciliation (#99 C; ``app.workflows.schedule_reconciliation``):
+
+- :func:`reconciliation_session_columns`: the participants of the sessions
+  of some kinds in a state the job looks at (``cancelled``,
+  ``skipped_closure``, ``confirmed``, ``completed``), as an **unexecuted**
+  ``SELECT``.
+- :func:`cancellation_classification`: how a ``cancelled`` session's
+  cancellation is classified for billing: an **approved** ``cancellation``
+  change request's effective outcome (#62 E3; ``classified_at`` = the
+  request's ``created_at``), otherwise a center cancellation (``excused``,
+  makeup allowed, ``classified_at`` = ``cancelled_at``). One statement, no
+  lock (the caller holds the session ``FOR SHARE``).
 """
 
 import uuid
@@ -25,10 +39,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Final
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.scheduling.models import ClassSession, ClassSessionParticipant
+from app.modules.scheduling.models import (
+    CHANGE_REQUEST_APPROVED,
+    CHANGE_REQUEST_CANCELLATION,
+    ClassSession,
+    ClassSessionParticipant,
+    SessionChangeRequest,
+)
 from app.modules.scheduling.states import SessionState
 
 BILLABLE_STATES: Final = frozenset({SessionState.CONFIRMED, SessionState.COMPLETED})
@@ -49,6 +69,11 @@ class BillableSession:
     participant_ids: tuple[uuid.UUID, ...]
     group_id: uuid.UUID | None = None
     """The group of a ``group`` session (#92 E1), else ``None``."""
+    version: int = 0
+    """The session row's ``version`` (#99: a repricing's natural key)."""
+    cohort_id: uuid.UUID | None = None
+    first_confirmed_at: datetime | None = None
+    cancelled_at: datetime | None = None
 
 
 def billable_participant_columns(
@@ -124,6 +149,10 @@ async def lock_session_for_billing(
         scheduled_minutes=row.scheduled_minutes,
         participant_ids=tuple(participant_ids),
         group_id=row.group_id,
+        version=row.version,
+        cohort_id=row.cohort_id,
+        first_confirmed_at=row.first_confirmed_at,
+        cancelled_at=row.cancelled_at,
     )
 
 
@@ -141,3 +170,121 @@ async def session_starts(
         )
     )
     return {row.id: row.starts_at.astimezone(UTC) for row in rows}
+
+
+# --- Schedule reconciliation (#99 C) -------------------------------------------------
+
+RECONCILED_STATES: Final = frozenset(
+    {
+        SessionState.CANCELLED,
+        SessionState.SKIPPED_CLOSURE,
+        SessionState.CONFIRMED,
+        SessionState.COMPLETED,
+    }
+)
+"""The states whose participants the reconciliation job looks at (#99
+D2)."""
+
+
+def reconciliation_session_columns(
+    *, kinds: Collection[str]
+) -> Select[uuid.UUID, uuid.UUID, str, str, datetime, int, int, datetime | None]:
+    """C3: ``SELECT class_session_id, student_id, kind, state, starts_at,
+    scheduled_minutes, version, first_confirmed_at`` of the participants of
+    the sessions of ``kinds`` in a :data:`RECONCILED_STATES` state, **not
+    executed**."""
+    return (
+        select(
+            ClassSession.id.label("class_session_id"),
+            ClassSessionParticipant.student_id,
+            ClassSession.kind,
+            ClassSession.state,
+            ClassSession.starts_at,
+            ClassSession.scheduled_minutes,
+            ClassSession.version,
+            ClassSession.first_confirmed_at,
+        )
+        .join(
+            ClassSessionParticipant,
+            ClassSessionParticipant.class_session_id == ClassSession.id,
+        )
+        .where(
+            ClassSession.kind.in_(sorted(kinds)),
+            ClassSession.state.in_(sorted(state.value for state in RECONCILED_STATES)),
+        )
+    )
+
+
+@dataclass(frozen=True)
+class CancellationFacts:
+    """How a cancelled session's cancellation is classified for billing
+    (C2)."""
+
+    initiated_by: str
+    """``center``, or the approved request's ``family`` / ``tutor``."""
+    change_request_id: uuid.UUID | None
+    classification: str
+    makeup_allowed: bool
+    classified_at: datetime
+    """The request's ``created_at``, else the session's ``cancelled_at``."""
+
+
+async def cancellation_classification(
+    session: AsyncSession, class_session_id: uuid.UUID
+) -> CancellationFacts | None:
+    """C2 (module docstring): ``None`` unless the session is ``cancelled``
+    (or unknown). One statement."""
+    request = (
+        select(
+            SessionChangeRequest.id,
+            SessionChangeRequest.initiated_by,
+            SessionChangeRequest.final_classification,
+            SessionChangeRequest.final_makeup_allowed,
+            SessionChangeRequest.created_at,
+        )
+        .where(
+            SessionChangeRequest.class_session_id == ClassSession.id,
+            SessionChangeRequest.kind == CHANGE_REQUEST_CANCELLATION,
+            SessionChangeRequest.status == CHANGE_REQUEST_APPROVED,
+        )
+        .order_by(SessionChangeRequest.resolved_at.desc(), SessionChangeRequest.id)
+        .limit(1)
+        .correlate(ClassSession)
+        .lateral("request")
+    )
+    row = (
+        await session.execute(
+            select(
+                ClassSession.state,
+                ClassSession.cancelled_at,
+                request.c.id.label("request_id"),
+                request.c.initiated_by,
+                request.c.final_classification,
+                request.c.final_makeup_allowed,
+                request.c.created_at.label("requested_at"),
+            )
+            .outerjoin(request, literal(True))
+            .where(ClassSession.id == class_session_id)
+        )
+    ).first()
+    if (
+        row is None
+        or row.state != SessionState.CANCELLED.value
+        or row.cancelled_at is None
+    ):
+        return None
+    if row.request_id is not None and row.final_classification is not None:
+        return CancellationFacts(
+            initiated_by=row.initiated_by,
+            change_request_id=row.request_id,
+            classification=row.final_classification,
+            makeup_allowed=bool(row.final_makeup_allowed),
+            classified_at=row.requested_at.astimezone(UTC),
+        )
+    return CancellationFacts(
+        initiated_by="center",
+        change_request_id=None,
+        classification="excused",
+        makeup_allowed=True,
+        classified_at=row.cancelled_at.astimezone(UTC),
+    )

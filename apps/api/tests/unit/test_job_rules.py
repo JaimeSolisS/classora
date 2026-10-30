@@ -228,6 +228,7 @@ MODULE_TASKS = {
     "billing:post_tuition_charges",
     "billing:expire_packages",
     "billing:send_charge_reminders",
+    "billing:reconcile_session_charges",
 }
 
 
@@ -413,6 +414,30 @@ def test_the_charge_reminders_run_daily_at_1500_utc():
     )
     assert jobs.CHARGE_REMINDERS_TASK == "billing:send_charge_reminders"
     assert jobs.task_parameter_types(app)["billing:send_charge_reminders"] == {
+        "timestamp": int
+    }
+
+
+def test_the_schedule_reconciliation_runs_every_15_minutes():
+    # #99 D1, D9: one queued job at a time; the routes that change sessions,
+    # the settings PATCH and the materialization share the lock.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "billing:reconcile_session_charges"
+    ]
+    assert periodic.cron == "*/15 * * * *"
+    assert periodic.periodic_id == "billing-reconcile-session-charges"
+    assert periodic.configure_kwargs["queueing_lock"] == (
+        "billing-reconcile-session-charges"
+    )
+    assert app.tasks["billing:reconcile_session_charges"].queueing_lock == (
+        jobs.SCHEDULE_RECONCILIATION_QUEUEING_LOCK
+    )
+    assert jobs.SCHEDULE_RECONCILIATION_TASK == "billing:reconcile_session_charges"
+    assert jobs.task_parameter_types(app)["billing:reconcile_session_charges"] == {
         "timestamp": int
     }
 

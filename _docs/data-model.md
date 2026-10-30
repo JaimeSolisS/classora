@@ -24,7 +24,7 @@ Spec [`spec.md`](spec.md) §17 makes this file the home of the final entities, f
 - **Staff text:** the only stored free text is staff-entered (`description`, `reason`, `note`, `reference`, product names). Everything a document or screen renders is otherwise stored as structured fields (kind, subject, minutes, period) and translated at display time ([ADR-0015](adr/0015-server-side-i18n.md)).
 - **Immutability classes** used below:
   - **append-only:** no UPDATE, DELETE or TRUNCATE ever (§5.1);
-  - **guarded:** immutable once another row references it (§5.2);
+  - **guarded:** immutable once another row references it (§5.2); `cancellation_billing_rules` is guarded by time instead: never updated, deletable only while upcoming (#99);
   - **mutable config / mutable reference:** edited in place with `version` and audit, never deleted once referenced (the `RESTRICT` foreign keys make that hold);
   - **transient:** deleted by a purge job;
   - **counter:** one row per series, updated under a row lock.
@@ -58,7 +58,9 @@ Overview. "Creating issue" is the issue whose migration creates the table. Wheth
 | `packages` | billing | #94 | append-only |
 | `package_credit_transactions` | billing | #94 | append-only |
 | `receipts` | billing | #98 | append-only |
-| `cancellation_billing_rules` | billing | #99 | append-only, effective-dated |
+| `cancellation_billing_rules` | billing | #99 | guarded, effective-dated (an upcoming version may be deleted; §5.2) |
+| `session_cancellation_decisions` | billing | #99 | append-only |
+| `charge_duration_repricings` | billing | #99 | append-only |
 | `withdrawals` | billing | #101 | append-only |
 | `idempotency_keys` | core | #88 | transient (purged) |
 | `number_series` | core | #98 | counter (row-locked UPDATE) |
@@ -333,6 +335,7 @@ Signed corrections against one charge (E2, E3, E5, E8, E9). A credit is a negati
 - **`source_key`:** partial UNIQUE `WHERE source_key IS NOT NULL` (`uq_charge_adjustments_source_key`). Every kind except `manual` must set it (`CHECK (kind = 'manual' OR source_key IS NOT NULL)`, #90); the implementing issue fixes the format, which includes the triggering event, for example `duration_change:<charge_id>:<session version after the edit>` (E2) or `cancellation_credit:<charge_id>` (E3). Manual adjustments rely on the API idempotency key.
 - **Releases:** if an adjustment pushes the charge's net below its valid allocations, the newest allocations are released in the same transaction, and a smaller allocation is re-inserted when the release frees more than needed (E5). The released money becomes account credit.
 - A negative `manual` adjustment is a financial correction: `billing.manage` plus reauthentication `finance.correction` (E8).
+- **Schedule reconciliation keys (#99):** `cancellation_credit:<charge_id>` (one cancellation credit per charge, `−net`); `closure_credit:<charge_id>:<n>`, where `n` is the number of `closure_credit` rows of the charge + 1, read under the account lock: odd `n` is a closure credit (`−net`), even `n` a **positive** restoration of exactly the credit before it (the occurrence is `confirmed` or `completed` again; Q3); `duration_change:<charge_id>:<session version the job saw>` (Q1: edits between two runs coalesce). `duration_change` is signed (shorter → negative, back to the original → positive).
 - **`enrollment_removal` is signed (#92 J4):** a group withdrawal credits each `session` charge of the student on a group session that starts after the withdrawal and that the student left, with `−net` (skipped when the net is `0.00`; `source_key enrollment_removal:<charge_id>:<group_enrollment_id>:withdrawn`); a re-enrollment of the student in the same group restores each such charge with a **positive** `enrollment_removal` of minus the sum of its `enrollment_removal` adjustments (`…:<new group_enrollment_id>:enrolled`). Flat group fees and course fees are never adjusted this way (#101).
 
 ### 3.11 `charge_due_date_changes` (#97)
@@ -592,7 +595,7 @@ Later changes to settings, templates (M8-04) or allocations don't change the row
 
 ### 3.22 `cancellation_billing_rules` (#99)
 
-The money outcome per cancellation classification (E3). One row per effective instant, like `scheduling_policies`.
+The money outcome per cancellation classification (E3). One row per effective instant, like `scheduling_policies`. **Guarded** (§5.2): a version never changes; an upcoming one may be deleted.
 
 | Column | Type | Null | Check / note |
 |---|---|---|---|
@@ -602,9 +605,55 @@ The money outcome per cancellation classification (E3). One row per effective in
 | `on_time_outcome` | VARCHAR(8) | no | `credit` \| `charge`; seeded `credit` |
 | `late_outcome` | VARCHAR(8) | no | `credit` \| `charge`; seeded `charge` |
 | `no_show_outcome` | VARCHAR(8) | no | `credit` \| `charge`; seeded `charge` |
-| `created_by_user_id` | UUID | yes | FK `users`; `NULL` for the seeded row |
+| `created_by_user_id` | UUID | yes | FK `users` RESTRICT; `NULL` for the seeded row |
 
-The rule in effect at the change's classification instant applies. Managed with `billing.manage`.
+- **Seed (migration 0069):** version 1, effective `2000-01-01T00:00:00Z`: credit / credit / charge / charge.
+- **The outcome:** a cancellation that allows a makeup is always `credit` (E3); otherwise the rule's column for the classification. The rule is the version in force at the **classification instant**: an approved change request's `created_at` (#62), else the session's `cancelled_at` (a center cancellation: `excused`, makeup allowed). Every `excused` cancellation allows a makeup (#61 `classify_change`), so `excused_outcome` is inert today; it stays for a later policy without makeups.
+- **Managed** with `billing.manage` (`POST`/`DELETE /api/v1/billing/cancellation-rules`, read with `billing.view`); writes take the advisory lock `b"clsCnRul"`.
+
+### 3.22a `session_cancellation_decisions` (#99)
+
+The billing outcome of one cancelled session for one participant (Q5). Append-only (§5.1), audited. It also explains a "nothing posted" outcome to staff and families.
+
+| Column | Type | Null | Check / note |
+|---|---|---|---|
+| `id` | UUID | no | PK |
+| `class_session_id` | UUID | no | FK `class_sessions` |
+| `student_id` | UUID | no | FK `students` |
+| `initiated_by` | VARCHAR(8) | no | `center` \| `family` \| `tutor` |
+| `change_request_id` | UUID | yes | FK `session_change_requests`; the approved request |
+| `classification` | VARCHAR(8) | no | `on_time` \| `late` \| `no_show` \| `excused` (the effective one, #62 E3) |
+| `makeup_allowed` | BOOLEAN | no | |
+| `classified_at` | TIMESTAMPTZ | no | the request's `created_at`, else `cancelled_at` |
+| `rule_id` | UUID | no | FK `cancellation_billing_rules` (the version in force then) |
+| `outcome` | VARCHAR(8) | no | `credit` \| `charge` |
+| `result` | VARCHAR(16) | no | `credit` → `credited` \| `no_charge` \| `zero_charge` \| `already_zero`; `charge` → `charge_stands` \| `charged` \| `package_consumed` |
+| `charge_id` | UUID | yes | FK `charges` |
+| `charge_adjustment_id` | UUID | yes | FK `charge_adjustments`; set iff `result = 'credited'` |
+| `decided_at` | TIMESTAMPTZ | no | |
+
+`UNIQUE (class_session_id, student_id)` (`uq_session_cancellation_decisions_key`). A `charge` outcome that can't be posted yet (billing off, before the floor, no family, no price) writes **no** row and is retried (Q7). Every foreign key is `RESTRICT`; long names are explicit (`fk_session_cancellation_decisions_<column>`).
+
+### 3.22b `charge_duration_repricings` (#99)
+
+One repricing of a `session` charge to its session's new `scheduled_minutes` (E2, Q2). Append-only (§5.1), audited.
+
+| Column | Type | Null | Check / note |
+|---|---|---|---|
+| `id` | UUID | no | PK |
+| `charge_id` | UUID | no | FK `charges` |
+| `class_session_id` | UUID | no | FK `class_sessions` |
+| `session_version` | INTEGER | no | the session `version` the job saw |
+| `previous_minutes` | SMALLINT | no | 15–480; the billed minutes before |
+| `scheduled_minutes` | SMALLINT | no | 15–480; `<> previous_minutes` |
+| `target_amount` | NUMERIC(14,2) | no | `>= 0` |
+| `delta_amount` | NUMERIC(14,2) | no | may be `0.00` |
+| `method` | VARCHAR(8) | no | `original` \| `catalog` \| `pro_rata` |
+| `clamped` | BOOLEAN | no | the delta was raised so the net stays `>= 0.00` |
+| `charge_adjustment_id` | UUID | yes | FK `charge_adjustments`; `CHECK ((delta_amount <> 0) = (charge_adjustment_id IS NOT NULL))` |
+
+- `UNIQUE (charge_id, session_version)`; index `(charge_id, created_at DESC, id DESC)`: the latest row's `scheduled_minutes` are the charge's **billed minutes** (else `charges.scheduled_minutes`).
+- **Target:** `charges.amount` when the new minutes equal the charge's snapshot (`original`); else `base_price` for the new minutes (the charge's service date, level snapshot and account family) with the charge's `charge_discounts` snapshot re-applied in position order (`catalog`, never re-selected); else `charges.amount` pro rata (`pro_rata`, `Money.prorate`). **Delta** = target − (`amount` + Σ `duration_change`): manual, `enrollment_removal`, withdrawal and the #99 credits stay; if the net would go below `0.00` the delta is `−net` (`clamped`). A `0.00` delta writes the row without an adjustment.
 
 ### 3.23 `withdrawals` (#101)
 
@@ -751,6 +800,8 @@ Privileges alone can't do it: the local, test and CI database role is a superuse
 
 **`custom_prices` (#95 H7):** `custom_prices_guard()` (triggers `custom_prices_no_referenced_change`, `custom_prices_no_truncate`): when any `charges.custom_price_id` references the row, `DELETE` is refused and `UPDATE` is refused **unless only `expires_on`, `version` and `updated_at` change** (ending a custom price is allowed); `TRUNCATE` is always refused. The `RESTRICT` foreign key is the concurrent backstop.
 
+**`cancellation_billing_rules` (#99 Q6):** `cancellation_billing_rules_guard()` (triggers `cancellation_billing_rules_no_change`, `BEFORE UPDATE OR DELETE FOR EACH ROW`, and `cancellation_billing_rules_no_truncate`) refuses every `UPDATE`, the `DELETE` of a version with `effective_from <= now()` and every `TRUNCATE` (42501). Only an upcoming version can be deleted; a decision never references one (decisions reference versions in force at a past instant), and the `RESTRICT` foreign key is the backstop.
+
 **Staged predicate (#89 E2).** `charges` and `packages` don't exist when `price_versions` is created, so the trigger function `price_versions_guard()` (triggers `price_versions_no_referenced_change` and `price_versions_no_truncate`) asks `price_version_is_referenced(version_id uuid) RETURNS boolean` (`LANGUAGE sql VOLATILE`). Migration 0060 (#89) creates it as `SELECT false`. #90's migration replaces it (`CREATE OR REPLACE`) with an `EXISTS` on `charges.price_version_id`, and #94's (0066) adds `OR EXISTS` on `packages.price_version_id`; each downgrade restores the previous body. The `RESTRICT` foreign keys from `charges` and `packages` stay the concurrent backstop.
 
 ## 6. Concurrency
@@ -769,6 +820,7 @@ Privileges alone can't do it: the local, test and CI database role is a superuse
 - **Enrollment charges (#92):** the sweeper's Unit of Work per candidate period takes the group row (`scheduling.service.lock_group_for_billing`) or the cohort row (`courses.service.lock_cohort_for_billing`) `FOR SHARE` → `billing_settings` `FOR SHARE` → `billing_accounts` `FOR UPDATE` (last), and re-reads the J2/J5 facts under the account lock. The hooks run after the M4 locks (students → zone → group or cohort `FOR UPDATE` → series → sessions) → `billing_settings` `FOR SHARE` (enrollments only) → `billing_accounts` `FOR UPDATE`. The M4 writers take the group or cohort row `FOR UPDATE`, so a sweeper step and an enrollment change serialize.
 - **Tuition charges (#93):** the job's Unit of Work per plan takes (linked) the group row `FOR SHARE` (`scheduling.service.lock_group_for_billing`) → the plan row `FOR SHARE` → `billing_settings` `FOR SHARE` → `billing_accounts` `FOR UPDATE` (in `post_charge`, last). The plan writes (`PATCH`, `DELETE`, pauses, resume) take (linked) the group `FOR SHARE` then the plan row `FOR UPDATE`, so a pause waits for a posting (or the posting for the pause). A linked plan create takes the group `FOR SHARE` → the account `FOR UPDATE`, then checks the K6 refusals; the #91 session step and the #92 fee step re-check `tuition_priced` after the same account lock.
 - **Packages (#94):** the account row `FOR UPDATE` is the last lock everywhere. Closeout approval: closeout `FOR UPDATE` → session `FOR SHARE` → account (in `consume_session_credit`) → then the approval request row (decided after the hook; no billing path takes it). Session sweeper: session `FOR SHARE` → `billing_settings` `FOR SHARE` → account (`post_charge` re-checks the consumption, I9). Purchase: the idempotency row → the product `FOR SHARE` → account. Expiry job: session `FOR SHARE` (fallback items) → account (consumption and `expire`, remaining recomputed under it, so I8 holds). No cycle.
+- **Schedule reconciliation (#99):** the job `billing:reconcile_session_charges` (every 15 minutes; in `app/workflows/schedule_reconciliation_tasks.py`, logic in `app/workflows/schedule_reconciliation.py`; also queued after commit by the session cancel, session `PATCH`, series edit and cancellation, change-request approval and billing settings `PATCH` routes and at the end of `scheduling:materialize_series`) takes, per candidate `(class_session_id, student_id)` in its own Unit of Work: the session row `FOR SHARE` (`lock_session_for_billing`; kind, state and participant re-checked) → `billing_settings` `FOR SHARE` → the key's charge's account `FOR UPDATE` (last; net, closure total, billed amount and minutes read under it), or, without a charge, the account inside `consume_session_credit` or `post_charge` (last). One session per Unit of Work: no deadlock with scheduling writers (sessions `FOR UPDATE`, never an account) or the #92 hooks (sessions → account). Natural keys: `uq_charge_adjustments_source_key`, `uq_session_cancellation_decisions_key`, `uq_charge_duration_repricings_charge_version` (a concurrent worker's row → savepoint rolled back, done).
 - **Scheduling transactions** never post charges: a billing failure can't roll back a schedule change (E1). Enrollment charges are the exception: they are posted in the M4 hooks' Unit of Work (`apply_enrollment_change`, `apply_cohort_enrollment_change`), which already holds the enrollment locks.
 
 ## 7. Indexes
@@ -794,6 +846,7 @@ Beyond primary keys, unique keys and natural keys, for the access paths of spec 
 - `package_credit_transactions (package_id)`;
 - `package_credit_transactions (class_session_id, student_id) WHERE kind = 'consume'`: the I9 checks and the sweeper's anti-join;
 - `receipts (billing_account_id, issued_at)`;
+- `charge_duration_repricings (charge_id, created_at DESC, id DESC)`: the billed minutes (#99);
 - `price_versions (service_price_id, effective_from)` (the unique key);
 - `idempotency_keys (expires_at)`: purge.
 
@@ -872,7 +925,7 @@ Each M6 issue, the ADR-0006 / ADR-0015 decision items it relies on, and the tabl
 | #96 M6-11 Payments, allocations | E5 (allocations, account credit, I2/I3), E6, E8 (`payment.record`, seeded by `make seed`; no reauthentication), E12 (method from the seeded table); no migration (the tables exist since 0061) | `payment_methods`, `payments`, `payment_allocations` |
 | #97 M6-12 Due dates, reminders | E11 (rules, family override, `charge_due_date_changes`, local-date overdue, `(charge_id, stage)`); migration 0067 | `charge_due_date_changes`, `charge_reminders`, `billing_accounts` (`due_offset_days` edits) |
 | #98 M6-13 Receipts | E13 (`number_series`, snapshot incl. template version, one per payment), E14, E15; migration 0068; P1–P9 (a) (issued in `record_payment`, recipient language, snapshot v1, versioned templates, family-scoped download) | `receipts`, `number_series` (PDF and i18n infrastructure: #383, M6-13a) |
-| #99 M6-14 Reconciliation | E2 (delta adjustment), E3 (rules, outcomes, closures), E10 (`charge` debits units) | `cancellation_billing_rules`, `charge_adjustments` |
+| #99 M6-14 Reconciliation | E2 (delta adjustment, Q2 billed base and clamp), E3 (rules, outcomes, closures and their restoration, Q3), E10 (`charge` debits units, Q9); Q1 job over committed schedule state; migration 0069 | `cancellation_billing_rules`, `session_cancellation_decisions`, `charge_duration_repricings`, `charge_adjustments` (`cancellation_credit`, `closure_credit`, `duration_change`) |
 | #100 M6-15 Reversals, refunds | E5 (reversal releases allocations, refunds from the remainder, I3), E6, E8 (`finance.refund.approve`, `finance.refund_or_reversal`, `finance.correction`) | `payment_reversals`, `allocation_releases`, `refunds` |
 | #101 M6-16 Withdrawals | E8 (permission combination), E9 (flat and course fees only here), E10 (unused units) | `withdrawals`, `charge_adjustments`, `refunds`, `package_credit_transactions` |
 | #102 M6-17 Family portal | E4 (`family_guardians`, per-child filter, no student or tutor access), E13 (receipt download) | reads only |

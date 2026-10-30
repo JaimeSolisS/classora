@@ -149,6 +149,14 @@ Since #92 the candidates include ``group`` sessions (with ``group_id``).
 Packages (#94) also use :func:`lock_session_for_billing` (the closeout
 approval's consumption and the expiry job's fallback) and
 :func:`session_starts` (the start of a consumed session).
+Schedule reconciliation (#99) adds ``version``, ``cohort_id``,
+``first_confirmed_at`` and ``cancelled_at`` to :class:`BillableSession`,
+the unexecuted :func:`reconciliation_session_columns` (the participants of
+``cancelled``, ``skipped_closure``, ``confirmed`` and ``completed``
+sessions, :data:`RECONCILED_STATES`) and :func:`cancellation_classification`
+(an approved cancellation request's effective outcome at its
+``created_at``, else a center cancellation: ``excused`` with a makeup at
+``cancelled_at``).
 
 Enrollment charges (#92, :mod:`~app.modules.scheduling.enrollment_billing`):
 :func:`enrollment_session_counts` and :func:`owner_schedules` (the J3
@@ -315,13 +323,25 @@ from app.modules.scheduling.billing_context import (
     BILLABLE_STATES as BILLABLE_STATES,
 )
 from app.modules.scheduling.billing_context import (
+    RECONCILED_STATES as RECONCILED_STATES,
+)
+from app.modules.scheduling.billing_context import (
     BillableSession as BillableSession,
+)
+from app.modules.scheduling.billing_context import (
+    CancellationFacts as CancellationFacts,
 )
 from app.modules.scheduling.billing_context import (
     billable_participant_columns as billable_participant_columns,
 )
 from app.modules.scheduling.billing_context import (
+    cancellation_classification as cancellation_classification,
+)
+from app.modules.scheduling.billing_context import (
     lock_session_for_billing as lock_session_for_billing,
+)
+from app.modules.scheduling.billing_context import (
+    reconciliation_session_columns as reconciliation_session_columns,
 )
 from app.modules.scheduling.billing_context import (
     session_starts as session_starts,

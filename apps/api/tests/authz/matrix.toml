@@ -347,6 +347,33 @@ rate_limit = ["available_slots.user"]
 
 [[route]]
 method = "GET"
+path = "/api/v1/billing/cancellation-rules"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #99 B3: the rule versions. Shapes:
+# tests/integration/test_schedule_reconciliation_rules.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/cancellation-rules"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #99 B3: an empty body gets 422 for the allowed roles: nothing is created.
+# No reauthentication, no Idempotency-Key (configuration).
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/billing/cancellation-rules/{rule_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #99 B3: the placeholder id is no rule version: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
 path = "/api/v1/billing/custom-prices"
 access = "permission"
 permission = "billing.manage"
