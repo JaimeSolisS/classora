@@ -5,7 +5,7 @@ import {
   recordCspViolations,
   SIGNED_OUT_STATE,
 } from '../support/auth';
-import { common } from '../support/catalog';
+import { common, fill } from '../support/catalog';
 import { demoOwner } from '../support/credentials';
 import { addToFamilyViaApi, createFamilyViaApi } from '../support/families';
 import { createStudentViaApi } from '../support/students';
@@ -26,13 +26,24 @@ import { FIRST_RENDER_TIMEOUT_MS } from '../support/timeouts';
 //      payment" (inside the 5-minute reauthentication window: no second
 //      password) → "Reversed", the charge open again;
 //   4. a second payment kept as credit; "Refund" part of it → the refund
-//      is listed and the account credit is lower.
-// The rows stay in the shared E2E database; billing stays off (#366).
+//      is listed and the account credit is lower;
+//   5. (#387 D3) a 10-session package sold to the student through the API
+//      (a purchase charge ignores the billing floor, #94 L5); on Billing →
+//      Packages, "Withdraw (unused units)" → the panel shows 10 unused
+//      sessions and a credit equal to the net → Account credit → confirm
+//      (inside the reauthentication window of step 2, like step 3: the
+//      password dialog itself is step 2's and the Vitest cases') → the
+//      package reads "Withdrawn"; the account page's Withdrawals section
+//      lists it and the history shows the `withdrawal` adjustment. Steps 1-5
+//      share this one login (#387 D1: the E2E login budget is 50/50).
+// The rows stay in the shared E2E database; billing stays off (#366), so
+// enrollment settlements (fees need billing on) are left to Vitest,
+// Storybook and QA.
 
 const billing = common.billing;
 const accounts = billing.accounts;
 const ZONE = 'America/Mexico_City';
-const TEST_TIMEOUT_MS = 90_000;
+const TEST_TIMEOUT_MS = 150_000;
 
 // Chromium logs every 4xx resource as a console error: the expected 403
 // reauth_required before the password dialog.
@@ -81,6 +92,11 @@ function money(cents: number): string {
   }).format(cents / 100);
 }
 
+/** A literal string as a RegExp source. */
+function escaped(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 async function csrf(page: Page): Promise<string> {
   return csrfTokenOf(await api(page, '/api/v1/auth/me'));
 }
@@ -112,6 +128,41 @@ async function recordPaymentViaApi(
   );
   expect(recorded.status).toBe(201);
   return (recorded.body as { payment: { id: string } }).payment.id;
+}
+
+/** A 10-session product and its sale to the student (#387 D3). */
+async function sellPackageViaApi(
+  page: Page,
+  studentId: string,
+  name: string,
+  key: string,
+): Promise<string> {
+  const product = await api(page, '/api/v1/billing/package-products', {
+    method: 'POST',
+    json: {
+      name,
+      unit: 'sessions',
+      quantity: 10,
+      validity_days: 90,
+      amount: '2000.00',
+      effective_from: centerToday(),
+    },
+    headers: { 'X-CSRF-Token': await csrf(page) },
+  });
+  expect(product.status).toBe(201);
+  const sold = await api(page, '/api/v1/billing/packages', {
+    method: 'POST',
+    json: {
+      student_id: studentId,
+      package_product_id: (product.body as { id: string }).id,
+    },
+    headers: {
+      'X-CSRF-Token': await csrf(page),
+      'Idempotency-Key': key.padEnd(16, '0'),
+    },
+  });
+  expect(sold.status).toBe(201);
+  return (sold.body as { id: string }).id;
 }
 
 test('corrections, reversals and refunds on a family account', async ({
@@ -340,6 +391,75 @@ test('corrections, reversals and refunds on a family account', async ({
     .click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(credit).toContainText(money(60_000));
+
+  // 5. A package withdrawn as account credit (#387 D3).
+  const withdrawals = common.billing.withdrawals;
+  const packageId = await sellPackageViaApi(
+    page,
+    studentId,
+    `Paquete Retiro ${suffix}`,
+    `e2e-corr-c-${suffix}`,
+  );
+  await page.goto(`/billing/packages?student_id=${studentId}`);
+  const packageRow = main.locator(`[data-package-id="${packageId}"]`);
+  await expect(packageRow).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+  await expect(packageRow).toContainText(billing.packages.status.active);
+  await packageRow
+    .getByRole('button', {
+      name: new RegExp(`^${escaped(withdrawals.package.action)} `),
+    })
+    .click();
+  dialog = page.getByRole('dialog', {
+    name: withdrawals.package.title,
+    exact: true,
+  });
+  const line = dialog.locator('[data-withdrawal-line="package_purchase"]');
+  await expect(line).toBeVisible();
+  // Nothing used yet: the credit is the whole net.
+  await expect(line).toHaveAttribute('data-line-credit', '2000.00');
+  await expect(dialog.locator('[data-withdrawal-summary]')).toContainText(
+    fill(billing.packages.units.sessions_other, { count: 10 }),
+  );
+  await expect(dialog.locator('[data-total="credit"] dd')).toHaveText(
+    money(200_000),
+  );
+  await expect(
+    dialog.getByRole('radio', {
+      name: withdrawals.outcomes.account_credit,
+      exact: true,
+    }),
+  ).toBeChecked();
+  await dialog
+    .getByLabel(withdrawals.fields.reason, { exact: true })
+    .fill(reason);
+  await dialog
+    .locator('[data-slot="dialog-footer"]')
+    .getByRole('button', { name: withdrawals.confirm, exact: true })
+    .click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(packageRow).toContainText(billing.packages.status.withdrawn);
+
+  await page.goto(`/billing/accounts/${familyId}`);
+  const withdrawalsSection = main.locator('section').filter({
+    has: page.getByRole('heading', {
+      level: 2,
+      name: withdrawals.section.title,
+      exact: true,
+    }),
+  });
+  const withdrawalRow = withdrawalsSection.locator('[data-withdrawal-id]');
+  await expect(withdrawalRow).toHaveCount(1, {
+    timeout: FIRST_RENDER_TIMEOUT_MS,
+  });
+  await expect(withdrawalRow).toContainText(
+    withdrawals.outcomes.account_credit,
+  );
+  await expect(withdrawalRow).toContainText(money(200_000));
+  await expect(
+    main
+      .locator('[data-ledger-entry="adjustment"]')
+      .filter({ hasText: accounts.adjustmentKinds.withdrawal }),
+  ).toHaveCount(1);
 
   expect(await cspViolations(page)).toEqual([]);
   expect(consoleErrors).toEqual([]);

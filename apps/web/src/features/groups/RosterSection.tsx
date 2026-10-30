@@ -20,19 +20,26 @@ import { rosterParts } from './rules';
 // (enrolled on, by whom, "Overridden" as text and an icon), then the
 // withdrawn ones, newest first, with the reason (or "No reason given").
 // An inactive student shows the #33 "Inactive" badge. "Withdraw" on each
-// active row for schedule.manage holders (`onWithdraw`).
+// active row for schedule.manage holders (`onWithdraw`). #387 B1: a
+// withdrawn row with no withdrawal settlement yet gets "Settle billing"
+// (`settleIds`, `onSettle`) for billing users.
 
 export interface RosterSectionProps {
   roster: readonly GroupEnrollmentItem[];
   timeZone: string;
   /** Holders of schedule.manage; none: no "Withdraw". */
   onWithdraw?: (item: GroupEnrollmentItem) => void;
+  /** #387 B1: the withdrawn enrollments that can be settled. */
+  settleIds?: ReadonlySet<string>;
+  onSettle?: (item: GroupEnrollmentItem) => void;
 }
 
 export function RosterSection({
   roster,
   timeZone,
   onWithdraw,
+  settleIds,
+  onSettle,
 }: RosterSectionProps) {
   const { t } = useTranslation();
   const { formatLocalDate } = useFormatters();
@@ -139,6 +146,13 @@ export function RosterSection({
                   {t('groups.roster.withdrawnBy')}
                 </TableHead>
                 <TableHead scope="col">{t('groups.roster.reason')}</TableHead>
+                {onSettle ? (
+                  <TableHead scope="col">
+                    <span className="sr-only">
+                      {t('groups.roster.actions')}
+                    </span>
+                  </TableHead>
+                ) : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -152,6 +166,26 @@ export function RosterSection({
                   <TableCell className="break-words whitespace-normal">
                     {item.withdrawal_reason ?? t('groups.roster.noReason')}
                   </TableCell>
+                  {onSettle ? (
+                    <TableCell>
+                      {settleIds?.has(item.id) ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          aria-label={t(
+                            'billing.withdrawals.settle.actionFor',
+                            {
+                              name: item.student.display_name,
+                            },
+                          )}
+                          onClick={() => onSettle(item)}
+                        >
+                          {t('billing.withdrawals.settle.action')}
+                        </Button>
+                      ) : null}
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))}
             </TableBody>

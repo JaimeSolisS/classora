@@ -66,6 +66,12 @@ export interface PackagesViewProps {
   listSearch: string;
   /** billing.manage: "Cancel" on an active package's row (#386). */
   onCancel?: (pkg: SoldPackage) => void;
+  /**
+   * billing.manage or finance.refund.approve: "Withdraw (unused units)" on
+   * an active package's row (#387 B3).
+   */
+  canWithdraw?: boolean;
+  onWithdraw?: (pkg: SoldPackage) => void;
   /** Read by the polite status (a cancelled package). */
   announcement?: string;
   /** Stories: the pickers' searches instead of the API. */
@@ -87,6 +93,8 @@ export function PackagesView({
   onSell,
   listSearch,
   onCancel,
+  canWithdraw = false,
+  onWithdraw,
   announcement = '',
   searchStudent = searchStudents,
   searchFamily = searchFamilies,
@@ -199,6 +207,20 @@ export function PackagesView({
                         {t('billing.packages.cancel.action')}
                       </Button>
                     ) : null}
+                    {canWithdraw && isCancellable(item) ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        aria-label={t('billing.withdrawals.package.actionFor', {
+                          student: item.student.name,
+                          name: item.product.name,
+                        })}
+                        onClick={() => onWithdraw?.(item)}
+                      >
+                        {t('billing.withdrawals.package.action')}
+                      </Button>
+                    ) : null}
                     <Link
                       to={`/billing/packages/${item.id}`}
                       state={{ listSearch }}
@@ -245,6 +267,11 @@ export function PackagesView({
         <p className="text-sm text-muted-foreground">
           {t('billing.packages.sold.intro')}
         </p>
+        {canManage || canWithdraw ? (
+          <p className="text-sm text-muted-foreground">
+            {t('billing.withdrawals.package.hint')}
+          </p>
+        ) : null}
         <p role="status" className="text-sm font-medium">
           {announcement}
         </p>

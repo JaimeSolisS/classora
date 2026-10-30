@@ -411,6 +411,17 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['refunded_on_in_future', 'refunded_on_in_future'],
   ['refunded_on_before_payment', 'refunded_on_before_payment'],
   ['package_not_cancellable', 'package_not_cancellable'],
+  // Withdrawals (#101, #387 A7).
+  ['withdrawal_subject_invalid', 'withdrawal_subject_invalid'],
+  ['withdrawal_subject_not_found', 'withdrawal_subject_not_found'],
+  ['withdrawal_exists', 'withdrawal_exists'],
+  ['withdrawal_preview_stale', 'withdrawal_preview_stale'],
+  ['withdrawal_nothing_to_refund', 'withdrawal_nothing_to_refund'],
+  ['withdrawal_closeout_pending', 'withdrawal_closeout_pending'],
+  ['withdrawal_spans_accounts', 'withdrawal_spans_accounts'],
+  ['package_not_withdrawable', 'package_not_withdrawable'],
+  ['credit_override_unknown_charge', 'credit_override_unknown_charge'],
+  ['credit_override_duplicate', 'credit_override_duplicate'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

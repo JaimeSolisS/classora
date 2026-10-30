@@ -6071,6 +6071,193 @@
         "reasonRequired": "Escribe el motivo del cambio.",
         "reasonTooLong": "El motivo puede tener como máximo 500 caracteres."
       }
+    },
+    "withdrawals": {
+      "subjectKinds": {
+        "group_enrollment": "Grupo",
+        "cohort_enrollment": "Curso",
+        "package": "Paquete"
+      },
+      "policies": {
+        "pro_rata": "Parte no usada (proporcional)",
+        "nothing_delivered": "Nada impartido aún: crédito total",
+        "open_ended_fee": "Cuota sin fecha de fin: sin crédito",
+        "fully_used": "Usado por completo: sin crédito"
+      },
+      "outcomes": {
+        "account_credit": "Saldo a favor",
+        "refund": "Reembolso"
+      },
+      "header": {
+        "student": "Estudiante",
+        "family": "Familia",
+        "noFamily": "Sin familia",
+        "subject": "Concepto",
+        "at": "Fecha de la baja"
+      },
+      "counts": {
+        "consumed": "Consumidas",
+        "unused": "Sin usar",
+        "sessions_one": "{{count}} sesión ({{hours}} h)",
+        "sessions_many": "{{count}} sesiones ({{hours}} h)",
+        "sessions_other": "{{count}} sesiones ({{hours}} h)",
+        "granted": "Otorgadas",
+        "consumedUnits": "Usadas o vencidas",
+        "remaining": "Sin usar"
+      },
+      "lines": {
+        "title": "Qué se acredita",
+        "none": "No hay nada que acreditar.",
+        "columns": {
+          "kind": "Cargo",
+          "period": "Fecha o periodo",
+          "net": "Neto",
+          "paid": "Pagado",
+          "basis": "Base",
+          "policy": "Motivo",
+          "credit": "Crédito"
+        },
+        "period": "{{from}} – {{to}}",
+        "basis_one": "{{unused}} de {{count}} sesión sin usar",
+        "basis_many": "{{unused}} de {{count}} sesiones sin usar",
+        "basis_other": "{{unused}} de {{count}} sesiones sin usar",
+        "basisUnits": "{{unused}} de {{total}} sin usar",
+        "postedNow": "Se registra ahora"
+      },
+      "adjust": {
+        "toggle": "Ajustar líneas",
+        "hide": "Ocultar los ajustes",
+        "fieldFor": "Crédito de {{line}}",
+        "help": "De $0.00 a {{net}}."
+      },
+      "automatic": {
+        "summary_one": "{{count}} crédito automático de sesión: {{total}}",
+        "summary_many": "{{count}} créditos automáticos de sesión: {{total}}",
+        "summary_other": "{{count}} créditos automáticos de sesión: {{total}}",
+        "note": "Se acreditan automáticamente; no forman parte de esta liquidación.",
+        "session": "Sesión"
+      },
+      "totals": {
+        "title": "Totales",
+        "credit": "Crédito",
+        "reducesDebt": "Reduce lo adeudado",
+        "refundableCash": "Reembolsable en efectivo",
+        "accountCreditAfter": "Saldo a favor después",
+        "estimate": "Estimación con tus ajustes; el servidor decide.",
+        "changed": "cambió"
+      },
+      "warnings": {
+        "title": "Antes de confirmar",
+        "future_covered_sessions_one": "{{count}} sesión futura que cubre este paquete se cobrará normalmente si no se cancela.",
+        "future_covered_sessions_many": "{{count}} sesiones futuras que cubre este paquete se cobrarán normalmente si no se cancelan.",
+        "future_covered_sessions_other": "{{count}} sesiones futuras que cubre este paquete se cobrarán normalmente si no se cancelan.",
+        "fee_posted_now": "La cuota de inscripción aún no se registra: al confirmar se registra y luego se acredita.",
+        "tuition_posted_now_one": "{{count}} periodo de colegiatura vencido aún no se registra: al confirmar se registra y luego se acredita.",
+        "tuition_posted_now_many": "{{count}} periodos de colegiatura vencidos aún no se registran: al confirmar se registran y luego se acreditan.",
+        "tuition_posted_now_other": "{{count}} periodos de colegiatura vencidos aún no se registran: al confirmar se registran y luego se acreditan.",
+        "open_ended_fee": "El grupo no tiene fecha de fin, así que su cuota de inscripción no se acredita.",
+        "session": "Sesión"
+      },
+      "blocking": {
+        "title": "Esta baja no se puede confirmar",
+        "withdrawal_exists": "Esto ya se liquidó.",
+        "viewWithdrawal": "Ver la baja",
+        "withdrawal_closeout_pending": "Una sesión que cubría este paquete espera la aprobación de su cierre.",
+        "closeoutSession": "Cierre de la sesión",
+        "package_not_withdrawable": "Este paquete no se puede dar de baja: {{reason}}.",
+        "packageReasons": {
+          "cancelled": "está cancelado",
+          "withdrawn": "ya se dio de baja",
+          "expired": "venció",
+          "exhausted": "está agotado"
+        },
+        "student_has_no_family": "El estudiante no está en una familia, así que no hay cuenta a la cual acreditar.",
+        "openStudent": "Abrir la sección de familia del estudiante",
+        "withdrawal_spans_accounts": "Los cargos están en dos cuentas familiares: usa las correcciones de la página de la cuenta."
+      },
+      "outcome": {
+        "legend": "Liquidar como",
+        "refundHint": "No se libera nada pagado, así que no hay nada que reembolsar.",
+        "readOnly": "Puedes ver esta liquidación, pero no confirmarla."
+      },
+      "fields": {
+        "reason": "Motivo",
+        "refundedOn": "Fecha del reembolso",
+        "method": "Método",
+        "reference": "Referencia (opcional)"
+      },
+      "validation": {
+        "reasonRequired": "Escribe el motivo.",
+        "outcomeRequired": "Elige saldo a favor o reembolso.",
+        "creditRequired": "Escribe el crédito, de {{net}} como máximo.",
+        "aboveNet": "El crédito no puede ser mayor que el neto ({{net}})."
+      },
+      "passwordNote": "Se te pedirá tu contraseña para confirmar.",
+      "stale": "Algo cambió; revisa y confirma de nuevo.",
+      "confirm": "Confirmar la baja",
+      "confirming": "Confirmando…",
+      "cancel": "Cancelar",
+      "close": "Cerrar",
+      "back": "Atrás",
+      "dialog": {
+        "help": "Revisa la liquidación, elige cómo liquidarla y confirma.",
+        "stepOne": "Paso 1 de 2: la baja. Después verás su liquidación de cobros.",
+        "stepTwo": "Paso 2 de 2: la liquidación de cobros. Al confirmar se da de baja al estudiante y se liquida en un solo paso.",
+        "next": "Siguiente: liquidación de cobros"
+      },
+      "settle": {
+        "title": "Liquidar cobros",
+        "action": "Liquidar cobros",
+        "actionFor": "Liquidar cobros de {{name}}"
+      },
+      "package": {
+        "title": "Dar de baja las unidades sin usar",
+        "action": "Dar de baja (unidades sin usar)",
+        "actionFor": "Dar de baja (unidades sin usar) {{name}} de {{student}}",
+        "hint": "Cancelar = la compra se registró por error; Dar de baja = la familia se va."
+      },
+      "done": "{{student}} dado de baja de {{subject}}: {{credit}} acreditado, {{refund}} reembolsado. El saldo a favor ahora es {{after}}.",
+      "settled": "Cobros de {{student}} en {{subject}} liquidados: {{credit}} acreditado, {{refund}} reembolsado. El saldo a favor ahora es {{after}}.",
+      "fromWithdrawal": "De una baja",
+      "section": {
+        "title": "Bajas",
+        "empty": "No hay bajas.",
+        "columns": {
+          "date": "Fecha",
+          "student": "Estudiante",
+          "subject": "Concepto",
+          "outcome": "Resultado",
+          "credit": "Crédito",
+          "refund": "Reembolsado",
+          "actions": "Acciones"
+        },
+        "view": "Detalles",
+        "viewFor": "Detalles de la baja de {{student}} del {{date}}"
+      },
+      "detail": {
+        "title": "Baja",
+        "help": "Qué se liquidó y la liquidación como se mostró.",
+        "outcome": "Resultado",
+        "credit": "Crédito",
+        "refund": "Reembolsado",
+        "confirmed": "Confirmada",
+        "byYou": "por ti el {{date}}",
+        "byOther": "por otro miembro del personal el {{date}}",
+        "reason": "Motivo",
+        "applied": "Cargos acreditados",
+        "nothingApplied": "No se acreditó ningún cargo.",
+        "appliedLine": "{{kind}}: {{amount}}",
+        "viewCharge": "Ver cargo",
+        "viewChargeFor": "Ver cargo: {{kind}}",
+        "refunds_one": "{{amount}} reembolsado en {{count}} reembolso; consúltalo en los detalles del pago.",
+        "refunds_many": "{{amount}} reembolsado en {{count}} reembolsos; consúltalos en los detalles de los pagos.",
+        "refunds_other": "{{amount}} reembolsado en {{count}} reembolsos; consúltalos en los detalles de los pagos.",
+        "automatic_one": "{{count}} crédito automático de sesión.",
+        "automatic_many": "{{count}} créditos automáticos de sesión.",
+        "automatic_other": "{{count}} créditos automáticos de sesión.",
+        "snapshot": "La liquidación como se mostró",
+        "close": "Cerrar"
+      }
     }
   }
 }

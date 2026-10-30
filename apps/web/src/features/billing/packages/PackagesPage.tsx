@@ -35,6 +35,7 @@ import { usePackageLabels } from './labels';
 import { PackagesView, type PackagesState } from './PackagesView';
 import { packageListFilters, packageListParams } from './rules';
 import { SellPackageDialog } from './SellPackageDialog';
+import { WithdrawalFlowDialog } from '../withdrawals/WithdrawalDialog';
 
 // /billing/packages (#377 C, D), for billing.view holders: the sold
 // packages with the status, student and family filters and the page in
@@ -47,7 +48,11 @@ import { SellPackageDialog } from './SellPackageDialog';
 // active package (its purchase charge's net loads when the dialog opens,
 // for the estimate); after the 201 the dialog closes, the page's polite
 // status says what was credited, and the package and family account
-// queries are invalidated.
+// queries are invalidated. #387 B3: billing.manage or finance.refund.approve
+// holders withdraw an active package's unused units ("Withdraw (unused
+// units)": the settlement panel); after the 201 the page's polite status
+// says what was credited and refunded, and the package queries are
+// invalidated (the panel invalidates the withdrawals and the account).
 
 export function PackagesPage() {
   const { t } = useTranslation();
@@ -57,6 +62,8 @@ export function PackagesPage() {
   const timeZone = useCenterTimeZone();
   const today = todayInZone(timeZone);
   const canManage = useCan('billing.manage');
+  const canApproveRefunds = useCan('finance.refund.approve');
+  const canWithdraw = canManage || canApproveRefunds;
   const canOpenStudents = useCan('student.view');
   const canFilterFamilies = useCan('guardian.view');
   const [searchParams, setSearchParams] = useSearchParams();
@@ -70,6 +77,7 @@ export function PackagesPage() {
   const [pickedFamily, setPickedFamily] = useState<NamedOption | null>(null);
   const [selling, setSelling] = useState(false);
   const [cancelling, setCancelling] = useState<SoldPackage | null>(null);
+  const [withdrawing, setWithdrawing] = useState<SoldPackage | null>(null);
   const [announcement, setAnnouncement] = useState('');
   const labels = usePackageLabels();
 
@@ -170,6 +178,11 @@ export function PackagesPage() {
           setAnnouncement('');
           setCancelling(pkg);
         }}
+        canWithdraw={canWithdraw}
+        onWithdraw={(pkg) => {
+          setAnnouncement('');
+          setWithdrawing(pkg);
+        }}
         announcement={announcement}
       />
       {canManage ? (
@@ -202,6 +215,30 @@ export function PackagesPage() {
             })
           }
           onClose={() => setCancelling(null)}
+        />
+      ) : null}
+      {canWithdraw ? (
+        <WithdrawalFlowDialog
+          subject={withdrawing ? { kind: 'package', id: withdrawing.id } : null}
+          title={t('billing.withdrawals.package.title')}
+          subjectName={withdrawing?.product.name ?? ''}
+          onDone={(confirmed) => {
+            const pkg = withdrawing!;
+            setWithdrawing(null);
+            setAnnouncement(
+              t('billing.withdrawals.done', {
+                student: pkg.student.name,
+                subject: pkg.product.name,
+                credit: labels.money(confirmed.withdrawal.amount),
+                refund: labels.money(confirmed.withdrawal.refund_amount),
+                after: labels.money(confirmed.account_credit_after),
+              }),
+            );
+            void queryClient.invalidateQueries({
+              queryKey: PACKAGES_QUERY_KEY,
+            });
+          }}
+          onClose={() => setWithdrawing(null)}
         />
       ) : null}
       {canManage ? (

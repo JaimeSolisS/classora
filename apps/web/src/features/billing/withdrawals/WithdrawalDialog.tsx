@@ -1,0 +1,293 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useId, useRef, useState, type FormEvent } from 'react';
+import { useTranslation } from 'react-i18next';
+import { ErrorAlert } from '@/components/feedback/ErrorAlert';
+import { LoadingState } from '@/components/feedback/LoadingState';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { TEXTAREA_CLASS } from '@/features/academics/styles';
+import { useCenterTimeZone } from '@/features/auth/useCenterTimeZone';
+import { useCan } from '@/features/auth/useSession';
+import { useReturnFocus } from '@/features/scheduling/series/hooks';
+import { todayInZone, type LocalDate } from '@/lib/time';
+import {
+  fetchPaymentMethods,
+  PAYMENT_METHODS_KEY,
+  type PaymentMethod,
+} from '../accounts/api';
+import { REASON_MAX } from '../accounts/corrections';
+import {
+  confirmWithdrawal,
+  fetchPreview,
+  invalidateAfterWithdrawal,
+  previewKey,
+  type SubjectRef,
+  type WithdrawalConfirmed,
+  type WithdrawalCreditConfirm,
+  type WithdrawalPreview,
+  type WithdrawalRefundConfirm,
+} from './api';
+import { WithdrawalSettlement } from './WithdrawalSettlement';
+
+// The withdrawal dialog (#387 B1-B3): the settlement panel for a subject,
+// optionally after a first step. From a roster, a user with
+// schedule.manage and billing.view withdraws an active enrollment in two
+// steps: (1) what happens and the reason (the M4 fields; the reason is
+// carried to the settlement, where it is required), (2) the settlement,
+// whose confirm withdraws and settles in one call (#101 C2). "Settle
+// billing" on a withdrawn enrollment and "Withdraw (unused units)" on a
+// package open the settlement directly. `WithdrawalDialog` has no query
+// (stories render each state); `WithdrawalFlowDialog` reads the preview
+// (the live query data the panel renders) and the payment methods,
+// confirms, puts a stale answer's fresh preview in the query, and after
+// the 201 calls `onDone` (the caller closes it, announces it in its polite
+// status and refreshes its list) and invalidates the withdrawal reads and
+// the family's account (B5).
+
+export type PreviewState =
+  | { status: 'loading' }
+  | { status: 'error'; error: unknown; onRetry: () => void }
+  | { status: 'ready'; preview: WithdrawalPreview };
+
+/** The texts of the first step (a withdrawal from a roster). */
+export interface WithdrawStepLabels {
+  description: string;
+  help?: string;
+  reason: string;
+  keep: string;
+  next: string;
+}
+
+export interface WithdrawalDialogProps {
+  open: boolean;
+  /** Remounts the content per subject. */
+  subjectKey: string;
+  title: string;
+  subjectName: string;
+  /** Two steps: the withdrawal's own step first. */
+  firstStep?: WithdrawStepLabels;
+  state: PreviewState;
+  canCredit: boolean;
+  canRefund: boolean;
+  methods: readonly PaymentMethod[] | null;
+  today: LocalDate;
+  onConfirm: (
+    body: WithdrawalCreditConfirm | WithdrawalRefundConfirm,
+    idempotencyKey: string,
+  ) => Promise<void>;
+  onStale: (fresh: WithdrawalPreview) => void;
+  onRefetch: () => void;
+  onClose: () => void;
+  /** Stories: start on the settlement step. */
+  initialStep?: 'withdraw' | 'settle';
+}
+
+export function WithdrawalDialog(props: WithdrawalDialogProps) {
+  const busy = useRef(false);
+  const returnFocus = useReturnFocus();
+  return (
+    <Dialog
+      open={props.open}
+      onOpenChange={(next) => {
+        if (!next && !busy.current) props.onClose();
+      }}
+    >
+      {props.open ? (
+        <DialogContent
+          className="max-h-[90vh] overflow-y-auto sm:max-w-4xl [&>*]:min-w-0"
+          onOpenAutoFocus={returnFocus.onOpenAutoFocus}
+          onCloseAutoFocus={returnFocus.onCloseAutoFocus}
+          onInteractOutside={(event) => event.preventDefault()}
+        >
+          <Steps key={props.subjectKey} {...props} busy={busy} />
+        </DialogContent>
+      ) : null}
+    </Dialog>
+  );
+}
+
+function Steps({
+  title,
+  subjectName,
+  firstStep,
+  state,
+  canCredit,
+  canRefund,
+  methods,
+  today,
+  onConfirm,
+  onStale,
+  onRefetch,
+  onClose,
+  initialStep,
+  busy,
+}: WithdrawalDialogProps & { busy: { current: boolean } }) {
+  const { t } = useTranslation();
+  const id = useId();
+  const [step, setStep] = useState<'withdraw' | 'settle'>(
+    initialStep ?? (firstStep ? 'withdraw' : 'settle'),
+  );
+  const [reason, setReason] = useState('');
+
+  function next(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setStep('settle');
+  }
+
+  if (step === 'withdraw' && firstStep) {
+    return (
+      <>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{firstStep.description}</DialogDescription>
+          {firstStep.help ? <p className="text-sm">{firstStep.help}</p> : null}
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          {t('billing.withdrawals.dialog.stepOne')}
+        </p>
+        <form
+          noValidate
+          onSubmit={next}
+          className="flex min-w-0 flex-col gap-4"
+        >
+          <div className="flex flex-col gap-2">
+            <label htmlFor={`${id}-reason`} className="text-sm font-medium">
+              {firstStep.reason}
+            </label>
+            <textarea
+              id={`${id}-reason`}
+              rows={3}
+              maxLength={REASON_MAX}
+              className={TEXTAREA_CLASS}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              {firstStep.keep}
+            </Button>
+            <Button type="submit">{firstStep.next}</Button>
+          </DialogFooter>
+        </form>
+      </>
+    );
+  }
+
+  let body;
+  if (state.status === 'loading') {
+    body = <LoadingState rows={6} />;
+  } else if (state.status === 'error') {
+    body = <ErrorAlert error={state.error} onRetry={state.onRetry} />;
+  } else {
+    body = (
+      <WithdrawalSettlement
+        preview={state.preview}
+        subjectName={subjectName}
+        canCredit={canCredit}
+        canRefund={canRefund}
+        methods={methods}
+        today={today}
+        initialReason={reason}
+        onConfirm={onConfirm}
+        onStale={onStale}
+        onRefetch={onRefetch}
+        onCancel={onClose}
+        onBack={firstStep ? () => setStep('withdraw') : undefined}
+        busyRef={busy}
+      />
+    );
+  }
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>{title}</DialogTitle>
+        <DialogDescription>
+          {firstStep
+            ? t('billing.withdrawals.dialog.stepTwo')
+            : t('billing.withdrawals.dialog.help')}
+        </DialogDescription>
+      </DialogHeader>
+      {body}
+    </>
+  );
+}
+
+export interface WithdrawalFlowDialogProps {
+  /** The subject; null: closed. */
+  subject: SubjectRef | null;
+  title: string;
+  subjectName: string;
+  firstStep?: WithdrawStepLabels;
+  onDone: (confirmed: WithdrawalConfirmed) => void;
+  onClose: () => void;
+}
+
+export function WithdrawalFlowDialog({
+  subject,
+  title,
+  subjectName,
+  firstStep,
+  onDone,
+  onClose,
+}: WithdrawalFlowDialogProps) {
+  const client = useQueryClient();
+  const timeZone = useCenterTimeZone();
+  const canCredit = useCan('billing.manage');
+  const canRefund = useCan('finance.refund.approve');
+  const key = subject ? previewKey(subject) : null;
+  const preview = useQuery({
+    queryKey: key ?? ['billing', 'withdrawals', 'preview', 'none'],
+    queryFn: ({ signal }) => fetchPreview(subject!, signal),
+    enabled: subject !== null,
+    staleTime: 0,
+    retry: false,
+  });
+  const methods = useQuery({
+    queryKey: PAYMENT_METHODS_KEY,
+    queryFn: ({ signal }) => fetchPaymentMethods(signal),
+    enabled: subject !== null && canRefund,
+  });
+
+  const state: PreviewState = preview.data
+    ? { status: 'ready', preview: preview.data }
+    : preview.isError
+      ? {
+          status: 'error',
+          error: preview.error,
+          onRetry: () => void preview.refetch(),
+        }
+      : { status: 'loading' };
+
+  return (
+    <WithdrawalDialog
+      open={subject !== null}
+      subjectKey={subject ? `${subject.kind}-${subject.id}` : 'none'}
+      title={title}
+      subjectName={subjectName}
+      firstStep={firstStep}
+      state={state}
+      canCredit={canCredit}
+      canRefund={canRefund}
+      methods={methods.data ?? null}
+      today={todayInZone(timeZone)}
+      onConfirm={async (body, idempotencyKey) => {
+        const confirmed = await confirmWithdrawal(body, idempotencyKey);
+        onDone(confirmed);
+        void invalidateAfterWithdrawal(client, confirmed.withdrawal.family_id);
+      }}
+      onStale={(fresh) => {
+        if (key) client.setQueryData(key, fresh);
+      }}
+      onRefetch={() => void preview.refetch()}
+      onClose={onClose}
+    />
+  );
+}

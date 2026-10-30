@@ -52,7 +52,9 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * contexts and the shared Owner session: 0 more; scheduling/overdue-closeouts.spec.ts (#301b) runs on the shared
  * Owner session: 0), billing/corrections.spec.ts 1 (the demo Owner in
  * its own context, for the password dialog of a correction; the shared
- * session is never reauthenticated; #386) = 50 attempts, the whole
+ * session is never reauthenticated; #386; #387's package withdrawal runs
+ * in the same context and reauthentication window: 0 more) = 50 attempts,
+ * the whole
  * `login.ip` budget: a new spec that needs a login must rebalance,
  * 2 failures for
  * `demo.owner`. Specs on the shared session add none (for example

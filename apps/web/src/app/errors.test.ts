@@ -348,6 +348,16 @@ const API_CODES = [
   'refunded_on_in_future',
   'refunded_on_before_payment',
   'package_not_cancellable',
+  'withdrawal_subject_invalid',
+  'withdrawal_subject_not_found',
+  'withdrawal_exists',
+  'withdrawal_preview_stale',
+  'withdrawal_nothing_to_refund',
+  'withdrawal_closeout_pending',
+  'withdrawal_spans_accounts',
+  'package_not_withdrawable',
+  'credit_override_unknown_charge',
+  'credit_override_duplicate',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

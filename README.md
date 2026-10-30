@@ -377,6 +377,12 @@ unless a bullet says otherwise.
   payments and refunds account credit. Corrections ask for a password
   confirmation (except a manual charge) and never change the original
   records.
+- Administrators withdraw a student from a group, a course or a prepaid
+  package with a settlement preview (the sessions or hours used and
+  unused, and what each fee, tuition period or package is credited); the
+  credit stays on the family's account or the freed payments are
+  refunded, after a password confirmation. The family's account page
+  lists its withdrawals.
 
 **Notifications**
 
@@ -408,9 +414,8 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** the rest of billing (including withdrawals and
-the family billing portal), payroll, reporting and analytics, and
-deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
+**Not built yet:** the rest of billing (including the family billing
+portal), payroll, reporting and analytics, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 
 **Not in this version:** file uploads and documents (attachments, the shared

@@ -36,6 +36,7 @@ export const PACKAGE_STATUSES: readonly PackageStatus[] = [
   'exhausted',
   'expired',
   'cancelled',
+  'withdrawn',
 ];
 
 /** Rows per page of both lists (the API default). */

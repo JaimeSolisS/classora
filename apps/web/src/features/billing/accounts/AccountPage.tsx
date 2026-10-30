@@ -12,7 +12,7 @@ import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { useCenterTimeZone } from '@/features/auth/useCenterTimeZone';
-import { useCan } from '@/features/auth/useSession';
+import { useCan, useSession } from '@/features/auth/useSession';
 import { CATALOG_LINK_CLASS } from '@/features/catalog/LevelsTable';
 import { todayInZone } from '@/lib/time';
 import { BillingTabs } from '../BillingTabs';
@@ -78,6 +78,20 @@ import { RecordPaymentDialog } from './RecordPaymentDialog';
 import { RefundDialog } from './RefundDialog';
 import { ReversePaymentDialog } from './ReversePaymentDialog';
 import { accountView, accountViewParams, oldestFirst } from './rules';
+import {
+  familyWithdrawalsKey,
+  fetchFamilyWithdrawals,
+  fetchWithdrawal,
+  withdrawalKey,
+} from '../withdrawals/api';
+import {
+  WithdrawalDetailDialog,
+  type WithdrawalDetailState,
+} from '../withdrawals/WithdrawalDetailDialog';
+import {
+  WithdrawalsSection,
+  type WithdrawalsState,
+} from '../withdrawals/WithdrawalsSection';
 
 // /billing/accounts/:familyId (#379 C, D, E), for billing.view holders: the
 // family's summary, charges, history and payments (the student filter, the
@@ -103,6 +117,10 @@ import { accountView, accountViewParams, oldestFirst } from './rules';
 // #98 H1: each payment row shows its receipt number and a download link,
 // and after recording, the new receipt's number and link follow the polite
 // status.
+// #387 B4: the Withdrawals section (the family's withdrawals, paginated)
+// and a withdrawal's drawer (also opened by `?withdrawal=<id>`, the link of
+// the panel's "already settled" state); "View charge" in the drawer opens
+// that charge's detail.
 
 function NotFoundOrError({
   error,
@@ -150,6 +168,12 @@ export function AccountPage() {
   const canApproveRefunds = useCan('finance.refund.approve');
   const [searchParams, setSearchParams] = useSearchParams();
   const view = useMemo(() => accountView(searchParams), [searchParams]);
+  const session = useSession();
+  const currentUserId = session.status === 'signedIn' ? session.user.id : null;
+  const [withdrawalsPage, setWithdrawalsPage] = useState(1);
+  const [withdrawalId, setWithdrawalId] = useState<string | null>(() =>
+    searchParams.get('withdrawal'),
+  );
   const [recording, setRecording] = useState(false);
   const [crediting, setCrediting] = useState(false);
   const [paymentId, setPaymentId] = useState<string | null>(null);
@@ -209,6 +233,19 @@ export function AccountPage() {
     queryFn: ({ signal }) => fetchPayments(familyId, view.paymentsPage, signal),
     placeholderData: keepPreviousData,
     enabled: ready,
+  });
+  const withdrawals = useQuery({
+    queryKey: familyWithdrawalsKey(familyId, withdrawalsPage),
+    queryFn: ({ signal }) =>
+      fetchFamilyWithdrawals(familyId, withdrawalsPage, signal),
+    placeholderData: keepPreviousData,
+    enabled: ready,
+  });
+  const withdrawalDetail = useQuery({
+    queryKey: withdrawalKey(withdrawalId ?? ''),
+    queryFn: ({ signal }) => fetchWithdrawal(withdrawalId!, signal),
+    enabled: withdrawalId !== null,
+    retry: false,
   });
   const openCharges = useQuery({
     queryKey: openChargesKey(familyId),
@@ -383,6 +420,25 @@ export function AccountPage() {
     summary.data.students.map((item) => [item.student.id, item.student.name]),
   );
 
+  const withdrawalsState: WithdrawalsState = withdrawals.data
+    ? { status: 'ready', page: withdrawals.data }
+    : withdrawals.isError
+      ? {
+          status: 'error',
+          error: withdrawals.error,
+          onRetry: () => void withdrawals.refetch(),
+        }
+      : { status: 'loading' };
+  const withdrawalState: WithdrawalDetailState = withdrawalDetail.data
+    ? { status: 'ready', withdrawal: withdrawalDetail.data }
+    : withdrawalDetail.isError
+      ? {
+          status: 'error',
+          error: withdrawalDetail.error,
+          onRetry: () => void withdrawalDetail.refetch(),
+        }
+      : { status: 'loading' };
+
   return (
     <>
       <AccountPageView
@@ -424,6 +480,25 @@ export function AccountPage() {
         }}
         announcement={announcement}
         recordedReceipt={recordedReceipt}
+        withdrawals={
+          <WithdrawalsSection
+            state={withdrawalsState}
+            studentNames={studentNames}
+            onPage={setWithdrawalsPage}
+            onOpen={(item) => setWithdrawalId(item.id)}
+          />
+        }
+      />
+      <WithdrawalDetailDialog
+        open={withdrawalId !== null}
+        state={withdrawalState}
+        currentUserId={currentUserId}
+        onViewCharge={(id) => {
+          setWithdrawalId(null);
+          setChargeNotice('');
+          setChargeId(id);
+        }}
+        onClose={() => setWithdrawalId(null)}
       />
       {canManage ? (
         <>

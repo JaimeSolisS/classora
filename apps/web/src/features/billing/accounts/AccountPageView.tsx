@@ -50,7 +50,8 @@ import { toggleStatus, type AccountView } from './rules';
 // a moved due date carries the "changed" marker, and billing.manage holders
 // get "Change due date" on each charge with something open. #386: every
 // charge row has "Details" (its adjustments and allocations), and
-// billing.manage holders "Add charge" on the Charges section.
+// billing.manage holders "Add charge" on the Charges section. #387 B4: the
+// page passes its Withdrawals section, rendered after Payments.
 
 export type PageState<T> =
   | { status: 'loading' }
@@ -91,6 +92,8 @@ export interface AccountPageViewProps {
   announcement?: string;
   /** The receipt of the payment just recorded (#98 H1), shown below it. */
   recordedReceipt?: ReceiptReference | null;
+  /** #387 B4: the Withdrawals section, after Payments. */
+  withdrawals?: ReactNode;
 }
 
 function stateBody<T>(
@@ -124,6 +127,7 @@ export function AccountPageView({
   onAddCharge,
   announcement = '',
   recordedReceipt = null,
+  withdrawals = null,
 }: AccountPageViewProps) {
   const { t } = useTranslation();
   const labels = useAccountLabels();
@@ -668,6 +672,7 @@ export function AccountPageView({
         </h2>
         {paymentsBody}
       </section>
+      {withdrawals}
     </div>
   );
 }

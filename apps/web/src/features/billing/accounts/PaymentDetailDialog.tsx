@@ -218,6 +218,14 @@ export function PaymentDetailDialog({
                     </TableCell>
                     <TableCell className="max-w-56 whitespace-normal break-words">
                       {refund.reason ?? '—'}
+                      {refund.withdrawal_id ? (
+                        <span
+                          className="mt-1 block text-xs font-medium"
+                          data-refund-withdrawal={refund.withdrawal_id}
+                        >
+                          {t('billing.withdrawals.fromWithdrawal')}
+                        </span>
+                      ) : null}
                     </TableCell>
                   </TableRow>
                 ))}

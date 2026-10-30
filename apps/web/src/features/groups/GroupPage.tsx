@@ -38,13 +38,24 @@ import {
   withdrawBody,
 } from './rules';
 import { WithdrawDialog } from './WithdrawDialog';
+import { useAccountLabels } from '@/features/billing/accounts/labels';
+import type { WithdrawalConfirmed } from '@/features/billing/withdrawals/api';
+import {
+  useCanSettleEnrollments,
+  useUnsettledEnrollments,
+} from '@/features/billing/withdrawals/useSettlement';
+import { WithdrawalFlowDialog } from '@/features/billing/withdrawals/WithdrawalDialog';
 
 // /groups/:groupId (#234 C): the staff view (schedule.view) with the
 // capacity, the next sessions and the roster, and for schedule.manage
 // holders the enroll, withdraw and edit dialogs; or the student view with
 // "My sessions" (C4). An unknown or hidden group (404) is the shared
 // not-found page. Every write refreshes the group (and the list and the
-// calendar) and is announced at the top.
+// calendar) and is announced at the top. #387 B1: with schedule.manage and
+// billing.view (and billing.manage or finance.refund.approve), Withdraw is
+// the two-step dialog (the reason, then the settlement that withdraws and
+// settles in one call), and a withdrawn row with no withdrawal settlement
+// gets "Settle billing"; a Coordinator keeps the plain withdrawal.
 
 interface PageNotice {
   notice?: string;
@@ -63,6 +74,8 @@ function GroupPageContent({ groupId }: { groupId: string }) {
   const timeZone = useCenterTimeZone();
   const canManage = useCan('schedule.manage');
   const canOverride = useCan('schedule.override');
+  const canSettle = useCanSettleEnrollments();
+  const money = useAccountLabels();
   const client = useQueryClient();
   const [notice, setNotice] = useState<string | null>(
     (location.state as PageNotice | null)?.notice ?? null,
@@ -72,6 +85,10 @@ function GroupPageContent({ groupId }: { groupId: string }) {
   const [withdrawing, setWithdrawing] = useState<GroupEnrollmentItem | null>(
     null,
   );
+  const [settling, setSettling] = useState<{
+    item: GroupEnrollmentItem;
+    withdraw: boolean;
+  } | null>(null);
   const [editing, setEditing] = useState(false);
   const [windowStart, setWindowStart] = useState<string>(() =>
     todayInZone(timeZone),
@@ -81,6 +98,14 @@ function GroupPageContent({ groupId }: { groupId: string }) {
     queryKey: groupKey(groupId),
     queryFn: ({ signal }) => fetchGroup(groupId, signal),
   });
+  const withdrawnIds = (group.data?.roster ?? [])
+    .filter((item) => item.withdrawn_at !== null)
+    .map((item) => item.id);
+  const settleIds = useUnsettledEnrollments(
+    'group_enrollment',
+    withdrawnIds,
+    view === 'staff' && canSettle,
+  );
   useDocumentTitle(group.data?.name ?? t('groups.page.title'));
   const range = sessionsWindow(windowStart, timeZone);
   const sessions = useQuery({
@@ -170,8 +195,21 @@ function GroupPageContent({ groupId }: { groupId: string }) {
         }}
         onWithdraw={(item) => {
           setNotice(null);
-          setWithdrawing(item);
+          if (canSettle) {
+            setSettling({ item, withdraw: true });
+          } else {
+            setWithdrawing(item);
+          }
         }}
+        settleIds={canSettle ? settleIds : undefined}
+        onSettle={
+          canSettle
+            ? (item) => {
+                setNotice(null);
+                setSettling({ item, withdraw: false });
+              }
+            : undefined
+        }
         onEdit={() => {
           setNotice(null);
           setEditing(true);
@@ -248,6 +286,57 @@ function GroupPageContent({ groupId }: { groupId: string }) {
               await refresh();
             }}
           />
+          {canSettle ? (
+            <WithdrawalFlowDialog
+              subject={
+                settling
+                  ? { kind: 'group_enrollment', id: settling.item.id }
+                  : null
+              }
+              title={
+                settling?.withdraw
+                  ? t('groups.withdraw.title')
+                  : t('billing.withdrawals.settle.title')
+              }
+              subjectName={detail.name}
+              firstStep={
+                settling?.withdraw
+                  ? {
+                      description: t('groups.withdraw.description', {
+                        name: settling.item.student.display_name,
+                        group: detail.name,
+                      }),
+                      reason: t('billing.withdrawals.fields.reason'),
+                      keep: t('groups.withdraw.keep'),
+                      next: t('billing.withdrawals.dialog.next'),
+                    }
+                  : undefined
+              }
+              onDone={(confirmed: WithdrawalConfirmed) => {
+                const name = settling?.item.student.display_name ?? '';
+                const withdrew = settling?.withdraw ?? false;
+                setSettling(null);
+                // The row's button is gone: the notice takes the focus.
+                announce(
+                  t(
+                    withdrew
+                      ? 'billing.withdrawals.done'
+                      : 'billing.withdrawals.settled',
+                    {
+                      student: name,
+                      subject: detail.name,
+                      credit: money.money(confirmed.withdrawal.amount),
+                      refund: money.money(confirmed.withdrawal.refund_amount),
+                      after: money.money(confirmed.account_credit_after),
+                    },
+                  ),
+                  true,
+                );
+                void refresh();
+              }}
+              onClose={() => setSettling(null)}
+            />
+          ) : null}
           <EditGroupDialog
             open={editing}
             group={detail}
