@@ -368,5 +368,7 @@
   "insufficient_account_credit": "Es más que el saldo a favor de la familia. Se actualizó el saldo; revísalo e inténtalo de nuevo.",
   "nothing_to_allocate": "No hay saldo a favor o no hay cargos por pagar a los cuales aplicarlo. Se actualizó el saldo.",
   "payment_method_unavailable": "Este método de pago ya no está disponible. Elige otro.",
-  "received_on_in_future": "La fecha no puede ser posterior a hoy."
+  "received_on_in_future": "La fecha no puede ser posterior a hoy.",
+  "charge_settled": "Este cargo ya está pagado o anulado, así que su vencimiento no puede cambiar. Se volvieron a cargar los cargos.",
+  "due_date_unchanged": "Elige otra fecha: esta ya es la fecha de vencimiento."
 }

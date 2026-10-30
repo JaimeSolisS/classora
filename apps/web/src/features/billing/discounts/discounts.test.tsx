@@ -246,6 +246,7 @@ describe('access and tabs (A)', () => {
 
     expect(tabs()).toEqual([
       ['Accounts', null],
+      ['Overdue', null],
       ['Prices', null],
       ['Discounts', 'page'],
       ['Custom prices', null],
@@ -280,6 +281,7 @@ describe('access and tabs (A)', () => {
     await renderAt('/billing/unbilled');
     expect(tabs().map(([name]) => name)).toEqual([
       'Accounts',
+      'Overdue',
       'Tuition plans',
       'Packages',
       'Unbilled',

@@ -187,6 +187,7 @@ describe('the unbilled list (C1, C5)', () => {
     ].map((a) => [a.textContent, a.getAttribute('aria-current')]);
     expect(tabs).toEqual([
       ['Accounts', null],
+      ['Overdue', null],
       ['Prices', null],
       ['Discounts', null],
       ['Custom prices', null],

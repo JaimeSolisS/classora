@@ -356,6 +356,10 @@ unless a bullet says otherwise.
   and its history, and record cash, transfer or other payments, applied
   oldest first or to chosen charges; whatever isn't applied stays as
   account credit, which they can apply to charges later.
+- Billing → Overdue lists the families with overdue charges, with aging
+  buckets (1–30, 31–60, 61–90 and over 90 days). On a family's account,
+  staff can change an open charge's due date (with a reason, kept in its
+  history) and set extra days to pay for the family's new charges.
 - While billing is on, families receive in-app reminders before and after
   their charges fall due (a few days before, once overdue, and again two
   weeks later), sent once per charge and stage to the family's guardians.

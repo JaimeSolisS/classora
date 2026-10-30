@@ -368,5 +368,7 @@
   "insufficient_account_credit": "That is more than the family's account credit. The balance was updated; check it and try again.",
   "nothing_to_allocate": "There is no account credit or no open charge to apply it to. The balance was updated.",
   "payment_method_unavailable": "This payment method isn't available any more. Choose another.",
-  "received_on_in_future": "The date can't be after today."
+  "received_on_in_future": "The date can't be after today.",
+  "charge_settled": "This charge is already paid or void, so its due date can't change. The charges were reloaded.",
+  "due_date_unchanged": "Choose a different date: this is already the due date."
 }

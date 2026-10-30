@@ -50,6 +50,7 @@ type Common = {
     tabs: Record<
       | 'label'
       | 'accounts'
+      | 'overdue'
       | 'prices'
       | 'discounts'
       | 'customPrices'
@@ -74,6 +75,27 @@ type Common = {
         modes: Record<'oldest_first' | 'explicit' | 'none', string>;
       };
       credit: { action: string };
+    };
+    // #382 F3: the overdue accounts and the due-date dialogs.
+    overdue: {
+      title: string;
+      filters: { minDays: string };
+    };
+    dueDates: {
+      offset: {
+        editLabel: string;
+        title: string;
+        field: string;
+        save: string;
+        label_other: string;
+      };
+      change: {
+        action: string;
+        title: string;
+        newDate: string;
+        reason: string;
+        submit: string;
+      };
     };
     paymentMethods: Record<'cash' | 'transfer' | 'other', string>;
     packages: {
@@ -114,8 +136,8 @@ type Common = {
       status: Record<'scheduled' | 'active' | 'paused' | 'ended', string>;
       filters: { status: string; searchStudent: string };
       periodStates: Record<'paused', string>;
-      // #379 G3: a paid charge.
-      chargeStatus: Record<'paid', string>;
+      // #379 G3: a paid charge; #382 F3: an overdue one.
+      chargeStatus: Record<'pending' | 'paid' | 'overdue', string>;
       pauses: { empty: string };
       pause: Record<'action' | 'title' | 'submit' | 'from', string>;
       resume: Record<'action' | 'title' | 'submit', string>;
