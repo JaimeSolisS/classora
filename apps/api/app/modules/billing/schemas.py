@@ -54,6 +54,7 @@ from app.modules.billing.models import (
     ALLOWED_MODELS,
     DESCRIPTION_MAX,
     DISCOUNT_NAME_MAX,
+    DUE_OFFSET_MAX,
     DURATION_MAX,
     DURATION_MIN,
     MANUAL,
@@ -550,6 +551,9 @@ class ChargeDetail:
     kind: str
     service_date: date
     due_date: date
+    original_due_date: date
+    """``charges.due_date``, as posted (#97 B2): it differs from
+    ``due_date`` once a due-date change was recorded."""
     description: str | None
     list_amount: Money
     discount_amount: Money
@@ -576,11 +580,13 @@ class ChargeDetailPage:
 
 @dataclass(frozen=True)
 class BillingAccountReference:
-    """A family's billing account: its id and due-date offset (#364 B1)."""
+    """A family's billing account: its id, due-date offset and version
+    (#364 B1; #97 C2)."""
 
     id: uuid.UUID
     family_id: uuid.UUID
     due_offset_days: int
+    version: int
 
 
 @dataclass(frozen=True)
@@ -1482,3 +1488,128 @@ class PaymentAllocationRow:
     created_at: datetime
     created_by_user_id: uuid.UUID | None
     is_valid: bool
+
+
+# --- Due dates, overdue accounts and reminders (#97) ---------------------------------
+
+ReasonText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=REASON_MAX)
+]
+"""A required staff reason (#97 D1): trimmed, 1 to 500 characters (blank →
+``string_too_short``)."""
+
+
+class BillingAccountUpdate(BaseModel):
+    """``PATCH /api/v1/families/{family_id}/billing-account`` (#97 C1, N6).
+    ``version`` is the account's version, or ``null`` for a family without
+    an account yet (it is created); ``due_offset_days`` 0–60 applies to
+    charges posted afterwards only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int | None
+    due_offset_days: Annotated[int, Field(ge=0, le=DUE_OFFSET_MAX)]
+
+
+class DueDateChangeCreate(BaseModel):
+    """``POST …/charges/{charge_id}/due-date-changes`` (#97 D1, N5).
+    ``due_date`` from 2000-01-01 to 2099-12-31 (``date_out_of_range``), past
+    dates included; ``reason`` trimmed, 1 to 500 characters."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    due_date: date
+    reason: ReasonText
+
+    _date = field_validator("due_date")(_effective_from)
+
+
+@dataclass(frozen=True)
+class AccountSettings:
+    """A billing account's editable settings after a change (#97 C1)."""
+
+    family_id: uuid.UUID
+    account_id: uuid.UUID
+    due_offset_days: int
+    version: int
+
+
+@dataclass(frozen=True)
+class DueDateChangeRow:
+    """One ``charge_due_date_changes`` row (#97 D1, D2)."""
+
+    id: uuid.UUID
+    charge_id: uuid.UUID
+    previous_due_date: date
+    due_date: date
+    reason: str
+    changed_by_user_id: uuid.UUID
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class RecordedDueDateChange:
+    """A recorded change with the charge's status after it (#97 D1)."""
+
+    change: DueDateChangeRow
+    status: ChargeStatus
+
+
+@dataclass(frozen=True)
+class AgingBuckets:
+    """Overdue open amounts by days past the effective due date (#97 E1,
+    N7); the bounds are inclusive as named."""
+
+    days_1_30: Money
+    days_31_60: Money
+    days_61_90: Money
+    days_over_90: Money
+
+
+@dataclass(frozen=True)
+class OverdueAccountRow:
+    """One account with overdue charges (#97 E1). ``days_overdue`` = today
+    − ``oldest_due_date``; account credit is shown, never netted."""
+
+    account_id: uuid.UUID
+    family_id: uuid.UUID
+    family_name: str
+    family_is_active: bool
+    overdue_total: Money
+    overdue_charges: int
+    oldest_due_date: date
+    days_overdue: int
+    buckets: AgingBuckets
+    outstanding: Money
+    account_credit: Money
+    net_balance: Money
+    last_reminded_at: datetime | None
+
+
+@dataclass(frozen=True)
+class OverdueTotals:
+    """The totals over every account of the filtered set (#97 E1)."""
+
+    accounts: int
+    overdue_total: Money
+    buckets: AgingBuckets
+
+
+@dataclass(frozen=True)
+class OverdueAccountPage:
+    """One page of :class:`OverdueAccountRow` with the filtered totals."""
+
+    items: tuple[OverdueAccountRow, ...]
+    totals: OverdueTotals
+
+
+@dataclass(frozen=True)
+class ReminderCharge:
+    """A charge of an account to remind, read under the account's share
+    lock (#97 F4): its stage now, its effective due date and open
+    amount."""
+
+    charge_id: uuid.UUID
+    stage: str
+    due_date: date
+    open: Money

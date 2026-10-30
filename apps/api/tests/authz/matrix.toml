@@ -442,6 +442,15 @@ allow = ["owner", "administrator", "finance_staff"]
 
 [[route]]
 method = "GET"
+path = "/api/v1/billing/overdue-accounts"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #97 E1 (N7 (a)): the overdue accounts with aging buckets. Shapes, filters,
+# totals and statement bounds: tests/integration/test_billing_overdue_accounts.py.
+
+[[route]]
+method = "GET"
 path = "/api/v1/billing/package-products"
 access = "permission"
 permission = "billing.manage"
@@ -1480,6 +1489,18 @@ access = "authenticated"
 # tests/integration/test_billing_account_access.py.
 
 [[route]]
+method = "PATCH"
+path = "/api/v1/families/{family_id}/billing-account"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #97 C1 (N6 (a)): the family's due-date offset. No Idempotency-Key and no
+# reauthentication (it moves no money). The placeholder id is no family: 404
+# for the allowed roles. The version rule, forward-only and the lock:
+# tests/integration/test_billing_account_offset.py.
+json = { version = 1, due_offset_days = 5 }
+
+[[route]]
 method = "POST"
 path = "/api/v1/families/{family_id}/billing-account/allocations"
 access = "permission"
@@ -1502,6 +1523,28 @@ access = "authenticated"
 # of their active profile, anyone else 404. The placeholder id is no family:
 # 404 for every signed-in role. Roles and guardians:
 # tests/integration/test_billing_account_access.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/charges/{charge_id}/due-date-changes"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #97 D2: a charge's due-date history, staff only (the reasons are staff
+# text; guardians get 403). The placeholder ids are no family: 404 for the
+# allowed roles. Shapes: tests/integration/test_billing_due_date_changes.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/families/{family_id}/billing-account/charges/{charge_id}/due-date-changes"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #97 D1 (N5 (a)): change a posted charge's due date. No Idempotency-Key (a
+# repeat is 409 due_date_unchanged) and no reauthentication. The placeholder
+# ids are no family: 404 for the allowed roles. Order, 409s and effects:
+# tests/integration/test_billing_due_date_changes.py.
+json = { due_date = "2031-03-10", reason = "Acuerdo con la familia" }
 
 [[route]]
 method = "GET"

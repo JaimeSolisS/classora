@@ -1510,7 +1510,15 @@
       "academics_progress_report_approved": "A progress report for {{period_start}} – {{period_end}} was approved.",
       "academics_progress_report_changes_requested": "A reviewer asked for changes to your progress report.",
       "academics_progress_report_retracted": "Your progress report was retracted.",
-      "academics_progress_report_due": "Your draft progress report for {{period_start}} – {{period_end}} is ready to write."
+      "academics_progress_report_due": "Your draft progress report for {{period_start}} – {{period_end}} is ready to write.",
+      "billing_payment_reminder_one": "You have {{count}} charge of {{open_total}} to pay.",
+      "billing_payment_reminder_other": "You have {{count}} charges totalling {{open_total}} to pay.",
+      "billing_payment_reminder_due_soon_one": "{{count}} charge of {{open_total}} is due on {{due_on}}.",
+      "billing_payment_reminder_due_soon_other": "{{count}} charges totalling {{open_total}} are due, the first on {{due_on}}.",
+      "billing_payment_reminder_overdue_one": "{{count}} charge of {{open_total}} has been overdue since {{due_on}}.",
+      "billing_payment_reminder_overdue_other": "{{count}} charges totalling {{open_total}} are overdue, the first since {{due_on}}.",
+      "billing_payment_reminder_overdue_followup_one": "Reminder: {{count}} charge of {{open_total}} is still unpaid since {{due_on}}.",
+      "billing_payment_reminder_overdue_followup_other": "Reminder: {{count}} charges totalling {{open_total}} are still unpaid, the first since {{due_on}}."
     }
   },
   "scheduling": {

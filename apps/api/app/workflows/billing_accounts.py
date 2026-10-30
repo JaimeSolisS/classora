@@ -25,6 +25,18 @@ Statements: the summary at most seven whatever the number of charges (the
 guardian's own family, the family with its students, the account, the
 center's today, the charges, the account credit, the students' names);
 the charge list at most seven; the ledger at most four per page.
+
+**Due-date writes and history** (#97 C, D; ``billing.manage`` /
+``billing.view`` routes, so no record policy beyond the family's
+existence): :func:`update_offset` (unknown family → ``404 not_found`` →
+``billing.update_due_offset``: the N6 version rule ``409
+version_conflict``, the account lock, the update; an inactive family is
+allowed), :func:`record_due_date_change` (unknown family, or a charge that
+isn't on the family's account → the same ``404 not_found`` →
+``billing.record_due_date_change``: the account lock, ``409
+charge_settled``, ``409 due_date_unchanged``, the row) and
+:func:`list_due_date_changes` (the same ``404`` rules; two statements:
+the charge on the family's account, then its changes).
 """
 
 import uuid
@@ -45,10 +57,13 @@ from app.modules.administration import service as administration
 from app.modules.billing import service as billing
 from app.modules.families import service as families
 from app.workflows.billing_account_schemas import (
+    BillingAccountSettings,
     BillingAccountSummary,
     BillingFamily,
     BillingStudent,
     ChargeItem,
+    DueDateChangeItem,
+    DueDateChangeRecorded,
     LedgerEntryItem,
     StudentBalanceItem,
 )
@@ -133,6 +148,7 @@ async def get_summary(
         ),
         account_id=None if account is None else account.id,
         due_offset_days=0 if account is None else account.due_offset_days,
+        version=None if account is None else account.version,
         outstanding=zero if balance is None else balance.outstanding,
         account_credit=zero if balance is None else balance.account_credit,
         net_balance=zero if balance is None else balance.net_balance,
@@ -174,6 +190,7 @@ async def list_charges(
                 kind=c.kind,
                 service_date=c.service_date,
                 due_date=c.due_date,
+                original_due_date=c.original_due_date,
                 description=c.description,
                 list_amount=c.list_amount,
                 discount_amount=c.discount_amount,
@@ -234,3 +251,87 @@ async def list_ledger(
         ],
         next_cursor=found.next_cursor,
     )
+
+
+# --- Due dates (#97 C, D) -----------------------------------------------------------
+
+
+async def _existing_family(session: AsyncSession, family_id: uuid.UUID) -> None:
+    if await families.family_record_reference(session, family_id) is None:
+        raise RecordNotFoundError()
+
+
+async def update_offset(
+    session: AsyncSession, family_id: uuid.UUID, body: billing.BillingAccountUpdate
+) -> BillingAccountSettings:
+    """``PATCH …/billing-account`` (#97 C1)."""
+    await _existing_family(session, family_id)
+    settings = await billing.update_due_offset(
+        session,
+        family_id,
+        version=body.version,
+        due_offset_days=body.due_offset_days,
+    )
+    return BillingAccountSettings(
+        family_id=settings.family_id,
+        account_id=settings.account_id,
+        due_offset_days=settings.due_offset_days,
+        version=settings.version,
+    )
+
+
+async def _charge_account(
+    session: AsyncSession, family_id: uuid.UUID, charge_id: uuid.UUID
+) -> uuid.UUID:
+    """The family's account id when the charge is on it, else ``404`` (an
+    unknown family and another family's charge alike; one statement)."""
+    account_id = await billing.charge_account_of_family(session, charge_id, family_id)
+    if account_id is None:
+        raise RecordNotFoundError()
+    return account_id
+
+
+def _change_item(row: billing.DueDateChangeRow) -> DueDateChangeItem:
+    return DueDateChangeItem(
+        id=row.id,
+        charge_id=row.charge_id,
+        previous_due_date=row.previous_due_date,
+        due_date=row.due_date,
+        reason=row.reason,
+        changed_by_user_id=row.changed_by_user_id,
+        created_at=row.created_at,
+    )
+
+
+async def record_due_date_change(
+    session: AsyncSession,
+    family_id: uuid.UUID,
+    charge_id: uuid.UUID,
+    body: billing.DueDateChangeCreate,
+) -> DueDateChangeRecorded:
+    """``POST …/charges/{charge_id}/due-date-changes`` (#97 D1)."""
+    account_id = await _charge_account(session, family_id, charge_id)
+    today = await administration.center_today(session)
+    recorded = await billing.record_due_date_change(
+        session,
+        account_id,
+        charge_id,
+        due_date=body.due_date,
+        reason=body.reason,
+        today=today,
+    )
+    return DueDateChangeRecorded(
+        **_change_item(recorded.change).model_dump(), status=recorded.status
+    )
+
+
+async def list_due_date_changes(
+    session: AsyncSession, family_id: uuid.UUID, charge_id: uuid.UUID
+) -> list[DueDateChangeItem]:
+    """``GET …/charges/{charge_id}/due-date-changes`` (#97 D2), oldest
+    first."""
+    await _charge_account(session, family_id, charge_id)
+    return [
+        _change_item(row)
+        for row in await billing.list_due_date_changes(session, charge_id)
+    ]

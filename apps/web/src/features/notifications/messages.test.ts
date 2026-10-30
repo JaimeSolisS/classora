@@ -772,3 +772,87 @@ describe('the due placeholder notification (#316 E6)', () => {
     expect(link({ report_id: '' }, recipient)).toBe('/progress-reports');
   });
 });
+
+describe('the payment reminder notification (#97 F6)', () => {
+  const type = 'billing.payment_reminder';
+  const family_id = '00000000-0000-4000-8000-000000000097';
+
+  async function inLanguage(lng: 'es' | 'en', run: () => void): Promise<void> {
+    const previous = i18n.language;
+    await i18n.changeLanguage(lng);
+    try {
+      run();
+    } finally {
+      await i18n.changeLanguage(previous);
+    }
+  }
+
+  const text = (
+    lng: 'es' | 'en',
+    kind: string,
+    count: number,
+    open_total = '1250.50',
+  ) =>
+    notificationMessage(i18n.getFixedT(lng), i18n, {
+      notification_type: type,
+      params: { family_id, kind, count, open_total, due_on: '2031-03-10' },
+    });
+
+  it('renders each stage with the money and the date, in both languages', async () => {
+    await inLanguage('en', () => {
+      expect(text('en', 'due_soon', 1)).toBe(
+        '1 charge of $1,250.50 is due on Mar 10, 2031.',
+      );
+      expect(text('en', 'overdue', 1)).toBe(
+        '1 charge of $1,250.50 has been overdue since Mar 10, 2031.',
+      );
+      expect(text('en', 'overdue_followup', 1)).toBe(
+        'Reminder: 1 charge of $1,250.50 is still unpaid since Mar 10, 2031.',
+      );
+    });
+    await inLanguage('es', () => {
+      expect(text('es', 'due_soon', 1)).toBe(
+        'Tienes 1 cargo por $1,250.50 que vence el 10 mar 2031.',
+      );
+      expect(text('es', 'overdue', 1)).toBe(
+        'Tienes 1 cargo por $1,250.50 vencido desde el 10 mar 2031.',
+      );
+      expect(text('es', 'overdue_followup', 1)).toBe(
+        'Recordatorio: 1 cargo por $1,250.50 sigue pendiente desde el 10 mar 2031.',
+      );
+    });
+  });
+
+  it('uses the plural on count', async () => {
+    await inLanguage('en', () => {
+      expect(text('en', 'due_soon', 3, '900.00')).toBe(
+        '3 charges totalling $900.00 are due, the first on Mar 10, 2031.',
+      );
+      expect(text('en', 'overdue', 2)).toBe(
+        '2 charges totalling $1,250.50 are overdue, the first since Mar 10, 2031.',
+      );
+    });
+    await inLanguage('es', () => {
+      expect(text('es', 'overdue_followup', 2)).toBe(
+        'Recordatorio: 2 cargos por $1,250.50 siguen pendientes; el primero desde el 10 mar 2031.',
+      );
+    });
+  });
+
+  it('falls back to the base message for an unknown stage, never an id', () => {
+    expect(text('en', 'later', 1)).toBe(
+      'You have 1 charge of $1,250.50 to pay.',
+    );
+    expect(text('es', 'later', 2)).toBe(
+      'Tienes 2 cargos por $1,250.50 pendientes de pago.',
+    );
+    for (const lng of ['es', 'en'] as const) {
+      expect(text(lng, 'due_soon', 1)).not.toContain(family_id);
+      expect(text(lng, 'due_soon', 1)).not.toContain('notifications.types');
+    }
+  });
+
+  it('has no link until the family billing page (#102)', () => {
+    expect(NOTIFICATION_LINKS[type]).toBeUndefined();
+  });
+});

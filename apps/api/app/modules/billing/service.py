@@ -145,6 +145,34 @@ the workflow ``app.workflows.billing_payments``). For other modules:
   refunds reuse it).
 - **#98 seam:** the receipt is issued inside :func:`record_payment`, after
   the payment and allocation inserts (E13), so a #88 replay returns it.
+
+**Due dates, overdue accounts and reminders** (#97;
+:mod:`~app.modules.billing.due_dates`, :mod:`~app.modules.billing.overdue`,
+the pure :mod:`~app.modules.billing.reminders` and
+:mod:`~app.modules.billing.reminder_log`; the workflows
+``app.workflows.billing_accounts``, ``app.workflows.billing_overdue`` and
+``app.workflows.charge_reminders``). For other modules:
+
+- The **effective due date** of a charge is its latest
+  ``charge_due_date_changes`` row, else ``charges.due_date``
+  (:func:`effective_due_date_column`, unexecuted); every status, the #96
+  oldest-first order and the reminders read it. ``ChargeDetail.
+  original_due_date`` is the posted one.
+- :func:`update_due_offset` (the family offset, forward-only: the account
+  ``FOR UPDATE`` → ``409 version_conflict``; ``version=None`` creates the
+  account) and :func:`record_due_date_change` (the account ``FOR UPDATE`` →
+  ``409 charge_settled`` / ``409 due_date_unchanged`` → one audited,
+  append-only row; needs the Unit of Work's actor), with
+  :func:`charge_account_of_family` and :func:`list_due_date_changes`.
+- :func:`overdue_accounts`: a page of the accounts with overdue charges,
+  aging buckets and totals over the filtered set (the families come from
+  the caller as an unexecuted select), constant statements.
+- :func:`share_lock_billing_account`: the account row ``FOR SHARE`` (the
+  reminder job's lock: it waits for every ``FOR UPDATE`` writer).
+- :func:`reminder_stage` (pure; :data:`REMINDER_STAGES`),
+  :func:`reminder_candidate_accounts`, :func:`charges_to_remind` and
+  :func:`record_reminders` (``ON CONFLICT DO NOTHING``; only the inserted
+  rows come back).
 """
 
 from app.modules.billing.balances import account_balance as account_balance
@@ -153,6 +181,9 @@ from app.modules.billing.balances import account_of_family as account_of_family
 from app.modules.billing.balances import charge_balances as charge_balances
 from app.modules.billing.balances import charge_details as charge_details
 from app.modules.billing.balances import charge_status as charge_status
+from app.modules.billing.balances import (
+    effective_due_date_column as effective_due_date_column,
+)
 from app.modules.billing.balances import family_balance as family_balance
 from app.modules.billing.balances import ledger_entries as ledger_entries
 from app.modules.billing.balances import (
@@ -211,6 +242,16 @@ from app.modules.billing.discounts import (
 )
 from app.modules.billing.discounts import matches as matches
 from app.modules.billing.discounts import select_discounts as select_discounts
+from app.modules.billing.due_dates import (
+    charge_account_of_family as charge_account_of_family,
+)
+from app.modules.billing.due_dates import (
+    list_due_date_changes as list_due_date_changes,
+)
+from app.modules.billing.due_dates import (
+    record_due_date_change as record_due_date_change,
+)
+from app.modules.billing.due_dates import update_due_offset as update_due_offset
 from app.modules.billing.errors import (
     AllocationChargeNotFoundError as AllocationChargeNotFoundError,
 )
@@ -224,6 +265,7 @@ from app.modules.billing.errors import (
     BillingValidationError as BillingValidationError,
 )
 from app.modules.billing.errors import ChargeNetNegativeError as ChargeNetNegativeError
+from app.modules.billing.errors import ChargeSettledError as ChargeSettledError
 from app.modules.billing.errors import (
     CustomPriceEffectiveFromInvalidError as CustomPriceEffectiveFromInvalidError,
 )
@@ -242,6 +284,9 @@ from app.modules.billing.errors import (
 )
 from app.modules.billing.errors import (
     DiscountNameExistsError as DiscountNameExistsError,
+)
+from app.modules.billing.errors import (
+    DueDateUnchangedError as DueDateUnchangedError,
 )
 from app.modules.billing.errors import (
     InsufficientAccountCreditError as InsufficientAccountCreditError,
@@ -342,6 +387,11 @@ from app.modules.billing.ledger import (
 from app.modules.billing.ledger import (
     session_charge_states as session_charge_states,
 )
+from app.modules.billing.ledger import (
+    share_lock_billing_account as share_lock_billing_account,
+)
+from app.modules.billing.overdue import BUCKETS as BUCKETS
+from app.modules.billing.overdue import overdue_accounts as overdue_accounts
 from app.modules.billing.package_rules import PACKAGE_STATUSES as PACKAGE_STATUSES
 from app.modules.billing.package_rules import EligiblePackage as EligiblePackage
 from app.modules.billing.package_rules import PackageStatus as PackageStatus
@@ -430,14 +480,26 @@ from app.modules.billing.pricing import lookup_price as lookup_price
 from app.modules.billing.pricing import make_quote as make_quote
 from app.modules.billing.pricing import pinned_base_prices as pinned_base_prices
 from app.modules.billing.pricing import quote as quote
+from app.modules.billing.reminder_log import ACCOUNT_PAGE as ACCOUNT_PAGE
+from app.modules.billing.reminder_log import charges_to_remind as charges_to_remind
+from app.modules.billing.reminder_log import record_reminders as record_reminders
+from app.modules.billing.reminder_log import (
+    reminder_candidate_accounts as reminder_candidate_accounts,
+)
+from app.modules.billing.reminders import REMINDER_STAGES as REMINDER_STAGES
+from app.modules.billing.reminders import ReminderStage as ReminderStage
+from app.modules.billing.reminders import reminder_stage as reminder_stage
 from app.modules.billing.schemas import AccountBalance as AccountBalance
+from app.modules.billing.schemas import AccountSettings as AccountSettings
 from app.modules.billing.schemas import AdjustmentDraft as AdjustmentDraft
+from app.modules.billing.schemas import AgingBuckets as AgingBuckets
 from app.modules.billing.schemas import AllocationLine as AllocationLine
 from app.modules.billing.schemas import AllocationRequest as AllocationRequest
 from app.modules.billing.schemas import BasePrice as BasePrice
 from app.modules.billing.schemas import (
     BillingAccountReference as BillingAccountReference,
 )
+from app.modules.billing.schemas import BillingAccountUpdate as BillingAccountUpdate
 from app.modules.billing.schemas import (
     BillingSettingsDetail as BillingSettingsDetail,
 )
@@ -461,7 +523,12 @@ from app.modules.billing.schemas import (
 )
 from app.modules.billing.schemas import DiscountCreate as DiscountCreate
 from app.modules.billing.schemas import DiscountUpdate as DiscountUpdate
+from app.modules.billing.schemas import DueDateChangeCreate as DueDateChangeCreate
+from app.modules.billing.schemas import DueDateChangeRow as DueDateChangeRow
 from app.modules.billing.schemas import LedgerEntry as LedgerEntry
+from app.modules.billing.schemas import OverdueAccountPage as OverdueAccountPage
+from app.modules.billing.schemas import OverdueAccountRow as OverdueAccountRow
+from app.modules.billing.schemas import OverdueTotals as OverdueTotals
 from app.modules.billing.schemas import (
     PaymentAllocationRow as PaymentAllocationRow,
 )
@@ -477,7 +544,11 @@ from app.modules.billing.schemas import PriceInEffect as PriceInEffect
 from app.modules.billing.schemas import PriceQuery as PriceQuery
 from app.modules.billing.schemas import Quote as Quote
 from app.modules.billing.schemas import RecordedAllocation as RecordedAllocation
+from app.modules.billing.schemas import (
+    RecordedDueDateChange as RecordedDueDateChange,
+)
 from app.modules.billing.schemas import RecordedPayment as RecordedPayment
+from app.modules.billing.schemas import ReminderCharge as ReminderCharge
 from app.modules.billing.schemas import StudentBalance as StudentBalance
 from app.modules.billing.settings import billing_starts_on as billing_starts_on
 from app.modules.billing.settings import (

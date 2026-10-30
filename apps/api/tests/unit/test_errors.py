@@ -229,6 +229,8 @@ def test_production_app_has_no_demo_route(
         "/api/v1/families/{family_id}/billing-account/payments/{payment_id}",
         "/api/v1/families/{family_id}/billing-account/allocations",
         "/api/v1/billing/payment-methods",
+        "/api/v1/families/{family_id}/billing-account/charges/{charge_id}/due-date-changes",
+        "/api/v1/billing/overdue-accounts",
         "/api/v1/scheduling-policies",
         "/api/v1/scheduling-policies/{policy_id}",
         "/api/v1/classrooms",

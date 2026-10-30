@@ -96,8 +96,20 @@ singleton (mutable config, versioned) holding the billing start floor
   ``package_purchase`` charge, with the composite foreign key to the
   package's ``(id, billing_account_id, student_id)``.
 
-Every model is ``Audited``; every foreign key is ``ON DELETE RESTRICT``
-except ``tuition_plan_pauses.tuition_plan_id`` (``CASCADE``).
+**Due dates and reminders** (#97; data-model §3.11, §3.27):
+
+- ``charge_due_date_changes`` (append-only, audited): a staff change of a
+  posted charge's due date, with the effective date before it
+  (``previous_due_date``) and a reason. The latest row (``created_at``,
+  ``id``) is the charge's effective due date.
+- ``charge_reminders`` (append-only, **not** audited, like
+  ``notifications``: an operational log written with ``INSERT … ON
+  CONFLICT DO NOTHING``, which the audit guard refuses on audited tables):
+  one row per ``(charge_id, stage)`` the reminder job sent.
+
+Every model but ``ChargeReminder`` is ``Audited``; every foreign key is ``ON
+DELETE RESTRICT`` except ``tuition_plan_pauses.tuition_plan_id``
+(``CASCADE``).
 """
 
 import uuid
@@ -127,6 +139,7 @@ from sqlalchemy.orm import Mapped, declared_attr, mapped_column
 from app.core.audit import Audited
 from app.core.models import Base, Model, VersionedMixin
 from app.core.money import Money, MoneyType
+from app.modules.billing.reminders import REMINDER_STAGES
 
 CLASS_TYPES: Final = ("individual", "group", "course")
 PRICING_MODELS: Final = ("per_session", "full_course", "per_period", "package")
@@ -1245,3 +1258,63 @@ class PackageCreditTransaction(Audited, Model):
         ),
         nullable=True,
     )
+
+
+# --- Due dates and reminders (#97) ---------------------------------------------------
+
+DUE_DATE_APPEND_ONLY_TABLES: Final = ("charge_due_date_changes", "charge_reminders")
+"""The tables migration 0067 makes append-only (data-model §5.1)."""
+DUE_DATE_MIN: Final = date(2000, 1, 1)
+DUE_DATE_MAX: Final = date(2099, 12, 31)
+REMINDER_STAGE_MAX: Final = 24
+REMINDER_KEY: Final = "uq_charge_reminders_charge_stage"
+
+
+class ChargeDueDateChange(Audited, Model):
+    """A change of a posted charge's due date (#97 A1; data-model §3.11).
+    Append-only. ``previous_due_date`` is the effective due date before the
+    change; the latest row by ``(created_at, id)`` is the effective one."""
+
+    __tablename__ = "charge_due_date_changes"
+    __table_args__ = (
+        CheckConstraint(
+            f"due_date BETWEEN '{DUE_DATE_MIN.isoformat()}'"
+            f" AND '{DUE_DATE_MAX.isoformat()}'",
+            name="due_date_range",
+        ),
+        CheckConstraint("due_date <> previous_due_date", name="due_date_changed"),
+        CheckConstraint(staff_text_check("reason", REASON_MAX), name="reason_valid"),
+        ForeignKeyConstraint(
+            ["charge_id", "billing_account_id"],
+            ["charges.id", "charges.billing_account_id"],
+            name="fk_charge_due_date_changes_charge_id_charges",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_charge_due_date_changes_charge_created", "charge_id", "created_at", "id"
+        ),
+    )
+
+    charge_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    billing_account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    previous_due_date: Mapped[date] = mapped_column(Date)
+    due_date: Mapped[date] = mapped_column(Date)
+    reason: Mapped[str] = mapped_column(String(REASON_MAX))
+    changed_by_user_id: Mapped[uuid.UUID] = _actor(nullable=False)
+
+
+class ChargeReminder(Model):
+    """One reminder stage sent for one charge (#97 A2; data-model §3.27).
+    Append-only and **not** audited (N4 (a)). ``due_date`` is the effective
+    due date the stage was computed from."""
+
+    __tablename__ = "charge_reminders"
+    __table_args__ = (
+        CheckConstraint(_in("stage", REMINDER_STAGES), name="stage"),
+        UniqueConstraint("charge_id", "stage", name=REMINDER_KEY),
+    )
+
+    charge_id: Mapped[uuid.UUID] = _uuid_fk("charges")
+    stage: Mapped[str] = mapped_column(String(REMINDER_STAGE_MAX))
+    due_date: Mapped[date] = mapped_column(Date)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

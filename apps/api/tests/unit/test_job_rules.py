@@ -227,6 +227,7 @@ MODULE_TASKS = {
     "billing:post_enrollment_charges",
     "billing:post_tuition_charges",
     "billing:expire_packages",
+    "billing:send_charge_reminders",
 }
 
 
@@ -389,6 +390,29 @@ def test_the_package_expiry_runs_daily_at_0740_utc():
     )
     assert jobs.PACKAGE_EXPIRY_TASK == "billing:expire_packages"
     assert jobs.task_parameter_types(app)["billing:expire_packages"] == {
+        "timestamp": int
+    }
+
+
+def test_the_charge_reminders_run_daily_at_1500_utc():
+    # #97 F2 (N4 (a)): 09:00 in Mexico City; one queued job at a time.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "billing:send_charge_reminders"
+    ]
+    assert periodic.cron == "0 15 * * *"
+    assert periodic.periodic_id == "billing-send-charge-reminders"
+    assert periodic.configure_kwargs["queueing_lock"] == (
+        "billing-send-charge-reminders"
+    )
+    assert app.tasks["billing:send_charge_reminders"].queueing_lock == (
+        jobs.CHARGE_REMINDERS_QUEUEING_LOCK
+    )
+    assert jobs.CHARGE_REMINDERS_TASK == "billing:send_charge_reminders"
+    assert jobs.task_parameter_types(app)["billing:send_charge_reminders"] == {
         "timestamp": int
     }
 

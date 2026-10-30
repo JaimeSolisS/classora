@@ -166,6 +166,30 @@ def test_the_error_never_echoes_a_value(sample_type):
     assert "visible-" not in str(caught.value)
 
 
+def test_the_app_registers_the_payment_reminder():
+    # #97 F6: billing.payment_reminder, wired by app.wiring; flat data only.
+    administration.unregister_notification_type("billing.payment_reminder")
+    build_app()
+
+    assert "billing.payment_reminder" in administration.registered_notification_types()
+    assert validated_params(
+        "billing.payment_reminder",
+        {
+            "family_id": "0190f5a0-0000-7000-8000-000000000001",
+            "kind": "due_soon",
+            "count": 3,
+            "open_total": "900.00",
+            "due_on": "2031-03-13",
+        },
+    ) == {
+        "family_id": "0190f5a0-0000-7000-8000-000000000001",
+        "kind": "due_soon",
+        "count": 3,
+        "open_total": "900.00",
+        "due_on": "2031-03-13",
+    }
+
+
 # --- The dev type (D1, D2) -----------------------------------------------------------
 
 

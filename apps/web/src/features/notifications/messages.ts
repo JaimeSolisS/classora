@@ -1,6 +1,7 @@
 import type { i18n as I18n, TFunction } from 'i18next';
 import { toLanguage } from '@/i18n/language';
 import { formatLocalDate, toLocalDate } from '@/lib/time';
+import { formatMoney } from '@/lib/money';
 import { closeoutPath } from '@/features/tutor-portal/closeout/api';
 import { notesPath } from '@/features/tutor-portal/notes/api';
 import { myPlanPath, myPlansPath } from '@/features/learning-plans/api';
@@ -29,6 +30,9 @@ import type { NotificationItem } from './api';
 // `_substitution`; #62 F3: a change request's `_cancellation` /
 // `_reschedule`), and `_<kind>_makeup` when the params name a
 // `makeup_until` (#62: an approved cancellation that allows a makeup).
+// A message with a numeric `count` param is plural (#97
+// `billing.payment_reminder`: `_one`/`_other` keys), so the lookup passes
+// the count.
 
 /** The i18n key of a type's message, for example `notifications.types.dev_demo`. */
 export function notificationMessageKey(type: string): string {
@@ -81,6 +85,11 @@ const DATE_PARAMS = new Set([
 ]);
 const LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Params that hold an amount (a decimal string, #97 payment reminders):
+ * shown as MXN money. */
+const MONEY_PARAMS = new Set(['open_total']);
+const MONEY = /^-?\d{1,12}(\.\d{1,2})?$/;
+
 function values(
   params: NotificationItem['params'],
   i18n: I18n,
@@ -105,6 +114,13 @@ function values(
           LOCAL_DATE.test(value)
         ) {
           return [name, formatLocalDate(value, { language })];
+        }
+        if (
+          MONEY_PARAMS.has(name) &&
+          typeof value === 'string' &&
+          MONEY.test(value)
+        ) {
+          return [name, formatMoney(value)];
         }
         return [name, value];
       }),
@@ -142,13 +158,15 @@ export function notificationMessage(
 ): string {
   const base = notificationMessageKey(item.notification_type);
   const series = `${base}_series`;
+  // A plural message only has `_one`/`_other` keys: look it up by count.
+  const lookup =
+    typeof item.params.count === 'number' ? { count: item.params.count } : {};
+  const exists = (key: string) => i18n.exists(key, lookup);
   const key =
-    isSeries(item.params) && i18n.exists(series)
+    isSeries(item.params) && exists(series)
       ? series
-      : (kindVariants(base, item.params).find((variant) =>
-          i18n.exists(variant),
-        ) ?? base);
-  if (!i18n.exists(key)) {
+      : (kindVariants(base, item.params).find(exists) ?? base);
+  if (!exists(key)) {
     return t('notifications.unknown');
   }
   // A dynamic key: the typed t() can't check it, i18n.exists() did.
@@ -366,7 +384,9 @@ function voidedEvaluation(params: NotificationItem['params']): string {
 
 /**
  * Where activating a notification of a type goes, from its params and its
- * recipient; a type without an entry only becomes read (for example
+ * recipient; a type without an entry only becomes read (#97's
+ * `billing.payment_reminder` until #102 links the family billing page; for
+ * example
  * `scheduling.occurrence_skipped_closure`, #232, and #54's
  * `scheduling.session_rescheduled`, `scheduling.series_changed` and
  * `scheduling.series_cancelled`: their tutor, student and guardian

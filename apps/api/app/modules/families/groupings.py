@@ -132,6 +132,45 @@ def family_name_columns() -> Select[uuid.UUID, str]:
     return select(Family.id, Family.name)
 
 
+def family_status_columns(
+    status: FamilyStatus = "all",
+) -> Select[uuid.UUID, str, bool]:
+    """``SELECT id, name, is_active FROM families`` filtered by ``status``
+    (``active | inactive | all``), **not executed** (#97 E1: the overdue
+    accounts list joins it for names, order and the status filter)."""
+    return select(Family.id, Family.name, Family.is_active).where(
+        *_status_conditions(status)
+    )
+
+
+async def family_billing_recipients(
+    session: AsyncSession, family_ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, list[uuid.UUID]]:
+    """Per family id, the users told about the family's billing account
+    (#97 N3 (a)): the logins (``guardians.user_id``) of the family's
+    **active** guardian profiles (``family_guardians``), the #364 record
+    policy's readers. Each user once, sorted; families without one are left
+    out. Students' own logins are not included. One statement (none for no
+    ids); no access check."""
+    wanted = set(family_ids)
+    if not wanted:
+        return {}
+    rows = await session.execute(
+        select(FamilyGuardian.family_id, Guardian.user_id)
+        .join(Guardian, Guardian.id == FamilyGuardian.guardian_id)
+        .where(
+            FamilyGuardian.family_id.in_(wanted),
+            Guardian.is_active.is_(True),
+            Guardian.user_id.is_not(None),
+        )
+    )
+    found: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for family_id, user_id in rows:
+        if user_id is not None:
+            found.setdefault(family_id, set()).add(user_id)
+    return {family_id: sorted(users) for family_id, users in found.items()}
+
+
 async def family_of_guardian(
     session: AsyncSession, guardian_id: uuid.UUID
 ) -> FamilyReference | None:

@@ -130,6 +130,22 @@ async def lock_billing_account(
     return account
 
 
+async def share_lock_billing_account(
+    session: AsyncSession, account_id: uuid.UUID
+) -> uuid.UUID | None:
+    """The account row ``FOR SHARE`` (#97 F4, N4 (a)): it waits for (and
+    then blocks) every writer that takes :func:`lock_billing_account`, so
+    the open amounts and effective due dates read after it are the committed
+    ones. Readers that take it don't block each other. Returns the account's
+    family id, or ``None`` for an unknown account (one statement)."""
+    family_id: uuid.UUID | None = await session.scalar(
+        select(BillingAccount.family_id)
+        .where(BillingAccount.id == account_id)
+        .with_for_update(read=True)
+    )
+    return family_id
+
+
 # --- Charges -------------------------------------------------------------------------
 
 
