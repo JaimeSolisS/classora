@@ -254,7 +254,7 @@ A reporting rule for #117, in the new read-only `reporting` module (ADR-0002 D3)
 - The coverage table "M7 issue → decisions and tables" is [`../data-model.md` §19](../data-model.md#19-m7-issue-coverage).
 - **This ADR adds nothing** to the dependency files, the permission catalog or the migrations. Each implementing issue adds its own tables, seeds, permissions and jobs. **No new runtime dependency is needed.**
 - This ADR is Proposed: a different owner answer on any item is an amendment here and in `data-model.md`, plus a follow-up issue for any part already implemented.
-- Payroll is off until an administrator sets `payroll_starts_on`, so going live never pays DEV history or demo data (E2).
+- Payroll is off until the Owner or Finance Staff set `payroll_starts_on`, so going live never pays DEV history or demo data (E2).
 - A payroll failure can't roll back a closeout or a cancellation, because pay is derived from committed state (E9).
 - An approved closeout with no terms or rate is visible and blocks `prepare`, rather than being silently paid at zero (E2).
 - A finalized period never changes; later corrections are lines in a later open period (E10, E11, W3.5).
