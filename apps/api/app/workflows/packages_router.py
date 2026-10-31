@@ -16,8 +16,9 @@ ADR-0006 E1, E6, E8, E10).
   ``Idempotency-Key``): cancel a package purchase. The reauthentication
   comes before the key, so a ``403 reauth_required`` stores nothing.
 - ``GET /api/v1/billing/packages`` and ``GET …/{package_id}``
-  (``billing.view``): staff only (#94 L9; the family portal reads arrive
-  with #102).
+  (``billing.view``): staff only (#94 L9). Families read their packages
+  through ``GET /api/v1/families/{family_id}/billing-account/packages``
+  (#102, ``app.workflows.billing_accounts_router``).
 """
 
 import uuid

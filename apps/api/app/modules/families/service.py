@@ -21,7 +21,8 @@ staff with ``guardian.view``. Family membership is never student access.
 access check). For the billing account reads (#364 B5):
 :func:`family_record_reference` (the family's id, name, active flag and
 current student ids; no access check) and :func:`own_family_id` (the family
-of the caller's active guardian profile, the #172 rule). For discounts and
+of the caller's active guardian profile, the #172 rule; :func:`own_family`
+is the ``GET /api/v1/families/own`` response, #102). For discounts and
 custom prices (#95): :func:`active_student_count` (a family's active
 students, the sibling rule) and the unexecuted :func:`family_name_columns`
 and :func:`student_name_columns` (names joined by billing reads). For due
@@ -206,6 +207,7 @@ __all__ = [
     "list_guardians",
     "list_students",
     "load_access_facts",
+    "own_family",
     "own_family_id",
     "own_student_id",
     "record_consent",
@@ -261,6 +263,8 @@ access check; #91 D4, the unbilled list)."""
 FamilyRecordReference = _groupings.FamilyRecordReference
 family_record_reference = _groupings.family_record_reference
 own_family_id = _groupings.own_family_id
+own_family = _groupings.own_family
+"""The caller's own family or ``None`` (#102 A1; at most two statements)."""
 active_student_count = _groupings.active_student_count
 """A family's number of active students (one statement; no access check;
 #95 H3)."""

@@ -293,6 +293,7 @@ export const PURCHASE_CHARGE_DETAIL: ChargeDetail = {
   ...PURCHASE_CHARGE,
   adjustments: [],
   allocations: [],
+  discounts: [],
 };
 export const CANCELLED: PackageCancelled = {
   package: {

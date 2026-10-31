@@ -1563,6 +1563,16 @@ json = {}
 
 [[route]]
 method = "GET"
+path = "/api/v1/families/own"
+access = "authenticated"
+# #102 A1 (T2 (a)): the family of the caller's active guardian profile, or
+# null (no guardian role, an inactive profile, a profile in no family); any
+# signed-in role gets 200, never 404 (it only describes the caller). Staff
+# who are also guardians get their own family, unlike GET /api/v1/families.
+# Cases: tests/integration/test_billing_family_reads.py.
+
+[[route]]
+method = "GET"
 path = "/api/v1/families/{family_id}"
 access = "permission"
 permission = "guardian.view"
@@ -1694,6 +1704,29 @@ access = "authenticated"
 # of their active profile, anyone else 404. The placeholder id is no family:
 # 404 for every signed-in role. Roles and guardians:
 # tests/integration/test_billing_account_access.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/packages"
+access = "authenticated"
+# #102 B1 (T3 (a)) the packages on the family's account (#94's PackageItem);
+# #90b F1 (a) record policy: billing.view holders (Owner, Administrator,
+# Finance Staff) see every family, a guardian only the family of their active
+# profile, anyone else 404. The placeholder id is no family: 404 for every
+# signed-in role. Roles, guardians and the walk:
+# tests/integration/test_billing_family_reads.py and
+# test_billing_family_leak.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/packages/{package_id}"
+access = "authenticated"
+# #102 B2 (T3 (a)) one package on the family's account with its unit
+# movements; the same record policy (#90b F1 (a)); a package of another
+# family's account is the same 404 as an unknown family. The placeholder ids
+# are no family: 404 for every signed-in role. Roles, guardians and the walk:
+# tests/integration/test_billing_family_reads.py and
+# test_billing_family_leak.py.
 
 [[route]]
 method = "GET"

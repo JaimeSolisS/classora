@@ -17,6 +17,12 @@ cursor).
   pagination; filters ``student_id`` and ``status`` (repeatable).
 - ``GET /api/v1/families/{family_id}/billing-account/ledger``: cursor
   pagination; filter ``student_id``.
+- ``GET /api/v1/families/{family_id}/billing-account/packages`` and
+  ``…/packages/{package_id}`` (#102 B, T3 (a)): the packages on the
+  family's account with #94's shapes; offset pagination, filters
+  ``student_id`` and ``status`` (repeatable). A package of another family
+  is the same ``404`` as an unknown family. #94's staff routes under
+  ``/api/v1/billing/packages`` stay ``billing.view`` only.
 
 Reads only: no ``Idempotency-Key``, no reauthentication.
 
@@ -62,7 +68,8 @@ from app.modules.billing.schemas import (
     ChargeStatus,
     DueDateChangeCreate,
 )
-from app.workflows import billing_accounts
+from app.modules.billing.service import PackageStatus
+from app.workflows import billing_accounts, packages
 from app.workflows.billing_account_schemas import (
     BillingAccountSettings,
     BillingAccountSummary,
@@ -71,6 +78,7 @@ from app.workflows.billing_account_schemas import (
     DueDateChangeRecorded,
     LedgerEntryItem,
 )
+from app.workflows.package_schemas import PackageDetail, PackageItem
 
 BILLING_VIEW: Final = "billing.view"
 BILLING_MANAGE: Final = "billing.manage"
@@ -171,6 +179,70 @@ async def list_family_billing_ledger(
     (payment-level rows have no student)."""
     return await billing_accounts.list_ledger(
         uow.session, principal, family_id, params=page, student_id=student_id
+    )
+
+
+@router.get(
+    "/{family_id}/billing-account/packages",
+    responses={
+        **AUTH_RESPONSES,
+        403: _FORBIDDEN,
+        404: _NOT_FOUND,
+        422: problem_response_doc(
+            "The query is not valid (validation_error): a malformed family or"
+            " student id, an unknown status, or `limit`/`offset` out of range."
+        ),
+    },
+)
+async def list_family_billing_packages(
+    principal: Annotated[Principal, authenticated()],
+    family_id: uuid.UUID,
+    page: OffsetPagination,
+    uow: UnitOfWorkDep,
+    student_id: uuid.UUID | None = None,
+    status: Annotated[
+        list[PackageStatus] | None,
+        Query(description="Only packages in these statuses (repeatable)."),
+    ] = None,
+) -> OffsetPage[PackageItem]:
+    """The prepaid packages bought on the family's account with their
+    remaining units and status (active, exhausted, expired, cancelled,
+    withdrawn; for the center's today), the earliest expiry first (then
+    purchase date and id). A package stays on the account it was bought on,
+    even after its student moves to another family. A student with no
+    package on the account gives an empty page."""
+    return await packages.list_family_packages(
+        uow.session,
+        principal,
+        family_id,
+        student_id=student_id,
+        statuses=status or [],
+        page=page,
+    )
+
+
+@router.get(
+    "/{family_id}/billing-account/packages/{package_id}",
+    responses={
+        **AUTH_RESPONSES,
+        403: _FORBIDDEN,
+        404: problem_response_doc(
+            "No such family, or one whose account you can't see, or the"
+            " package is not on its account (not_found)."
+        ),
+        422: problem_response_doc("An id is not a UUID (validation_error)."),
+    },
+)
+async def get_family_billing_package(
+    principal: Annotated[Principal, authenticated()],
+    family_id: uuid.UUID,
+    package_id: uuid.UUID,
+    uow: UnitOfWorkDep,
+) -> PackageDetail:
+    """One package on the family's account with its unit movements, oldest
+    first (a consumed unit names its session and the session's start)."""
+    return await packages.get_family_package(
+        uow.session, principal, family_id, package_id
     )
 
 

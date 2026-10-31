@@ -69,6 +69,8 @@ from app.modules.families.schemas import (
     FamilyStatus,
     FamilyStudentItem,
     FamilyUpdate,
+    OwnFamily,
+    OwnFamilyReference,
 )
 
 FAMILY_ORDER: Final = (search.normalized(Family.name), Family.id)
@@ -260,6 +262,26 @@ async def own_family_id(
     none otherwise). Loaded on every request, so a removed membership or a
     deactivated profile applies on the next one."""
     return (await load_family_facts(session, principal)).own_family_id
+
+
+async def own_family(session: AsyncSession, principal: Principal) -> OwnFamily:
+    """The caller's own family (#102 A1-A3, T2 (a)): the family of their
+    **active** guardian profile (:func:`own_family_id`), whatever their other
+    roles, so an Owner who is also a parent gets their own family. ``null``
+    without the ``guardian`` role (no statement), for an inactive profile or
+    a profile in no family (one statement). An inactive family is returned
+    with ``is_active: false``. At most two statements; never ``404``."""
+    own = await own_family_id(session, principal)
+    if own is None:
+        return OwnFamily(family=None)
+    family = await family_record_reference(session, own)
+    if family is None:  # removed between the two statements
+        return OwnFamily(family=None)
+    return OwnFamily(
+        family=OwnFamilyReference(
+            id=family.id, name=family.name, is_active=family.is_active
+        )
+    )
 
 
 # --- Projections -------------------------------------------------------------------

@@ -1378,6 +1378,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/families/own": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Own Family
+         * @description The family of your active guardian profile (whatever your other
+         *     roles), or `family: null` when you have no guardian profile, it is
+         *     inactive, or it belongs to no family. An inactive family is returned
+         *     with `is_active: false`. Use it to find your own family before reading
+         *     its billing account.
+         */
+        get: operations["get_own_family_api_v1_families_own_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/families/{family_id}": {
         parameters: {
             query?: never;
@@ -4179,6 +4203,52 @@ export interface paths {
          *     (payment-level rows have no student).
          */
         get: operations["list_family_billing_ledger_api_v1_families__family_id__billing_account_ledger_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/families/{family_id}/billing-account/packages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Family Billing Packages
+         * @description The prepaid packages bought on the family's account with their
+         *     remaining units and status (active, exhausted, expired, cancelled,
+         *     withdrawn; for the center's today), the earliest expiry first (then
+         *     purchase date and id). A package stays on the account it was bought on,
+         *     even after its student moves to another family. A student with no
+         *     package on the account gives an empty page.
+         */
+        get: operations["list_family_billing_packages_api_v1_families__family_id__billing_account_packages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/families/{family_id}/billing-account/packages/{package_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Family Billing Package
+         * @description One package on the family's account with its unit movements, oldest
+         *     first (a consumed unit names its session and the session's start).
+         */
+        get: operations["get_family_billing_package_api_v1_families__family_id__billing_account_packages__package_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7471,7 +7541,8 @@ export interface components {
         /**
          * ChargeDetailItem
          * @description A charge with its adjustments and allocations, oldest first (#100
-         *     C6, R8).
+         *     C6, R8), and its discount lines in position order (#102 C1; empty for
+         *     a charge without discounts).
          */
         ChargeDetailItem: {
             /**
@@ -7559,6 +7630,36 @@ export interface components {
             adjustments: components["schemas"]["AdjustmentItem"][];
             /** Allocations */
             allocations: components["schemas"]["ChargeAllocationItem"][];
+            /** Discounts */
+            discounts: components["schemas"]["ChargeDiscountLine"][];
+        };
+        /**
+         * ChargeDiscountLine
+         * @description One discount applied to the charge when it was posted (#102 C1, T4
+         *     (a); #95 B6): the snapshot of its kind, name and value as they were
+         *     then (a later rename or deactivation doesn't change it), in position
+         *     order. Exactly one of ``percent`` (four places) and ``fixed_amount``;
+         *     ``amount`` is what it took off. Shown to staff and guardians alike.
+         */
+        ChargeDiscountLine: {
+            /** Position */
+            position: number;
+            kind: components["schemas"]["DiscountKind"];
+            /** Name */
+            name: string;
+            /**
+             * Percent
+             * @example 10.0000
+             */
+            percent: string | null;
+            /** Fixed Amount */
+            fixed_amount: string | null;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
         };
         /**
          * ChargeItem
@@ -14060,6 +14161,30 @@ export interface components {
              * @description A soft conflict code; never a hard one.
              */
             code: string;
+        };
+        /**
+         * OwnFamily
+         * @description ``GET /api/v1/families/own`` (#102 A1, T2 (a)): the family of the
+         *     caller's **active** guardian profile, or ``null`` (no ``guardian`` role,
+         *     an inactive profile, a profile in no family).
+         */
+        OwnFamily: {
+            family: components["schemas"]["OwnFamilyReference"] | null;
+        };
+        /**
+         * OwnFamilyReference
+         * @description The caller's own family (#102 A1): its id, name and active flag.
+         */
+        OwnFamilyReference: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Is Active */
+            is_active: boolean;
         };
         /**
          * PackageCancellationCreate
@@ -23681,6 +23806,44 @@ export interface operations {
             };
             /** @description Validation Error */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_own_family_api_v1_families_own_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnFamily"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -33787,6 +33950,129 @@ export interface operations {
                 };
             };
             /** @description No such family, or one whose account you can't see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_family_billing_packages_api_v1_families__family_id__billing_account_packages_get: {
+        parameters: {
+            query?: {
+                student_id?: string | null;
+                /** @description Only packages in these statuses (repeatable). */
+                status?: components["schemas"]["PackageStatus"][] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                family_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_PackageItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family, or one whose account you can't see (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_family_billing_package_api_v1_families__family_id__billing_account_packages__package_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                family_id: string;
+                package_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackageDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such family, or one whose account you can't see, or the package is not on its account (not_found). */
             404: {
                 headers: {
                     [name: string]: unknown;
