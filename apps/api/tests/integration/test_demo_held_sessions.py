@@ -25,18 +25,23 @@ from tests.factories.demo_academics import (
 )
 from tests.integration.conftest import run_sql, short_lived_engine
 from tests.integration.demo_support import (
-    ALL_TABLE_COUNTS,
     CHANGES_GENERATOR,
-    FIRST_RUN_LINES,
     FROZEN_NOW,
     HELD_SESSIONS_GENERATOR,
+    PROGRESS_REPORTS_GENERATOR,
+    TABLE_COUNTS_THROUGH_354,
     count,
     demo_env,
     demo_table_counts,
+    first_run_lines,
     generators_through,
     migrate,
 )
 from tests.integration.test_demo_schedule import ZONE, student_labels
+
+THROUGH_354 = generators_through(PROGRESS_REPORTS_GENERATOR)
+"""M6-demo G8: the billing generators add H4, a closed-out class of
+``demo.tutor`` (``test_demo_billing``)."""
 
 # T = Wednesday 2026-11-04: P(6) = Tuesday 10-27, P(7) = Monday 10-26,
 # P(8) = Friday 10-23; T0 = Wednesday 10-14 12:00.
@@ -97,13 +102,13 @@ def held_rows(url: str) -> list[Any]:
 
 
 def test_a_first_run_writes_the_held_classes(migrated_url, env_for, clock, capsys):
-    # F2 on Wednesday 2026-11-04, 11:00 local.
+    # F2 on Wednesday 2026-11-04, 11:00 local (through #354, G8).
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
 
-    assert demo.main([]) == 0
+    assert demo.main([], generators=THROUGH_354) == 0
 
-    assert capsys.readouterr().out.splitlines() == FIRST_RUN_LINES
+    assert capsys.readouterr().out.splitlines() == first_run_lines(THROUGH_354)
     # The seed clock was restored.
     assert app_clock.now() == FROZEN_NOW
     labels = student_labels(migrated_url)
@@ -177,7 +182,10 @@ def test_a_first_run_writes_the_held_classes(migrated_url, env_for, clock, capsy
     assert count(migrated_url, "users") == 8
     assert count(migrated_url, "students") == 5
     assert count(migrated_url, "families") == 3
-    assert demo_table_counts(migrated_url, ALL_TABLE_COUNTS) == ALL_TABLE_COUNTS
+    assert (
+        demo_table_counts(migrated_url, TABLE_COUNTS_THROUGH_354)
+        == TABLE_COUNTS_THROUGH_354
+    )
 
 
 async def _run(url: str, *generators: Any) -> list[int | GeneratorSkipped]:

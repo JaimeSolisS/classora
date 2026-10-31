@@ -98,7 +98,7 @@ threshold is enforced.
 |---|---|---|
 | Purpose | Data every environment needs (for example roles, education levels) | Synthetic records for local, DEV and E2E use |
 | Values | Fixed literals; no Faker, randomness, current date or environment-specific value | Factories with a fixed seed (`--seed`, default 1) |
-| Idempotent | Yes (upsert on a key) | The registered generators (#23, #195, #299, #303, #353, #354) write nothing on a rerun; a future generator may add rows unless its issue says otherwise |
+| Idempotent | Yes (upsert on a key) | The registered generators (#23, #195, #299, #303, #353, #354, #413) write nothing on a rerun; a future generator may add rows unless its issue says otherwise |
 | Where to register | Append to `REFERENCE_SEEDS` in `apps/api/app/seeds/registry.py`, in dependency order | Append a generator to `DEMO_GENERATORS` in `apps/api/tests/factories/demo.py` |
 | Command | `make seed` (`python -m app.seeds`) | `make seed-demo` (`python -m tests.factories.demo`); refused unless `APP_ENV` is `local` or `dev` |
 | Deletes rows | Never, with one exception: `identity.role_permissions` also deletes the pairs of the seeded roles that `ROLE_PERMISSIONS` no longer lists, so the database's role permission sets equal the code (ADR-0007). `roles` and `permissions` rows are never deleted. | Never |
@@ -472,6 +472,9 @@ which `ci-required` checks whenever the API changed.
   individual session of `demo.tutor` with one synthetic student (subject
   `E2E Closeout`) in the latest free hour before the attendance session,
   under the same rules.
+- The billing demo data (#413) is not in the E2E database: `run.sh` passes
+  `--without-billing` to the demo command, so billing stays off there (#366)
+  and specs keep creating their own billing data.
 - Tests do not depend on each other or on the order they run in, and they
   pass with Playwright's parallel workers. Data a test changes is created by
   that test, with a unique per-test suffix. Tests never depend on a

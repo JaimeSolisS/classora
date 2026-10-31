@@ -37,6 +37,7 @@ from tests.integration.catalog_support import get
 from tests.integration.conftest import run_sql
 from tests.integration.demo_support import (
     ALL_TABLE_COUNTS,
+    BILLING_GENERATORS,
     CHANGES_GENERATOR,
     COURSES_GENERATOR,
     DEMO_303_TABLE_COUNTS,
@@ -320,12 +321,12 @@ def test_a_weekend_run_writes_the_same_counts(
 
 
 def test_a_rerun_writes_nothing_even_days_later(migrated_url, env_for, clock, capsys):
-    # E4: every generator (22 since #354) prints 0 rows.
+    # E4: every generator (25 since M6-demo) prints 0 rows.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
     assert demo.main([]) == 0
     capsys.readouterr()
-    assert len(GENERATOR_NAMES) == 22
+    assert len(GENERATOR_NAMES) == 25
 
     assert demo.main([]) == 0
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
@@ -385,6 +386,7 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
         CHANGES_GENERATOR,
         *NEW_353_GENERATORS,
         *NEW_354_GENERATORS,
+        *BILLING_GENERATORS,
     }
     assert capsys.readouterr().out.splitlines() == [
         *RERUN_REFERENCE_LINES,

@@ -6,7 +6,7 @@
 #   2. build and start every service (up -d --build --wait)
 #   3. alembic upgrade head      (api image, direct connection; ADR-0003)
 #   4. python -m app.seeds       (api image)
-#   5. demo command, --seed 1    (host, uv; API dev dependencies)
+#   5. demo command, --seed 1 --without-billing (host, uv; API dev dependencies)
 #   6. E2E attendance fixture    (host, uv; a started session, #76)
 #   7. headless Chromium         (downloaded on first run only)
 #   8. Playwright
@@ -106,7 +106,8 @@ step "applying the reference seeds"
 compose run --rm api python -m app.seeds
 
 step "generating demo data (--seed 1)"
-(cd apps/api && uv run python -m tests.factories.demo --seed 1)
+# --without-billing: billing stays off in the E2E database (#366, M6-demo E3).
+(cd apps/api && uv run python -m tests.factories.demo --seed 1 --without-billing)
 
 step "inserting the E2E attendance session"
 (cd apps/api && uv run python -m tests.factories.e2e_attendance)

@@ -581,12 +581,21 @@ demo data:
   waiting for review (on Approvals) and approved for the family; and a weekly
   report schedule for `demo.tutor` (the worker adds the next draft after each
   week ends).
+- **Billing** (local `make seed-demo` only; `make e2e` seeds without it):
+  billing is on from about three weeks back; catalog prices with one change
+  next month, a sibling discount and a scholarship; charges for the demo
+  classes, the course cohort and a monthly tuition plan, so the family
+  accounts have overdue amounts and the Unbilled tab lists the finished
+  cohort; an English package for `demo.student` with one session used and an
+  expired package for the sibling. While the worker runs, it keeps charging
+  new classes and sends payment reminders.
 
 The dates stay those of the first run (a second run changes nothing), so reset
 with `docker compose down -v`, `make dev`, `make migrate` and `make seed-demo`
 to get a fresh schedule. A database seeded before the courses and requests,
-the classes held and results, or the learning plans, homework and progress
-reports were added keeps its schedule and skips them (`make seed-demo` says
+the classes held and results, the learning plans, homework and progress
+reports, or the billing data were added keeps its schedule and skips them
+(`make seed-demo` says
 so) until you reset the same way. The pending offer expires after the
 scheduling policy's 48 hours and then also waits on Approvals. With classes scheduled, the
 center time zone can no longer be changed. `make bootstrap-owner` (below) is
