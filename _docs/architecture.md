@@ -150,7 +150,7 @@ modules/<domain>/
 - UUID primary keys, FKs, unique and check constraints. Database constraints protect business invariants.
 - Search uses B-tree indexes, full-text search and `pg_trgm` (→ ISSUE-D6 for bilingual text).
 - Financial data is append-only with corrections made as adjustments and reversals. Payroll periods are locked once finalized. Catalog prices and rates are effective-dated.
-- The detailed schema belongs to `_docs/data-model.md` and is **not** designed here. The billing schema is in [`data-model.md` §3](data-model.md#3-billing-tables).
+- The detailed schema belongs to `_docs/data-model.md` and is **not** designed here. The billing schema is in [`data-model.md` §3](data-model.md#3-billing-tables). The payroll and expense schemas are in [`data-model.md` §11](data-model.md#11-payroll-tables) and [§12](data-model.md#12-expense-tables).
 
 ## 6. Background processing (approved)
 
@@ -517,6 +517,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 - **`teaching_hours.approve` part ACCEPTED** (#77, owner-delegated, 2026-10-24): granted to the Owner (all permissions), the Administrator and the Academic Coordinator; not delegable; seeded. It reviews tutors' session closeouts (the `academics.session_closeout` approval type).
 - **Closeout review part ACCEPTED** (#78, owner-delegated, 2026-10-24): `teaching_hours.approve` holders approve, request changes or correct a closeout on the staff session page; closeouts have **no reject**; a reviewer can't approve, send back or correct a closeout they submitted (`403 closeout_self_review`) unless they hold the Owner role; approvals are immutable revisions and a correction supersedes.
 - **Progress report review part ACCEPTED** (#83, owner-delegated decision E4, 2026-10-25): spec W5.2 "an administrator approves" progress reports is read as staff with academic approval authority, as above: a new permission `progress_report.review` for the Owner (all permissions), the Administrator and the Academic Coordinator; not delegable; seeded. Holders approve, request changes or retract a submitted progress report on its review page (the `academics.progress_report` approval type, decided only there); there is no reject; a reviewer can't decide a report they wrote (`403 progress_report_self_review`) unless they hold the Owner role. Only approved reports reach families.
+- **`payroll.*` pointer** (#104, 2026-10-31): the payroll and expense permissions are in [ADR-0017](adr/0017-payroll-and-expenses.md) (E12), which is Proposed: orchestrator-recommended, pending owner review.
 - **Closeout on behalf note** (#301, owner-delegated, 2026-10-25): staff on-behalf closeouts are attributed to the tutor (`tutor_user_id` and the approval requester stay the tutor, for payroll); the on-behalf submitter can't approve or correct them (`403 closeout_self_review`), Owner excepted; an on-behalf submission is corrected, never sent back.
 
 ### 10.7 Identity, security and privacy
@@ -766,7 +767,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 
 ## 11. Proposed ADR backlog
 
-These ADRs record the accepted resolutions. ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0015 and ADR-0016 are **Accepted**. All others are **PROPOSED**.
+These ADRs record the accepted resolutions. ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0015 and ADR-0016 are **Accepted**. [ADR-0017](adr/0017-payroll-and-expenses.md) is **Proposed**: orchestrator-recommended, pending owner review, and M7 builds on it meanwhile. All others are **PROPOSED**.
 
 | ADR | Topic | Issues |
 |---|---|---|
@@ -786,7 +787,8 @@ These ADRs record the accepted resolutions. ADR-0001, ADR-0002, ADR-0003, ADR-00
 | 0014 | Error tracking (Sentry decision) and telemetry collection | O1–O3 |
 | [0015](adr/0015-server-side-i18n.md) | Server-side i18n — **Accepted** | X1 |
 | [0016](adr/0016-ci-security-tooling.md) | CI security tooling (dependency, secret, SAST and image scans) — **Accepted** | #11 (M1-11) |
+| [0017](adr/0017-payroll-and-expenses.md) | Payroll and expenses — **Proposed** (orchestrator-recommended, pending owner review) | #104 (M7-01), E1–E18 |
 
 ## 12. Decisions that need the product owner rather than engineering
 
-These items in §10 are product or business decisions, not technical ones: ISSUE-F1, F2, F6, F7 (F1, F2, F6 and F7 decided in #86 (ADR-0006)), SC1 (offer deadline; decided in #46 (ADR-0005)), SC2 (makeup after closures; decided in #46 (ADR-0005)), S1 (recovery delivery), S5, S6 (S1, S5 and S6 decided in #19, ADR-0007), X2 (premium calendar; decided in #46 (ADR-0005)), O1 (third-party data processing) and L2 (retention periods).
+These items in §10 are product or business decisions, not technical ones: ISSUE-F1, F2, F6, F7 (F1, F2, F6 and F7 decided in #86 (ADR-0006)), SC1 (offer deadline; decided in #46 (ADR-0005)), SC2 (makeup after closures; decided in #46 (ADR-0005)), S1 (recovery delivery), S5, S6 (S1, S5 and S6 decided in #19, ADR-0007), X2 (premium calendar; decided in #46 (ADR-0005)), O1 (third-party data processing) and L2 (retention periods). The (product) items of #104 (payroll and expenses) are recommended by the orchestrator in [ADR-0017](adr/0017-payroll-and-expenses.md), flagged for owner review, and not yet decided by the owner.
