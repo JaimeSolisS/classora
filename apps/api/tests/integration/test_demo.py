@@ -8,6 +8,7 @@ from tests.authz.csrf import origin_for
 from tests.factories import demo
 from tests.factories.base import persist_batch
 from tests.integration.conftest import run_sql
+from tests.integration.demo_support import FROZEN_NOW
 from tests.integration.samples import TEST_REFERENCE_SEED, SampleProfileFactory
 from tests.integration.test_migrations import alembic_config
 
@@ -100,8 +101,10 @@ def test_without_generators_only_reference_seeds_run(migrated_url, env_for, caps
 
 
 def test_registered_command_applies_the_registered_reference_seeds(
-    migrated_url, env_for, capsys
+    migrated_url, env_for, capsys, clock
 ):
+    # The #299 frozen day: the M6-demo-b counts depend on the center's today.
+    clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
 
     assert demo.main([]) == 0
@@ -136,6 +139,9 @@ def test_registered_command_applies_the_registered_reference_seeds(
         "billing.demo_pricing: 22 rows",
         "billing.demo_packages: 21 rows",
         "billing.demo_charges: 97 rows",
+        "billing.demo_reconciliation: 2 rows",
+        "billing.demo_payments: 13 rows",
+        "billing.demo_reminders: 13 rows",
     ]
 
 

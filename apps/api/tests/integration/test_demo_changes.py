@@ -326,7 +326,7 @@ def test_a_rerun_writes_nothing_even_days_later(migrated_url, env_for, clock, ca
     env_for("local", migrated_url)
     assert demo.main([]) == 0
     capsys.readouterr()
-    assert len(GENERATOR_NAMES) == 25
+    assert len(GENERATOR_NAMES) == 28
 
     assert demo.main([]) == 0
     assert capsys.readouterr().out.splitlines() == RERUN_LINES

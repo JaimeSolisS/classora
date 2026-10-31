@@ -256,7 +256,7 @@ def test_a_rerun_writes_nothing_even_days_later(migrated_url, env_for, clock, ca
     env_for("local", migrated_url)
     assert demo.main([]) == 0
     capsys.readouterr()
-    assert len(GENERATOR_NAMES) == 25
+    assert len(GENERATOR_NAMES) == 28
 
     assert demo.main([]) == 0
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
@@ -326,7 +326,7 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
 
 
 def test_the_353_counts_cover_its_new_tables():
-    assert GENERATOR_NAMES[-10:-6] == list(NEW_353_GENERATORS)
+    assert GENERATOR_NAMES[-13:-9] == list(NEW_353_GENERATORS)
     assert DEMO_353_TABLE_COUNTS["session_closeouts"] == 9
     assert DEMO_353_TABLE_COUNTS["evaluations"] == 9
 

@@ -1,5 +1,5 @@
 """Helpers for the ``make seed-demo`` generator tests (#23, #195, #299, #303,
-#353, #354, M6-demo #413).
+#353, #354, M6-demo #413, M6-demo-b #420).
 
 - :func:`migrate` and :func:`demo_env`: a fresh database at the Alembic head,
   and the environment of a ``demo.main`` run (each test module wraps them in
@@ -11,7 +11,8 @@
   (:data:`DEMO_353_TABLE_COUNTS`, :data:`TABLE_COUNTS_THROUGH_353`) and the
   #354 ones (:data:`DEMO_354_TABLE_COUNTS`, :data:`TABLE_COUNTS_THROUGH_354`)
   and the M6-demo billing ones (:data:`DEMO_BILLING_TABLE_COUNTS`,
-  :data:`ALL_TABLE_COUNTS`).
+  :data:`TABLE_COUNTS_THROUGH_413`) and the M6-demo-b ones
+  (:data:`DEMO_BILLING_MONEY_TABLE_COUNTS`, :data:`ALL_TABLE_COUNTS`).
 - Prefixes of the registered generators by name (:func:`generators_through`).
 """
 
@@ -107,6 +108,20 @@ CHARGES_GENERATOR = "billing.demo_charges"
 DEMO_CHARGES_ROWS = 97
 """M6-demo D: F2's and F3's billing accounts, TP1, 43 charges (40 sessions, 2
 cohort fees, 1 tuition period) and 51 discount lines."""
+
+RECONCILIATION_GENERATOR = "billing.demo_reconciliation"
+DEMO_RECONCILIATION_ROWS = 2
+"""M6-demo-b B: CX's cancellation decision and its ``cancellation_credit``
+adjustment (the cancellation's 3 notifications aren't counted, A2)."""
+PAYMENTS_GENERATOR = "billing.demo_payments"
+DEMO_PAYMENTS_ROWS = 13
+"""M6-demo-b C: PY1-PY3, their 4 allocations (3 for PY1, 1 for PY3) and 3
+receipts, MC, PY3's reversal and its allocation release."""
+REMINDERS_GENERATOR = "billing.demo_reminders"
+DEMO_REMINDERS_ROWS = 13
+"""M6-demo-b D: DC's due-date change, 10 ``charge_reminders`` rows of F1 (4
+``due_soon``, 6 ``overdue``) and 2 ``billing.payment_reminder``
+notifications to ``demo.guardian`` (at ``FROZEN_NOW``)."""
 
 DEMO_TABLE_COUNTS = {
     "subjects": 8,
@@ -269,6 +284,32 @@ DEMO_BILLING_TABLE_COUNTS = {
 """The rows the M6-demo generators add to each table they count, after a
 first run on a fresh database (several tables are shared with #299-#354)."""
 
+DEMO_BILLING_MONEY_TABLE_COUNTS = {
+    # billing.demo_reconciliation: CX's decision and credit.
+    "session_cancellation_decisions": 1,
+    "charge_adjustments": 1,
+    # billing.demo_payments: PY1-PY3, MC, PY3's reversal.
+    "payments": 3,
+    "payment_allocations": 3 + 1,
+    "receipts": 3,
+    "charges": 1,
+    "payment_reversals": 1,
+    "allocation_releases": 1,
+    # billing.demo_reminders: DC and F1's reminders at FROZEN_NOW.
+    "charge_due_date_changes": 1,
+    "charge_reminders": 4 + 6,
+    # CX cancelled, to demo.tutor, demo.student and demo.guardian (not
+    # counted by the generator); the due_soon and overdue reminders to
+    # demo.guardian.
+    "notifications": 3 + 2,
+}
+"""The rows the M6-demo-b generators add to each table they count, and the
+cancellation's notifications, after a first run on a fresh database at
+:data:`FROZEN_NOW`."""
+CX_NOTIFICATIONS = 3
+"""CX's ``scheduling.session_cancelled`` notifications (in
+:data:`DEMO_BILLING_MONEY_TABLE_COUNTS`, not in a generator's rows)."""
+
 
 def _sum(*parts: dict[str, int]) -> dict[str, int]:
     tables = {table for part in parts for table in part}
@@ -294,9 +335,13 @@ TABLE_COUNTS_THROUGH_354 = _sum(
 """Every counted table of #299, #303, #353 and #354 after a first run of the
 generators through ``academics.demo_progress_reports`` (M6-demo G8)."""
 
-ALL_TABLE_COUNTS = _sum(TABLE_COUNTS_THROUGH_354, DEMO_BILLING_TABLE_COUNTS)
-"""Every counted table of #299-#354 and M6-demo after a first run of every
-generator."""
+TABLE_COUNTS_THROUGH_413 = _sum(TABLE_COUNTS_THROUGH_354, DEMO_BILLING_TABLE_COUNTS)
+"""Every counted table of #299-#354 and M6-demo after a first run of the
+generators through ``billing.demo_charges`` (M6-demo-b H7)."""
+
+ALL_TABLE_COUNTS = _sum(TABLE_COUNTS_THROUGH_413, DEMO_BILLING_MONEY_TABLE_COUNTS)
+"""Every counted table of #299-#354, M6-demo and M6-demo-b after a first run
+of every generator (at :data:`FROZEN_NOW`)."""
 
 FROZEN_NOW = datetime(2026, 11, 4, 17, 0, tzinfo=UTC)
 """A Wednesday, 11:00 in Mexico City (#299 E2), after the privacy notice's
@@ -334,6 +379,9 @@ GENERATOR_NAMES = [
     PRICING_GENERATOR,
     PACKAGES_GENERATOR,
     CHARGES_GENERATOR,
+    RECONCILIATION_GENERATOR,
+    PAYMENTS_GENERATOR,
+    REMINDERS_GENERATOR,
 ]
 
 FIRST_RUN_LINES = [
@@ -356,6 +404,9 @@ FIRST_RUN_LINES = [
     f"{PRICING_GENERATOR}: {DEMO_PRICING_ROWS} rows",
     f"{PACKAGES_GENERATOR}: {DEMO_PACKAGES_ROWS} rows",
     f"{CHARGES_GENERATOR}: {DEMO_CHARGES_ROWS} rows",
+    f"{RECONCILIATION_GENERATOR}: {DEMO_RECONCILIATION_ROWS} rows",
+    f"{PAYMENTS_GENERATOR}: {DEMO_PAYMENTS_ROWS} rows",
+    f"{REMINDERS_GENERATOR}: {DEMO_REMINDERS_ROWS} rows",
 ]
 RERUN_LINES = [
     *RERUN_REFERENCE_LINES,
@@ -394,17 +445,26 @@ NEW_354_GENERATORS = (
     PROGRESS_REPORTS_GENERATOR,
 )
 
-BILLING_GENERATORS = (
+BILLING_413_GENERATORS = (
     PRICING_GENERATOR,
     PACKAGES_GENERATOR,
     CHARGES_GENERATOR,
 )
-"""The M6-demo generators (#413); they also skip a stale #299 schedule."""
+"""The M6-demo generators (#413)."""
+BILLING_420_GENERATORS = (
+    RECONCILIATION_GENERATOR,
+    PAYMENTS_GENERATOR,
+    REMINDERS_GENERATOR,
+)
+"""The M6-demo-b generators (#420)."""
+BILLING_GENERATORS = (*BILLING_413_GENERATORS, *BILLING_420_GENERATORS)
+"""The six billing generators (#413, #420); they also skip a stale #299
+schedule, billing set up by hand and ``--without-billing``."""
 
 
 def generators_before_303() -> list[demo.DemoGenerator]:
     """The #299 run: every registered generator except the four #303 ones,
-    the four #353 ones, the three #354 ones and the three billing ones."""
+    the four #353 ones, the three #354 ones and the six billing ones."""
     later = {
         *NEW_303_GENERATORS,
         *NEW_353_GENERATORS,

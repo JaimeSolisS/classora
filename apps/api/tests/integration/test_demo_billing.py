@@ -3,7 +3,10 @@
 them, reruns, ``dev`` and ``--without-billing``, markers, the stale-schedule
 and hand-configured skips, prerequisites, rollback, worker parity and the
 invariant catalogue. What each account sees is in
-``test_demo_billing_views``."""
+``test_demo_billing_views``. Part 2 (M6-demo-b #420) changes the balances
+and S's schedule, so the tests that pin part 1's numbers run the generators
+through ``billing.demo_charges`` (H7); ``test_demo_billing_money`` checks
+the whole run."""
 
 import asyncio
 import dataclasses
@@ -48,7 +51,9 @@ from tests.integration.billing_invariants.checks import Catalogue
 from tests.integration.conftest import run_sql, settings_for, short_lived_engine
 from tests.integration.demo_support import (
     ALL_TABLE_COUNTS,
+    BILLING_413_GENERATORS,
     BILLING_GENERATORS,
+    CHARGES_GENERATOR,
     DEMO_BILLING_TABLE_COUNTS,
     DEV_LINES,
     FIRST_RUN_LINES,
@@ -58,10 +63,12 @@ from tests.integration.demo_support import (
     RERUN_LINES,
     RERUN_REFERENCE_LINES,
     TABLE_COUNTS_THROUGH_354,
+    TABLE_COUNTS_THROUGH_413,
     UntouchedSession,
     count,
     demo_env,
     demo_table_counts,
+    first_run_lines,
     generators_through,
     migrate,
 )
@@ -240,7 +247,7 @@ def test_a_first_run_writes_the_billing_data(migrated_url, env_for, clock, capsy
 
     assert demo.main([], generators=generators) == 0
 
-    assert capsys.readouterr().out.splitlines() == FIRST_RUN_LINES
+    assert capsys.readouterr().out.splitlines() == first_run_lines(generators)
     # The seed clock was restored.
     assert app_clock.now() == FROZEN_NOW
     labels = _labels(migrated_url)
@@ -412,7 +419,10 @@ def test_a_first_run_writes_the_billing_data(migrated_url, env_for, clock, capsy
 
     # D7: no invariant violation.
     assert asyncio.run(_violations(migrated_url)) == []
-    assert demo_table_counts(migrated_url, ALL_TABLE_COUNTS) == ALL_TABLE_COUNTS
+    assert (
+        demo_table_counts(migrated_url, TABLE_COUNTS_THROUGH_413)
+        == TABLE_COUNTS_THROUGH_413
+    )
 
 
 def test_the_billing_jobs_post_nothing_after_the_seed(migrated_url, env_for, clock):
@@ -447,24 +457,28 @@ def test_the_billing_jobs_post_nothing_after_the_seed(migrated_url, env_for, clo
 def test_a_weekend_run_writes_the_same_counts(
     migrated_url, env_for, clock, capsys, now
 ):
-    # E3.
+    # E3 (part 1's numbers: through billing.demo_charges, H7).
     clock.set(now)
     env_for("local", migrated_url)
+    generators = generators_through(CHARGES_GENERATOR)
 
-    assert demo.main([]) == 0
+    assert demo.main([], generators=generators) == 0
 
-    assert capsys.readouterr().out.splitlines() == FIRST_RUN_LINES
-    assert demo_table_counts(migrated_url, ALL_TABLE_COUNTS) == ALL_TABLE_COUNTS
+    assert capsys.readouterr().out.splitlines() == first_run_lines(generators)
+    assert (
+        demo_table_counts(migrated_url, TABLE_COUNTS_THROUGH_413)
+        == TABLE_COUNTS_THROUGH_413
+    )
     assert app_clock.now() == now
 
 
 def test_a_rerun_writes_nothing_even_days_later(migrated_url, env_for, clock, capsys):
-    # E4: every generator (25) prints 0 rows.
+    # E4: every generator (28) prints 0 rows.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
     assert demo.main([]) == 0
     capsys.readouterr()
-    assert len(GENERATOR_NAMES) == 25
+    assert len(GENERATOR_NAMES) == 28
 
     assert demo.main([]) == 0
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
@@ -516,11 +530,7 @@ def test_without_billing_leaves_billing_off(migrated_url, env_for, clock, capsys
     # The flag doesn't outlive the run.
     capsys.readouterr()
     assert demo.main([]) == 0
-    assert capsys.readouterr().out.splitlines()[-3:] == [
-        "billing.demo_pricing: 22 rows",
-        "billing.demo_packages: 21 rows",
-        "billing.demo_charges: 97 rows",
-    ]
+    assert capsys.readouterr().out.splitlines()[-6:] == FIRST_RUN_LINES[-6:]
 
 
 NEW_GENERATORS = [DemoPricingGenerator, DemoPackagesGenerator, DemoChargesGenerator]
@@ -551,8 +561,8 @@ def test_a_new_generator_writes_nothing_under_the_flag(generator):
 
 def test_the_billing_generators_come_last():
     # A1.
-    assert GENERATOR_NAMES[-3:] == list(BILLING_GENERATORS)
-    assert GENERATOR_NAMES[-4] == PROGRESS_REPORTS_GENERATOR
+    assert GENERATOR_NAMES[-6:-3] == list(BILLING_413_GENERATORS)
+    assert GENERATOR_NAMES[-7] == PROGRESS_REPORTS_GENERATOR
     assert sum(DEMO_BILLING_TABLE_COUNTS.values()) == 22 + 21 + 97
 
 
@@ -619,7 +629,7 @@ def test_billing_set_up_by_hand_is_skipped(
 
     assert demo.main([]) == 0
 
-    assert capsys.readouterr().out.splitlines()[-3:] == [
+    assert capsys.readouterr().out.splitlines()[-6:] == [
         f"{name}: skipped ({BILLING_CONFIGURED})" for name in BILLING_GENERATORS
     ]
     assert count(migrated_url, "service_prices") == prices

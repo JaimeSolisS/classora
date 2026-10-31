@@ -587,14 +587,20 @@ demo data:
   classes, the course cohort and a monthly tuition plan, so the family
   accounts have overdue amounts and the Unbilled tab lists the finished
   cohort; an English package for `demo.student` with one session used and an
-  expired package for the sibling. While the worker runs, it keeps charging
-  new classes and sends payment reminders.
+  expired package for the sibling; one class of `demo.student` cancelled by
+  the center and credited; two payments with receipts for `demo.guardian`'s
+  family, one paying the oldest charges and one kept as account credit; a due
+  date moved with a reason and payment reminders for `demo.guardian`; and,
+  for the second family, a due-date offset and a manual charge whose payment
+  was reversed. While the worker runs, it keeps charging new classes and
+  sends payment reminders.
 
 The dates stay those of the first run (a second run changes nothing), so reset
 with `docker compose down -v`, `make dev`, `make migrate` and `make seed-demo`
 to get a fresh schedule. A database seeded before the courses and requests,
 the classes held and results, the learning plans, homework and progress
-reports, or the billing data were added keeps its schedule and skips them
+reports, or the billing data (charges, then payments and reminders) were
+added keeps its schedule and skips them
 (`make seed-demo` says
 so) until you reset the same way. The pending offer expires after the
 scheduling policy's 48 hours and then also waits on Approvals. With classes scheduled, the

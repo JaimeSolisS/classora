@@ -21,6 +21,7 @@ from tests.integration.conftest import run_sql
 from tests.integration.demo_support import (
     DEV_LINES,
     FIRST_RUN_LINES,
+    FROZEN_NOW,
     GENERATOR_NAMES,
     RERUN_LINES,
     UntouchedSession,
@@ -56,7 +57,7 @@ def test_the_generators_are_registered_in_order():
     # A1: then the held classes, the finished cohort, the notes and the
     # evaluations; #354 A1: then the learning plans, the homework and the
     # progress reports; M6-demo A1: then the billing prices, packages and
-    # charges.
+    # charges; M6-demo-b A1: then the reconciliation, payments and reminders.
     assert [g.name for g in demo.DEMO_GENERATORS] == GENERATOR_NAMES
     assert GENERATOR_NAMES == [
         "identity.demo_owner",
@@ -84,10 +85,15 @@ def test_the_generators_are_registered_in_order():
         "billing.demo_pricing",
         "billing.demo_packages",
         "billing.demo_charges",
+        "billing.demo_reconciliation",
+        "billing.demo_payments",
+        "billing.demo_reminders",
     ]
 
 
-def test_local_creates_the_active_demo_owner(migrated_url, env_for, capsys):
+def test_local_creates_the_active_demo_owner(migrated_url, env_for, capsys, clock):
+    # The #299 frozen day: the M6-demo-b counts depend on the center's today.
+    clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
 
     assert demo.main([]) == 0

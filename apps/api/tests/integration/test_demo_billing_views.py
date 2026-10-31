@@ -1,5 +1,7 @@
 """What each demo account sees of the M6-demo billing data (E7), through the
-API after a whole run on the #299 frozen day."""
+API after a run of the generators through ``billing.demo_charges`` on the
+#299 frozen day (part 2, M6-demo-b #420, changes the balances: its views are
+in ``test_demo_billing_money_views``)."""
 
 from decimal import Decimal
 from typing import Any
@@ -11,7 +13,13 @@ from tests.factories.demo_billing import PK1_NAME, PK2_NAME, SIBLING_DISCOUNT
 from tests.integration.auth_support import auth_client
 from tests.integration.catalog_support import get
 from tests.integration.conftest import run_sql
-from tests.integration.demo_support import FROZEN_NOW, demo_env, migrate
+from tests.integration.demo_support import (
+    CHARGES_GENERATOR,
+    FROZEN_NOW,
+    demo_env,
+    generators_through,
+    migrate,
+)
 from tests.integration.test_demo_billing import _families, _labels
 from tests.integration.test_demo_schedule import signed_in
 
@@ -62,7 +70,7 @@ PACKAGES = [(PK2_NAME, "expired", 0, 4), (PK1_NAME, "active", 7, 8)]
 def test_what_each_account_sees(migrated_url, env_for, clock):
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
-    assert demo.main([]) == 0
+    assert demo.main([], generators=generators_through(CHARGES_GENERATOR)) == 0
     families = {label: family for family, label in _families(migrated_url).items()}
     f1, f2, f3 = families["F1"], families["F2"], families["F3"]
     labels = _labels(migrated_url)
