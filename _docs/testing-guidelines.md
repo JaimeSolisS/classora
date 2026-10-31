@@ -10,7 +10,8 @@ it does not decide anything that task or its ADR owns.
 | Layer | What belongs here | Where the files live | Marker or project | Local command | CI job |
 |---|---|---|---|---|---|
 | API unit | Pure logic: validation, services with fakes, configuration, error mapping, job rules. No Docker, no network, no database. | `apps/api/tests/unit/` | `unit` (applied by directory) | `make test-unit` | `api-unit` |
-| API integration | Anything that needs PostgreSQL: repositories, the Unit of Work, endpoints through the ASGI app, seeds, jobs, PgBouncer behavior, authorization and financial invariants. Testcontainers `postgres:18`, plus the PgBouncer image built from `infrastructure/docker/pgbouncer` when a test asks for it. | `apps/api/tests/integration/` | `integration` (applied by directory) | `make test-integration` (without the migration checks); `make test-integration SHARD=K/4` runs one CI shard | `api-integration (K/4)`, four parallel shards |
+| API integration | Anything that needs PostgreSQL: repositories, the Unit of Work, endpoints through the ASGI app, seeds, jobs, PgBouncer behavior, authorization and financial invariants. Testcontainers `postgres:18`, plus the PgBouncer image built from `infrastructure/docker/pgbouncer` when a test asks for it. | `apps/api/tests/integration/` | `integration` (applied by directory) | `make test-integration` (without the migration checks and the billing invariant suite); `make test-integration SHARD=K/4` runs one CI shard | `api-integration (K/4)`, four parallel shards |
+| Billing invariant suite | Randomized sequences of every M6 ledger operation, cross-operation races and the billing job walk, checked against the whole invariant catalogue after every step (#103; "Financial invariant tests" below). A subset of the integration layer, run only by its own target. | `apps/api/tests/integration/billing_invariants/` | `integration` | `make test-billing-invariants` (`SEEDS=`, `STEPS=`, `EXTRA_SEED=`) | `api-billing-invariants` |
 | Migration checks | Upgrade from an empty database, a single Alembic head, the downgrade/upgrade round trip, no drift between models and migrations. A subset of the integration layer, run only by its own target. | `apps/api/tests/integration/test_migrations.py` | `integration` | `make test-migrations` | `api-migrations` |
 | Web unit and component | Hooks, stores, formatters, the API call wrapper, routing, rendered components in jsdom, translation catalogs. | `apps/web/src/**/*.test.{ts,tsx}`, `packages/api-client/src/**/*.test.ts` | Vitest project `unit` (web); the api-client package's own Vitest run | `make test-web` | `web` |
 | Storybook story tests | Every component story with its play function and an axe check, in light and dark, in headless Chromium. | `apps/web/src/**/*.stories.tsx` | Vitest projects `storybook-light`, `storybook-dark` | `make test-storybook` | `web-storybook` |
@@ -25,8 +26,8 @@ starved CPU does not fail a full-app render; tests wait on conditions
 for a code-split route), never on time or a tick count.
 
 In CI the API layers run as parallel jobs, and each API test runs in exactly
-one of them: `api-unit`, `api-migrations`, and `api-integration` in four
-shards. `--shard=K/N` (`apps/api/tests/sharding.py`) sorts the selected test
+one of them: `api-unit`, `api-migrations`, `api-billing-invariants`, and
+`api-integration` in four shards. `--shard=K/N` (`apps/api/tests/sharding.py`) sorts the selected test
 files by path and deals them round-robin, so a file always stays in one shard
 and a red shard is reproduced locally with `make test-integration SHARD=K/4`.
 Coverage is reported per job (`--cov-report=term-missing`); no coverage
@@ -386,6 +387,72 @@ follows these rules.
 - Randomized operation sequences are reproducible: the test prints its seed
   and accepts it as input. A property-based testing library is **not**
   approved; adding one needs approval first.
+
+### The billing invariant suite (#103)
+
+`apps/api/tests/integration/billing_invariants/` holds the cross-cutting
+proof that the billing invariants hold together. It is excluded from `make
+test-integration` and runs with `make test-billing-invariants` (no coverage;
+the ten slowest tests are printed) in the `api-billing-invariants` CI job,
+which `ci-required` checks whenever the API changed.
+
+- **World.** One template database per session (migrated, seeded, plus the
+  shared world of `world.py`: three families with guardian logins, a
+  student with no family, catalog prices, a sibling discount and a
+  scholarship, a package product, two groups, a cohort, an Owner and a
+  Finance user). Every sequence, race attempt and job case runs on its own
+  copy (`CREATE DATABASE … TEMPLATE`).
+- **Sequences** (`test_billing_invariant_{ledger,packages,schedule}.py`):
+  each seed draws operations with one `random.Random(seed)` and calls the
+  real workflow entry points and `run_*` jobs; about one step in eight is a
+  burst of 2–3 operations on one account on separate engines. After every
+  step: the outcome contract (accepted, or refused with a declared code),
+  net-balance conservation per account, "refused ⇒ unchanged" and the whole
+  check catalogue. Each sequence ends with the portal check (the guardian's
+  summary equals the sums over their own charges, payments and ledger).
+  The ledger module also runs one seed through the real routes (D8).
+- **Seeds.** Pull requests run the fixed defaults of each module. Pushes and
+  manual runs add `github.run_id` as one more seed. Locally:
+  `make test-billing-invariants SEEDS=5,9` (replaces the defaults),
+  `EXTRA_SEED=123` (adds one), `STEPS=17` (truncates every sequence). A
+  failure prints the scenario, seed, step, failing check and its rows, the
+  last 25 operations and `reproduce: make test-billing-invariants SEEDS=<seed>
+  STEPS=<step>`; the reproduction holds on the same commit.
+- **Walks.** `test_billing_invariant_idempotent_routes.py` sends two
+  concurrent requests with the same key to every idempotent billing route
+  of `tests/authz/matrix.toml`; `test_billing_invariant_jobs.py` reruns,
+  runs concurrently and retries after a failed item every registered
+  `billing:` task. `test_billing_invariant_races.py` holds the
+  cross-operation races (5 attempts each).
+- **Rules for later issues.** A new billing table, append-only billing
+  table or billing invariant adds a check to `checks.py` (and its plant to
+  `test_billing_invariant_harness.py`, which fails for an App-enforced check
+  without one and for an append-only billing table the I11 check doesn't
+  hash). A new idempotent billing route or `billing:` job adds a case to
+  the route or job walk, or the walk fails naming it.
+
+| Invariant | Check id(s) in `checks.py` | Earlier single-path proof |
+|---|---|---|
+| I1 net ≥ 0 | `I1` | #90 (`test_billing_ledger_adjustments.py`), #100 |
+| I2 Σ valid allocations ≤ net | `I2` | #96 (`test_billing_payments_record.py`, `_credit.py`, `_concurrency.py`) |
+| I3 Σ allocations + refunds ≤ amount; reversed ⇒ nothing valid; no reversal with refunds | `I3`, `I3r`, `I3x` | #96, #100 (`test_billing_payment_reversals.py`, `test_billing_refunds.py`) |
+| I4 same account (allocations, reversals, refunds, receipts) | `I4` (DB) | #90 (`test_billing_ledger_constraints.py`) |
+| I5 adjustment's account and student | `I5` (DB) | #90 |
+| I6 signs and ranges | `I6` (DB) | #90, #94 |
+| I7 amount = list − discount; Σ discount lines | `I7` (DB), `I7d` | #90, #95 |
+| I8 package units ≥ 0 | `I8` | #94, #100 |
+| I9 one of {session charge, consumption} | `I9` | #94 (`test_package_consumption.py`) |
+| I10 one receipt per payment; gap-free numbers | `I10`, `I10n` | #98 (`test_receipts_numbering.py`) |
+| I11 posted rows never change | `I11` (row hashes) | #90 (`test_billing_ledger_immutability.py`) and each append-only table |
+| I12 withdrawals | `I12` (DB), `W2`–`W5` | #101 (`test_billing_withdrawals_*.py`) |
+| Balance equation (W4.4) | `REC` (suite SQL = `billing.service` = Σ ledger `balance_effect`; charge open and status) | #90 (`test_billing_ledger_balances.py`), #102 (`test_billing_family_leak.py` F1) |
+| #92 J5 one fee while the earlier one has net > 0 | `J5` | #92 (`test_group_enrollment_charges.py`) |
+| #93 one tuition charge per period; none in a pause | `T1` (DB), `T2` | #93 (`test_tuition_charges.py`) |
+| #94 one grant/expire; consumption inside the window | `K1` (DB), `K2` | #94 (`test_package_constraints.py`, `test_package_expiry.py`) |
+| #97 one reminder per stage; previous due date; no reminder at open 0 | `R1` (DB), `R2`, step check of `run_reminders` | #97 (`test_charge_reminders_job.py`, `test_billing_due_date_changes.py`) |
+| #99 one decision per key; closure credits; repricing; never on zero charges or non-participants | `S1` (DB), `S2`, `S3` (after a reconcile run), `S4`, step check of `run_reconcile` | #99 (`test_schedule_reconciliation_*.py`) |
+| #100 reversal rows; cancellation and manual adjustment kinds | `X2`, `X3`, `X4` | #100 (`test_billing_package_cancellation.py`, `test_billing_manual_adjustments.py`) |
+| Adjustment source keys name their kind and charge (#90 QA O4) | `SK` | #90 |
 
 ## E2E data rules
 

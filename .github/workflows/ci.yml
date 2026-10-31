@@ -134,7 +134,39 @@ jobs:
       - name: make test-migrations
         run: make test-migrations
 
-  # `make test-integration` leaves out the migration checks (api-migrations).
+  # The billing invariant suite (#103): randomized sequences of every ledger
+  # operation, cross-operation races and the billing job walk, in its own job
+  # so the integration shards don't grow. Pull requests run the fixed default
+  # seeds (deterministic); pushes and manual runs add the run id as one more
+  # seed, so develop explores a new sequence on every merge. A failure prints
+  # the `make test-billing-invariants SEEDS=… STEPS=…` that reproduces it.
+  api-billing-invariants:
+    name: api-billing-invariants
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      UV_LOCKED: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+
+      - name: make test-billing-invariants
+        env:
+          BILLING_INVARIANT_EXTRA_SEED: ${{ github.event_name != 'pull_request' && github.run_id || '' }}
+        run: make test-billing-invariants
+
+  # `make test-integration` leaves out the migration checks (api-migrations)
+  # and the billing invariant suite (api-billing-invariants).
   # The test files are dealt round-robin by path over the shards
   # (apps/api/tests/sharding.py); the matrix and the /4 in SHARD must match.
   api-integration:
@@ -487,7 +519,7 @@ jobs:
   ci-required:
     name: ci-required
     if: always()
-    needs: [changes, api-lint, api-unit, api-migrations, api-integration, web, web-storybook, api-client, e2e, security-deps, security-secrets, security-sast]
+    needs: [changes, api-lint, api-unit, api-migrations, api-billing-invariants, api-integration, web, web-storybook, api-client, e2e, security-deps, security-secrets, security-sast]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -501,6 +533,7 @@ jobs:
           API_LINT: ${{ needs.api-lint.result }}
           API_UNIT: ${{ needs.api-unit.result }}
           API_MIGRATIONS: ${{ needs.api-migrations.result }}
+          API_BILLING_INVARIANTS: ${{ needs.api-billing-invariants.result }}
           # A matrix job's result is "failure" when any shard failed.
           API_INTEGRATION: ${{ needs.api-integration.result }}
           WEB: ${{ needs.web.result }}
@@ -541,6 +574,7 @@ jobs:
           check api-lint "$API_LINT" "$RUN_API"
           check api-unit "$API_UNIT" "$RUN_API"
           check api-migrations "$API_MIGRATIONS" "$RUN_API"
+          check api-billing-invariants "$API_BILLING_INVARIANTS" "$RUN_API"
           check api-integration "$API_INTEGRATION" "$RUN_API"
           check web "$WEB" "$RUN_WEB"
           check web-storybook "$WEB_STORYBOOK" "$RUN_WEB"
