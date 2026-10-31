@@ -251,7 +251,7 @@ def test_a_rerun_writes_nothing_even_days_later(migrated_url, env_for, clock, ca
     env_for("local", migrated_url)
     assert demo.main([]) == 0
     capsys.readouterr()
-    assert len(GENERATOR_NAMES) == 25
+    assert len(GENERATOR_NAMES) == 28
 
     assert demo.main([]) == 0
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
@@ -294,8 +294,8 @@ def test_a_new_generator_writes_nothing_outside_local(generator, app_env):
 
 def test_the_354_generators_come_last():
     # A1.
-    assert GENERATOR_NAMES[-6:-3] == list(NEW_354_GENERATORS)
-    assert GENERATOR_NAMES[-7] == EVALUATIONS_GENERATOR
+    assert GENERATOR_NAMES[-9:-6] == list(NEW_354_GENERATORS)
+    assert GENERATOR_NAMES[-10] == EVALUATIONS_GENERATOR
     assert DEMO_354_TABLE_COUNTS["learning_plan_milestones"] == 7
 
 

@@ -26,9 +26,10 @@ seed-demo`` doesn't) makes the billing generators print ``skipped
 (--without-billing)`` without touching the database, so billing stays off in
 the E2E database.
 
-The registered generators (#23, #195, #299, #303, #353, #354, M6-demo #413)
-write nothing on a rerun (``0 rows``), even on a later day: the #299, #303,
-#353, #354 and M6-demo data keep the dates of their first run. A future
+The registered generators (#23, #195, #299, #303, #353, #354, M6-demo #413,
+M6-demo-b #420) write nothing on a rerun (``0 rows``), even on a later day:
+the #299, #303, #353, #354 and M6-demo data keep the dates of their first
+run. A future
 generator may add rows on a rerun unless its issue says otherwise. To start
 over, reset with ``docker compose down -v``, then ``make migrate`` and ``make
 seed-demo``.
@@ -60,7 +61,7 @@ from app.seeds.runner import (
 )
 from app.seeds.upsert import UpsertResult
 from app.wiring import register_approval_wiring
-from tests.factories import demo_billing
+from tests.factories import demo_billing, demo_billing_money
 from tests.factories.base import GeneratorSkipped, reseed
 from tests.factories.catalog import DemoCatalogGenerator
 from tests.factories.demo_academics import (
@@ -116,6 +117,9 @@ DEMO_GENERATORS: tuple[DemoGenerator, ...] = (
     demo_billing.DemoPricingGenerator(),
     demo_billing.DemoPackagesGenerator(),
     demo_billing.DemoChargesGenerator(),
+    demo_billing_money.DemoReconciliationGenerator(),
+    demo_billing_money.DemoPaymentsGenerator(),
+    demo_billing_money.DemoRemindersGenerator(),
 )
 """Every demo generator, in order. Domain tasks append generators that use
 their factories (``persist`` / ``persist_batch``; never commit).
@@ -183,9 +187,19 @@ their factories (``persist`` / ``persist_batch``; never commit).
   ``APP_ENV=local`` only.
 - ``billing.demo_charges`` (M6-demo #413): a monthly tuition plan, then every
   charge the billing jobs would post (their per-item steps in this Unit of
-  Work), ``APP_ENV=local`` only. The three billing generators also skip a
-  database whose #299 schedule is from an earlier day or whose billing was
-  set up by hand, and under ``--without-billing``."""
+  Work), ``APP_ENV=local`` only.
+- ``billing.demo_reconciliation`` (M6-demo-b #420): ``demo.owner`` cancels
+  one of ``demo.student``'s upcoming series classes as the center, then the
+  reconciliation step credits its charge, ``APP_ENV=local`` only.
+- ``billing.demo_payments`` (M6-demo-b #420): two payments with receipts for
+  ``demo.guardian``'s family (one paying the oldest charges, one kept as
+  account credit), and for the second family a due-date offset and a manual
+  charge whose payment ``demo.owner`` reversed, ``APP_ENV=local`` only.
+- ``billing.demo_reminders`` (M6-demo-b #420): a due date moved with a
+  reason, then the payment reminders the reminder job would send (to
+  ``demo.guardian``), ``APP_ENV=local`` only. The six billing generators
+  also skip a database whose #299 schedule is from an earlier day or whose
+  billing was set up by hand, and under ``--without-billing``."""
 
 
 @dataclass

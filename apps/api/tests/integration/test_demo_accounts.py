@@ -22,6 +22,7 @@ from tests.integration.demo_support import (
     ACCOUNT_GENERATORS,
     DEV_LINES,
     FIRST_RUN_LINES,
+    FROZEN_NOW,
     RERUN_LINES,
     UntouchedSession,
     count,
@@ -98,7 +99,11 @@ def test_the_accounts_are_the_documented_ones():
     assert all(len(a.password) >= 12 for a in DEMO_ACCOUNTS)
 
 
-def test_local_creates_one_active_account_per_role(migrated_url, env_for, capsys):
+def test_local_creates_one_active_account_per_role(
+    migrated_url, env_for, capsys, clock
+):
+    # The #299 frozen day: the M6-demo-b counts depend on the center's today.
+    clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
 
     assert demo.main([]) == 0

@@ -33,6 +33,7 @@ from tests.integration.demo_support import (
     DEMO_FAMILIES_ROWS,
     FAMILIES_GENERATOR,
     FIRST_RUN_LINES,
+    FROZEN_NOW,
     RERUN_LINES,
     UntouchedSession,
     count,
@@ -199,7 +200,9 @@ async def _valid_consents(url: str, student_id: uuid.UUID) -> list[uuid.UUID]:
         await engine.dispose()
 
 
-def test_local_creates_the_three_demo_families(migrated_url, env_for, capsys):
+def test_local_creates_the_three_demo_families(migrated_url, env_for, capsys, clock):
+    # The #299 frozen day: the M6-demo-b counts depend on the center's today.
+    clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
 
     assert demo.main([]) == 0
