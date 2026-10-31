@@ -79,6 +79,7 @@ Resolves architecture §10 **ISSUE-F1** (when lesson charges are posted), **ISSU
 - **Package-covered students:** `charge` debits the session's units (E10); `credit` debits nothing.
 - **Closures:** a closure that turns a charged occurrence into `skipped_closure` always credits it ([ADR-0005](0005-scheduling-invariants-overrides-and-recurrence.md) D6).
 - Built by #99, managed with `billing.manage` (E8).
+- Clarification (#104, 2026-10-31): the makeup link of [ADR-0017](0017-payroll-and-expenses.md) E5 (`class_sessions.makeup_of_session_id`) is payroll's; billing ignores it, so the rule above stands.
 
 ### Account ownership (E4 (a), ISSUE-F3)
 
@@ -144,7 +145,9 @@ Permissions, not roles. None of the new ones is delegable, and each is seeded by
 | `billing.manage` | Owner, Administrator, Finance Staff | price catalog, package products, discounts and custom prices, tuition plans, manual charges and adjustments, due-date changes, cancellation rules, billing settings | #89 |
 | `payment.record` | Owner, Administrator, Finance Staff | record and allocate payments | #96 |
 | `finance.refund.approve` | Owner; delegable to Administrators (already in code, ADR-0007) | payment reversals and refunds, with reauthentication (`finance.refund_or_reversal`) | #100 |
-| `payroll.prepare` / `payroll.finalize` | Finance Staff / Owner, delegable (already in code) | recorded here for M7, as ISSUE-F7 proposed | M7 |
+| `payroll.prepare` / `payroll.finalize` | Finance Staff / Owner, delegable (`payroll.finalize` already in code) | recorded here for M7, as ISSUE-F7 proposed | M7 |
+
+Clarification (#104, 2026-10-31): `payroll.prepare` is not in the code; #107 seeds it per [ADR-0017](0017-payroll-and-expenses.md) E12 (Proposed, pending owner review).
 
 - **Reauthentication** ([ADR-0007](0007-authentication-sessions-recovery-and-delegation.md) D10): a negative manual adjustment against a posted charge is a financial correction (`finance.correction`). It needs `billing.manage` plus reauthentication. Positive manual charges don't.
   - Clarification (#96 M6, 2026-10-28): recording or allocating a payment (`payment.record`) needs **no** reauthentication: it is additive and not on the D10 list; a mistake is undone by a reversal (#100), which does.
