@@ -203,6 +203,9 @@ def test_to_money_rounds_once_from_the_exact_value():
     # 0.5033. Rounding the rate first to 1.01 would give 0.51.
     assert Rate("1.0066").to_money(1, 2) == Money("0.50")
     assert Rate("1.0066").to_money() == Money("1.01")
+    # 0.00498...: an intermediate 0.0050 would round up to 0.01.
+    assert Rate("0.0049").to_money(61, 60) == Money("0.00")
+    assert Rate("-0.0049").to_money(61, 60) == Money("0.00")
 
 
 @pytest.mark.parametrize(
