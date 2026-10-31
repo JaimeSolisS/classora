@@ -287,6 +287,82 @@ def consumption_vs_sweeper(b: Builder, client: TestClient, owner: Staff) -> None
     assert row.charged + row.consumed == 1, row
 
 
+def consumption_inside_the_sweeper_step(
+    b: Builder, client: TestClient, owner: Staff
+) -> None:
+    """The #91 step for a key has classified it (no package yet) and is
+    about to price it when a package is bought and the closeout approval
+    consumes the key and commits: ``post_charge`` must refuse under the
+    account lock (I9's second side, #94 L3), so the step ends
+    ``package_covered``."""
+    import pytest as _pytest
+
+    from app.modules.billing import service as billing_service
+    from app.workflows import packages as package_workflow
+    from app.workflows.package_schemas import PackagePurchase
+
+    session_id = _session(b, subject="PKG")
+    real_quote = billing_service.quote
+
+    async def _race() -> Any:
+        priced, consumed = asyncio.Event(), asyncio.Event()
+
+        async def held_quote(*args: Any, **kwargs: Any) -> Any:
+            priced.set()
+            await asyncio.wait_for(consumed.wait(), 10)
+            return await real_quote(*args, **kwargs)
+
+        monkey = _pytest.MonkeyPatch()
+        monkey.setattr(billing_service, "quote", held_quote)
+        engines = [short_lived_engine(b.url), short_lived_engine(b.url)]
+        try:
+
+            async def step() -> Any:
+                async with UnitOfWork(create_sessionmaker(engines[0])) as uow:
+                    return await session_charges.post_one(
+                        uow.session, session_id, b.student, zone=worlds.ZONE_NAME
+                    )
+
+            async def consume() -> None:
+                await asyncio.wait_for(priced.wait(), 10)
+                try:
+                    async with UnitOfWork(
+                        create_sessionmaker(engines[1]), b.world.owner.id
+                    ) as uow:
+                        monkey.setattr(billing_service, "quote", real_quote)
+                        await package_workflow.purchase_package(
+                            uow.session,
+                            PackagePurchase(
+                                student_id=b.student, package_product_id=b.world.product
+                            ),
+                        )
+                        await _approve(session_id)(uow)
+                finally:
+                    monkey.setattr(billing_service, "quote", held_quote)
+                    consumed.set()
+
+            outcome, _ = await asyncio.gather(step(), consume())
+            return outcome
+        finally:
+            monkey.undo()
+            for engine in engines:
+                await engine.dispose()
+
+    outcome = asyncio.run(_race())
+    row = _one(
+        b.url,
+        "SELECT (SELECT COUNT(*) FROM charges WHERE kind = 'session' AND"
+        " class_session_id = :s) AS charged, (SELECT COUNT(*) FROM"
+        " package_credit_transactions WHERE kind = 'consume' AND class_session_id ="
+        " :s) AS consumed",
+        s=session_id,
+    )
+    assert (outcome, row.charged, row.consumed) == ("package_covered", 0, 1), (
+        outcome,
+        row,
+    )
+
+
 def expiry_vs_consumption(b: Builder, client: TestClient, owner: Staff) -> None:
     package = b.package()
     session_id = _session(b, subject="PKG", day_offset=3)
@@ -438,6 +514,7 @@ CASES: dict[str, Callable[[Builder, TestClient, Staff], None]] = {
     "two_oldest_first_payments": two_oldest_first_payments,
     "credit_vs_allocation": credit_vs_allocation,
     "consumption_vs_sweeper": consumption_vs_sweeper,
+    "consumption_inside_the_sweeper_step": consumption_inside_the_sweeper_step,
     "expiry_vs_consumption": expiry_vs_consumption,
     "reconcile_vs_manual_credit": reconcile_vs_manual_credit,
     "cancel_vs_withdrawal": cancel_vs_withdrawal,
