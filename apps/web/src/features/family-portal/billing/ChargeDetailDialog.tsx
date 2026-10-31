@@ -38,9 +38,13 @@ export function ChargeDetailDialog({
         <div className="flex flex-col gap-4" data-charge-detail={charge.id}>
           <p className="font-medium break-words">
             {labels.chargeLabel(charge)}
-            <span className="block text-sm font-normal text-muted-foreground">
-              {labels.chargeKind(charge.kind)}
-            </span>
+            {/* A charge without a description is already named by its kind. */}
+            {labels.chargeLabel(charge) ===
+            labels.chargeKind(charge.kind) ? null : (
+              <span className="block text-sm font-normal text-muted-foreground">
+                {labels.chargeKind(charge.kind)}
+              </span>
+            )}
           </p>
           <DetailTerms
             items={[

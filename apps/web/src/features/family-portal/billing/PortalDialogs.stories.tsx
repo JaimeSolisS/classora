@@ -83,6 +83,11 @@ const meta = {
           styles: { width: '320px', height: '640px' },
           type: 'mobile',
         },
+        tablet700: {
+          name: 'Small tablet (700 px)',
+          styles: { width: '700px', height: '800px' },
+          type: 'tablet',
+        },
       },
     },
   },
@@ -134,5 +139,21 @@ export const PhoneSheet: Story = {
   play: async () => {
     const dialog = await screen.findByRole('dialog');
     await expect(dialog.getBoundingClientRect().width).toBeLessThanOrEqual(320);
+  },
+};
+
+/** #388 QA D2: still a full-width sheet between 640 and 767 px. */
+export const TabletSheet: Story = {
+  globals: { viewport: { value: 'tablet700' } },
+  play: async () => {
+    const dialog = await screen.findByRole('dialog');
+    const width = document.documentElement.clientWidth;
+    const box = dialog.getBoundingClientRect();
+    if (width < 768) {
+      await expect(Math.round(box.width)).toBe(width);
+      await expect(Math.round(box.left)).toBe(0);
+    } else {
+      await expect(box.width).toBeLessThanOrEqual(672);
+    }
   },
 };

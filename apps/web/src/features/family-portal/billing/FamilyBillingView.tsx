@@ -214,10 +214,16 @@ export function FamilyBillingView({
                     labels.date(charge.service_date),
                   ],
                   [t('familyBilling.columns.child'), charge.student.name],
-                  [
-                    t('billing.accounts.charges.columns.kind'),
-                    labels.chargeKind(charge.kind),
-                  ],
+                  // A charge without a description is named by its kind.
+                  ...(labels.chargeLabel(charge) ===
+                  labels.chargeKind(charge.kind)
+                    ? []
+                    : [
+                        [
+                          t('billing.accounts.charges.columns.kind'),
+                          labels.chargeKind(charge.kind),
+                        ] as [string, ReactNode],
+                      ]),
                   [
                     t('familyBilling.charges.amount'),
                     <span key="net" data-charge-net={charge.net}>

@@ -683,6 +683,13 @@ describe('the phone layout (I1)', () => {
     await settleUntil(() =>
       openDialog()?.querySelector('[data-charge-detail]'),
     );
-    expect(openDialog()!.className).toContain('max-md:h-dvh');
+    const classes = openDialog()!.className.split(/\s+/);
+    expect(classes).toContain('max-md:h-dvh');
+    expect(classes).toContain('max-md:max-w-none');
+    // QA D2: no `sm:` width cap (it beat `max-md:` between 640 and 767 px).
+    expect(classes.filter((name) => name.startsWith('sm:max-w'))).toEqual([
+      'sm:max-w-none',
+    ]);
+    expect(classes).toContain('md:max-w-2xl');
   });
 });
