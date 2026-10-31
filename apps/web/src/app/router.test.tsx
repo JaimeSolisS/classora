@@ -101,6 +101,7 @@ describe('route tree', () => {
       'groups/:groupId',
       'requests',
       'requests/new',
+      'my-billing',
       'my-schedule',
       'my-schedule/sessions/:sessionId/attendance',
       'my-schedule/sessions/:sessionId/closeout',
@@ -253,33 +254,35 @@ describe('route tree', () => {
     const requests = { anyRole: ['guardian', 'student'] };
     expect(children[45]!.handle).toEqual(requests);
     expect(children[46]!.handle).toEqual(requests);
+    // #388 A2: the family billing portal, guardians only.
+    expect(children[47]!.handle).toEqual({ anyRole: ['guardian'] });
     // #67 E1: tutors, students and guardians (the API decides).
-    expect(children[47]!.handle).toEqual({
+    expect(children[48]!.handle).toEqual({
       anyRole: ['tutor', 'student', 'guardian'],
     });
     // #76 G1: tutors only (the API's record policy decides).
-    expect(children[48]!.handle).toEqual({ role: 'tutor' });
-    // #77 G1: tutors only (the API's record policy decides).
     expect(children[49]!.handle).toEqual({ role: 'tutor' });
-    // #79 H1: tutors only (the API's record policy decides).
+    // #77 G1: tutors only (the API's record policy decides).
     expect(children[50]!.handle).toEqual({ role: 'tutor' });
+    // #79 H1: tutors only (the API's record policy decides).
+    expect(children[51]!.handle).toEqual({ role: 'tutor' });
     // #62b B1: guardians, students and tutors (the API decides).
-    expect(children[51]!.handle).toEqual({
+    expect(children[52]!.handle).toEqual({
       anyRole: ['guardian', 'student', 'tutor'],
     });
     // #308 A1: the evaluation pages (all code-split).
-    expect(children[52]!.handle).toEqual({ permission: 'evaluation.manage' });
     expect(children[53]!.handle).toEqual({ permission: 'evaluation.manage' });
     expect(children[54]!.handle).toEqual({ permission: 'evaluation.manage' });
-    expect(children[55]!.handle).toEqual({ permission: 'student.view' });
-    expect(children[56]!.handle).toEqual({ role: 'tutor' });
-    expect(children[57]!.handle).toEqual({
+    expect(children[55]!.handle).toEqual({ permission: 'evaluation.manage' });
+    expect(children[56]!.handle).toEqual({ permission: 'student.view' });
+    expect(children[57]!.handle).toEqual({ role: 'tutor' });
+    expect(children[58]!.handle).toEqual({
       anyOf: [{ role: 'tutor' }, { permission: 'evaluation.manage' }],
     });
-    expect(children[58]!.handle).toEqual({
+    expect(children[59]!.handle).toEqual({
       anyRole: ['student', 'guardian'],
     });
-    for (const index of [52, 53, 54, 55, 56, 57, 58]) {
+    for (const index of [53, 54, 55, 56, 57, 58, 59]) {
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
@@ -293,15 +296,15 @@ describe('route tree', () => {
         { anyRole: ['student', 'guardian'] },
       ],
     };
-    for (const index of [59, 60, 61, 62]) {
+    for (const index of [60, 61, 62, 63]) {
       expect(children[index]!.handle).toEqual(planRoute);
     }
-    for (const index of [63, 64]) {
+    for (const index of [64, 65]) {
       expect(children[index]!.handle).toEqual({
         anyRole: ['student', 'guardian'],
       });
     }
-    for (const index of [59, 60, 61, 62, 63, 64]) {
+    for (const index of [60, 61, 62, 63, 64, 65]) {
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
@@ -316,18 +319,18 @@ describe('route tree', () => {
         { anyRole: ['student', 'guardian'] },
       ],
     };
-    for (const index of [65, 67, 69, 70]) {
+    for (const index of [66, 68, 70, 71]) {
       expect(children[index]!.handle).toEqual(homeworkRoute);
     }
-    for (const index of [66, 68]) {
+    for (const index of [67, 69]) {
       expect(children[index]!.handle).toEqual({ role: 'tutor' });
     }
-    for (const index of [71, 72]) {
+    for (const index of [72, 73]) {
       expect(children[index]!.handle).toEqual({
         anyRole: ['student', 'guardian'],
       });
     }
-    for (const index of [65, 66, 67, 68, 69, 70, 71, 72]) {
+    for (const index of [66, 67, 68, 69, 70, 71, 72, 73]) {
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
@@ -342,59 +345,59 @@ describe('route tree', () => {
         { anyRole: ['student', 'guardian'] },
       ],
     };
-    for (const index of [73, 74, 75, 77]) {
+    for (const index of [74, 75, 76, 78]) {
       expect(children[index]!.handle).toEqual(reportRoute);
     }
-    expect(children[76]!.handle).toEqual({ role: 'tutor' });
-    for (const index of [78, 79]) {
+    expect(children[77]!.handle).toEqual({ role: 'tutor' });
+    for (const index of [79, 80]) {
       expect(children[index]!.handle).toEqual({
         anyRole: ['student', 'guardian'],
       });
     }
-    for (const index of [73, 74, 75, 76, 77, 78, 79]) {
+    for (const index of [74, 75, 76, 77, 78, 79, 80]) {
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
     // #322 A2: the progress pages (code-split). The staff URL lets the
     // family roles through, so the page can send them to /my-progress; the
     // family page serves students and guardians.
-    expect(children[80]!.handle).toEqual({
+    expect(children[81]!.handle).toEqual({
       anyOf: [
         { permission: 'evaluation.manage' },
         { role: 'tutor' },
         { anyRole: ['student', 'guardian'] },
       ],
     });
-    expect(children[81]!.handle).toEqual({ anyRole: ['student', 'guardian'] });
-    for (const index of [80, 81]) {
+    expect(children[82]!.handle).toEqual({ anyRole: ['student', 'guardian'] });
+    for (const index of [81, 82]) {
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
     // #363 A1: the price catalog (code-split), billing.manage holders.
-    for (const index of [82, 83]) {
+    for (const index of [83, 84]) {
       expect(children[index]!.handle).toEqual({ permission: 'billing.manage' });
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
     // #366: the unbilled sessions and the billing settings (code-split),
     // billing.view holders; /billing for billing.view or billing.manage.
-    for (const index of [84, 85]) {
+    for (const index of [85, 86]) {
       expect(children[index]!.handle).toEqual({ permission: 'billing.view' });
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
-    expect(children[86]!.handle).toEqual({
+    expect(children[87]!.handle).toEqual({
       anyPermission: ['billing.view', 'billing.manage'],
     });
-    expect(children[86]!.lazy).toBeTypeOf('function');
+    expect(children[87]!.lazy).toBeTypeOf('function');
     // #367 A1: discounts and custom prices (code-split), billing.manage.
-    for (const index of [87, 88, 89]) {
+    for (const index of [88, 89, 90]) {
       expect(children[index]!.handle).toEqual({ permission: 'billing.manage' });
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
     // #374 A1: tuition plans (code-split), billing.view holders.
-    for (const index of [90, 91]) {
+    for (const index of [91, 92]) {
       expect(children[index]!.handle).toEqual({ permission: 'billing.view' });
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
@@ -402,10 +405,10 @@ describe('route tree', () => {
     // #377 A1: packages (code-split); sold for billing.view, products for
     // billing.manage.
     for (const [index, permission] of [
-      [92, 'billing.view'],
       [93, 'billing.view'],
-      [94, 'billing.manage'],
+      [94, 'billing.view'],
       [95, 'billing.manage'],
+      [96, 'billing.manage'],
     ] as const) {
       expect(children[index]!.handle).toEqual({ permission });
       expect(children[index]!.lazy).toBeTypeOf('function');
@@ -413,15 +416,15 @@ describe('route tree', () => {
     }
     // #379 A2: the family billing accounts (code-split), billing.view.
     // #382 A2: the overdue accounts (code-split), billing.view.
-    for (const index of [96, 97, 98]) {
+    for (const index of [97, 98, 99]) {
       expect(children[index]!.handle).toEqual({ permission: 'billing.view' });
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
-    expect(children[99]!.handle).toBeUndefined();
-    // #174 G1: any signed-in user, no permission.
-    expect(children[100]!.id).toBe('privacy-notice');
     expect(children[100]!.handle).toBeUndefined();
+    // #174 G1: any signed-in user, no permission.
+    expect(children[101]!.id).toBe('privacy-notice');
+    expect(children[101]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

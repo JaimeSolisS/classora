@@ -13,6 +13,8 @@ interface PaginationProps {
   onPage: (page: number) => void;
   /** The navigation's name, when a page has more than one list. */
   label?: string;
+  /** Classes added to both buttons (the family portal's 44 px, #388 I1). */
+  buttonClassName?: string;
 }
 
 export function Pagination({
@@ -22,6 +24,7 @@ export function Pagination({
   total,
   onPage,
   label,
+  buttonClassName,
 }: PaginationProps) {
   const { t } = useTranslation();
   const page = Math.floor(offset / limit) + 1;
@@ -34,6 +37,7 @@ export function Pagination({
         type="button"
         variant="outline"
         size="sm"
+        className={buttonClassName}
         disabled={offset === 0}
         onClick={() => onPage(page - 1)}
       >
@@ -50,6 +54,7 @@ export function Pagination({
         type="button"
         variant="outline"
         size="sm"
+        className={buttonClassName}
         disabled={offset + shown >= total}
         onClick={() => onPage(page + 1)}
       >

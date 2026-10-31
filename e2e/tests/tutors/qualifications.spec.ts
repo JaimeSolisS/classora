@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { api, csrfTokenOf } from '../support/api';
@@ -10,6 +12,7 @@ import {
 import { switchColorScheme } from '../support/a11y';
 import { common, errors, fill, signedInAs } from '../support/catalog';
 import { createApprovedAccount } from '../support/consent';
+import { addToFamilyViaApi, createFamilyViaApi } from '../support/families';
 import { createGuardianViaApi, linkGuardianViaApi } from '../support/guardians';
 import { createStudentViaApi } from '../support/students';
 import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
@@ -105,9 +108,19 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // carries it or the retract reason. Axe on the editor, the review page,
 // the queue and the family page.
 //
+// #388 J3 (after #62b, on the guardian's context): the Owner puts the
+// guardian and both children in a family through the API, posts one manual
+// charge per child and records one payment "oldest first" (with a note) that
+// pays the first child's charge and leaves the second open. On a phone the
+// guardian opens "Cuenta familiar" from the menu: the outstanding balance
+// and the second child's equal the open charge; filtered to the first child
+// (every status) the charge is Paid and its detail lists the payment; the
+// payment's receipt downloads a PDF; the note never shows; another family's
+// account is 404. Axe on the page and the charge dialog.
+//
 // Budgets (#27, ADR-0008; see support/auth.ts): 3 logins (the demo Owner's
 // own reauthenticated API context for the role change, the tutor and the
-// guardian; #79, #308, #310 and #315 reuse them), 0 redemptions and 2 self-registrations (createApprovedTutor and
+// guardian; #79, #308, #310, #315 and #388 reuse them), 0 redemptions and 2 self-registrations (createApprovedTutor and
 // the guardian's createApprovedAccount). Every `make e2e` starts from an
 // empty database, so names are unique per run.
 
@@ -128,6 +141,13 @@ const CENTER_ZONE = 'America/Mexico_City';
 const PHONE = { width: 390, height: 844 };
 // #62b E1: the reason the Owner gives for the exception.
 const EXCEPTION_REASON = 'La familia avisó de una emergencia médica.';
+// #388 J3: the payment note the guardian never sees, and the open charge's
+// amount as the app formats it (es-MX).
+const BILLING_NOTE = 'NOTA-E2E pagó en ventanilla del centro';
+const BILLING_OPEN_MONEY = new Intl.NumberFormat('es-MX', {
+  style: 'currency',
+  currency: 'MXN',
+}).format(450);
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 // A seeded level (#32) that no spec deactivates.
 const LEVEL = 'Secundaria';
@@ -141,8 +161,9 @@ const EXPECTED_RESOURCE_ERROR =
 
 // Three browsers, two logins, two decisions, two session requests and their
 // review, a change request and its review, and a revocation: more than the
-// default 30 s under machine load.
-const TEST_TIMEOUT_MS = 300_000;
+// default 30 s under machine load. #388's family billing step adds about
+// 20 s: 300 → 330 s.
+const TEST_TIMEOUT_MS = 330_000;
 
 function watchConsole(page: Page): string[] {
   const consoleErrors: string[] = [];
@@ -209,6 +230,38 @@ function plusDays(
   const next = new Date(Date.UTC(year, month - 1, day + days, 12));
   const weekday = next.getUTCDay() === 0 ? 7 : next.getUTCDay();
   return { date: next.toISOString().slice(0, 10), weekday };
+}
+
+/** #388 J3: a manual charge through the API (#100 C1; no password). */
+async function postManualChargeViaApi(
+  page: Page,
+  familyId: string,
+  {
+    key,
+    ...charge
+  }: {
+    student_id: string;
+    description: string;
+    amount: string;
+    service_date: string;
+    due_date: string;
+    key: string;
+  },
+): Promise<void> {
+  const me = await api(page, '/api/v1/auth/me');
+  const posted = await api(
+    page,
+    `/api/v1/families/${familyId}/billing-account/charges`,
+    {
+      method: 'POST',
+      json: charge,
+      headers: {
+        'X-CSRF-Token': csrfTokenOf(me),
+        'Idempotency-Key': key.padEnd(16, '0'),
+      },
+    },
+  );
+  expect(posted.status).toBe(201);
 }
 
 /**
@@ -1783,6 +1836,155 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
       await switchColorScheme(parent.page, 'dark');
       expect(await axeViolations(parent.page)).toEqual([]);
       await switchColorScheme(parent.page, 'light');
+
+      // #388 J3: the family billing portal, on a phone. The Owner (shared
+      // session, API) puts the guardian and both children in a family,
+      // posts one manual charge per child (Lucía's due first) and records
+      // one payment "oldest first" with a note: it pays Lucía's charge and
+      // leaves Andrés's open (its receipt is issued). Billing stays off.
+      const billingFamily = `Familia Cobros ${suffix}`;
+      const billingFamilyId = await createFamilyViaApi(page, billingFamily);
+      await addToFamilyViaApi(page, billingFamilyId, 'students', childId);
+      await addToFamilyViaApi(page, billingFamilyId, 'students', siblingId);
+      await addToFamilyViaApi(page, billingFamilyId, 'guardians', guardianId);
+      const billingToday = centerToday();
+      const paidCharge = `Cobro E2E Lucía ${suffix}`;
+      const openCharge = `Cobro E2E Andrés ${suffix}`;
+      await postManualChargeViaApi(page, billingFamilyId, {
+        student_id: childId,
+        description: paidCharge,
+        amount: '300.00',
+        service_date: billingToday,
+        due_date: billingToday,
+        key: `e2e-388-paid-${suffix}`,
+      });
+      await postManualChargeViaApi(page, billingFamilyId, {
+        student_id: siblingId,
+        description: openCharge,
+        amount: '450.00',
+        service_date: billingToday,
+        due_date: plusDays(billingToday, 7).date,
+        key: `e2e-388-open-${suffix}`,
+      });
+      const billingMe = await api(page, '/api/v1/auth/me');
+      const recorded = await api(
+        page,
+        `/api/v1/families/${billingFamilyId}/billing-account/payments`,
+        {
+          method: 'POST',
+          json: {
+            amount: '300.00',
+            received_on: billingToday,
+            payment_method_code: 'cash',
+            note: BILLING_NOTE,
+            allocation: { mode: 'oldest_first' },
+          },
+          headers: {
+            'X-CSRF-Token': csrfTokenOf(billingMe),
+            'Idempotency-Key': `e2e-388-payment-${suffix}`.padEnd(16, '0'),
+          },
+        },
+      );
+      expect(recorded.status).toBe(201);
+
+      // The guardian (390 px) opens "Cuenta familiar" from the menu.
+      const billingViewport = parent.page.viewportSize();
+      await parent.page.setViewportSize(PHONE);
+      await parent.page.goto('/');
+      await parent.page
+        .getByRole('banner')
+        .getByRole('button', { name: common.nav.toggle })
+        .click();
+      await parent.page
+        .getByRole('banner')
+        .getByRole('link', { name: common.nav.familyBilling, exact: true })
+        .click();
+      await expect(parent.page).toHaveURL('/my-billing');
+      const portal = parent.page.getByRole('main');
+      await expect(
+        portal.getByRole('heading', {
+          level: 1,
+          name: fill(common.familyBilling.title, { name: billingFamily }),
+        }),
+      ).toBeVisible();
+      // The outstanding balance and Andrés's are the open charge's amount.
+      await expect(
+        portal.locator('[data-balance="outstanding"]'),
+      ).toContainText(BILLING_OPEN_MONEY);
+      await expect(
+        portal
+          .locator('[data-student-balance]')
+          .filter({ hasText: `Andrés Solicitudes ${suffix}` }),
+      ).toContainText(BILLING_OPEN_MONEY);
+      expect(await axeViolations(parent.page)).toEqual([]);
+
+      // Lucía, every status: her charge is Paid.
+      await portal
+        .getByLabel(common.familyBilling.filters.child, { exact: true })
+        .selectOption({ label: studentName });
+      await expect(parent.page).toHaveURL(/[?&]student=[0-9a-f-]{36}/);
+      await portal
+        .getByLabel(common.familyBilling.charges.filter, { exact: true })
+        .selectOption('all');
+      await expect(parent.page).toHaveURL(/[?&]status=all/);
+      const paidCard = portal
+        .locator('[data-charge-id]')
+        .filter({ hasText: paidCharge });
+      await expect(paidCard).toHaveCount(1);
+      await expect(paidCard).toContainText(
+        common.billing.tuition.chargeStatus.paid,
+      );
+      await expect(portal.locator('[data-charge-id]')).toHaveCount(1);
+
+      // Its detail: the payment applied; axe on the dialog.
+      await paidCard.getByRole('button').click();
+      const chargeDialog = parent.page.getByRole('dialog', {
+        name: common.familyBilling.chargeDetail.title,
+      });
+      await expect(chargeDialog).toBeVisible();
+      await expect(chargeDialog).toContainText(paidCharge);
+      await expect(
+        chargeDialog.locator('[data-charge-allocation]'),
+      ).toHaveCount(1);
+      expect(await axeViolations(parent.page)).toEqual([]);
+      await chargeDialog
+        .locator('[data-slot="dialog-footer"]')
+        .getByRole('button', { name: common.familyBilling.close, exact: true })
+        .click();
+      await expect(chargeDialog).toBeHidden();
+
+      // Payments: the receipt downloads `<number>.pdf`, a PDF; the note the
+      // Owner entered never shows.
+      const paymentCard = portal.locator('[data-payment-id]');
+      await expect(paymentCard).toHaveCount(1);
+      await expect(paymentCard).toContainText(/R-\d{4}-\d{6}/);
+      const receiptNumber = (await paymentCard.textContent())!.match(
+        /R-\d{4}-\d{6}/,
+      )![0];
+      const [receipt] = await Promise.all([
+        parent.page.waitForEvent('download'),
+        paymentCard
+          .getByRole('link', {
+            name: fill(common.billing.accounts.receipt.downloadFor, {
+              number: receiptNumber,
+            }),
+          })
+          .click(),
+      ]);
+      expect(receipt.suggestedFilename()).toBe(`${receiptNumber}.pdf`);
+      const receiptFile = await readFile((await receipt.path())!);
+      expect(receiptFile.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+      await expect(parent.page.getByText(BILLING_NOTE)).toHaveCount(0);
+
+      // Another family's account (a random id): 404 for the guardian.
+      const foreignAccount = await api(
+        parent.page,
+        `/api/v1/families/${randomUUID()}/billing-account`,
+      );
+      expect(foreignAccount.status).toBe(404);
+      if (billingViewport) {
+        await parent.page.setViewportSize(billingViewport);
+      }
 
       // Another student's schedule: the same 404 as an unknown id.
       const from = `${day.date}T00:00:00Z`;

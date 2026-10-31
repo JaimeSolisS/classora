@@ -55,7 +55,8 @@
     "homework": "Homework",
     "progressReports": "Progress reports",
     "tutorReports": "Tutor reports",
-    "progress": "Progress"
+    "progress": "Progress",
+    "familyBilling": "Family billing"
   },
   "notFound": {
     "title": "Page not found",
@@ -6145,6 +6146,113 @@
         "submit": "Withdraw without settlement",
         "submitting": "Withdrawing…"
       }
+    }
+  },
+  "familyBilling": {
+    "title": "Family billing — {{name}}",
+    "fallbackTitle": "Family billing",
+    "noFamily": "Your family's billing account isn't set up yet. Contact the center.",
+    "inactive": "Inactive family: the account is still shown here.",
+    "onlyChild": "Charges and payments for {{name}}",
+    "close": "Close",
+    "adjustmentFallback": "Adjustment",
+    "columns": {
+      "child": "Child"
+    },
+    "filters": {
+      "label": "Filter by child",
+      "child": "Child",
+      "allChildren": "All children",
+      "help": "Applies to the balance, Charges, Packages and History."
+    },
+    "summary": {
+      "title": "Balance",
+      "outstanding": "Outstanding",
+      "overdue": "Overdue",
+      "accountCredit": "Account credit",
+      "netBalance": "Net balance",
+      "forChild": "For {{name}}",
+      "wholeFamily": "Whole family",
+      "noAccount": "No charges or payments yet.",
+      "asOf": "As of {{date}}.",
+      "children": "By child",
+      "overdueWarning": "(has overdue charges)"
+    },
+    "charges": {
+      "title": "Charges",
+      "filter": "Show",
+      "filters": {
+        "open": "To pay",
+        "overdue": "Overdue",
+        "paid": "Paid",
+        "all": "All"
+      },
+      "empty": "No charges yet.",
+      "emptyFiltered": "No charges match this filter.",
+      "pagination": "Charge pages",
+      "amount": "Amount",
+      "paid": "Paid",
+      "view": "Details",
+      "viewFor": "Details of {{charge}} for {{child}}, {{date}}"
+    },
+    "chargeDetail": {
+      "title": "Charge",
+      "help": "The charge's price, discounts, adjustments and the payments applied to it.",
+      "listPrice": "List price",
+      "discounts": "Discounts",
+      "noDiscounts": "No discounts.",
+      "discount": "Discount",
+      "afterDiscounts": "Amount after discounts",
+      "adjustments": "Adjustments",
+      "noAdjustments": "No adjustments.",
+      "payments": "Payments applied",
+      "noPayments": "No payment applied yet.",
+      "net": "Net"
+    },
+    "payments": {
+      "title": "Payments",
+      "familyWide": "Payments apply to the whole family.",
+      "empty": "No payments yet.",
+      "pagination": "Payment pages",
+      "applied": "Applied",
+      "credit": "Not applied (credit)",
+      "view": "Details",
+      "viewFor": "Details of the payment of {{amount}} received {{date}}"
+    },
+    "paymentDetail": {
+      "title": "Payment",
+      "help": "The payment and the charges it was applied to, oldest first.",
+      "allocations": "Applied to",
+      "noAllocations": "Not applied to any charge: it is account credit.",
+      "charge": "Charge",
+      "reversal": "Reversal",
+      "reversedOn": "Reversed on",
+      "refunds": "Refunds"
+    },
+    "packages": {
+      "title": "Prepaid packages",
+      "empty": "No packages.",
+      "pagination": "Package pages",
+      "subject": "Subject",
+      "remaining": "Left",
+      "purchased": "Purchased",
+      "expires": "Expires",
+      "expiresSoon": "Expires soon",
+      "statusOther": "Other",
+      "movementOther": "Other movement",
+      "view": "Usage",
+      "viewFor": "Usage of {{name}} for {{child}}",
+      "usageTitle": "Package usage",
+      "usageHelp": "What is left and every movement of the package.",
+      "movements": "Movements",
+      "usageEmpty": "No movements yet."
+    },
+    "history": {
+      "title": "History",
+      "intro": "Every movement of the account, newest first. Payments and refunds belong to the whole family, so a child filter leaves them out.",
+      "empty": "No movements yet.",
+      "more": "Load more",
+      "loading": "Loading…"
     }
   }
 }

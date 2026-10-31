@@ -17,6 +17,7 @@ import {
   myHomeworkPath,
   rosterPath,
 } from '@/features/assignments/api';
+import { familyBillingPath } from '@/features/family-portal/billing/access';
 import type { NotificationItem } from './api';
 
 // A notification is `{notification_type, params}` (ISSUE-X1): its message is
@@ -374,6 +375,21 @@ function approvedReport(params: NotificationItem['params']): string {
     : myReportsPath(studentId);
 }
 
+/**
+ * #388 H1 (#102 T6): a payment reminder opens the family billing portal
+ * with the charges it is about: `due_soon` → the open charges, `overdue`
+ * and `overdue_followup` → the overdue ones, any other stage → the page.
+ * No child is preselected, and `family_id` isn't used (the portal shows
+ * the reader's current family).
+ */
+function paymentReminder(params: NotificationItem['params']): string {
+  if (params.kind === 'due_soon') return familyBillingPath('open');
+  if (params.kind === 'overdue' || params.kind === 'overdue_followup') {
+    return familyBillingPath('overdue');
+  }
+  return familyBillingPath();
+}
+
 /** The voided evaluation's page (#308 F2); home without an id. */
 function voidedEvaluation(params: NotificationItem['params']): string {
   const id = params.evaluation_id;
@@ -384,9 +400,7 @@ function voidedEvaluation(params: NotificationItem['params']): string {
 
 /**
  * Where activating a notification of a type goes, from its params and its
- * recipient; a type without an entry only becomes read (#97's
- * `billing.payment_reminder` until #102 links the family billing page; for
- * example
+ * recipient; a type without an entry only becomes read (for example
  * `scheduling.occurrence_skipped_closure`, #232, and #54's
  * `scheduling.session_rescheduled`, `scheduling.series_changed` and
  * `scheduling.series_cancelled`: their tutor, student and guardian
@@ -461,6 +475,8 @@ export const NOTIFICATION_LINKS: Readonly<
   'scheduling.session_cancelled': mySchedule,
   'scheduling.session_tutor_changed': mySchedule,
   'scheduling.tutor_substituted': mySchedule,
+  // #388 H1: the family billing portal, filtered by the reminder's stage.
+  'billing.payment_reminder': paymentReminder,
 };
 
 /** The bell's badge text: the count, or "99+" above 99. */

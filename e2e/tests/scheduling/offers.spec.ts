@@ -106,12 +106,16 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // the student's own (relation self), and "Mi progreso" shows a status
 // badge (axe). Read-only.
 //
+// Family billing (#388 J3), last on the same demo.student context: the
+// open menu has no "Cuenta familiar" item, and /my-billing is the
+// access-denied page (guardians only). Read-only.
+//
 // Budgets (#27, ADR-0008; see support/auth.ts): 3 logins (demo.tutor; the
 // reauthenticated Owner context of createApprovedTutor, #55; and
 // demo.student, #313), no one-time-link redemption, 1 registration (the
 // substitute, #55); the attendance, closeout, review, resubmission,
-// progress and course completion steps add none (#76, #77, #78, #305,
-// #322, #323). It never
+// progress, course completion and family billing steps add none (#76,
+// #77, #78, #305, #322, #323, #388). It never
 // changes the zone, the
 // opening hours or the scheduling policy. No other spec offers sessions to
 // demo.tutor; the dates are three and six weeks ahead (other scheduling
@@ -1582,6 +1586,30 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
       ),
     );
     expect(await axeViolations(student!.page)).toEqual([]);
+
+    // #388 J3: no family billing for a student: not in the menu (opened
+    // when closed, as above), and a direct visit is the access-denied page.
+    if ((await menuToggle.getAttribute('aria-expanded')) !== 'true') {
+      await menuToggle.click();
+    }
+    await expect(menuToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(
+      student!.page
+        .getByRole('banner')
+        .getByRole('link', { name: common.nav.myCourses, exact: true }),
+    ).toBeVisible();
+    await expect(
+      student!.page
+        .getByRole('banner')
+        .getByRole('link', { name: common.nav.familyBilling, exact: true }),
+    ).toHaveCount(0);
+    await student!.page.goto('/my-billing');
+    await expect(
+      student!.page.getByRole('main').getByRole('heading', {
+        level: 1,
+        name: common.auth.forbidden.title,
+      }),
+    ).toBeVisible();
     expect(await cspViolations(student!.page)).toEqual([]);
     expect(student!.consoleErrors).toEqual([]);
   } finally {

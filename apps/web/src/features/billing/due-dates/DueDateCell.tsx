@@ -10,12 +10,16 @@ import { dueDateChanged } from './rules';
 // whose name says it changed and the original date (visually hidden text,
 // so touch and screen-reader users get it too); hovering or focusing it
 // shows "Original: <date>" in a tooltip (Radix, from the pinned radix-ui
-// package; Escape closes it). Reusable by the family portal (#102).
+// package; Escape closes it). Reusable by the family portal (#102); #388
+// passes `touch` for a 44 px marker on the phone layout.
 
 export function DueDateCell({
   charge,
+  touch = false,
 }: {
   charge: Pick<ChargeItem, 'due_date' | 'original_due_date'>;
+  /** A 44 × 44 px marker (the family portal's touch targets, #388 I1). */
+  touch?: boolean;
 }) {
   const { t } = useTranslation();
   const { formatLocalDate } = useFormatters();
@@ -33,7 +37,7 @@ export function DueDateCell({
             <button
               type="button"
               data-due-date-changed
-              className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring"
+              className={`inline-flex ${touch ? 'size-11' : 'size-6'} items-center justify-center rounded-md text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring`}
             >
               <CalendarClock aria-hidden="true" className="size-4" />
               <span className="sr-only">

@@ -3,6 +3,7 @@ import { APPROVAL_REVIEW_PERMISSIONS } from '@/features/approvals/api';
 import type { AccessRequirement } from '@/features/auth/access';
 import { BILLING_ACCESS } from '@/features/billing/access';
 import { CHANGE_REQUESTS_ACCESS } from '@/features/change-requests/access';
+import { FAMILY_BILLING_ACCESS } from '@/features/family-portal/billing/access';
 import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/access';
 import { MY_COURSES_ACCESS } from '@/features/courses/cohorts/access';
 import { GROUPS_ACCESS } from '@/features/groups/access';
@@ -150,5 +151,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     to: '/change-requests',
     labelKey: 'nav.changeRequests',
     ...CHANGE_REQUESTS_ACCESS,
+  },
+  // Family billing (#388 A1): guardians only, after the other family
+  // items. A different label from staff "Billing", so a staff user who is
+  // also a guardian can tell the two apart (the #315 precedent).
+  {
+    to: '/my-billing',
+    labelKey: 'nav.familyBilling',
+    ...FAMILY_BILLING_ACCESS,
   },
 ];

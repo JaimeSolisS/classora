@@ -42,14 +42,15 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * #43), tutors/qualifications.spec.ts 3 (the demo Owner's reauthenticated
  * API context for the tutor's role change, and the tutor; #44; and the
  * guardian who requests a session, #59; #60, #67 G8, #79 I8, #308 G3,
- * #310 G3, #315 H3 and #62b E1 reuse both contexts: 0 more),
+ * #310 G3, #315 H3, #62b E1 and #388 J3 reuse both contexts: 0 more),
  * scheduling/offers.spec.ts 3
  * (`demo.tutor`, a #195 demo account, #52; the demo Owner's
  * reauthenticated API context of createApprovedTutor for the substitute's
  * role change, #55; and `demo.student`, #313 G3, the one login reserved
  * for it; the #76 attendance, #77 closeout, #78 review, #305
  * resubmission, #322 progress and #323 course completion steps reuse the
- * contexts and the shared Owner session: 0 more; scheduling/overdue-closeouts.spec.ts (#301b) runs on the shared
+ * contexts and the shared Owner session, and #388's family-billing
+ * check reuses demo.student's: 0 more; scheduling/overdue-closeouts.spec.ts (#301b) runs on the shared
  * Owner session: 0), billing/corrections.spec.ts 1 (the demo Owner in
  * its own context, for the password dialog of a correction; the shared
  * session is never reauthenticated; #386; #387's package withdrawal runs
