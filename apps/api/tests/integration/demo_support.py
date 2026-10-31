@@ -1,5 +1,5 @@
 """Helpers for the ``make seed-demo`` generator tests (#23, #195, #299, #303,
-#353, #354).
+#353, #354, M6-demo #413).
 
 - :func:`migrate` and :func:`demo_env`: a fresh database at the Alembic head,
   and the environment of a ``demo.main`` run (each test module wraps them in
@@ -9,7 +9,9 @@
   the #303 rows in the same tables and its own (:data:`DEMO_303_TABLE_COUNTS`,
   :data:`TABLE_COUNTS_THROUGH_303`), the #353 ones
   (:data:`DEMO_353_TABLE_COUNTS`, :data:`TABLE_COUNTS_THROUGH_353`) and the
-  #354 ones (:data:`DEMO_354_TABLE_COUNTS`, :data:`ALL_TABLE_COUNTS`).
+  #354 ones (:data:`DEMO_354_TABLE_COUNTS`, :data:`TABLE_COUNTS_THROUGH_354`)
+  and the M6-demo billing ones (:data:`DEMO_BILLING_TABLE_COUNTS`,
+  :data:`ALL_TABLE_COUNTS`).
 - Prefixes of the registered generators by name (:func:`generators_through`).
 """
 
@@ -88,6 +90,23 @@ PROGRESS_REPORTS_GENERATOR = "academics.demo_progress_reports"
 DEMO_PROGRESS_REPORTS_ROWS = 9
 """#354 D4: 3 reports, 2 approval requests, 1 schedule and 3 notifications (R1
 approved, to ``demo.tutor``, ``demo.student`` and ``demo.guardian``)."""
+
+PRICING_GENERATOR = "billing.demo_pricing"
+DEMO_PRICING_ROWS = 22
+"""M6-demo B: 8 catalog items (PR1-PR6 and the two package items), 9 price
+versions (PR1's upcoming one included), 2 discounts, 1 assignment and 2
+package products."""
+PACKAGES_GENERATOR = "billing.demo_packages"
+DEMO_PACKAGES_ROWS = 21
+"""M6-demo C: H4 (1 session, 1 participant, 1 offer, 1 offer session, 1
+attendance row, 1 closeout, 1 approval, 1 approval request and 2
+notifications to ``demo.tutor``), F1's billing account, 2 packages, 4 credit
+transactions (2 grants, 1 consume, 1 expire), 2 purchase charges and their 2
+discount lines."""
+CHARGES_GENERATOR = "billing.demo_charges"
+DEMO_CHARGES_ROWS = 97
+"""M6-demo D: F2's and F3's billing accounts, TP1, 43 charges (40 sessions, 2
+cohort fees, 1 tuition period) and 51 discount lines."""
 
 DEMO_TABLE_COUNTS = {
     "subjects": 8,
@@ -220,6 +239,37 @@ run on a fresh database (``approval_requests`` and ``notifications`` are
 shared)."""
 
 
+DEMO_BILLING_TABLE_COUNTS = {
+    # billing.demo_pricing.
+    "service_prices": 6 + 2,
+    "price_versions": 7 + 2,
+    "discounts": 2,
+    "discount_assignments": 1,
+    "package_products": 2,
+    # billing.demo_packages: H4, the two packages and their purchases.
+    "class_sessions": 1,
+    "class_session_participants": 1,
+    "assignment_offers": 1,
+    "assignment_offer_sessions": 1,
+    "class_session_attendance": 1,
+    "session_closeouts": 1,
+    "session_closeout_approvals": 1,
+    "approval_requests": 1,
+    # H4's offer received and closeout approved, to demo.tutor.
+    "notifications": 2,
+    "packages": 2,
+    "package_credit_transactions": 4,
+    # F1 (the first sale), then F2 and F3 (billing.demo_charges).
+    "billing_accounts": 1 + 2,
+    "tuition_plans": 1,
+    # 2 purchases; 40 sessions, 2 cohort fees and 1 tuition period.
+    "charges": 2 + 43,
+    "charge_discounts": 2 + 51,
+}
+"""The rows the M6-demo generators add to each table they count, after a
+first run on a fresh database (several tables are shared with #299-#354)."""
+
+
 def _sum(*parts: dict[str, int]) -> dict[str, int]:
     tables = {table for part in parts for table in part}
     return {table: sum(part.get(table, 0) for part in parts) for table in tables}
@@ -235,13 +285,17 @@ TABLE_COUNTS_THROUGH_353 = _sum(
 """Every counted table of #299, #303 and #353 after a first run of the
 generators through ``academics.demo_evaluations`` (#354 G6)."""
 
-ALL_TABLE_COUNTS = _sum(
+TABLE_COUNTS_THROUGH_354 = _sum(
     DEMO_TABLE_COUNTS,
     DEMO_303_TABLE_COUNTS,
     DEMO_353_TABLE_COUNTS,
     DEMO_354_TABLE_COUNTS,
 )
-"""Every counted table of #299, #303, #353 and #354 after a first run of every
+"""Every counted table of #299, #303, #353 and #354 after a first run of the
+generators through ``academics.demo_progress_reports`` (M6-demo G8)."""
+
+ALL_TABLE_COUNTS = _sum(TABLE_COUNTS_THROUGH_354, DEMO_BILLING_TABLE_COUNTS)
+"""Every counted table of #299-#354 and M6-demo after a first run of every
 generator."""
 
 FROZEN_NOW = datetime(2026, 11, 4, 17, 0, tzinfo=UTC)
@@ -277,6 +331,9 @@ GENERATOR_NAMES = [
     LEARNING_PLANS_GENERATOR,
     HOMEWORK_GENERATOR,
     PROGRESS_REPORTS_GENERATOR,
+    PRICING_GENERATOR,
+    PACKAGES_GENERATOR,
+    CHARGES_GENERATOR,
 ]
 
 FIRST_RUN_LINES = [
@@ -296,6 +353,9 @@ FIRST_RUN_LINES = [
     f"{LEARNING_PLANS_GENERATOR}: {DEMO_LEARNING_PLANS_ROWS} rows",
     f"{HOMEWORK_GENERATOR}: {DEMO_HOMEWORK_ROWS} rows",
     f"{PROGRESS_REPORTS_GENERATOR}: {DEMO_PROGRESS_REPORTS_ROWS} rows",
+    f"{PRICING_GENERATOR}: {DEMO_PRICING_ROWS} rows",
+    f"{PACKAGES_GENERATOR}: {DEMO_PACKAGES_ROWS} rows",
+    f"{CHARGES_GENERATOR}: {DEMO_CHARGES_ROWS} rows",
 ]
 RERUN_LINES = [
     *RERUN_REFERENCE_LINES,
@@ -334,11 +394,23 @@ NEW_354_GENERATORS = (
     PROGRESS_REPORTS_GENERATOR,
 )
 
+BILLING_GENERATORS = (
+    PRICING_GENERATOR,
+    PACKAGES_GENERATOR,
+    CHARGES_GENERATOR,
+)
+"""The M6-demo generators (#413); they also skip a stale #299 schedule."""
+
 
 def generators_before_303() -> list[demo.DemoGenerator]:
     """The #299 run: every registered generator except the four #303 ones,
-    the four #353 ones and the three #354 ones."""
-    later = {*NEW_303_GENERATORS, *NEW_353_GENERATORS, *NEW_354_GENERATORS}
+    the four #353 ones, the three #354 ones and the three billing ones."""
+    later = {
+        *NEW_303_GENERATORS,
+        *NEW_353_GENERATORS,
+        *NEW_354_GENERATORS,
+        *BILLING_GENERATORS,
+    }
     return [g for g in demo.DEMO_GENERATORS if g.name not in later]
 
 

@@ -39,6 +39,7 @@ from tests.factories.identity import DemoPrerequisiteMissingError
 from tests.integration.conftest import run_sql, short_lived_engine
 from tests.integration.demo_support import (
     ALL_TABLE_COUNTS,
+    BILLING_GENERATORS,
     DEMO_354_TABLE_COUNTS,
     DEV_LINES,
     EVALUATIONS_GENERATOR,
@@ -245,12 +246,12 @@ def test_a_weekend_run_writes_the_same_counts(
 
 
 def test_a_rerun_writes_nothing_even_days_later(migrated_url, env_for, clock, capsys):
-    # E4: every generator (22) prints 0 rows.
+    # E4: every generator (25 since M6-demo) prints 0 rows.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
     assert demo.main([]) == 0
     capsys.readouterr()
-    assert len(GENERATOR_NAMES) == 22
+    assert len(GENERATOR_NAMES) == 25
 
     assert demo.main([]) == 0
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
@@ -293,8 +294,8 @@ def test_a_new_generator_writes_nothing_outside_local(generator, app_env):
 
 def test_the_354_generators_come_last():
     # A1.
-    assert GENERATOR_NAMES[-3:] == list(NEW_354_GENERATORS)
-    assert GENERATOR_NAMES[-4] == EVALUATIONS_GENERATOR
+    assert GENERATOR_NAMES[-6:-3] == list(NEW_354_GENERATORS)
+    assert GENERATOR_NAMES[-7] == EVALUATIONS_GENERATOR
     assert DEMO_354_TABLE_COUNTS["learning_plan_milestones"] == 7
 
 
@@ -317,7 +318,7 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
         *RERUN_REFERENCE_LINES,
         *(
             f"{name}: skipped ({STALE_SCHEDULE})"
-            if name in NEW_354_GENERATORS
+            if name in {*NEW_354_GENERATORS, *BILLING_GENERATORS}
             else f"{name}: 0 rows"
             for name in GENERATOR_NAMES
         ),

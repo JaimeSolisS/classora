@@ -133,6 +133,9 @@ def test_registered_command_applies_the_registered_reference_seeds(
         "academics.demo_learning_plans: 18 rows",
         "academics.demo_homework: 16 rows",
         "academics.demo_progress_reports: 9 rows",
+        "billing.demo_pricing: 22 rows",
+        "billing.demo_packages: 21 rows",
+        "billing.demo_charges: 97 rows",
     ]
 
 

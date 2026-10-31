@@ -35,6 +35,7 @@ from tests.integration.catalog_support import get
 from tests.integration.conftest import run_sql
 from tests.integration.demo_support import (
     ALL_TABLE_COUNTS,
+    BILLING_GENERATORS,
     CHANGES_GENERATOR,
     DEMO_353_TABLE_COUNTS,
     DEV_LINES,
@@ -250,12 +251,12 @@ def test_a_weekend_run_writes_the_same_counts(
 
 
 def test_a_rerun_writes_nothing_even_days_later(migrated_url, env_for, clock, capsys):
-    # F4: every generator (22 since #354) prints 0 rows.
+    # F4: every generator (25 since M6-demo) prints 0 rows.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
     assert demo.main([]) == 0
     capsys.readouterr()
-    assert len(GENERATOR_NAMES) == 22
+    assert len(GENERATOR_NAMES) == 25
 
     assert demo.main([]) == 0
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
@@ -300,7 +301,7 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
     migrated_url, env_for, clock, capsys
 ):
     # F6 / G3: the #303 run on 2026-11-04, then every generator 10 days later
-    # (the #354 ones skip too).
+    # (the #354 and billing ones skip too).
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
     assert demo.main([], generators=generators_through(CHANGES_GENERATOR)) == 0
@@ -314,7 +315,7 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
         *RERUN_REFERENCE_LINES,
         *(
             f"{name}: skipped ({STALE_SCHEDULE})"
-            if name in {*NEW_353_GENERATORS, *NEW_354_GENERATORS}
+            if name in {*NEW_353_GENERATORS, *NEW_354_GENERATORS, *BILLING_GENERATORS}
             else f"{name}: 0 rows"
             for name in GENERATOR_NAMES
         ),
@@ -325,7 +326,7 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
 
 
 def test_the_353_counts_cover_its_new_tables():
-    assert GENERATOR_NAMES[-7:-3] == list(NEW_353_GENERATORS)
+    assert GENERATOR_NAMES[-10:-6] == list(NEW_353_GENERATORS)
     assert DEMO_353_TABLE_COUNTS["session_closeouts"] == 9
     assert DEMO_353_TABLE_COUNTS["evaluations"] == 9
 

@@ -28,7 +28,13 @@ from tests.factories.demo_learning import (
 from tests.integration.auth_support import auth_client
 from tests.integration.catalog_support import get
 from tests.integration.conftest import run_sql
-from tests.integration.demo_support import FROZEN_NOW, demo_env, migrate
+from tests.integration.demo_support import (
+    FROZEN_NOW,
+    PROGRESS_REPORTS_GENERATOR,
+    demo_env,
+    generators_through,
+    migrate,
+)
 from tests.integration.test_demo_schedule import signed_in, student_labels
 
 # T = Wednesday 2026-11-04: P(1) = 11-03, P(13) = 10-16; T's Monday is 11-02,
@@ -204,9 +210,11 @@ PLANS = sorted(
 
 
 def test_every_account_sees_the_354_data(migrated_url, env_for, clock):
+    # Through #354 (M6-demo G8: the billing generators add H4 to S's
+    # progress and demo.tutor's notifications).
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
-    assert demo.main([]) == 0
+    assert demo.main([], generators=generators_through(PROGRESS_REPORTS_GENERATOR)) == 0
     labels = student_labels(migrated_url)
     ids = {label: str(student) for student, label in labels.items()}
     s, sib = ids["S"], ids["Sib"]

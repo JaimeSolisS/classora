@@ -1,4 +1,5 @@
-"""``make seed-demo`` / ``python -m tests.factories.demo [--seed N]``.
+"""``make seed-demo`` / ``python -m tests.factories.demo [--seed N]
+[--without-billing]``.
 
 Generates synthetic ``es_MX`` demo data for local and DEV databases:
 
@@ -20,11 +21,17 @@ Generates synthetic ``es_MX`` demo data for local and DEV databases:
 6. Print generator names and row counts (or ``skipped (<reason>)``), never
    generated values.
 
-The registered generators (#23, #195, #299, #303, #353, #354) write nothing
-on a rerun (``0 rows``), even on a later day: the #299, #303, #353 and #354
-data keep the dates of their first run. A future generator may add rows on a
-rerun unless its issue says otherwise. To start over, reset with ``docker
-compose down -v``, then ``make migrate`` and ``make seed-demo``.
+``--without-billing`` (M6-demo E3; ``e2e/scripts/run.sh`` passes it, ``make
+seed-demo`` doesn't) makes the billing generators print ``skipped
+(--without-billing)`` without touching the database, so billing stays off in
+the E2E database.
+
+The registered generators (#23, #195, #299, #303, #353, #354, M6-demo #413)
+write nothing on a rerun (``0 rows``), even on a later day: the #299, #303,
+#353, #354 and M6-demo data keep the dates of their first run. A future
+generator may add rows on a rerun unless its issue says otherwise. To start
+over, reset with ``docker compose down -v``, then ``make migrate`` and ``make
+seed-demo``.
 
 Like ``make seed``, it connects directly to PostgreSQL (``DATABASE_DIRECT_URL``,
 ADR-0003).
@@ -53,6 +60,7 @@ from app.seeds.runner import (
 )
 from app.seeds.upsert import UpsertResult
 from app.wiring import register_approval_wiring
+from tests.factories import demo_billing
 from tests.factories.base import GeneratorSkipped, reseed
 from tests.factories.catalog import DemoCatalogGenerator
 from tests.factories.demo_academics import (
@@ -105,6 +113,9 @@ DEMO_GENERATORS: tuple[DemoGenerator, ...] = (
     DemoLearningPlansGenerator(),
     DemoHomeworkGenerator(),
     DemoProgressReportsGenerator(),
+    demo_billing.DemoPricingGenerator(),
+    demo_billing.DemoPackagesGenerator(),
+    demo_billing.DemoChargesGenerator(),
 )
 """Every demo generator, in order. Domain tasks append generators that use
 their factories (``persist`` / ``persist_batch``; never commit).
@@ -161,7 +172,20 @@ their factories (``persist`` / ``persist_batch``; never commit).
   reports about ``demo.student`` (approved for the family, waiting for
   review and a draft) and ``demo.coordinator``'s weekly report schedule,
   ``APP_ENV=local`` only. The three #354 generators also skip a database
-  whose #299 schedule is from an earlier day."""
+  whose #299 schedule is from an earlier day.
+- ``billing.demo_pricing`` (M6-demo #413): ``demo.finance`` turns billing on
+  from about three weeks back and creates catalog prices (one with a change
+  next month), a sibling discount, a scholarship and two package products,
+  ``APP_ENV=local`` only.
+- ``billing.demo_packages`` (M6-demo #413): an English package for
+  ``demo.student`` with one session used (a new class closed out and approved)
+  and an expired package for the sibling, under the seed clock,
+  ``APP_ENV=local`` only.
+- ``billing.demo_charges`` (M6-demo #413): a monthly tuition plan, then every
+  charge the billing jobs would post (their per-item steps in this Unit of
+  Work), ``APP_ENV=local`` only. The three billing generators also skip a
+  database whose #299 schedule is from an earlier day or whose billing was
+  set up by hand, and under ``--without-billing``."""
 
 
 @dataclass
@@ -237,6 +261,12 @@ def main(
         description="Generate synthetic demo data (APP_ENV local or dev only).",
     )
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parser.add_argument(
+        "--without-billing",
+        action="store_true",
+        help="skip the billing demo data (e2e/scripts/run.sh passes it, so the"
+        " E2E database keeps billing off)",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -252,7 +282,8 @@ def main(
 
     engine = engine_factory(settings)
     try:
-        result = asyncio.run(_run(engine, args.seed, seeds, generators))
+        with demo_billing.without_billing(args.without_billing):
+            result = asyncio.run(_run(engine, args.seed, seeds, generators))
     except DatabaseNotAtHeadError as exc:
         print(exc, file=sys.stderr)
         return 1
