@@ -4502,6 +4502,133 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payroll/tutors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Payroll Tutors
+         * @description The users holding the tutor role, in any state, by display name, then
+         *     username, with the terms and rated class kinds in effect today.
+         */
+        get: operations["list_payroll_tutors_api_v1_payroll_tutors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payroll/tutors/{tutor_user_id}/compensation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Tutor Compensation
+         * @description A tutor's pay terms and rates, for a holder of payroll.view or the
+         *     tutor themselves. Terms are newest first; rates are by class kind, then
+         *     newest first.
+         */
+        get: operations["get_tutor_compensation_api_v1_payroll_tutors__tutor_user_id__compensation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payroll/tutors/{tutor_user_id}/pay-terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Pay Terms
+         * @description Add a terms version from any date. A null frequency means the tutor
+         *     is not on payroll from that date.
+         */
+        post: operations["add_pay_terms_api_v1_payroll_tutors__tutor_user_id__pay_terms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payroll/tutors/{tutor_user_id}/rates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Compensation Rate
+         * @description Add a rate version from any date. A null rate model and rate mean no
+         *     rate for this class kind from that date.
+         */
+        post: operations["add_compensation_rate_api_v1_payroll_tutors__tutor_user_id__rates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payroll/tutors/{tutor_user_id}/pay-terms/{terms_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Pay Terms
+         * @description Delete a terms version, whatever its date, until a finalized period
+         *     uses it.
+         */
+        delete: operations["delete_pay_terms_api_v1_payroll_tutors__tutor_user_id__pay_terms__terms_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payroll/tutors/{tutor_user_id}/rates/{rate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Compensation Rate
+         * @description Delete a rate version, whatever its date, until a finalized period
+         *     uses it.
+         */
+        delete: operations["delete_compensation_rate_api_v1_payroll_tutors__tutor_user_id__rates__rate_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/overdue-accounts": {
         parameters: {
             query?: never;
@@ -7755,6 +7882,8 @@ export interface components {
         };
         /** @enum {string} */
         ChargeStatus: "void" | "paid" | "overdue" | "partially_paid" | "pending";
+        /** @enum {string} */
+        ClassKind: "individual" | "group" | "course";
         /**
          * ClassSeriesCancel
          * @description Cancel a series' occurrences from a date on (``POST
@@ -9818,6 +9947,60 @@ export interface components {
             reason?: string | null;
         };
         /**
+         * CompensationRateCreate
+         * @description ``POST /api/v1/payroll/tutors/{id}/rates``. ``rate_model`` and ``rate``
+         *     are both ``null`` to mean "no rate from this date".
+         */
+        CompensationRateCreate: {
+            class_kind: components["schemas"]["ClassKind"];
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            rate_model: components["schemas"]["RateModel"] | null;
+            /** Rate */
+            rate: string | null;
+        };
+        /**
+         * CompensationRateItem
+         * @description One rate version; ``status`` as in :class:`PayTermsItem`. A current
+         *     version with a ``null`` rate means "no rate".
+         */
+        CompensationRateItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            class_kind: components["schemas"]["ClassKind"];
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            rate_model: components["schemas"]["RateModel"] | null;
+            /** Rate */
+            rate: string | null;
+            status: components["schemas"]["CompensationStatus"];
+        };
+        /** @enum {string} */
+        CompensationStatus: "current" | "upcoming" | "past";
+        /**
+         * CompensationTutor
+         * @description The tutor a compensation read is about.
+         */
+        CompensationTutor: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Display Name */
+            display_name: string;
+            state: components["schemas"]["UserState"];
+        };
+        /**
          * CompletionAssessment
          * @description An assessment of the snapshot (required or optional), by position;
          *     ``module_id`` null is the whole course.
@@ -10408,6 +10591,15 @@ export interface components {
         CriteriaClassType: "individual" | "group" | "course";
         /** @enum {string} */
         CriterionStatus: "met" | "not_met" | "pending" | "not_required";
+        /**
+         * CurrentTerms
+         * @description The terms in effect today, on the payroll tutor list.
+         */
+        CurrentTerms: {
+            pay_frequency: components["schemas"]["PayFrequency"];
+            /** Salary Amount */
+            salary_amount: string | null;
+        };
         /** CursorPage[AuditEventListItem] */
         CursorPage_AuditEventListItem_: {
             /** Items */
@@ -13832,6 +14024,17 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** OffsetPage[PayrollTutorItem] */
+        OffsetPage_PayrollTutorItem_: {
+            /** Items */
+            items: components["schemas"]["PayrollTutorItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /** OffsetPage[ServicePriceItem] */
         OffsetPage_ServicePriceItem_: {
             /** Items */
@@ -14534,6 +14737,46 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** @enum {string} */
+        PayFrequency: "weekly" | "biweekly" | "monthly";
+        /**
+         * PayTermsCreate
+         * @description ``POST /api/v1/payroll/tutors/{id}/pay-terms``. ``pay_frequency: null``
+         *     means "not on payroll from this date"; ``salary_amount`` is per full pay
+         *     period of this frequency, ``null`` when there is no salary.
+         */
+        PayTermsCreate: {
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            pay_frequency: components["schemas"]["PayFrequency"] | null;
+            /** Salary Amount */
+            salary_amount: string | null;
+        };
+        /**
+         * PayTermsItem
+         * @description One terms version. ``status`` is against the center's local today:
+         *     ``current`` is the version in effect, even when ``pay_frequency`` is
+         *     ``null`` (not on payroll).
+         */
+        PayTermsItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            pay_frequency: components["schemas"]["PayFrequency"] | null;
+            /** Salary Amount */
+            salary_amount: string | null;
+            status: components["schemas"]["CompensationStatus"];
+        };
         /**
          * PaymentAllocationBody
          * @description How to allocate a payment (#96 M3). ``lines`` (1 to 200, distinct
@@ -14832,6 +15075,27 @@ export interface components {
             account_credit_after: string;
         };
         /**
+         * PayrollTutorItem
+         * @description A tutor on the payroll list. ``current_terms`` is ``null`` without
+         *     terms or when not on payroll; ``current_rate_kinds`` are the class kinds
+         *     with a rate in effect today.
+         */
+        PayrollTutorItem: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Display Name */
+            display_name: string;
+            /** Username */
+            username: string;
+            state: components["schemas"]["UserState"];
+            current_terms: components["schemas"]["CurrentTerms"] | null;
+            /** Current Rate Kinds */
+            current_rate_kinds: components["schemas"]["ClassKind"][];
+        };
+        /**
          * PendingOffer
          * @description The pending offer of an ``offered`` session (#52 G3): its own, or the
          *     series offer that covers it (#233 F2).
@@ -14883,7 +15147,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "billing.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payment.record" | "payroll.finalize" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "billing.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payment.record" | "payroll.finalize" | "payroll.manage" | "payroll.view" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /** @enum {string} */
         PlanAction: "activate" | "complete" | "discontinue";
         /** @enum {string} */
@@ -15890,6 +16154,8 @@ export interface components {
         QualificationStatus: "pending" | "approved" | "rejected" | "cancelled" | "revoked";
         /** @enum {string} */
         QualificationStatusFilter: "all" | "pending" | "approved" | "rejected" | "cancelled" | "revoked";
+        /** @enum {string} */
+        RateModel: "per_hour" | "per_session" | "per_course";
         /**
          * ReauthenticateRequest
          * @description The current user's password (#26). The same bounds as login.
@@ -18573,6 +18839,23 @@ export interface components {
              * @description The last 5 decided or withdrawn change requests, newest first.
              */
             recent_changes: components["schemas"]["AvailabilityChangeRequestItem"][];
+        };
+        /**
+         * TutorCompensation
+         * @description All of a tutor's versions. ``today`` is the center's local date the
+         *     ``status`` values were computed with.
+         */
+        TutorCompensation: {
+            tutor: components["schemas"]["CompensationTutor"];
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
+            /** Terms */
+            terms: components["schemas"]["PayTermsItem"][];
+            /** Rates */
+            rates: components["schemas"]["CompensationRateItem"][];
         };
         /**
          * TutorDetail
@@ -34917,6 +35200,392 @@ export interface operations {
             };
             /** @description The receipt could not be rendered (internal_error). */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_payroll_tutors_api_v1_payroll_tutors_get: {
+        parameters: {
+            query?: {
+                /** @description Part of the username or display name (not case-sensitive; accents are not folded). */
+                q?: string | null;
+                /** @description One user state. */
+                state?: components["schemas"]["UserState"] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_PayrollTutorItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_tutor_compensation_api_v1_payroll_tutors__tutor_user_id__compensation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tutor_user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorCompensation"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    add_pay_terms_api_v1_payroll_tutors__tutor_user_id__pay_terms_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tutor_user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayTermsCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayTermsItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not allowed (permission_denied), or the caller's own compensation (payroll_own_compensation; only an Owner may write their own). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description This tutor has terms from this date (pay_terms_exists). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    add_compensation_rate_api_v1_payroll_tutors__tutor_user_id__rates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tutor_user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompensationRateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompensationRateItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not allowed (permission_denied), or the caller's own compensation (payroll_own_compensation; only an Owner may write their own). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description This tutor has a rate for this class kind from this date (compensation_rate_exists). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    delete_pay_terms_api_v1_payroll_tutors__tutor_user_id__pay_terms__terms_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tutor_user_id: string;
+                terms_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not allowed (permission_denied), or the caller's own compensation (payroll_own_compensation; only an Owner may write their own). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such tutor, or no such version of this tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A finalized payroll period uses this version (pay_terms_in_use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    delete_compensation_rate_api_v1_payroll_tutors__tutor_user_id__rates__rate_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tutor_user_id: string;
+                rate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not allowed (permission_denied), or the caller's own compensation (payroll_own_compensation; only an Owner may write their own). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such tutor, or no such version of this tutor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A finalized payroll period uses this version (compensation_rate_in_use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

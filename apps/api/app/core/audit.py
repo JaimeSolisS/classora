@@ -79,7 +79,7 @@ from starlette.requests import Request
 
 from app.core.logging import get_request_id
 from app.core.models import Base, SoftDeleteMixin
-from app.core.money import Money
+from app.core.money import Money, Rate
 
 AUTOMATIC_ACTIONS: Final = ("create", "update", "delete", "soft_delete", "restore")
 EXPLICIT_ACTION_PATTERN: Final = re.compile(r"[a-z_]+(\.[a-z_]+)+")
@@ -174,7 +174,8 @@ def to_json_value(value: Any) -> Any:
     UUID -> string; aware datetime -> ISO 8601 with offset; date ->
     ``YYYY-MM-DD``; time -> ``HH:MM:SS``; Decimal -> its exact digits
     (``"1250.00"``, ADR-0004); Money -> its two-place string (``"1250.00"``,
-    ADR-0004, M6-02 E5); Enum -> its value; str, int, bool, None and
+    ADR-0004, M6-02 E5); Rate -> its four-place string (``"250.0000"``,
+    #105 A4); Enum -> its value; str, int, bool, None and
     JSON lists/dicts unchanged. Anything else (bytes, float, naive datetime)
     raises, so an unsupported value never slips into an audit row.
     """
@@ -194,7 +195,7 @@ def to_json_value(value: Any) -> Any:
         return value.isoformat()
     if isinstance(value, time):
         return value.isoformat()
-    if isinstance(value, Money):
+    if isinstance(value, Money | Rate):
         return str(value)
     if isinstance(value, Decimal):
         if not value.is_finite():

@@ -66,6 +66,17 @@ Each (a) is the additive, reversible choice: money errors go to the side a later
 - **No center-wide default rates** and no rate per subject or level: the spec says tutor-specific.
 - **Versions** are immutable once referenced by a line of a finalized period (guarded, like `price_versions`); a change is a new version.
 
+#### Implementation notes (#105)
+
+Recommended options taken while grooming and building #105. They are orchestrator-recommended and pending owner review, like the rest of this ADR.
+
+- **Audit masks (#105 E2):** `rate` and `salary_amount` are masked in the audit log, for every reader, because Administrators hold `audit.view` and this ADR keeps pay from them. Rate history stays readable in the version rows.
+- **Finance tutor list (#105 E3):** `GET /api/v1/payroll/tutors` under `payroll.view`, with no contact data, because Finance Staff don't hold `tutor.view`.
+- **Dates and deletion (#105 E4):** any `effective_from` is accepted, past or future. There is no edit route. Any version can be deleted until a finalized line uses it. Finalized lines keep their snapshots, so a back-dated version reaches only open periods at the next `recalculate` and later `late_approval` amounts (E11).
+- **Own pay (#105 E5):** a `payroll.manage` holder can't write their own terms or rates (`403 payroll_own_compensation`). The Owner is excepted, as in E10.
+- **Read surface (#105 E6):** one compensation read with a record policy: a `payroll.view` holder or the tutor themselves. Everyone else gets the same `404`. `payroll.finalize` gives no read here.
+- **Frequency refusal (#105 E7):** #106 owns `effective_from_inside_generated_period`, on both the terms insert and delete. A stop isn't a frequency change.
+
 ### Paid work (E2 (a), spec §3, §7, W3, ISSUE-F2, #107, #111, #117, product)
 
 - **Source of hours:** only the **current approval revision** (`session_closeouts.current_approval_id`, #78). A closeout without one is never paid. A closeout back in review keeps its revision in force, as #78 and #94 already read it. There is no `teaching_hours` table: the spec's candidate "TeachingHours" entity **is** `session_closeout_approvals`.

@@ -168,6 +168,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "session_cancellation_decisions",
         "charge_duration_repricings",
         "withdrawals",
+        "tutor_pay_terms",
+        "compensation_rates",
         "number_series",
         "account_tokens",
         "registration_requests",

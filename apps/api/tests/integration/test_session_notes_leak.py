@@ -1244,6 +1244,8 @@ PATH_PARAMS: dict[str, Callable[[LeakWorld], list[str]]] = {
     "subject_id": lambda w: [str(s) for s in w.subject_ids],
     "guardian_id": lambda w: [str(w.minor_guardian_id), str(w.adult_guardian_id)],
     "user_id": lambda w: [str(w.tutor.id)] + [str(a.user.id) for a in w.actors],
+    # #105: the world tutor and each actor (a family never reads pay).
+    "tutor_user_id": lambda w: [str(w.tutor.id)] + [str(a.user.id) for a in w.actors],
     # Parameters of routes whose records the world doesn't create: an
     # unknown id still exercises the route's 404 path.
     "family_id": _unknown,
