@@ -63,10 +63,12 @@ def purchase(
         student_label, student = "X1", ctx.world.students["X1"]
     body = PackagePurchase(student_id=student, package_product_id=ctx.world.product)
 
+    reserved = ctx.reserve("K")
+
     async def _run(ctx: Ctx, engine: AsyncEngine) -> Outcome:
         async with ctx.uow(engine) as uow:
             detail = await packages.purchase_package(uow.session, body)
-        ctx.new_label("K", detail.id)
+        ctx.assign(reserved, detail.id)
         delta = await ops.transaction_effect(ctx, info.account, "packages", detail.id)
         return accepted(info.account, delta, ctx.label(detail.id))
 
@@ -296,13 +298,15 @@ def pay_package(
         }
     )
 
+    reserved = ctx.reserve("P")
+
     async def _run(ctx: Ctx, engine: AsyncEngine) -> Outcome:
         from app.workflows import billing_payments
 
         async with ctx.uow(engine) as uow:
             recorded = await billing_payments.record_payment(uow.session, info.id, body)
         return accepted(
-            info.account, -target.open, ctx.new_label("P", recorded.payment.id)
+            info.account, -target.open, ctx.assign(reserved, recorded.payment.id)
         )
 
     return Op(

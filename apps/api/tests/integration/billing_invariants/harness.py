@@ -42,6 +42,7 @@ from typing import Any, Protocol
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.config import Settings
@@ -138,11 +139,20 @@ class Ctx:
     def today(self) -> date:
         return self.clock.now().astimezone(ZONE).date()
 
-    def new_label(self, prefix: str, row_id: uuid.UUID) -> str:
+    def reserve(self, prefix: str) -> str:
+        """The next label of ``prefix``, taken when an operation is **built**
+        (in the generator's order), so a burst's rows get the same labels
+        whatever order its operations finish in (B2)."""
         self.counters[prefix] += 1
-        label = f"{prefix}{self.counters[prefix]:03d}"
+        return f"{prefix}{self.counters[prefix]:03d}"
+
+    def assign(self, label: str, row_id: uuid.UUID) -> str:
+        """Give the row its reserved label."""
         self.labels[row_id] = label
         return label
+
+    def new_label(self, prefix: str, row_id: uuid.UUID) -> str:
+        return self.assign(self.reserve(prefix), row_id)
 
     def label(self, row_id: Any) -> str:
         if row_id is None:
@@ -304,22 +314,72 @@ async def _execute(ctx: Ctx, op: Op, engine: AsyncEngine) -> Outcome | BaseExcep
         return error
 
 
+QUEUE_WAIT_SECONDS = 1.0
+"""How long a burst waits for an operation to reach the account lock (or
+finish) before it starts the next one."""
+
+
+async def _queued(
+    probe: AsyncEngine,
+    account: uuid.UUID | None,
+    position: int,
+    task: asyncio.Task[Any],
+) -> None:
+    """Wait until ``task`` (the burst's operation number ``position``) holds
+    the account row lock (``position`` 0) or waits behind the ones started
+    before it, or has finished; at most :data:`QUEUE_WAIT_SECONDS`."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + QUEUE_WAIT_SECONDS
+    while not task.done() and loop.time() < deadline:
+        async with probe.connect() as conn:
+            if position == 0 and account is not None:
+                try:
+                    async with conn.begin():
+                        await conn.execute(
+                            text(
+                                "SELECT 1 FROM billing_accounts WHERE id = :a"
+                                " FOR UPDATE NOWAIT"
+                            ),
+                            {"a": account},
+                        )
+                except DBAPIError:
+                    return  # the operation holds the account row
+            else:
+                waiting = await conn.scalar(
+                    text(
+                        "SELECT count(*) FROM pg_stat_activity WHERE datname ="
+                        " current_database() AND wait_event_type = 'Lock'"
+                    )
+                )
+                if (waiting or 0) >= position:
+                    return
+        await asyncio.sleep(0.005)
+
+
 async def run_step(ctx: Ctx, ops: Sequence[Op]) -> list[Outcome | BaseException]:
-    """One operation on the shared engine, or a burst on separate engines."""
+    """One operation on the shared engine, or a burst on separate engines.
+
+    A burst's operations overlap for real, but start in their generated
+    order: each one starts once the previous holds the account row (or
+    waits behind it) or has finished, so they queue on the account lock in
+    that order and a seed replays the same outcomes (B2). Conservation is
+    order-independent anyway; the cross-operation races
+    (``test_billing_invariant_races.py``) release their requests together."""
     if len(ops) == 1:
         return [await _execute(ctx, ops[0], ctx.engine)]
     engines = [short_lived_engine(ctx.url) for _ in ops]
+    probe = short_lived_engine(ctx.url)
+    account = next((op.account for op in ops if op.account is not None), None)
+    tasks: list[asyncio.Task[Outcome | BaseException]] = []
     try:
-        return list(
-            await asyncio.gather(
-                *(
-                    _execute(ctx, op, engine)
-                    for op, engine in zip(ops, engines, strict=True)
-                )
-            )
-        )
+        for position, (op, engine) in enumerate(zip(ops, engines, strict=True)):
+            task = asyncio.ensure_future(_execute(ctx, op, engine))
+            tasks.append(task)
+            if position < len(ops) - 1:
+                await _queued(probe, account, position, task)
+        return list(await asyncio.gather(*tasks))
     finally:
-        for engine in engines:
+        for engine in [*engines, probe]:
             await engine.dispose()
 
 

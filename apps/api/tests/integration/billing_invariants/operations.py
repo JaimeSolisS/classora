@@ -429,6 +429,8 @@ def confirm_session(
     subject_id = ctx.world.subjects[subject]
     label_box: list[str] = []
 
+    reserved = ctx.reserve("s")
+
     async def _run(ctx: Ctx, engine: AsyncEngine) -> Outcome:
         async with ctx.uow(engine) as uow:
             made = await persist_class_session(
@@ -440,7 +442,7 @@ def confirm_session(
                 ends_at=local(day, hour) + timedelta(minutes=minutes),
             )
             await add_participant(uow.session, made, student)
-        label_box.append(ctx.new_label("s", made.id))
+        label_box.append(ctx.assign(reserved, made.id))
         return Outcome(True, note=label_box[0])
 
     return Op(
@@ -473,6 +475,8 @@ def manual_charge(
         }
     )
 
+    reserved = ctx.reserve("M")
+
     async def _run(ctx: Ctx, engine: AsyncEngine) -> Outcome:
         posted = await via(
             ctx,
@@ -485,7 +489,7 @@ def manual_charge(
             ),
         )
         charge_id = uuid.UUID(str(posted["charge"]["id"]))
-        ctx.new_label("M", charge_id)
+        ctx.assign(reserved, charge_id)
         return accepted(info.account, amount, ctx.label(charge_id))
 
     return Op(
@@ -616,6 +620,8 @@ def record_payment(
         }
     )
 
+    reserved = ctx.reserve("P")
+
     async def _run(ctx: Ctx, engine: AsyncEngine) -> Outcome:
         recorded = await via(
             ctx,
@@ -625,7 +631,7 @@ def record_payment(
             body,
             lambda uow: billing_payments.record_payment(uow.session, info.id, body),
         )
-        label = ctx.new_label("P", uuid.UUID(str(recorded["payment"]["id"])))
+        label = ctx.assign(reserved, uuid.UUID(str(recorded["payment"]["id"])))
         return accepted(info.account, -amount, label)
 
     described = " ".join(f"{c.label}={a}" for c, a in lines)

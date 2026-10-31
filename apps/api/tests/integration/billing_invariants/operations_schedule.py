@@ -370,6 +370,8 @@ def enroll(rng: random.Random, ctx: Ctx, state: State) -> Op:
     kind = rng.choice(["G1", "G2", "CO1"])
     student_label, student = _student(rng, ctx)
 
+    reserved = ctx.reserve("CE" if kind == "CO1" else "GE")
+
     async def _work(ctx: Ctx, uow: Any) -> str:
         if kind == "CO1":
             change: Any = await cohort_enrollment.enroll_in_cohort(
@@ -378,14 +380,14 @@ def enroll(rng: random.Random, ctx: Ctx, state: State) -> Op:
                 CohortEnrollmentCreate(student_id=student),
                 actor_id=ctx.world.owner.id,
             )
-            return ctx.new_label("CE", change.enrollment_id)
+            return ctx.assign(reserved, change.enrollment_id)
         change = await group_enrollment.enroll_student(
             uow.session,
             ctx.world.groups[kind],
             GroupEnrollmentCreate(student_id=student),
             actor_id=ctx.world.owner.id,
         )
-        return ctx.new_label("GE", change.enrollment_id)
+        return ctx.assign(reserved, change.enrollment_id)
 
     return _compound(
         "enroll",
@@ -485,9 +487,11 @@ def create_plan(
         )
         what = f"TUI/{student_label}"
 
+    reserved = ctx.reserve("TP")
+
     async def _work(ctx: Ctx, uow: Any) -> str:
         detail, _ = await tuition_plans.create_tuition_plan(uow.session, body)
-        return ctx.new_label("TP", detail.id)
+        return ctx.assign(reserved, detail.id)
 
     return _compound(
         "create_plan",

@@ -53,7 +53,11 @@ from tests.integration.conftest import run_sql, settings_for, short_lived_engine
 # --- B1, B4 --------------------------------------------------------------------------
 
 
-def test_billing_invariant_seeds_default_replace_and_extra() -> None:
+def test_billing_invariant_seeds_default_replace_and_extra(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (harness.SEEDS_ENV, harness.EXTRA_SEED_ENV, harness.STEPS_ENV):
+        monkeypatch.delenv(name, raising=False)
     assert harness.seeds([1, 2], env={}) == [1, 2]
     assert harness.seeds([1, 2], env={harness.SEEDS_ENV: "5,9"}) == [5, 9]
     assert harness.seeds([1, 2], env={harness.EXTRA_SEED_ENV: "123"}) == [1, 2, 123]
@@ -62,7 +66,9 @@ def test_billing_invariant_seeds_default_replace_and_extra() -> None:
     ) == [5]
     assert harness.step_count(60, env={}) == 60
     assert harness.step_count(60, env={harness.STEPS_ENV: "17"}) == 17
-    assert [p.id for p in harness.seed_params([3])] in (["seed=3"], [])
+    assert [p.id for p in harness.seed_params([3])] == ["seed=3"]
+    monkeypatch.setenv(harness.EXTRA_SEED_ENV, "987654321")
+    assert [p.id for p in harness.seed_params([3])] == ["seed=3", "seed=987654321"]
 
 
 @pytest.mark.parametrize(
@@ -107,6 +113,107 @@ def test_billing_invariant_one_seed_twice_gives_the_same_trace(
     first, second = (t.signature() for t in traces)
     assert len(first) >= 30
     assert first == second
+
+
+PROBE_OUT_ENV = "BILLING_INVARIANT_PROBE_OUT"
+PROBE_ENV = "BILLING_INVARIANT_PROBE"
+"""``<scenario>:<seed>:<steps>`` for :func:`test_billing_invariant_trace_probe`."""
+FRESH_PROCESS_PROBE = "ledger:3:30"
+"""Seed 3 bursts two manual charges at step 10 (the QA #103 D2 case)."""
+
+
+def _generator(scenario: str) -> Any:
+    if scenario == "ledger":
+        return LedgerGenerator()
+    import importlib
+
+    name = {"packages": "PackageGenerator", "schedule": "ScheduleGenerator"}[scenario]
+    module = importlib.import_module(
+        f"tests.integration.billing_invariants.test_billing_invariant_{scenario}"
+    )
+    return getattr(module, name)()
+
+
+def test_billing_invariant_trace_probe(
+    world_template: worlds.Template, world_copy: Callable[[], str]
+) -> None:
+    """Helper of the fresh-process test below (skipped unless it sets
+    :data:`PROBE_OUT_ENV`): one sequence, its trace written as JSON."""
+    import json
+    import os
+    from pathlib import Path
+
+    out = os.environ.get(PROBE_OUT_ENV)
+    if not out:
+        pytest.skip(
+            "only run by test_billing_invariant_a_seed_replays_in_fresh_processes"
+        )
+    scenario, seed, steps = os.environ[PROBE_ENV].split(":")
+    trace = harness.run_in_world(
+        world_copy(),
+        world_template.world,
+        _generator(scenario),
+        scenario=scenario,
+        seed=int(seed),
+        steps=int(steps),
+        portal=False,
+    )
+    Path(out).write_text(
+        json.dumps(
+            {
+                "signature": trace.signature(),
+                "bursts": sum(e.burst for e in trace.entries),
+            }
+        )
+    )
+
+
+def probe_in_fresh_process(spec: str, out: str) -> dict[str, Any]:
+    """Run the probe for ``spec`` in a new pytest process (its own
+    PostgreSQL container and world template); its JSON result."""
+    import json
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    env = {**os.environ, PROBE_ENV: spec, PROBE_OUT_ENV: out}
+    for name in (harness.SEEDS_ENV, harness.EXTRA_SEED_ENV, harness.STEPS_ENV):
+        env.pop(name, None)
+    done = subprocess.run(  # noqa: S603 - this interpreter running pytest on this file
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--no-cov",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            f"{__file__}::test_billing_invariant_trace_probe",
+        ],
+        env=env,
+        cwd=Path(__file__).resolve().parents[3],
+        capture_output=True,
+        text=True,
+        timeout=600,
+        check=False,
+    )
+    assert done.returncode == 0, done.stdout[-4000:] + done.stderr[-2000:]
+    found: dict[str, Any] = json.loads(Path(out).read_text())
+    return found
+
+
+def test_billing_invariant_a_seed_replays_in_fresh_processes(tmp_path: Any) -> None:
+    """B2 across processes (QA #103 D2): a seed whose sequence has a
+    row-creating burst gives the same trace in two fresh pytest processes
+    (burst labels follow the operations' order, and a burst's operations
+    queue on the account lock in that order)."""
+    first, second = (
+        probe_in_fresh_process(FRESH_PROCESS_PROBE, str(tmp_path / f"trace-{n}.json"))
+        for n in range(2)
+    )
+    assert first["bursts"] >= 2, first
+    assert first["signature"] == second["signature"]
 
 
 # --- B3 ------------------------------------------------------------------------------
