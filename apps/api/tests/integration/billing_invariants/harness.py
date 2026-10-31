@@ -124,6 +124,8 @@ class Ctx:
     engine: AsyncEngine
     labels: dict[uuid.UUID, str] = field(default_factory=dict)
     counters: Counter[str] = field(default_factory=Counter)
+    http: Callable[[str, str, dict[str, Any]], Awaitable[tuple[int, Any]]] | None = None
+    """D8: ``(role, path, body) → (status, json)`` through the real app."""
 
     def __post_init__(self) -> None:
         self.labels.update(self.world.labels)
@@ -228,7 +230,9 @@ class Trace:
     refused: Counter[str] = field(default_factory=Counter)
 
     def add(self, step: int, op: Op, outcome: Outcome, *, burst: bool) -> None:
-        self.entries.append(TraceEntry(step, op.kind, op.label, outcome.describe(), burst))
+        self.entries.append(
+            TraceEntry(step, op.kind, op.label, outcome.describe(), burst)
+        )
         (self.accepted if outcome.accepted else self.refused)[op.kind] += 1
 
     def tail(self) -> str:
@@ -308,7 +312,10 @@ async def run_step(ctx: Ctx, ops: Sequence[Op]) -> list[Outcome | BaseException]
     try:
         return list(
             await asyncio.gather(
-                *(_execute(ctx, op, engine) for op, engine in zip(ops, engines, strict=True))
+                *(
+                    _execute(ctx, op, engine)
+                    for op, engine in zip(ops, engines, strict=True)
+                )
             )
         )
     finally:
@@ -344,9 +351,13 @@ async def verify_step(
     after = await snapshot(ctx)
     problems = [p for o in outcomes for p in o.problems]
     if problems:
-        raise failure(trace, step, "check: step\n" + "\n".join(f"    {p}" for p in problems))
+        raise failure(
+            trace, step, "check: step\n" + "\n".join(f"    {p}" for p in problems)
+        )
     for op, outcome in zip(ops, outcomes, strict=True):
-        stray = [a for a in outcome.deltas if op.account is not None and a != op.account]
+        stray = [
+            a for a in outcome.deltas if op.account is not None and a != op.account
+        ]
         if outcome.accepted and stray:
             raise failure(
                 trace, step, f"check: outcome contract\n    {op.kind} declared {stray}"
@@ -388,7 +399,9 @@ async def verify_step(
                 ),
             )
     async with ctx.read() as session:
-        found = await catalogue.run(session, today=ctx.today, after=[op.kind for op in ops])
+        found = await catalogue.run(
+            session, today=ctx.today, after=[op.kind for op in ops]
+        )
     if found:
         raise failure(
             trace, step, "check: " + "\ncheck: ".join(v.describe() for v in found)
@@ -411,7 +424,9 @@ async def run_sequence(
     async with ctx.read() as session:
         found = await catalogue.run(session, today=ctx.today)
     if found:
-        raise failure(trace, 0, "check: " + "\ncheck: ".join(v.describe() for v in found))
+        raise failure(
+            trace, 0, "check: " + "\ncheck: ".join(v.describe() for v in found)
+        )
     for step in range(1, steps + 1):
         if rng.randrange(BURST_ODDS) == 0:
             ops = await generator.burst(rng, ctx)
@@ -465,23 +480,49 @@ def run_in_world(
     seed: int,
     steps: int,
     portal: bool = True,
+    through_routes: bool = False,
 ) -> Trace:
     """One sequence on the world copy ``url`` under a clock frozen at the
-    world's :data:`~.world.NOW`, then (``portal``) the D4 portal check."""
+    world's :data:`~.world.NOW`, then (``portal``) the D4 portal check.
+    ``through_routes`` (D8): the money operations go through the real
+    routes as the Finance user or the Owner (each signed in and
+    reauthenticated once), with a fresh ``Idempotency-Key`` each."""
+    from contextlib import ExitStack
+
     from sqlalchemy.ext.asyncio import create_async_engine
 
     from app.core.db import async_database_url
     from tests.conftest import frozen_clock
+    from tests.integration.auth_support import auth_client
     from tests.integration.billing_invariants import routes
     from tests.integration.billing_invariants.world import NOW
 
-    with frozen_clock(NOW.astimezone(UTC)) as clock:
+    with frozen_clock(NOW.astimezone(UTC)) as clock, ExitStack() as stack:
+        client = stack.enter_context(auth_client(url))
+        http = None
+        if through_routes:
+            staff = {
+                "owner": routes.Staff.signed_in(
+                    client, world.owner.username, reauth=True
+                ),
+                "finance": routes.Staff.signed_in(
+                    client, world.finance.username, reauth=True
+                ),
+            }
+
+            async def http(
+                role: str, path: str, body: dict[str, Any]
+            ) -> tuple[int, Any]:
+                response = await asyncio.to_thread(
+                    routes.post_json, client, staff[role], path, body
+                )
+                return response.status_code, response.json()
 
         async def _main() -> Trace:
             engine = create_async_engine(
                 async_database_url(settings_for(url)), pool_size=3, max_overflow=2
             )
-            ctx = Ctx(url, world, clock, engine)
+            ctx = Ctx(url, world, clock, engine, http=http)
             try:
                 return await run_sequence(
                     ctx, generator, scenario=scenario, seed=seed, steps=steps
@@ -491,8 +532,26 @@ def run_in_world(
 
         trace = asyncio.run(_main())
         if portal:
-            with routes.auth_client(url) as client:
-                problems = routes.portal_mismatches(client, world)
+            problems = routes.portal_mismatches(client, world)
             if problems:
-                raise failure(trace, steps, "check: portal (D4)\n    " + "\n    ".join(problems))
+                raise failure(
+                    trace, steps, "check: portal (D4)\n    " + "\n    ".join(problems)
+                )
     return trace
+
+
+def assert_catalogue(
+    url: str, today: date, catalogue: checks.Catalogue | None = None, *, what: str = ""
+) -> None:
+    """The whole catalogue on ``url`` now (the end of a race or job case)."""
+
+    async def _run() -> list[checks.Violation]:
+        engine = short_lived_engine(url)
+        try:
+            async with create_sessionmaker(engine)() as session:
+                return await (catalogue or checks.Catalogue()).run(session, today=today)
+        finally:
+            await engine.dispose()
+
+    found = asyncio.run(_run())
+    assert not found, f"{what}\ncheck: " + "\ncheck: ".join(v.describe() for v in found)

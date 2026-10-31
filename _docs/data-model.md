@@ -779,6 +779,8 @@ One row per charge and reminder stage, so the reminder job is idempotent (E11, n
 | I11 | Posted rows never change | DB (triggers, §5) | #90 (and each issue that creates an append-only table) |
 | I12 | Withdrawals (#101): at most one per enrollment or package; `withdrawal` adjustments only on `group_enrollment`, `cohort_enrollment`, `tuition_period` or `package_purchase` charges, never `session`; Σ refunds with a `withdrawal_id` = `withdrawals.refund_amount`; a `refund` units row ⇒ remaining 0 and status `withdrawn`; no enrollment fee posted for a settled period | DB (partial UNIQUEs, `refund` CHECKs) + App (the workflow, under the account lock; #92 `withdrawal_settled`) | #101 (`test_billing_withdrawals_*.py`), #103 |
 
+`apps/api/tests/integration/billing_invariants/` (#103) runs every invariant above after every step of randomized operation sequences, races and job reruns; its check ids in `checks.py` match the I numbers (`_docs/testing-guidelines.md`, "The billing invariant suite").
+
 ### 4.2 Derived values
 
 Nothing below is stored. A verified snapshot is allowed only for reporting (ISSUE-F3).

@@ -12,6 +12,7 @@ from collections.abc import Callable
 
 import pytest
 
+from app.core.money import Money
 from tests.integration.billing_invariants import harness
 from tests.integration.billing_invariants import operations as ops
 from tests.integration.billing_invariants import operations_packages as pkg
@@ -70,7 +71,7 @@ class PackageGenerator:
             with_credit = [
                 info
                 for _, info in sorted(ctx.world.families.items())
-                if state.credit.get(info.account, ops.Money.zero()).is_positive()
+                if state.credit.get(info.account, Money.zero()).is_positive()
             ]
             built = ops.allocate_credit(rng, ctx, state, ops.pick(rng, with_credit))
         else:
@@ -98,7 +99,9 @@ class PackageGenerator:
                 built = ops.record_payment(rng, ctx, state, info)
             else:
                 built = pkg.purchase(rng, ctx, state, info)
-            out.append(built if built is not None else pkg.purchase(rng, ctx, state, info))
+            out.append(
+                built if built is not None else pkg.purchase(rng, ctx, state, info)
+            )
         return out
 
 
@@ -123,14 +126,20 @@ REFUSABLE = frozenset({"cancel_package", "purchase_package"})
 def test_billing_invariant_packages_generator_reaches_both_sides() -> None:
     """D5 over the default seeds (see the ledger module)."""
     ran = {trace.seed for trace in TRACES}
-    if not set(DEFAULT_SEEDS) <= ran or harness.step_count(DEFAULT_STEPS) != DEFAULT_STEPS:
+    if (
+        not set(DEFAULT_SEEDS) <= ran
+        or harness.step_count(DEFAULT_STEPS) != DEFAULT_STEPS
+    ):
         pytest.skip("needs the default seeds and steps in this run")
     accepted: Counter[str] = Counter()
     refused: Counter[str] = Counter()
     for trace in TRACES:
         accepted.update(trace.accepted)
         refused.update(trace.refused)
-    kinds = (set(WEIGHTS) - {"withdraw_package"}) | {"withdraw_credit", "withdraw_refund"}
+    kinds = (set(WEIGHTS) - {"withdraw_package"}) | {
+        "withdraw_credit",
+        "withdraw_refund",
+    }
     assert {k for k in kinds if accepted[k] == 0} == set(), (accepted, refused)
     refusable = REFUSABLE | {"withdraw_credit"}
     assert {k for k in refusable if refused[k] == 0} == set(), (accepted, refused)

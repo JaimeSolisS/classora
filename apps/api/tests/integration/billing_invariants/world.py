@@ -178,7 +178,9 @@ def clone_database(admin_url: str, template_url: str) -> str:
 
 def drop_database(admin_url: str, url: str) -> None:
     run_sql(
-        admin_url, f'DROP DATABASE IF EXISTS "{_name_of(url)}" WITH (FORCE)', autocommit=True
+        admin_url,
+        f'DROP DATABASE IF EXISTS "{_name_of(url)}" WITH (FORCE)',
+        autocommit=True,
     )
 
 
@@ -306,7 +308,10 @@ def _build_world(url: str) -> World:
     with auth_client(url) as client:
         cookie = sign_in(client, rows["owner"].username)
         groups: dict[str, uuid.UUID] = {}
-        for label, subject, weekdays in (("G1", "GRP1", [1, 3]), ("G2", "GRP2", [2, 4])):
+        for label, subject, weekdays in (
+            ("G1", "GRP1", [1, 3]),
+            ("G2", "GRP2", [2, 4]),
+        ):
             response = group_support.create_group(
                 client,
                 cookie,
@@ -370,10 +375,13 @@ def _build_world(url: str) -> World:
             pricing_model="per_period",
             group_id=groups["G2"],
         )
-        return item.id
+        item_id: uuid.UUID = item.id
+        return item_id
 
     group_tuition_item = in_uow(url, _scoped)
-    labels: dict[uuid.UUID, str] = {sid: label for label, sid in rows["students"].items()}
+    labels: dict[uuid.UUID, str] = {
+        sid: label for label, sid in rows["students"].items()
+    }
     for info in rows["families"].values():
         labels[info.id] = info.label
         labels[info.account] = f"acct:{info.label}"

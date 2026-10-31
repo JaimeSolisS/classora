@@ -12,7 +12,9 @@
 """
 
 import uuid
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import UTC
 from decimal import Decimal
 from typing import Any
 
@@ -20,10 +22,18 @@ from fastapi.testclient import TestClient
 from httpx import Response
 
 from app.core.idempotency import IDEMPOTENCY_HEADER
+from app.modules.billing import schemas as bschemas
+from app.workflows import billing_corrections, billing_payments, packages, withdrawals
+from app.workflows.package_schemas import PackagePurchase
+from tests.integration import withdrawal_support
 from tests.integration.auth_support import SetCookie, auth_client, signed_headers
+from tests.integration.billing_invariants import checks
+from tests.integration.billing_invariants import world as worlds
 from tests.integration.billing_invariants.world import World
 from tests.integration.catalog_support import get
+from tests.integration.conftest import run_sql
 from tests.integration.invitation_support import reauthenticate, sign_in
+from tests.integration.lifecycle_support import in_uow
 
 PAGE = 100
 
@@ -41,7 +51,7 @@ class Staff:
     cookie: SetCookie
 
     @classmethod
-    def signed_in(cls, client: TestClient, username: str, *, reauth: bool) -> "Staff":
+    def signed_in(cls, client: TestClient, username: str, *, reauth: bool) -> Staff:
         cookie = sign_in(client, username)
         if reauth:
             reauthenticate(client, cookie)
@@ -58,7 +68,8 @@ def post_json(
     headers = signed_headers(staff.cookie)
     headers[IDEMPOTENCY_HEADER] = key or new_key()
     client.cookies.clear()
-    return client.post(path, json=body, headers=headers)
+    response: Response = client.post(path, json=body, headers=headers)
+    return response
 
 
 def _pages(client: TestClient, cookie: SetCookie, path: str) -> list[Any]:
@@ -123,3 +134,88 @@ def portal_check(url: str, world: World) -> None:
     with auth_client(url) as client:
         problems = portal_mismatches(client, world)
     assert not problems, "portal check (D4):\n" + "\n".join(problems)
+
+
+@dataclass
+class Builder:
+    """Builds race and walk targets on a world copy through the real
+    workflow entry points (owner as the actor; family ``F1``, student
+    ``A1`` unless given)."""
+
+    url: str
+    world: worlds.World
+    catalogue: checks.Catalogue = field(default_factory=checks.Catalogue)
+
+    @property
+    def family(self) -> worlds.FamilyInfo:
+        return self.world.families["F1"]
+
+    @property
+    def student(self) -> uuid.UUID:
+        return self.world.students["A1"]
+
+    def run(self, call: Callable[[Any], Any]) -> Any:
+        return in_uow(self.url, call, actor_id=self.world.owner.id)
+
+    def charge(self, amount: str = "300.00") -> uuid.UUID:
+        body = bschemas.ManualChargeCreate.model_validate(
+            {
+                "student_id": str(self.student),
+                "description": "Material",
+                "amount": amount,
+                "service_date": worlds.TODAY.isoformat(),
+                "due_date": worlds.TODAY.isoformat(),
+            }
+        )
+        posted = self.run(
+            lambda s: billing_corrections.post_manual_charge(s, self.family.id, body)
+        )
+        return uuid.UUID(str(posted.charge.id))
+
+    def payment(
+        self, amount: str, lines: list[tuple[uuid.UUID, str]] | None = None
+    ) -> uuid.UUID:
+        allocation: dict[str, Any] = {"mode": "none" if lines is None else "explicit"}
+        if lines is not None:
+            allocation["lines"] = [{"charge_id": str(c), "amount": a} for c, a in lines]
+        body = bschemas.PaymentCreate.model_validate(
+            {
+                "amount": amount,
+                "received_on": worlds.TODAY.isoformat(),
+                "payment_method_code": "cash",
+                "allocation": allocation,
+            }
+        )
+        recorded = self.run(
+            lambda s: billing_payments.record_payment(s, self.family.id, body)
+        )
+        return uuid.UUID(str(recorded.payment.id))
+
+    def package(self, *, paid: bool = False) -> uuid.UUID:
+        detail = self.run(
+            lambda s: packages.purchase_package(
+                s,
+                PackagePurchase(
+                    student_id=self.student, package_product_id=self.world.product
+                ),
+            )
+        )
+        package_id = uuid.UUID(str(detail.id))
+        if paid:
+            [charge] = run_sql(
+                self.url,
+                "SELECT id, amount FROM charges WHERE package_id = :p",
+                {"p": package_id},
+            )
+            self.payment(str(charge.amount), [(charge.id, str(charge.amount))])
+        return package_id
+
+    def withdrawal_body(self, package_id: uuid.UUID, *, refund: bool) -> dict[str, Any]:
+        found = self.run(
+            lambda s: withdrawals.preview_withdrawal(
+                s, "package", package_id, now=worlds.NOW.astimezone(UTC)
+            )
+        )
+        return withdrawal_support.body(
+            found.model_dump(mode="json"), refund_on=worlds.TODAY if refund else None
+        )

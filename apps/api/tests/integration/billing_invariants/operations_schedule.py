@@ -41,7 +41,12 @@ from app.workflows.tuition_plan_schemas import TuitionPauseCreate, TuitionPlanCr
 from tests.factories.scheduling import persist_tutor_user
 from tests.integration.billing_invariants import operations as ops
 from tests.integration.billing_invariants import operations_packages as pkg
-from tests.integration.billing_invariants.harness import Ctx, Op, Outcome, accepted, coin
+from tests.integration.billing_invariants.harness import (
+    Ctx,
+    Op,
+    Outcome,
+    coin,
+)
 from tests.integration.billing_invariants.operations import State
 from tests.integration.billing_invariants.world import FamilyInfo
 
@@ -72,7 +77,10 @@ TUITION_REFUSALS = frozenset(
         "version_conflict",
     }
 )
-EFFECT_SQL = f"SELECT account, SUM(amount) AS total FROM ({ops._NEW_ROWS}) r WHERE created_at = :t GROUP BY account"  # noqa: S608
+EFFECT_SQL = (
+    f"SELECT account, SUM(amount) AS total FROM ({ops._NEW_ROWS}) r"  # noqa: S608 - constant SQL
+    " WHERE created_at = :t GROUP BY account"
+)
 
 
 async def transaction_now(session: AsyncSession) -> datetime:
@@ -128,7 +136,9 @@ async def our_sessions(ctx: Ctx, states: tuple[str, ...]) -> list[Any]:
     )
 
 
-def cancel_session(rng: random.Random, ctx: Ctx, state: State, *, sessions: list[Any]) -> Op | None:
+def cancel_session(
+    rng: random.Random, ctx: Ctx, state: State, *, sessions: list[Any]
+) -> Op | None:
     """A center cancellation, or an approved family cancellation request
     (on time or late, makeup or not), committed like the scheduling paths
     do (state ``cancelled``, ``version + 1``)."""
@@ -152,11 +162,15 @@ def cancel_session(rng: random.Random, ctx: Ctx, state: State, *, sessions: list
             )
         if by_family and participant is not None:
             policy = await s.scalar(
-                text("SELECT id FROM scheduling_policies ORDER BY effective_from LIMIT 1")
+                text(
+                    "SELECT id FROM scheduling_policies ORDER BY effective_from LIMIT 1"
+                )
             )
             times = (
                 await s.execute(
-                    text("SELECT starts_at, ends_at FROM class_sessions WHERE id = :id"),
+                    text(
+                        "SELECT starts_at, ends_at FROM class_sessions WHERE id = :id"
+                    ),
                     {"id": target.id},
                 )
             ).one()
@@ -195,7 +209,11 @@ def cancel_session(rng: random.Random, ctx: Ctx, state: State, *, sessions: list
         )
         return ""
 
-    who = f"family {classification}{' makeup' if makeup else ''}" if by_family else "center"
+    who = (
+        f"family {classification}{' makeup' if makeup else ''}"
+        if by_family
+        else "center"
+    )
     return _compound(
         "cancel_session", f"{ctx.label(target.id)} {who}", None, _work, frozenset()
     )
@@ -203,7 +221,12 @@ def cancel_session(rng: random.Random, ctx: Ctx, state: State, *, sessions: list
 
 def _session_sql(kind: str, sql: str, describe: str) -> Callable[..., Op | None]:
     def build(
-        rng: random.Random, ctx: Ctx, state: State, *, sessions: list[Any], **params: Any
+        rng: random.Random,
+        ctx: Ctx,
+        state: State,
+        *,
+        sessions: list[Any],
+        **params: Any,
     ) -> Op | None:
         target = ops.pick(rng, sessions)
         if target is None:
@@ -273,7 +296,9 @@ def confirm_group_session(
         )
         return ""
 
-    return _compound("confirm_group_session", ctx.label(target.id), None, _work, frozenset())
+    return _compound(
+        "confirm_group_session", ctx.label(target.id), None, _work, frozenset()
+    )
 
 
 def run_reconcile_op() -> Op:
@@ -293,7 +318,8 @@ def run_reconcile_op() -> Op:
             ids=ids,
         )
         return [
-            f"S4: reconcile adjusted {ctx.label(r.class_session_id)}/{ctx.label(r.student_id)},"
+            f"S4: reconcile adjusted {ctx.label(r.class_session_id)}"
+            f"/{ctx.label(r.student_id)},"
             " not a participant"
             for r in stray
         ]
@@ -362,12 +388,17 @@ def enroll(rng: random.Random, ctx: Ctx, state: State) -> Op:
         return ctx.new_label("GE", change.enrollment_id)
 
     return _compound(
-        "enroll", f"{kind}/{student_label}", _account_of(ctx, student_label), _work,
+        "enroll",
+        f"{kind}/{student_label}",
+        _account_of(ctx, student_label),
+        _work,
         ENROLL_REFUSALS,
     )
 
 
-def withdraw_m4(rng: random.Random, ctx: Ctx, state: State, *, rows: list[Any], kind: str) -> Op | None:
+def withdraw_m4(
+    rng: random.Random, ctx: Ctx, state: State, *, rows: list[Any], kind: str
+) -> Op | None:
     """The plain M4 withdrawal (the #92 removal credits run in its hook)."""
     target = ops.pick(rng, rows)
     if target is None:
@@ -427,7 +458,9 @@ def settle_enrollment(
 # --- Tuition plans -------------------------------------------------------------------
 
 
-def create_plan(rng: random.Random, ctx: Ctx, state: State, *, linked: list[Any]) -> Op | None:
+def create_plan(
+    rng: random.Random, ctx: Ctx, state: State, *, linked: list[Any]
+) -> Op | None:
     """A standalone monthly plan of ``TUI``, or one linked to a ``G2``
     enrollment (the group's ``per_period`` item)."""
     starts = ctx.today + timedelta(days=rng.randrange(-15, 10))
@@ -465,20 +498,28 @@ def create_plan(rng: random.Random, ctx: Ctx, state: State, *, linked: list[Any]
     )
 
 
-def pause_plan(rng: random.Random, ctx: Ctx, state: State, *, plans: list[Any]) -> Op | None:
+def pause_plan(
+    rng: random.Random, ctx: Ctx, state: State, *, plans: list[Any]
+) -> Op | None:
     target = ops.pick(rng, plans)
     if target is None:
         return None
     # A pause starts on a period start and ends on a period end (#93 K4):
     # periods from the current one on, open-ended three times in ten.
-    current = max(0, (ctx.today.year - target.starts_on.year) * 12
-                  + ctx.today.month - target.starts_on.month)
+    current = max(
+        0,
+        (ctx.today.year - target.starts_on.year) * 12
+        + ctx.today.month
+        - target.starts_on.month,
+    )
     k = current + rng.randrange(0, 3)
     starts = period_start(target.starts_on, target.frequency, k)
     ends = (
         None
         if coin(rng, 0.3)
-        else period_start(target.starts_on, target.frequency, k + 1 + rng.randrange(0, 2))
+        else period_start(
+            target.starts_on, target.frequency, k + 1 + rng.randrange(0, 2)
+        )
         - timedelta(days=1)
     )
 
@@ -504,7 +545,9 @@ def pause_plan(rng: random.Random, ctx: Ctx, state: State, *, plans: list[Any]) 
 
 async def plans(ctx: Ctx) -> list[Any]:
     rows = await ctx.rows("SELECT id, starts_on, frequency FROM tuition_plans")
-    return sorted((r for r in rows if r.id in ctx.labels), key=lambda r: ctx.label(r.id))
+    return sorted(
+        (r for r in rows if r.id in ctx.labels), key=lambda r: ctx.label(r.id)
+    )
 
 
 def move_family(rng: random.Random, ctx: Ctx, state: State) -> Op:

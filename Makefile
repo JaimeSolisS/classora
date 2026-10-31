@@ -1,4 +1,4 @@
-.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-demo lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image
+.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-demo lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -106,9 +106,16 @@ test-unit:
 	cd apps/api && uv run pytest -m unit
 
 ## Run the API integration tests except the migration checks (those are `make test-migrations`)
+## and the billing invariant suite (`make test-billing-invariants`)
 ## (Testcontainers PostgreSQL; Docker must be running). SHARD=K/N runs only shard K of N, as in CI.
 test-integration:
-	cd apps/api && uv run pytest -m integration --ignore=tests/integration/test_migrations.py $(if $(SHARD),--shard=$(SHARD))
+	cd apps/api && uv run pytest -m integration --ignore=tests/integration/test_migrations.py --ignore=tests/integration/billing_invariants $(if $(SHARD),--shard=$(SHARD))
+
+## Run the billing invariant suite (randomized sequences, races, job walks; Docker; no coverage).
+## SEEDS=5,9 replaces the default seeds, EXTRA_SEED=n adds one, STEPS=n truncates every sequence:
+## a failure prints the exact `make test-billing-invariants SEEDS=… STEPS=…` that reproduces it.
+test-billing-invariants:
+	cd apps/api && $(if $(SEEDS),BILLING_INVARIANT_SEEDS=$(SEEDS)) $(if $(STEPS),BILLING_INVARIANT_STEPS=$(STEPS)) $(if $(EXTRA_SEED),BILLING_INVARIANT_EXTRA_SEED=$(EXTRA_SEED)) uv run pytest tests/integration/billing_invariants --no-cov --durations=10
 
 ## Run only the migration tests: upgrade from empty, single head, round trip, no model drift (Docker).
 test-migrations:

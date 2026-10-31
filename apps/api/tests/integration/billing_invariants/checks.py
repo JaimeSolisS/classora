@@ -43,6 +43,7 @@ APPEND_ONLY_TABLES: tuple[str, ...] = (
     "allocation_releases",
     "refunds",
     "charge_discounts",
+    "packages",
     "package_credit_transactions",
     "charge_due_date_changes",
     "charge_reminders",
@@ -99,31 +100,31 @@ CHECKS: tuple[Check, ...] = (
     Check(
         "I1",
         "every charge: amount + Σ adjustments ≥ 0",
-        f"SELECT c.id, {NET} AS net FROM charges c WHERE {NET} < 0",
+        f"SELECT c.id, {NET} AS net FROM charges c WHERE {NET} < 0",  # noqa: S608 - constant SQL
     ),
     Check(
         "I2",
         "every charge: Σ valid allocations ≤ net",
-        f"SELECT c.id, {NET} AS net, {VALID} AS allocated FROM charges c"
+        f"SELECT c.id, {NET} AS net, {VALID} AS allocated FROM charges c"  # noqa: S608 - constant SQL
         f" WHERE {VALID} > {NET}",
     ),
     Check(
         "I3",
         "every payment: Σ valid allocations + Σ refunds ≤ amount",
-        f"SELECT p.id, p.amount, {PAY_VALID} AS allocated, {PAY_REFUNDED} AS"
+        f"SELECT p.id, p.amount, {PAY_VALID} AS allocated, {PAY_REFUNDED} AS"  # noqa: S608 - constant SQL
         f" refunded FROM payments p WHERE {PAY_VALID} + {PAY_REFUNDED} > p.amount",
     ),
     Check(
         "I3r",
         "a reversed payment has no valid allocation",
-        f"SELECT p.id, {PAY_VALID} AS allocated FROM payments p"
+        f"SELECT p.id, {PAY_VALID} AS allocated FROM payments p"  # noqa: S608 - constant SQL
         f" WHERE {REVERSED} AND {PAY_VALID} > 0",
     ),
     Check(
         "I3x",
         "a payment with a reversal has no refund (#100: no reversal of a"
         " refunded payment, no refund of a reversed one)",
-        f"SELECT p.id FROM payments p WHERE {REVERSED}"
+        f"SELECT p.id FROM payments p WHERE {REVERSED}"  # noqa: S608 - constant SQL
         " AND EXISTS (SELECT 1 FROM refunds f WHERE f.payment_id = p.id)",
     ),
     Check(
@@ -183,7 +184,7 @@ CHECKS: tuple[Check, ...] = (
     Check(
         "I8",
         "every package: Σ units ≥ 0",
-        f"SELECT k.id, {REMAINING} AS remaining FROM packages k WHERE {REMAINING} < 0",
+        f"SELECT k.id, {REMAINING} AS remaining FROM packages k WHERE {REMAINING} < 0",  # noqa: S608 - constant SQL
     ),
     Check(
         "I9",
@@ -239,7 +240,7 @@ CHECKS: tuple[Check, ...] = (
     Check(
         "W4",
         "#101: a refund units row ⇒ the package's remaining = 0",
-        f"SELECT k.id, {REMAINING} AS remaining FROM packages k WHERE EXISTS (SELECT"
+        f"SELECT k.id, {REMAINING} AS remaining FROM packages k WHERE EXISTS (SELECT"  # noqa: S608 - constant SQL
         " 1 FROM package_credit_transactions t WHERE t.package_id = k.id AND t.kind"
         f" = 'refund') AND {REMAINING} <> 0",
     ),
@@ -295,7 +296,8 @@ CHECKS: tuple[Check, ...] = (
         "K2",
         "#94: no consume row for a session dated outside its package's"
         " [purchased_on, expires_on]",
-        "SELECT t.id, k.purchased_on, k.expires_on, (s.starts_at AT TIME ZONE"
+        "SELECT t.id, t.package_id, k.purchased_on, k.expires_on,"  # noqa: S608 - constant SQL
+        " (s.starts_at AT TIME ZONE"
         f" {ZONE})::date AS day FROM package_credit_transactions t JOIN packages k"
         " ON k.id = t.package_id JOIN class_sessions s ON s.id = t.class_session_id"
         f" WHERE t.kind = 'consume' AND ((s.starts_at AT TIME ZONE {ZONE})::date"
@@ -319,8 +321,7 @@ CHECKS: tuple[Check, ...] = (
     ),
     Check(
         "S1",
-        "#99: at most one session_cancellation_decisions row per (session,"
-        " student)",
+        "#99: at most one session_cancellation_decisions row per (session, student)",
         "SELECT class_session_id, student_id, COUNT(*) AS n FROM"
         " session_cancellation_decisions GROUP BY class_session_id, student_id"
         " HAVING COUNT(*) > 1",
@@ -352,7 +353,7 @@ CHECKS: tuple[Check, ...] = (
     Check(
         "X2",
         "#100: at most one reversal row per package, and remaining 0 after it",
-        f"SELECT k.id, {REMAINING} AS remaining FROM packages k WHERE (SELECT"
+        f"SELECT k.id, {REMAINING} AS remaining FROM packages k WHERE (SELECT"  # noqa: S608 - constant SQL
         " COUNT(*) FROM package_credit_transactions t WHERE t.package_id = k.id AND"
         " t.kind = 'reversal') > 1 OR (EXISTS (SELECT 1 FROM"
         " package_credit_transactions t WHERE t.package_id = k.id AND t.kind ="
@@ -496,12 +497,12 @@ _CHARGES = f"""
 SELECT c.id, c.billing_account_id AS account, c.student_id AS student,
        {NET} AS net, {VALID} AS allocated, {EFFECTIVE_DUE} AS due
 FROM charges c
-"""
+"""  # noqa: S608 - constant SQL
 _CREDIT = f"""
 SELECT p.billing_account_id AS account,
        SUM(p.amount - {PAY_VALID} - {PAY_REFUNDED}) AS credit
 FROM payments p WHERE NOT {REVERSED} GROUP BY p.billing_account_id
-"""
+"""  # noqa: S608 - constant SQL
 _LEDGER = """
 SELECT billing_account_id AS account, SUM(balance_effect) AS net
 FROM billing_ledger_entries GROUP BY billing_account_id
@@ -534,7 +535,8 @@ async def reconciliation(session: AsyncSession, *, today: date) -> list[Violatio
         for row in (await session.execute(text(_LEDGER))).all()
     }
     accounts = [
-        row.id for row in (await session.execute(text("SELECT id FROM billing_accounts")))
+        row.id
+        for row in (await session.execute(text("SELECT id FROM billing_accounts")))
     ]
     mine: dict[uuid.UUID, dict[str, Any]] = {}
     for row in charges:
@@ -558,10 +560,16 @@ async def reconciliation(session: AsyncSession, *, today: date) -> list[Violatio
             broken.append({"account": str(account), "suite": expected, "service": got})
         if ledger.get(account, Money.zero()) != net:
             broken.append(
-                {"account": str(account), "suite_net": net, "ledger": ledger.get(account)}
+                {
+                    "account": str(account),
+                    "suite_net": net,
+                    "ledger": ledger.get(account),
+                }
             )
         for student in service.by_student:
-            suite = Money.total(c["open"] for c in own if c["student"] == student.student_id)
+            suite = Money.total(
+                c["open"] for c in own if c["student"] == student.student_id
+            )
             if student.outstanding != suite:
                 broken.append(
                     {
@@ -580,7 +588,9 @@ async def reconciliation(session: AsyncSession, *, today: date) -> list[Violatio
                 broken.append(
                     {
                         "charge": str(balance.charge_id),
-                        "suite": None if ours is None else (ours["open"], ours["status"]),
+                        "suite": None
+                        if ours is None
+                        else (ours["open"], ours["status"]),
                         "service": (balance.open, balance.status),
                     }
                 )
@@ -600,7 +610,8 @@ async def net_balances(session: AsyncSession) -> dict[uuid.UUID, Money]:
     """Every account's net balance from ``billing.service`` (the
     conservation oracle reads these before and after each step)."""
     accounts = [
-        row.id for row in (await session.execute(text("SELECT id FROM billing_accounts")))
+        row.id
+        for row in (await session.execute(text("SELECT id FROM billing_accounts")))
     ]
     out: dict[uuid.UUID, Money] = {}
     for account in accounts:

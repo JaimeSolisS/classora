@@ -27,9 +27,11 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from app.core.errors import AppError
 from app.core.money import Money
 from app.modules.billing import schemas as bschemas
 from app.workflows import (
@@ -121,21 +123,21 @@ SELECT c.id, c.billing_account_id AS account, c.student_id AS student, c.kind,
        c.tuition_plan_id, c.package_id, c.service_date,
        {checks.NET} AS net, {checks.VALID} AS allocated
 FROM charges c
-"""
+"""  # noqa: S608 - constant SQL
 _STATE_PAYMENTS = f"""
 SELECT p.id, p.billing_account_id AS account, p.amount,
        p.amount - {checks.PAY_VALID} - {checks.PAY_REFUNDED} AS remainder,
        {checks.REVERSED} AS reversed,
        EXISTS (SELECT 1 FROM refunds f WHERE f.payment_id = p.id) AS refunded
 FROM payments p
-"""
+"""  # noqa: S608 - constant SQL
 _STATE_PACKAGES = f"""
 SELECT k.id, k.billing_account_id AS account, k.student_id AS student,
        k.expires_on, {checks.REMAINING} AS remaining,
        EXISTS (SELECT 1 FROM package_credit_transactions t WHERE t.package_id = k.id
                AND t.kind IN ('expire', 'reversal', 'refund')) AS closed
 FROM packages k
-"""
+"""  # noqa: S608 - constant SQL
 
 
 def charge_label(ctx: Ctx, row: Any) -> str:
@@ -340,10 +342,12 @@ def run_reminders_op() -> Op:
 
     async def _runner(ctx: Ctx) -> Any:
         rows = await ctx.rows(
-            f"SELECT c.id FROM charges c WHERE {checks.NET} - {checks.VALID} = 0"
+            f"SELECT c.id FROM charges c WHERE {checks.NET} - {checks.VALID} = 0"  # noqa: S608 - constant SQL
         )
         settled.append({row.id for row in rows})
-        settled.append({row.id for row in await ctx.rows("SELECT id FROM charge_reminders")})
+        settled.append(
+            {row.id for row in await ctx.rows("SELECT id FROM charge_reminders")}
+        )
         return await charge_reminders.run_send_charge_reminders(
             ctx.settings, now=ctx.clock.now()
         )
@@ -351,7 +355,8 @@ def run_reminders_op() -> Op:
     async def _extra(ctx: Ctx, result: Any, rows: list[Any]) -> list[str]:
         zero, known = settled
         fresh = await ctx.rows(
-            "SELECT id, charge_id, stage FROM charge_reminders WHERE NOT (id = ANY(:k))",
+            "SELECT id, charge_id, stage FROM charge_reminders"
+            " WHERE NOT (id = ANY(:k))",
             k=list(known),
         )
         return [
@@ -361,6 +366,47 @@ def run_reminders_op() -> Op:
         ]
 
     return job_op("run_reminders", _runner, extra=_extra)
+
+
+# --- Transport (D8) ------------------------------------------------------------------
+
+
+class RouteRefusal(AppError):
+    """A ``4xx`` Problem Details response of a route, as its code (the
+    route-driven sequence checks it against the declared refusals)."""
+
+    def __init__(self, code: str, status: int) -> None:
+        super().__init__()
+        self.code = code  # type: ignore[misc]
+        self.status = status  # type: ignore[misc]
+
+
+def account_path(family_id: object, suffix: str = "") -> str:
+    return f"/api/v1/families/{family_id}/billing-account{suffix}"
+
+
+async def via(
+    ctx: Ctx,
+    engine: AsyncEngine,
+    role: str,
+    path: str,
+    body: BaseModel,
+    workflow: Callable[[Any], Awaitable[BaseModel]],
+) -> dict[str, Any]:
+    """The workflow entry point in its own Unit of Work, or (when the
+    context drives the routes, D8) the ``POST`` as ``role`` with a fresh
+    ``Idempotency-Key``. Returns the response body as JSON."""
+    if ctx.http is not None:
+        status, payload = await ctx.http(role, path, body.model_dump(mode="json"))
+        if 400 <= status < 500:
+            raise RouteRefusal(str(payload.get("code")), status)
+        if status not in (200, 201):
+            raise AssertionError(f"{path}: HTTP {status} {payload}")
+        found: dict[str, Any] = payload
+        return found
+    async with ctx.uow(engine) as uow:
+        result = await workflow(uow)
+    return result.model_dump(mode="json")
 
 
 # --- Ledger operations (D1) ----------------------------------------------------------
@@ -428,12 +474,19 @@ def manual_charge(
     )
 
     async def _run(ctx: Ctx, engine: AsyncEngine) -> Outcome:
-        async with ctx.uow(engine) as uow:
-            posted = await billing_corrections.post_manual_charge(
+        posted = await via(
+            ctx,
+            engine,
+            "finance",
+            account_path(info.id, "/charges"),
+            body,
+            lambda uow: billing_corrections.post_manual_charge(
                 uow.session, info.id, body
-            )
-        ctx.new_label("M", posted.charge.id)
-        return accepted(info.account, amount, ctx.label(posted.charge.id))
+            ),
+        )
+        charge_id = uuid.UUID(str(posted["charge"]["id"]))
+        ctx.new_label("M", charge_id)
+        return accepted(info.account, amount, ctx.label(charge_id))
 
     return Op(
         "manual_charge",
@@ -481,10 +534,16 @@ def manual_adjustment(
     )
 
     async def _run(ctx: Ctx, engine: AsyncEngine) -> Outcome:
-        async with ctx.uow(engine) as uow:
-            await billing_corrections.post_manual_adjustment(
+        await via(
+            ctx,
+            engine,
+            "finance",
+            account_path(info.id, f"/charges/{charge.id}/adjustments"),
+            body,
+            lambda uow: billing_corrections.post_manual_adjustment(
                 uow.session, info.id, charge.id, body
-            )
+            ),
+        )
         return accepted(info.account, amount)
 
     return Op(
@@ -532,9 +591,9 @@ def record_payment(
     lines_total = Money.total(amount for _, amount in lines)
     if lines:
         amount = lines_total + (
-            Money.zero() if coin(rng, 0.5) else boundary_amount(
-                rng, [], low=CENT, high=Money("200.00")
-            )[0]
+            Money.zero()
+            if coin(rng, 0.5)
+            else boundary_amount(rng, [], low=CENT, high=Money("200.00"))[0]
         )
     else:
         amount, _ = boundary_amount(
@@ -558,9 +617,15 @@ def record_payment(
     )
 
     async def _run(ctx: Ctx, engine: AsyncEngine) -> Outcome:
-        async with ctx.uow(engine) as uow:
-            recorded = await billing_payments.record_payment(uow.session, info.id, body)
-        label = ctx.new_label("P", recorded.payment.id)
+        recorded = await via(
+            ctx,
+            engine,
+            "finance",
+            account_path(info.id, "/payments"),
+            body,
+            lambda uow: billing_payments.record_payment(uow.session, info.id, body),
+        )
+        label = ctx.new_label("P", uuid.UUID(str(recorded["payment"]["id"])))
         return accepted(info.account, -amount, label)
 
     described = " ".join(f"{c.label}={a}" for c, a in lines)
@@ -602,8 +667,14 @@ def allocate_credit(
     body = bschemas.CreditAllocationCreate.model_validate(payload)
 
     async def _run(ctx: Ctx, engine: AsyncEngine) -> Outcome:
-        async with ctx.uow(engine) as uow:
-            await billing_payments.allocate_credit(uow.session, info.id, body)
+        await via(
+            ctx,
+            engine,
+            "finance",
+            account_path(info.id, "/allocations"),
+            body,
+            lambda uow: billing_payments.allocate_credit(uow.session, info.id, body),
+        )
         return accepted(info.account, Money.zero())
 
     return Op(
@@ -646,10 +717,16 @@ def reverse_payment(
     )
 
     async def _run(ctx: Ctx, engine: AsyncEngine) -> Outcome:
-        async with ctx.uow(engine) as uow:
-            await billing_corrections.reverse_payment(
+        await via(
+            ctx,
+            engine,
+            "owner",
+            account_path(info.id, f"/payments/{payment.id}/reversal"),
+            body,
+            lambda uow: billing_corrections.reverse_payment(
                 uow.session, info.id, payment.id, body
-            )
+            ),
+        )
         return accepted(info.account, payment.amount)
 
     return Op(
@@ -687,10 +764,16 @@ def refund_payment(
     )
 
     async def _run(ctx: Ctx, engine: AsyncEngine) -> Outcome:
-        async with ctx.uow(engine) as uow:
-            await billing_corrections.refund_payment(
+        await via(
+            ctx,
+            engine,
+            "owner",
+            account_path(info.id, f"/payments/{payment.id}/refunds"),
+            body,
+            lambda uow: billing_corrections.refund_payment(
                 uow.session, info.id, payment.id, body
-            )
+            ),
+        )
         return accepted(info.account, amount)
 
     return Op(
@@ -715,10 +798,16 @@ def due_date_change(
     )
 
     async def _run(ctx: Ctx, engine: AsyncEngine) -> Outcome:
-        async with ctx.uow(engine) as uow:
-            await billing_accounts.record_due_date_change(
+        await via(
+            ctx,
+            engine,
+            "owner",
+            account_path(info.id, f"/charges/{charge.id}/due-date-changes"),
+            body,
+            lambda uow: billing_accounts.record_due_date_change(
                 uow.session, info.id, charge.id, body
-            )
+            ),
+        )
         return accepted(info.account, Money.zero())
 
     return Op(

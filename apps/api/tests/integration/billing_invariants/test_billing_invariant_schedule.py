@@ -93,7 +93,10 @@ class ScheduleGenerator:
             )
         elif kind == "closure_restore":
             built = sch.restore_from_closure(
-                rng, ctx, state, sessions=await sch.our_sessions(ctx, ("skipped_closure",))
+                rng,
+                ctx,
+                state,
+                sessions=await sch.our_sessions(ctx, ("skipped_closure",)),
             )
         elif kind == "run_reconcile":
             built = sch.run_reconcile_op()
@@ -103,7 +106,7 @@ class ScheduleGenerator:
             which = rng.choice(["group", "cohort"])
             rows = await sch.enrollments(ctx, which)
             active = [r for r in rows if r.withdrawn_at is None]
-            pool = active if active and ops.coin(rng, 0.85) else rows
+            pool = active if active and harness.coin(rng, 0.85) else rows
             if kind == "withdraw_m4":
                 built = sch.withdraw_m4(rng, ctx, state, rows=pool, kind=which)
             else:
@@ -139,6 +142,7 @@ class ScheduleGenerator:
         info = ops.family(rng, ctx)
         out: list[Op] = []
         for _ in range(rng.choice([2, 2, 3])):
+            built: Op | None
             choice = rng.choice(["pay", "credit", "allocate"])
             if choice == "pay":
                 built = ops.record_payment(rng, ctx, state, info)
@@ -146,7 +150,11 @@ class ScheduleGenerator:
                 built = sch.manual_credit(rng, ctx, state, info)
             else:
                 built = ops.allocate_credit(rng, ctx, state, info)
-            out.append(built if built is not None else ops.record_payment(rng, ctx, state, info))
+            out.append(
+                built
+                if built is not None
+                else ops.record_payment(rng, ctx, state, info)
+            )
         return out
 
 
@@ -171,7 +179,10 @@ REFUSABLE = frozenset({"enroll", "create_plan"})
 def test_billing_invariant_schedule_generator_reaches_both_sides() -> None:
     """D5 over the default seeds (see the ledger module)."""
     ran = {trace.seed for trace in TRACES}
-    if not set(DEFAULT_SEEDS) <= ran or harness.step_count(DEFAULT_STEPS) != DEFAULT_STEPS:
+    if (
+        not set(DEFAULT_SEEDS) <= ran
+        or harness.step_count(DEFAULT_STEPS) != DEFAULT_STEPS
+    ):
         pytest.skip("needs the default seeds and steps in this run")
     accepted: Counter[str] = Counter()
     refused: Counter[str] = Counter()

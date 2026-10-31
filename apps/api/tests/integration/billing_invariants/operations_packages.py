@@ -10,17 +10,17 @@ minus its credit, as its result reports it.
 import random
 import uuid
 from datetime import UTC
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.core.money import Money
 from app.modules.billing import schemas as bschemas
 from app.modules.identity.permissions import OWNER
 from app.workflows import package_expiry, packages, withdrawals
 from app.workflows.closeout_approval import on_closeout_approved
 from app.workflows.package_schemas import PackagePurchase
 from app.workflows.withdrawal_schemas import (
+    SubjectKind,
     WithdrawalCreditConfirm,
     WithdrawalRefundConfirm,
 )
@@ -92,7 +92,9 @@ async def _pending_sessions(ctx: Ctx) -> list[Any]:
     )
 
 
-def approve_closeout(rng: random.Random, ctx: Ctx, state: State, *, sessions: list[Any]) -> Op | None:
+def approve_closeout(
+    rng: random.Random, ctx: Ctx, state: State, *, sessions: list[Any]
+) -> Op | None:
     """``on_closeout_approved`` for one of our package-subject sessions
     (revision 1; approving it again finds it consumed or charged)."""
     target = ops.pick(rng, sessions)
@@ -126,7 +128,9 @@ def _package_target(
     rng: random.Random, ctx: Ctx, state: State, info: FamilyInfo
 ) -> ops.PackageView | None:
     if coin(rng, ops.INVALID_TARGET_ODDS):
-        return ops.pick(rng, state.packages_of(ops.other_family(rng, ctx, info).account))
+        return ops.pick(
+            rng, state.packages_of(ops.other_family(rng, ctx, info).account)
+        )
     own = state.packages_of(info.account)
     usable = [p for p in own if not p.closed and p.remaining > 0]
     if usable and coin(rng, 0.7):
@@ -142,7 +146,11 @@ def cancel(
     if package is None:
         return None
     purchase_charge = next(
-        (c for c in state.charges if c.package == package.id and c.kind == "package_purchase"),
+        (
+            c
+            for c in state.charges
+            if c.package == package.id and c.kind == "package_purchase"
+        ),
         None,
     )
     payload: dict[str, Any] = {"reason": "La familia se mudó"}
@@ -163,10 +171,13 @@ def cancel(
 
     return Op(
         "cancel_package",
-        f"{info.label} {package.label} credit={payload.get('credit_amount', 'default')}",
+        f"{info.label} {package.label}"
+        f" credit={payload.get('credit_amount', 'default')}",
         _run,
         account=package.account,
-        refusals=frozenset({"package_not_cancellable", "charge_net_negative", NOT_FOUND}),
+        refusals=frozenset(
+            {"package_not_cancellable", "charge_net_negative", NOT_FOUND}
+        ),
     )
 
 
@@ -194,7 +205,10 @@ def withdraw(
         async with ctx.uow(engine) as uow:
             at = await transaction_now(uow.session)
             found = await withdrawals.preview_withdrawal(
-                uow.session, kind, subject, now=ctx.clock.now().astimezone(UTC)  # type: ignore[arg-type]
+                uow.session,
+                cast(SubjectKind, kind),
+                subject,
+                now=ctx.clock.now().astimezone(UTC),
             )
             payload = withdrawal_support.body(
                 found.model_dump(mode="json"),
@@ -275,7 +289,9 @@ def pay_package(
             "payment_method_code": "cash",
             "allocation": {
                 "mode": "explicit",
-                "lines": [{"charge_id": str(target.id), "amount": str(target.open.amount)}],
+                "lines": [
+                    {"charge_id": str(target.id), "amount": str(target.open.amount)}
+                ],
             },
         }
     )
@@ -285,7 +301,9 @@ def pay_package(
 
         async with ctx.uow(engine) as uow:
             recorded = await billing_payments.record_payment(uow.session, info.id, body)
-        return accepted(info.account, -target.open, ctx.new_label("P", recorded.payment.id))
+        return accepted(
+            info.account, -target.open, ctx.new_label("P", recorded.payment.id)
+        )
 
     return Op(
         "pay_package",
