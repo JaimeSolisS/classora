@@ -55,7 +55,8 @@
     "homework": "Tareas",
     "progressReports": "Informes de progreso",
     "tutorReports": "Informes del tutor",
-    "progress": "Progreso"
+    "progress": "Progreso",
+    "familyBilling": "Cuenta familiar"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -6265,6 +6266,113 @@
         "submit": "Dar de baja sin liquidación",
         "submitting": "Dando de baja…"
       }
+    }
+  },
+  "familyBilling": {
+    "title": "Cuenta familiar — {{name}}",
+    "fallbackTitle": "Cuenta familiar",
+    "noFamily": "La cuenta de cobros de tu familia aún no está configurada. Contacta al centro.",
+    "inactive": "Familia inactiva: la cuenta se sigue mostrando aquí.",
+    "onlyChild": "Cobros y pagos de {{name}}",
+    "close": "Cerrar",
+    "adjustmentFallback": "Ajuste",
+    "columns": {
+      "child": "Hijo o hija"
+    },
+    "filters": {
+      "label": "Filtrar por hijo",
+      "child": "Hijo o hija",
+      "allChildren": "Todos los hijos",
+      "help": "Se aplica al saldo, a Cargos, a Paquetes y al Historial."
+    },
+    "summary": {
+      "title": "Saldo",
+      "outstanding": "Por pagar",
+      "overdue": "Vencido",
+      "accountCredit": "Saldo a favor",
+      "netBalance": "Saldo neto",
+      "forChild": "De {{name}}",
+      "wholeFamily": "Toda la familia",
+      "noAccount": "Aún no hay cargos ni pagos.",
+      "asOf": "Al {{date}}.",
+      "children": "Por hijo",
+      "overdueWarning": "(tiene cargos vencidos)"
+    },
+    "charges": {
+      "title": "Cargos",
+      "filter": "Mostrar",
+      "filters": {
+        "open": "Por pagar",
+        "overdue": "Vencidos",
+        "paid": "Pagados",
+        "all": "Todos"
+      },
+      "empty": "Aún no hay cargos.",
+      "emptyFiltered": "Ningún cargo coincide con este filtro.",
+      "pagination": "Páginas de cargos",
+      "amount": "Importe",
+      "paid": "Pagado",
+      "view": "Detalles",
+      "viewFor": "Detalles de {{charge}} de {{child}}, {{date}}"
+    },
+    "chargeDetail": {
+      "title": "Cargo",
+      "help": "El precio del cargo, sus descuentos, ajustes y los pagos aplicados.",
+      "listPrice": "Precio de lista",
+      "discounts": "Descuentos",
+      "noDiscounts": "Sin descuentos.",
+      "discount": "Descuento",
+      "afterDiscounts": "Importe con descuentos",
+      "adjustments": "Ajustes",
+      "noAdjustments": "Sin ajustes.",
+      "payments": "Pagos aplicados",
+      "noPayments": "Aún no se ha aplicado ningún pago.",
+      "net": "Neto"
+    },
+    "payments": {
+      "title": "Pagos",
+      "familyWide": "Los pagos se aplican a toda la familia.",
+      "empty": "Aún no hay pagos.",
+      "pagination": "Páginas de pagos",
+      "applied": "Aplicado",
+      "credit": "Sin aplicar (saldo a favor)",
+      "view": "Detalles",
+      "viewFor": "Detalles del pago de {{amount}} recibido el {{date}}"
+    },
+    "paymentDetail": {
+      "title": "Pago",
+      "help": "El pago y los cargos a los que se aplicó, del más antiguo al más reciente.",
+      "allocations": "Aplicado a",
+      "noAllocations": "No se aplicó a ningún cargo: es saldo a favor.",
+      "charge": "Cargo",
+      "reversal": "Reversión",
+      "reversedOn": "Revertido el",
+      "refunds": "Reembolsos"
+    },
+    "packages": {
+      "title": "Paquetes prepagados",
+      "empty": "No hay paquetes.",
+      "pagination": "Páginas de paquetes",
+      "subject": "Materia",
+      "remaining": "Quedan",
+      "purchased": "Comprado",
+      "expires": "Vence",
+      "expiresSoon": "Vence pronto",
+      "statusOther": "Otro",
+      "movementOther": "Otro movimiento",
+      "view": "Uso",
+      "viewFor": "Uso de {{name}} de {{child}}",
+      "usageTitle": "Uso del paquete",
+      "usageHelp": "Lo que queda y cada movimiento del paquete.",
+      "movements": "Movimientos",
+      "usageEmpty": "Aún no hay movimientos."
+    },
+    "history": {
+      "title": "Historial",
+      "intro": "Cada movimiento de la cuenta, del más reciente al más antiguo. Los pagos y reembolsos son de toda la familia, así que un filtro por hijo los deja fuera.",
+      "empty": "Aún no hay movimientos.",
+      "more": "Cargar más",
+      "loading": "Cargando…"
     }
   }
 }

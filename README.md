@@ -383,6 +383,12 @@ unless a bullet says otherwise.
   credit stays on the family's account or the freed payments are
   refunded, after a password confirmation. The family's account page
   lists its withdrawals.
+- Guardians open Family billing (Cuenta familiar) to see their family's
+  balance overall and per child, the charges with their due dates and
+  status, the payments with downloadable receipts, the prepaid packages
+  with what is left, and the account history, on the phone, in Spanish
+  and English; a payment reminder opens it. They never see staff notes or
+  reasons.
 
 **Notifications**
 
@@ -414,8 +420,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** the rest of billing (including the family billing
-portal), payroll, reporting and analytics, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
+**Not built yet:** the rest of billing, payroll, reporting and analytics, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 
 **Not in this version:** file uploads and documents (attachments, the shared

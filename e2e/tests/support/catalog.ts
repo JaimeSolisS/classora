@@ -42,6 +42,16 @@ type Common = {
     myCourses: string;
     // #363 F4: the price catalog.
     billing: string;
+    // #388 J3: the family billing portal ("Cuenta familiar").
+    familyBilling: string;
+  };
+  // #388 J3: the family billing portal.
+  familyBilling: {
+    title: string;
+    close: string;
+    filters: { child: string };
+    charges: { filter: string };
+    chargeDetail: { title: string };
   };
   // #363 F4, F5: the price catalog; #366 E3: the Unbilled and Settings tabs;
   // #367 G3, G4: discounts and custom prices; #374 H3: tuition plans;
@@ -573,6 +583,8 @@ type Common = {
       cancel: string;
     };
     userMenu: { signedInAs: string; signOut: string };
+    // #388 J3: the route guard's access-denied page.
+    forbidden: { title: string };
   };
   invitations: {
     title: string;

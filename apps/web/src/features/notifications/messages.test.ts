@@ -852,7 +852,23 @@ describe('the payment reminder notification (#97 F6)', () => {
     }
   });
 
-  it('has no link until the family billing page (#102)', () => {
-    expect(NOTIFICATION_LINKS[type]).toBeUndefined();
+  it('links each stage to the family billing portal (#388 H1)', () => {
+    const link = (params: Record<string, string | number>) =>
+      NOTIFICATION_LINKS[type]?.(params, { userId: 'u', timeZone: 'UTC' });
+    const base = { family_id, count: 1, open_total: '10.00' };
+    expect(link({ ...base, kind: 'due_soon' })).toBe('/my-billing?status=open');
+    expect(link({ ...base, kind: 'overdue' })).toBe(
+      '/my-billing?status=overdue',
+    );
+    expect(link({ ...base, kind: 'overdue_followup' })).toBe(
+      '/my-billing?status=overdue',
+    );
+    expect(link({ ...base, kind: 'later' })).toBe('/my-billing');
+    expect(link({ family_id })).toBe('/my-billing');
+    for (const kind of ['due_soon', 'overdue', 'overdue_followup', 'x']) {
+      const target = link({ ...base, kind });
+      expect(target).not.toContain(family_id);
+      expect(target).not.toContain('student');
+    }
   });
 });

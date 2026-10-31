@@ -53,6 +53,7 @@ import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { AppLayout } from './layout/AppLayout';
 import { BILLING_ACCESS } from '@/features/billing/access';
 import { CHANGE_REQUESTS_ACCESS } from '@/features/change-requests/access';
+import { FAMILY_BILLING_ACCESS } from '@/features/family-portal/billing/access';
 import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/access';
 import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
 import { MY_HISTORY_ACCESS } from '@/features/academics/history/access';
@@ -433,6 +434,17 @@ export const routes: RouteObject[] = [
               ).RequestSessionPage,
             }),
             handle: SESSION_REQUESTS_ACCESS,
+          },
+          // #388: the family billing portal (code-split): guardians only;
+          // anyone else gets the guard's access-denied page, with no request.
+          {
+            path: 'my-billing',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/family-portal/billing/FamilyBillingPage')
+              ).FamilyBillingPage,
+            }),
+            handle: FAMILY_BILLING_ACCESS,
           },
           // #67 E1: My schedule (code-split, FullCalendar): tutors, students
           // and guardians; the API's record policies decide.
