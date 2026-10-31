@@ -34,8 +34,9 @@ the family's account (else the same ``404``) → the item, its adjustments
 and its allocations. ``reason`` and the actor ids are ``null`` for a caller
 without ``billing.view``. Statements: the guardian's own family, the
 family, the charge's account, the center's today, the charge, the
-student's name, the adjustments, the allocations: at most eight, whatever
-the number of rows (the billing reads are four).
+student's name, the adjustments, the allocations, the discount lines
+(#102 C1, the posting-time snapshot): at most nine, whatever the number of
+rows (the billing reads are five).
 """
 
 import uuid
@@ -61,6 +62,7 @@ from app.workflows.billing_correction_schemas import (
     AdjustmentItem,
     ChargeAllocationItem,
     ChargeDetailItem,
+    ChargeDiscountLine,
     ManualAdjustmentPosted,
     ManualChargePosted,
     PaymentReversed,
@@ -293,6 +295,9 @@ async def get_charge(
     item = await _charge(session, account_id, charge_id, staff=staff)
     adjustments = await billing.charge_adjustments(session, charge_id)
     allocations = await billing.charge_allocations(session, charge_id)
+    lines = (await billing.charge_discount_lines(session, [charge_id])).get(
+        charge_id, []
+    )
     return ChargeDetailItem(
         **item.model_dump(),
         adjustments=[_adjustment_item(row, staff=staff) for row in adjustments],
@@ -305,5 +310,16 @@ async def get_charge(
                 is_valid=a.is_valid,
             )
             for a in allocations
+        ],
+        discounts=[
+            ChargeDiscountLine(
+                position=line.position,
+                kind=line.kind,
+                name=line.name,
+                percent=None if line.percent is None else f"{line.percent:.4f}",
+                fixed_amount=line.fixed_amount,
+                amount=line.amount,
+            )
+            for line in lines
         ],
     )

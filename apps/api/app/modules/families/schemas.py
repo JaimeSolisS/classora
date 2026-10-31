@@ -510,6 +510,22 @@ class FamilyListItem(BaseModel):
     student_count: int = Field(description="The number of member students.")
 
 
+class OwnFamilyReference(BaseModel):
+    """The caller's own family (#102 A1): its id, name and active flag."""
+
+    id: uuid.UUID
+    name: str
+    is_active: bool
+
+
+class OwnFamily(BaseModel):
+    """``GET /api/v1/families/own`` (#102 A1, T2 (a)): the family of the
+    caller's **active** guardian profile, or ``null`` (no ``guardian`` role,
+    an inactive profile, a profile in no family)."""
+
+    family: OwnFamilyReference | None
+
+
 class FamilyStudentItem(BaseModel):
     """A student of the family. Membership is not access: the student's own
     record still follows the viewer's links."""

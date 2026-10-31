@@ -42,6 +42,7 @@ from collections.abc import Collection
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
+from app.core.authz import Principal
 from app.core.errors import FieldError
 from app.core.pagination import OffsetPage, OffsetParams
 from app.modules.administration import service as administration
@@ -50,6 +51,7 @@ from app.modules.billing.schemas import PriceVersionCreate
 from app.modules.catalog import service as catalog
 from app.modules.families import service as families
 from app.modules.scheduling import service as scheduling
+from app.workflows.billing_accounts import _visible_family
 from app.workflows.charge_pricing import local_date
 from app.workflows.package_schemas import (
     PackageCancelled,
@@ -350,13 +352,16 @@ async def list_packages(
     )
 
 
-async def get_package(session: AsyncSession, package_id: uuid.UUID) -> PackageDetail:
+async def get_package(
+    session: AsyncSession, package_id: uuid.UUID, *, family_id: uuid.UUID | None = None
+) -> PackageDetail:
     """``GET /api/v1/billing/packages/{id}`` (D5): the item and its unit
-    movements, oldest first (``404`` when unknown). Four statements (the
+    movements, oldest first (``404`` when unknown; with ``family_id``, also
+    when it isn't on that family's account, #102 B2). Four statements (the
     zone, the package, its movements, the consumed sessions' starts)."""
     today = await administration.center_today(session)
     row, transactions = await billing.get_package(
-        session, _names(), package_id, today=today
+        session, _names(), package_id, today=today, family_id=family_id
     )
     starts = await scheduling.session_starts(
         session,
@@ -378,6 +383,49 @@ async def get_package(session: AsyncSession, package_id: uuid.UUID) -> PackageDe
             for t in transactions
         ],
     )
+
+
+# --- Family reads (#102 B, T3 (a)) --------------------------------------------------
+
+
+async def list_family_packages(
+    session: AsyncSession,
+    principal: Principal,
+    family_id: uuid.UUID,
+    *,
+    student_id: uuid.UUID | None,
+    statuses: Collection[billing.PackageStatus],
+    page: OffsetParams,
+) -> OffsetPage[PackageItem]:
+    """``GET /api/v1/families/{family_id}/billing-account/packages`` (#102
+    B1): the #364 record policy (``_visible_family``: an unknown or hidden
+    family is ``404``), then :func:`list_packages` limited to the family's
+    account (the packages whose purchase charge is on it, B3: a package
+    stays on the account it was bought on). At most five statements
+    whatever the page size (the guardian's own family, the family, the
+    zone, the page; a count past the end)."""
+    await _visible_family(session, principal, family_id)
+    return await list_packages(
+        session,
+        student_id=student_id,
+        family_id=family_id,
+        statuses=statuses,
+        page=page,
+    )
+
+
+async def get_family_package(
+    session: AsyncSession,
+    principal: Principal,
+    family_id: uuid.UUID,
+    package_id: uuid.UUID,
+) -> PackageDetail:
+    """``GET …/billing-account/packages/{package_id}`` (#102 B2): the
+    record policy, then :func:`get_package` on the family's account. A
+    package of another family's account is the same ``404`` as an unknown
+    one."""
+    await _visible_family(session, principal, family_id)
+    return await get_package(session, package_id, family_id=family_id)
 
 
 # --- Cancellation (#100 C5, R6) ------------------------------------------------------

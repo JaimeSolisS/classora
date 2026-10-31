@@ -395,12 +395,14 @@ export const CHARGE_DETAIL: ChargeDetail = {
       is_valid: false,
     },
   ],
+  discounts: [],
 };
 /** A package purchase: corrected by cancelling the package. */
 export const CHARGE_PACKAGE_DETAIL: ChargeDetail = {
   ...CHARGE_PARTIAL,
   adjustments: [],
   allocations: [],
+  discounts: [],
 };
 
 export const MANUAL_CHARGE_POSTED: ManualChargePosted = {

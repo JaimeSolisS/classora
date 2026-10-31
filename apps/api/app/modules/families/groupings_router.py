@@ -1,6 +1,10 @@
 """Family grouping routes (#172; ``app.modules.families.groupings`` through
 ``service``).
 
+- ``GET /api/v1/families/own`` (#102 A1, T2 (a)): ``authenticated()``, any
+  role: the family of the caller's active guardian profile, or ``null``.
+  Declared before ``/{family_id}`` so ``own`` is never parsed as an id.
+  Never ``404``: it only describes the caller.
 - ``GET /api/v1/families`` and ``GET /api/v1/families/{family_id}``:
   ``require("guardian.view")`` (there is no ``family.view``); the record
   policy limits a ``guardian`` to the family of their active profile. A
@@ -21,7 +25,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query
 
-from app.core.authz import PERMISSION_RESPONSES, Principal, require
+from app.core.authz import (
+    AUTH_RESPONSES,
+    PERMISSION_RESPONSES,
+    Principal,
+    authenticated,
+    require,
+)
 from app.core.errors import problem_response_doc
 from app.core.pagination import OffsetPage, OffsetPagination
 from app.core.uow import UnitOfWorkDep
@@ -33,6 +43,7 @@ from app.modules.families.schemas import (
     FamilyListItem,
     FamilyStatus,
     FamilyUpdate,
+    OwnFamily,
     SearchText,
 )
 
@@ -85,6 +96,26 @@ async def list_families(
     return await service.list_families(
         uow.session, principal=principal, q=q, status=status, page=page
     )
+
+
+@router.get(
+    "/own",
+    responses={
+        **AUTH_RESPONSES,
+        403: problem_response_doc(
+            "The privacy notice must be accepted first (privacy_notice_required)."
+        ),
+    },
+)
+async def get_own_family(
+    principal: Annotated[Principal, authenticated()], uow: UnitOfWorkDep
+) -> OwnFamily:
+    """The family of your active guardian profile (whatever your other
+    roles), or `family: null` when you have no guardian profile, it is
+    inactive, or it belongs to no family. An inactive family is returned
+    with `is_active: false`. Use it to find your own family before reading
+    its billing account."""
+    return await service.own_family(uow.session, principal)
 
 
 @router.post(

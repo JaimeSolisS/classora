@@ -430,12 +430,12 @@ def test_the_charge_detail_costs_a_bounded_number_of_statements(
                 s, p, world.a, charge
             ),
         )
-        assert count <= 8, principal
+        assert count <= 9, principal  # #102 C1: + the discount lines
         assert len(detail.adjustments) == 1
     in_uow(url, lambda s: _adjustments(s, 5), actor_id=users[OWNER].id)
     count, detail = count_statements(
         url,
         lambda s: billing_corrections.get_charge(s, guardian, world.a, charge),
     )
-    assert count <= 8
+    assert count <= 9
     assert len(detail.adjustments) == 6

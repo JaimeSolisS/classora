@@ -940,7 +940,7 @@ first local date). See Tutor availability.
 `due_soon | overdue | overdue_followup`, `open_total` a money string,
 `due_on` the earliest effective due date; to the logins of the family's
 active guardian profiles; plural on `count`, `open_total` shown as money;
-no link until #102).
+no link until the family portal pages, M6-17b #388).
 
 **Adding a type** (later issues: #44 qualification decisions, M4 offers and
 reminders):
@@ -1743,6 +1743,7 @@ It has no money, ledger or billing account yet.
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
+| `GET /api/v1/families/own` | `authenticated()` (any role) | `200 OwnFamily {family: {id, name, is_active} \| null}` (M6-17, #102 T2): the family of the caller's **active** guardian profile, whatever their other roles; `null` without the `guardian` role, for an inactive profile or a profile in no family. Never `404`. At most two statements (none without the `guardian` role). |
 | `GET /api/v1/families` | `require("guardian.view")`, list filtered by record policy | Query `q` (the Students name search on `name`), `status` (`active` (default), `inactive` or `all`), offset pagination. Items: `id`, `name`, `is_active`, `student_count`; no guardian count. |
 | `POST /api/v1/families` | `require("family.manage")` | Body `{name}`. `201` with the detail (`version` 1, no members). |
 | `GET /api/v1/families/{family_id}` | `require("guardian.view")` + record policy | Fields: `id`, `name`, `is_active`, `students` (`[{student_id, given_names, family_names, is_minor, is_active}]`), `guardians` (`[{guardian_id, given_names, family_names, phone, has_account, is_active}]`), `version`, `created_at`, `updated_at`; both lists by family names then given names. |
@@ -1780,6 +1781,11 @@ It has no money, ledger or billing account yet.
   list). Check order of the `PATCH`: `422` → `404` → `409
   version_conflict` → the update; a body that changes nothing returns `200`
   with no new version. No reauthentication.
+- **Own family** (`GET /api/v1/families/own`): the family-facing pages
+  start from it. The list can't serve: an Owner or Administrator who is
+  also a parent gets every family there. An inactive family is returned
+  with `is_active: false`; a guardian linked to a child through
+  `student_guardians` only gets `null`.
 - **Who sees what:** staff with `guardian.view` (Owners, Administrators,
   Academic Coordinators, Finance Staff) see every family and every guardian
   in it. A guardian sees only the family of their **active** profile: its
@@ -6082,6 +6088,8 @@ owner-delegated decision #90b F1 (a)) on top of the M6-05 ledger core
 | `GET /api/v1/families/{family_id}/billing-account` | `authenticated()` + record policy | `BillingAccountSummary`. At most seven statements, whatever the number of charges. |
 | `GET /api/v1/families/{family_id}/billing-account/charges` | `authenticated()` + record policy | Offset pagination; filters `student_id` and `status` (`pending`, `partially_paid`, `overdue`, `paid`, `void`; repeatable). Items are `ChargeItem`. |
 | `GET /api/v1/families/{family_id}/billing-account/ledger` | `authenticated()` + record policy | Cursor pagination (`400 invalid_cursor`); filter `student_id`. Items are `LedgerEntryItem`, newest first. |
+| `GET /api/v1/families/{family_id}/billing-account/packages` | `authenticated()` + record policy | M6-17 (#102 T3). Offset pagination; filters `student_id` and `status` (`active`, `exhausted`, `expired`, `cancelled`, `withdrawn`; repeatable). Items are #94's `PackageItem` (see Packages), by `expires_on`, `purchased_on`, `id`. At most five statements per page. |
+| `GET /api/v1/families/{family_id}/billing-account/packages/{package_id}` | `authenticated()` + record policy | M6-17 (#102 T3). #94's `PackageDetail` (the item and its unit movements, oldest first); a package of another family's account is the same `404 not_found` as an unknown family. |
 
 - **Record policy.** `billing.view` (Owners, Administrators and Finance
   Staff; not delegable; seeded by M6-05b) sees every family. A `guardian`
@@ -6095,6 +6103,11 @@ owner-delegated decision #90b F1 (a)) on top of the M6-05 ledger core
   with `posted_by_user_id` `null`.
 - **Check order:** `401` → `403 privacy_notice_required` → `422` (the
   query) → `404` → `200`. No new error code.
+- **Packages** (#102 B3): the packages whose `package_purchase` charge is on
+  this family's account. A student who moves to another family leaves their
+  packages (and charges) on the old account; the new family lists only
+  what was bought after the move. #94's `/api/v1/billing/packages*` routes
+  stay `billing.view` only (a guardian there gets `403`).
 - **No account yet:** `200` with `account_id: null`, `due_offset_days: 0`,
   zero amounts and the current members listed with zeros; the lists are
   empty pages (any ledger `cursor` is `400 invalid_cursor`). Reads never
@@ -6121,6 +6134,29 @@ owner-delegated decision #90b F1 (a)) on top of the M6-05 ledger core
   `payment_id`, `amount`, `balance_effect` and `occurred_at`.
   Payment-level rows have no `student_id`, so the student filter leaves
   them out.
+
+**Family billing reads** (M6-17, #102; ADR-0006 E4, ADR-0007 D17). Every
+family-facing billing `GET` (the summary, charges and charge detail,
+ledger, payments and payment detail, receipt PDF, packages and package
+detail) uses the #364 record policy above
+(`billing_accounts._visible_family`), and `sees_every_account`
+(`billing.view`) is the single redaction rule: for a caller without it
+these are `null` on every route: `posted_by_user_id`,
+`recorded_by_user_id`, the allocations' `created_by_user_id`, the payment
+`note`, the adjustment `reason`, the reversal `reason` and
+`reversed_by_user_id`, the refund `reason`, `refunded_by_user_id` and
+`withdrawal_id`. Guardians see the amounts, dates, statuses, `reference`,
+`payer_name`, `description`, the discount lines, `due_date` and
+`original_due_date`, and `receipt {id, number}`. Students and tutors get
+`404` on every route, whatever the student's age; an adult child's billing
+reaches the family's guardians with no academic consent. The due-date
+history stays staff-only (`403`), and so do withdrawals and cancellation
+decisions: their effects reach families as labelled adjustments, refunds
+and the `original_due_date`. `tests/integration/test_billing_family_leak.py`
+walks every `GET` under `/api/v1/families/{family_id}/billing-account`
+(collected from the app, so a later route is walked too) plus
+`/api/v1/families/own`, with cross-family and foreign-id requests and
+staff-text canaries.
 
 ### Due dates and overdue accounts
 
@@ -6310,7 +6346,7 @@ kind `package_cancellation`. The staff dialogs are M6-15b (#386).
 | `POST /api/v1/families/{family_id}/billing-account/payments/{payment_id}/reversal` | `require("finance.refund.approve")` + reauthentication `finance.refund_or_reversal` + `Idempotency-Key` | Body `{reason}`; `201` with `PaymentReversed`. |
 | `POST /api/v1/families/{family_id}/billing-account/payments/{payment_id}/refunds` | `require("finance.refund.approve")` + reauthentication `finance.refund_or_reversal` + `Idempotency-Key` | Body `RefundCreate`; `201` with `RefundRecorded`. |
 | `POST /api/v1/billing/packages/{package_id}/cancellation` | `require("billing.manage")` + reauthentication `finance.correction` + `Idempotency-Key` | Body `{reason, credit_amount?}`; `201` with `PackageCancelled`. |
-| `GET /api/v1/families/{family_id}/billing-account/charges/{charge_id}` | `authenticated()` + record policy | `ChargeDetailItem`: the `ChargeItem` plus `adjustments` and `allocations`, oldest first. |
+| `GET /api/v1/families/{family_id}/billing-account/charges/{charge_id}` | `authenticated()` + record policy | `ChargeDetailItem`: the `ChargeItem` plus `adjustments` and `allocations`, oldest first, and `discounts` (M6-17, #102 T4): `[{position, kind, name, percent \| null, fixed_amount \| null, amount}]`, the snapshot taken at posting (`charge_discounts`) in position order, the same for staff and guardians; `[]` without discounts. At most nine statements. |
 
 `finance.refund.approve` is the Owner's, and an Administrator's when an
 Owner delegates it; Finance Staff can't reverse or refund (E8). **Every
@@ -6814,8 +6850,9 @@ The web pages are M6-09b (#377).
 Products are configuration (no reauthentication, no `Idempotency-Key`); a
 sale posts a ledger row, so it needs an `Idempotency-Key` (#88: a retry
 with the same key replays the first `201`, another body with that key is
-`422 idempotency_key_reused`). Reads are staff only; the family portal
-reads arrive with #102.
+`422 idempotency_key_reused`). These reads are staff only; families read
+their packages through `GET /api/v1/families/{family_id}/billing-account/packages`
+(see Billing accounts, M6-17).
 
 - **Products.** A product has a `unit` (`sessions` or `minutes`), a
   `quantity` (1-500 sessions, or 15-30000 minutes in steps of 15), a

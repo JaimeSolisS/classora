@@ -985,13 +985,20 @@ async def list_packages(
 
 
 async def get_package(
-    session: AsyncSession, names: PackageNames, package_id: uuid.UUID, *, today: date
+    session: AsyncSession,
+    names: PackageNames,
+    package_id: uuid.UUID,
+    *,
+    today: date,
+    family_id: uuid.UUID | None = None,
 ) -> tuple[PackageRow, list[TransactionRow]]:
-    """One package (``404`` when unknown) and its transactions, oldest
+    """One package (``404`` when unknown, or with ``family_id`` when it
+    isn't on that family's account: #102 B2) and its transactions, oldest
     first (D5). Two statements."""
-    found = (
-        await session.execute(_named_packages(names).where(Package.id == package_id))
-    ).first()
+    conditions: list[ColumnElement[bool]] = [Package.id == package_id]
+    if family_id is not None:
+        conditions.append(BillingAccount.family_id == family_id)
+    found = (await session.execute(_named_packages(names).where(*conditions))).first()
     if found is None:
         raise RecordNotFoundError()
     rows = await session.scalars(
