@@ -470,8 +470,8 @@ describe('makeup mode (B)', () => {
     fillWhen();
     await click(buttonNamed(main(), 'Schedule session'));
 
-    window.dispatchEvent(new Event('focus'));
-    document.dispatchEvent(new Event('visibilitychange'));
+    // TanStack Query's focusManager listens on window, for this event only.
+    window.dispatchEvent(new Event('visibilitychange'));
     await settle();
 
     expect(api.calls(DETAIL)).toHaveLength(1);
