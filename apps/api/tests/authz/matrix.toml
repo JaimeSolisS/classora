@@ -2087,6 +2087,24 @@ reauth = "user.password_reset.issue"
 
 [[route]]
 method = "GET"
+path = "/api/v1/payroll/settings"
+access = "permission"
+permission = "payroll.view"
+allow = ["owner", "finance_staff"]
+# #106 B1, ADR-0017 E12: Administrators see no payroll settings.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/payroll/settings"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #106 B3: the empty body is 422 for the allowed roles. No reauthentication
+# and no Idempotency-Key: the setting opens nothing by itself (E7).
+json = {}
+
+[[route]]
+method = "GET"
 path = "/api/v1/payroll/tutors"
 access = "permission"
 permission = "payroll.view"

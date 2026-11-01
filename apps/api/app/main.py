@@ -92,6 +92,7 @@ from app.modules.identity.service import (
     resolve_session_principal,
 )
 from app.modules.identity.user_admin_router import router as user_admin_router
+from app.modules.payroll.settings_router import router as payroll_settings_router
 from app.modules.scheduling.attendance_router import router as attendance_router
 from app.modules.scheduling.change_requests_router import (
     router as change_requests_router,
@@ -338,6 +339,7 @@ def build_app(
     app.include_router(billing_corrections_router)
     app.include_router(billing_receipts_router)
     app.include_router(payroll_compensation_router)
+    app.include_router(payroll_settings_router)
     app.include_router(billing_overdue_router)
     app.include_router(billing_settings_router)
     app.include_router(cancellation_rules_router)

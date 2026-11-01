@@ -1,5 +1,5 @@
-"""Payroll shapes (#105): the compensation bodies, their items and the lookup
-results.
+"""Payroll shapes (#105, #106): the compensation bodies, their items, the
+lookup results and the settings.
 
 The bodies check everything that needs no database read and report every
 failing field in one ``422``. Each rule is a field validator on the later
@@ -16,12 +16,16 @@ field of the pair it compares, so the earlier field is in ``info.data``:
 
 Every field is required: ``null`` is written out, because a ``null`` version
 means "not on payroll" or "no rate" from that date.
+
+The settings body (:class:`PayrollSettingsUpdate`) takes dates from 2000-01-01
+to 2099-12-31 (``date_out_of_range``), and the anchor is a Monday
+(``anchor_not_monday``).
 """
 
 import uuid
 from dataclasses import dataclass
-from datetime import date
-from typing import Literal
+from datetime import date, datetime
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
 from pydantic_core import PydanticCustomError
@@ -32,6 +36,19 @@ type PayFrequency = Literal["weekly", "biweekly", "monthly"]
 type ClassKind = Literal["individual", "group", "course"]
 type RateModel = Literal["per_hour", "per_session", "per_course"]
 type CompensationStatus = Literal["current", "upcoming", "past"]
+type ProrationBasis = Literal["calendar_days", "weekdays"]
+
+SETTINGS_DATE_MIN: Final = date(2000, 1, 1)
+SETTINGS_DATE_MAX: Final = date(2099, 12, 31)
+MONDAY: Final = 0
+
+
+def _in_range(value: date) -> date:
+    if not SETTINGS_DATE_MIN <= value <= SETTINGS_DATE_MAX:
+        raise PydanticCustomError(
+            "date_out_of_range", "Choose a date from 2000-01-01 to 2099-12-31."
+        )
+    return value
 
 
 class PayTermsCreate(BaseModel):
@@ -126,6 +143,48 @@ class CurrentTerms(BaseModel):
 
     pay_frequency: PayFrequency
     salary_amount: Money | None
+
+
+class PayrollSettingsDetail(BaseModel):
+    """``GET /api/v1/payroll/settings`` (#106 B1). ``payroll_starts_on`` is a
+    center-local date: ``null`` means payroll is off and no period opens.
+    ``start_locked`` is true once any period exists and ``anchor_locked`` once
+    a biweekly one does (#106 E6, E9)."""
+
+    payroll_starts_on: date | None
+    biweekly_anchor_on: date
+    salary_proration_basis: ProrationBasis
+    start_locked: bool
+    anchor_locked: bool
+    version: int
+    updated_at: datetime
+
+
+class PayrollSettingsUpdate(BaseModel):
+    """``PATCH /api/v1/payroll/settings`` (#106 B2). All keys are required;
+    ``payroll_starts_on: null`` keeps payroll off. Past dates are allowed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int
+    payroll_starts_on: date | None
+    biweekly_anchor_on: date
+    salary_proration_basis: ProrationBasis
+
+    @field_validator("payroll_starts_on")
+    @classmethod
+    def _start(cls, value: date | None) -> date | None:
+        return None if value is None else _in_range(value)
+
+    @field_validator("biweekly_anchor_on")
+    @classmethod
+    def _anchor(cls, value: date) -> date:
+        _in_range(value)
+        if value.weekday() != MONDAY:
+            raise PydanticCustomError(
+                "anchor_not_monday", "The biweekly anchor date must be a Monday."
+            )
+        return value
 
 
 @dataclass(frozen=True)

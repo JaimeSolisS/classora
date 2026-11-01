@@ -4629,6 +4629,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payroll/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Payroll Settings
+         * @description The payroll start date (`null`: payroll is off), the biweekly anchor,
+         *     the salary proration basis, whether the first two are locked because
+         *     periods exist, and the settings' version.
+         */
+        get: operations["read_payroll_settings_api_v1_payroll_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change Payroll Settings
+         * @description Set the payroll start date (any date, past included; `null` keeps
+         *     payroll off), the biweekly anchor and the salary proration basis. Sending
+         *     the current values changes nothing (the version is still checked).
+         *     Periods open at the next daily run, not now. Once periods exist the start
+         *     date is locked, and once biweekly periods exist the anchor is.
+         */
+        patch: operations["change_payroll_settings_api_v1_payroll_settings_patch"];
+        trace?: never;
+    };
     "/api/v1/billing/overdue-accounts": {
         parameters: {
             query?: never;
@@ -15075,6 +15105,51 @@ export interface components {
             account_credit_after: string;
         };
         /**
+         * PayrollSettingsDetail
+         * @description ``GET /api/v1/payroll/settings`` (#106 B1). ``payroll_starts_on`` is a
+         *     center-local date: ``null`` means payroll is off and no period opens.
+         *     ``start_locked`` is true once any period exists and ``anchor_locked`` once
+         *     a biweekly one does (#106 E6, E9).
+         */
+        PayrollSettingsDetail: {
+            /** Payroll Starts On */
+            payroll_starts_on: string | null;
+            /**
+             * Biweekly Anchor On
+             * Format: date
+             */
+            biweekly_anchor_on: string;
+            salary_proration_basis: components["schemas"]["ProrationBasis"];
+            /** Start Locked */
+            start_locked: boolean;
+            /** Anchor Locked */
+            anchor_locked: boolean;
+            /** Version */
+            version: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * PayrollSettingsUpdate
+         * @description ``PATCH /api/v1/payroll/settings`` (#106 B2). All keys are required;
+         *     ``payroll_starts_on: null`` keeps payroll off. Past dates are allowed.
+         */
+        PayrollSettingsUpdate: {
+            /** Version */
+            version: number;
+            /** Payroll Starts On */
+            payroll_starts_on: string | null;
+            /**
+             * Biweekly Anchor On
+             * Format: date
+             */
+            biweekly_anchor_on: string;
+            salary_proration_basis: components["schemas"]["ProrationBasis"];
+        };
+        /**
          * PayrollTutorItem
          * @description A tutor on the payroll list. ``current_terms`` is ``null`` without
          *     terms or when not on payroll; ``current_rate_kinds`` are the class kinds
@@ -16071,6 +16146,8 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** @enum {string} */
+        ProrationBasis: "calendar_days" | "weekdays";
         /**
          * QualificationCreate
          * @description A tutor's request to teach one subject (the level follows from it).
@@ -35576,6 +35653,104 @@ export interface operations {
                 };
             };
             /** @description A finalized payroll period uses this version (compensation_rate_in_use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    read_payroll_settings_api_v1_payroll_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollSettingsDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    change_payroll_settings_api_v1_payroll_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollSettingsDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The settings changed since they were loaded (version_conflict); or periods exist, so the start date can't change (payroll_start_locked); or biweekly periods exist, so the anchor can't change (biweekly_anchor_locked). */
             409: {
                 headers: {
                     [name: string]: unknown;
