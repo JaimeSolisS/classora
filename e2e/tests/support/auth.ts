@@ -59,7 +59,9 @@ export const SIGNED_OUT_STATE = { cookies: [], origins: [] };
  * `login.ip` budget: a new spec that needs a login must rebalance,
  * 2 failures for
  * `demo.owner`. Specs on the shared session add none (for example
- * courses/cohorts.spec.ts, #243 and #323). Keep the total well under both limits;
+ * courses/cohorts.spec.ts, #243 and #323, and payroll/compensation.spec.ts,
+ * #425, whose tutor is invited without redeeming; #425's My pay step reuses
+ * the scheduling/offers.spec.ts demo.tutor context: 0 more). Keep the total well under both limits;
  * never add a setting that disables the limits.
  *
  * Token redemption (#29, #30, ADR-0008 D15): `token_redemption.ip` allows 20

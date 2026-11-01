@@ -44,6 +44,30 @@ type Common = {
     billing: string;
     // #388 J3: the family billing portal ("Cuenta familiar").
     familyBilling: string;
+    // #425 H3: Payroll and My pay.
+    payroll: string;
+    myPay: string;
+  };
+  // #425 H3: tutor pay and payroll settings.
+  payroll: {
+    status: Record<'current' | 'upcoming' | 'past', string>;
+    fields: Record<
+      'effectiveFrom' | 'frequency' | 'salary' | 'classKind' | 'model' | 'rate',
+      string
+    >;
+    list: { title: string; search: string; state: string };
+    termsDialog: { title: string; submit: string };
+    rateDialog: { title: string; submit: string };
+    deleteDialog: { confirm: string };
+    settings: {
+      title: string;
+      change: string;
+      dialogTitle: string;
+      basis: string;
+      save: string;
+      bases: Record<'calendar_days' | 'weekdays', string>;
+    };
+    myPay: { title: string };
   };
   // #388 J3: the family billing portal.
   familyBilling: {

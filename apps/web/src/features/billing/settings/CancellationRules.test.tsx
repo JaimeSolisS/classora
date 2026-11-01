@@ -1,3 +1,4 @@
+import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { problemWith } from '@/features/academics/testing';
 import type { SessionUserBody } from '@/features/auth/session';
@@ -19,7 +20,7 @@ import {
   settleUntil,
   type RenderedApp,
 } from '@/test/render-app';
-import type { CancellationRuleOverview } from './api';
+import { CANCELLATION_RULES_KEY, type CancellationRuleOverview } from './api';
 import {
   CURRENT_RULE,
   RULES_SEEDED,
@@ -369,6 +370,58 @@ describe('schedule a change (B1, B2, B4)', () => {
     expect(dateInput().getAttribute('aria-invalid')).toBeNull();
   });
 
+  // #425 QA D5: the refetch lands while the POST is pending, then the POST is
+  // refused. Ordered by hand: nothing here depends on timing.
+  it('shows the newer rule when a refetch lands before a 409', async () => {
+    const newer = {
+      ...UPCOMING_RULE,
+      id: '00000000-0000-4000-8000-0000000000c4',
+      on_time_outcome: 'credit' as const,
+    };
+    let answer: (response: Response) => void = () => {};
+    const api = stub({
+      [RULES]: [
+        () => jsonResponse(200, RULES_WITH_UPCOMING),
+        () =>
+          jsonResponse(200, {
+            ...RULES_WITH_UPCOMING,
+            upcoming: [UPCOMING_RULE, newer],
+          }),
+      ],
+      [POST]: [
+        () =>
+          new Promise<Response>((resolve) => {
+            answer = resolve;
+          }),
+        () => jsonResponse(201, { ...newer, id: 'new' }),
+      ],
+    });
+    await renderCard();
+    await openSchedule();
+
+    setFieldValue(select('On time'), 'charge');
+    await click(buttonNamed(dialog(), 'Save'));
+    await settleUntil(() => api.calls(POST).length === 1);
+    await act(() =>
+      app!.queryClient.refetchQueries({ queryKey: CANCELLATION_RULES_KEY }),
+    );
+    await settleUntil(() => api.calls(RULES).length === 2);
+    // Mid-save nothing moves.
+    expect(select('On time').value).toBe('charge');
+
+    answer(problem(409, 'version_conflict'));
+    await settleUntil(() => dialog().querySelector('[data-billing-reloaded]'));
+
+    expect(select('On time').value).toBe('credit');
+    expect(api.calls(POST)).toHaveLength(1);
+    await click(buttonNamed(dialog(), 'Save'));
+    await settleUntil(() => !openDialog());
+    expect(api.calls(POST)[1]!.body).toMatchObject({
+      based_on_id: newer.id,
+      on_time_outcome: 'credit',
+    });
+  });
+
   it('shows a 409 with Reload; the next save is based on the new latest', async () => {
     const newer = {
       ...UPCOMING_RULE,
@@ -401,13 +454,16 @@ describe('schedule a change (B1, B2, B4)', () => {
     expect(select('On time').value).toBe('charge');
     await click(buttonNamed(dialog(), 'Reload'));
     await settleUntil(() => api.calls(RULES).length === 2);
-    expect(alerts(dialog())).toEqual([]);
+    await settleUntil(() => select('On time').value !== 'charge');
+    expect(alerts(dialog()).join('')).toContain(
+      'Someone else changed these settings.',
+    );
     await click(buttonNamed(dialog(), 'Save'));
     await settleUntil(() => !openDialog());
 
     expect(api.calls(POST)[1]!.body).toMatchObject({
       based_on_id: newer.id,
-      on_time_outcome: 'charge',
+      on_time_outcome: newer.on_time_outcome,
     });
   });
 

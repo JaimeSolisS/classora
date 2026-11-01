@@ -390,6 +390,13 @@ unless a bullet says otherwise.
   and English; a payment reminder opens it. They never see staff notes or
   reasons.
 
+**Payroll**
+
+- Finance staff and owners set each tutor's pay frequency, salary and rate
+  history per class type (Payroll → Tutors), and the payroll start date,
+  biweekly anchor and salary proration basis (Payroll → Settings). Tutors
+  read their own terms and rates under My pay.
+
 **Notifications**
 
 - A bell in the header shows how many notifications are unread and opens a
@@ -420,7 +427,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** the rest of billing, payroll, reporting and analytics, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
+**Not built yet:** the rest of billing, the rest of payroll (pay calculation, payment and payslips), expenses, reporting and analytics, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 
 **Not in this version:** file uploads and documents (attachments, the shared

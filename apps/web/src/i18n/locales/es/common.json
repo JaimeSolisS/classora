@@ -56,7 +56,9 @@
     "progressReports": "Informes de progreso",
     "tutorReports": "Informes del tutor",
     "progress": "Progreso",
-    "familyBilling": "Cuenta familiar"
+    "familyBilling": "Cuenta familiar",
+    "payroll": "Nómina",
+    "myPay": "Mi pago"
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -5205,7 +5207,9 @@
         "saved": "Cambio en el cobro de cancelaciones programado.",
         "deleted": "Cambio programado eliminado.",
         "alreadyInForce": "Esta versión ya está vigente."
-      }
+      },
+      "conflictReloaded": "Alguien más cambió esta configuración. Estos son los valores actuales y tus cambios no se guardaron. Revísalos y guarda de nuevo.",
+      "conflictReloadedOff": "Alguien más cambió esta configuración. El cobro ahora está desactivado y tus cambios no se guardaron. Para activarlo, elige una fecha de inicio y guarda."
     },
     "targets": {
       "kinds": {
@@ -6266,6 +6270,155 @@
         "submit": "Dar de baja sin liquidación",
         "submitting": "Dando de baja…"
       }
+    }
+  },
+  "payroll": {
+    "cancel": "Cancelar",
+    "saving": "Guardando…",
+    "back": "Volver a tutores",
+    "tabs": {
+      "label": "Secciones de nómina",
+      "tutors": "Tutores",
+      "settings": "Configuración"
+    },
+    "frequencies": {
+      "weekly": "Semanal",
+      "biweekly": "Quincenal",
+      "monthly": "Mensual"
+    },
+    "frequencyWords": {
+      "weekly": "semanal",
+      "biweekly": "quincenal",
+      "monthly": "mensual"
+    },
+    "classKinds": {
+      "individual": "Individual",
+      "group": "Grupo",
+      "course": "Curso"
+    },
+    "models": {
+      "per_hour": "Por hora",
+      "per_session": "Por sesión",
+      "per_course": "Por curso"
+    },
+    "status": {
+      "current": "Vigente",
+      "upcoming": "Próxima",
+      "past": "Anterior"
+    },
+    "fields": {
+      "effectiveFrom": "Fecha de inicio",
+      "frequency": "Frecuencia de pago",
+      "salary": "Salario por periodo (opcional)",
+      "classKind": "Tipo de clase",
+      "model": "Modelo",
+      "rate": "Tarifa",
+      "choose": "Elige una opción"
+    },
+    "list": {
+      "title": "Tutores",
+      "search": "Buscar por nombre o usuario",
+      "state": "Estado",
+      "allStates": "Todos",
+      "name": "Nombre",
+      "username": "Usuario",
+      "frequency": "Frecuencia",
+      "salary": "Salario por periodo",
+      "rates": "Tarifas vigentes",
+      "noCurrentTerms": "Sin configurar o no en nómina",
+      "empty": "No hay tutores con estos filtros."
+    },
+    "compensation": {
+      "termsTitle": "Condiciones de pago",
+      "ratesTitle": "Tarifas",
+      "today": "Hoy: {{date}}",
+      "since": "Desde {{date}}",
+      "termsValue": "{{frequency}} · {{salary}}",
+      "rateValue": "{{model}} · {{rate}}",
+      "perPeriod": "{{amount}} por periodo {{frequency}}",
+      "noSalary": "Sin salario",
+      "noTerms": "Aún no hay condiciones de pago.",
+      "stoppedSince": "No en nómina desde {{date}}",
+      "noRateSince": "Sin tarifa desde {{date}}",
+      "noRate": "Sin tarifa",
+      "coveredBySalary": "Cubierto por el salario",
+      "summary": {
+        "per_hour": "Por hora",
+        "per_session": "Por sesión",
+        "per_course": "Por curso",
+        "salary": "Salario fijo",
+        "salaryPlus": "Salario más adicionales"
+      },
+      "delete": "Eliminar",
+      "deleteTerms": "Eliminar condiciones del {{date}}",
+      "deleteRate": "Eliminar tarifa {{kind}} del {{date}}",
+      "ownPay": "Otra persona debe cambiar tu pago.",
+      "saved": "Cambio guardado.",
+      "deleted": "Versión eliminada.",
+      "gone": "Esa versión ya no existe. La página se volvió a cargar."
+    },
+    "deleteDialog": {
+      "title": "Eliminar versión",
+      "terms": "Se eliminarán las condiciones del {{date}}: {{value}}.",
+      "rate": "Se eliminará la tarifa {{kind}} del {{date}}: {{value}}.",
+      "confirm": "Eliminar"
+    },
+    "termsDialog": {
+      "title": "Agregar condiciones",
+      "help": "Para corregir un error, elimina la versión y agrega una nueva.",
+      "dateHelp": "Una fecha pasada solo afecta periodos abiertos. Fecha las primeras condiciones de un tutor desde su primer día pagado, porque los periodos se abren la noche siguiente.",
+      "stop": "Dejar de pagar nómina desde esta fecha",
+      "salaryHelp": "Es el importe de un periodo completo de esta frecuencia, no un importe mensual. Déjalo vacío si no hay salario.",
+      "submit": "Guardar condiciones"
+    },
+    "rateDialog": {
+      "title": "Agregar tarifa",
+      "help": "Para corregir un error, elimina la versión y agrega una nueva.",
+      "dateHelp": "Una fecha pasada solo afecta periodos abiertos.",
+      "noRate": "Sin tarifa desde esta fecha",
+      "rateHelp": "Hasta cuatro decimales, por ejemplo 250.125.",
+      "submit": "Guardar tarifa"
+    },
+    "validation": {
+      "dateRequired": "Elige una fecha.",
+      "dateRange": "Elige una fecha entre 2000 y 2099.",
+      "frequencyRequired": "Elige la frecuencia de pago.",
+      "salaryInvalid": "Escribe un importe válido, por ejemplo 8000 o 8000.50.",
+      "salaryPositive": "El salario debe ser mayor que cero. Déjalo vacío si no hay salario.",
+      "classKindRequired": "Elige el tipo de clase.",
+      "modelRequired": "Elige el modelo.",
+      "rateRequired": "Escribe la tarifa.",
+      "rateInvalid": "Escribe una tarifa válida, sin signo y con hasta cuatro decimales."
+    },
+    "settings": {
+      "title": "Configuración de nómina",
+      "card": "Inicio y cálculo",
+      "change": "Cambiar",
+      "off": "Nómina desactivada",
+      "on": "La nómina empieza el {{date}}",
+      "startHelp": "El trabajo anterior a esta fecha nunca se paga.",
+      "startLocked": "Ya existen periodos de nómina, así que esta fecha no se puede cambiar.",
+      "anchor": "Fecha de referencia quincenal",
+      "anchorHelp": "Debe ser lunes. Define dónde empiezan los periodos quincenales.",
+      "anchorLocked": "Ya existen periodos quincenales, así que esta fecha no se puede cambiar.",
+      "basis": "Base de prorrateo del salario",
+      "basisHelp": "Un cambio afecta solo periodos abiertos.",
+      "bases": {
+        "calendar_days": "Días naturales",
+        "weekdays": "Días entre semana"
+      },
+      "dialogTitle": "Cambiar configuración de nómina",
+      "dialogHelp": "Deja la fecha de inicio vacía para mantener la nómina desactivada.",
+      "startsOn": "Fecha de inicio de nómina",
+      "startWarning": "Esta fecha no se podrá cambiar después de la próxima ejecución nocturna. Los periodos se abren en esa ejecución, no de inmediato.",
+      "save": "Guardar configuración",
+      "saved": "Configuración guardada.",
+      "conflictReloaded": "Alguien más cambió esta configuración. Estos son los valores actuales y tus cambios no se guardaron. Revísalos y guarda de nuevo.",
+      "reload": "Volver a cargar"
+    },
+    "myPay": {
+      "title": "Mi pago",
+      "empty": "Tu pago aún no está configurado. Consulta con administración."
     }
   },
   "familyBilling": {

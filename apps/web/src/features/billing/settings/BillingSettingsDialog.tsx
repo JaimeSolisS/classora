@@ -25,6 +25,7 @@ import {
   isVersionConflict,
   MAX_START_DATE,
   MIN_START_DATE,
+  reloadedBillingForm,
   startsInThePast,
   validateBillingForm,
   type BillingDateError,
@@ -38,16 +39,22 @@ import {
 // A date before the center's today shows a warning, not an error: past
 // confirmed and completed sessions from that date will be charged.
 // `onSubmit` resolves once the settings are stored; a 422 goes on the date,
-// a 409 version_conflict shows the reload message with "Reload" (the page
-// refetches; the next save uses the new version), anything else is an
-// alert. Nothing typed is lost on any error.
+// a 409 version_conflict shows the reload message with "Reload", anything
+// else is an alert. Typed values survive every error, except that a newer
+// version from the server replaces them and says so: the dialog works from a
+// snapshot, and the version it sends is always the one its values were
+// edited from (#425 QA D1, D3). Never during a save: it's reconciled at the
+// end, whatever order a refetch and the response come in. A reset to billing
+// off leaves the date empty and says billing is off: only opening the dialog
+// anew offers today (QA D4).
 
 export interface BillingSettingsDialogProps {
   open: boolean;
   settings: BillingSettings;
   today: LocalDate;
-  /** Stores the settings; rejects with the error to show. */
-  onSubmit: (values: BillingFormValues) => Promise<void>;
+  /** Stores `values` from the snapshot's `version`; rejects with the error
+   * to show. */
+  onSubmit: (values: BillingFormValues, version: number) => Promise<void>;
   /** Refetches the settings after a version conflict. */
   onReload: () => Promise<void>;
   /** The dialog closed: `saved` after stored settings. */
@@ -74,7 +81,7 @@ export function BillingSettingsDialog(props: BillingSettingsDialogProps) {
 }
 
 function DialogBody({
-  settings,
+  settings: latest,
   today,
   onSubmit,
   onReload,
@@ -87,14 +94,25 @@ function DialogBody({
   const message = useFieldMessage();
   const returnFocus = useReturnFocus();
   const id = useId();
+  const [settings, setSettings] = useState(latest);
   const [values, setValues] = useState<BillingFormValues>(
-    () => initialValues ?? initialBillingForm(settings, today),
+    () => initialValues ?? initialBillingForm(latest, today),
   );
   const [dateError, setDateError] = useState<BillingDateError | undefined>(
     initialError,
   );
   const [failure, setFailure] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [reloaded, setReloaded] = useState(false);
+  if (!submitting && latest.version > settings.version) {
+    // Adjusting state while rendering, so no render pairs the new version
+    // with the old values.
+    setSettings(latest);
+    setValues(reloadedBillingForm(latest));
+    setDateError(undefined);
+    setFailure(null);
+    setReloaded(true);
+  }
   const billingOn = settings.billing_starts_on !== null;
 
   const ids = {
@@ -108,6 +126,7 @@ function DialogBody({
 
   async function submit() {
     setFailure(null);
+    setReloaded(false);
     const found = validateBillingForm(values);
     setDateError(found);
     if (found) {
@@ -117,7 +136,7 @@ function DialogBody({
     busyRef.current = true;
     setSubmitting(true);
     try {
-      await onSubmit(values);
+      await onSubmit(values, settings.version);
       busyRef.current = false;
       onClose(true);
       return;
@@ -171,6 +190,13 @@ function DialogBody({
           {t('billing.settings.card.rules')}
         </DialogDescription>
       </DialogHeader>
+      {reloaded ? (
+        <p role="alert" className="text-sm font-medium" data-billing-reloaded>
+          {billingOn
+            ? t('billing.settings.conflictReloaded')
+            : t('billing.settings.conflictReloadedOff')}
+        </p>
+      ) : null}
       {failure ? (
         <ErrorAlert
           error={failure}

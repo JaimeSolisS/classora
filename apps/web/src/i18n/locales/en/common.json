@@ -56,7 +56,9 @@
     "progressReports": "Progress reports",
     "tutorReports": "Tutor reports",
     "progress": "Progress",
-    "familyBilling": "Family billing"
+    "familyBilling": "Family billing",
+    "payroll": "Payroll",
+    "myPay": "My pay"
   },
   "notFound": {
     "title": "Page not found",
@@ -5100,7 +5102,9 @@
         "saved": "Cancellation charges change scheduled.",
         "deleted": "Scheduled change deleted.",
         "alreadyInForce": "This version is already in force."
-      }
+      },
+      "conflictReloaded": "Someone else changed these settings. These are the current values, and your changes weren't saved. Review them and save again.",
+      "conflictReloadedOff": "Someone else changed these settings. Billing is now off, and your changes weren't saved. To turn it on, choose a start date and save."
     },
     "targets": {
       "kinds": {
@@ -6146,6 +6150,155 @@
         "submit": "Withdraw without settlement",
         "submitting": "Withdrawing…"
       }
+    }
+  },
+  "payroll": {
+    "cancel": "Cancel",
+    "saving": "Saving…",
+    "back": "Back to tutors",
+    "tabs": {
+      "label": "Payroll sections",
+      "tutors": "Tutors",
+      "settings": "Settings"
+    },
+    "frequencies": {
+      "weekly": "Weekly",
+      "biweekly": "Biweekly",
+      "monthly": "Monthly"
+    },
+    "frequencyWords": {
+      "weekly": "weekly",
+      "biweekly": "biweekly",
+      "monthly": "monthly"
+    },
+    "classKinds": {
+      "individual": "Individual",
+      "group": "Group",
+      "course": "Course"
+    },
+    "models": {
+      "per_hour": "Per hour",
+      "per_session": "Per session",
+      "per_course": "Per course"
+    },
+    "status": {
+      "current": "Current",
+      "upcoming": "Upcoming",
+      "past": "Past"
+    },
+    "fields": {
+      "effectiveFrom": "Start date",
+      "frequency": "Pay frequency",
+      "salary": "Salary per period (optional)",
+      "classKind": "Class type",
+      "model": "Model",
+      "rate": "Rate",
+      "choose": "Choose an option"
+    },
+    "list": {
+      "title": "Tutors",
+      "search": "Search by name or username",
+      "state": "State",
+      "allStates": "All",
+      "name": "Name",
+      "username": "Username",
+      "frequency": "Frequency",
+      "salary": "Salary per period",
+      "rates": "Current rates",
+      "noCurrentTerms": "Not set up or not on payroll",
+      "empty": "No tutors match these filters."
+    },
+    "compensation": {
+      "termsTitle": "Pay terms",
+      "ratesTitle": "Rates",
+      "today": "Today: {{date}}",
+      "since": "From {{date}}",
+      "termsValue": "{{frequency}} · {{salary}}",
+      "rateValue": "{{model}} · {{rate}}",
+      "perPeriod": "{{amount}} per {{frequency}} period",
+      "noSalary": "No salary",
+      "noTerms": "No pay terms yet.",
+      "stoppedSince": "Not on payroll since {{date}}",
+      "noRateSince": "No rate since {{date}}",
+      "noRate": "No rate",
+      "coveredBySalary": "Covered by salary",
+      "summary": {
+        "per_hour": "Per hour",
+        "per_session": "Per session",
+        "per_course": "Per course",
+        "salary": "Fixed salary",
+        "salaryPlus": "Salary plus extras"
+      },
+      "delete": "Delete",
+      "deleteTerms": "Delete terms from {{date}}",
+      "deleteRate": "Delete {{kind}} rate from {{date}}",
+      "ownPay": "Someone else must change your pay.",
+      "saved": "Change saved.",
+      "deleted": "Version deleted.",
+      "gone": "That version no longer exists. The page was reloaded."
+    },
+    "deleteDialog": {
+      "title": "Delete version",
+      "terms": "This deletes the terms from {{date}}: {{value}}.",
+      "rate": "This deletes the {{kind}} rate from {{date}}: {{value}}.",
+      "confirm": "Delete"
+    },
+    "termsDialog": {
+      "title": "Add terms",
+      "help": "To fix a mistake, delete the version and add a new one.",
+      "dateHelp": "A past date affects open periods only. Date a tutor's first terms from their first paid day, because periods open the following night.",
+      "stop": "Stop payroll from this date",
+      "salaryHelp": "The amount for one full period of this frequency, not a monthly figure. Leave it empty when there is no salary.",
+      "submit": "Save terms"
+    },
+    "rateDialog": {
+      "title": "Add rate",
+      "help": "To fix a mistake, delete the version and add a new one.",
+      "dateHelp": "A past date affects open periods only.",
+      "noRate": "No rate from this date",
+      "rateHelp": "Up to four decimals, such as 250.125.",
+      "submit": "Save rate"
+    },
+    "validation": {
+      "dateRequired": "Choose a date.",
+      "dateRange": "Choose a date from 2000 to 2099.",
+      "frequencyRequired": "Choose the pay frequency.",
+      "salaryInvalid": "Enter a valid amount, such as 8000 or 8000.50.",
+      "salaryPositive": "A salary must be above zero. Leave it empty when there is no salary.",
+      "classKindRequired": "Choose the class type.",
+      "modelRequired": "Choose the model.",
+      "rateRequired": "Enter the rate.",
+      "rateInvalid": "Enter a valid rate, with no sign and up to four decimals."
+    },
+    "settings": {
+      "title": "Payroll settings",
+      "card": "Start and calculation",
+      "change": "Change",
+      "off": "Payroll is off",
+      "on": "Payroll starts on {{date}}",
+      "startHelp": "Work before this date is never paid.",
+      "startLocked": "Payroll periods already exist, so this date can't change.",
+      "anchor": "Biweekly anchor date",
+      "anchorHelp": "It must be a Monday. It sets where biweekly periods begin.",
+      "anchorLocked": "Biweekly periods already exist, so this date can't change.",
+      "basis": "Salary proration basis",
+      "basisHelp": "A change affects open periods only.",
+      "bases": {
+        "calendar_days": "Calendar days",
+        "weekdays": "Weekdays"
+      },
+      "dialogTitle": "Change payroll settings",
+      "dialogHelp": "Leave the start date empty to keep payroll off.",
+      "startsOn": "Payroll start date",
+      "startWarning": "This date can't be changed after the next nightly run. Periods open at that run, not immediately.",
+      "save": "Save settings",
+      "saved": "Settings saved.",
+      "conflictReloaded": "Someone else changed these settings. These are the current values, and your changes weren't saved. Review them and save again.",
+      "reload": "Reload"
+    },
+    "myPay": {
+      "title": "My pay",
+      "empty": "Your pay isn't set up yet. Check with administration."
     }
   },
   "familyBilling": {
