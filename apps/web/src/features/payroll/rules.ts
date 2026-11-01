@@ -413,12 +413,16 @@ export function settingsServerErrors(error: unknown): SettingsErrors | null {
   });
 }
 
+export function isVersionConflict(error: unknown): boolean {
+  return error instanceof ApiError && error.code === 'version_conflict';
+}
+
 /** The refusals that mean the shown settings are stale: reload them. */
 export function isStaleSettings(error: unknown): boolean {
   return (
-    error instanceof ApiError &&
-    (error.code === 'version_conflict' ||
-      error.code === 'payroll_start_locked' ||
-      error.code === 'biweekly_anchor_locked')
+    isVersionConflict(error) ||
+    (error instanceof ApiError &&
+      (error.code === 'payroll_start_locked' ||
+        error.code === 'biweekly_anchor_locked'))
   );
 }

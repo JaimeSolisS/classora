@@ -25,6 +25,18 @@ const meta = {
   ),
 } satisfies Meta<typeof PayTermsDialog>;
 
+const narrowViewport = {
+  viewport: {
+    options: {
+      narrow320: {
+        name: 'Narrow (320 px)',
+        styles: { width: '320px', height: '640px' },
+        type: 'mobile',
+      },
+    },
+  },
+};
+
 export default meta;
 type Story = StoryObj<typeof meta>;
 
@@ -69,5 +81,24 @@ export const TermsRefused: Story = {
         i18n.t('errors:effective_from_before_first_period'),
       ),
     ).toBeVisible();
+  },
+};
+
+/** G1: below 768 px the checkbox and its label are 44 px high. */
+export const TermsTargets: Story = {
+  parameters: narrowViewport,
+  globals: { viewport: { value: 'narrow320' } },
+  play: async ({ canvasElement }) => {
+    const canvas = body(canvasElement);
+    const box = canvas.getByRole('checkbox', {
+      name: i18n.t('payroll.termsDialog.stop'),
+    });
+    const after = getComputedStyle(box, '::after');
+    await expect(parseFloat(after.height)).toBeGreaterThanOrEqual(44);
+    await expect(parseFloat(after.width)).toBeGreaterThanOrEqual(44);
+    const label = canvas.getByText(i18n.t('payroll.termsDialog.stop'));
+    await expect(label.getBoundingClientRect().height).toBeGreaterThanOrEqual(
+      44,
+    );
   },
 };

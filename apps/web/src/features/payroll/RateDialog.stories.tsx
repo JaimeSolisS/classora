@@ -24,6 +24,18 @@ const meta = {
   ),
 } satisfies Meta<typeof RateDialog>;
 
+const narrowViewport = {
+  viewport: {
+    options: {
+      narrow320: {
+        name: 'Narrow (320 px)',
+        styles: { width: '320px', height: '640px' },
+        type: 'mobile',
+      },
+    },
+  },
+};
+
 export default meta;
 type Story = StoryObj<typeof meta>;
 
@@ -55,5 +67,24 @@ export const RateNoRate: Story = {
     await expect(
       canvas.getByLabelText(i18n.t('payroll.fields.rate')),
     ).toBeDisabled();
+  },
+};
+
+/** G1: below 768 px the checkbox and its label are 44 px high. */
+export const RateTargets: Story = {
+  parameters: narrowViewport,
+  globals: { viewport: { value: 'narrow320' } },
+  play: async ({ canvasElement }) => {
+    const canvas = body(canvasElement);
+    const box = canvas.getByRole('checkbox', {
+      name: i18n.t('payroll.rateDialog.noRate'),
+    });
+    const after = getComputedStyle(box, '::after');
+    await expect(parseFloat(after.height)).toBeGreaterThanOrEqual(44);
+    await expect(parseFloat(after.width)).toBeGreaterThanOrEqual(44);
+    const label = canvas.getByText(i18n.t('payroll.rateDialog.noRate'));
+    await expect(label.getBoundingClientRect().height).toBeGreaterThanOrEqual(
+      44,
+    );
   },
 };

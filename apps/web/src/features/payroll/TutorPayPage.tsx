@@ -7,7 +7,6 @@ import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { useSession, useCan } from '@/features/auth/useSession';
-import { CATALOG_LINK_CLASS } from '@/features/catalog/LevelsTable';
 import { ConfirmDialog } from '@/features/guardians/ConfirmDialog';
 import type { LocalDate } from '@/lib/time';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -47,7 +46,11 @@ function BackLink() {
   const { t } = useTranslation();
   return (
     <p>
-      <Link to="/payroll/tutors" className={CATALOG_LINK_CLASS}>
+      <Link
+        to="/payroll/tutors"
+        data-payroll-back
+        className="inline-flex min-h-11 items-center font-medium underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring md:min-h-6"
+      >
         {t('payroll.back')}
       </Link>
     </p>

@@ -29,7 +29,14 @@ import {
   type TermsField,
   type TermsFormValues,
 } from './rules';
-import { INPUT_CLASS, SELECT_CLASS, SHEET_CLASS } from './sheet';
+import {
+  CHECK_BOX_CLASS,
+  CHECK_LABEL_CLASS,
+  CHECK_ROW_CLASS,
+  INPUT_CLASS,
+  SELECT_CLASS,
+  SHEET_CLASS,
+} from './sheet';
 
 // "Add pay terms" (#425 C5), without any API call: the effective date (past
 // or future), "Stop payroll from this date", which clears and disables the
@@ -189,9 +196,10 @@ function DialogBody({
             message={message(errors.effectiveFrom)}
           />
         </div>
-        <div className="flex min-h-11 items-center gap-3 md:min-h-6">
+        <div className={CHECK_ROW_CLASS}>
           <Checkbox
             id={ids.stop}
+            className={CHECK_BOX_CLASS}
             checked={values.stop}
             disabled={submitting}
             onCheckedChange={(checked) => {
@@ -211,7 +219,7 @@ function DialogBody({
               }
             }}
           />
-          <label htmlFor={ids.stop} className="text-sm font-medium">
+          <label htmlFor={ids.stop} className={CHECK_LABEL_CLASS}>
             {t('payroll.termsDialog.stop')}
           </label>
         </div>

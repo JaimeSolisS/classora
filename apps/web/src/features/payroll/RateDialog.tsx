@@ -31,7 +31,14 @@ import {
   type RateField,
   type RateFormValues,
 } from './rules';
-import { INPUT_CLASS, SELECT_CLASS, SHEET_CLASS } from './sheet';
+import {
+  CHECK_BOX_CLASS,
+  CHECK_LABEL_CLASS,
+  CHECK_ROW_CLASS,
+  INPUT_CLASS,
+  SELECT_CLASS,
+  SHEET_CLASS,
+} from './sheet';
 
 // "Add rate" (#425 C6), without any API call: the class kind, the effective
 // date, "No rate from this date", which clears and disables the model and
@@ -220,9 +227,10 @@ function DialogBody({
             message={message(errors.effectiveFrom)}
           />
         </div>
-        <div className="flex min-h-11 items-center gap-3 md:min-h-6">
+        <div className={CHECK_ROW_CLASS}>
           <Checkbox
             id={ids.noRate}
+            className={CHECK_BOX_CLASS}
             checked={values.noRate}
             disabled={submitting}
             onCheckedChange={(checked) => {
@@ -242,7 +250,7 @@ function DialogBody({
               }
             }}
           />
-          <label htmlFor={ids.noRate} className="text-sm font-medium">
+          <label htmlFor={ids.noRate} className={CHECK_LABEL_CLASS}>
             {t('payroll.rateDialog.noRate')}
           </label>
         </div>

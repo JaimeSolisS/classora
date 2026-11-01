@@ -10,3 +10,13 @@ export const SELECT_CLASS =
 
 /** Inputs at 44 px below 768 px. */
 export const INPUT_CLASS = 'h-11 md:h-9';
+
+/**
+ * A checkbox row (G1): below 768 px the box's pointer area (its `after:`
+ * box) and its label are each at least 44 px high.
+ */
+export const CHECK_ROW_CLASS = 'flex items-center gap-3';
+export const CHECK_BOX_CLASS =
+  'max-md:after:-inset-x-4 max-md:after:-inset-y-4';
+export const CHECK_LABEL_CLASS =
+  'flex min-h-11 flex-1 items-center text-sm font-medium md:min-h-6';

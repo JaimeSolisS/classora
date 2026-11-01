@@ -21,6 +21,7 @@ import type { PayrollSettings, ProrationBasis } from './api';
 import {
   initialSettingsForm,
   isStaleSettings,
+  isVersionConflict,
   MAX_SETTINGS_DATE,
   MIN_SETTINGS_DATE,
   PRORATION_BASES,
@@ -38,9 +39,14 @@ import { INPUT_CLASS, SELECT_CLASS, SHEET_CLASS } from './sheet';
 // proration basis. A locked field is read-only with a note; the body still
 // sends the API's value. Before a date is saved a warning says it can't
 // change after the next nightly run and that periods open then, not now.
-// `version_conflict` and a lock taken meanwhile reload the settings and say
-// so, keeping what was typed; a 422 goes on its field, anything else is an
-// alert.
+// New settings while the dialog is open (a `version_conflict`'s reload, or a
+// background refetch) replace the form with the server's values and say so:
+// the fresh version is never sent with values the user hasn't seen, so saving
+// takes a deliberate second click (the app's reload-resets-the-form pattern,
+// QA #425 D1). If that reload fails, the conflict stays with "Reload". A lock
+// taken meanwhile keeps what was typed: its version didn't change, and the
+// locked field shows and sends the server's value. A 422 goes on its field,
+// anything else is an alert.
 
 export interface PayrollSettingsDialogProps {
   open: boolean;
@@ -93,6 +99,19 @@ function DialogBody({
   const [errors, setErrors] = useState<SettingsErrors>(initialErrors);
   const [failure, setFailure] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [shownVersion, setShownVersion] = useState(settings.version);
+  const [reloaded, setReloaded] = useState(false);
+  if (settings.version !== shownVersion) {
+    // Adjusting state while rendering, so no render pairs the new version
+    // with the old values. Our own save closes the dialog instead.
+    setShownVersion(settings.version);
+    if (!submitting) {
+      setValues(initialSettingsForm(settings));
+      setErrors({});
+      setFailure(null);
+      setReloaded(true);
+    }
+  }
 
   const fieldId = (field: SettingsField) => `${id}-${field}`;
   const errorId = (field: SettingsField) => `${id}-${field}-error`;
@@ -116,6 +135,7 @@ function DialogBody({
 
   async function submit() {
     setFailure(null);
+    setReloaded(false);
     const found = validateSettingsForm(values, settings);
     setErrors(found);
     if (Object.keys(found).length > 0) {
@@ -137,6 +157,9 @@ function DialogBody({
       } else {
         setFailure(caught);
         if (isStaleSettings(caught)) {
+          // Not submitting any more, so the new version resets the form;
+          // busyRef still holds off a save until the reload ends.
+          setSubmitting(false);
           await onReload();
         }
       }
@@ -153,6 +176,8 @@ function DialogBody({
     void submit();
   }
 
+  const conflict = isVersionConflict(failure);
+
   return (
     <DialogContent
       className={SHEET_CLASS}
@@ -166,7 +191,18 @@ function DialogBody({
           {t('payroll.settings.dialogHelp')}
         </DialogDescription>
       </DialogHeader>
-      {failure ? <ErrorAlert error={failure} /> : null}
+      {reloaded ? (
+        <p role="alert" className="text-sm font-medium" data-payroll-reloaded>
+          {t('payroll.settings.conflictReloaded')}
+        </p>
+      ) : null}
+      {failure ? (
+        <ErrorAlert
+          error={failure}
+          onRetry={conflict ? () => void onReload() : undefined}
+          retryLabel={conflict ? t('payroll.settings.reload') : undefined}
+        />
+      ) : null}
       <form
         method="post"
         noValidate

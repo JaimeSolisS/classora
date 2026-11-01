@@ -792,39 +792,102 @@ describe('settings (D)', () => {
     await settleUntil(() => anchor().getAttribute('aria-invalid') === 'true');
   });
 
-  it('reloads and says so on version_conflict; the next save uses it', async () => {
+  it.each([
+    [
+      'en',
+      'Salary proration basis',
+      'Save settings',
+      'Someone else changed these settings.',
+    ],
+    [
+      'es',
+      'Base de prorrateo del salario',
+      'Guardar configuración',
+      'Alguien más cambió esta configuración.',
+    ],
+  ] as const)(
+    '%s: a version_conflict shows the current values and needs a new save',
+    async (language, basisLabel, save, notice) => {
+      applyLanguage(language);
+      const theirs = {
+        ...SETTINGS_OFF,
+        salary_proration_basis: 'weekdays',
+        version: 9,
+      };
+      const api = stub({
+        [SETTINGS]: [
+          () => jsonResponse(200, SETTINGS_OFF),
+          () => jsonResponse(200, theirs),
+        ],
+        [PATCH]: [
+          () => problem(409, 'version_conflict'),
+          () => jsonResponse(200, { ...theirs, version: 10 }),
+        ],
+      });
+      app = await renderApp('/payroll/settings');
+      await settleUntil(() => main().querySelector('[data-payroll-status]'));
+
+      await click(
+        [...main().querySelectorAll('button')].find(
+          (button) =>
+            button.textContent === 'Change' || button.textContent === 'Cambiar',
+        )!,
+      );
+      const inputs = () =>
+        dialog().querySelectorAll<HTMLInputElement>('input[type="date"]');
+      setFieldValue(inputs()[0]!, '2026-09-01');
+      await click(buttonNamed(dialog(), save));
+      await settleUntil(() =>
+        dialog().querySelector('[data-payroll-reloaded]'),
+      );
+
+      // The server's values, the notice, and nothing sent on the user's behalf.
+      expect(
+        dialog().querySelector('[data-payroll-reloaded]')?.textContent,
+      ).toContain(notice);
+      expect(
+        dialog().querySelector('[data-payroll-reloaded]')?.getAttribute('role'),
+      ).toBe('alert');
+      expect(labelled<HTMLSelectElement>(dialog(), basisLabel).value).toBe(
+        'weekdays',
+      );
+      expect(inputs()[0]!.value).toBe('');
+      expect(api.calls(PATCH)).toHaveLength(1);
+
+      await click(buttonNamed(dialog(), save));
+      await settleUntil(() => !openDialog());
+
+      // The colleague's change survives.
+      expect(api.calls(PATCH)[1]?.body).toEqual({
+        version: 9,
+        payroll_starts_on: null,
+        biweekly_anchor_on: '2026-01-05',
+        salary_proration_basis: 'weekdays',
+      });
+    },
+  );
+
+  it('keeps the conflict with Reload when the reload fails', async () => {
     const api = stub({
       [SETTINGS]: [
         () => jsonResponse(200, SETTINGS_OFF),
+        () => problem(500, 'internal_error'),
         () => jsonResponse(200, { ...SETTINGS_OFF, version: 9 }),
       ],
-      [PATCH]: [
-        () => problem(409, 'version_conflict'),
-        () => jsonResponse(200, { ...SETTINGS_OFF, version: 10 }),
-      ],
+      [PATCH]: () => problem(409, 'version_conflict'),
     });
     await open('/payroll/settings');
     await settleUntil(() => main().querySelector('[data-payroll-status]'));
 
     await click(change());
-    setFieldValue(
-      labelled<HTMLSelectElement>(dialog(), 'Salary proration basis'),
-      'weekdays',
-    );
     await click(buttonNamed(dialog(), 'Save settings'));
     await settleUntil(() => alerts(dialog()).length > 0);
+    expect(dialog().querySelector('[data-payroll-reloaded]')).toBeNull();
+    expect(alerts(dialog()).join()).toContain('Someone else changed this');
 
-    expect(api.calls(SETTINGS).length).toBeGreaterThanOrEqual(2);
-    expect(
-      labelled<HTMLSelectElement>(dialog(), 'Salary proration basis').value,
-    ).toBe('weekdays');
-    await click(buttonNamed(dialog(), 'Save settings'));
-    await settleUntil(() => !openDialog());
-
-    expect(api.calls(PATCH)[1]?.body).toMatchObject({
-      version: 9,
-      salary_proration_basis: 'weekdays',
-    });
+    await click(buttonNamed(dialog(), 'Reload'));
+    await settleUntil(() => dialog().querySelector('[data-payroll-reloaded]'));
+    expect(api.calls(PATCH)).toHaveLength(1);
   });
 
   it('shows locked fields read-only and still sends their values', async () => {

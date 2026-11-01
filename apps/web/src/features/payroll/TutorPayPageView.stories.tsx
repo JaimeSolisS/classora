@@ -34,6 +34,18 @@ const meta = {
   ),
 } satisfies Meta<typeof TutorPayPageView>;
 
+const narrowViewport = {
+  viewport: {
+    options: {
+      narrow320: {
+        name: 'Narrow (320 px)',
+        styles: { width: '320px', height: '640px' },
+        type: 'mobile',
+      },
+    },
+  },
+};
+
 export default meta;
 type Story = StoryObj<typeof meta>;
 
@@ -78,5 +90,17 @@ export const OwnPay: Story = {
         name: i18n.t('payroll.rateDialog.title'),
       }),
     ).toBeNull();
+  },
+};
+
+/** G1: below 768 px the back link is 44 px high. */
+export const BackLinkTarget: Story = {
+  parameters: narrowViewport,
+  globals: { viewport: { value: 'narrow320' } },
+  play: async ({ canvas }) => {
+    const back = canvas.getByRole('link', { name: i18n.t('payroll.back') });
+    await expect(back.getBoundingClientRect().height).toBeGreaterThanOrEqual(
+      44,
+    );
   },
 };

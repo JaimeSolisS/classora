@@ -6410,7 +6410,9 @@
       "startsOn": "Fecha de inicio de nómina",
       "startWarning": "Esta fecha no se podrá cambiar después de la próxima ejecución nocturna. Los periodos se abren en esa ejecución, no de inmediato.",
       "save": "Guardar configuración",
-      "saved": "Configuración guardada."
+      "saved": "Configuración guardada.",
+      "conflictReloaded": "Alguien más cambió esta configuración. Estos son los valores actuales y tus cambios no se guardaron. Revísalos y guarda de nuevo.",
+      "reload": "Volver a cargar"
     },
     "myPay": {
       "title": "Mi pago",

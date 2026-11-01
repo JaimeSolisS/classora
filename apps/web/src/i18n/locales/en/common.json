@@ -6290,7 +6290,9 @@
       "startsOn": "Payroll start date",
       "startWarning": "This date can't be changed after the next nightly run. Periods open at that run, not immediately.",
       "save": "Save settings",
-      "saved": "Settings saved."
+      "saved": "Settings saved.",
+      "conflictReloaded": "Someone else changed these settings. These are the current values, and your changes weren't saved. Review them and save again.",
+      "reload": "Reload"
     },
     "myPay": {
       "title": "My pay",
