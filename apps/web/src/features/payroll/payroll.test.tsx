@@ -19,6 +19,7 @@ import {
   buttonNamed,
   jsonResponse,
   renderApp,
+  settle,
   settleUntil,
   type RenderedApp,
 } from '@/test/render-app';
@@ -312,6 +313,116 @@ describe('tutor list (B)', () => {
     expect(app!.location()).toContain('state=pending');
     expect(app!.location()).toContain('q=ana');
     expect(state.value).toBe('pending');
+  });
+
+  // QA #425 D6, round 5: nothing commits between the two events, so the
+  // navigation of the first is still pending when the second one happens.
+  describe('with a navigation pending', () => {
+    const state = () => labelled<HTMLSelectElement>(main(), 'State');
+    const search = () =>
+      labelled<HTMLInputElement>(main(), 'Search by name or username');
+
+    async function typed(path = '/payroll/tutors') {
+      stub();
+      await open(path);
+      await settleUntil(() => main().querySelector('tbody tr'));
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      setFieldValue(search(), 'ana');
+    }
+
+    async function settled(expected: string) {
+      vi.useRealTimers();
+      await settleUntil(() => app!.location() === expected);
+      await settle();
+      expect(app!.location()).toBe(expected);
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('the timer fires, then the state is picked: both stay', async () => {
+      await typed();
+      act(() => {
+        vi.advanceTimersByTime(300);
+        setFieldValue(state(), 'pending');
+      });
+      await settled('/payroll/tutors?q=ana&state=pending');
+
+      expect(listUrls.at(-1)?.searchParams.get('q')).toBe('ana');
+      expect(listUrls.at(-1)?.searchParams.get('state')).toBe('pending');
+      expect(state().value).toBe('pending');
+      expect(search().value).toBe('ana');
+    });
+
+    it('the state is picked, then the timer was due: one write has both', async () => {
+      await typed();
+      act(() => {
+        vi.advanceTimersByTime(299);
+        setFieldValue(state(), 'pending');
+        vi.advanceTimersByTime(1);
+      });
+      await settled('/payroll/tutors?q=ana&state=pending');
+
+      expect(state().value).toBe('pending');
+      expect(search().value).toBe('ana');
+    });
+
+    it('a state pick keeps a search still waiting and leaves the page', async () => {
+      await typed('/payroll/tutors?page=2');
+      setFieldValue(state(), 'all');
+      await settled('/payroll/tutors?q=ana&state=all');
+    });
+
+    it('the search resets the page and keeps the state', async () => {
+      await typed('/payroll/tutors?state=pending&page=3');
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      await settled('/payroll/tutors?q=ana&state=pending');
+    });
+
+    it('clearing the search removes q and keeps the state', async () => {
+      await typed('/payroll/tutors?q=ana&state=pending');
+      setFieldValue(search(), '');
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      await settled('/payroll/tutors?state=pending');
+      expect(search().value).toBe('');
+    });
+
+    it('back cancels a waiting search and updates what the next pick writes', async () => {
+      stub();
+      await open('/payroll/tutors?q=old');
+      await settleUntil(() => main().querySelector('tbody tr'));
+      setFieldValue(state(), 'pending');
+      await settleUntil(
+        () => app!.location() === '/payroll/tutors?q=old&state=pending',
+      );
+      setFieldValue(search(), 'new');
+      await act(() => app!.router.navigate(-1));
+      await settleUntil(() => app!.location() === '/payroll/tutors?q=old');
+
+      expect(search().value).toBe('old');
+      expect(state().value).toBe('active');
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      await settle();
+      expect(app!.location()).toBe('/payroll/tutors?q=old');
+
+      setFieldValue(state(), 'all');
+      await settleUntil(
+        () => app!.location() === '/payroll/tutors?q=old&state=all',
+      );
+    });
+
+    it('an unchanged search writes nothing and stays on its page', async () => {
+      await typed('/payroll/tutors?q=ana&page=2');
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      await settled('/payroll/tutors?q=ana&page=2');
+    });
   });
 
   it('renders cards for narrow screens, hidden from 768 px', async () => {
