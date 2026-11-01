@@ -6,6 +6,9 @@ pay terms (``tutor_pay_terms``) and rates per class kind
 (:func:`app.modules.payroll.service.rate_in_effect`,
 :func:`app.modules.payroll.service.terms_in_effect`).
 
+M7-03 (#106) adds the settings singleton, the period calendar and the
+``payroll_periods`` chain the daily ``payroll:open_periods`` job opens.
+
 Other modules use :mod:`app.modules.payroll.service` and
 :mod:`app.modules.payroll.schemas` only (ADR-0002).
 """

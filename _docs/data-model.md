@@ -991,6 +991,9 @@ A singleton (the `billing_settings` pattern, §3.2). Audited and versioned. Crea
 | `salary_proration_basis` | VARCHAR(20) | no | `calendar_days` \| `weekdays`; default `calendar_days` (E7) |
 | `version` | INTEGER | no | |
 
+- **Lock (#106 E6):** once any `payroll_periods` row exists, `payroll_starts_on` can't change, `null` included (`409 payroll_start_locked`). Once a `biweekly` period exists, `biweekly_anchor_on` can't (`409 biweekly_anchor_locked`). `salary_proration_basis` stays editable. An earlier floor would create days no period can cover, a later one would strand existing periods, and a new anchor would shift the calendar under existing rows. So a wrong floor can't be fixed in the app after the job has run.
+- **No job (#106 E7):** a `PATCH` queues nothing. The daily run is the only trigger.
+
 ### 11.2 `tutor_pay_terms` (#105)
 
 What applies to a tutor as a whole (E1). Audited. **Guarded** (§14.2).
@@ -1005,7 +1008,9 @@ What applies to a tutor as a whole (E1). Audited. **Guarded** (§14.2).
 
 - **Unique key:** `UNIQUE (tutor_user_id, effective_from)` (invariant P1).
 - **CHECK:** `pay_frequency IS NOT NULL OR salary_amount IS NULL`: no salary without a frequency.
-- **Refusal:** a version that changes the frequency must be dated after every generated period (`422 effective_from_inside_generated_period`, E6). #106 adds this, on both the terms insert and the terms delete, because `payroll_periods` doesn't exist before it. A stop (`pay_frequency NULL`) isn't a frequency change, so a tutor leaving mid-period can be recorded (#105 E7).
+- **Refusals (#106 E3, E4):** the terms insert and delete evaluate the terms as they would be after the write, under the advisory lock of §15. A tutor with no periods has neither refusal.
+  - `422 effective_from_inside_generated_period`: on every date inside a generated period, the frequency in effect must be `NULL` or that period's. So a stop passes (#105 E7), a same-frequency version passes (dated anywhere, also inside a finalized period, #105 E4), a return with the period's frequency passes, a return or change with another frequency inside a period is refused, and so is a delete that would expose one.
+  - `422 effective_from_before_first_period`: no date on or after `payroll_starts_on` and before the tutor's first period may have a non-`NULL` frequency. No period could ever cover it, so that work would be silently unpaid.
 - **Audit:** `salary_amount` is masked (`__audit_mask__`), because Administrators hold `audit.view` and see no pay (#105 E2).
 
 ### 11.3 `compensation_rates` (#105)
@@ -1050,9 +1055,14 @@ One row per tutor per period (E6). Not `Audited`: the job opens them and the sta
 - **Natural key:** `UNIQUE (tutor_user_id, starts_on)`, used by `payroll:open_periods`.
 - **Composite target:** `UNIQUE (id, tutor_user_id)`, the target of the line, adjustment and payslip foreign keys (P6).
 - **Boundaries (E6):** weekly Monday to Sunday; biweekly 14 days from `biweekly_anchor_on`; monthly the calendar month. A stub ends the day before the terms stop or the frequency changes.
+- **A generated period's dates never change (#106 E2):** a stub exists only when the stop or change is already recorded when the period is generated. Otherwise the period keeps its natural end, and the days after a stop carry no terms, so #108 pays no salary for them. A leaver's last period can't be prepared until its natural end.
+- **First period:** starts on the first covered date on or after `payroll_starts_on`, so terms that began before the floor start at the floor (reading of E6).
+- **First covered date (#106 E5):** every period's end comes from the first date on or after its start with a non-`NULL` frequency. The natural end is that of the calendar period containing that date, and `pay_frequency` is the frequency on that date. The end is that natural end, or the day before the next version with another frequency (`NULL` included), whichever comes first. A version with the same frequency doesn't split a period. A period opens once its first covered date is on or before the center's today.
+- **`natural_days` (#106 E5):** defined by date, `natural_bounds(frequency, day, anchor)`. #108 uses it for each piece, split at natural boundaries, never `starts_on`/`ends_on`, because a period can be a stub or span several natural periods.
 - **After a tutor has left (reading of E6, for #106):** "from the day after the previous one" also holds for a period opened later, so P3 keeps holding.
-  - A returning tutor's next period starts the day after their last one and ends at the natural end of the new frequency's calendar. Work inside the terms gap stays `no_pay_terms`.
+  - A returning tutor's next period starts the day after their last one and ends per the first covered date. A tutor who left in March and returns weekly in November has one long period from April to the first Sunday on or after the return. Work inside the terms gap stays `no_pay_terms`.
   - A period opened only for an adjustment (E11) uses the last non-null `pay_frequency`.
+- **Who gets periods (#106 E8):** tutors in `tutor_pay_terms`, whatever their role or state. A stop row ends them; archiving doesn't.
 - **Inbox:** the `payroll.period` request uses `administration.service.open_approval_request`, because `approval_requests` holds one row per `(request_type, subject_id)` and a returned period is prepared again.
 
 ### 11.5 `session_pay_rules` (#107)
@@ -1362,6 +1372,7 @@ Nothing below is stored.
 - **Period total before finalization:** Σ `payroll_lines.amount`. It is stored as `total_amount` only at finalize.
 - **Period paid state:** with `paid` = Σ payments without a reversal: `unpaid` (`paid` = 0), `partially_paid` (0 < `paid` < `total_amount`), `paid` (`paid` = `total_amount`). A finalized period with a `0.00` total is `paid`.
 - **Unresolved work:** an approved closeout (current revision) dated on or after `payroll_starts_on` whose tutor has no terms (`no_pay_terms`) or no rate (`no_rate`) on the service date and no line. A salaried tutor's class kind with no rate isn't unresolved: it is covered by salary (E1).
+  - **`before_first_period` (#106 E4, for #107):** an approved closeout dated on or after the floor and before the tutor's first period can't be fixed by any terms change. It gets this reason, stays on the staff list and doesn't block `prepare`; Finance pays it with a one-time item. Every other `no_pay_terms` stays blocking.
 - **Expense `net`** = `amount + Σ expense_adjustments.amount`.
 - **Expense `open`** = `net − Σ` payments without a reversal.
 - **Expense status:** `void` (net = 0); `paid` (open = 0 and not `void`); `overdue` (open > 0 and `due_on` before the center's today); `partially_paid` (open > 0, some valid payment, not overdue); `unpaid` (open > 0, no valid payment, not overdue).
@@ -1391,15 +1402,17 @@ Line writes are serialized by the period row lock (§15); the trigger is the bac
 
 - **Lock order, payroll mutations:**
   1. the `idempotency_keys` row, first, before any lock (E6 of ADR-0006);
-  2. `payroll_periods` row `FOR UPDATE`, always the **last business lock** of payroll;
-  3. `number_series` row (`P`), only when a payslip is issued.
+  2. the terms-and-periods advisory lock, where taken;
+  3. `payroll_periods` row `FOR UPDATE`, always the **last business lock** of payroll;
+  4. `number_series` row (`P`), only when a payslip is issued.
 
-  The App invariants of §13.1 are checked after step 2.
+  The App invariants of §13.1 are checked after step 3.
+- **Terms and periods (#106 E10):** one `pg_advisory_xact_lock` key (`b"clsPyPrd"`, `payroll.period_rows`), taken first by each per-tutor unit of `payroll:open_periods` and by the terms insert and delete. The refusal reads periods, the job reads terms, and a first write has no period row to lock, so a row lock can't serialize them. Then the job reads `payroll_settings FOR SHARE`, the terms and the last period; a terms delete takes its row `FOR UPDATE`. A settings `PATCH` takes the settings row `FOR UPDATE` and reads the locks after it, so it and the job wait for each other. Every writer of terms takes this lock (#111 too). No scheduling or academics write takes any of these locks.
 - **Lock order, expense mutations:** the `idempotency_keys` row, on the routes that take a key → `expenses` row `FOR UPDATE`, the **last business lock** of finance. Payments, reversals and adjustments of one expense serialize on it.
 - **`recalculate`:** reads committed scheduling and academics state with **no lock on them**, under the period row lock. No scheduling or academics write ever takes a period lock, so there is no cycle, and a payroll failure can't roll back a closeout or a cancellation (E9).
 - **After-lock approvals:** an approval committed after a period's finalize sees no line and lands as a `late_approval` adjustment (E11). One committed between `prepare` and `finalize` is caught by the drift comparison (`409 payroll_period_stale`).
 - **Jobs (`queueing_lock`, natural keys):**
-  - `payroll:open_periods`, daily at 07:50 UTC, on `(tutor_user_id, starts_on)`. `payroll_periods` isn't `Audited`, so it uses `ON CONFLICT DO NOTHING`.
+  - `payroll:open_periods`, daily at 07:50 UTC, on `(tutor_user_id, starts_on)`, one Unit of Work per tutor. `payroll_periods` isn't `Audited`, so it uses `ON CONFLICT DO NOTHING`.
   - `payroll:post_adjustments`, every 15 minutes, by anti-join on `source_key`, one Unit of Work per adjustment: the target period `FOR UPDATE` → the insert in a savepoint. Closeout corrections may enqueue it after commit.
   - `finance:generate_recurring_expenses`, daily at 07:55 UTC, on `(expense_template_id, period_start)`, one Unit of Work per template: the template row `FOR UPDATE` → each due period in a savepoint → `next_period_start`.
 
@@ -1467,7 +1480,7 @@ Each M7 issue, the ADR-0017 decision items it relies on, and the tables it creat
 | Issue | Decision items | Tables |
 |---|---|---|
 | #105 M7-02 Compensation and rates | E1 (keys, `NULL` semantics, guarded versions, lookup on the service date), E12 (`payroll.view`, `payroll.manage`; tutors see only their own rates by record policy; audit masks on the amounts) | `tutor_pay_terms`, `compensation_rates` |
-| #106 M7-03 Payroll periods | E2 (`payroll_starts_on`), E6 (calendars in local `DATE`s, stubs, no overlaps, no gaps, idempotent `payroll:open_periods`, the `effective_from_inside_generated_period` refusal on the terms insert and delete, not on a stop) | `payroll_settings`, `payroll_periods` |
+| #106 M7-03 Payroll periods | E2 (`payroll_starts_on`), E6 (calendars in local `DATE`s, stubs, no overlaps, no gaps, idempotent `payroll:open_periods`, the `effective_from_inside_generated_period` and `effective_from_before_first_period` refusals on the terms insert and delete, not on a stop) | `payroll_settings`, `payroll_periods` |
 | #423 M7-04a Makeup link | E5 | `class_sessions.makeup_of_session_id` |
 | #107 M7-04 Calculation | E2 (current revision, attribution, service date, unresolved work), E3, E4 (rules consuming the #62 outcomes), E5, E9 (one line per source with its session, repeatable `recalculate`, no hooks), E12 (`payroll.prepare`) | `session_pay_rules`, `payroll_lines` (session-sourced kinds) |
 | #108 M7-05 Salary and proration | E1 (salary plus extras), E7 (configurable basis, `Money.prorate`, review through line display) | `payroll_lines` (`salary`), `payroll_settings` (`salary_proration_basis`) |

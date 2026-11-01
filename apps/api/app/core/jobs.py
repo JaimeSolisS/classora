@@ -118,6 +118,12 @@ TUITION_CHARGES_QUEUEING_LOCK: Final = "billing-post-tuition-charges"
 """At most one queued ``billing:post_tuition_charges`` job (the periodic
 tick shares it)."""
 
+PAYROLL_OPEN_PERIODS_TASK: Final = "payroll:open_periods"
+"""The daily job that opens tutors' payroll periods (#106 D). Nothing else
+queues it (#106 E7)."""
+PAYROLL_OPEN_PERIODS_QUEUEING_LOCK: Final = "payroll-open-periods"
+"""At most one queued ``payroll:open_periods`` job."""
+
 PACKAGE_EXPIRY_TASK: Final = "billing:expire_packages"
 """The daily package expiry with its fallback consumption (#94 F1)."""
 PACKAGE_EXPIRY_QUEUEING_LOCK: Final = "billing-expire-packages"
@@ -269,14 +275,16 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     progress report placeholders, #316, the 15-minute session and
     enrollment charge sweepers, #91 and #92, the daily tuition charges,
     #93, the daily package expiry, #94, and the daily charge reminders,
-    #97, and the 15-minute schedule reconciliation, #99, whose task files are
+    #97, the 15-minute schedule reconciliation, #99, and the daily payroll
+    periods, #106, whose task files are
     ``app/workflows/progress_report_schedule_tasks.py``,
     ``app/workflows/session_charge_tasks.py``,
     ``app/workflows/enrollment_charge_tasks.py``,
     ``app/workflows/tuition_charge_tasks.py``,
     ``app/workflows/package_expiry_tasks.py``,
-    ``app/workflows/charge_reminder_tasks.py`` and
-    ``app/workflows/schedule_reconciliation_tasks.py`` because they compose
+    ``app/workflows/charge_reminder_tasks.py``,
+    ``app/workflows/schedule_reconciliation_tasks.py`` and
+    ``app/workflows/payroll_period_tasks.py`` because they compose
     modules)
     are registered in every environment. The demo tasks
     (and the periodic demo) are registered only in :data:`DEMO_ENVIRONMENTS`.
@@ -290,6 +298,7 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
         charge_reminder_tasks,
         enrollment_charge_tasks,
         package_expiry_tasks,
+        payroll_period_tasks,
         progress_report_schedule_tasks,
         schedule_reconciliation_tasks,
         session_charge_tasks,
@@ -308,6 +317,7 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     package_expiry_tasks.register(app)
     charge_reminder_tasks.register(app)
     schedule_reconciliation_tasks.register(app)
+    payroll_period_tasks.register(app)
     if app_env in DEMO_ENVIRONMENTS:
         demo_jobs.register(app)
     return app

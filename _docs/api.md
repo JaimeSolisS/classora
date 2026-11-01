@@ -7092,6 +7092,57 @@ are in `app/workflows/payroll_compensation_router.py` and
   appear as `"[masked]"` for every reader, the Owner included, because
   Administrators hold `audit.view` and see no pay. Rate history is read from
   the versions.
+- **Terms against generated periods (M7-03, #106):** the terms `POST` and
+  `DELETE` evaluate the terms as they would be after the write. Rate routes
+  aren't affected, and a tutor with no periods has neither refusal. Both are
+  `422` with a top-level `code`, no field errors and no amount.
+  - `effective_from_inside_generated_period`: on some date inside a generated
+    period, the frequency would be neither `null` nor that period's. So a stop,
+    a same-frequency version (also inside a finalized period) and a return with
+    the period's frequency pass; a return or change with another frequency
+    inside a period is refused, and so is a delete that would expose one.
+  - `effective_from_before_first_period`: some date on or after
+    `payroll_starts_on` and before the tutor's first period would have a
+    frequency. No period can ever cover it. Dates before `payroll_starts_on`
+    are accepted.
+  - Order: `403 payroll_own_compensation` → `404` → the advisory lock → these
+    refusals → `409 pay_terms_exists` or `409 pay_terms_in_use`. A `DELETE`
+    of another tutor's row is `404` first.
+
+### Payroll settings
+
+Implemented by M7-03 (#106; spec §7, §16; ADR-0017 E2, E6, E7, Proposed:
+orchestrator-recommended, pending owner review). The routes are in
+`app/modules/payroll/settings_router.py`, table `payroll_settings`
+(`_docs/data-model.md` §11.1). The web page is M7-02b (#425).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/payroll/settings` | `require("payroll.view")` | `PayrollSettingsDetail`: `payroll_starts_on` (`null`: payroll is off), `biweekly_anchor_on`, `salary_proration_basis`, `start_locked`, `anchor_locked`, `version`, `updated_at`. |
+| `PATCH /api/v1/payroll/settings` | `require("payroll.manage")` | Body `PayrollSettingsUpdate` `{version, payroll_starts_on, biweekly_anchor_on, salary_proration_basis}`, all required, unknown fields `422`. `200` with the detail. |
+
+- **Fields:** dates from 2000-01-01 to 2099-12-31, past included
+  (`date_out_of_range`); the anchor is a Monday (`anchor_not_monday`); the
+  basis is `calendar_days` or `weekdays`. These are `422 validation_error`
+  with `errors[].code`.
+- **Check order of the `PATCH`:** `401` → `403 csrf_failed` →
+  `403 privacy_notice_required` → `403 permission_denied` → `422` → the row
+  `FOR UPDATE` → `409 version_conflict` → unchanged: nothing written, no event,
+  no version bump → `409 payroll_start_locked` / `409 biweekly_anchor_locked` →
+  the update, with one `update` audit event and `version + 1`.
+- **Locks:** once any period exists, `payroll_starts_on` can't change, `null`
+  included (`start_locked`). Once a biweekly period exists, the anchor can't
+  (`anchor_locked`). `salary_proration_basis` stays editable. A refusal changes
+  nothing, also for a field sent alongside it. There is no in-app way to move a
+  locked date.
+- **No job:** a `PATCH` queues nothing. Periods open at the next daily run, so
+  staff have until then to correct a wrong start date. No reauthentication and
+  no `Idempotency-Key`.
+- **`payroll:open_periods`** (daily at 07:50 UTC, `queueing_lock`
+  `payroll-open-periods`, `app/workflows/payroll_period_tasks.py`): for every
+  tutor with terms, whatever their role or state, opens each period due, up to
+  the one containing the center's today. While `payroll_starts_on` is `null` it
+  opens nothing. There is no period route yet: #110 owns the list and review.
 
 ### Response headers
 

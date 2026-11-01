@@ -125,7 +125,11 @@ async def get_tutor_compensation(
             "The body is not valid (validation_error): a missing or unknown"
             " field, an unknown frequency, the salary (money_invalid,"
             " money_precision, money_out_of_range, salary_not_positive) or a"
-            " salary without a frequency (salary_without_frequency)."
+            " salary without a frequency (salary_without_frequency). Or the"
+            " new version would put another frequency inside a generated"
+            " period (effective_from_inside_generated_period), or give terms"
+            " to days before the tutor's first period"
+            " (effective_from_before_first_period)."
         ),
     },
 )
@@ -182,6 +186,12 @@ async def add_compensation_rate(
         404: _VERSION_NOT_FOUND,
         409: problem_response_doc(
             "A finalized payroll period uses this version (pay_terms_in_use)."
+        ),
+        422: problem_response_doc(
+            "Without this version, a generated period would hold another"
+            " frequency (effective_from_inside_generated_period), or days"
+            " before the tutor's first period would have terms"
+            " (effective_from_before_first_period)."
         ),
     },
 )

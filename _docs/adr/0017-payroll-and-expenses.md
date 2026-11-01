@@ -77,6 +77,22 @@ Recommended options taken while grooming and building #105. They are orchestrato
 - **Read surface (#105 E6):** one compensation read with a record policy: a `payroll.view` holder or the tutor themselves. Everyone else gets the same `404`. `payroll.finalize` gives no read here.
 - **Frequency refusal (#105 E7):** #106 owns `effective_from_inside_generated_period`, on both the terms insert and delete. A stop isn't a frequency change.
 
+#### Implementation notes (#106)
+
+Recommended options taken while grooming and building #106. They are orchestrator-recommended and pending owner review, like the rest of this ADR. E1-E10 here are #106's own items.
+
+- **Split (#106 E1):** #106 is API only; the settings page stays in #425.
+- **Periods are never re-dated (#106 E2):** a stub exists only when the stop or change is recorded before the period is generated. Otherwise the period keeps its natural end and the days after a stop carry no terms, so #108 pays no salary for them. The money is the same, but a leaver's last period can't be prepared until its natural end.
+- **Frequency rule (#106 E3):** one rule on the terms as they would be after a write: on every date inside a generated period, the frequency is `NULL` or the period's. Otherwise `422 effective_from_inside_generated_period`.
+- **Terms before the first period (#106 E4), narrowing E2 for one case:** `422 effective_from_before_first_period` when a write would give a frequency to a date on or after the floor and before the first period, because no period can ever cover it. An approved closeout dated there can't be fixed by any terms change, so #107 gives it the reason `before_first_period`: it stays on the staff list, **doesn't block `prepare`**, and Finance pays it with a one-time item (E8). Every other `no_pay_terms` stays blocking, and each has a fix.
+- **The returning period (#106 E5):** a period's end comes from its first covered date, so a gap opens no empty periods. `natural_days` is defined by date through `natural_bounds(frequency, day, anchor)`.
+- **Settings once periods exist (#106 E6):** the floor locks once any period exists and the anchor once a biweekly one does (`409`). The basis stays editable. A wrong floor can't be fixed in the app after the job has run.
+- **No job on `PATCH` (#106 E7):** the daily 07:50 UTC run is the only trigger, which leaves staff until then to correct a wrong floor.
+- **Archived tutors (#106 E8):** periods follow terms only. Archiving doesn't stop them; a stop row does. A salaried leaver with no stop row keeps earning salary lines until Finance reviews the period.
+- **No period read yet (#106 E9):** `GET /payroll/settings` returns `start_locked` and `anchor_locked`; #110 owns the period list.
+- **Serialization (#106 E10):** one advisory lock, taken first by the job's per-tutor unit and by the terms insert and delete.
+- **`previous_ends_on`:** PostgreSQL accepts the stored generated column in the composite foreign key, so the plain-column fallback of E6 isn't used.
+
 ### Paid work (E2 (a), spec §3, §7, W3, ISSUE-F2, #107, #111, #117, product)
 
 - **Source of hours:** only the **current approval revision** (`session_closeouts.current_approval_id`, #78). A closeout without one is never paid. A closeout back in review keeps its revision in force, as #78 and #94 already read it. There is no `teaching_hours` table: the spec's candidate "TeachingHours" entity **is** `session_closeout_approvals`.

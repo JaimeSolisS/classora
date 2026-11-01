@@ -99,7 +99,11 @@ from app.modules.identity.models import (
     UserDelegation,
     UserRole,
 )
-from app.modules.payroll.models import CompensationRate, TutorPayTerms
+from app.modules.payroll.models import (
+    CompensationRate,
+    PayrollSettings,
+    TutorPayTerms,
+)
 from app.modules.scheduling.models import (
     AssignmentOffer,
     AssignmentOfferSession,
@@ -213,6 +217,7 @@ def test_the_guard_scans_the_real_audited_models():
         PaymentAllocation,
         PaymentMethod,
         PaymentReversal,
+        PayrollSettings,
         PriceVersion,
         PrivacyNoticeAcceptance,
         ProgressReport,

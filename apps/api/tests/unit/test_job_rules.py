@@ -229,6 +229,7 @@ MODULE_TASKS = {
     "billing:expire_packages",
     "billing:send_charge_reminders",
     "billing:reconcile_session_charges",
+    "payroll:open_periods",
 }
 
 
@@ -372,6 +373,25 @@ def test_the_tuition_charges_run_daily_at_0730_utc():
     assert jobs.task_parameter_types(app)["billing:post_tuition_charges"] == {
         "timestamp": int
     }
+
+
+def test_the_payroll_periods_open_daily_at_0750_utc():
+    # #106 D1: one queued job at a time; nothing else queues it (E7).
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "payroll:open_periods"
+    ]
+    assert periodic.cron == "50 7 * * *"
+    assert periodic.periodic_id == "payroll-open-periods"
+    assert periodic.configure_kwargs["queueing_lock"] == "payroll-open-periods"
+    assert app.tasks["payroll:open_periods"].queueing_lock == (
+        jobs.PAYROLL_OPEN_PERIODS_QUEUEING_LOCK
+    )
+    assert jobs.PAYROLL_OPEN_PERIODS_TASK == "payroll:open_periods"
+    assert jobs.task_parameter_types(app)["payroll:open_periods"] == {"timestamp": int}
 
 
 def test_the_package_expiry_runs_daily_at_0740_utc():

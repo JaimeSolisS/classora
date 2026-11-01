@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0072"
+HEAD = "0073"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -188,6 +188,7 @@ RECONCILIATION_TABLES = [
 WITHDRAWAL_TABLES = ["withdrawals"]
 """The table revision 0071 adds (#101 A2)."""
 COMPENSATION_TABLES = ["tutor_pay_terms", "compensation_rates"]
+PAYROLL_PERIOD_TABLES = ["payroll_settings", "payroll_periods"]
 """The tables revision 0072 adds (#105 B1, B2)."""
 APPEND_ONLY_LEDGER_TABLES = [
     "charges",
@@ -435,6 +436,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *RECONCILIATION_TABLES,
             *WITHDRAWAL_TABLES,
             *COMPENSATION_TABLES,
+            *PAYROLL_PERIOD_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4721,9 +4723,22 @@ def _of_0072(diff: Any) -> bool:
     return diff[0] == "add_table" and diff[1].name in COMPENSATION_TABLES
 
 
+def _of_0073(diff: Any) -> bool:
+    """A metadata difference that revision 0073 adds: the settings and period
+    tables and the two indexes of the periods (#106 A)."""
+    if diff[0] == "add_table":
+        return diff[1].name in PAYROLL_PERIOD_TABLES
+    return diff[0] == "add_index" and diff[1].table.name in PAYROLL_PERIOD_TABLES
+
+
+def _of_0072_on(diff: Any) -> bool:
+    """A metadata difference that revision 0072 or a later one adds."""
+    return _of_0072(diff) or _of_0073(diff)
+
+
 def _of_0071_on(diff: Any) -> bool:
     """A metadata difference that revision 0071 or a later one adds."""
-    return _of_0071(diff) or _of_0072(diff)
+    return _of_0071(diff) or _of_0072_on(diff)
 
 
 def _of_0069_on(diff: Any) -> bool:
@@ -12783,7 +12798,7 @@ def test_0071_adds_withdrawals_and_downgrade_restores_0070(fresh_database_url):
     command.upgrade(config, "0071")
 
     assert version_nums(dsn) == ["0071"]
-    assert [d for d in metadata_diff(dsn) if not _of_0072(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0072_on(d)] == []
     assert public_tables(dsn) - tables == {"withdrawals"}
     assert "withdrawals_append_only" in _append_only_functions(dsn)
     after = _constraints(dsn, "package_credit_transactions")
@@ -12924,7 +12939,7 @@ def test_0072_adds_the_compensation_tables_and_downgrade_restores_0071(
     command.upgrade(config, "0072")
 
     assert version_nums(dsn) == ["0072"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0073(d)] == []
     assert public_tables(dsn) - tables == set(COMPENSATION_TABLES)
     assert run_sql(dsn, functions, names)[0].n == 4
     assert run_sql(dsn, "SELECT count(*) AS n FROM tutor_pay_terms")[0].n == 0
@@ -12953,7 +12968,7 @@ def test_0072_adds_the_compensation_tables_and_downgrade_restores_0071(
     assert version_nums(dsn) == ["0071"]
     assert public_tables(dsn) == tables
     assert run_sql(dsn, functions, names)[0].n == 0
-    assert [d for d in metadata_diff(dsn) if not _of_0072(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0072_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -12976,3 +12991,296 @@ def test_0072_a_tutor_with_pay_rows_cannot_be_deleted(fresh_database_url):
     with pytest.raises(DBAPIError) as caught:
         run_sql(dsn, "DELETE FROM users WHERE id = :u", {"u": user.id})
     assert getattr(caught.value.orig, "sqlstate", "") == "23001"  # restrict_violation
+
+
+PERIOD_INSERT = (
+    "INSERT INTO payroll_periods (tutor_user_id, starts_on, ends_on, pay_frequency,"
+    " is_first_period) VALUES (:u, :starts, :ends, 'weekly', :first) RETURNING id"
+)
+
+
+def _period_0073(
+    dsn: str, user: Any, starts: date, ends: date, *, first: bool = False
+) -> Any:
+    [row] = run_sql(
+        dsn,
+        PERIOD_INSERT,
+        {"u": user, "starts": starts, "ends": ends, "first": first},
+    )
+    return row.id
+
+
+def _sqlstate_0073(dsn: str, sql: str, params: dict[str, Any] | None = None) -> str:
+    with pytest.raises(DBAPIError) as caught:
+        run_sql(dsn, sql, params)
+    return str(getattr(caught.value.orig, "sqlstate", ""))
+
+
+def _periods_0073(dsn: str) -> Any:
+    command.upgrade(alembic_config(dsn), "0073")
+    [user] = run_sql(
+        dsn,
+        "INSERT INTO users (username, email, password_hash, display_name)"
+        " VALUES ('nomina', 'nomina@example.com', 'x', 'Nomina') RETURNING id",
+    )
+    return user.id
+
+
+def test_0073_adds_settings_and_periods_and_downgrade_restores_0072(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0072")
+    tables = public_tables(dsn)
+
+    command.upgrade(config, "0073")
+
+    assert version_nums(dsn) == ["0073"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == set(PAYROLL_PERIOD_TABLES)
+    [row] = run_sql(dsn, "SELECT * FROM payroll_settings")
+    assert row.singleton is True
+    assert row.payroll_starts_on is None
+    assert row.biweekly_anchor_on == date(2026, 1, 5)
+    assert row.salary_proration_basis == "calendar_days"
+    assert row.version == 1
+    columns = {
+        r.column_name: (r.is_nullable, r.is_generated)
+        for r in run_sql(
+            dsn,
+            "SELECT column_name, is_nullable, is_generated"
+            " FROM information_schema.columns WHERE table_name = 'payroll_periods'",
+        )
+    }
+    assert columns["previous_ends_on"] == ("YES", "ALWAYS")
+    assert columns["total_amount"] == ("YES", "NEVER")
+    assert columns["pay_frequency"] == ("NO", "NEVER")
+    foreign_keys = {
+        r.conname: r.confdeltype
+        for r in run_sql(
+            dsn,
+            "SELECT conname, confdeltype FROM pg_constraint"
+            " WHERE conrelid = 'payroll_periods'::regclass AND contype = 'f'",
+        )
+    }
+    assert len(foreign_keys) == 4
+    assert set(foreign_keys.values()) == {b"r"}
+    triggers = {
+        r.tgname
+        for r in run_sql(dsn, "SELECT tgname FROM pg_trigger WHERE NOT tgisinternal")
+    }
+    assert triggers >= {
+        "payroll_periods_no_finalized_change",
+        "payroll_periods_no_truncate",
+    }
+
+    command.downgrade(config, "0072")
+
+    assert version_nums(dsn) == ["0072"]
+    assert public_tables(dsn) == tables
+    assert not run_sql(
+        dsn, "SELECT 1 FROM pg_proc WHERE proname = 'payroll_periods_guard'"
+    )
+    assert [d for d in metadata_diff(dsn) if not _of_0073(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+@pytest.mark.parametrize(
+    ("change", "constraint"),
+    [
+        ("biweekly_anchor_on = '2026-01-06'", "ck_payroll_settings_anchor_monday"),
+        (
+            "salary_proration_basis = 'hours'",
+            "ck_payroll_settings_proration_basis_valid",
+        ),
+        ("singleton = false", "ck_payroll_settings_singleton_true"),
+    ],
+)
+def test_0073_settings_checks(fresh_database_url, change, constraint):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "0073")
+
+    with pytest.raises(DBAPIError) as caught:
+        run_sql(dsn, f"UPDATE payroll_settings SET {change}")  # noqa: S608
+
+    assert constraint in str(caught.value.orig)
+
+
+def test_0073_a_second_settings_row_is_refused(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "0073")
+
+    assert (
+        _sqlstate_0073(dsn, "INSERT INTO payroll_settings (singleton) VALUES (true)")
+        == "23505"
+    )
+
+
+def test_0073_p2_refuses_an_overlap(fresh_database_url):
+    dsn = fresh_database_url
+    user = _periods_0073(dsn)
+    _period_0073(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
+    _period_0073(dsn, user, date(2031, 1, 13), date(2031, 1, 19))
+
+    # A new start and a new end: neither natural key answers, and the foreign
+    # key is an after-statement check, so the EXCLUDE refuses it first.
+    with pytest.raises(DBAPIError) as caught:
+        _period_0073(dsn, user, date(2031, 1, 15), date(2031, 1, 25))
+
+    assert getattr(caught.value.orig, "sqlstate", "") == "23P01"
+    assert "ex_payroll_periods_tutor_overlap" in str(caught.value.orig)
+
+
+def test_0073_p3_refuses_a_gap_and_a_second_first_period(fresh_database_url):
+    dsn = fresh_database_url
+    user = _periods_0073(dsn)
+    _period_0073(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
+
+    # 2031-01-14 needs a period ending on 2031-01-13: none does.
+    gap = _sqlstate_0073(
+        dsn,
+        PERIOD_INSERT,
+        {
+            "u": user,
+            "starts": date(2031, 1, 14),
+            "ends": date(2031, 1, 19),
+            "first": False,
+        },
+    )
+    second = _sqlstate_0073(
+        dsn,
+        PERIOD_INSERT,
+        {
+            "u": user,
+            "starts": date(2031, 2, 3),
+            "ends": date(2031, 2, 9),
+            "first": True,
+        },
+    )
+
+    assert gap == "23503"
+    assert second == "23505"
+    # The generated column can't be written, so a first period has no previous
+    # and any other row has exactly one.
+    assert (
+        _sqlstate_0073(
+            dsn,
+            "UPDATE payroll_periods SET previous_ends_on = '2031-01-01'",
+        )
+        == "428C9"
+    )
+    [row] = run_sql(dsn, "SELECT previous_ends_on FROM payroll_periods")
+    assert row.previous_ends_on is None
+
+
+def test_0073_a_mid_chain_period_cannot_be_deleted(fresh_database_url):
+    dsn = fresh_database_url
+    user = _periods_0073(dsn)
+    first = _period_0073(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
+    last = _period_0073(dsn, user, date(2031, 1, 13), date(2031, 1, 19))
+
+    state = _sqlstate_0073(
+        dsn, "DELETE FROM payroll_periods WHERE id = :id", {"id": first}
+    )
+
+    assert state == "23001"  # restrict_violation, the #105 finding
+    run_sql(dsn, "DELETE FROM payroll_periods WHERE id = :id", {"id": last})
+    run_sql(dsn, "DELETE FROM payroll_periods WHERE id = :id", {"id": first})
+
+
+@pytest.mark.parametrize(
+    ("change", "constraint"),
+    [
+        ("ends_on = '2031-01-01'", "dates_ordered"),
+        ("pay_frequency = 'daily'", "pay_frequency_valid"),
+        ("status = 'paid'", "status_valid"),
+        ("status = 'prepared'", "prepared_fields"),
+        ("prepared_at = now()", "prepared_fields"),
+        ("status = 'finalized'", "finalized_fields"),
+        ("total_amount = 10", "finalized_fields"),
+        ("finalized_at = now()", "finalized_fields"),
+    ],
+)
+def test_0073_period_checks(fresh_database_url, change, constraint):
+    dsn = fresh_database_url
+    user = _periods_0073(dsn)
+    _period_0073(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
+
+    with pytest.raises(DBAPIError) as caught:
+        run_sql(dsn, f"UPDATE payroll_periods SET {change}")  # noqa: S608
+
+    assert f"ck_payroll_periods_{constraint}" in str(caught.value.orig)
+
+
+def _finalize(dsn: str, period: Any, user: Any, total: str = "10.00") -> None:
+    run_sql(
+        dsn,
+        "UPDATE payroll_periods SET status = 'prepared', prepared_at = now(),"
+        " prepared_by_user_id = :u WHERE id = :id",
+        {"id": period, "u": user},
+    )
+    run_sql(
+        dsn,
+        "UPDATE payroll_periods SET status = 'finalized', finalized_at = now(),"
+        " finalized_by_user_id = :u, total_amount = :total WHERE id = :id",
+        {"id": period, "u": user, "total": Decimal(total)},
+    )
+
+
+def test_0073_the_guard_keeps_a_finalized_row(fresh_database_url):
+    dsn = fresh_database_url
+    user = _periods_0073(dsn)
+    period = _period_0073(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
+
+    _finalize(dsn, period, user)  # into finalized passes
+
+    params = {"id": period}
+    assert (
+        _sqlstate_0073(
+            dsn,
+            "UPDATE payroll_periods SET total_amount = 11 WHERE id = :id",
+            params,
+        )
+        == "42501"
+    )
+    assert _sqlstate_0073(
+        dsn, "DELETE FROM payroll_periods WHERE id = :id", params
+    ) == ("42501")
+    # A lock writes nothing, so a payment can still take it; and the next
+    # period can still point at it.
+    assert run_sql(
+        dsn, "SELECT id FROM payroll_periods WHERE id = :id FOR UPDATE", params
+    )
+    _period_0073(dsn, user, date(2031, 1, 13), date(2031, 1, 19))
+
+
+def test_0073_a_negative_total_is_refused(fresh_database_url):
+    dsn = fresh_database_url
+    user = _periods_0073(dsn)
+    period = _period_0073(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
+
+    with pytest.raises(DBAPIError) as caught:
+        _finalize(dsn, period, user, "-0.01")
+
+    assert "ck_payroll_periods_total_not_negative" in str(caught.value.orig)
+
+
+def test_0073_the_table_is_never_truncated(fresh_database_url):
+    dsn = fresh_database_url
+    _periods_0073(dsn)
+
+    assert _sqlstate_0073(dsn, "TRUNCATE payroll_periods") == "42501"
+
+
+def test_0073_a_tutor_with_periods_cannot_be_deleted(fresh_database_url):
+    dsn = fresh_database_url
+    user = _periods_0073(dsn)
+    _period_0073(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
+
+    assert (
+        _sqlstate_0073(dsn, "DELETE FROM users WHERE id = :u", {"u": user}) == "23001"
+    )

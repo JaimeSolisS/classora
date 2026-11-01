@@ -12,8 +12,16 @@ correction is a delete and a new insert. :func:`add_pay_terms` and
 two versions. They insert in a savepoint and map the unique key by name, so a
 concurrent identical insert is the same ``409``. :func:`delete_pay_terms` and
 :func:`delete_compensation_rate` map the guard's 42501 (a finalized line uses
-the row) to ``409 …_in_use``. #106 adds its frequency refusal to the terms
-insert and delete here (#105 E7).
+the row) to ``409 …_in_use``.
+
+**Terms against generated periods** (#106 F): the terms insert and delete take
+the advisory lock of :mod:`~app.modules.payroll.period_rows` first, then
+evaluate the terms as they would be after the write
+(:func:`~app.modules.payroll.periods.terms_refusal`): ``422
+effective_from_inside_generated_period`` and ``422
+effective_from_before_first_period``, before ``409 pay_terms_exists`` and
+``409 pay_terms_in_use``. A tutor with no periods has neither. Rate versions
+aren't affected.
 
 **Lookups.** :func:`rate_in_effect` and :func:`terms_in_effect` return the
 version with the greatest ``effective_from <= on`` (W3.4), or ``None`` when
@@ -39,6 +47,8 @@ from app.core.money import Money, Rate
 from app.modules.payroll.errors import (
     CompensationRateExistsError,
     CompensationRateInUseError,
+    EffectiveFromBeforeFirstPeriodError,
+    EffectiveFromInsideGeneratedPeriodError,
     PayTermsExistsError,
     PayTermsInUseError,
 )
@@ -49,6 +59,12 @@ from app.modules.payroll.models import (
     CompensationRate,
     TutorPayTerms,
 )
+from app.modules.payroll.period_rows import (
+    generated_periods,
+    lock_payroll_periods,
+    terms_versions,
+)
+from app.modules.payroll.periods import TermsVersion, terms_refusal
 from app.modules.payroll.schemas import (
     ClassKind,
     CompensationRateItem,
@@ -61,11 +77,30 @@ from app.modules.payroll.schemas import (
     RateModel,
     TermsInEffect,
 )
+from app.modules.payroll.settings import payroll_starts_on
 
 INSUFFICIENT_PRIVILEGE: Final = "42501"
 
 
 # --- Writes --------------------------------------------------------------------------
+
+
+async def _refuse_against_periods(
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID,
+    terms_after: Sequence[TermsVersion],
+) -> None:
+    """The #106 refusals, under the advisory lock."""
+    periods = await generated_periods(session, tutor_user_id)
+    if not periods:
+        return
+    floor = await payroll_starts_on(session)
+    # Locked once a period exists (#106 E6), so never NULL here.
+    refusal = terms_refusal(terms_after, periods, floor or periods[0].starts_on)
+    if refusal == "inside_generated_period":
+        raise EffectiveFromInsideGeneratedPeriodError()
+    if refusal == "before_first_period":
+        raise EffectiveFromBeforeFirstPeriodError()
 
 
 async def add_pay_terms(
@@ -76,7 +111,18 @@ async def add_pay_terms(
     pay_frequency: str | None,
     salary_amount: Money | None,
 ) -> uuid.UUID:
-    """A new terms version; ``409 pay_terms_exists`` on a taken date."""
+    """A new terms version: the #106 refusals, then ``409 pay_terms_exists``
+    on a taken date."""
+    await lock_payroll_periods(session)
+    before = await terms_versions(session, tutor_user_id)
+    await _refuse_against_periods(
+        session,
+        tutor_user_id,
+        [
+            *(v for v in before if v.effective_from != effective_from),
+            TermsVersion(effective_from, pay_frequency),
+        ],
+    )
     terms = TutorPayTerms(
         tutor_user_id=tutor_user_id,
         effective_from=effective_from,
@@ -126,9 +172,10 @@ async def add_compensation_rate(
 async def delete_pay_terms(
     session: AsyncSession, tutor_user_id: uuid.UUID, terms_id: uuid.UUID
 ) -> None:
-    """Delete a terms version of this tutor, whatever its date (#105 E4);
-    ``404`` for a row of another tutor, ``409 pay_terms_in_use`` for a used
-    one."""
+    """Delete a terms version of this tutor, whatever its date (#105 E4):
+    ``404`` for a row of another tutor, the #106 refusals, then ``409
+    pay_terms_in_use`` for a used one."""
+    await lock_payroll_periods(session)
     terms = await session.scalar(
         select(TutorPayTerms)
         .where(
@@ -139,6 +186,12 @@ async def delete_pay_terms(
     )
     if terms is None:
         raise RecordNotFoundError()
+    before = await terms_versions(session, tutor_user_id)
+    await _refuse_against_periods(
+        session,
+        tutor_user_id,
+        [v for v in before if v.effective_from != terms.effective_from],
+    )
     await session.delete(terms)
     try:
         await session.flush()

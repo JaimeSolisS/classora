@@ -22768,6 +22768,118 @@
         }
       }
     },
+    "/api/v1/payroll/settings": {
+      "get": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Read Payroll Settings",
+        "description": "The payroll start date (`null`: payroll is off), the biweekly anchor,\nthe salary proration basis, whether the first two are locked because\nperiods exist, and the settings' version.",
+        "operationId": "read_payroll_settings_api_v1_payroll_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollSettingsDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Change Payroll Settings",
+        "description": "Set the payroll start date (any date, past included; `null` keeps\npayroll off), the biweekly anchor and the salary proration basis. Sending\nthe current values changes nothing (the version is still checked).\nPeriods open at the next daily run, not now. Once periods exist the start\ndate is locked, and once biweekly periods exist the anchor is.",
+        "operationId": "change_payroll_settings_api_v1_payroll_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayrollSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollSettingsDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The settings changed since they were loaded (version_conflict); or periods exist, so the start date can't change (payroll_start_locked); or biweekly periods exist, so the anchor can't change (biweekly_anchor_locked).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/overdue-accounts": {
       "get": {
         "tags": [
@@ -47896,6 +48008,97 @@
         "title": "PaymentReversed",
         "description": "``201`` of a payment reversal (#100 C3): the reversal, the payment\nafterwards, the allocations released and the account credit afterwards\n(the payment's remainder no longer counts)."
       },
+      "PayrollSettingsDetail": {
+        "properties": {
+          "payroll_starts_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payroll Starts On"
+          },
+          "biweekly_anchor_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Biweekly Anchor On"
+          },
+          "salary_proration_basis": {
+            "$ref": "#/components/schemas/ProrationBasis"
+          },
+          "start_locked": {
+            "type": "boolean",
+            "title": "Start Locked"
+          },
+          "anchor_locked": {
+            "type": "boolean",
+            "title": "Anchor Locked"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "payroll_starts_on",
+          "biweekly_anchor_on",
+          "salary_proration_basis",
+          "start_locked",
+          "anchor_locked",
+          "version",
+          "updated_at"
+        ],
+        "title": "PayrollSettingsDetail",
+        "description": "``GET /api/v1/payroll/settings`` (#106 B1). ``payroll_starts_on`` is a\ncenter-local date: ``null`` means payroll is off and no period opens.\n``start_locked`` is true once any period exists and ``anchor_locked`` once\na biweekly one does (#106 E6, E9)."
+      },
+      "PayrollSettingsUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "payroll_starts_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payroll Starts On"
+          },
+          "biweekly_anchor_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Biweekly Anchor On"
+          },
+          "salary_proration_basis": {
+            "$ref": "#/components/schemas/ProrationBasis"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "payroll_starts_on",
+          "biweekly_anchor_on",
+          "salary_proration_basis"
+        ],
+        "title": "PayrollSettingsUpdate",
+        "description": "``PATCH /api/v1/payroll/settings`` (#106 B2). All keys are required;\n``payroll_starts_on: null`` keeps payroll off. Past dates are allowed."
+      },
       "PayrollTutorItem": {
         "properties": {
           "user_id": {
@@ -50161,6 +50364,13 @@
           "name"
         ],
         "title": "ProgressSubject"
+      },
+      "ProrationBasis": {
+        "type": "string",
+        "enum": [
+          "calendar_days",
+          "weekdays"
+        ]
       },
       "QualificationCreate": {
         "properties": {

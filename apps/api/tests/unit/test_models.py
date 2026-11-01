@@ -170,6 +170,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "withdrawals",
         "tutor_pay_terms",
         "compensation_rates",
+        "payroll_settings",
+        "payroll_periods",
         "number_series",
         "account_tokens",
         "registration_requests",
