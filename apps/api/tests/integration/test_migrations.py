@@ -72,7 +72,9 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0073"
+HEAD = "0074"
+MAKEUP_COLUMN = "makeup_of_session_id"
+MAKEUP_INDEX = "uq_class_sessions_makeup_of_session_id"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -4731,9 +4733,27 @@ def _of_0073(diff: Any) -> bool:
     return diff[0] == "add_index" and diff[1].table.name in PAYROLL_PERIOD_TABLES
 
 
+def _of_0074(diff: Any) -> bool:
+    """A metadata difference that revision 0074 adds: the makeup link's
+    column, foreign key and index (#423 A; CHECKs are not compared)."""
+    if diff[0] == "add_column":
+        return (diff[2], diff[3].name) == ("class_sessions", MAKEUP_COLUMN)
+    if diff[0] == "add_fk":
+        return (diff[1].parent.name, *diff[1].column_keys) == (
+            "class_sessions",
+            MAKEUP_COLUMN,
+        )
+    return diff[0] == "add_index" and diff[1].name == MAKEUP_INDEX
+
+
+def _of_0073_on(diff: Any) -> bool:
+    """A metadata difference that revision 0073 or a later one adds."""
+    return _of_0073(diff) or _of_0074(diff)
+
+
 def _of_0072_on(diff: Any) -> bool:
     """A metadata difference that revision 0072 or a later one adds."""
-    return _of_0072(diff) or _of_0073(diff)
+    return _of_0072(diff) or _of_0073_on(diff)
 
 
 def _of_0071_on(diff: Any) -> bool:
@@ -4914,11 +4934,14 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         "cohort_id": ("uuid", "YES", None, None),
         # 0048 (#67 A1)
         "first_confirmed_at": ("timestamp with time zone", "YES", None, None),
+        # 0074 (#423 A1)
+        MAKEUP_COLUMN: ("uuid", "YES", None, None),
     }
     constraints = _constraints(fresh_database_url, table)
     checks = {
         f"ck_{table}_{name}"
         for name in (
+            "makeup_is_one_off_individual",
             "group_iff_kind",
             "cohort_iff_kind",
             "series_original_start_together",
@@ -4944,6 +4967,7 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         f"fk_{table}_series_id_class_series",
         f"fk_{table}_group_id_class_groups",
         f"fk_{table}_cohort_id_course_cohorts",
+        f"fk_{table}_{MAKEUP_COLUMN}_class_sessions",
     }
     assert set(constraints) == {
         f"pk_{table}",
@@ -4965,6 +4989,8 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         f"ix_{table}_cohort_id_starts_at",
         # 0052 (#301 A1)
         OVERDUE_INDEX,
+        # 0074 (#423 A2)
+        MAKEUP_INDEX,
         "ex_class_sessions_tutor_overlap",
         "ex_class_sessions_room_overlap",
         "uq_class_sessions_series_original_start",
@@ -12939,7 +12965,7 @@ def test_0072_adds_the_compensation_tables_and_downgrade_restores_0071(
     command.upgrade(config, "0072")
 
     assert version_nums(dsn) == ["0072"]
-    assert [d for d in metadata_diff(dsn) if not _of_0073(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0073_on(d)] == []
     assert public_tables(dsn) - tables == set(COMPENSATION_TABLES)
     assert run_sql(dsn, functions, names)[0].n == 4
     assert run_sql(dsn, "SELECT count(*) AS n FROM tutor_pay_terms")[0].n == 0
@@ -13037,7 +13063,7 @@ def test_0073_adds_settings_and_periods_and_downgrade_restores_0072(
     command.upgrade(config, "0073")
 
     assert version_nums(dsn) == ["0073"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0074(d)] == []
     assert public_tables(dsn) - tables == set(PAYROLL_PERIOD_TABLES)
     [row] = run_sql(dsn, "SELECT * FROM payroll_settings")
     assert row.singleton is True
@@ -13082,7 +13108,7 @@ def test_0073_adds_settings_and_periods_and_downgrade_restores_0072(
     assert not run_sql(
         dsn, "SELECT 1 FROM pg_proc WHERE proname = 'payroll_periods_guard'"
     )
-    assert [d for d in metadata_diff(dsn) if not _of_0073(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0073_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -13284,3 +13310,188 @@ def test_0073_a_tutor_with_periods_cannot_be_deleted(fresh_database_url):
     assert (
         _sqlstate_0073(dsn, "DELETE FROM users WHERE id = :u", {"u": user}) == "23001"
     )
+
+
+# --- 0074: the makeup link (#423 A) ---------------------------------------------------
+
+
+def _sqlstate_0074(dsn: str, sql: str, params: dict[str, Any]) -> tuple[str, str]:
+    with pytest.raises(DBAPIError) as caught:
+        run_sql(dsn, sql, params)
+    orig = caught.value.orig
+    return getattr(orig, "sqlstate", ""), str(orig)
+
+
+def _cancelled_0074(dsn: str, subject: uuid.UUID, **values: Any) -> uuid.UUID:
+    return _session_row(
+        dsn,
+        subject,
+        state="cancelled",
+        cancelled_at=datetime(2031, 1, 1, 12, tzinfo=UTC),
+        cancellation_reason="Sin clase",
+        **values,
+    )
+
+
+LINK_0074 = "UPDATE class_sessions SET makeup_of_session_id = :t WHERE id = :id"  # noqa: S105
+
+
+def test_0074_adds_the_link_to_existing_rows_without_touching_them(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0073")
+    world = _cohort_world(dsn)
+    subject = world["subject"]
+    [group] = run_sql(
+        dsn,
+        "INSERT INTO class_groups (name, subject_id, max_students)"
+        " VALUES ('Álgebra', :s, 6) RETURNING id",
+        {"s": subject},
+    )
+    [cohort] = run_sql(dsn, COHORT_INSERT, world)
+    series = _series(dsn, subject)
+    start = datetime(2031, 1, 13, 16, tzinfo=UTC)
+    user = _user_row(dsn)
+    _session_row(dsn, subject)
+    _session_row(dsn, subject, kind="group", group_id=group.id)
+    _session_row(dsn, subject, kind="course", cohort_id=cohort.id)
+    _session_row(dsn, subject, series_id=series, original_start=start)
+    _cancelled_0074(dsn, subject)
+    _session_row(
+        dsn,
+        subject,
+        state="completed",
+        tutor_user_id=user,
+        first_confirmed_at=start,
+    )
+    columns = "id, version, updated_at, first_confirmed_at"
+    before = run_sql(
+        dsn,
+        f"SELECT {columns} FROM class_sessions ORDER BY id",  # noqa: S608 (fixed)
+    )
+    audit = "SELECT count(*) AS n FROM audit_events"
+    [audit_before] = run_sql(dsn, audit)
+
+    command.upgrade(config, "0074")
+
+    assert version_nums(dsn) == ["0074"]
+    assert metadata_diff(dsn) == []
+    assert (
+        run_sql(
+            dsn,
+            f"SELECT {columns} FROM class_sessions ORDER BY id",  # noqa: S608 (fixed)
+        )
+        == before
+    )
+    assert len(before) == 6
+    assert (
+        run_sql(
+            dsn, "SELECT 1 FROM class_sessions WHERE makeup_of_session_id IS NOT NULL"
+        )
+        == []
+    )
+    assert run_sql(dsn, audit)[0].n == audit_before.n
+    assert _columns(dsn, "class_sessions")[MAKEUP_COLUMN] == (
+        "uuid",
+        "YES",
+        None,
+        None,
+    )
+    [foreign_key] = run_sql(
+        dsn,
+        "SELECT confdeltype, condeferrable FROM pg_constraint"
+        " WHERE conname = 'fk_class_sessions_makeup_of_session_id_class_sessions'",
+    )
+    assert (foreign_key.confdeltype, foreign_key.condeferrable) == (b"r", False)
+    [index] = run_sql(
+        dsn, "SELECT indexdef FROM pg_indexes WHERE indexname = :n", {"n": MAKEUP_INDEX}
+    )
+    assert "CREATE UNIQUE INDEX" in index.indexdef
+    assert "(makeup_of_session_id IS NOT NULL)" in index.indexdef
+    assert "state" in index.indexdef and "'cancelled'" in index.indexdef
+
+    command.downgrade(config, "0073")
+
+    assert version_nums(dsn) == ["0073"]
+    assert MAKEUP_COLUMN not in _columns(dsn, "class_sessions")
+    assert not run_sql(
+        dsn,
+        "SELECT indexname FROM pg_indexes WHERE indexname = :n",
+        {"n": MAKEUP_INDEX},
+    )
+    assert [d for d in metadata_diff(dsn) if not _of_0074(d)] == []
+    assert run_sql(dsn, "SELECT count(*) AS n FROM class_sessions")[0].n == 6
+
+    command.upgrade(config, "head")
+
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_0074_the_database_keeps_one_live_makeup(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "0074")
+    subject = _subject_row(dsn)
+    target = _cancelled_0074(dsn, subject)
+
+    gone = _cancelled_0074(dsn, subject, makeup_of_session_id=target)
+    live = _session_row(dsn, subject, makeup_of_session_id=target)
+
+    state, message = _sqlstate_0074(
+        dsn,
+        LINK_0074,
+        {"t": target, "id": _session_row(dsn, subject)},
+    )
+    assert state == "23505"
+    assert MAKEUP_INDEX in message
+    assert gone != live
+    # Cancelling the live one frees the target.
+    run_sql(
+        dsn,
+        "UPDATE class_sessions SET state = 'cancelled', cancelled_at = now(),"
+        " cancellation_reason = 'Sin clase' WHERE id = :id",
+        {"id": live},
+    )
+    _session_row(dsn, subject, makeup_of_session_id=target)
+
+
+def test_0074_only_a_one_off_individual_session_takes_the_link(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "0074")
+    subject = _subject_row(dsn)
+    target = _cancelled_0074(dsn, subject)
+    [group] = run_sql(
+        dsn,
+        "INSERT INTO class_groups (name, subject_id, max_students)"
+        " VALUES ('Álgebra', :s, 6) RETURNING id",
+        {"s": subject},
+    )
+    group_row = _session_row(dsn, subject, kind="group", group_id=group.id)
+    series_row = _session_row(
+        dsn,
+        subject,
+        series_id=_series(dsn, subject),
+        original_start=datetime(2031, 1, 13, 16, tzinfo=UTC),
+    )
+
+    for row in (group_row, series_row):
+        state, message = _sqlstate_0074(dsn, LINK_0074, {"t": target, "id": row})
+        assert state == "23514"
+        assert "ck_class_sessions_makeup_is_one_off_individual" in message
+
+
+def test_0074_a_linked_target_cannot_be_deleted(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "0074")
+    subject = _subject_row(dsn)
+    target = _cancelled_0074(dsn, subject)
+    _session_row(dsn, subject, makeup_of_session_id=target)
+
+    state, message = _sqlstate_0074(
+        dsn, "DELETE FROM class_sessions WHERE id = :id", {"id": target}
+    )
+
+    assert state == "23001"  # restrict_violation, the #105 finding
+    assert "fk_class_sessions_makeup_of_session_id_class_sessions" in message

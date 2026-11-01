@@ -205,6 +205,8 @@ export const OCCURRENCE_SESSION: ClassSessionDetail = {
   cohort_id: null,
   pending_change_request_id: null,
   reassignment: null,
+  makeup_of_session_id: null,
+  makeup: null,
 };
 
 export const SERIES_EDITED: ClassSeriesEdited = {

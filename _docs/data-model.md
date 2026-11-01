@@ -1232,9 +1232,11 @@ The PDF is rendered synchronously and streamed, never stored. It states it is no
 
 A nullable self-reference (E5), `ON DELETE RESTRICT`, set by staff with `schedule.manage` when creating a one-off individual session.
 
-- The target is `cancelled` with `makeup_allowed`, and the new session starts by `makeup_until` (App).
-- **Index:** a partial unique index on `(makeup_of_session_id) WHERE makeup_of_session_id IS NOT NULL`: one makeup per cancelled session. It also serves the `RESTRICT` check.
-- `NULL` keeps every current behavior. **Billing doesn't read it** (ADR-0006 E3).
+- **Create rules (App, #423 E2, E3):** the target is a `cancelled` `individual` session, one-off or occurrence, with `makeup_allowed`; the new session has the target's student and subject and starts by `makeup_until`. The tutor, room and duration are free. The rules run at create only: a later move keeps the link, and no route edits it (#423 E6).
+- **Deadline (#423 E4):** an approved cancellation request's stored `final_makeup_until`; otherwise the target's `starts_at` + `makeup_window_days` of the policy in force at `cancelled_at`. Inclusive, with no lower bound.
+- **Index:** a partial unique index on `(makeup_of_session_id) WHERE makeup_of_session_id IS NOT NULL AND state <> 'cancelled'`: one **live** makeup per cancelled session. A cancelled makeup keeps its link as history (#423 E5).
+- **CHECK `makeup_is_one_off_individual`:** the link needs `kind = 'individual' AND series_id IS NULL`.
+- `NULL` keeps every current behavior, and existing rows stay `NULL` (no backfill, #423 E8). **Billing doesn't read it** (ADR-0006 E3).
 
 ## 12. Expense tables
 

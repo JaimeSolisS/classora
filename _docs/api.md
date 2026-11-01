@@ -53,7 +53,7 @@ architecture §4.3 step 7); implemented by M1-09 in `apps/api/app/core/errors.py
 | `detail`     | no     | A fixed, safe sentence. Never built from submitted values. |
 | `errors`     | no     | Field errors (422): a list of `{path, code, message}`. |
 | `conflicts`  | no     | Scheduling conflicts (`409 scheduling_conflict`, ADR-0005): a list of `{code, severity, details}`, `severity` `hard` or `soft` (see Class sessions). |
-| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10), `already_enrolled` `{enrollment_id}` (M4-11); `closeout_attendance_incomplete` `{missing_student_ids: [ids]}` (a list of ids, M5-10) and `session_not_closable` `{state}` (M5-10); `closeout_review_route_required` `{review_path}` (M5-11); `progress_report_exists` `{report_id}` and `progress_report_review_route_required` `{review_path}` (M5-16); `progress_report_schedule_exists` `{schedule_id}` (M5-16c); `service_price_exists` `{service_price_id}` (M6-04). Never record data. |
+| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10), `already_enrolled` `{enrollment_id}` (M4-11); `closeout_attendance_incomplete` `{missing_student_ids: [ids]}` (a list of ids, M5-10) and `session_not_closable` `{state}` (M5-10); `closeout_review_route_required` `{review_path}` (M5-11); `progress_report_exists` `{report_id}` and `progress_report_review_route_required` `{review_path}` (M5-16); `progress_report_schedule_exists` `{schedule_id}` (M5-16c); `service_price_exists` `{service_price_id}` (M6-04); `makeup_already_scheduled` `{class_session_id}` (M7-04a). Never record data. |
 
 - A field error's `path` is the location as a list of strings and integers
   (for example `["body", "items", 0, "amount"]`), `code` is the Pydantic error
@@ -130,6 +130,7 @@ Codes in use today:
 | `template_unknown` / `template_inactive` | 422 | `POST /api/v1/cohorts` with an unknown or an inactive course template; on `["body","template_id"]` (see Course cohorts). |
 | `subject_not_in_template` | 422 | `POST /api/v1/cohorts` with a subject that isn't one of the template snapshot's subjects; on `["body","subject_id"]`. |
 | `too_many_occurrences` | 422 | `POST /api/v1/cohorts` whose weekly rule can't fit the template's sessions in 200 occurrences around the known closures; on `["body","recurrence"]`. |
+| `makeup_already_scheduled` | 409 | `POST /api/v1/class-sessions` with a `makeup_of_session_id` whose target already has a live makeup (`details.class_session_id`, absent if the unique index caught a race); see Class sessions, "The makeup link". |
 | `class_session_not_substitutable` | 409 | `POST /api/v1/class-sessions/{class_session_id}/substitutions` on a session that is not `confirmed` (`details.reason = "state"`, `details.state`), has begun (`started`) or already has a pending substitution (`substitution_pending`, `details.substitution_id`); see Substitutions. |
 | `substitution_no_longer_valid` | 409 | The substitute accepts a substitution whose session is no longer `confirmed` with the original tutor at the offered times; nothing is written (see Substitutions). |
 | `class_session_not_cancellable` | 409 | `POST /api/v1/class-sessions/{class_session_id}/cancel` on a session that is `completed`, `cancelled` or `skipped_closure` (`details.reason = "state"`, `details.state`) or has begun (`started`); see Class sessions, "Cancelling a session". |
@@ -2169,7 +2170,7 @@ a tutor. Finance staff, tutors, students and guardians don't hold it.
 | `POST /api/v1/class-sessions` | `require("schedule.manage")` (Owner, Administrator); an `override` also needs `schedule.override` | Body below. `201` with `ClassSessionDetail` plus `warnings` (the workload warnings below; `[]` without a tutor). |
 | `POST /api/v1/class-sessions/suggestions` | `require("schedule.manage")` (Owner, Administrator) | Read-only: free times for the same session (below). `200` with `SlotSuggestions`. A `GET` on the path is `405`. |
 | `GET /api/v1/class-sessions?from=…&to=…` | `require("schedule.view")` (same four roles) | The calendar's range read (#57), below. |
-| `GET /api/v1/class-sessions/{class_session_id}` | `require("schedule.view")` (Owner, Administrator, Academic coordinator, Finance staff) | `ClassSessionDetail`; `404 not_found` for an unknown id. Every holder sees every session and its overrides (no record policy for staff). At most 7 statements. |
+| `GET /api/v1/class-sessions/{class_session_id}` | `require("schedule.view")` (Owner, Administrator, Academic coordinator, Finance staff) | `ClassSessionDetail`; `404 not_found` for an unknown id. Every holder sees every session and its overrides (no record policy for staff). At most 7 statements, plus 3 for a cancelled session's `makeup` block. |
 | `GET /api/v1/schedule/tutor-options?q=…&limit=…` | `require("schedule.view")` (same four roles) | The calendar's tutor filter (#57), below. |
 | `GET /api/v1/tutor-suggestions?subject_id=…&starts_at=…&ends_at=…` | `require("schedule.assign")` (Owner, Administrator, Academic coordinator) | The eligible tutors for a new slot (#51), below. `200` with `TutorSuggestionList`. |
 | `GET /api/v1/class-sessions/{class_session_id}/replacement-tutors` | `require("schedule.assign")` (same three roles) | Replacement tutors for a session, never its current tutor (#51), below. |
@@ -2184,7 +2185,8 @@ a tutor. Finance staff, tutors, students and guardians don't hold it.
  "tutor_user_id": "…" | null, "classroom_id": "…" | null,
  "starts_at": "2026-11-10T16:00:00-06:00", "ends_at": "2026-11-10T17:00:00-06:00",
  "override": {"codes": ["outside_operating_hours"], "reason": "…"} | null,
- "respond_by": "2026-11-09T12:00:00-06:00" | null}
+ "respond_by": "2026-11-09T12:00:00-06:00" | null,
+ "makeup_of_session_id": "<cancelled session id>" | null}
 ```
 
 `starts_at`/`ends_at` are instants with an offset; responses give them in
@@ -2205,7 +2207,38 @@ session; `is_exception` marks an occurrence edited apart from its series
 `conflict` (informational, kept after it leaves `conflict`; `[]` otherwise).
 `group_id` is the tutoring group of a `group` session (M4-11), `null`
 otherwise; `cohort_id` the course cohort of a `course` session (M4-20),
-`null` otherwise.
+`null` otherwise. `makeup_of_session_id` and `makeup` are described under
+"The makeup link".
+
+**The makeup link (M7-04a, #423):** `makeup_of_session_id` records that the
+new session makes up a cancelled one, for the makeup pay rule. Absent or
+`null`, the create behaves as if the field didn't exist. Billing ignores the
+link. The checks run after the references, and one field error on
+`["body","makeup_of_session_id"]`, the first that applies, joins any reference
+errors in the same `422`. `override` can't pass any of them:
+
+1. `makeup_target_unknown`: no such session (never `404`);
+2. `makeup_target_not_cancelled`: any state but `cancelled`;
+3. `makeup_target_not_individual`: a group or course session;
+4. `makeup_not_allowed`: the cancellation's outcome allows no makeup;
+5. `makeup_student_mismatch`: `student_id` isn't the target's student;
+6. `makeup_subject_mismatch`: `subject_id` isn't the target's;
+7. `makeup_window_passed`: the session starts after the deadline. An approved
+   cancellation request has a stored deadline; any other cancelled session
+   has its start plus `makeup_window_days` of the policy in force at
+   `cancelled_at`. The deadline itself passes, and a makeup may fall before
+   the missed slot.
+
+After the offer deadline check, a target with a live makeup gives `409
+makeup_already_scheduled`; a cancelled makeup no longer counts and keeps its
+link. The rules run at create only: moving a makeup later keeps the link, and
+no route edits it. Nothing but this route sets the link (`PATCH` and the
+suggestions refuse the key).
+
+In `ClassSessionDetail`, `makeup_of_session_id` is the target, `null` on an
+ordinary session. `makeup` is `null` unless the session is `cancelled`;
+otherwise `{allowed, until | null, session_id | null}`, with the deadline and
+the live makeup.
 
 **Order of the create:**
 
@@ -2231,8 +2264,10 @@ otherwise; `cohort_id` the course cohort of a `course` session (M4-20),
    (the subject or its level; `subject_id`); `tutor_unknown` (no such user,
    or not a tutor), `tutor_inactive` (any state but `active`, a pending
    invitee included; `tutor_user_id`); `classroom_unknown`,
-   `classroom_inactive` (`classroom_id`); then `422` for `respond_by`
-   (`respond_by_requires_tutor` without a tutor, `respond_by_invalid`; M4-07);
+   `classroom_inactive` (`classroom_id`); then the `makeup_of_session_id`
+   refusal joins them (M7-04a, "The makeup link"); then `422` for `respond_by`
+   (`respond_by_requires_tutor` without a tutor, `respond_by_invalid`; M4-07),
+   then `409 makeup_already_scheduled`;
 7. every conflict check below, then the override decision (below): `409
    scheduling_conflict` with **all** of them, hard first, then in this
    table's order, unless there is none or the override covers them;

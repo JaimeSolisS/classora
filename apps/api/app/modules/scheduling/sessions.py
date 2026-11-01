@@ -17,10 +17,12 @@ from app.core.authz import RecordNotFoundError
 from app.core.models import ensure_version
 from app.modules.scheduling.errors import (
     InvalidSessionTransitionError,
+    MakeupAlreadyScheduledError,
     SessionOverlapError,
 )
 from app.modules.scheduling.models import (
     CANCELLATION_REASON_MAX_LENGTH,
+    MAKEUP_LIVE_UNIQUE,
     ROOM_OVERLAP_CONSTRAINT,
     TUTOR_OVERLAP_CONSTRAINT,
     ClassSession,
@@ -37,8 +39,9 @@ TIME_ZONE_DEPENDENCY: Final = "scheduling.class_sessions"
 
 async def flush_class_sessions(session: AsyncSession) -> None:
     """Flush; an exclusion-constraint violation raises
-    :class:`SessionOverlapError` (``tutor_overlap`` | ``room_overlap``).
-    Any other integrity error is re-raised as is."""
+    :class:`SessionOverlapError` (``tutor_overlap`` | ``room_overlap``), and
+    a second live makeup raises :class:`MakeupAlreadyScheduledError` (#423
+    B6). Any other integrity error is re-raised as is."""
     try:
         await session.flush()
     except IntegrityError as exc:
@@ -47,6 +50,8 @@ async def flush_class_sessions(session: AsyncSession) -> None:
             raise SessionOverlapError("tutor_overlap") from None
         if ROOM_OVERLAP_CONSTRAINT in message:
             raise SessionOverlapError("room_overlap") from None
+        if MAKEUP_LIVE_UNIQUE in message:
+            raise MakeupAlreadyScheduledError() from None
         raise
 
 

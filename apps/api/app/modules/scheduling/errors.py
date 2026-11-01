@@ -605,6 +605,29 @@ class AttendanceCorrectedError(AppError):
         super().__init__(details={"student_id": student_id})
 
 
+# --- The makeup link (#423 B5) --------------------------------------------------------
+
+
+class MakeupAlreadyScheduledError(AppError):
+    """``409 makeup_already_scheduled`` (#423 B5, E5): the cancelled session
+    has a live makeup. ``details`` is ``{"class_session_id": <the makeup>}``,
+    absent from the index backstop: the failed transaction can't read the
+    other row (the ``tutor_overlap`` race's ``[]``)."""
+
+    status = 409
+    code = "makeup_already_scheduled"
+    detail = "This cancelled session already has a makeup."
+
+    def __init__(self, class_session_id: uuid.UUID | None = None) -> None:
+        super().__init__(
+            details=(
+                None
+                if class_session_id is None
+                else {"class_session_id": str(class_session_id)}
+            )
+        )
+
+
 # --- Session completion (#77 B1) ------------------------------------------------------
 
 

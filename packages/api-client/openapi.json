@@ -8756,7 +8756,7 @@
             }
           },
           "409": {
-            "description": "The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is created. With a tutor, a session that has already begun can't be offered (class_session_not_offerable, details.reason = started).",
+            "description": "The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is created. With a tutor, a session that has already begun can't be offered (class_session_not_offerable, details.reason = started). A cancelled session has one live makeup (makeup_already_scheduled, details.class_session_id).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -33362,6 +33362,19 @@
             ],
             "title": "Respond By",
             "description": "With a tutor only (#52): an earlier deadline for the tutor's answer, after now and no later than the default (the scheduling policy's response time, but never after the start); truncated to whole minutes. Null or absent: the default."
+          },
+          "makeup_of_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Makeup Of Session Id",
+            "description": "The cancelled session this one makes up (#423): an individual session of the same student and subject, with a makeup allowed, starting by its deadline. Never overridable. Null or absent: an ordinary session."
           }
         },
         "additionalProperties": false,
@@ -33578,6 +33591,30 @@
             ],
             "description": "The newest open reassignment flag (the tutor's availability changed, M4-18); null when there is none."
           },
+          "makeup_of_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Makeup Of Session Id",
+            "description": "The cancelled session this one makes up (#423); null otherwise."
+          },
+          "makeup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionMakeup"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The makeup allowance of a `cancelled` session (#423); null otherwise."
+          },
           "warnings": {
             "items": {
               "$ref": "#/components/schemas/SchedulingWarning"
@@ -33614,6 +33651,8 @@
           "cohort_id",
           "pending_change_request_id",
           "reassignment",
+          "makeup_of_session_id",
+          "makeup",
           "warnings"
         ],
         "title": "ClassSessionCreated",
@@ -33820,6 +33859,30 @@
               }
             ],
             "description": "The newest open reassignment flag (the tutor's availability changed, M4-18); null when there is none."
+          },
+          "makeup_of_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Makeup Of Session Id",
+            "description": "The cancelled session this one makes up (#423); null otherwise."
+          },
+          "makeup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionMakeup"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The makeup allowance of a `cancelled` session (#423); null otherwise."
           }
         },
         "type": "object",
@@ -33848,7 +33911,9 @@
           "group_id",
           "cohort_id",
           "pending_change_request_id",
-          "reassignment"
+          "reassignment",
+          "makeup_of_session_id",
+          "makeup"
         ],
         "title": "ClassSessionDetail",
         "description": "One class session (``GET /api/v1/class-sessions/{id}``)."
@@ -34143,6 +34208,30 @@
             ],
             "description": "The newest open reassignment flag (the tutor's availability changed, M4-18); null when there is none."
           },
+          "makeup_of_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Makeup Of Session Id",
+            "description": "The cancelled session this one makes up (#423); null otherwise."
+          },
+          "makeup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionMakeup"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The makeup allowance of a `cancelled` session (#423); null otherwise."
+          },
           "warnings": {
             "items": {
               "$ref": "#/components/schemas/SchedulingWarning"
@@ -34179,6 +34268,8 @@
           "cohort_id",
           "pending_change_request_id",
           "reassignment",
+          "makeup_of_session_id",
+          "makeup",
           "warnings"
         ],
         "title": "ClassSessionUpdated",
@@ -52763,6 +52854,48 @@
           "display_name"
         ],
         "title": "SessionLogTutor"
+      },
+      "SessionMakeup": {
+        "properties": {
+          "allowed": {
+            "type": "boolean",
+            "title": "Allowed"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until",
+            "description": "The last instant a makeup can start; null when not allowed."
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id",
+            "description": "The live makeup; null when there is none."
+          }
+        },
+        "type": "object",
+        "required": [
+          "allowed",
+          "until",
+          "session_id"
+        ],
+        "title": "SessionMakeup",
+        "description": "Whether a `cancelled` session can be made up (#423 C2)."
       },
       "SessionNoteCreate": {
         "properties": {
