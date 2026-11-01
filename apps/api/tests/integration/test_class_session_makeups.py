@@ -701,6 +701,54 @@ def test_the_reads_of_each_kind_of_session(scene):
     assert read(scene.ctx, target["id"])["makeup"]["session_id"] == made["id"]
 
 
+def test_an_approved_late_cancellation_responds_as_it_reads(scene):
+    decided = late_cancelled(scene)
+
+    body = decided["class_session"]
+    assert body["makeup"] == {"allowed": False, "until": None, "session_id": None}
+    assert body == read(scene.ctx, scene.session["id"])
+
+
+def test_an_approved_exception_responds_as_it_reads(scene):
+    decided = late_cancelled(scene, exception=True, reason="Enfermedad")
+
+    body = decided["class_session"]
+    final = decided["change_request"]["final_outcome"]
+    assert body["makeup"] == {
+        "allowed": True,
+        "until": final["makeup_until"],
+        "session_id": None,
+    }
+    assert body == read(scene.ctx, scene.session["id"])
+
+
+def test_an_approval_reports_the_stored_date_after_a_policy_change(scene):
+    """The stored date differs from the policy at ``cancelled_at``, so a read
+    of the policy branch would show."""
+    request = created(create(scene, scene.guardian))
+    assert request["outcome"]["makeup_until"] == z(scene.start + WINDOW)
+    effective = scene.ctx.tl.now + hours(1)
+    run_sql(
+        scene.url,
+        "INSERT INTO scheduling_policies (effective_from, booking_notice_hours,"
+        " change_notice_hours, response_hours, makeup_after_on_time,"
+        " makeup_after_late, makeup_after_no_show, makeup_window_days)"
+        " VALUES (:at, 24, 24, 48, true, false, false, 90)",
+        {"at": effective},
+    )
+    try:
+        decided = ok(approve(scene, request["id"], at=effective + hours(1)))
+        body = decided["class_session"]
+        assert body["makeup"]["until"] == z(scene.start + WINDOW)
+        assert body == read(scene.ctx, scene.session["id"])
+    finally:
+        run_sql(
+            scene.url,
+            "DELETE FROM scheduling_policies WHERE effective_from = :at",
+            {"at": effective},
+        )
+
+
 def test_a_cancellation_without_a_makeup_reads_as_not_allowed(scene):
     late_cancelled(scene)
 

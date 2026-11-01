@@ -4934,11 +4934,14 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         "cohort_id": ("uuid", "YES", None, None),
         # 0048 (#67 A1)
         "first_confirmed_at": ("timestamp with time zone", "YES", None, None),
+        # 0074 (#423 A1)
+        MAKEUP_COLUMN: ("uuid", "YES", None, None),
     }
     constraints = _constraints(fresh_database_url, table)
     checks = {
         f"ck_{table}_{name}"
         for name in (
+            "makeup_is_one_off_individual",
             "group_iff_kind",
             "cohort_iff_kind",
             "series_original_start_together",
@@ -4964,6 +4967,7 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         f"fk_{table}_series_id_class_series",
         f"fk_{table}_group_id_class_groups",
         f"fk_{table}_cohort_id_course_cohorts",
+        f"fk_{table}_{MAKEUP_COLUMN}_class_sessions",
     }
     assert set(constraints) == {
         f"pk_{table}",
@@ -4985,6 +4989,8 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         f"ix_{table}_cohort_id_starts_at",
         # 0052 (#301 A1)
         OVERDUE_INDEX,
+        # 0074 (#423 A2)
+        MAKEUP_INDEX,
         "ex_class_sessions_tutor_overlap",
         "ex_class_sessions_room_overlap",
         "uq_class_sessions_series_original_start",

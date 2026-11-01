@@ -458,7 +458,6 @@ async def approve_change_request(
             change_request_id=request.id,
             exclude_recipient_ids=requester,
         )
-        detail = await get_class_session(session, row.id)
     else:
         assert request.proposed_starts_at is not None  # noqa: S101 - CHECK
         assert request.proposed_ends_at is not None  # noqa: S101 - CHECK
@@ -507,6 +506,10 @@ async def approve_change_request(
     request.final_makeup_until = final.makeup_until
     await session.flush()
     _record_decision(session, request, decision="approved")
+    if is_cancellation:
+        # After the final outcome is stored, so this is what a read returns:
+        # the makeup block comes from final_makeup_* (#423 C2, C4).
+        detail = await get_class_session(session, row.id)
     return ApprovedChange(
         request=request,
         class_session=detail,
