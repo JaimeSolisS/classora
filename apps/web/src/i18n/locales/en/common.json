@@ -2017,6 +2017,29 @@
       "banner": "Cancelled",
       "bannerWhen": "Cancelled on {{when}}."
     },
+    "makeup": {
+      "heading": "Makeup",
+      "of": "Makeup of",
+      "openCancelled": "Open the cancelled session",
+      "scheduled": "Makeup scheduled",
+      "openMakeup": "Open the makeup",
+      "deadline": "A makeup must start by {{when}} {{zone}}.",
+      "action": "Schedule makeup",
+      "ended": "The makeup window has ended.",
+      "notAllowed": "This cancellation doesn't allow a makeup.",
+      "notice": "Makeup of the cancelled session: {{subject}}, {{when}}.",
+      "mustStartBy": "Must start by {{when}} {{zone}}.",
+      "backToCancelled": "Back to the cancelled session",
+      "plainForm": "Schedule a regular session",
+      "unusable": {
+        "unknown": "This cancelled session wasn't found, so no makeup can be scheduled from it.",
+        "notCancelled": "This session isn't cancelled, so no makeup can be scheduled from it.",
+        "notIndividual": "Only an individual session can be made up.",
+        "notAllowed": "This cancellation doesn't allow a makeup.",
+        "alreadyScheduled": "This cancelled session already has a makeup scheduled.",
+        "windowPassed": "The makeup window for this session has ended."
+      }
+    },
     "requestReview": {
       "title": "Review session request",
       "summary": "Request",

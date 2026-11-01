@@ -276,3 +276,30 @@ export function isStaleSessionError(error: unknown): boolean {
       error.code === 'offer_not_pending')
   );
 }
+
+/** What a cancelled session's page says about its makeup (#436 A1). */
+export type MakeupStatus =
+  | { kind: 'scheduled'; sessionId: string }
+  | { kind: 'available'; until: string }
+  | { kind: 'ended' }
+  | { kind: 'notAllowed' };
+
+/** The status of a cancelled individual session, else null (A1, A2). */
+export function makeupStatus(
+  session: ClassSessionDetail,
+  now: Date,
+): MakeupStatus | null {
+  const { makeup } = session;
+  if (!makeup || session.kind !== 'individual') {
+    return null;
+  }
+  if (!makeup.allowed || !makeup.until) {
+    return { kind: 'notAllowed' };
+  }
+  if (makeup.session_id) {
+    return { kind: 'scheduled', sessionId: makeup.session_id };
+  }
+  return Date.parse(makeup.until) < now.getTime()
+    ? { kind: 'ended' }
+    : { kind: 'available', until: makeup.until };
+}

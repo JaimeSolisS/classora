@@ -86,3 +86,20 @@ export async function readClassSessionViaApi(
   expect(read.status).toBe(200);
   return read.body as { starts_at: string; ends_at: string; version: number };
 }
+
+/** Cancels the session as the center: a makeup stays allowed (#436 D3). */
+export async function cancelClassSessionViaApi(
+  page: Page,
+  id: string,
+  reason: string,
+): Promise<void> {
+  const { version } = await readClassSessionViaApi(page, id);
+  const me = await api(page, '/api/v1/auth/me');
+  expect(me.status).toBe(200);
+  const cancelled = await api(page, `/api/v1/class-sessions/${id}/cancel`, {
+    method: 'POST',
+    json: { version, reason },
+    headers: { 'X-CSRF-Token': csrfTokenOf(me) },
+  });
+  expect(cancelled.status).toBe(200);
+}

@@ -32,6 +32,7 @@ import type {
 // availability changed" with whose and when.
 // #76 G3: the page passes the attendance section for confirmed and
 // completed sessions.
+// #436 A: the page passes the makeup block, under the cancelled banner.
 
 export interface SessionNotice {
   id: number;
@@ -62,6 +63,8 @@ export interface SessionDetailViewProps {
   } | null;
   /** "Cancel session" (#55), or nothing. */
   actions?: ReactNode;
+  /** The makeup block (#436), also on a cancelled session, or nothing. */
+  makeup?: ReactNode;
   /** The substitutions section (#55), or nothing. */
   substitutions?: ReactNode;
   /** The attendance section (#76 G3: confirmed or completed), or nothing. */
@@ -101,6 +104,7 @@ export function SessionDetailView({
   offered,
   series,
   actions,
+  makeup,
   substitutions,
   attendance,
   closeout,
@@ -183,6 +187,7 @@ export function SessionDetailView({
           </p>
         </section>
       ) : null}
+      {makeup}
       {session.reassignment ? (
         <section
           aria-labelledby={`${id}-reassignment`}

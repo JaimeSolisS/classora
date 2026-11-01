@@ -274,6 +274,45 @@ export const CANCELLED_SESSION: ClassSessionDetail = {
   },
 };
 
+/** A far deadline, so these fixtures don't age (#436). */
+const MAKEUP_UNTIL = '2099-06-30T18:00:00Z';
+
+/** A cancelled session that can still be made up (#436). */
+export const MAKEUP_AVAILABLE: ClassSessionDetail = {
+  ...CANCELLED_SESSION,
+  makeup: { allowed: true, until: MAKEUP_UNTIL, session_id: null },
+};
+
+/** The live makeup of `MAKEUP_AVAILABLE`, once scheduled (#436). */
+export const MAKEUP_SESSION: ClassSessionDetail = {
+  ...CONFIRMED_SESSION,
+  id: '00000000-0000-4000-8000-0000000004e9',
+  makeup_of_session_id: CANCELLED_SESSION.id,
+};
+
+export const MAKEUP_SCHEDULED: ClassSessionDetail = {
+  ...CANCELLED_SESSION,
+  makeup: {
+    allowed: true,
+    until: MAKEUP_UNTIL,
+    session_id: MAKEUP_SESSION.id,
+  },
+};
+
+export const MAKEUP_ENDED: ClassSessionDetail = {
+  ...CANCELLED_SESSION,
+  makeup: {
+    allowed: true,
+    until: '2026-01-01T18:00:00Z',
+    session_id: null,
+  },
+};
+
+export const MAKEUP_NOT_ALLOWED: ClassSessionDetail = {
+  ...CANCELLED_SESSION,
+  makeup: { allowed: false, until: null, session_id: null },
+};
+
 // #312 A4/A5: a tutor's note left over from an earlier correction request,
 // after a decision (the API keeps `tutor_note`; the section hides it).
 const LEFTOVER_REVIEW = {

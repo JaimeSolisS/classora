@@ -58,6 +58,7 @@ import {
   type CloseoutSectionState,
 } from './CloseoutSection';
 import { CancelSessionDialog } from './CancelSessionDialog';
+import { MakeupSection } from './MakeupSection';
 import { NotesSection, type NotesSectionState } from './NotesSection';
 import { OfferPanel } from './OfferPanel';
 import {
@@ -101,6 +102,7 @@ import { SubstitutionSection } from './SubstitutionSection';
 // reload too).
 // #79 H3: holders of academic_note.review see the session's notes and stop
 // sharing a family note with a reason (Finance never sees the section).
+// #436 A: the makeup block; "Schedule makeup" for holders of schedule.manage.
 
 export function SessionPage() {
   const { t } = useTranslation();
@@ -515,6 +517,16 @@ export function SessionPage() {
         offered={offered}
         series={seriesDetail ?? null}
         actions={actions}
+        makeup={
+          detail ? (
+            <MakeupSection
+              session={detail}
+              timeZone={timeZone}
+              now={now}
+              canSchedule={canManage}
+            />
+          ) : null
+        }
         substitutions={substitutionSection}
         attendance={attendanceSection}
         closeout={closeoutSection}

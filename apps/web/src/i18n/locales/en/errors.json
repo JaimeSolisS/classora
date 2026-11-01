@@ -409,5 +409,13 @@
   "effective_from_before_first_period": "Pay terms can't start before the tutor's first payroll period. Finance will be able to pay that work with a one-time item once that is available.",
   "payroll_start_locked": "Payroll periods already exist, so the start date can't change. The settings were reloaded.",
   "biweekly_anchor_locked": "Biweekly periods already exist, so the anchor date can't change. The settings were reloaded.",
-  "anchor_not_monday": "The biweekly anchor date must be a Monday."
+  "anchor_not_monday": "The biweekly anchor date must be a Monday.",
+  "makeup_target_unknown": "The cancelled session to make up doesn't exist.",
+  "makeup_target_not_cancelled": "This session is no longer cancelled, so it can't be made up.",
+  "makeup_target_not_individual": "Only an individual session can be made up.",
+  "makeup_not_allowed": "This cancellation doesn't allow a makeup.",
+  "makeup_student_mismatch": "The makeup must be for the cancelled session's student.",
+  "makeup_subject_mismatch": "The makeup must be for the cancelled session's subject.",
+  "makeup_window_passed": "The makeup must start by its deadline. Choose an earlier date, or schedule a regular session.",
+  "makeup_already_scheduled": "This cancelled session already has a makeup scheduled."
 }

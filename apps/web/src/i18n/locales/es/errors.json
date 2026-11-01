@@ -409,5 +409,13 @@
   "effective_from_before_first_period": "Las condiciones no pueden empezar antes del primer periodo de nómina del tutor. Finanzas podrá pagar ese trabajo con un pago único cuando esté disponible.",
   "payroll_start_locked": "Ya existen periodos de nómina, así que la fecha de inicio no se puede cambiar. Se volvió a cargar la configuración.",
   "biweekly_anchor_locked": "Ya existen periodos quincenales, así que la fecha de referencia no se puede cambiar. Se volvió a cargar la configuración.",
-  "anchor_not_monday": "La fecha de referencia quincenal debe ser lunes."
+  "anchor_not_monday": "La fecha de referencia quincenal debe ser lunes.",
+  "makeup_target_unknown": "La clase cancelada que quieres reponer no existe.",
+  "makeup_target_not_cancelled": "Esta clase ya no está cancelada, así que no se puede reponer.",
+  "makeup_target_not_individual": "Solo se puede reponer una clase individual.",
+  "makeup_not_allowed": "Esta cancelación no permite una reposición.",
+  "makeup_student_mismatch": "La reposición debe ser para el estudiante de la clase cancelada.",
+  "makeup_subject_mismatch": "La reposición debe ser de la materia de la clase cancelada.",
+  "makeup_window_passed": "La reposición debe iniciar dentro de su plazo. Elige una fecha anterior o programa una clase normal.",
+  "makeup_already_scheduled": "Esta clase cancelada ya tiene una reposición programada."
 }
