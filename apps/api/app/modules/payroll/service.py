@@ -15,13 +15,24 @@ writes the ``app.workflows.payroll_compensation`` workflow calls.
 :mod:`~app.modules.payroll.rates` today, #111 next), and the pure
 :func:`natural_bounds`, which defines ``natural_days`` for #108.
 
-**For the calculation:** :func:`rate_in_effect` and :func:`terms_in_effect`.
+**Session pay rules** (#441; :mod:`~app.modules.payroll.pay_rules`): the reads
+and writes the ``app.workflows.session_pay_rules`` workflow calls.
+
+**For the calculation:** :func:`rate_in_effect`, :func:`terms_in_effect`,
+:func:`session_pay_rule_in_effect` and :func:`session_pay_rule_versions`.
 
 **Record policies** (:mod:`~app.modules.payroll.permissions`):
 :func:`can_view_compensation`, :func:`can_write_compensation`.
 """
 
 from app.modules.payroll.errors import PayrollOwnCompensationError
+from app.modules.payroll.pay_rules import (
+    create_session_pay_rule,
+    delete_session_pay_rule,
+    get_session_pay_rule_overview,
+    session_pay_rule_in_effect,
+    session_pay_rule_versions,
+)
 from app.modules.payroll.period_rows import (
     lock_payroll_periods,
     open_due_periods,
@@ -57,8 +68,11 @@ __all__ = [
     "can_view_compensation",
     "can_write_compensation",
     "compensation_summaries",
+    "create_session_pay_rule",
     "delete_compensation_rate",
     "delete_pay_terms",
+    "delete_session_pay_rule",
+    "get_session_pay_rule_overview",
     "list_compensation_rates",
     "list_pay_terms",
     "lock_payroll_periods",
@@ -67,6 +81,8 @@ __all__ = [
     "payroll_starts_on",
     "rate_in_effect",
     "salary_proration_basis",
+    "session_pay_rule_in_effect",
+    "session_pay_rule_versions",
     "terms_in_effect",
     "tutors_with_terms",
 ]

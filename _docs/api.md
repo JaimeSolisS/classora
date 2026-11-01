@@ -294,8 +294,10 @@ Codes in use today:
 | `consent_already_given` | 409 | An active consent for the same student, guardian and scope already exists. |
 | `consent_already_revoked` | 409 | Revoking a consent that was already revoked. |
 | `tz_change_requires_migration` | 409 | A business-settings change of the center time zone while scheduled data exists (see Business settings); nothing changes. The body never names the data. |
-| `invalid_effective_from` | 422 | A new scheduling policy version or cancellation billing rule version whose `effective_from` (now when omitted) is in the past or not later than every existing version; nothing is created (see Scheduling policies and Cancellation billing rules). |
+| `invalid_effective_from` | 422 | A new scheduling policy version, cancellation billing rule version or session pay rule version whose `effective_from` (now when omitted, on the first two) is in the past or not later than every existing version (of the event, on a pay rule); nothing is created (see Scheduling policies, Cancellation billing rules and Session pay rules). |
 | `policy_version_in_effect` | 409 | Deleting a scheduling policy version or a cancellation billing rule version that is in force or in the past; only an upcoming version can be deleted (see Scheduling policies and Cancellation billing rules). |
+| `pay_rule_in_effect` | 409 | Deleting a session pay rule version that is in force or in the past; only an upcoming version can be deleted (see Session pay rules). |
+| `pay_rule_values_mismatch` / `percent_out_of_range` | 422 | Field codes of a session pay rule body: a `percent` or `amount` that doesn't match `mode`, a `percent` outside 0 to 1000 (see Session pay rules). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
 | `permission_not_delegable` | 422 | The identity service was asked to delegate a permission outside the four delegable ones (the route's body enum answers `validation_error` first). |
@@ -7143,6 +7145,54 @@ are in `app/workflows/payroll_compensation_router.py` and
   - Order: `403 payroll_own_compensation` → `404` → the advisory lock → these
     refusals → `409 pay_terms_exists` or `409 pay_terms_in_use`. A `DELETE`
     of another tutor's row is `404` first.
+
+### Session pay rules
+
+Implemented by M7-04c (#441; ADR-0017 E4, E12, #107 E9, Proposed:
+orchestrator-recommended, pending owner review). The routes are in
+`app/workflows/payroll_pay_rules_router.py`, the rules in
+`app/modules/payroll/pay_rules.py`, table `session_pay_rules`
+(`_docs/data-model.md` §11.5, §14.2). The calculation that applies them is #107
+and the web page M7-04b.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/payroll/pay-rules` | `require("payroll.view")` | `SessionPayRuleOverview`: `today` (the center's date) and `late_cancellation`, `no_show`, `makeup`, each `{current, upcoming[], history[]}`. `upcoming` is oldest first; `history` is newest first, at most 50. Seven statements, whatever the number of versions. |
+| `POST /api/v1/payroll/pay-rules` | `require("payroll.manage")` | Body `SessionPayRuleCreate`: `based_on_id`, `event`, `effective_from`, `mode`, `percent`, `amount` (all required, `null` written out; unknown fields `422`). `201` with `SessionPayRuleItem`. |
+| `DELETE /api/v1/payroll/pay-rules/{rule_id}` | `require("payroll.manage")` | `204`. Only an upcoming version. |
+
+- **Access:** Owners and Finance Staff. Administrators get `403
+  permission_denied`, also with `payroll.finalize` delegated, as do
+  Coordinators, Tutors, Students and Guardians. Rules are center-wide, so
+  `payroll_own_compensation` doesn't apply. No reauthentication and no
+  `Idempotency-Key`: a rule is configuration.
+- **Item:** `id`, `event` (`late_cancellation`, `no_show`, `makeup`),
+  `effective_from`, `mode` (`none`, `percent`, `fixed`), `percent` (text, four
+  places), `amount` (text, two places), `created_by_user_id` (`null` on a
+  seeded version), `created_at`.
+- **Seeds, from 2000-01-01:** `late_cancellation` `none`, `no_show` and `makeup`
+  `percent` 100, so a version is in force on every date.
+- **Versions:** `effective_from` is compared with the session's service date. A
+  version takes the center's today or later, and later than every version of
+  its event. One dated today is in force at once and can't be deleted. There is
+  no `PATCH` or `PUT`: to change an upcoming version, delete it and create
+  another. Past work is never repriced.
+- **`percent` 0 and `none`:** on a cancellation, `percent` 0 writes a `0.00` line
+  and `none` writes no line.
+- **Field errors**, `422 validation_error` with `errors[].code`:
+  `pay_rule_values_mismatch` on `percent` or `amount` when the value doesn't
+  match `mode`, `percent_out_of_range` outside 0 to 1000, `amount_negative`, and
+  the `rate_*` and `money_*` field codes.
+- **Check order of the `POST`:** `401` → `403 csrf_failed` → `403
+  permission_denied` → `422` (body) → the advisory lock → `409 version_conflict`
+  when `based_on_id` isn't the event's latest version, which includes a version
+  of another event → `422 invalid_effective_from` → `201`.
+- **Check order of the `DELETE`:** `401` → `403 csrf_failed` → `403
+  permission_denied` → the advisory lock → `404` → `409 pay_rule_in_effect` for
+  a version in force or past, the seeds included → `204`.
+- **Audit:** automatic `create` and `delete` events with the staff actor.
+  `percent` and `amount` appear as `"[masked]"` for every reader, the Owner
+  included, because Administrators hold `audit.view` and see no pay.
 
 ### Payroll settings
 

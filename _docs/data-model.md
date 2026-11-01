@@ -10,7 +10,7 @@ Spec [`spec.md`](spec.md) §17 makes this file the home of the final entities, f
 
 - **Covered:** the **billing** domain (module `billing`, M6) and the two **core** tables it needs (`idempotency_keys`, `number_series`); the **payroll** and **expense** domains (modules `payroll` and `finance`, M7, §11–§19).
 - **Not covered:** the tables of earlier domains (identity, families, staff, catalog, scheduling, courses, academics, administration). They are documented in their migrations (`apps/api/migrations/versions/`), their model docstrings and their ADRs ([ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md), [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md)). They are named here only where billing references them.
-- **Payroll and expenses** (M7) are designed in §11–§19 and built by #105–#117 and #423. No M7 table exists until its issue merges.
+- **Payroll and expenses** (M7) are designed in §11–§19 and built by #105–#117, #423 and #441. No M7 table exists until its issue merges.
 - **Changes:** an implementing issue may rename a table or column, or adjust a column listed here, only by updating this file in the same pull request. A change to a rule of ADR-0006 or ADR-0017 needs an ADR amendment.
 
 ## 2. Conventions
@@ -966,7 +966,7 @@ The §2 conventions apply, with "billing" read as "payroll" and "finance". The e
 | `tutor_pay_terms` | payroll | #105 | guarded |
 | `compensation_rates` | payroll | #105 | guarded |
 | `payroll_periods` | payroll | #106 | status-guarded |
-| `session_pay_rules` | payroll | #107 | guarded, effective-dated |
+| `session_pay_rules` | payroll | #441 | guarded, effective-dated |
 | `payroll_lines` | payroll | #107 (`salary` #108, `pay_item` #109, `adjustment` #111) | locked with the period |
 | `pay_item_types` | payroll | #109 | mutable reference |
 | `pay_items` | payroll | #109 | guarded |
@@ -1065,7 +1065,7 @@ One row per tutor per period (E6). Not `Audited`: the job opens them and the sta
 - **Who gets periods (#106 E8):** tutors in `tutor_pay_terms`, whatever their role or state. A stop row ends them; archiving doesn't.
 - **Inbox:** the `payroll.period` request uses `administration.service.open_approval_request`, because `approval_requests` holds one row per `(request_type, subject_id)` and a returned period is prepared again.
 
-### 11.5 `session_pay_rules` (#107)
+### 11.5 `session_pay_rules` (#441)
 
 The configurable late-cancellation, no-show and makeup payments (E4). One row per `(event, effective_from)`, center-wide. Audited. **Guarded by time** (§14.2): the `cancellation_billing_rules` shape.
 
@@ -1075,12 +1075,13 @@ The configurable late-cancellation, no-show and makeup payments (E4). One row pe
 | `event` | VARCHAR(20) | no | `late_cancellation` \| `no_show` \| `makeup` |
 | `effective_from` | DATE | no | the rule in effect on the **service date** applies |
 | `mode` | VARCHAR(10) | no | `none` \| `percent` \| `fixed` |
-| `percent` | NUMERIC(14,4) | yes | `>= 0`; set iff `mode = 'percent'` |
+| `percent` | NUMERIC(14,4) | yes | `0` to `1000`, a cap that keeps `Rate.to_money` in range; set iff `mode = 'percent'` |
 | `amount` | NUMERIC(14,2) | yes | `>= 0`; set iff `mode = 'fixed'` |
 | `created_by_user_id` | UUID | yes | FK `users` RESTRICT; `NULL` for the seeded rows |
 
 - **Unique key:** `UNIQUE (event, effective_from)`.
-- **Seed (#107's migration), effective `2000-01-01`:** `late_cancellation` `none`, `no_show` `percent` 100, `makeup` `percent` 100. The owner should review these defaults (ADR-0017).
+- **Dates (#107 E9):** a new version takes the center's today or later, and later than every version of its event. So no rule reaches a prepared or finalized period, and a rule change never needs an adjustment. Past work can't be repriced by a rule; use a one-time item.
+- **Seed (migration `0075`), effective `2000-01-01`:** `late_cancellation` `none`, `no_show` `percent` 100, `makeup` `percent` 100. The owner should review these defaults (ADR-0017).
 - **Detection and base (E4):**
   - `late_cancellation`: `cancelled`, `initiated_by = family`, classification `late` (`cancellation_classification`); base: the ordinary line on `scheduled_minutes`.
   - `no_show`: the current revision's `attendance` has every participant `absent`, or a future cancellation classified `no_show`; base: the ordinary line on `approved_minutes`.
@@ -1438,7 +1439,7 @@ Beyond primary keys, unique keys and natural keys, for the access paths of spec 
 - The next Alembic revision is **0072**. One migration per implementing issue, as §8.
 - Triggers and their functions are created with their table, and predicates are staged as §14.2.
 - **No backfill:** work before `payroll_starts_on` is never paid (E2), and periods finalized before #113 get no payslip (E14).
-- **Reference seeds** in the creating migration: the `payroll_settings` row with `payroll_starts_on = NULL` (#106), the three `session_pay_rules` rows (#107) and the five `expense_categories` rows (#114). Permissions are seeded by their first user (E12).
+- **Reference seeds** in the creating migration: the `payroll_settings` row with `payroll_starts_on = NULL` (#106), the three `session_pay_rules` rows (#441) and the five `expense_categories` rows (#114). Permissions are seeded by their first user (E12).
 
 ## 18. Payroll and expense relationships
 
@@ -1484,7 +1485,8 @@ Each M7 issue, the ADR-0017 decision items it relies on, and the tables it creat
 | #105 M7-02 Compensation and rates | E1 (keys, `NULL` semantics, guarded versions, lookup on the service date), E12 (`payroll.view`, `payroll.manage`; tutors see only their own rates by record policy; audit masks on the amounts) | `tutor_pay_terms`, `compensation_rates` |
 | #106 M7-03 Payroll periods | E2 (`payroll_starts_on`), E6 (calendars in local `DATE`s, stubs, no overlaps, no gaps, idempotent `payroll:open_periods`, the `effective_from_inside_generated_period` and `effective_from_before_first_period` refusals on the terms insert and delete, not on a stop) | `payroll_settings`, `payroll_periods` |
 | #423 M7-04a Makeup link | E5 | `class_sessions.makeup_of_session_id` |
-| #107 M7-04 Calculation | E2 (current revision, attribution, service date, unresolved work), E3, E4 (rules consuming the #62 outcomes), E5, E9 (one line per source with its session, repeatable `recalculate`, no hooks), E12 (`payroll.prepare`) | `session_pay_rules`, `payroll_lines` (session-sourced kinds) |
+| #441 M7-04c Session pay rules | E4 (the three events, `none`, `percent`, `fixed`, seeds), E12 (`payroll.view`, `payroll.manage`, masked in the audit log); #107 E9 | `session_pay_rules` |
+| #107 M7-04 Calculation | E2 (current revision, attribution, service date, unresolved work), E3, E4 (rules consuming the #62 outcomes), E5, E9 (one line per source with its session, repeatable `recalculate`, no hooks), E12 (`payroll.prepare`) | `session_pay_rules` (reads), `payroll_lines` (session-sourced kinds) |
 | #108 M7-05 Salary and proration | E1 (salary plus extras), E7 (configurable basis, `Money.prorate`, review through line display) | `payroll_lines` (`salary`), `payroll_settings` (`salary_proration_basis`) |
 | #109 M7-06 Bonuses and deductions | E8 (recurring per period on `(pay_item_id, payroll_period_id)`, one line per item, fixed amounts) | `pay_item_types`, `pay_items`, `payroll_lines` (`pay_item`) |
 | #110 M7-07 Workflow and lock | E9 (negative total, named events), E10 (states, return, drift check, duty separation, inbox, triggers, notifications), E12 (`payroll.prepare`, `payroll.finalize`, reauthentication), ADR-0006 E6 (key); P4, P5 | `payroll_periods`, `payroll_lines` |

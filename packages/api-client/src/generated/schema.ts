@@ -4629,6 +4629,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payroll/pay-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pay Rules
+         * @description For each event, the rule in force on the center's today, the upcoming
+         *     versions (oldest first) and the past ones (newest first, at most 50).
+         */
+        get: operations["get_pay_rules_api_v1_payroll_pay_rules_get"];
+        put?: never;
+        /**
+         * Create Pay Rule
+         * @description Publish a new version of an event's rule, from the center's today or
+         *     later. Versions are never edited: to change an upcoming one, delete it
+         *     and create another. Past work is never repriced.
+         */
+        post: operations["create_pay_rule_api_v1_payroll_pay_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payroll/pay-rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Pay Rule
+         * @description Delete an upcoming rule version.
+         */
+        delete: operations["delete_pay_rule_api_v1_payroll_pay_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payroll/settings": {
         parameters: {
             query?: never;
@@ -14795,6 +14842,10 @@ export interface components {
         };
         /** @enum {string} */
         PayFrequency: "weekly" | "biweekly" | "monthly";
+        /** @enum {string} */
+        PayRuleEvent: "late_cancellation" | "no_show" | "makeup";
+        /** @enum {string} */
+        PayRuleMode: "none" | "percent" | "fixed";
         /**
          * PayTermsCreate
          * @description ``POST /api/v1/payroll/tutors/{id}/pay-terms``. ``pay_frequency: null``
@@ -17542,6 +17593,101 @@ export interface components {
             student_id: string;
             /** Display Name */
             display_name: string;
+        };
+        /**
+         * SessionPayRuleCreate
+         * @description ``POST /api/v1/payroll/pay-rules`` (#441 D2). Every field is required,
+         *     with ``null`` written out.
+         */
+        SessionPayRuleCreate: {
+            /**
+             * Based On Id
+             * Format: uuid
+             * @description The id of the event's latest version (the current one or the last upcoming one); otherwise 409 version_conflict.
+             */
+            based_on_id: string;
+            event: components["schemas"]["PayRuleEvent"];
+            /**
+             * Effective From
+             * Format: date
+             * @description The first service date it applies to: the center's today or later, and later than every version of the event (422 invalid_effective_from).
+             */
+            effective_from: string;
+            /** @description none: pays nothing. percent: a percent of the ordinary pay. fixed: a fixed amount. */
+            mode: components["schemas"]["PayRuleMode"];
+            /**
+             * Percent
+             * @description From 0 to 1000, set only with the percent mode.
+             */
+            percent: string | null;
+            /**
+             * Amount
+             * @description Set only with the fixed mode.
+             */
+            amount: string | null;
+        };
+        /**
+         * SessionPayRuleEventOverview
+         * @description One event's versions.
+         */
+        SessionPayRuleEventOverview: {
+            current: components["schemas"]["SessionPayRuleItem"];
+            /**
+             * Upcoming
+             * @description Versions that take effect later, oldest first.
+             */
+            upcoming: components["schemas"]["SessionPayRuleItem"][];
+            /**
+             * History
+             * @description Versions no longer in force, newest first (at most 50).
+             */
+            history: components["schemas"]["SessionPayRuleItem"][];
+        };
+        /**
+         * SessionPayRuleItem
+         * @description One version of an event's rule, in force from ``effective_from`` until
+         *     the next version's. ``percent`` and ``amount`` are ``null`` unless the
+         *     mode uses them. ``created_by_user_id`` is ``null`` on a seeded version.
+         */
+        SessionPayRuleItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            event: components["schemas"]["PayRuleEvent"];
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            mode: components["schemas"]["PayRuleMode"];
+            /** Percent */
+            percent: string | null;
+            /** Amount */
+            amount: string | null;
+            /** Created By User Id */
+            created_by_user_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * SessionPayRuleOverview
+         * @description ``GET /api/v1/payroll/pay-rules`` (#441 D1). ``today`` is the center's
+         *     local date: the earliest date a new version can take.
+         */
+        SessionPayRuleOverview: {
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
+            late_cancellation: components["schemas"]["SessionPayRuleEventOverview"];
+            no_show: components["schemas"]["SessionPayRuleEventOverview"];
+            makeup: components["schemas"]["SessionPayRuleEventOverview"];
         };
         /**
          * SessionReassignment
@@ -35697,6 +35843,169 @@ export interface operations {
                 };
             };
             /** @description A finalized payroll period uses this version (compensation_rate_in_use). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_pay_rules_api_v1_payroll_pay_rules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionPayRuleOverview"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_pay_rule_api_v1_payroll_pay_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionPayRuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionPayRuleItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description based_on_id is not the event's latest version (version_conflict). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    delete_pay_rule_api_v1_payroll_pay_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such rule version (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The version is in force or in the past; only an upcoming version can be deleted (pay_rule_in_effect). */
             409: {
                 headers: {
                     [name: string]: unknown;

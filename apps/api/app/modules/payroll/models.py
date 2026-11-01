@@ -1,5 +1,5 @@
-"""Payroll tables (#105, #106; ADR-0017 E1, E2, E6; data-model §11.1-§11.4,
-§14.2, §14.3).
+"""Payroll tables (#105, #106, #441; ADR-0017 E1, E2, E4, E6; data-model
+§11.1-§11.5, §14.2, §14.3).
 
 ``tutor_pay_terms`` holds what applies to a tutor as a whole and
 ``compensation_rates`` the rate per class kind. Each is a list of versions:
@@ -18,6 +18,11 @@ refuses an overlap (the ``EXCLUDE``, invariant P2) and a gap (the composite
 foreign key onto ``(tutor_user_id, ends_on)``, invariant P3), and a trigger
 keeps a finalized row (migration ``0073``). It is not ``Audited``: the job
 opens the rows and the status moves carry named events (#110).
+
+``session_pay_rules`` is the center-wide list of late-cancellation, no-show and
+makeup rule versions, guarded by time (migration ``0075``): nothing changes,
+and only an upcoming version can go away. ``percent`` and ``amount`` are masked
+in the audit log, as above.
 """
 
 import uuid
@@ -52,15 +57,20 @@ COURSE: Final = "course"
 
 PRORATION_BASES: Final = ("calendar_days", "weekdays")
 PERIOD_STATUSES: Final = ("open", "prepared", "finalized")
+PAY_RULE_EVENTS: Final = ("late_cancellation", "no_show", "makeup")
+PAY_RULE_MODES: Final = ("none", "percent", "fixed")
 
 PAY_FREQUENCY_MAX: Final = 10
 PERIOD_STATUS_MAX: Final = 10
 PRORATION_BASIS_MAX: Final = 20
 CLASS_KIND_MAX: Final = 20
 RATE_MODEL_MAX: Final = 20
+PAY_RULE_EVENT_MAX: Final = 20
+PAY_RULE_MODE_MAX: Final = 10
 
 TERMS_KEY: Final = "uq_tutor_pay_terms_tutor_user_id_effective_from"
 RATE_KEY: Final = "uq_compensation_rates_tutor_user_id_class_kind_effective_from"
+PAY_RULE_KEY: Final = "uq_session_pay_rules_event_effective_from"
 PERIOD_START_KEY: Final = "uq_payroll_periods_tutor_user_id_starts_on"
 PERIOD_END_KEY: Final = "uq_payroll_periods_tutor_user_id_ends_on"
 PERIOD_TARGET_KEY: Final = "uq_payroll_periods_id_tutor_user_id"
@@ -139,6 +149,40 @@ class CompensationRate(Audited, Model):
         String(RATE_MODEL_MAX), nullable=True
     )
     rate: Mapped[Rate | None] = mapped_column(RateType(), nullable=True)
+
+
+class SessionPayRule(Audited, Model):
+    """One version of the rule of a pay event (data-model §11.5).
+
+    ``percent`` is a :class:`~app.core.money.Rate`, because
+    ``Rate.to_money(percent=)`` takes one (#107 E2). ``none`` has neither
+    value.
+    """
+
+    __tablename__ = "session_pay_rules"
+    __audit_mask__: ClassVar[frozenset[str]] = frozenset({"percent", "amount"})
+    __table_args__ = (
+        CheckConstraint(_one_of("event", PAY_RULE_EVENTS), name="event_valid"),
+        CheckConstraint(_one_of("mode", PAY_RULE_MODES), name="mode_valid"),
+        CheckConstraint(
+            "(mode = 'percent') = (percent IS NOT NULL)", name="percent_with_mode"
+        ),
+        CheckConstraint(
+            "(mode = 'fixed') = (amount IS NOT NULL)", name="amount_with_mode"
+        ),
+        CheckConstraint("percent BETWEEN 0 AND 1000", name="percent_range"),
+        CheckConstraint("amount >= 0", name="amount_non_negative"),
+        UniqueConstraint("event", "effective_from", name=PAY_RULE_KEY),
+    )
+
+    event: Mapped[str] = mapped_column(String(PAY_RULE_EVENT_MAX))
+    effective_from: Mapped[date] = mapped_column(Date)
+    mode: Mapped[str] = mapped_column(String(PAY_RULE_MODE_MAX))
+    percent: Mapped[Rate | None] = mapped_column(RateType(), nullable=True)
+    amount: Mapped[Money | None] = mapped_column(MoneyType(), nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
 
 
 class PayrollSettings(Audited, VersionedMixin, Model):

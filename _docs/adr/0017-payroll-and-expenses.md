@@ -93,6 +93,13 @@ Recommended options taken while grooming and building #106. They are orchestrato
 - **Serialization (#106 E10):** one advisory lock, taken first by the job's per-tutor unit and by the terms insert and delete.
 - **`previous_ends_on`:** PostgreSQL accepts the stored generated column in the composite foreign key, so the plain-column fallback of E6 isn't used.
 
+#### Implementation notes (#107)
+
+Recommended options taken while grooming and building #107 and its split issues. They are orchestrator-recommended and pending owner review, like the rest of this ADR. Plain E numbers here are #107's own items. #107 adds the rest of this section.
+
+- **Pay rule dates (#107 E9):** a new version of a session pay rule takes the center's today or later, and later than every version of its event (`422 invalid_effective_from`). No rule can reach a prepared or finalized period, because `prepare` needs `ends_on` before today, so a rule change never needs an adjustment. Past work can't be repriced by a rule; use a one-time item.
+- **Percent cap (#441):** `percent` runs from 0 to 1000, in the column's CHECK and the body, which keeps `Rate.to_money` in range. Values above 100 stay allowed.
+
 ### Paid work (E2 (a), spec §3, §7, W3, ISSUE-F2, #107, #111, #117, product)
 
 - **Source of hours:** only the **current approval revision** (`session_closeouts.current_approval_id`, #78). A closeout without one is never paid. A closeout back in review keeps its revision in force, as #78 and #94 already read it. There is no `teaching_hours` table: the spec's candidate "TeachingHours" entity **is** `session_closeout_approvals`.

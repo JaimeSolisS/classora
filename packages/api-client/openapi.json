@@ -22768,6 +22768,195 @@
         }
       }
     },
+    "/api/v1/payroll/pay-rules": {
+      "get": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Get Pay Rules",
+        "description": "For each event, the rule in force on the center's today, the upcoming\nversions (oldest first) and the past ones (newest first, at most 50).",
+        "operationId": "get_pay_rules_api_v1_payroll_pay_rules_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionPayRuleOverview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Create Pay Rule",
+        "description": "Publish a new version of an event's rule, from the center's today or\nlater. Versions are never edited: to change an upcoming one, delete it\nand create another. Past work is never repriced.",
+        "operationId": "create_pay_rule_api_v1_payroll_pay_rules_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionPayRuleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionPayRuleItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "based_on_id is not the event's latest version (version_conflict).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/pay-rules/{rule_id}": {
+      "delete": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Delete Pay Rule",
+        "description": "Delete an upcoming rule version.",
+        "operationId": "delete_pay_rule_api_v1_payroll_pay_rules__rule_id__delete",
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such rule version (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The version is in force or in the past; only an upcoming version can be deleted (pay_rule_in_effect).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/payroll/settings": {
       "get": {
         "tags": [
@@ -47350,6 +47539,22 @@
           "monthly"
         ]
       },
+      "PayRuleEvent": {
+        "type": "string",
+        "enum": [
+          "late_cancellation",
+          "no_show",
+          "makeup"
+        ]
+      },
+      "PayRuleMode": {
+        "type": "string",
+        "enum": [
+          "none",
+          "percent",
+          "fixed"
+        ]
+      },
       "PayTermsCreate": {
         "properties": {
           "effective_from": {
@@ -53256,6 +53461,215 @@
         ],
         "title": "SessionParticipantName",
         "description": "A student of a session the caller teaches (#246 A5; #67 B4)."
+      },
+      "SessionPayRuleCreate": {
+        "properties": {
+          "based_on_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Based On Id",
+            "description": "The id of the event's latest version (the current one or the last upcoming one); otherwise 409 version_conflict."
+          },
+          "event": {
+            "$ref": "#/components/schemas/PayRuleEvent"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective From",
+            "description": "The first service date it applies to: the center's today or later, and later than every version of the event (422 invalid_effective_from)."
+          },
+          "mode": {
+            "$ref": "#/components/schemas/PayRuleMode",
+            "description": "none: pays nothing. percent: a percent of the ordinary pay. fixed: a fixed amount."
+          },
+          "percent": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,10}(\\.\\d{1,4})?$",
+                "format": "decimal",
+                "examples": [
+                  "250.0000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent",
+            "description": "From 0 to 1000, set only with the percent mode."
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount",
+            "description": "Set only with the fixed mode."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "based_on_id",
+          "event",
+          "effective_from",
+          "mode",
+          "percent",
+          "amount"
+        ],
+        "title": "SessionPayRuleCreate",
+        "description": "``POST /api/v1/payroll/pay-rules`` (#441 D2). Every field is required,\nwith ``null`` written out."
+      },
+      "SessionPayRuleEventOverview": {
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/SessionPayRuleItem"
+          },
+          "upcoming": {
+            "items": {
+              "$ref": "#/components/schemas/SessionPayRuleItem"
+            },
+            "type": "array",
+            "title": "Upcoming",
+            "description": "Versions that take effect later, oldest first."
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/SessionPayRuleItem"
+            },
+            "type": "array",
+            "title": "History",
+            "description": "Versions no longer in force, newest first (at most 50)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "current",
+          "upcoming",
+          "history"
+        ],
+        "title": "SessionPayRuleEventOverview",
+        "description": "One event's versions."
+      },
+      "SessionPayRuleItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "event": {
+            "$ref": "#/components/schemas/PayRuleEvent"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective From"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/PayRuleMode"
+          },
+          "percent": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,10}(\\.\\d{1,4})?$",
+                "format": "decimal",
+                "examples": [
+                  "250.0000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "event",
+          "effective_from",
+          "mode",
+          "percent",
+          "amount",
+          "created_by_user_id",
+          "created_at"
+        ],
+        "title": "SessionPayRuleItem",
+        "description": "One version of an event's rule, in force from ``effective_from`` until\nthe next version's. ``percent`` and ``amount`` are ``null`` unless the\nmode uses them. ``created_by_user_id`` is ``null`` on a seeded version."
+      },
+      "SessionPayRuleOverview": {
+        "properties": {
+          "today": {
+            "type": "string",
+            "format": "date",
+            "title": "Today"
+          },
+          "late_cancellation": {
+            "$ref": "#/components/schemas/SessionPayRuleEventOverview"
+          },
+          "no_show": {
+            "$ref": "#/components/schemas/SessionPayRuleEventOverview"
+          },
+          "makeup": {
+            "$ref": "#/components/schemas/SessionPayRuleEventOverview"
+          }
+        },
+        "type": "object",
+        "required": [
+          "today",
+          "late_cancellation",
+          "no_show",
+          "makeup"
+        ],
+        "title": "SessionPayRuleOverview",
+        "description": "``GET /api/v1/payroll/pay-rules`` (#441 D1). ``today`` is the center's\nlocal date: the earliest date a new version can take."
       },
       "SessionReassignment": {
         "properties": {

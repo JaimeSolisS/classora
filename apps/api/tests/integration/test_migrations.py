@@ -72,7 +72,8 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0074"
+HEAD = "0075"
+PAY_RULES = "session_pay_rules"
 MAKEUP_COLUMN = "makeup_of_session_id"
 MAKEUP_INDEX = "uq_class_sessions_makeup_of_session_id"
 
@@ -4746,9 +4747,20 @@ def _of_0074(diff: Any) -> bool:
     return diff[0] == "add_index" and diff[1].name == MAKEUP_INDEX
 
 
+def _of_0075(diff: Any) -> bool:
+    """A metadata difference that revision 0075 adds: the session pay rules
+    table (#441 A1; CHECKs are not compared)."""
+    return diff[0] == "add_table" and diff[1].name == PAY_RULES
+
+
+def _of_0074_on(diff: Any) -> bool:
+    """A metadata difference that revision 0074 or a later one adds."""
+    return _of_0074(diff) or _of_0075(diff)
+
+
 def _of_0073_on(diff: Any) -> bool:
     """A metadata difference that revision 0073 or a later one adds."""
-    return _of_0073(diff) or _of_0074(diff)
+    return _of_0073(diff) or _of_0074_on(diff)
 
 
 def _of_0072_on(diff: Any) -> bool:
@@ -13063,7 +13075,7 @@ def test_0073_adds_settings_and_periods_and_downgrade_restores_0072(
     command.upgrade(config, "0073")
 
     assert version_nums(dsn) == ["0073"]
-    assert [d for d in metadata_diff(dsn) if not _of_0074(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0074_on(d)] == []
     assert public_tables(dsn) - tables == set(PAYROLL_PERIOD_TABLES)
     [row] = run_sql(dsn, "SELECT * FROM payroll_settings")
     assert row.singleton is True
@@ -13377,7 +13389,7 @@ def test_0074_adds_the_link_to_existing_rows_without_touching_them(
     command.upgrade(config, "0074")
 
     assert version_nums(dsn) == ["0074"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0075(d)] == []
     assert (
         run_sql(
             dsn,
@@ -13421,7 +13433,7 @@ def test_0074_adds_the_link_to_existing_rows_without_touching_them(
         "SELECT indexname FROM pg_indexes WHERE indexname = :n",
         {"n": MAKEUP_INDEX},
     )
-    assert [d for d in metadata_diff(dsn) if not _of_0074(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0074_on(d)] == []
     assert run_sql(dsn, "SELECT count(*) AS n FROM class_sessions")[0].n == 6
 
     command.upgrade(config, "head")
@@ -13495,3 +13507,224 @@ def test_0074_a_linked_target_cannot_be_deleted(fresh_database_url):
 
     assert state == "23001"  # restrict_violation, the #105 finding
     assert "fk_class_sessions_makeup_of_session_id_class_sessions" in message
+
+
+# --- 0075 session pay rules (#441 A, G2) ---------------------------------------------
+
+
+def test_0075_adds_the_table_and_its_seeds_and_downgrade_restores_0074(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0074")
+    tables = public_tables(dsn)
+    guard = "SELECT count(*) AS n FROM pg_proc WHERE proname = :name"
+    name = {"name": "session_pay_rules_guard"}
+
+    command.upgrade(config, "0075")
+
+    assert version_nums(dsn) == ["0075"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == {PAY_RULES}
+    assert run_sql(dsn, guard, name)[0].n == 1
+    assert {
+        (row.event, row.mode, row.percent, row.amount, row.created_by_user_id)
+        for row in run_sql(
+            dsn,
+            "SELECT * FROM session_pay_rules WHERE effective_from = '2000-01-01'",
+        )
+    } == {
+        ("late_cancellation", "none", None, None, None),
+        ("no_show", "percent", Decimal("100.0000"), None, None),
+        ("makeup", "percent", Decimal("100.0000"), None, None),
+    }
+    assert run_sql(dsn, "SELECT count(*) AS n FROM session_pay_rules")[0].n == 3
+
+    command.downgrade(config, "0074")
+
+    assert version_nums(dsn) == ["0074"]
+    assert public_tables(dsn) == tables
+    assert run_sql(dsn, guard, name)[0].n == 0
+    assert [d for d in metadata_diff(dsn) if not _of_0075(d)] == []
+
+    command.upgrade(config, "head")
+
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+    assert run_sql(dsn, "SELECT count(*) AS n FROM session_pay_rules")[0].n == 3
+
+
+def test_0075_columns_constraints_and_triggers(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    standard = {k: v for k, v in STANDARD_COLUMNS.items() if k != "version"}
+    assert _columns(dsn, PAY_RULES) == {
+        **standard,
+        "event": ("character varying", "NO", 20, None),
+        "effective_from": ("date", "NO", None, None),
+        "mode": ("character varying", "NO", 10, None),
+        "percent": ("numeric", "YES", None, None),
+        "amount": ("numeric", "YES", None, None),
+        "created_by_user_id": ("uuid", "YES", None, None),
+    }
+    numeric = run_sql(
+        dsn,
+        "SELECT column_name, numeric_precision, numeric_scale"
+        " FROM information_schema.columns WHERE table_name = :t"
+        " AND data_type = 'numeric'",
+        {"t": PAY_RULES},
+    )
+    assert {tuple(row) for row in numeric} == {("percent", 14, 4), ("amount", 14, 2)}
+    constraints = _constraints(dsn, PAY_RULES)
+    assert set(constraints) == {
+        "pk_session_pay_rules",
+        "uq_session_pay_rules_event_effective_from",
+        "fk_session_pay_rules_created_by_user_id_users",
+        "ck_session_pay_rules_event_valid",
+        "ck_session_pay_rules_mode_valid",
+        "ck_session_pay_rules_percent_with_mode",
+        "ck_session_pay_rules_amount_with_mode",
+        "ck_session_pay_rules_percent_range",
+        "ck_session_pay_rules_amount_non_negative",
+    }
+    assert constraints["uq_session_pay_rules_event_effective_from"] == (
+        "UNIQUE (event, effective_from)"
+    )
+    assert constraints["fk_session_pay_rules_created_by_user_id_users"].endswith(
+        "ON DELETE RESTRICT"
+    )
+    assert _triggers(dsn, PAY_RULES) == {
+        "session_pay_rules_no_change",
+        "session_pay_rules_no_truncate",
+    }
+
+
+def _0075_insert(dsn: str, *, on: str = "2031-01-01", **row: Any) -> Any:
+    values = {"event": "makeup", "mode": "none", "percent": None, "amount": None}
+    return run_sql(
+        dsn,
+        "INSERT INTO session_pay_rules (event, effective_from, mode, percent, amount)"
+        " VALUES (:event, :on, :mode, :percent, :amount) RETURNING id",
+        {**values, "on": date.fromisoformat(on), **row},
+    )[0].id
+
+
+@pytest.mark.parametrize(
+    ("row", "constraint"),
+    [
+        ({"event": "bonus"}, "event_valid"),
+        ({"mode": "half"}, "mode_valid"),
+        ({"mode": "percent"}, "percent_with_mode"),
+        ({"percent": 10}, "percent_with_mode"),
+        ({"mode": "fixed", "percent": 10, "amount": 1}, "percent_with_mode"),
+        ({"mode": "fixed"}, "amount_with_mode"),
+        ({"amount": 10}, "amount_with_mode"),
+        ({"mode": "percent", "percent": 10, "amount": 1}, "amount_with_mode"),
+        ({"mode": "percent", "percent": -1}, "percent_range"),
+        ({"mode": "percent", "percent": "1000.0001"}, "percent_range"),
+        ({"mode": "fixed", "amount": "-0.01"}, "amount_non_negative"),
+    ],
+)
+def test_0075_checks(fresh_database_url, row, constraint):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    if "percent" in row and isinstance(row["percent"], str | int):
+        row = {**row, "percent": Decimal(row["percent"])}
+    if "amount" in row:
+        row = {**row, "amount": Decimal(row["amount"])}
+
+    with pytest.raises(DBAPIError) as caught:
+        _0075_insert(dsn, **row)
+
+    assert getattr(caught.value.orig, "sqlstate", "") == "23514"
+    assert f"ck_session_pay_rules_{constraint}" in str(caught.value.orig)
+
+
+def test_0075_the_limits_and_the_key(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    for on, percent in (("2031-01-01", 0), ("2031-01-02", 1000)):
+        _0075_insert(dsn, on=on, mode="percent", percent=Decimal(percent))
+    _0075_insert(dsn, on="2031-01-03", mode="fixed", amount=Decimal(0))
+    _0075_insert(dsn, event="no_show", on="2031-01-01")
+
+    with pytest.raises(DBAPIError) as caught:
+        _0075_insert(dsn, on="2031-01-01")
+    assert getattr(caught.value.orig, "sqlstate", "") == "23505"
+
+
+@pytest.mark.parametrize("zone", ["Pacific/Kiritimati", "Pacific/Pago_Pago"])
+def test_0075_the_guard_uses_the_center_zone(fresh_database_url, zone):
+    """UTC+14 and UTC-11 are never on the same date, so a guard on the UTC or
+    server date fails on at least one of the two, at any hour."""
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    run_sql(dsn, "UPDATE business_settings SET time_zone = :z", {"z": zone})
+    [row] = run_sql(
+        dsn,
+        "SELECT (now() AT TIME ZONE :z)::date AS today,"
+        " ((now() + interval '5 seconds') AT TIME ZONE :z)::date AS soon",
+        {"z": zone},
+    )
+    if row.today != row.soon:  # pragma: no cover - the center's midnight
+        pytest.skip("the center's date is about to change")
+    today = row.today
+    remove = "DELETE FROM session_pay_rules WHERE id = :id"
+    past = _0075_insert(dsn, on=(today - timedelta(days=1)).isoformat())
+    in_force = _0075_insert(dsn, on=today.isoformat())
+    upcoming = _0075_insert(dsn, on=(today + timedelta(days=1)).isoformat())
+
+    for rule in (past, in_force):
+        with pytest.raises(DBAPIError) as caught:
+            run_sql(dsn, remove, {"id": rule})
+        assert getattr(caught.value.orig, "sqlstate", "") == "42501"
+    with pytest.raises(DBAPIError) as caught:
+        run_sql(
+            dsn,
+            "UPDATE session_pay_rules SET mode = 'none' WHERE id = :id",
+            {"id": upcoming},
+        )
+    assert getattr(caught.value.orig, "sqlstate", "") == "42501"
+
+    run_sql(dsn, remove, {"id": upcoming})
+
+    assert (
+        run_sql(
+            dsn,
+            "SELECT count(*) AS n FROM session_pay_rules WHERE id = :id",
+            {"id": upcoming},
+        )[0].n
+        == 0
+    )
+
+
+def test_0075_the_guard_refuses_without_a_center_date(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    upcoming = _0075_insert(dsn, on="2099-01-01")
+    run_sql(dsn, "ALTER TABLE business_settings DISABLE TRIGGER ALL")
+    run_sql(dsn, "DELETE FROM business_settings")
+
+    with pytest.raises(DBAPIError) as caught:
+        run_sql(dsn, "DELETE FROM session_pay_rules WHERE id = :id", {"id": upcoming})
+
+    assert getattr(caught.value.orig, "sqlstate", "") == "42501"
+
+
+def test_0075_update_and_truncate_are_refused_on_the_seeds(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    for statement in (
+        "UPDATE session_pay_rules SET mode = 'fixed', amount = 1",
+        "DELETE FROM session_pay_rules",
+        "TRUNCATE session_pay_rules",
+    ):
+        with pytest.raises(DBAPIError) as caught:
+            run_sql(dsn, statement)
+        assert getattr(caught.value.orig, "sqlstate", "") == "42501", statement
+
+    assert run_sql(dsn, "SELECT count(*) AS n FROM session_pay_rules")[0].n == 3

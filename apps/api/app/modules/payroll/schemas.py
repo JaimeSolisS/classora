@@ -1,5 +1,5 @@
-"""Payroll shapes (#105, #106): the compensation bodies, their items, the
-lookup results and the settings.
+"""Payroll shapes (#105, #106, #441): the compensation bodies, their items, the
+lookup results, the settings and the session pay rules.
 
 The bodies check everything that needs no database read and report every
 failing field in one ``422``. Each rule is a field validator on the later
@@ -20,6 +20,13 @@ means "not on payroll" or "no rate" from that date.
 The settings body (:class:`PayrollSettingsUpdate`) takes dates from 2000-01-01
 to 2099-12-31 (``date_out_of_range``), and the anchor is a Monday
 (``anchor_not_monday``).
+
+The pay rule body (:class:`SessionPayRuleCreate`) follows the same rule:
+``percent`` is a :class:`~app.core.money.Rate` string (``rate_*``) from 0 to
+1000 (``percent_out_of_range``), ``amount`` a
+:class:`~app.core.money.Money` string (``money_*``), not negative
+(``amount_negative``), and each is set exactly when ``mode`` asks for it
+(``pay_rule_values_mismatch``, on that field).
 """
 
 import uuid
@@ -27,7 +34,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Final, Literal
 
-from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 from pydantic_core import PydanticCustomError
 
 from app.core.money import Money, Rate
@@ -37,10 +44,13 @@ type ClassKind = Literal["individual", "group", "course"]
 type RateModel = Literal["per_hour", "per_session", "per_course"]
 type CompensationStatus = Literal["current", "upcoming", "past"]
 type ProrationBasis = Literal["calendar_days", "weekdays"]
+type PayRuleEvent = Literal["late_cancellation", "no_show", "makeup"]
+type PayRuleMode = Literal["none", "percent", "fixed"]
 
 SETTINGS_DATE_MIN: Final = date(2000, 1, 1)
 SETTINGS_DATE_MAX: Final = date(2099, 12, 31)
 MONDAY: Final = 0
+PERCENT_MAX: Final = Rate(1000)
 
 
 def _in_range(value: date) -> date:
@@ -185,6 +195,117 @@ class PayrollSettingsUpdate(BaseModel):
                 "anchor_not_monday", "The biweekly anchor date must be a Monday."
             )
         return value
+
+
+def _matches_mode(value: object, mode: str, info: ValidationInfo) -> None:
+    if "mode" in info.data and (info.data["mode"] == mode) != (value is not None):
+        raise PydanticCustomError(
+            "pay_rule_values_mismatch",
+            "Set the percent only with the percent mode, and the amount only"
+            " with the fixed mode.",
+        )
+
+
+class SessionPayRuleCreate(BaseModel):
+    """``POST /api/v1/payroll/pay-rules`` (#441 D2). Every field is required,
+    with ``null`` written out."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    based_on_id: uuid.UUID = Field(
+        description=(
+            "The id of the event's latest version (the current one or the last"
+            " upcoming one); otherwise 409 version_conflict."
+        )
+    )
+    event: PayRuleEvent
+    effective_from: date = Field(
+        description=(
+            "The first service date it applies to: the center's today or later,"
+            " and later than every version of the event (422"
+            " invalid_effective_from)."
+        )
+    )
+    mode: PayRuleMode = Field(
+        description=(
+            "none: pays nothing. percent: a percent of the ordinary pay."
+            " fixed: a fixed amount."
+        )
+    )
+    percent: Rate | None = Field(
+        description="From 0 to 1000, set only with the percent mode."
+    )
+    amount: Money | None = Field(description="Set only with the fixed mode.")
+
+    @field_validator("percent")
+    @classmethod
+    def _percent(cls, value: Rate | None, info: ValidationInfo) -> Rate | None:
+        if value is not None and (value.is_negative() or value > PERCENT_MAX):
+            raise PydanticCustomError(
+                "percent_out_of_range", "Choose a percent from 0 to 1000."
+            )
+        _matches_mode(value, "percent", info)
+        return value
+
+    @field_validator("amount")
+    @classmethod
+    def _amount(cls, value: Money | None, info: ValidationInfo) -> Money | None:
+        if value is not None and value.is_negative():
+            raise PydanticCustomError(
+                "amount_negative", "The amount can't be negative."
+            )
+        _matches_mode(value, "fixed", info)
+        return value
+
+
+class SessionPayRuleItem(BaseModel):
+    """One version of an event's rule, in force from ``effective_from`` until
+    the next version's. ``percent`` and ``amount`` are ``null`` unless the
+    mode uses them. ``created_by_user_id`` is ``null`` on a seeded version."""
+
+    id: uuid.UUID
+    event: PayRuleEvent
+    effective_from: date
+    mode: PayRuleMode
+    percent: Rate | None
+    amount: Money | None
+    created_by_user_id: uuid.UUID | None
+    created_at: datetime
+
+
+class SessionPayRuleEventOverview(BaseModel):
+    """One event's versions."""
+
+    current: SessionPayRuleItem
+    upcoming: list[SessionPayRuleItem] = Field(
+        description="Versions that take effect later, oldest first."
+    )
+    history: list[SessionPayRuleItem] = Field(
+        description="Versions no longer in force, newest first (at most 50)."
+    )
+
+
+class SessionPayRuleOverview(BaseModel):
+    """``GET /api/v1/payroll/pay-rules`` (#441 D1). ``today`` is the center's
+    local date: the earliest date a new version can take."""
+
+    today: date
+    late_cancellation: SessionPayRuleEventOverview
+    no_show: SessionPayRuleEventOverview
+    makeup: SessionPayRuleEventOverview
+
+
+@dataclass(frozen=True)
+class SessionPayRuleVersion:
+    """A version as the calculation reads it (#441 B3): ``percent`` for
+    ``Rate.to_money(percent=)``, ``amount`` as it is."""
+
+    id: uuid.UUID
+    event: PayRuleEvent
+    effective_from: date
+    mode: PayRuleMode
+    percent: Rate | None
+    amount: Money | None
 
 
 @dataclass(frozen=True)
