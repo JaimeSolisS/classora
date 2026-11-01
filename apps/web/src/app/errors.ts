@@ -444,6 +444,15 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['payroll_start_locked', 'payroll_start_locked'],
   ['biweekly_anchor_locked', 'biweekly_anchor_locked'],
   ['anchor_not_monday', 'anchor_not_monday'],
+  // The makeup link (#436 C1, C2): field codes, and the one problem code.
+  ['makeup_target_unknown', 'makeup_target_unknown'],
+  ['makeup_target_not_cancelled', 'makeup_target_not_cancelled'],
+  ['makeup_target_not_individual', 'makeup_target_not_individual'],
+  ['makeup_not_allowed', 'makeup_not_allowed'],
+  ['makeup_student_mismatch', 'makeup_student_mismatch'],
+  ['makeup_subject_mismatch', 'makeup_subject_mismatch'],
+  ['makeup_window_passed', 'makeup_window_passed'],
+  ['makeup_already_scheduled', 'makeup_already_scheduled'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

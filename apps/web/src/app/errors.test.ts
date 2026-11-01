@@ -376,6 +376,15 @@ const API_CODES = [
   'payroll_start_locked',
   'biweekly_anchor_locked',
   'anchor_not_monday',
+  // The makeup link (#436 C1, C2).
+  'makeup_target_unknown',
+  'makeup_target_not_cancelled',
+  'makeup_target_not_individual',
+  'makeup_not_allowed',
+  'makeup_student_mismatch',
+  'makeup_subject_mismatch',
+  'makeup_window_passed',
+  'makeup_already_scheduled',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

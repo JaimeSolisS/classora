@@ -172,6 +172,9 @@ unless a bullet says otherwise.
   conflicts with a reason, which is audited, for one-off sessions and
   recurring series (occurrence by occurrence); overlaps and room capacity
   are never overridable.
+- From a cancelled class that allows a makeup, staff open the same page to
+  schedule the makeup, inside the policy's window, and the two sessions link
+  to each other.
 - The same page creates weekly recurring series ("Repeats weekly": the days,
   every 1 to 4 weeks, ending never, on a date or after a number of
   sessions). Each series has its own page, where staff move one occurrence,

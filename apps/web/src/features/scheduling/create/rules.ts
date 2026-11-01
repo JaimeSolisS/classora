@@ -1,7 +1,9 @@
 import type { FieldError } from '@classora/api-client';
 import type { ParseKeys } from 'i18next';
+import { ApiError } from '@/app/api';
 import type { ErrorMessageKey } from '@/app/errors';
 import { localDateTimeToInstant, toLocalDate, toLocalTime } from '@/lib/time';
+import type { ClassSessionDetail } from '../session/api';
 import type {
   ClassSessionCreate,
   Option,
@@ -91,12 +93,14 @@ export function validateSchedule(values: ScheduleValues): ScheduleErrors {
 
 /**
  * The POST body: the local date and times as instants in `timeZone`, with
- * the override when one is given (#49).
+ * the override when one is given (#49) and the cancelled session it makes up
+ * in makeup mode (#436 B6).
  */
 export function scheduleBody(
   values: ScheduleValues,
   timeZone: string,
   override?: SessionOverride,
+  makeupOf?: string,
 ): ClassSessionCreate {
   return {
     ...(override ? { override } : {}),
@@ -107,6 +111,7 @@ export function scheduleBody(
     classroom_id: values.classroomId || null,
     starts_at: localDateTimeToInstant(values.date, values.start, timeZone),
     ends_at: localDateTimeToInstant(values.date, values.end, timeZone),
+    ...(makeupOf ? { makeup_of_session_id: makeupOf } : {}),
   };
 }
 
@@ -157,6 +162,138 @@ export function serverErrors(
       : 'errors:validation_error';
   }
   return errors;
+}
+
+// --- Makeup mode (#436) -------------------------------------------------------
+
+/** The URL parameter of makeup mode, the mode's only state (B9). */
+export const MAKEUP_PARAM = 'makeupOf';
+
+/** A makeup link: 44 px tall under 768 px. */
+export const MAKEUP_LINK_CLASS =
+  'inline-flex min-h-11 w-fit items-center text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring md:min-h-0';
+
+export function sessionPath(sessionId: string): string {
+  return `/schedule/sessions/${encodeURIComponent(sessionId)}`;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isSessionId(value: string): boolean {
+  return UUID.test(value);
+}
+
+/** The link's refusals, each with its own `errors` key (C1). */
+const MAKEUP_ERROR_CODES: ReadonlySet<string> = new Set([
+  'makeup_target_unknown',
+  'makeup_target_not_cancelled',
+  'makeup_target_not_individual',
+  'makeup_not_allowed',
+  'makeup_student_mismatch',
+  'makeup_subject_mismatch',
+  'makeup_window_passed',
+]);
+
+/** Why a session can't be made up from this page (B2). */
+export type MakeupProblem =
+  | 'unknown'
+  | 'notCancelled'
+  | 'notIndividual'
+  | 'notAllowed'
+  | 'alreadyScheduled'
+  | 'windowPassed';
+
+/**
+ * Why `target` can't be made up, as of `readAt` (when it was read), or null.
+ * Against the read's own time, so a deadline passing with the form open
+ * leaves the form on screen and the server refuses the submit.
+ */
+export function makeupTargetProblem(
+  target: ClassSessionDetail,
+  readAt: number,
+): MakeupProblem | null {
+  if (target.state !== 'cancelled') {
+    return 'notCancelled';
+  }
+  if (target.kind !== 'individual') {
+    return 'notIndividual';
+  }
+  const { makeup } = target;
+  if (!makeup?.allowed || !makeup.until) {
+    return 'notAllowed';
+  }
+  if (makeup.session_id) {
+    return 'alreadyScheduled';
+  }
+  if (Date.parse(makeup.until) < readAt) {
+    return 'windowPassed';
+  }
+  return target.participants.length > 0 ? null : 'unknown';
+}
+
+/** The form's first values: the target's student and subject, nothing else. */
+export function makeupValues(target: ClassSessionDetail): ScheduleValues {
+  const student = target.participants[0];
+  return {
+    ...EMPTY_SCHEDULE,
+    student: student
+      ? { id: student.student_id, name: student.display_name }
+      : null,
+    subjectId: target.subject.id,
+  };
+}
+
+/** Whether the target took a live makeup first (C2). */
+export function isMakeupTaken(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.code === 'makeup_already_scheduled';
+}
+
+/** The live makeup of a `409 makeup_already_scheduled`, when it says (C2). */
+export function takenMakeupId(error: unknown): string | null {
+  if (!isMakeupTaken(error)) {
+    return null;
+  }
+  const id: unknown = error.problem?.details?.class_session_id;
+  return typeof id === 'string' ? id : null;
+}
+
+export interface SplitErrors {
+  /** The errors shown on their fields. */
+  fields: ScheduleErrors;
+  /** The errors with no field to show them on: the page's alert. */
+  page: ScheduleMessage[];
+}
+
+/**
+ * The server's 422 errors by where they show: on their fields, or at page
+ * level for the link (it isn't a field, C1) and, when `fixed`, the read-only
+ * student and subject (a student archived since).
+ */
+export function splitServerErrors(
+  fieldErrors: readonly FieldError[],
+  fixed: boolean,
+): SplitErrors {
+  const fields = serverErrors(fieldErrors);
+  const page: ScheduleMessage[] = [];
+  if (fixed) {
+    for (const field of ['student', 'subject'] as const) {
+      const shown = fields[field];
+      if (shown) {
+        page.push(shown);
+        delete fields[field];
+      }
+    }
+  }
+  for (const { path, code } of fieldErrors) {
+    if (path[path.length - 1] === 'makeup_of_session_id') {
+      page.push(
+        MAKEUP_ERROR_CODES.has(code)
+          ? (`errors:${code}` as `errors:${ErrorMessageKey}`)
+          : 'errors:validation_error',
+      );
+    }
+  }
+  return { fields, page };
 }
 
 /** Subjects grouped by level, in the order given. */

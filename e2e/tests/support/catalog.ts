@@ -434,7 +434,20 @@ type Common = {
       string
     >;
     submit: string;
-    success: { heading: string; unassigned: string; another: string };
+    success: {
+      heading: string;
+      unassigned: string;
+      another: string;
+      openSession: string;
+    };
+    // #436 G: the makeup block and makeup mode.
+    makeup: {
+      of: string;
+      scheduled: string;
+      action: string;
+      openCancelled: string;
+      openMakeup: string;
+    };
     severity: { hard: string; soft: string };
     conflicts: {
       student_overlap: string;

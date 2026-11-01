@@ -47,13 +47,16 @@ import {
   EMPTY_SCHEDULE,
   FIELD_ORDER,
   isConflictCode,
+  isMakeupTaken,
   overrideAction,
   overrideReasonError,
   serverErrors,
   sessionOverride,
   SLOT_FIELDS,
   slotValues,
+  splitServerErrors,
   subjectsByLevel,
+  takenMakeupId,
   validateSchedule,
   type ScheduleErrors,
   type ScheduleField,
@@ -113,6 +116,26 @@ import { useWarningMessage } from './warningMessages';
 // to the series (#236 H1, H2): "Override and schedule" resends the series
 // with every soft (occurrence, code) pair and the reason, and the success
 // panel says on how many occurrences it was overridden.
+//
+// Makeup mode (#436 B): with `makeup` the student and subject are read-only
+// text (their 422s go to the page's alert, with the link's own refusals), the
+// notice sits on top, a taken target links to its makeup, and the success
+// panel links to the target; "Schedule another" is the page's, to leave the
+// mode.
+
+/** Makeup mode: what the form shows around the fixed values (#436). */
+export interface ScheduleMakeup {
+  studentName: string;
+  subjectName: string;
+  /** The session being made up, and the deadline (B4). */
+  notice: ReactNode;
+  /** The link to the session being made up (B8). */
+  targetLink: ReactNode;
+  /** The link to the makeup that took the target (C2). */
+  takenLink: (sessionId: string) => ReactNode;
+  /** Leaves makeup mode (B8). */
+  onScheduleAnother: () => void;
+}
 
 export interface ScheduleSessionFormProps {
   subjects: readonly SubjectOption[];
@@ -149,6 +172,8 @@ export interface ScheduleSessionFormProps {
   initialRepeats?: boolean;
   /** The rule to start from (stories). */
   initialRecurrence?: RecurrenceValues;
+  /** Makeup mode (#436); none: the plain form. */
+  makeup?: ScheduleMakeup | undefined;
 }
 
 export function ScheduleSessionForm({
@@ -168,6 +193,7 @@ export function ScheduleSessionForm({
   seriesLink,
   initialRepeats = false,
   initialRecurrence = EMPTY_RECURRENCE,
+  makeup,
 }: ScheduleSessionFormProps) {
   const { t, i18n } = useTranslation();
   const language = toLanguage(i18n.resolvedLanguage);
@@ -214,6 +240,7 @@ export function ScheduleSessionForm({
   // (cancel), or to the new conflict list (a new 409) or the success heading.
   const focusAfterDialog = useRef<'button' | 'panel'>('button');
 
+  const fixed = makeup !== undefined;
   const fieldId = (field: ScheduleField) => `${id}-${field}`;
   const errorId = (field: ScheduleField) => `${id}-${field}-error`;
 
@@ -297,7 +324,9 @@ export function ScheduleSessionForm({
           return;
         }
         const mapped =
-          error instanceof ApiError ? serverErrors(error.fieldErrors) : {};
+          error instanceof ApiError
+            ? splitServerErrors(error.fieldErrors, fixed).fields
+            : {};
         if (Object.keys(mapped).length > 0) {
           setTutorSuggestions(null);
           setErrors(mapped);
@@ -489,11 +518,13 @@ export function ScheduleSessionForm({
       setConflicts(list);
       suggest(values);
     } else if (caught instanceof ApiError && caught.fieldErrors.length > 0) {
-      const mapped = serverErrors(caught.fieldErrors);
-      if (Object.keys(mapped).length > 0) {
-        setErrors(mapped);
-        focusFirst(mapped);
-      } else {
+      const { fields, page } = splitServerErrors(caught.fieldErrors, fixed);
+      const onFields = Object.keys(fields).length > 0;
+      if (onFields) {
+        setErrors(fields);
+        focusFirst(fields);
+      }
+      if (page.length > 0 || !onFields) {
         setFailure(caught);
       }
     } else {
@@ -526,9 +557,9 @@ export function ScheduleSessionForm({
         caught instanceof ApiError &&
         !onReason &&
         caught.fieldErrors.length > 0;
-      if (list || onForm) {
-        // A new conflict list, or a 422 on the form's own fields: close the
-        // dialog and show it on the page.
+      if (list || onForm || isMakeupTaken(caught)) {
+        // A new conflict list, a 422 on the form's own fields or a taken
+        // makeup target: close the dialog and show it on the page.
         focusAfterDialog.current = list ? 'panel' : 'button';
         setOverriding(false);
         handleFailure(caught);
@@ -550,6 +581,10 @@ export function ScheduleSessionForm({
   }
 
   function scheduleAnother() {
+    if (makeup) {
+      makeup.onScheduleAnother();
+      return;
+    }
     setCreated(null);
     setCreatedSeries(null);
     setRepeats(false);
@@ -702,6 +737,12 @@ export function ScheduleSessionForm({
           </dd>
           <dt className="font-medium">{t('scheduling.fields.classroom')}</dt>
           <dd>{created.classroom?.name ?? t('scheduling.noClassroom')}</dd>
+          {makeup ? (
+            <>
+              <dt className="font-medium">{t('scheduling.makeup.of')}</dt>
+              <dd>{makeup.targetLink}</dd>
+            </>
+          ) : null}
           <dt className="font-medium">{t('scheduling.success.state')}</dt>
           <dd>
             {tutor
@@ -776,9 +817,17 @@ export function ScheduleSessionForm({
   }
 
   const action = conflicts ? overrideAction(conflicts, canOverride) : null;
+  const failureMessage =
+    failure instanceof ApiError
+      ? splitServerErrors(failure.fieldErrors, fixed)
+          .page.map(message)
+          .join(' ') || undefined
+      : undefined;
+  const takenId = takenMakeupId(failure);
 
   return (
     <div className="flex w-full max-w-2xl flex-col gap-6">
+      {makeup?.notice}
       {conflicts ? (
         <div ref={panel} className="flex flex-col gap-3">
           <ConflictPanel conflicts={conflicts} />
@@ -829,7 +878,8 @@ export function ScheduleSessionForm({
           onRefused={handleSeriesFailure}
         />
       ) : null}
-      {failure ? <ErrorAlert error={failure} /> : null}
+      {failure ? <ErrorAlert error={failure} message={failureMessage} /> : null}
+      {makeup && takenId ? <p>{makeup.takenLink(takenId)}</p> : null}
       <form
         method="post"
         noValidate
@@ -837,41 +887,52 @@ export function ScheduleSessionForm({
         onSubmit={onFormSubmit}
         className="flex flex-col gap-6"
       >
-        <div id={`${fieldId('student')}-picker`}>
-          <SearchPicker<Option>
-            label={t('scheduling.fields.student')}
-            help={
-              values.student
-                ? t('scheduling.studentChosen', { name: values.student.name })
-                : t('scheduling.studentHelp')
-            }
-            queryKey={['scheduling', 'create', 'students']}
-            search={searchStudents}
-            optionId={(student) => student.id}
-            optionLabel={(student) => student.name}
-            selectedId={values.student?.id ?? null}
-            onSelect={(student) => change('student', student)}
-            errorMessage={message(errors.student)}
-          />
-        </div>
-        {select(
-          'subject',
-          t('scheduling.fields.subject'),
-          values.subjectId,
-          (value) => change('subjectId', value),
-          <>
-            <option value="">{t('scheduling.chooseSubject')}</option>
-            {subjectsByLevel(subjects).map(([level, items]) => (
-              <optgroup key={level} label={level}>
-                {items.map((subject) => (
-                  <option key={subject.id} value={subject.id}>
-                    {subject.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </>,
+        {makeup ? (
+          <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-[auto_1fr]">
+            <dt className="font-medium">{t('scheduling.fields.student')}</dt>
+            <dd className="break-words">{makeup.studentName}</dd>
+            <dt className="font-medium">{t('scheduling.fields.subject')}</dt>
+            <dd className="break-words">{makeup.subjectName}</dd>
+          </dl>
+        ) : (
+          <div id={`${fieldId('student')}-picker`}>
+            <SearchPicker<Option>
+              label={t('scheduling.fields.student')}
+              help={
+                values.student
+                  ? t('scheduling.studentChosen', { name: values.student.name })
+                  : t('scheduling.studentHelp')
+              }
+              queryKey={['scheduling', 'create', 'students']}
+              search={searchStudents}
+              optionId={(student) => student.id}
+              optionLabel={(student) => student.name}
+              selectedId={values.student?.id ?? null}
+              onSelect={(student) => change('student', student)}
+              errorMessage={message(errors.student)}
+            />
+          </div>
         )}
+        {makeup
+          ? null
+          : select(
+              'subject',
+              t('scheduling.fields.subject'),
+              values.subjectId,
+              (value) => change('subjectId', value),
+              <>
+                <option value="">{t('scheduling.chooseSubject')}</option>
+                {subjectsByLevel(subjects).map(([level, items]) => (
+                  <optgroup key={level} label={level}>
+                    {items.map((subject) => (
+                      <option key={subject.id} value={subject.id}>
+                        {subject.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </>,
+            )}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {select(
             'tutor',

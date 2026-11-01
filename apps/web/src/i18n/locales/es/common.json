@@ -2051,6 +2051,29 @@
       "banner": "Cancelada",
       "bannerWhen": "Cancelada el {{when}}."
     },
+    "makeup": {
+      "heading": "Reposición",
+      "of": "Reposición de",
+      "openCancelled": "Abrir la clase cancelada",
+      "scheduled": "Reposición programada",
+      "openMakeup": "Abrir la reposición",
+      "deadline": "La reposición debe iniciar a más tardar el {{when}} {{zone}}.",
+      "action": "Programar reposición",
+      "ended": "El plazo de reposición terminó.",
+      "notAllowed": "Esta cancelación no permite una reposición.",
+      "notice": "Reposición de la clase cancelada: {{subject}}, {{when}}.",
+      "mustStartBy": "Debe iniciar a más tardar el {{when}} {{zone}}.",
+      "backToCancelled": "Volver a la clase cancelada",
+      "plainForm": "Programar una clase normal",
+      "unusable": {
+        "unknown": "No se encontró esta clase cancelada, así que no se puede programar una reposición.",
+        "notCancelled": "Esta clase no está cancelada, así que no se puede programar una reposición.",
+        "notIndividual": "Solo se puede reponer una clase individual.",
+        "notAllowed": "Esta cancelación no permite una reposición.",
+        "alreadyScheduled": "Esta clase cancelada ya tiene una reposición programada.",
+        "windowPassed": "El plazo de reposición de esta clase terminó."
+      }
+    },
     "requestReview": {
       "title": "Revisar solicitud de sesión",
       "summary": "Solicitud",
