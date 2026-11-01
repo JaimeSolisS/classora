@@ -48,6 +48,7 @@ from tests.integration import package_support as pks
 from tests.integration import payment_support as ps
 from tests.integration.conftest import run_sql, short_lived_engine
 from tests.integration.lifecycle_support import in_uow
+from tests.integration.lock_support import commit_b_inside_a, on_session
 
 HOLD_SECONDS = 0.5
 REPEATS = 5
@@ -352,10 +353,11 @@ def test_two_accounts_dont_wait_for_each_other(module_seeded_url, actor, attempt
     _, first_account, _, first = _payment(url, actor, "100.00")
     _, second_account, _, second = _payment(url, actor, "100.00")
 
-    a, b, a_end, b_end = _run(url, actor, _reverse(first), _refund(second, "10.00"))
+    a, b = commit_b_inside_a(
+        url, actor, on_session(_reverse(first)), on_session(_refund(second, "10.00"))
+    )
 
     assert isinstance(a, billing.PaymentReversalResult)
     assert b.remainder_after == Money("90.00")
-    assert b_end < a_end  # B never waited for A's lock
     cs.assert_invariants(url, first_account)
     cs.assert_invariants(url, second_account)

@@ -44,6 +44,7 @@ from tests.factories import billing as factories
 from tests.integration import payment_support as ps
 from tests.integration.conftest import short_lived_engine
 from tests.integration.lifecycle_support import in_uow
+from tests.integration.lock_support import commit_b_inside_a, on_session
 
 HOLD_SECONDS = 0.5
 REPEATS = 5
@@ -263,11 +264,13 @@ def test_an_account_lock_doesnt_block_another_accounts_payment(
     async def lock_x(session: AsyncSession) -> None:
         await billing.lock_billing_account(session, account_x)
 
-    a, b, a_end, b_end = asyncio.run(
-        _hold_then(url, actor, lock_x, _payment(account_y, "100.00", OLDEST))
+    commit_b_inside_a(
+        url,
+        actor,
+        on_session(lock_x),
+        on_session(_payment(account_y, "100.00", OLDEST)),
     )
 
-    assert b_end < a_end  # B committed while A still held account X
     assert ps.valid_allocated(url, cy) == Money("100.00")
     assert ps.valid_allocated(url, cx) == Money("0.00")
 
