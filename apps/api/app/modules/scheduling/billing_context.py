@@ -41,6 +41,7 @@ from typing import Final
 
 from sqlalchemy import Select, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.selectable import LateralFromClause
 
 from app.modules.scheduling.models import (
     CHANGE_REQUEST_APPROVED,
@@ -229,17 +230,17 @@ class CancellationFacts:
     """The request's ``created_at``, else the session's ``cancelled_at``."""
 
 
-async def cancellation_classification(
-    session: AsyncSession, class_session_id: uuid.UUID
-) -> CancellationFacts | None:
-    """C2 (module docstring): ``None`` unless the session is ``cancelled``
-    (or unknown). One statement."""
-    request = (
+def approved_cancellation_request() -> LateralFromClause:
+    """The newest approved cancellation request of the ``ClassSession`` row
+    the caller selects: one lateral row or none. Shared with the makeup
+    window (#423 B8), so both read the same request."""
+    return (
         select(
             SessionChangeRequest.id,
             SessionChangeRequest.initiated_by,
             SessionChangeRequest.final_classification,
             SessionChangeRequest.final_makeup_allowed,
+            SessionChangeRequest.final_makeup_until,
             SessionChangeRequest.created_at,
         )
         .where(
@@ -252,6 +253,14 @@ async def cancellation_classification(
         .correlate(ClassSession)
         .lateral("request")
     )
+
+
+async def cancellation_classification(
+    session: AsyncSession, class_session_id: uuid.UUID
+) -> CancellationFacts | None:
+    """C2 (module docstring): ``None`` unless the session is ``cancelled``
+    (or unknown). One statement."""
+    request = approved_cancellation_request()
     row = (
         await session.execute(
             select(

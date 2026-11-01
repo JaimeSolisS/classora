@@ -18,11 +18,20 @@ W1.2; ADR-0005 D1, D2, D7, D9).
    (any state but ``active``, a pending invitee included;
    ``identity.service.get_role_member``) and ``classroom_unknown`` /
    ``classroom_inactive`` (``catalog.service.classroom_references``);
+4a. with ``makeup_of_session_id`` (#423), the link's rules
+   (:func:`~app.modules.scheduling.makeups.makeup_refusal`): one ``422``
+   field error, the first of ``makeup_target_unknown``,
+   ``makeup_target_not_cancelled``, ``makeup_target_not_individual``,
+   ``makeup_not_allowed``, ``makeup_student_mismatch``,
+   ``makeup_subject_mismatch`` and ``makeup_window_passed``, added to any
+   reference errors of step 4; none of them is overridable;
 4b. with a tutor, the offer deadline (#52 C1): ``respond_by`` defaults to
    the scheduling policy's response time at now (never after the start); a
    requested one must be after now and no later than that
    (``422 respond_by_invalid``); without a tutor it is ``422
    respond_by_requires_tutor``;
+4c. with ``makeup_of_session_id``, ``409 makeup_already_scheduled`` when the
+   target has a live makeup (``details.class_session_id``, #423 B5);
 5. every conflict check (:mod:`app.modules.scheduling.conflicts` lists the
    codes and their data sources); the tutor checks run only with a tutor, the
    room checks only with a room. Local values are taken in the center zone;
@@ -59,7 +68,8 @@ written, plus the override event when something was overridden.
 
 **Read** (:func:`get_class_session`): every holder of ``schedule.view``
 sees every session and its overrides (no record policy for staff, D9); at
-most seven statements; ``404`` for an unknown id.
+most seven statements, plus at most three for a cancelled session's ``makeup``
+block (#423 C3); ``404`` for an unknown id.
 
 Every function runs in the caller's Unit of Work and never commits.
 """
@@ -93,6 +103,11 @@ from app.modules.scheduling.errors import (
     SessionValidationError,
 )
 from app.modules.scheduling.locks import lock_students, lock_tutor
+from app.modules.scheduling.makeups import (
+    ensure_no_live_makeup,
+    makeup_refusal,
+    session_makeup,
+)
 from app.modules.scheduling.models import (
     CHANGE_REQUEST_PENDING,
     OFFER_KIND_ASSIGNMENT,
@@ -122,6 +137,7 @@ from app.modules.scheduling.schemas import (
     PendingSubstitution,
     SessionCancellation,
     SessionClassroom,
+    SessionMakeup,
     SessionOverrideItem,
     SessionParticipant,
     SessionReassignment,
@@ -358,6 +374,7 @@ def _detail(
     pending_substitution: PendingSubstitution | None = None,
     pending_change_request_id: uuid.UUID | None = None,
     reassignment: SessionReassignment | None = None,
+    makeup: SessionMakeup | None = None,
 ) -> ClassSessionDetail:
     cancellation = None
     if row.cancelled_at is not None and row.cancellation_reason is not None:
@@ -396,6 +413,8 @@ def _detail(
         cohort_id=row.cohort_id,
         pending_change_request_id=pending_change_request_id,
         reassignment=reassignment,
+        makeup_of_session_id=row.makeup_of_session_id,
+        makeup=makeup,
     )
 
 
@@ -454,6 +473,34 @@ def respond_by_error() -> FieldError:
     )
 
 
+async def _checked_references(
+    session: AsyncSession, body: ClassSessionCreate
+) -> _References:
+    """Steps 4 and 4a: the references, and the link's first refusal added to
+    any reference errors. No link: no statement beyond step 4."""
+    if body.makeup_of_session_id is None:
+        return await references(session, body)
+    errors: list[FieldError] = []
+    refs = None
+    try:
+        refs = await references(session, body)
+    except SessionValidationError as exc:
+        errors.extend(exc.errors or [])
+    refusal = await makeup_refusal(
+        session,
+        body.makeup_of_session_id,
+        student_id=body.student_id,
+        subject_id=body.subject_id,
+        starts_at=body.starts_at,
+    )
+    if refusal is not None:
+        errors.append(refusal)
+    if errors:
+        raise SessionValidationError(errors)
+    assert refs is not None  # noqa: S101 - no errors, so references returned
+    return refs
+
+
 async def create_class_session(
     session: AsyncSession,
     body: ClassSessionCreate,
@@ -473,9 +520,11 @@ async def create_class_session(
         # #63 D5: serialized with a change of this tutor's availability.
         await lock_tutor(session, body.tutor_user_id)
     validate_bounds(body, zone)
-    refs = await references(session, body)
+    refs = await _checked_references(session, body)
     offered_at = clock.now()
     respond_by = await _respond_by(session, body, offered_at)
+    if body.makeup_of_session_id is not None:
+        await ensure_no_live_makeup(session, body.makeup_of_session_id)
     conflicts = await find_conflicts(
         session, body, zone, notice_reference_at=notice_reference_at
     )
@@ -505,6 +554,7 @@ async def create_class_session(
         starts_at=body.starts_at,
         ends_at=body.ends_at,
         scheduled_minutes=scheduled_minutes(body.starts_at, body.ends_at),
+        makeup_of_session_id=body.makeup_of_session_id,
     )
     session.add(row)
     try:
@@ -569,7 +619,8 @@ async def get_class_session(
     """``GET /api/v1/class-sessions/{id}``: at most seven statements (the
     tutor, the substitute and the override actors are read together; the
     pending offer, #52 G3, and the pending substitution, #55 E3, come with
-    the session row)."""
+    the session row), plus at most three for a cancelled session's ``makeup``
+    block (#423 C3)."""
     pending = (
         select(
             AssignmentOfferSession.class_session_id,
@@ -701,6 +752,11 @@ async def get_class_session(
         classroom = SessionClassroom(
             id=room.id, name=room.name, is_active=room.is_active
         )
+    makeup = (
+        await session_makeup(session, row.id)
+        if row.state == SessionState.CANCELLED.value
+        else None
+    )
     return _detail(
         row,
         subject=SessionSubject(
@@ -756,4 +812,5 @@ async def get_class_session(
                 change_request_id=flag_source_id,
             )
         ),
+        makeup=makeup,
     )

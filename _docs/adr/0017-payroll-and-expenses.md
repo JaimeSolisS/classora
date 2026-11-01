@@ -130,6 +130,13 @@ A payroll-owned, center-wide table `session_pay_rules`, with one row per `(event
 - A nullable self-reference `class_sessions.makeup_of_session_id` (`ON DELETE RESTRICT`), set by staff with `schedule.manage` when creating a one-off individual session.
 - The target must be `cancelled` with `makeup_allowed`, the new session must start by `makeup_until`, and a partial unique index allows one makeup per cancelled session.
 - `NULL` keeps every current behavior. **Billing doesn't read it**, so E3 of ADR-0006 stands.
+- **Implementation note (#423, orchestrator-recommended, pending owner review):** refines this decision where it is silent; `_docs/data-model.md` §11.13 is the current rule.
+  - **Targets (#423 E2, E3):** individual targets only, one-off or occurrence, with the same student and subject; the tutor is free. A makeup for a group or course student stays an ordinary session, without makeup pay.
+  - **Deadline (#423 E4):** an approved request's stored date; otherwise the target's start + the window of the policy at `cancelled_at`. Inclusive, with no lower bound.
+  - **One live makeup (#423 E5):** the index adds `state <> 'cancelled'`, so a cancelled makeup keeps its link and frees its target.
+  - **Later moves (#423 E6):** the rules run at create only; a later move keeps the link.
+  - **Reads (#423 E7):** `ClassSessionDetail` gains `makeup_of_session_id` and a `makeup` block; there is no list route.
+  - **Existing rows (#423 E8):** no backfill; linking is forward only.
 
 ### Period calendars (E6 (a), spec §7, ADR-0004, #106, product)
 

@@ -255,6 +255,15 @@ class ClassSessionCreate(ClassSessionSlot):
             " whole minutes. Null or absent: the default."
         ),
     )
+    makeup_of_session_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "The cancelled session this one makes up (#423): an individual"
+            " session of the same student and subject, with a makeup allowed,"
+            " starting by its deadline. Never overridable. Null or absent: an"
+            " ordinary session."
+        ),
+    )
 
 
 class SessionSubject(BaseModel):
@@ -356,6 +365,18 @@ class SessionCancellation(BaseModel):
     reason: str
 
 
+class SessionMakeup(BaseModel):
+    """Whether a `cancelled` session can be made up (#423 C2)."""
+
+    allowed: bool
+    until: datetime | None = Field(
+        description="The last instant a makeup can start; null when not allowed."
+    )
+    session_id: uuid.UUID | None = Field(
+        description="The live makeup; null when there is none."
+    )
+
+
 class ClassSessionDetail(BaseModel):
     """One class session (``GET /api/v1/class-sessions/{id}``)."""
 
@@ -423,6 +444,14 @@ class ClassSessionDetail(BaseModel):
         description=(
             "The newest open reassignment flag (the tutor's availability"
             " changed, M4-18); null when there is none."
+        ),
+    )
+    makeup_of_session_id: uuid.UUID | None = Field(
+        description="The cancelled session this one makes up (#423); null otherwise."
+    )
+    makeup: SessionMakeup | None = Field(
+        description=(
+            "The makeup allowance of a `cancelled` session (#423); null otherwise."
         ),
     )
 

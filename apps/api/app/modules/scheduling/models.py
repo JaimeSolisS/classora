@@ -243,6 +243,7 @@ TUTOR_OVERLAP_CONSTRAINT: Final = "ex_class_sessions_tutor_overlap"
 ROOM_OVERLAP_CONSTRAINT: Final = "ex_class_sessions_room_overlap"
 PARTICIPANT_UNIQUE: Final = "uq_class_session_participants_session_student"
 SERIES_ORIGINAL_START_UNIQUE: Final = "uq_class_sessions_series_original_start"
+MAKEUP_LIVE_UNIQUE: Final = "uq_class_sessions_makeup_of_session_id"
 SERIES_PARTICIPANT_UNIQUE: Final = "uq_class_series_participants_series_student"
 CONFLICT_CODE_MAX_LENGTH: Final = 40
 SERIES_DURATION_MIN: Final = 15
@@ -423,6 +424,21 @@ class ClassSession(Audited, VersionedMixin, Model):
             "id",
             postgresql_where=text("state = 'confirmed'"),
         ),
+        # #423 A2, A3 (E5): one live makeup per cancelled session; a cancelled
+        # makeup keeps its link and leaves the index.
+        Index(
+            MAKEUP_LIVE_UNIQUE,
+            "makeup_of_session_id",
+            unique=True,
+            postgresql_where=text(
+                "makeup_of_session_id IS NOT NULL AND state <> 'cancelled'"
+            ),
+        ),
+        CheckConstraint(
+            "makeup_of_session_id IS NULL"
+            " OR (kind = 'individual' AND series_id IS NULL)",
+            name="makeup_is_one_off_individual",
+        ),
     )
 
     kind: Mapped[str] = mapped_column(String(20))
@@ -480,6 +496,11 @@ class ClassSession(Audited, VersionedMixin, Model):
     )
     first_confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    makeup_of_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("class_sessions.id", ondelete="RESTRICT"),
+        nullable=True,
     )
 
 

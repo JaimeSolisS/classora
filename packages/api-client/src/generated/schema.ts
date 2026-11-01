@@ -8503,6 +8503,11 @@ export interface components {
              * @description With a tutor only (#52): an earlier deadline for the tutor's answer, after now and no later than the default (the scheduling policy's response time, but never after the start); truncated to whole minutes. Null or absent: the default.
              */
             respond_by?: string | null;
+            /**
+             * Makeup Of Session Id
+             * @description The cancelled session this one makes up (#423): an individual session of the same student and subject, with a makeup allowed, starting by its deadline. Never overridable. Null or absent: an ordinary session.
+             */
+            makeup_of_session_id?: string | null;
         };
         /**
          * ClassSessionCreated
@@ -8596,6 +8601,13 @@ export interface components {
             pending_change_request_id: string | null;
             /** @description The newest open reassignment flag (the tutor's availability changed, M4-18); null when there is none. */
             reassignment: components["schemas"]["SessionReassignment"] | null;
+            /**
+             * Makeup Of Session Id
+             * @description The cancelled session this one makes up (#423); null otherwise.
+             */
+            makeup_of_session_id: string | null;
+            /** @description The makeup allowance of a `cancelled` session (#423); null otherwise. */
+            makeup: components["schemas"]["SessionMakeup"] | null;
             /**
              * Warnings
              * @description The tutor's workload warnings for this session: daily, weekly, then break; empty without a tutor. They never block.
@@ -8694,6 +8706,13 @@ export interface components {
             pending_change_request_id: string | null;
             /** @description The newest open reassignment flag (the tutor's availability changed, M4-18); null when there is none. */
             reassignment: components["schemas"]["SessionReassignment"] | null;
+            /**
+             * Makeup Of Session Id
+             * @description The cancelled session this one makes up (#423); null otherwise.
+             */
+            makeup_of_session_id: string | null;
+            /** @description The makeup allowance of a `cancelled` session (#423); null otherwise. */
+            makeup: components["schemas"]["SessionMakeup"] | null;
         };
         /**
          * ClassSessionOffers
@@ -8837,6 +8856,13 @@ export interface components {
             pending_change_request_id: string | null;
             /** @description The newest open reassignment flag (the tutor's availability changed, M4-18); null when there is none. */
             reassignment: components["schemas"]["SessionReassignment"] | null;
+            /**
+             * Makeup Of Session Id
+             * @description The cancelled session this one makes up (#423); null otherwise.
+             */
+            makeup_of_session_id: string | null;
+            /** @description The makeup allowance of a `cancelled` session (#423); null otherwise. */
+            makeup: components["schemas"]["SessionMakeup"] | null;
             /**
              * Warnings
              * @description The tutor's workload warnings at the new time (#50), the session itself counted once; empty without a tutor.
@@ -17290,6 +17316,24 @@ export interface components {
         SessionLogTutor: {
             /** Display Name */
             display_name: string;
+        };
+        /**
+         * SessionMakeup
+         * @description Whether a `cancelled` session can be made up (#423 C2).
+         */
+        SessionMakeup: {
+            /** Allowed */
+            allowed: boolean;
+            /**
+             * Until
+             * @description The last instant a makeup can start; null when not allowed.
+             */
+            until: string | null;
+            /**
+             * Session Id
+             * @description The live makeup; null when there is none.
+             */
+            session_id: string | null;
         };
         /**
          * SessionNoteCreate
@@ -26208,7 +26252,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is created. With a tutor, a session that has already begun can't be offered (class_session_not_offerable, details.reason = started). */
+            /** @description The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is created. With a tutor, a session that has already begun can't be offered (class_session_not_offerable, details.reason = started). A cancelled session has one live makeup (makeup_already_scheduled, details.class_session_id). */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -92,6 +92,8 @@ export const CREATED: ClassSessionCreated = {
   cohort_id: null,
   pending_change_request_id: null,
   reassignment: null,
+  makeup_of_session_id: null,
+  makeup: null,
   warnings: [],
 };
 

@@ -3,9 +3,11 @@
 - ``POST /api/v1/class-sessions``: ``require("schedule.manage")`` (Owners and
   Administrators). A one-off individual session; order ``401``/``403`` →
   ``422`` body → student lock → zone ``FOR SHARE`` → ``422`` bounds →
-  ``422`` references → ``409 scheduling_conflict`` (every conflict, unless
-  an ``override`` covers them all, #49) → ``201`` (``offered`` with a
-  tutor, ``unassigned`` without one). An ``override`` needs
+  ``422`` references and the ``makeup_of_session_id`` rules (#423: seven
+  ``makeup_*`` codes, never overridable) → ``409 makeup_already_scheduled``
+  → ``409 scheduling_conflict`` (every conflict, unless an ``override``
+  covers them all, #49) → ``201`` (``offered`` with a tutor, ``unassigned``
+  without one). An ``override`` needs
   ``schedule.override`` (the Owner, or an Administrator while an Owner's
   delegation is active): ``403`` right after the body's ``422``, before
   anything is read or locked.
@@ -177,7 +179,8 @@ TUTOR_OPTIONS_MAX_LIMIT: Final = 50
             " a soft one the `override` doesn't list, always refuses."
             " Nothing is created. With a tutor, a session that has already"
             " begun can't be offered (class_session_not_offerable,"
-            " details.reason = started)."
+            " details.reason = started). A cancelled session has one live"
+            " makeup (makeup_already_scheduled, details.class_session_id)."
         ),
         422: problem_response_doc(
             "The body is not valid (validation_error): a missing or unknown"
@@ -188,7 +191,11 @@ TUTOR_OPTIONS_MAX_LIMIT: Final = 50
             " ends_before_start, duration_out_of_range, crosses_local_date);"
             " the references (student_unknown, student_inactive,"
             " subject_unknown, subject_inactive, tutor_unknown, tutor_inactive,"
-            " classroom_unknown, classroom_inactive), all in one response; or"
+            " classroom_unknown, classroom_inactive), all in one response; the"
+            " first refusal of `makeup_of_session_id` (makeup_target_unknown,"
+            " makeup_target_not_cancelled, makeup_target_not_individual,"
+            " makeup_not_allowed, makeup_student_mismatch,"
+            " makeup_subject_mismatch, makeup_window_passed), added to them; or"
             " `respond_by` (respond_by_requires_tutor, respond_by_invalid)."
         ),
     },
