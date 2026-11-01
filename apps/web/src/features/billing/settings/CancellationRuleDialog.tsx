@@ -49,8 +49,12 @@ export interface CancellationRuleDialogProps {
   today: LocalDate;
   /** The center's zone, named in the date's help text. */
   timeZone: string;
-  /** Stores the version; rejects with the error to show. */
-  onSubmit: (values: CancellationFormValues) => Promise<void>;
+  /** Stores `values` based on `base`, the version they were edited from;
+   * rejects with the error to show. */
+  onSubmit: (
+    values: CancellationFormValues,
+    base: CancellationRule,
+  ) => Promise<void>;
   /** Refetches the rules after a version conflict. */
   onReload: () => Promise<void>;
   /** The dialog closed: `saved` after a stored version. */
@@ -77,7 +81,7 @@ export function CancellationRuleDialog(props: CancellationRuleDialogProps) {
 }
 
 function DialogBody({
-  latest,
+  latest: server,
   today,
   timeZone,
   onSubmit,
@@ -91,14 +95,26 @@ function DialogBody({
   const message = useFieldMessage();
   const returnFocus = useReturnFocus();
   const id = useId();
+  const [latest, setLatest] = useState(server);
   const [values, setValues] = useState<CancellationFormValues>(
-    () => initialValues ?? initialCancellationForm(latest),
+    () => initialValues ?? initialCancellationForm(server),
   );
   const [errors, setErrors] = useState<CancellationFieldErrors>(
     initialErrors ?? {},
   );
   const [failure, setFailure] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [reloaded, setReloaded] = useState(false);
+  if (!submitting && server.id !== latest.id) {
+    // A newer version replaces the snapshot and the form, and says so, so
+    // nothing is published over a version the user hasn't seen (#425 QA D1,
+    // D3). Never during a save: it's reconciled when the save ends.
+    setLatest(server);
+    setValues(initialCancellationForm(server));
+    setErrors({});
+    setFailure(null);
+    setReloaded(true);
+  }
 
   const fieldId = (field: string) => `${id}-${field}`;
   const errorId = (field: string) => `${id}-${field}-error`;
@@ -116,6 +132,7 @@ function DialogBody({
 
   async function submit() {
     setFailure(null);
+    setReloaded(false);
     const dateError = validateCancellationForm(values, today);
     if (dateError) {
       const found = { effectiveDate: dateError };
@@ -127,7 +144,7 @@ function DialogBody({
     busyRef.current = true;
     setSubmitting(true);
     try {
-      await onSubmit(values);
+      await onSubmit(values, latest);
       busyRef.current = false;
       onClose(true);
       return;
@@ -170,6 +187,11 @@ function DialogBody({
           {t('billing.settings.cancellation.dialog.hint')}
         </DialogDescription>
       </DialogHeader>
+      {reloaded ? (
+        <p role="alert" className="text-sm font-medium" data-billing-reloaded>
+          {t('billing.settings.conflictReloaded')}
+        </p>
+      ) : null}
       {failure ? (
         <ErrorAlert
           error={failure}

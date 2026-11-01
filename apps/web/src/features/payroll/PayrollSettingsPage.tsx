@@ -57,9 +57,9 @@ export function PayrollSettingsPage() {
         <PayrollSettingsDialog
           open={changing}
           settings={settings}
-          onSubmit={async (values) => {
+          onSubmit={async (values, base) => {
             const saved = await updatePayrollSettings(
-              settingsUpdateBody(values, settings),
+              settingsUpdateBody(values, base),
             );
             queryClient.setQueryData(PAYROLL_SETTINGS_KEY, saved);
           }}

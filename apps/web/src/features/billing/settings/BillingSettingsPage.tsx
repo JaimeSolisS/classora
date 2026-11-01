@@ -131,9 +131,9 @@ export function BillingSettingsPage() {
           latest={latestRule(overview)}
           today={todayInZone(timeZone)}
           timeZone={timeZone}
-          onSubmit={async (values) => {
+          onSubmit={async (values, base) => {
             await createCancellationRule(
-              cancellationCreateBody(values, latestRule(overview), timeZone),
+              cancellationCreateBody(values, base, timeZone),
             );
             await refreshRules();
           }}
@@ -153,9 +153,9 @@ export function BillingSettingsPage() {
           open={changing}
           settings={settings}
           today={todayInZone(timeZone)}
-          onSubmit={async (values) => {
+          onSubmit={async (values, version) => {
             const saved = await updateBillingSettings(
-              billingUpdateBody(values, settings.version),
+              billingUpdateBody(values, version),
             );
             queryClient.setQueryData(BILLING_SETTINGS_KEY, saved);
             await queryClient.invalidateQueries({

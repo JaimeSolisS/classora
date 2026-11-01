@@ -5207,7 +5207,8 @@
         "saved": "Cambio en el cobro de cancelaciones programado.",
         "deleted": "Cambio programado eliminado.",
         "alreadyInForce": "Esta versión ya está vigente."
-      }
+      },
+      "conflictReloaded": "Alguien más cambió esta configuración. Estos son los valores actuales y tus cambios no se guardaron. Revísalos y guarda de nuevo."
     },
     "targets": {
       "kinds": {

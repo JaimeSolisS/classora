@@ -1,3 +1,4 @@
+import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NAV_ITEMS } from '@/app/navigation';
 import { problemWith } from '@/features/academics/testing';
@@ -21,7 +22,11 @@ import {
   settleUntil,
   type RenderedApp,
 } from '@/test/render-app';
-import type { PayrollSettings, TutorCompensation } from './api';
+import {
+  PAYROLL_SETTINGS_KEY,
+  type PayrollSettings,
+  type TutorCompensation,
+} from './api';
 import {
   EMPTY_PAGE,
   HOURLY,
@@ -864,6 +869,104 @@ describe('settings (D)', () => {
         biweekly_anchor_on: '2026-01-05',
         salary_proration_basis: 'weekdays',
       });
+    },
+  );
+
+  // QA #425 D3: the refetch lands while the PATCH is pending, then the PATCH
+  // fails. Ordered by hand: nothing here depends on timing.
+  describe.each([
+    [
+      'en',
+      'Salary proration basis',
+      'Save settings',
+      'Someone else changed these',
+    ],
+    [
+      'es',
+      'Base de prorrateo del salario',
+      'Guardar configuración',
+      'Alguien más cambió',
+    ],
+  ] as const)(
+    '%s: a refetch during the save',
+    (language, basisLabel, save, notice) => {
+      it.each([
+        ['409 version_conflict', 409, 'version_conflict'],
+        ['500', 500, 'internal_error'],
+      ] as const)(
+        'then %s shows the server values',
+        async (_name, status, code) => {
+          applyLanguage(language);
+          const theirs = {
+            ...SETTINGS_OFF,
+            salary_proration_basis: 'weekdays',
+            version: 9,
+          };
+          let answer: (response: Response) => void = () => {};
+          const api = stub({
+            [SETTINGS]: [
+              () => jsonResponse(200, SETTINGS_OFF),
+              () => jsonResponse(200, theirs),
+            ],
+            [PATCH]: [
+              () =>
+                new Promise<Response>((resolve) => {
+                  answer = resolve;
+                }),
+              () => jsonResponse(200, { ...theirs, version: 10 }),
+            ],
+          });
+          app = await renderApp('/payroll/settings');
+          await settleUntil(() =>
+            main().querySelector('[data-payroll-status]'),
+          );
+          await click(
+            [...main().querySelectorAll('button')].find(
+              (button) =>
+                button.textContent === 'Change' ||
+                button.textContent === 'Cambiar',
+            )!,
+          );
+          const start = () =>
+            dialog().querySelector<HTMLInputElement>('input[type="date"]')!;
+          setFieldValue(start(), '2026-10-05');
+          await click(buttonNamed(dialog(), save));
+          await settleUntil(() => api.calls(PATCH).length === 1);
+
+          await act(() =>
+            app!.queryClient.refetchQueries({ queryKey: PAYROLL_SETTINGS_KEY }),
+          );
+          await settleUntil(() => api.calls(SETTINGS).length === 2);
+          // Mid-save nothing moves: the snapshot still matches the request.
+          expect(labelled<HTMLSelectElement>(dialog(), basisLabel).value).toBe(
+            'calendar_days',
+          );
+
+          answer(problem(status, code));
+          await settleUntil(() =>
+            dialog().querySelector('[data-payroll-reloaded]'),
+          );
+
+          expect(
+            dialog().querySelector('[data-payroll-reloaded]')?.textContent,
+          ).toContain(notice);
+          expect(labelled<HTMLSelectElement>(dialog(), basisLabel).value).toBe(
+            'weekdays',
+          );
+          expect(start().value).toBe('');
+          expect(api.calls(PATCH)).toHaveLength(1);
+          expect(api.calls(PATCH)[0]?.body).toMatchObject({ version: 1 });
+
+          await click(buttonNamed(dialog(), save));
+          await settleUntil(() => !openDialog());
+          expect(api.calls(PATCH)[1]?.body).toEqual({
+            version: 9,
+            payroll_starts_on: null,
+            biweekly_anchor_on: '2026-01-05',
+            salary_proration_basis: 'weekdays',
+          });
+        },
+      );
     },
   );
 

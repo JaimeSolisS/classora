@@ -39,20 +39,25 @@ import { INPUT_CLASS, SELECT_CLASS, SHEET_CLASS } from './sheet';
 // proration basis. A locked field is read-only with a note; the body still
 // sends the API's value. Before a date is saved a warning says it can't
 // change after the next nightly run and that periods open then, not now.
-// New settings while the dialog is open (a `version_conflict`'s reload, or a
-// background refetch) replace the form with the server's values and say so:
-// the fresh version is never sent with values the user hasn't seen, so saving
-// takes a deliberate second click (the app's reload-resets-the-form pattern,
-// QA #425 D1). If that reload fails, the conflict stays with "Reload". A lock
-// taken meanwhile keeps what was typed: its version didn't change, and the
-// locked field shows and sends the server's value. A 422 goes on its field,
-// anything else is an alert.
+// The dialog works from a snapshot of the settings: what it shows, its locks
+// and the `version` it sends all come from that one snapshot, so a save can
+// never pair a version with values the user hasn't seen (QA #425 D1, D3). A
+// newer version replaces the snapshot and the form, and says so, but only
+// while no save is in flight, whatever order a refetch and the response come
+// in; saving again takes a deliberate click. If a reload fails, the conflict
+// stays with "Reload". A lock taken at the same version updates the snapshot
+// and keeps what was typed: the locked field shows and sends the server's
+// value. A 422 goes on its field, anything else is an alert.
 
 export interface PayrollSettingsDialogProps {
   open: boolean;
   settings: PayrollSettings;
-  /** Stores the settings; rejects with the error to show. */
-  onSubmit: (values: SettingsFormValues) => Promise<void>;
+  /** Stores `values` over `base`, the snapshot they were edited from;
+   * rejects with the error to show. */
+  onSubmit: (
+    values: SettingsFormValues,
+    base: PayrollSettings,
+  ) => Promise<void>;
   /** Refetches the settings after a stale save. */
   onReload: () => Promise<void>;
   /** The dialog closed: `saved` after stored settings. */
@@ -81,7 +86,7 @@ export function PayrollSettingsDialog(props: PayrollSettingsDialogProps) {
 const FIELD_ORDER: readonly SettingsField[] = ['startsOn', 'anchor', 'basis'];
 
 function DialogBody({
-  settings,
+  settings: latest,
   onSubmit,
   onReload,
   onClose,
@@ -93,20 +98,25 @@ function DialogBody({
   const message = useFieldMessage();
   const returnFocus = useReturnFocus();
   const id = useId();
+  const [settings, setSettings] = useState(latest);
   const [values, setValues] = useState<SettingsFormValues>(
-    () => initialValues ?? initialSettingsForm(settings),
+    () => initialValues ?? initialSettingsForm(latest),
   );
   const [errors, setErrors] = useState<SettingsErrors>(initialErrors);
   const [failure, setFailure] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [shownVersion, setShownVersion] = useState(settings.version);
   const [reloaded, setReloaded] = useState(false);
-  if (settings.version !== shownVersion) {
-    // Adjusting state while rendering, so no render pairs the new version
-    // with the old values. Our own save closes the dialog instead.
-    setShownVersion(settings.version);
-    if (!submitting) {
-      setValues(initialSettingsForm(settings));
+  if (
+    !submitting &&
+    latest !== settings &&
+    latest.version >= settings.version
+  ) {
+    // Adjusting state while rendering, so no render pairs the new snapshot
+    // with the old values. During a save nothing moves: a refused save is
+    // reconciled here when it ends, and our own save closes the dialog.
+    setSettings(latest);
+    if (latest.version > settings.version) {
+      setValues(initialSettingsForm(latest));
       setErrors({});
       setFailure(null);
       setReloaded(true);
@@ -145,7 +155,7 @@ function DialogBody({
     busyRef.current = true;
     setSubmitting(true);
     try {
-      await onSubmit(values);
+      await onSubmit(values, settings);
       busyRef.current = false;
       onClose(true);
       return;
@@ -157,7 +167,7 @@ function DialogBody({
       } else {
         setFailure(caught);
         if (isStaleSettings(caught)) {
-          // Not submitting any more, so the new version resets the form;
+          // Not submitting any more, so a newer version resets the form;
           // busyRef still holds off a save until the reload ends.
           setSubmitting(false);
           await onReload();

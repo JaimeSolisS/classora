@@ -401,13 +401,16 @@ describe('schedule a change (B1, B2, B4)', () => {
     expect(select('On time').value).toBe('charge');
     await click(buttonNamed(dialog(), 'Reload'));
     await settleUntil(() => api.calls(RULES).length === 2);
-    expect(alerts(dialog())).toEqual([]);
+    await settleUntil(() => select('On time').value !== 'charge');
+    expect(alerts(dialog()).join('')).toContain(
+      'Someone else changed these settings.',
+    );
     await click(buttonNamed(dialog(), 'Save'));
     await settleUntil(() => !openDialog());
 
     expect(api.calls(POST)[1]!.body).toMatchObject({
       based_on_id: newer.id,
-      on_time_outcome: 'charge',
+      on_time_outcome: newer.on_time_outcome,
     });
   });
 

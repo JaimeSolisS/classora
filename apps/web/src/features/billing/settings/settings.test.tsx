@@ -1,3 +1,4 @@
+import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { problemWith } from '@/features/academics/testing';
 import type { SessionUserBody } from '@/features/auth/session';
@@ -20,7 +21,7 @@ import {
   settleUntil,
   type RenderedApp,
 } from '@/test/render-app';
-import type { BillingSettings } from './api';
+import { BILLING_SETTINGS_KEY, type BillingSettings } from './api';
 import { SETTINGS_OFF, SETTINGS_ON } from './fixtures';
 
 // #366 E1 (A, B, D): the Settings tab behind billing.view (the tabs and the
@@ -379,7 +380,7 @@ describe('the change dialog (B2, B3)', () => {
     expect(openDialog()).not.toBeNull();
   });
 
-  it('shows a 409 with Reload; the next save uses the new version', async () => {
+  it('shows a 409 with Reload; Reload shows the current date, then a new save', async () => {
     const api = stub({
       [SETTINGS]: [
         () => jsonResponse(200, SETTINGS_OFF),
@@ -403,15 +404,67 @@ describe('the change dialog (B2, B3)', () => {
     expect(dateInput().value).toBe('2026-11-01');
     await click(buttonNamed(dialog(), 'Reload'));
     await settleUntil(() => api.calls(SETTINGS).length === 2);
-    expect(alerts(dialog())).toEqual([]);
+    await settleUntil(
+      () => dateInput().value === SETTINGS_ON.billing_starts_on,
+    );
+    expect(alerts(dialog()).join('')).toContain(
+      'Someone else changed these settings.',
+    );
+    expect(api.calls(PATCH)).toHaveLength(1);
     await click(buttonNamed(dialog(), 'Save'));
     await settleUntil(() => !openDialog());
 
     expect(api.calls(PATCH)[1]!.body).toEqual({
       version: 7,
-      billing_starts_on: '2026-11-01',
+      billing_starts_on: SETTINGS_ON.billing_starts_on,
     });
   });
+
+  // #425 QA D3, on the same pattern: a refetch lands during the save.
+  it.each([
+    [409, 'version_conflict'],
+    [500, 'internal_error'],
+  ] as const)(
+    'shows the current date when a refetch lands before a %s',
+    async (status, code) => {
+      let answer: (response: Response) => void = () => {};
+      const api = stub({
+        [SETTINGS]: [
+          () => jsonResponse(200, SETTINGS_OFF),
+          () => jsonResponse(200, { ...SETTINGS_ON, version: 7 }),
+        ],
+        [PATCH]: [
+          () =>
+            new Promise<Response>((resolve) => {
+              answer = resolve;
+            }),
+          () => jsonResponse(200, { ...SETTINGS_ON, version: 8 }),
+        ],
+      });
+      await renderSettings();
+      await openChange();
+      setFieldValue(dateInput(), '2026-11-01');
+      await click(buttonNamed(dialog(), 'Save'));
+      await settleUntil(() => api.calls(PATCH).length === 1);
+
+      await act(() =>
+        app!.queryClient.refetchQueries({ queryKey: BILLING_SETTINGS_KEY }),
+      );
+      await settleUntil(() => api.calls(SETTINGS).length === 2);
+      answer(problem(status, code));
+      await settleUntil(() =>
+        dialog().querySelector('[data-billing-reloaded]'),
+      );
+
+      expect(dateInput().value).toBe(SETTINGS_ON.billing_starts_on);
+      await click(buttonNamed(dialog(), 'Save'));
+      await settleUntil(() => !openDialog());
+      expect(api.calls(PATCH)[1]!.body).toEqual({
+        version: 7,
+        billing_starts_on: SETTINGS_ON.billing_starts_on,
+      });
+    },
+  );
 
   it('Cancel closes without sending', async () => {
     const api = stub();
