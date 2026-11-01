@@ -7,7 +7,7 @@ lazily there). It lives under ``app/workflows/`` because it composes
 ``payroll`` with ``administration``. The only argument is Procrastinate's
 ``timestamp: int``; at most one queued job (``queueing_lock`` on the periodic
 task and the task, a fixed ``periodic_id``); idempotent; one Unit of Work per
-tutor; counts-only logs. Nothing else queues it (#106 E7).
+tutor; logs carry counts and ids only. Nothing else queues it (#106 E7).
 
 The rules and how to run it by hand are in
 :mod:`app.workflows.payroll_periods`. Nothing outside ``app/core/jobs.py``

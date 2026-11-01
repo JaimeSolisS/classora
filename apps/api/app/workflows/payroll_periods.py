@@ -79,7 +79,7 @@ async def run_open_periods(settings: Settings) -> OpenPeriodsRunResult:
             assert today is not None  # noqa: S101 - set with the tutors
             try:
                 async with UnitOfWork(sessionmaker, actor_id=None) as uow:
-                    opened += await open_tutor_periods(
+                    count = await open_tutor_periods(
                         uow.session, tutor_user_id, today=today
                     )
             except Exception as exc:  # noqa: BLE001 - one tutor never blocks the rest
@@ -91,6 +91,8 @@ async def run_open_periods(settings: Settings) -> OpenPeriodsRunResult:
                         "error": type(exc).__name__,
                     },
                 )
+                continue
+            opened += count  # after the commit, so a failed commit counts nothing
     finally:
         await engine.dispose()
     result = OpenPeriodsRunResult(tutors=len(tutors), opened=opened, failed=failed)

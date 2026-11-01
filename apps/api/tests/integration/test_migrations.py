@@ -12999,7 +12999,7 @@ PERIOD_INSERT = (
 )
 
 
-def _period(
+def _period_0073(
     dsn: str, user: Any, starts: date, ends: date, *, first: bool = False
 ) -> Any:
     [row] = run_sql(
@@ -13010,7 +13010,7 @@ def _period(
     return row.id
 
 
-def _sqlstate(dsn: str, sql: str, params: dict[str, Any] | None = None) -> str:
+def _sqlstate_0073(dsn: str, sql: str, params: dict[str, Any] | None = None) -> str:
     with pytest.raises(DBAPIError) as caught:
         run_sql(dsn, sql, params)
     return str(getattr(caught.value.orig, "sqlstate", ""))
@@ -13115,7 +13115,7 @@ def test_0073_a_second_settings_row_is_refused(fresh_database_url):
     command.upgrade(alembic_config(dsn), "0073")
 
     assert (
-        _sqlstate(dsn, "INSERT INTO payroll_settings (singleton) VALUES (true)")
+        _sqlstate_0073(dsn, "INSERT INTO payroll_settings (singleton) VALUES (true)")
         == "23505"
     )
 
@@ -13123,13 +13123,13 @@ def test_0073_a_second_settings_row_is_refused(fresh_database_url):
 def test_0073_p2_refuses_an_overlap(fresh_database_url):
     dsn = fresh_database_url
     user = _periods_0073(dsn)
-    _period(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
-    _period(dsn, user, date(2031, 1, 13), date(2031, 1, 19))
+    _period_0073(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
+    _period_0073(dsn, user, date(2031, 1, 13), date(2031, 1, 19))
 
     # A new start and a new end: neither natural key answers, and the foreign
     # key is an after-statement check, so the EXCLUDE refuses it first.
     with pytest.raises(DBAPIError) as caught:
-        _period(dsn, user, date(2031, 1, 15), date(2031, 1, 25))
+        _period_0073(dsn, user, date(2031, 1, 15), date(2031, 1, 25))
 
     assert getattr(caught.value.orig, "sqlstate", "") == "23P01"
     assert "ex_payroll_periods_tutor_overlap" in str(caught.value.orig)
@@ -13138,10 +13138,10 @@ def test_0073_p2_refuses_an_overlap(fresh_database_url):
 def test_0073_p3_refuses_a_gap_and_a_second_first_period(fresh_database_url):
     dsn = fresh_database_url
     user = _periods_0073(dsn)
-    _period(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
+    _period_0073(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
 
     # 2031-01-14 needs a period ending on 2031-01-13: none does.
-    gap = _sqlstate(
+    gap = _sqlstate_0073(
         dsn,
         PERIOD_INSERT,
         {
@@ -13151,7 +13151,7 @@ def test_0073_p3_refuses_a_gap_and_a_second_first_period(fresh_database_url):
             "first": False,
         },
     )
-    second = _sqlstate(
+    second = _sqlstate_0073(
         dsn,
         PERIOD_INSERT,
         {
@@ -13167,7 +13167,7 @@ def test_0073_p3_refuses_a_gap_and_a_second_first_period(fresh_database_url):
     # The generated column can't be written, so a first period has no previous
     # and any other row has exactly one.
     assert (
-        _sqlstate(
+        _sqlstate_0073(
             dsn,
             "UPDATE payroll_periods SET previous_ends_on = '2031-01-01'",
         )
@@ -13180,10 +13180,12 @@ def test_0073_p3_refuses_a_gap_and_a_second_first_period(fresh_database_url):
 def test_0073_a_mid_chain_period_cannot_be_deleted(fresh_database_url):
     dsn = fresh_database_url
     user = _periods_0073(dsn)
-    first = _period(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
-    last = _period(dsn, user, date(2031, 1, 13), date(2031, 1, 19))
+    first = _period_0073(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
+    last = _period_0073(dsn, user, date(2031, 1, 13), date(2031, 1, 19))
 
-    state = _sqlstate(dsn, "DELETE FROM payroll_periods WHERE id = :id", {"id": first})
+    state = _sqlstate_0073(
+        dsn, "DELETE FROM payroll_periods WHERE id = :id", {"id": first}
+    )
 
     assert state == "23001"  # restrict_violation, the #105 finding
     run_sql(dsn, "DELETE FROM payroll_periods WHERE id = :id", {"id": last})
@@ -13206,7 +13208,7 @@ def test_0073_a_mid_chain_period_cannot_be_deleted(fresh_database_url):
 def test_0073_period_checks(fresh_database_url, change, constraint):
     dsn = fresh_database_url
     user = _periods_0073(dsn)
-    _period(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
+    _period_0073(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
 
     with pytest.raises(DBAPIError) as caught:
         run_sql(dsn, f"UPDATE payroll_periods SET {change}")  # noqa: S608
@@ -13232,34 +13234,34 @@ def _finalize(dsn: str, period: Any, user: Any, total: str = "10.00") -> None:
 def test_0073_the_guard_keeps_a_finalized_row(fresh_database_url):
     dsn = fresh_database_url
     user = _periods_0073(dsn)
-    period = _period(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
+    period = _period_0073(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
 
     _finalize(dsn, period, user)  # into finalized passes
 
     params = {"id": period}
     assert (
-        _sqlstate(
+        _sqlstate_0073(
             dsn,
             "UPDATE payroll_periods SET total_amount = 11 WHERE id = :id",
             params,
         )
         == "42501"
     )
-    assert _sqlstate(dsn, "DELETE FROM payroll_periods WHERE id = :id", params) == (
-        "42501"
-    )
+    assert _sqlstate_0073(
+        dsn, "DELETE FROM payroll_periods WHERE id = :id", params
+    ) == ("42501")
     # A lock writes nothing, so a payment can still take it; and the next
     # period can still point at it.
     assert run_sql(
         dsn, "SELECT id FROM payroll_periods WHERE id = :id FOR UPDATE", params
     )
-    _period(dsn, user, date(2031, 1, 13), date(2031, 1, 19))
+    _period_0073(dsn, user, date(2031, 1, 13), date(2031, 1, 19))
 
 
 def test_0073_a_negative_total_is_refused(fresh_database_url):
     dsn = fresh_database_url
     user = _periods_0073(dsn)
-    period = _period(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
+    period = _period_0073(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
 
     with pytest.raises(DBAPIError) as caught:
         _finalize(dsn, period, user, "-0.01")
@@ -13271,12 +13273,14 @@ def test_0073_the_table_is_never_truncated(fresh_database_url):
     dsn = fresh_database_url
     _periods_0073(dsn)
 
-    assert _sqlstate(dsn, "TRUNCATE payroll_periods") == "42501"
+    assert _sqlstate_0073(dsn, "TRUNCATE payroll_periods") == "42501"
 
 
 def test_0073_a_tutor_with_periods_cannot_be_deleted(fresh_database_url):
     dsn = fresh_database_url
     user = _periods_0073(dsn)
-    _period(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
+    _period_0073(dsn, user, date(2031, 1, 6), date(2031, 1, 12), first=True)
 
-    assert _sqlstate(dsn, "DELETE FROM users WHERE id = :u", {"u": user}) == "23001"
+    assert (
+        _sqlstate_0073(dsn, "DELETE FROM users WHERE id = :u", {"u": user}) == "23001"
+    )
