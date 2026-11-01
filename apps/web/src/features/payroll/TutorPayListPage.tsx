@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useEffectEvent, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { useDocumentTitle } from '@/app/useDocumentTitle';
@@ -63,17 +63,23 @@ export function TutorPayListPage() {
     }, options);
   }
 
+  // An effect event, so the timer writes over the params of the latest render:
+  // `previous` in setSearchParams is the params of the render that made that
+  // setter, not the URL at call time. A filter changed during the wait stays
+  // (QA #425 D6).
+  const applySearch = useEffectEvent((q: string) => {
+    setFilter('q', q, { replace: true });
+  });
+
   useEffect(() => {
     const q = text.trim();
     if (q === params.q) {
       return;
     }
     const timer = window.setTimeout(() => {
-      setFilter('q', q, { replace: true });
+      applySearch(q);
     }, SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-    // setFilter only uses the stable setter.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, params.q]);
 
   function goToPage(page: number) {

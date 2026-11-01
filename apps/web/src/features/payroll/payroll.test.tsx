@@ -283,6 +283,37 @@ describe('tutor list (B)', () => {
     expect(labelled<HTMLSelectElement>(main(), 'State').value).toBe('all');
   });
 
+  // QA #425 D6: the debounced search must not undo a state picked meanwhile.
+  it.each([
+    ['during the wait', 100],
+    ['right before the timer fires', 299],
+  ])('keeps a state picked %s', async (_when, after) => {
+    stub();
+    await open('/payroll/tutors');
+    await settleUntil(() => main().querySelector('tbody tr'));
+    const state = labelled<HTMLSelectElement>(main(), 'State');
+    const search = labelled<HTMLInputElement>(
+      main(),
+      'Search by name or username',
+    );
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      setFieldValue(search, 'ana');
+      await act(() => vi.advanceTimersByTimeAsync(after));
+      setFieldValue(state, 'pending');
+      await act(() => vi.advanceTimersByTimeAsync(600));
+    } finally {
+      vi.useRealTimers();
+    }
+    await settleUntil(() => listUrls.at(-1)?.searchParams.get('q') === 'ana');
+
+    expect(listUrls.at(-1)?.searchParams.get('state')).toBe('pending');
+    expect(app!.location()).toContain('state=pending');
+    expect(app!.location()).toContain('q=ana');
+    expect(state.value).toBe('pending');
+  });
+
   it('renders cards for narrow screens, hidden from 768 px', async () => {
     stub();
     await open('/payroll/tutors');
