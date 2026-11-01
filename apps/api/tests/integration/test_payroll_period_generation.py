@@ -273,6 +273,42 @@ def test_a_failing_tutor_does_not_block_the_others_and_the_retry_catches_up(
     assert periods_of(url, tutor) == periods_of(url, other)
 
 
+@pytest.mark.parametrize("which", ["tutor", "other"])
+def test_a_failed_commit_counts_nothing(
+    which, tutor, module_seeded_url, at, monkeypatch
+):
+    # The rows roll back, so `opened` must not count them. Both parameters put
+    # the failure at a different place in the tutor loop.
+    url = module_seeded_url
+    at("11-20")
+    set_floor(url, "11-04")
+    other = create_user(url, roles=(TUTOR,)).id
+    add_terms_row(url, tutor, "01-01", "weekly")
+    add_terms_row(url, other, "01-01", "weekly")
+    victim, survivor = (tutor, other) if which == "tutor" else (other, tutor)
+    real = payroll_periods.open_tutor_periods
+
+    async def _commit_will_fail(
+        session: AsyncSession, tutor_user_id: uuid.UUID, *, today: date
+    ) -> int:
+        count = await real(session, tutor_user_id, today=today)
+        if tutor_user_id == victim:
+
+            async def _fail() -> None:
+                raise RuntimeError("commit boom")
+
+            monkeypatch.setattr(session, "commit", _fail)
+        return count
+
+    monkeypatch.setattr(payroll_periods, "open_tutor_periods", _commit_will_fail)
+
+    result = run_job(url)
+
+    assert (result.tutors, result.opened, result.failed) == (2, 3, 1)
+    assert periods_of(url, victim) == []
+    assert len(periods_of(url, survivor)) == 3
+
+
 def test_two_concurrent_runs_leave_the_same_rows(module_seeded_url, at):
     url = module_seeded_url
     at("11-20")
