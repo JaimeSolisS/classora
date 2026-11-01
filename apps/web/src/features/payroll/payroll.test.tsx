@@ -416,6 +416,28 @@ describe('tutor list (B)', () => {
       );
     });
 
+    // QA #425 D7: the second timer was armed while the URL still held the text
+    // it returns to, and fires after the first write has committed.
+    it('a retyped character reaches the URL', async () => {
+      stub();
+      await open('/payroll/tutors?q=ana');
+      await settleUntil(() => main().querySelector('tbody tr'));
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
+      setFieldValue(search(), 'an');
+      act(() => {
+        vi.advanceTimersByTime(300);
+        setFieldValue(search(), 'ana');
+      });
+      await act(() => vi.advanceTimersByTimeAsync(0));
+      expect(app!.location()).toBe('/payroll/tutors?q=an');
+
+      await act(() => vi.advanceTimersByTimeAsync(300));
+      await settled('/payroll/tutors?q=ana');
+      expect(search().value).toBe('ana');
+      expect(listUrls.at(-1)?.searchParams.get('q')).toBe('ana');
+    });
+
     it('an unchanged search writes nothing and stays on its page', async () => {
       await typed('/payroll/tutors?q=ana&page=2');
       act(() => {

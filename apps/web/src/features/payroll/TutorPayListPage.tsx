@@ -45,7 +45,9 @@ export function TutorPayListPage() {
   // from rendered params: a navigation can still be pending, so those can be
   // out of date (QA #425 D6). `written` lists our own writes not yet committed,
   // so a committed URL that isn't one of them (back/forward, a link) replaces
-  // the intent instead of being overwritten.
+  // the intent instead of being overwritten. `committed` is the URL at call
+  // time: a timer's closure holds the URL of the render that armed it (QA D7).
+  const committed = useRef(urlSearch);
   const intent = useRef({ q: params.q, state: params.state });
   const written = useRef<string[]>([]);
   const timer = useRef<number | null>(null);
@@ -71,13 +73,14 @@ export function TutorPayListPage() {
       next.set('page', String(page));
     }
     const value = next.toString();
-    if (value !== (written.current.at(-1) ?? urlSearch)) {
+    if (value !== (written.current.at(-1) ?? committed.current)) {
       written.current.push(value);
       setSearchParams(next, options);
     }
   }
 
   useEffect(() => {
+    committed.current = urlSearch;
     const own = written.current.indexOf(urlSearch);
     if (own >= 0) {
       written.current.splice(0, own + 1);
@@ -96,7 +99,7 @@ export function TutorPayListPage() {
     setText(value);
     const q = value.trim();
     const committedOrPending = payrollListParams(
-      new URLSearchParams(written.current.at(-1) ?? urlSearch),
+      new URLSearchParams(written.current.at(-1) ?? committed.current),
     ).q;
     intent.current.q = q;
     cancelTimer();
