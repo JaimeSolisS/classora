@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0071"
+HEAD = "0072"
 
 IDENTITY_TABLES = [
     "permissions",
@@ -187,6 +187,8 @@ RECONCILIATION_TABLES = [
 """The tables revision 0069 adds (#99 A1-A3)."""
 WITHDRAWAL_TABLES = ["withdrawals"]
 """The table revision 0071 adds (#101 A2)."""
+COMPENSATION_TABLES = ["tutor_pay_terms", "compensation_rates"]
+"""The tables revision 0072 adds (#105 B1, B2)."""
 APPEND_ONLY_LEDGER_TABLES = [
     "charges",
     "charge_adjustments",
@@ -432,6 +434,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *RECEIPT_TABLES,
             *RECONCILIATION_TABLES,
             *WITHDRAWAL_TABLES,
+            *COMPENSATION_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4712,9 +4715,20 @@ def _of_0071(diff: Any) -> bool:
     return False
 
 
+def _of_0072(diff: Any) -> bool:
+    """A metadata difference that revision 0072 adds: the two compensation
+    tables (#105 B; they have no index of their own)."""
+    return diff[0] == "add_table" and diff[1].name in COMPENSATION_TABLES
+
+
+def _of_0071_on(diff: Any) -> bool:
+    """A metadata difference that revision 0071 or a later one adds."""
+    return _of_0071(diff) or _of_0072(diff)
+
+
 def _of_0069_on(diff: Any) -> bool:
     """A metadata difference that revision 0069 or a later one adds."""
-    return _of_0069(diff) or _of_0071(diff)
+    return _of_0069(diff) or _of_0071_on(diff)
 
 
 def _of_0068_on(diff: Any) -> bool:
@@ -12287,7 +12301,7 @@ def test_0069_adds_reconciliation_tables_and_downgrade_restores_0068(
     command.upgrade(config, "0069")
 
     assert version_nums(dsn) == ["0069"]
-    assert [d for d in metadata_diff(dsn) if not _of_0071(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0071_on(d)] == []
     assert public_tables(dsn) - before == set(RECONCILIATION_TABLES)
     assert _append_only_functions(dsn) - functions == {
         f"{table}_append_only" for table in RECONCILIATION_APPEND_ONLY
@@ -12655,7 +12669,7 @@ def test_0070_adds_package_cancellation_and_downgrade_restores_0069(
     command.upgrade(config, "0070")
 
     assert version_nums(dsn) == ["0070"]
-    assert [d for d in metadata_diff(dsn) if not _of_0071(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0071_on(d)] == []
     assert public_tables(dsn) == tables
     after = _constraints(dsn, "charge_adjustments")
     assert {k: v for k, v in after.items() if k != "ck_charge_adjustments_kind"} == {
@@ -12683,7 +12697,7 @@ def test_0070_downgrade_restores_the_0061_check(fresh_database_url):
         _constraints(dsn, "charge_adjustments")["ck_charge_adjustments_kind"]
         == KIND_0061_TEXT
     )
-    assert [d for d in metadata_diff(dsn) if not _of_0071(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0071_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
@@ -12769,7 +12783,7 @@ def test_0071_adds_withdrawals_and_downgrade_restores_0070(fresh_database_url):
     command.upgrade(config, "0071")
 
     assert version_nums(dsn) == ["0071"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0072(d)] == []
     assert public_tables(dsn) - tables == {"withdrawals"}
     assert "withdrawals_append_only" in _append_only_functions(dsn)
     after = _constraints(dsn, "package_credit_transactions")
@@ -12875,8 +12889,90 @@ def test_0071_downgrade_restores_the_0066_checks(fresh_database_url):
     assert "ck_package_credit_transactions_refund_withdrawal" not in constraints
     assert "withdrawal_id" not in _columns(dsn, "refunds")
     assert "withdrawal_id" not in _columns(dsn, "package_credit_transactions")
-    assert [d for d in metadata_diff(dsn) if not _of_0071(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0071_on(d)] == []
 
     command.upgrade(config, "head")
     assert version_nums(dsn) == [HEAD]
     assert metadata_diff(dsn) == []
+
+
+# --- 0072: tutor pay terms and compensation rates (#105 B) ---------------------------
+
+TERMS_INSERT = (
+    "INSERT INTO tutor_pay_terms (tutor_user_id, effective_from, pay_frequency,"
+    " salary_amount) VALUES (:u, :on, :frequency, :salary) RETURNING id"
+)
+
+
+def test_0072_adds_the_compensation_tables_and_downgrade_restores_0071(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0071")
+    tables = public_tables(dsn)
+    functions = "SELECT count(*) AS n FROM pg_proc WHERE proname = ANY(:names)"
+    names = {
+        "names": [
+            "tutor_pay_terms_guard",
+            "compensation_rates_guard",
+            "tutor_pay_terms_is_referenced",
+            "compensation_rate_is_referenced",
+        ]
+    }
+
+    command.upgrade(config, "0072")
+
+    assert version_nums(dsn) == ["0072"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == set(COMPENSATION_TABLES)
+    assert run_sql(dsn, functions, names)[0].n == 4
+    assert run_sql(dsn, "SELECT count(*) AS n FROM tutor_pay_terms")[0].n == 0
+    assert run_sql(dsn, "SELECT count(*) AS n FROM compensation_rates")[0].n == 0
+    triggers = {
+        row.tgname
+        for row in run_sql(dsn, "SELECT tgname FROM pg_trigger WHERE NOT tgisinternal")
+    }
+    assert triggers >= {
+        "tutor_pay_terms_no_referenced_change",
+        "tutor_pay_terms_no_truncate",
+        "compensation_rates_no_referenced_change",
+        "compensation_rates_no_truncate",
+    }
+    assert {
+        row.prosrc.strip().splitlines()[-1].strip()
+        for row in run_sql(
+            dsn,
+            "SELECT prosrc FROM pg_proc WHERE proname IN"
+            " ('tutor_pay_terms_is_referenced', 'compensation_rate_is_referenced')",
+        )
+    } == {"SELECT false"}
+
+    command.downgrade(config, "0071")
+
+    assert version_nums(dsn) == ["0071"]
+    assert public_tables(dsn) == tables
+    assert run_sql(dsn, functions, names)[0].n == 0
+    assert [d for d in metadata_diff(dsn) if not _of_0072(d)] == []
+
+    command.upgrade(config, "head")
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_0072_a_tutor_with_pay_rows_cannot_be_deleted(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "0072")
+    [user] = run_sql(
+        dsn,
+        "INSERT INTO users (username, email, password_hash, display_name)"
+        " VALUES ('pagos', 'pagos@example.com', 'x', 'Pagos') RETURNING id",
+    )
+    run_sql(
+        dsn,
+        TERMS_INSERT,
+        {"u": user.id, "on": date(2031, 1, 1), "frequency": "weekly", "salary": None},
+    )
+    with pytest.raises(DBAPIError) as caught:
+        run_sql(dsn, "DELETE FROM users WHERE id = :u", {"u": user.id})
+    assert getattr(caught.value.orig, "sqlstate", "") == "23001"  # restrict_violation

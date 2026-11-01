@@ -7045,6 +7045,54 @@ privacy_notice_required` → `403 permission_denied` → `422` (body) → `404`
   row in the posting transaction (no actor from the job). `4xx` responses
   write nothing.
 
+### Payroll compensation
+
+Implemented by M7-02 (#105; spec §7, W3.4; ADR-0017 E1, E12, Proposed:
+orchestrator-recommended, pending owner review) in the new
+`apps/api/app/modules/payroll/` module; the routes and the cross-module reads
+are in `app/workflows/payroll_compensation_router.py` and
+`app/workflows/payroll_compensation.py`. Tables: `_docs/data-model.md` §11.2,
+§11.3. The web pages are M7-02b.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/payroll/tutors` | `require("payroll.view")` | Offset pagination; `q` and `state` as `GET /api/v1/tutors`. Items are `PayrollTutorItem`: `user_id`, `display_name`, `username`, `state`, `current_terms` (`pay_frequency`, `salary_amount`, or `null` without terms or when not on payroll) and `current_rate_kinds`. **No email or phone.** Every state is listed, archived included. Six statements per page, whatever its size. |
+| `GET /api/v1/payroll/tutors/{tutor_user_id}/compensation` | `authenticated()` + record policy | `TutorCompensation`: `tutor`, `today`, `terms[]` newest first, `rates[]` by class kind, then newest first. |
+| `POST /api/v1/payroll/tutors/{tutor_user_id}/pay-terms` | `require("payroll.manage")` | Body `PayTermsCreate`: `effective_from`, `pay_frequency`, `salary_amount` (all required, `null` written out). `201` with `PayTermsItem`. |
+| `POST /api/v1/payroll/tutors/{tutor_user_id}/rates` | `require("payroll.manage")` | Body `CompensationRateCreate`: `class_kind`, `effective_from`, `rate_model`, `rate` (all required, `null` written out). `201` with `CompensationRateItem`. |
+| `DELETE /api/v1/payroll/tutors/{tutor_user_id}/pay-terms/{terms_id}` | `require("payroll.manage")` | `204`. `409 pay_terms_in_use` once a finalized period uses the version. |
+| `DELETE /api/v1/payroll/tutors/{tutor_user_id}/rates/{rate_id}` | `require("payroll.manage")` | `204`. `409 compensation_rate_in_use` once a finalized period uses the version. |
+
+- **Access:** `payroll.view` and `payroll.manage` are held by Owners and
+  Finance Staff; not delegable; seeded by `make seed`. The compensation read
+  answers a `payroll.view` holder and the tutor themselves (while holding the
+  `tutor` role). Everyone else gets the same `404` as a missing id, including
+  Administrators and Coordinators who hold `tutor.view`, and Administrators
+  delegated `payroll.finalize`. No reauthentication and no `Idempotency-Key`:
+  these rows are configuration.
+- **Own pay:** on the four write routes, a caller writing their own terms or
+  rates without the `owner` role gets `403 payroll_own_compensation`, before
+  any other check on the target.
+- **Check order of the writes:** `401` → `403 csrf_failed` →
+  `403 privacy_notice_required` → `403 permission_denied` → `422` (the body) →
+  `403 payroll_own_compensation` → `404` → the rules.
+- **Target:** `{tutor_user_id}` is a user holding the `tutor` role now, in any
+  account state, so a leaver who is archived can still get a stop row. Anything
+  else is `404 not_found`. The rows of a user who lost the role stay stored.
+- **Versions:** any `effective_from` is accepted, past or future, also between
+  two versions. There is no `PATCH` or `PUT`: a correction is a delete and a
+  new version. `status` is `current` (the version in effect on the center's
+  today, per key), `upcoming` or `past`. A current version with `null` values
+  stays `current`: it means "not on payroll" or "no rate".
+- **Errors:** `409 pay_terms_exists` and `409 compensation_rate_exists` on the
+  same key. `422 validation_error` with `errors[].code`: `salary_not_positive`,
+  `salary_without_frequency`, `rate_negative`, `rate_model_rate_mismatch`,
+  `rate_model_not_allowed`, and the `money_*` and `rate_*` field codes.
+- **Audit:** automatic `create` and `delete` events. `rate` and `salary_amount`
+  appear as `"[masked]"` for every reader, the Owner included, because
+  Administrators hold `audit.view` and see no pay. Rate history is read from
+  the versions.
+
 ### Response headers
 
 Every API response, errors included, carries exactly one
@@ -7162,6 +7210,21 @@ The shared type is `Money` in `apps/api/app/core/money.py` (M6-02, #87):
 - **Sign and range:** the type checks neither; the sign and range of each field
   are stated by its endpoint, with its own codes.
 - **OpenAPI:** `type: string, format: decimal`, with the pattern above.
+
+### Rates
+
+A pay rate is a JSON string with four places, such as `"250.1250"`, described
+in OpenAPI as `type: string, format: decimal`. The shared type is `Rate` in
+`apps/api/app/core/money.py` (M7-02, #105):
+
+- **Input:** a JSON string only, matching `^-?\d{1,10}(\.\d{1,4})?$` (up to 10
+  integer digits and 4 decimals).
+- **Output:** always a string with four places; never `"-0.0000"`.
+- **Field error codes** (`errors[].code`): `rate_invalid`, `rate_precision` (it
+  wins when both fail) and `rate_out_of_range`.
+- **To money:** `Rate.to_money(numerator, denominator)` is the only way to get
+  an amount from a rate. It rounds half away from zero once, from the exact
+  value.
 
 ## Client and contract workflow
 

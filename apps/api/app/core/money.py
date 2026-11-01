@@ -31,6 +31,11 @@ implementation notes):
 - **Database** (E5): :class:`MoneyType` maps a ``NUMERIC(14,2)`` column and
   binds ``Money`` only; :func:`money_sum` sums a money expression as ``Money``.
 
+**Rate** (ADR-0017 E1, #105 A): :class:`Rate` is a pay rate with exactly four
+places, range ``NUMERIC(14,4)``. It has the same construction, immutability
+and JSON rules as ``Money``, and no arithmetic at all: money comes from a rate
+only through :meth:`Rate.to_money`, which rounds once.
+
 This module is shared infrastructure (ADR-0002): it imports no domain module.
 """
 
@@ -478,6 +483,281 @@ def _validate_python(value: Any) -> Money:
     return _validate_json(value)
 
 
+# --- Rate (ADR-0017 E1, #105 A) -------------------------------------------------
+
+RATE_MAX: Final = Decimal("9999999999.9999")
+"""The largest absolute rate, ``NUMERIC(14,4)``."""
+
+RATE_PATTERN: Final = r"^-?\d{1,10}(\.\d{1,4})?$"
+"""The rate text pattern of the API: up to 10 integer digits and up to 4
+decimals."""
+
+_RATE_TEXT: Final = re.compile(RATE_PATTERN, re.ASCII)
+_RATE_SCALE: Final = 10_000
+_CENTS_PER_RATE_UNIT: Final = 100  # ten-thousandths in one centavo
+_MAX_RATE_UNITS: Final = 99_999_999_999_999
+_MAX_RATE_UNITS_EXPONENT: Final = 14
+
+RATE_INVALID: Final = "rate_invalid"
+RATE_PRECISION: Final = "rate_precision"
+RATE_OUT_OF_RANGE: Final = "rate_out_of_range"
+_RATE_MESSAGES: Final = {
+    RATE_INVALID: "Write a rate such as 250.0000.",
+    RATE_PRECISION: "At most four decimal places.",
+    RATE_OUT_OF_RANGE: "At most 10 digits before the decimal point.",
+}
+
+
+class RateRangeError(ValueError):
+    """A rate outside ``NUMERIC(14,4)``: ``|value| > RATE_MAX``."""
+
+
+class RateTextError(ValueError):
+    """Rate text that is not a valid rate. ``code`` is the field error code:
+    ``rate_invalid`` or ``rate_precision``."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(_RATE_MESSAGES[code])
+        self.code = code
+
+
+def _exact_rate_units(value: Decimal) -> int:
+    """A ``Decimal`` with at most four places (numerically) as ten-thousandths."""
+    coefficient, exponent = _decimal_parts(value)
+    if coefficient == 0:
+        return 0
+    exponent += 4
+    if exponent < 0:
+        divisor = _power_of_ten(-exponent)
+        if coefficient % divisor:
+            raise ValueError(
+                "a rate has at most four decimal places and is never rounded"
+                " on construction"
+            )
+        return coefficient // divisor
+    if exponent > _MAX_RATE_UNITS_EXPONENT:
+        raise RateRangeError("the rate is outside NUMERIC(14,4)")
+    return coefficient * _power_of_ten(exponent)
+
+
+def _rate_text_problem(text: str) -> str | None:
+    """The field error code of rate text, or ``None`` when it is valid.
+
+    ``rate_precision`` wins over ``rate_out_of_range``, as for money.
+    """
+    if _RATE_TEXT.fullmatch(text):
+        return None
+    numeral = _NUMERIC_TEXT.fullmatch(text)
+    if numeral is None:
+        return RATE_INVALID
+    integer, fraction = numeral.groups()
+    if fraction is not None and len(fraction) > 4:
+        return RATE_PRECISION
+    if len(integer) > 10:
+        return RATE_OUT_OF_RANGE
+    return RATE_INVALID
+
+
+def _rate_text_units(text: str) -> int:
+    problem = _rate_text_problem(text)
+    if problem == RATE_OUT_OF_RANGE:
+        raise RateRangeError(_RATE_MESSAGES[problem])
+    if problem is not None:
+        raise RateTextError(problem)
+    negative = text.startswith("-")
+    integer, _, fraction = text.lstrip("-").partition(".")
+    units = int(integer) * _RATE_SCALE + int(fraction.ljust(4, "0"))
+    return -units if negative else units
+
+
+@final
+class Rate:
+    """An immutable pay rate with exactly four places (ADR-0017 E1, #105 A1).
+
+    ``Rate(value)`` takes a ``Rate``, a ``Decimal`` (finite, at most four
+    places numerically), an ``int`` or a ``str`` matching
+    :data:`RATE_PATTERN`. It never rounds. A ``float`` or ``bool`` is a
+    :class:`TypeError`. A rate compares with a rate only and has no
+    arithmetic: :meth:`to_money` is the only way to get money from it.
+    """
+
+    __slots__ = ("_amount", "_units")
+    _units: int
+    _amount: Decimal
+
+    def __new__(cls, value: Rate | Decimal | int | str) -> Self:
+        _reject_number_type(value, "Rate()")
+        if isinstance(value, Rate):
+            return cls._from_units(value._units)
+        if isinstance(value, int):
+            return cls._from_units(value * _RATE_SCALE)
+        if isinstance(value, Decimal):
+            return cls._from_units(_exact_rate_units(value))
+        if isinstance(value, str):
+            return cls._from_units(_rate_text_units(value))
+        raise TypeError(
+            f"Rate() takes Rate, Decimal, int or str, not {type(value).__name__}"
+        )
+
+    @classmethod
+    def _from_units(cls, units: int) -> Self:
+        if abs(units) > _MAX_RATE_UNITS:
+            raise RateRangeError(
+                "the rate is outside NUMERIC(14,4) (|rate| > RATE_MAX)"
+            )
+        instance = object.__new__(cls)
+        whole, fraction = divmod(abs(units), _RATE_SCALE)
+        sign = "-" if units < 0 else ""
+        object.__setattr__(instance, "_units", units)
+        # Decimal(str) is exact whatever the context; never "-0.0000".
+        object.__setattr__(
+            instance, "_amount", Decimal(f"{sign}{whole}.{fraction:04d}")
+        )
+        return instance
+
+    @property
+    def amount(self) -> Decimal:
+        """The ``Decimal`` value: exponent ``-4``, never ``-0.0000``."""
+        return self._amount
+
+    def to_money(self, numerator: int = 1, denominator: int = 1) -> Money:
+        """``rate * numerator / denominator`` rounded once half away from
+        zero to the centavo, on integers (#105 A2): no result depends on the
+        ``decimal`` context. :class:`MoneyRangeError` beyond the ``Money``
+        range. ``denominator > 0`` and ``numerator >= 0``.
+
+        #107 calls ``rate.to_money(approved_minutes, 60)`` for hourly pay and
+        ``rate.to_money()`` for a session or a course.
+        """
+        numerator = _checked_int(numerator, "Rate.to_money() numerator")
+        denominator = _checked_int(denominator, "Rate.to_money() denominator")
+        if denominator <= 0:
+            raise ValueError("Rate.to_money() needs a denominator > 0")
+        if numerator < 0:
+            raise ValueError("Rate.to_money() needs a numerator >= 0")
+        return Money._from_cents(
+            _round_half_up(self._units * numerator, denominator * _CENTS_PER_RATE_UNIT)
+        )
+
+    # --- Predicates ---
+
+    def is_zero(self) -> bool:
+        """``True`` for ``0.0000`` (``bool(Rate)`` raises)."""
+        return self._units == 0
+
+    def is_negative(self) -> bool:
+        """``True`` below ``0.0000``."""
+        return self._units < 0
+
+    def __bool__(self) -> NoReturn:
+        raise TypeError("bool(Rate) is ambiguous; use is_zero() or is_negative()")
+
+    # --- Comparisons (Rate only) ---
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Rate):
+            return NotImplemented
+        return self._units == other._units
+
+    def __hash__(self) -> int:
+        return hash((Rate, self._units))
+
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, Rate):
+            return NotImplemented
+        return self._units < other._units
+
+    def __le__(self, other: object) -> bool:
+        if not isinstance(other, Rate):
+            return NotImplemented
+        return self._units <= other._units
+
+    def __gt__(self, other: object) -> bool:
+        if not isinstance(other, Rate):
+            return NotImplemented
+        return self._units > other._units
+
+    def __ge__(self, other: object) -> bool:
+        if not isinstance(other, Rate):
+            return NotImplemented
+        return self._units >= other._units
+
+    # --- Immutability and text ---
+
+    def __setattr__(self, name: str, value: object) -> NoReturn:
+        raise AttributeError("Rate is immutable")
+
+    def __delattr__(self, name: str) -> NoReturn:
+        raise AttributeError("Rate is immutable")
+
+    def __reduce__(self) -> tuple[type[Rate], tuple[str]]:
+        return (Rate, (str(self),))
+
+    def __copy__(self) -> Self:
+        return self
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> Self:
+        return self
+
+    def __str__(self) -> str:
+        return str(self._amount)
+
+    def __repr__(self) -> str:
+        return f"Rate('{self._amount}')"
+
+    # --- Pydantic ---
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source: Any, handler: GetCoreSchemaHandler
+    ) -> CoreSchema:
+        """``Rate`` as a Pydantic field type, like ``Money``: JSON input is a
+        string only; Python input is a ``Rate`` or a string; JSON output is
+        the four-place string; ``model_dump()`` keeps the ``Rate``."""
+        return core_schema.json_or_python_schema(
+            json_schema=core_schema.no_info_plain_validator_function(
+                _validate_rate_json
+            ),
+            python_schema=core_schema.no_info_plain_validator_function(
+                _validate_rate_python
+            ),
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                str, return_schema=core_schema.str_schema(), when_used="json"
+            ),
+        )
+
+    @classmethod
+    def __get_pydantic_json_schema__(
+        cls, schema: CoreSchema, handler: GetJsonSchemaHandler
+    ) -> JsonSchemaValue:
+        """The OpenAPI schema of a rate."""
+        return {
+            "type": "string",
+            "format": "decimal",
+            "pattern": RATE_PATTERN,
+            "examples": ["250.0000"],
+        }
+
+
+def _rate_field_error(code: str) -> PydanticCustomError:
+    return PydanticCustomError(code, _RATE_MESSAGES[code])
+
+
+def _validate_rate_json(value: Any) -> Rate:
+    if not isinstance(value, str):
+        raise _rate_field_error(RATE_INVALID)
+    problem = _rate_text_problem(value)
+    if problem is not None:
+        raise _rate_field_error(problem)
+    return Rate(value)
+
+
+def _validate_rate_python(value: Any) -> Rate:
+    if isinstance(value, Rate):
+        return value
+    return _validate_rate_json(value)
+
+
 # --- Allocation (E3) ----------------------------------------------------------
 
 
@@ -563,6 +843,36 @@ def _bind_value(value: Any) -> Decimal | None:
             f"a money column binds Money only, not {type(value).__name__}"
             " (ADR-0004, E5)"
         )
+    return value.amount
+
+
+class RateType(TypeDecorator[Rate]):
+    """A ``NUMERIC(14,4)`` rate column (#105 A3). It binds only a ``Rate`` (or
+    ``None``); results come back as ``Rate`` (or ``None``)."""
+
+    impl = Numeric(14, 4, asdecimal=True)
+    cache_ok = True
+
+    def process_bind_param(self, value: Any, dialect: Dialect) -> Decimal | None:
+        return _bind_rate(value)
+
+    def process_literal_param(self, value: Any, dialect: Dialect) -> str:
+        bound = _bind_rate(value)
+        return "NULL" if bound is None else str(bound)
+
+    def process_result_value(self, value: Any, dialect: Dialect) -> Rate | None:
+        if value is None:
+            return None
+        if isinstance(value, float):  # pragma: no cover - asdecimal=True
+            raise TypeError(_FLOAT_RULE)
+        return Rate(value if isinstance(value, Decimal | int) else Decimal(value))
+
+
+def _bind_rate(value: Any) -> Decimal | None:
+    if value is None:
+        return None
+    if not isinstance(value, Rate):
+        raise TypeError(f"a rate column binds Rate only, not {type(value).__name__}")
     return value.amount
 
 

@@ -1005,7 +1005,8 @@ What applies to a tutor as a whole (E1). Audited. **Guarded** (§14.2).
 
 - **Unique key:** `UNIQUE (tutor_user_id, effective_from)` (invariant P1).
 - **CHECK:** `pay_frequency IS NOT NULL OR salary_amount IS NULL`: no salary without a frequency.
-- **Refusal:** a version that changes the frequency must be dated after every generated period (`422 effective_from_inside_generated_period`, E6).
+- **Refusal:** a version that changes the frequency must be dated after every generated period (`422 effective_from_inside_generated_period`, E6). #106 adds this, on both the terms insert and the terms delete, because `payroll_periods` doesn't exist before it. A stop (`pay_frequency NULL`) isn't a frequency change, so a tutor leaving mid-period can be recorded (#105 E7).
+- **Audit:** `salary_amount` is masked (`__audit_mask__`), because Administrators hold `audit.view` and see no pay (#105 E2).
 
 ### 11.3 `compensation_rates` (#105)
 
@@ -1023,6 +1024,7 @@ Tutor-specific rates per class kind (E1). Audited. **Guarded** (§14.2).
 - **Unique key:** `UNIQUE (tutor_user_id, class_kind, effective_from)`, the no-overlap constraint of #105 (invariant P1).
 - **CHECKs:** `(rate_model IS NULL) = (rate IS NULL)` (both `NULL` = "no rate from this date"); `rate_model <> 'per_course' OR class_kind = 'course'`.
 - **Lookup:** the version with the greatest `effective_from <=` the service date (W3.4). A `per_course` rate uses the cohort's first session's local date instead (E3).
+- **Audit:** `rate` is masked (`__audit_mask__`), as in §11.2 (#105 E2).
 - **Models (E1):** rates only → hourly, per-session or per-course; `salary_amount` only → fixed salary; both → salary plus extras. There is no default rate and no rate per subject or level.
 
 ### 11.4 `payroll_periods` (#106)
@@ -1372,7 +1374,7 @@ Nothing below is stored.
 
 ### 14.2 Guarded tables
 
-- **`tutor_pay_terms` and `compensation_rates`:** the §5.2 `price_versions` pattern, immutable once referenced by a line of a **finalized** period. Triggers `tutor_pay_terms_guard()` and `compensation_rates_guard()` raise 42501 on `UPDATE` or `DELETE` of a referenced row, and on every `TRUNCATE`.
+- **`tutor_pay_terms` and `compensation_rates`:** the §5.2 `price_versions` pattern, immutable once referenced by a line of a **finalized** period. Triggers `tutor_pay_terms_guard()` and `compensation_rates_guard()` raise 42501 on `UPDATE` or `DELETE` of a referenced row, and on every `TRUNCATE`. The API exposes `DELETE` on an unreferenced version, whatever its date, and no update: a correction is a delete and a new version (#105 E4).
 - **Staged predicate:** `payroll_lines` doesn't exist when #105 runs. The triggers ask `compensation_rate_is_referenced(id uuid)` and `tutor_pay_terms_is_referenced(id uuid)` (`LANGUAGE sql VOLATILE`). #105 creates both as `SELECT false`. #107 replaces the first and #108 the second (`CREATE OR REPLACE`) with an `EXISTS` over `payroll_lines` joined to a `finalized` period; each downgrade restores the previous body.
 - **`session_pay_rules`:** the `cancellation_billing_rules` shape: `session_pay_rules_guard()` refuses every `UPDATE`, the `DELETE` of a version with `effective_from` on or before the center's today (read from `business_settings.time_zone`) and every `TRUNCATE`. Only an upcoming version can be deleted.
 - **`pay_items`:** `pay_items_guard()` refuses, once a finalized line references the row, every `DELETE` and every `UPDATE` other than `effective_to`, `version` and `updated_at` (the `custom_prices` shape, §5.2), and every `TRUNCATE`. The predicate is defined in the same migration (#109), because `payroll_lines` exists by then.
@@ -1464,8 +1466,8 @@ Each M7 issue, the ADR-0017 decision items it relies on, and the tables it creat
 
 | Issue | Decision items | Tables |
 |---|---|---|
-| #105 M7-02 Compensation and rates | E1 (keys, `NULL` semantics, guarded versions, lookup on the service date), E12 (`payroll.view`, `payroll.manage`; tutors see only their own rates by record policy) | `tutor_pay_terms`, `compensation_rates` |
-| #106 M7-03 Payroll periods | E2 (`payroll_starts_on`), E6 (calendars in local `DATE`s, stubs, no overlaps, no gaps, idempotent `payroll:open_periods`) | `payroll_settings`, `payroll_periods` |
+| #105 M7-02 Compensation and rates | E1 (keys, `NULL` semantics, guarded versions, lookup on the service date), E12 (`payroll.view`, `payroll.manage`; tutors see only their own rates by record policy; audit masks on the amounts) | `tutor_pay_terms`, `compensation_rates` |
+| #106 M7-03 Payroll periods | E2 (`payroll_starts_on`), E6 (calendars in local `DATE`s, stubs, no overlaps, no gaps, idempotent `payroll:open_periods`, the `effective_from_inside_generated_period` refusal on the terms insert and delete, not on a stop) | `payroll_settings`, `payroll_periods` |
 | #423 M7-04a Makeup link | E5 | `class_sessions.makeup_of_session_id` |
 | #107 M7-04 Calculation | E2 (current revision, attribution, service date, unresolved work), E3, E4 (rules consuming the #62 outcomes), E5, E9 (one line per source with its session, repeatable `recalculate`, no hooks), E12 (`payroll.prepare`) | `session_pay_rules`, `payroll_lines` (session-sourced kinds) |
 | #108 M7-05 Salary and proration | E1 (salary plus extras), E7 (configurable basis, `Money.prorate`, review through line display) | `payroll_lines` (`salary`), `payroll_settings` (`salary_proration_basis`) |

@@ -2087,6 +2087,57 @@ reauth = "user.password_reset.issue"
 
 [[route]]
 method = "GET"
+path = "/api/v1/payroll/tutors"
+access = "permission"
+permission = "payroll.view"
+allow = ["owner", "finance_staff"]
+# #105 E3, ADR-0017 E12: Administrators see no pay, so neither this list.
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/compensation"
+access = "authenticated"
+# #105 E6: the record policy answers 404 for everyone but a payroll.view
+# holder and the tutor, and the placeholder id is no tutor: 404 for all. The
+# 200 cases are in tests/integration/test_payroll_compensation_access.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/pay-terms"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #105 G4: the empty body is 422 for the allowed roles (before the 404). No
+# reauthentication and no Idempotency-Key: these rows are configuration.
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/pay-terms/{terms_id}"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #105 G6: the placeholder ids are no tutor: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/rates"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #105 G5: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/rates/{rate_id}"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #105 G6: the placeholder ids are no tutor: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
 path = "/api/v1/privacy-notice"
 access = "authenticated"
 notice_exempt = true

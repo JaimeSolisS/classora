@@ -55,6 +55,10 @@ EXPECTED = {
     "family.manage": {OWNER, ADMINISTRATOR},
     "consent.record": {OWNER, ADMINISTRATOR, STUDENT, GUARDIAN},
     "payroll.finalize": {OWNER},
+    # ADR-0017 E12: Administrators see no pay; tutors read their own through
+    # the record policy, not through payroll.view.
+    "payroll.view": {OWNER, FINANCE_STAFF},
+    "payroll.manage": {OWNER, FINANCE_STAFF},
     "schedule.override": {OWNER},
     "finance.refund.approve": {OWNER},
     # Owner decision #43 E1 (a): no Finance Staff, Student or Guardian.
@@ -112,8 +116,8 @@ def test_catalog_matches_the_approved_table():
     }
 
     assert by_permission == EXPECTED
-    assert len(PERMISSIONS) == 38
-    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 99
+    assert len(PERMISSIONS) == 40
+    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 103
 
 
 def test_every_code_has_the_dotted_form():

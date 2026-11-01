@@ -193,7 +193,7 @@ def test_summary_of_an_empty_registry():
 
 
 def test_alembic_heads_reads_the_migration_scripts():
-    assert runner.alembic_heads() == {"0071"}
+    assert runner.alembic_heads() == {"0072"}
 
 
 def test_configuration_error_exits_1_without_traceback(capsys):

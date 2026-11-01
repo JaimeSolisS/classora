@@ -22218,6 +22218,556 @@
         }
       }
     },
+    "/api/v1/payroll/tutors": {
+      "get": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "List Payroll Tutors",
+        "description": "The users holding the tutor role, in any state, by display name, then\nusername, with the terms and rated class kinds in effect today.",
+        "operationId": "list_payroll_tutors_api_v1_payroll_tutors_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Part of the username or display name (not case-sensitive; accents are not folded).",
+              "title": "Q"
+            },
+            "description": "Part of the username or display name (not case-sensitive; accents are not folded)."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/UserState"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One user state.",
+              "title": "State"
+            },
+            "description": "One user state."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_PayrollTutorItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/tutors/{tutor_user_id}/compensation": {
+      "get": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Get Tutor Compensation",
+        "description": "A tutor's pay terms and rates, for a holder of payroll.view or the\ntutor themselves. Terms are newest first; rates are by class kind, then\nnewest first.",
+        "operationId": "get_tutor_compensation_api_v1_payroll_tutors__tutor_user_id__compensation_get",
+        "parameters": [
+          {
+            "name": "tutor_user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tutor User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TutorCompensation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/tutors/{tutor_user_id}/pay-terms": {
+      "post": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Add Pay Terms",
+        "description": "Add a terms version from any date. A null frequency means the tutor\nis not on payroll from that date.",
+        "operationId": "add_pay_terms_api_v1_payroll_tutors__tutor_user_id__pay_terms_post",
+        "parameters": [
+          {
+            "name": "tutor_user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tutor User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayTermsCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayTermsItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed (permission_denied), or the caller's own compensation (payroll_own_compensation; only an Owner may write their own).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This tutor has terms from this date (pay_terms_exists).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/tutors/{tutor_user_id}/rates": {
+      "post": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Add Compensation Rate",
+        "description": "Add a rate version from any date. A null rate model and rate mean no\nrate for this class kind from that date.",
+        "operationId": "add_compensation_rate_api_v1_payroll_tutors__tutor_user_id__rates_post",
+        "parameters": [
+          {
+            "name": "tutor_user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tutor User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompensationRateCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompensationRateItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed (permission_denied), or the caller's own compensation (payroll_own_compensation; only an Owner may write their own).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This tutor has a rate for this class kind from this date (compensation_rate_exists).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/tutors/{tutor_user_id}/pay-terms/{terms_id}": {
+      "delete": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Delete Pay Terms",
+        "description": "Delete a terms version, whatever its date, until a finalized period\nuses it.",
+        "operationId": "delete_pay_terms_api_v1_payroll_tutors__tutor_user_id__pay_terms__terms_id__delete",
+        "parameters": [
+          {
+            "name": "tutor_user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tutor User Id"
+            }
+          },
+          {
+            "name": "terms_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Terms Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed (permission_denied), or the caller's own compensation (payroll_own_compensation; only an Owner may write their own).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tutor, or no such version of this tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A finalized payroll period uses this version (pay_terms_in_use).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/tutors/{tutor_user_id}/rates/{rate_id}": {
+      "delete": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Delete Compensation Rate",
+        "description": "Delete a rate version, whatever its date, until a finalized period\nuses it.",
+        "operationId": "delete_compensation_rate_api_v1_payroll_tutors__tutor_user_id__rates__rate_id__delete",
+        "parameters": [
+          {
+            "name": "tutor_user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tutor User Id"
+            }
+          },
+          {
+            "name": "rate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Rate Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed (permission_denied), or the caller's own compensation (payroll_own_compensation; only an Owner may write their own).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tutor, or no such version of this tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A finalized payroll period uses this version (compensation_rate_in_use).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/overdue-accounts": {
       "get": {
         "tags": [
@@ -31549,6 +32099,14 @@
           "pending"
         ]
       },
+      "ClassKind": {
+        "type": "string",
+        "enum": [
+          "individual",
+          "group",
+          "course"
+        ]
+      },
       "ClassSeriesCancel": {
         "properties": {
           "mode": {
@@ -35746,6 +36304,143 @@
         "title": "CohortWithdrawal",
         "description": "Withdraw a student from a cohort (``POST\n/api/v1/cohorts/{id}/enrollments/{enrollment_id}/withdraw``, #66 D1):\nthe enrollment's ``version`` and an optional reason (trimmed, 1-1000:\n``reason_required`` for a blank one, ``reason_too_long``)."
       },
+      "CompensationRateCreate": {
+        "properties": {
+          "class_kind": {
+            "$ref": "#/components/schemas/ClassKind"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective From"
+          },
+          "rate_model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RateModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,10}(\\.\\d{1,4})?$",
+                "format": "decimal",
+                "examples": [
+                  "250.0000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "class_kind",
+          "effective_from",
+          "rate_model",
+          "rate"
+        ],
+        "title": "CompensationRateCreate",
+        "description": "``POST /api/v1/payroll/tutors/{id}/rates``. ``rate_model`` and ``rate``\nare both ``null`` to mean \"no rate from this date\"."
+      },
+      "CompensationRateItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "class_kind": {
+            "$ref": "#/components/schemas/ClassKind"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective From"
+          },
+          "rate_model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RateModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,10}(\\.\\d{1,4})?$",
+                "format": "decimal",
+                "examples": [
+                  "250.0000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CompensationStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "class_kind",
+          "effective_from",
+          "rate_model",
+          "rate",
+          "status"
+        ],
+        "title": "CompensationRateItem",
+        "description": "One rate version; ``status`` as in :class:`PayTermsItem`. A current\nversion with a ``null`` rate means \"no rate\"."
+      },
+      "CompensationStatus": {
+        "type": "string",
+        "enum": [
+          "current",
+          "upcoming",
+          "past"
+        ]
+      },
+      "CompensationTutor": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "state": {
+            "$ref": "#/components/schemas/UserState"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "display_name",
+          "state"
+        ],
+        "title": "CompensationTutor",
+        "description": "The tutor a compensation read is about."
+      },
       "CompletionAssessment": {
         "properties": {
           "id": {
@@ -37106,6 +37801,36 @@
           "pending",
           "not_required"
         ]
+      },
+      "CurrentTerms": {
+        "properties": {
+          "pay_frequency": {
+            "$ref": "#/components/schemas/PayFrequency"
+          },
+          "salary_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Salary Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pay_frequency",
+          "salary_amount"
+        ],
+        "title": "CurrentTerms",
+        "description": "The terms in effect today, on the payroll tutor list."
       },
       "CursorPage_AuditEventListItem_": {
         "properties": {
@@ -44870,6 +45595,37 @@
         ],
         "title": "OffsetPage[PaymentItem]"
       },
+      "OffsetPage_PayrollTutorItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PayrollTutorItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[PayrollTutorItem]"
+      },
       "OffsetPage_ServicePriceItem_": {
         "properties": {
           "items": {
@@ -46383,6 +47139,111 @@
         "title": "PasswordResetTokenRequest",
         "description": "The token from a reset link (``POST …/password-reset/lookup``)."
       },
+      "PayFrequency": {
+        "type": "string",
+        "enum": [
+          "weekly",
+          "biweekly",
+          "monthly"
+        ]
+      },
+      "PayTermsCreate": {
+        "properties": {
+          "effective_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective From"
+          },
+          "pay_frequency": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayFrequency"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "salary_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Salary Amount"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "effective_from",
+          "pay_frequency",
+          "salary_amount"
+        ],
+        "title": "PayTermsCreate",
+        "description": "``POST /api/v1/payroll/tutors/{id}/pay-terms``. ``pay_frequency: null``\nmeans \"not on payroll from this date\"; ``salary_amount`` is per full pay\nperiod of this frequency, ``null`` when there is no salary."
+      },
+      "PayTermsItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective From"
+          },
+          "pay_frequency": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayFrequency"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "salary_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Salary Amount"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CompensationStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "effective_from",
+          "pay_frequency",
+          "salary_amount",
+          "status"
+        ],
+        "title": "PayTermsItem",
+        "description": "One terms version. ``status`` is against the center's local today:\n``current`` is the version in effect, even when ``pay_frequency`` is\n``null`` (not on payroll)."
+      },
       "PaymentAllocationBody": {
         "properties": {
           "mode": {
@@ -47035,6 +47896,54 @@
         "title": "PaymentReversed",
         "description": "``201`` of a payment reversal (#100 C3): the reversal, the payment\nafterwards, the allocations released and the account credit afterwards\n(the payment's remainder no longer counts)."
       },
+      "PayrollTutorItem": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "state": {
+            "$ref": "#/components/schemas/UserState"
+          },
+          "current_terms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurrentTerms"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current_rate_kinds": {
+            "items": {
+              "$ref": "#/components/schemas/ClassKind"
+            },
+            "type": "array",
+            "title": "Current Rate Kinds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "display_name",
+          "username",
+          "state",
+          "current_terms",
+          "current_rate_kinds"
+        ],
+        "title": "PayrollTutorItem",
+        "description": "A tutor on the payroll list. ``current_terms`` is ``null`` without\nterms or when not on payroll; ``current_rate_kinds`` are the class kinds\nwith a rate in effect today."
+      },
       "PendingOffer": {
         "properties": {
           "id": {
@@ -47148,6 +48057,8 @@
           "learning_plan.manage",
           "payment.record",
           "payroll.finalize",
+          "payroll.manage",
+          "payroll.view",
           "progress_report.review",
           "qualification.review",
           "registration.review",
@@ -49421,6 +50332,14 @@
           "rejected",
           "cancelled",
           "revoked"
+        ]
+      },
+      "RateModel": {
+        "type": "string",
+        "enum": [
+          "per_hour",
+          "per_session",
+          "per_course"
         ]
       },
       "ReauthenticateRequest": {
@@ -55113,6 +56032,41 @@
         ],
         "title": "TutorAvailabilityDetail",
         "description": "A tutor's availability in the center's local wall-clock time, with\nthe teaching limits and preferred classrooms (#197)."
+      },
+      "TutorCompensation": {
+        "properties": {
+          "tutor": {
+            "$ref": "#/components/schemas/CompensationTutor"
+          },
+          "today": {
+            "type": "string",
+            "format": "date",
+            "title": "Today"
+          },
+          "terms": {
+            "items": {
+              "$ref": "#/components/schemas/PayTermsItem"
+            },
+            "type": "array",
+            "title": "Terms"
+          },
+          "rates": {
+            "items": {
+              "$ref": "#/components/schemas/CompensationRateItem"
+            },
+            "type": "array",
+            "title": "Rates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tutor",
+          "today",
+          "terms",
+          "rates"
+        ],
+        "title": "TutorCompensation",
+        "description": "All of a tutor's versions. ``today`` is the center's local date the\n``status`` values were computed with."
       },
       "TutorDetail": {
         "properties": {

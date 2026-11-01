@@ -18,7 +18,7 @@ from app.core.audit import (
     to_json_value,
 )
 from app.core.logging import request_id_var
-from app.core.money import Money
+from app.core.money import Money, Rate
 
 # --- C3: JSON values ----------------------------------------------------------
 
@@ -67,6 +67,8 @@ ID = uuid.UUID("0199a000-0000-7000-8000-000000000001")
         (Money("-0"), "0.00"),
         ([Money("1"), None], ["1.00", None]),
         ({"a": {"b": [Money("2.5")]}}, {"a": {"b": ["2.50"]}}),
+        # Rate (#105 A4): the four-place string.
+        (Rate("250.125"), "250.1250"),
     ],
 )
 def test_supported_values(value, expected):

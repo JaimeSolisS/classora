@@ -74,6 +74,11 @@ GUARDIAN_VIEW = "guardian.view"
 FAMILY_MANAGE = "family.manage"
 CONSENT_RECORD = "consent.record"
 PAYROLL_FINALIZE = "payroll.finalize"
+# Tutor compensation (#105; ADR-0017 E12): who reads and who writes pay terms
+# and rates (Owner, Finance Staff; not delegable). Administrators see no pay.
+# Tutors read their own through the record policy (payroll/permissions.py).
+PAYROLL_VIEW = "payroll.view"
+PAYROLL_MANAGE = "payroll.manage"
 SCHEDULE_OVERRIDE = "schedule.override"
 FINANCE_REFUND_APPROVE = "finance.refund.approve"
 # Tutor profiles (#43, owner decision E1 (a)): the record policy limits a
@@ -201,6 +206,8 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(BILLING_VIEW),
     PermissionDef(PAYMENT_RECORD),
     PermissionDef(PAYROLL_FINALIZE, delegable=True),
+    PermissionDef(PAYROLL_VIEW),
+    PermissionDef(PAYROLL_MANAGE),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
 )
@@ -280,6 +287,8 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 BILLING_MANAGE,
                 BILLING_VIEW,
                 PAYMENT_RECORD,
+                PAYROLL_VIEW,
+                PAYROLL_MANAGE,
             }
         ),
         # Record policies limit these to assigned students, self and linked

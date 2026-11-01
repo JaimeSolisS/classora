@@ -20,6 +20,7 @@ import app.modules.catalog.models  # noqa: F401
 import app.modules.courses.models  # noqa: F401
 import app.modules.families.models  # noqa: F401
 import app.modules.identity.models  # noqa: F401
+import app.modules.payroll.models  # noqa: F401
 import app.modules.scheduling.models  # noqa: F401
 import app.modules.staff.models  # noqa: F401
 from app.core.models import Base
