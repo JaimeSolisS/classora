@@ -154,6 +154,11 @@ describe('route tree', () => {
       'billing/accounts',
       'billing/accounts/:familyId',
       'billing/overdue',
+      'payroll',
+      'payroll/tutors',
+      'payroll/tutors/:tutorUserId',
+      'payroll/settings',
+      'my-pay',
       'account/password',
       'privacy-notice',
       '*',
@@ -421,10 +426,21 @@ describe('route tree', () => {
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
-    expect(children[100]!.handle).toBeUndefined();
+    // #425 A3: payroll (code-split, the index a redirect), then My pay.
+    const payroll = { anyPermission: ['payroll.view', 'payroll.manage'] };
+    expect(children[100]!.handle).toEqual(payroll);
+    expect(children[100]!.element).toBeDefined();
+    for (const index of [101, 102, 103]) {
+      expect(children[index]!.handle).toEqual(payroll);
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    expect(children[104]!.handle).toEqual({ anyRole: ['tutor'] });
+    expect(children[104]!.lazy).toBeTypeOf('function');
+    expect(children[105]!.handle).toBeUndefined();
     // #174 G1: any signed-in user, no permission.
-    expect(children[101]!.id).toBe('privacy-notice');
-    expect(children[101]!.handle).toBeUndefined();
+    expect(children[106]!.id).toBe('privacy-notice');
+    expect(children[106]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

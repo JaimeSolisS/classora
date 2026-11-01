@@ -56,6 +56,7 @@ import { CHANGE_REQUESTS_ACCESS } from '@/features/change-requests/access';
 import { FAMILY_BILLING_ACCESS } from '@/features/family-portal/billing/access';
 import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/access';
 import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
+import { MY_PAY_ACCESS, PAYROLL_ACCESS } from '@/features/payroll/access';
 import { MY_HISTORY_ACCESS } from '@/features/academics/history/access';
 import {
   ASSIGNMENT_FORM_ACCESS,
@@ -965,6 +966,47 @@ export const routes: RouteObject[] = [
               ).OverduePage,
             }),
             handle: { permission: 'billing.view' },
+          },
+          // #425 A3: payroll (code-split), payroll.view or payroll.manage
+          // holders; each page checks payroll.manage for its controls.
+          {
+            path: 'payroll',
+            element: <Navigate to="/payroll/tutors" replace />,
+            handle: PAYROLL_ACCESS,
+          },
+          {
+            path: 'payroll/tutors',
+            lazy: async () => ({
+              Component: (await import('@/features/payroll/TutorPayListPage'))
+                .TutorPayListPage,
+            }),
+            handle: PAYROLL_ACCESS,
+          },
+          {
+            path: 'payroll/tutors/:tutorUserId',
+            lazy: async () => ({
+              Component: (await import('@/features/payroll/TutorPayPage'))
+                .TutorPayPage,
+            }),
+            handle: PAYROLL_ACCESS,
+          },
+          {
+            path: 'payroll/settings',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/payroll/PayrollSettingsPage')
+              ).PayrollSettingsPage,
+            }),
+            handle: PAYROLL_ACCESS,
+          },
+          // #425 F: a tutor's own pay (code-split).
+          {
+            path: 'my-pay',
+            lazy: async () => ({
+              Component: (await import('@/features/payroll/MyPayPage'))
+                .MyPayPage,
+            }),
+            handle: MY_PAY_ACCESS,
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

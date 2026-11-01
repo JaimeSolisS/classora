@@ -110,12 +110,18 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // open menu has no "Cuenta familiar" item, and /my-billing is the
 // access-denied page (guardians only). Read-only.
 //
+// My pay (#425 H3), last on the demo.tutor context: the Owner posts a rate
+// for demo.tutor through the API, on a date unique to this spec (over a year
+// ahead), so nothing else sees it. The tutor opens "Mi pago", sees the rate
+// as upcoming and no add or delete control, gets the access-denied page on
+// /payroll, and a 404 from the API on the substitute's compensation.
+//
 // Budgets (#27, ADR-0008; see support/auth.ts): 3 logins (demo.tutor; the
 // reauthenticated Owner context of createApprovedTutor, #55; and
 // demo.student, #313), no one-time-link redemption, 1 registration (the
 // substitute, #55); the attendance, closeout, review, resubmission,
-// progress, course completion and family billing steps add none (#76,
-// #77, #78, #305, #322, #323, #388). It never
+// progress, course completion, family billing and My pay steps add none
+// (#76, #77, #78, #305, #322, #323, #388, #425). It never
 // changes the zone, the
 // opening hours or the scheduling policy. No other spec offers sessions to
 // demo.tutor; the dates are three and six weeks ahead (other scheduling
@@ -127,8 +133,9 @@ const ZONE = 'America/Mexico_City';
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 // #313 G3 adds about 30 s (the homework steps): 180 → 210 s. #322 G3 adds
 // about 20 s (the progress steps): 210 → 230 s. #323 adds about 10 s (the
-// course completion step): 230 → 240 s.
-const TEST_TIMEOUT_MS = 240_000;
+// course completion step): 230 → 240 s. #425 adds about 10 s (My pay):
+// 240 → 250 s.
+const TEST_TIMEOUT_MS = 250_000;
 const TUTOR = 'demo.tutor';
 const TUTOR_NAME = 'Demo Tutor';
 const TUTOR_PASSWORD = 'classora-demo-tutor';
@@ -185,9 +192,10 @@ async function axeViolations(page: Page): Promise<string[]> {
 }
 
 // Chromium logs every 4xx resource as a console error: the tutor's signed-out
-// /auth/me (401) before the login is expected.
-const SIGNED_OUT_ME =
-  /Failed to load resource: the server responded with a status of 401/;
+// /auth/me (401) before the login is expected, and another tutor's
+// compensation (404, #425 H3).
+const TUTOR_EXPECTED =
+  /Failed to load resource: the server responded with a status of (401|404)/;
 
 function watchConsole(page: Page, expected?: RegExp): string[] {
   const errors: string[] = [];
@@ -303,7 +311,7 @@ async function signInTutor(browser: Browser) {
   const context = await browser.newContext({ storageState: SIGNED_OUT_STATE });
   const page = await context.newPage();
   await recordCspViolations(page);
-  const consoleErrors = watchConsole(page, SIGNED_OUT_ME);
+  const consoleErrors = watchConsole(page, TUTOR_EXPECTED);
   await page.goto('/login');
   await page
     .getByLabel(common.auth.login.username, { exact: true })
@@ -727,11 +735,16 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
 
     // 6. Substitution and cancellation (#55 I7) of the accepted session.
     const substituteName = `Suplente ${suffix}`;
-    await createApprovedTutor(page, playwright.request, baseURL!, {
-      username: `e2e.substitute.${suffix}`,
-      displayName: substituteName,
-      password: 'e2e-substitute-password',
-    });
+    const substituteId = await createApprovedTutor(
+      page,
+      playwright.request,
+      baseURL!,
+      {
+        username: `e2e.substitute.${suffix}`,
+        displayName: substituteName,
+        password: 'e2e-substitute-password',
+      },
+    );
     await page.goto(`/schedule/sessions/${acceptedSession}`);
     const sessionMain = page.getByRole('main');
     const substitute = sessionMain.getByRole('region', {
@@ -1301,6 +1314,49 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
       student = undefined;
       throw error;
     }
+
+    // #425 H3: My pay, on the same context. The rate comes from the Owner's
+    // shared session; its date (over a year ahead) is this spec's alone.
+    const ownerMe = await api(page, '/api/v1/auth/me');
+    const posted = await api(page, `/api/v1/payroll/tutors/${tutorId}/rates`, {
+      method: 'POST',
+      json: {
+        class_kind: 'individual',
+        effective_from: firstWeekdayAhead(400 + 7 * testInfo.retry),
+        rate_model: 'per_hour',
+        rate: '275.5000',
+      },
+      headers: { 'X-CSRF-Token': csrfTokenOf(ownerMe) },
+    });
+    expect(posted.status).toBe(201);
+    const { id: postedRate } = posted.body as { id: string };
+    await tutor.page.setViewportSize({ width: 1280, height: 720 });
+    await tutor.page.goto('/');
+    await tutor.page
+      .getByRole('banner')
+      .getByRole('link', { name: common.nav.myPay, exact: true })
+      .click();
+    await expect(tutor.page).toHaveURL('/my-pay');
+    const pay = tutor.page.getByRole('main');
+    await expect(
+      pay.getByRole('heading', { level: 1, name: common.payroll.myPay.title }),
+    ).toBeVisible();
+    const rateRow = pay.locator(`[data-version-id="${postedRate}"]`);
+    await expect(rateRow).toContainText('$275.50');
+    await expect(rateRow).toContainText(common.payroll.status.upcoming);
+    await expect(pay.getByRole('button')).toHaveCount(0);
+    await tutor.page.goto('/payroll');
+    await expect(
+      tutor.page.getByRole('main').getByRole('heading', {
+        level: 1,
+        name: common.auth.forbidden.title,
+      }),
+    ).toBeVisible();
+    const others = await api(
+      tutor.page,
+      `/api/v1/payroll/tutors/${substituteId}/compensation`,
+    );
+    expect(others.status).toBe(404);
 
     expect(await cspViolations(tutor.page)).toEqual([]);
     expect(tutor.consoleErrors).toEqual([]);
