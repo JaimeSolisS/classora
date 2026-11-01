@@ -55,6 +55,7 @@ from tests.integration.auth_support import CreatedUser, auth_client, create_user
 from tests.integration.catalog_support import post
 from tests.integration.conftest import run_sql, short_lived_engine
 from tests.integration.lifecycle_support import in_uow
+from tests.integration.lock_support import commit_b_inside_a
 from tests.integration.series_support import Timeline, owner_cookie, timeline
 from tests.integration.tuition_support import PLANS
 
@@ -403,12 +404,11 @@ def test_two_accounts_dont_wait_for_each_other(
     found_first = _preview(url, "package", first)
     found_second = _preview(url, "package", second)
 
-    a, b, ended_a, ended_b = _run(
+    a, b = commit_b_inside_a(
         url, owner.id, _confirm(owner, found_first), _confirm(owner, found_second)
     )
 
     assert (a, b) == ("confirmed", "confirmed")
-    assert ended_b < ended_a
 
 
 @pytest.mark.parametrize("repeat", range(3))
