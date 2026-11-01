@@ -5208,7 +5208,8 @@
         "deleted": "Cambio programado eliminado.",
         "alreadyInForce": "Esta versión ya está vigente."
       },
-      "conflictReloaded": "Alguien más cambió esta configuración. Estos son los valores actuales y tus cambios no se guardaron. Revísalos y guarda de nuevo."
+      "conflictReloaded": "Alguien más cambió esta configuración. Estos son los valores actuales y tus cambios no se guardaron. Revísalos y guarda de nuevo.",
+      "conflictReloadedOff": "Alguien más cambió esta configuración. El cobro ahora está desactivado y tus cambios no se guardaron. Para activarlo, elige una fecha de inicio y guarda."
     },
     "targets": {
       "kinds": {

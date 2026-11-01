@@ -25,6 +25,7 @@ import {
   isVersionConflict,
   MAX_START_DATE,
   MIN_START_DATE,
+  reloadedBillingForm,
   startsInThePast,
   validateBillingForm,
   type BillingDateError,
@@ -43,7 +44,9 @@ import {
 // version from the server replaces them and says so: the dialog works from a
 // snapshot, and the version it sends is always the one its values were
 // edited from (#425 QA D1, D3). Never during a save: it's reconciled at the
-// end, whatever order a refetch and the response come in.
+// end, whatever order a refetch and the response come in. A reset to billing
+// off leaves the date empty and says billing is off: only opening the dialog
+// anew offers today (QA D4).
 
 export interface BillingSettingsDialogProps {
   open: boolean;
@@ -105,7 +108,7 @@ function DialogBody({
     // Adjusting state while rendering, so no render pairs the new version
     // with the old values.
     setSettings(latest);
-    setValues(initialBillingForm(latest, today));
+    setValues(reloadedBillingForm(latest));
     setDateError(undefined);
     setFailure(null);
     setReloaded(true);
@@ -189,7 +192,9 @@ function DialogBody({
       </DialogHeader>
       {reloaded ? (
         <p role="alert" className="text-sm font-medium" data-billing-reloaded>
-          {t('billing.settings.conflictReloaded')}
+          {billingOn
+            ? t('billing.settings.conflictReloaded')
+            : t('billing.settings.conflictReloadedOff')}
         </p>
       ) : null}
       {failure ? (

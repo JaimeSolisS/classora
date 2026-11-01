@@ -33,6 +33,17 @@ export function initialBillingForm(
   return { mode: 'on', startsOn: settings.billing_starts_on ?? today };
 }
 
+/**
+ * The form after a newer version replaced it (#425 QA D4): only what the
+ * server holds. While billing is off the date stays empty, so turning it on
+ * takes a date the user chose, never today's default under "current values".
+ */
+export function reloadedBillingForm(
+  settings: Pick<BillingSettings, 'billing_starts_on'>,
+): BillingFormValues {
+  return { mode: 'on', startsOn: settings.billing_starts_on ?? '' };
+}
+
 function isRealDay(value: string): boolean {
   try {
     parseLocalDate(value);

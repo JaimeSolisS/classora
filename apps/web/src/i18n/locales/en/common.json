@@ -5103,7 +5103,8 @@
         "deleted": "Scheduled change deleted.",
         "alreadyInForce": "This version is already in force."
       },
-      "conflictReloaded": "Someone else changed these settings. These are the current values, and your changes weren't saved. Review them and save again."
+      "conflictReloaded": "Someone else changed these settings. These are the current values, and your changes weren't saved. Review them and save again.",
+      "conflictReloadedOff": "Someone else changed these settings. Billing is now off, and your changes weren't saved. To turn it on, choose a start date and save."
     },
     "targets": {
       "kinds": {

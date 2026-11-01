@@ -1,10 +1,11 @@
+import type { ParseKeys } from 'i18next';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { problemWith } from '@/features/academics/testing';
 import type { SessionUserBody } from '@/features/auth/session';
 import { canAccess } from '@/features/auth/access';
 import { NAV_ITEMS } from '@/app/navigation';
-import { applyLanguage } from '@/i18n';
+import { applyLanguage, i18n } from '@/i18n';
 import {
   meAs,
   problem,
@@ -465,6 +466,97 @@ describe('the change dialog (B2, B3)', () => {
       });
     },
   );
+
+  // #425 QA D4: the Owner turned billing off while the dialog was open. Both
+  // routes end on an empty date: Save can't turn billing back on by itself.
+  describe.each(['en', 'es'] as const)(
+    '%s: billing off meanwhile',
+    (language) => {
+      const off = { ...SETTINGS_OFF, version: 7 };
+      const text = (key: ParseKeys<'common'>) => i18n.t(key);
+      const date = () =>
+        labelled<HTMLInputElement>(
+          dialog(),
+          text('billing.settings.dialog.startsOn'),
+        );
+      const save = () => buttonNamed(dialog(), text('billing.settings.save'));
+
+      async function openOn(api: ApiStub) {
+        applyLanguage(language);
+        app = await renderApp('/billing/settings');
+        await settleUntil(() => statusLine());
+        await click(buttonNamed(main(), text('billing.settings.change')));
+        expect(date().value).toBe(SETTINGS_ON.billing_starts_on);
+        return api;
+      }
+
+      async function expectStaysOff(api: ApiStub, patches: number) {
+        await settleUntil(() =>
+          dialog().querySelector('[data-billing-reloaded]'),
+        );
+        expect(
+          dialog().querySelector('[data-billing-reloaded]')?.textContent,
+        ).toBe(text('billing.settings.conflictReloadedOff'));
+        expect(date().value).toBe('');
+
+        await click(save());
+        expect(api.calls(PATCH)).toHaveLength(patches);
+        expect(openDialog()).not.toBeNull();
+
+        setFieldValue(date(), '2030-02-04');
+        await click(save());
+        await settleUntil(() => !openDialog());
+        expect(api.calls(PATCH)[patches]!.body).toEqual({
+          version: 7,
+          billing_starts_on: '2030-02-04',
+        });
+      }
+
+      it('after a focus refetch', async () => {
+        const api = await openOn(
+          stub({
+            [SETTINGS]: [
+              () => jsonResponse(200, SETTINGS_ON),
+              () => jsonResponse(200, off),
+            ],
+            [PATCH]: () => jsonResponse(200, { ...SETTINGS_ON, version: 8 }),
+          }),
+        );
+        await act(() =>
+          app!.queryClient.refetchQueries({ queryKey: BILLING_SETTINGS_KEY }),
+        );
+        await expectStaysOff(api, 0);
+      });
+
+      it('after a 409 and Reload', async () => {
+        const api = await openOn(
+          stub({
+            [SETTINGS]: [
+              () => jsonResponse(200, SETTINGS_ON),
+              () => jsonResponse(200, off),
+            ],
+            [PATCH]: [
+              () => problem(409, 'version_conflict'),
+              () => jsonResponse(200, { ...SETTINGS_ON, version: 8 }),
+            ],
+          }),
+        );
+        setFieldValue(date(), '2030-03-04');
+        await click(save());
+        await settleUntil(() => alerts(dialog()).length > 0);
+        await click(buttonNamed(dialog(), text('billing.settings.reload')));
+        await expectStaysOff(api, 1);
+      });
+    },
+  );
+
+  it('still offers today when someone opens the dialog to turn billing on', async () => {
+    stub();
+    await renderSettings();
+    await openChange();
+
+    expect(dateInput().value).not.toBe('');
+  });
 
   it('Cancel closes without sending', async () => {
     const api = stub();
