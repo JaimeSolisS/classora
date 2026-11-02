@@ -86,7 +86,9 @@ class PayRuleInEffectError(AppError):
 
 
 class SessionPayRuleInUseError(AppError):
-    """A line of a prepared or finalized period uses this version (#107 G3)."""
+    """A line keeps this version (#107 G3): in practice a run committed one
+    while the delete waited on the version. E9 keeps a rule out of prepared and
+    finalized periods, so only a clock edge reaches one of those."""
 
     status = 409
     code = "session_pay_rule_in_use"

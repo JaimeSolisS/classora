@@ -43,7 +43,7 @@ from tests.integration.test_class_session_makeups import (
     booked,
     cancelled_target,
 )
-from tests.integration.test_session_cancellation import cancel, read
+from tests.integration.test_session_cancellation import cancel, one_off, read
 from tests.integration.test_session_substitutions import substituted
 
 
@@ -159,6 +159,38 @@ def test_a_late_cancellation_under_percent_uses_the_scheduled_minutes(scene):
     )
     assert (line.approval_id, line.session_pay_rule_id) == (None, rule)
     assert str(line.class_session_id) == scene.session["id"]
+
+
+def test_a_late_cancellation_is_paid_on_its_own_scheduled_minutes(scene):
+    """K6: a 45-minute session, so 60 minutes can't pass by accident."""
+    add_rule(
+        scene.url,
+        "late_cancellation",
+        from_scene_start(scene),
+        "percent",
+        percent="50",
+    )
+    period = on_payroll(scene)
+    start = scene.at(scene.ctx.tl.week(2, 3), "10:00")
+    short = one_off(
+        scene.ctx,
+        accept=True,
+        starts_at=start,
+        ends_at=(start + timedelta(minutes=45)).isoformat(),
+    )
+    request = created(
+        create(scene, scene.guardian, session_id=short["id"], at=start - hours(23))
+    )
+    ok(approve(scene, request["id"], at=start - hours(22)))
+
+    run(scene.url, period)
+
+    line = line_of(scene.url, period)
+    assert (line.kind, line.minutes, line.amount) == (
+        "late_cancellation",
+        45,
+        Decimal("45.00"),
+    )
 
 
 def test_a_late_cancellation_under_fixed(scene):

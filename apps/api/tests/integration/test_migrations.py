@@ -14107,6 +14107,26 @@ def test_0076_an_update_checks_both_periods(fresh_database_url):
     assert state == "42501"
 
 
+def test_0076_a_line_cant_leave_a_finalized_period(fresh_database_url):
+    """A5: an ``UPDATE`` checks the old period too."""
+    dsn = fresh_database_url
+    world = _lines_world(dsn)
+    line = _0076_insert(dsn, world)
+    [still_open] = run_sql(
+        dsn,
+        "INSERT INTO payroll_periods (tutor_user_id, starts_on, ends_on,"
+        " pay_frequency, is_first_period) VALUES"
+        " (:u, '2031-01-13', '2031-01-19', 'weekly', false) RETURNING id",
+        {"u": world["tutor"]},
+    )
+    _finalize_0076(dsn, world)
+
+    move = "UPDATE payroll_lines SET payroll_period_id = :p WHERE id = :id"
+    state = _sqlstate_0076(dsn, move, {"p": still_open.id, "id": line})
+
+    assert state == "42501"
+
+
 def test_0076_the_rate_guard_sees_only_a_finalized_line(fresh_database_url):
     """A6: the body must compare the line with the function's parameter. With
     an unqualified ``id`` it compares a line's own id, so a mutation that drops

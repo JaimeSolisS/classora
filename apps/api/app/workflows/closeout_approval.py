@@ -57,8 +57,8 @@ async def on_closeout_approved(
     supersedes_approval_id: uuid.UUID | None,
     class_session_id: uuid.UUID,
 ) -> None:
-    """Run the billing (and later the pay) steps of one approval revision
-    (module docstring)."""
+    """Run the billing step of one approval revision (module docstring). Pay
+    has no step here."""
     del approval_id
     if supersedes_approval_id is not None:
         return

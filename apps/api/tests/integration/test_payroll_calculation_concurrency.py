@@ -128,6 +128,59 @@ def in_turns(
     return asyncio.run(_run())
 
 
+def paused_run(
+    url: str,
+    monkeypatch: pytest.MonkeyPatch,
+    owner_of_step: Any,
+    step: str,
+    period: uuid.UUID,
+    other: Callable[[AsyncSession], Awaitable[Any]],
+) -> list[Any]:
+    """A run stops at ``step``, inside its transaction; ``other`` starts and
+    must wait on a lock; the run goes on. Both results (an exception is a
+    result)."""
+
+    async def _run() -> list[Any]:
+        engine = short_lived_engine(url)
+        sessions = create_sessionmaker(engine)
+        reached, resume = asyncio.Event(), asyncio.Event()
+        real = getattr(owner_of_step, step)
+
+        async def paused(*args: Any, **kwargs: Any) -> Any:
+            reached.set()
+            await resume.wait()
+            return await real(*args, **kwargs)
+
+        monkeypatch.setattr(owner_of_step, step, paused)
+
+        async def first() -> Any:
+            async with UnitOfWork(sessions) as uow:
+                return await payroll_calculation.recalculate(uow.session, period)
+
+        async def second() -> Any:
+            async with UnitOfWork(sessions) as uow:
+                return await other(uow.session)
+
+        try:
+            running = asyncio.create_task(first())
+            await asyncio.wait_for(reached.wait(), WAIT_LIMIT)
+            waiting = asyncio.create_task(second())
+            try:
+                await waiting_on_a_lock(sessions)
+            finally:
+                resume.set()
+            return list(
+                await asyncio.wait_for(
+                    asyncio.gather(running, waiting, return_exceptions=True),
+                    WAIT_LIMIT,
+                )
+            )
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(_run())
+
+
 def recalculating(period: uuid.UUID) -> Callable[[AsyncSession], Awaitable[Any]]:
     def call(session: AsyncSession) -> Awaitable[Any]:
         return payroll_calculation.recalculate(session, period)
@@ -230,27 +283,85 @@ def test_a_run_after_a_delete_may_have_no_basis(
     assert result.line_count == 0
 
 
-def test_a_rule_delete_that_waited_for_a_run_is_refused(
-    module_seeded_url, client, frozen, owner, tutor
-):
-    """G3: the run reads the rule ``FOR KEY SHARE``, the delete waits, and the
-    new line keeps the version: ``409``, never a ``500``."""
-    url = module_seeded_url
+def rule_on_a_later_no_show(
+    url: str,
+    client: TestClient,
+    frozen: FrozenClock,
+    owner: CreatedUser,
+    tutor: CreatedUser,
+) -> tuple[uuid.UUID, uuid.UUID]:
+    """An upcoming rule, dated 2099 for the guard's real date, and a period
+    with its no-show approved and no line yet."""
     rule = add_rule(url, "no_show", "2099-03-01", "fixed", amount="70.00")
     period = paid_tutor(url, tutor.id, "2099-03-02", "2099-03-08")
     frozen.set(datetime(2099, 3, 7, 18, 0, tzinfo=UTC))
     made = lesson(url, starts_at=datetime(2099, 3, 4, 16, 0, tzinfo=UTC), tutor=tutor)
     approved_lesson(client, made, owner, statuses=["absent"])
     frozen.set(NOW)
+    return rule, period
 
-    def delete_rule(session: AsyncSession) -> Awaitable[None]:
+
+def deleting_rule(rule: uuid.UUID) -> Callable[[AsyncSession], Awaitable[None]]:
+    def call(session: AsyncSession) -> Awaitable[None]:
         return payroll.delete_session_pay_rule(session, rule, today=date(2099, 1, 1))
 
-    result, refused = in_turns(url, recalculating(period), delete_rule)
+    return call
+
+
+def test_a_rule_delete_that_waited_for_a_run_is_refused(
+    module_seeded_url, client, frozen, owner, tutor
+):
+    """G3: the line is written before the delete starts."""
+    url = module_seeded_url
+    rule, period = rule_on_a_later_no_show(url, client, frozen, owner, tutor)
+
+    result, refused = in_turns(url, recalculating(period), deleting_rule(rule))
 
     assert result.line_count == 1
     assert isinstance(refused, SessionPayRuleInUseError)
     assert line_of(url, period).session_pay_rule_id == rule
+
+
+def test_a_rule_read_by_a_run_waits_for_it_before_any_line_exists(
+    module_seeded_url, client, frozen, owner, tutor, monkeypatch
+):
+    """C4: the run has read the rule and written nothing. Only ``FOR KEY
+    SHARE`` holds the delete back; without it the delete wins and the run's
+    insert fails with ``23503``, a ``500``."""
+    url = module_seeded_url
+    rule, period = rule_on_a_later_no_show(url, client, frozen, owner, tutor)
+
+    result, refused = paused_run(
+        url, monkeypatch, payroll, "replace_lines", period, deleting_rule(rule)
+    )
+
+    assert result.line_count == 1
+    assert isinstance(refused, SessionPayRuleInUseError)
+    assert line_of(url, period).session_pay_rule_id == rule
+
+
+def test_a_rate_delete_takes_the_period_before_the_version(
+    module_seeded_url, client, owner, tutor, monkeypatch
+):
+    """G1: the run holds the period and hasn't read the rates. A delete that
+    locked the version first would wait for the period while the run waits for
+    the version: ``40P01``, which kills the run."""
+    url = module_seeded_url
+    add_terms(url, tutor.id)
+    rate = add_rate(url, tutor.id)
+    period = add_period_row(url, tutor.id, "11-02", "11-08")
+    approved_lesson(client, lesson(url, starts_at=STARTS, tutor=tutor), owner)
+
+    def delete_rate(session: AsyncSession) -> Awaitable[None]:
+        return payroll.delete_compensation_rate(session, tutor.id, rate)
+
+    result, deleted = paused_run(
+        url, monkeypatch, payroll_calculation, "compute_lines", period, delete_rate
+    )
+
+    assert result.line_count == 1
+    assert deleted is None
+    assert lines(url, period) == []
 
 
 # --- I4 -----

@@ -297,7 +297,7 @@ Codes in use today:
 | `invalid_effective_from` | 422 | A new scheduling policy version, cancellation billing rule version or session pay rule version whose `effective_from` (now when omitted, on the first two) is in the past or not later than every existing version (of the event, on a pay rule); nothing is created (see Scheduling policies, Cancellation billing rules and Session pay rules). |
 | `policy_version_in_effect` | 409 | Deleting a scheduling policy version or a cancellation billing rule version that is in force or in the past; only an upcoming version can be deleted (see Scheduling policies and Cancellation billing rules). |
 | `pay_rule_in_effect` | 409 | Deleting a session pay rule version that is in force or in the past; only an upcoming version can be deleted (see Session pay rules). |
-| `session_pay_rule_in_use` | 409 | Deleting an upcoming session pay rule version that a line of a prepared or finalized payroll period uses. Lines of open periods go with the version. |
+| `session_pay_rule_in_use` | 409 | Deleting an upcoming session pay rule version that a line keeps: in practice a recalculation committed a line of that version while the delete waited. Lines already in open periods go with the version. |
 | `payroll_period_not_open` | 409 | Recalculating a payroll period that isn't `open`. `details.status` is its status. |
 | `payroll_amount_out_of_range` | 409 | A payroll line, or the period's total, is beyond the money range: nothing is written. `details.class_session_id` names the line's session; no amount is in the body. |
 | `pay_rule_values_mismatch` / `percent_out_of_range` | 422 | Field codes of a session pay rule body: a `percent` or `amount` that doesn't match `mode`, a `percent` outside 0 to 1000 (see Session pay rules). |
@@ -7194,8 +7194,9 @@ and the web page M7-04b.
 - **Check order of the `DELETE`:** `401` → `403 csrf_failed` → `403
   permission_denied` → the advisory lock → `404` → `409 pay_rule_in_effect` for
   a version in force or past, the seeds included → the open periods with a line
-  of it, oldest first → `409 session_pay_rule_in_use` for a line of a prepared
-  or finalized period → `204`, removing its lines in those open periods.
+  of it, oldest first → `409 session_pay_rule_in_use` when a line keeps the
+  version, in practice one a recalculation committed while the delete waited →
+  `204`, removing its lines in those open periods.
 - **Audit:** automatic `create` and `delete` events with the staff actor.
   `percent` and `amount` appear as `"[masked]"` for every reader, the Owner
   included, because Administrators hold `audit.view` and see no pay.

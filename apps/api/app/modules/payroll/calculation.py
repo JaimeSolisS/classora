@@ -25,7 +25,7 @@ amount. Every amount is rounded once, inside ``Rate.to_money`` (#107 E2).
 ``per_course`` writes no line here (#442 replaces this).
 
 Nothing here touches a ``Decimal`` or an ``.amount``, on a ``Rate`` or a
-``Money``: ``tests/unit/test_payroll_calculation.py`` reads this file's syntax
+``Money``: ``tests/unit/test_payroll_calculation_pure.py`` reads this file's syntax
 tree, and the workflow's.
 """
 

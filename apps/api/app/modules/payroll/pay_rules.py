@@ -24,8 +24,9 @@ creates can't reach the unique key together:
 - :func:`delete_session_pay_rule`: only an upcoming version (``404`` for an
   unknown id, ``409 pay_rule_in_effect`` for one in force or past, also when
   the table's guard refuses it). Lines of ``open`` periods that use it go with
-  it, the periods locked first, oldest first; a line of a ``prepared`` or
-  ``finalized`` period keeps it: ``409 session_pay_rule_in_use`` (#107 G3, E8).
+  it, the periods locked first, oldest first; a line those locks didn't find
+  keeps it, in practice one a run committed while the delete waited: ``409
+  session_pay_rule_in_use`` (#107 G3, E8).
 
 There is no update: the guard (migration ``0075``) refuses every ``UPDATE``.
 The workflow (:mod:`app.workflows.session_pay_rules`) passes the center's
@@ -215,7 +216,7 @@ async def delete_session_pay_rule(
     past (the seeds always are) → the ``open`` periods holding a line of it
     ``FOR UPDATE``, oldest first → the version ``FOR UPDATE`` → its lines in
     those periods → the version, or ``409 session_pay_rule_in_use`` for a line
-    of any other period."""
+    they didn't cover."""
     await _lock(session)
     row = await session.get(SessionPayRule, rule_id)
     if row is None:

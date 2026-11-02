@@ -28,7 +28,6 @@ from app.modules.identity.permissions import (
     TUTOR,
 )
 from app.modules.payroll import service as payroll
-from app.modules.payroll.errors import PayrollAmountOutOfRangeError
 from app.workflows import payroll_calculation
 from tests.conftest import FrozenClock, frozen_clock
 from tests.integration.auth_support import (
@@ -78,6 +77,7 @@ ROOT = "/api/v1/payroll/periods"
 DENIED = (403, "permission_denied")
 IN_USE = (409, "compensation_rate_in_use")
 RULE_IN_USE = (409, "session_pay_rule_in_use")
+OUT_OF_RANGE = (409, "payroll_amount_out_of_range")
 AMOUNT_CANARY = "4321.77"
 RATE_CANARY = "4321.7700"
 
@@ -547,20 +547,50 @@ def test_the_run_replaces_only_the_rebuilt_kinds():
     )
 
 
-def test_d11_nothing_is_written_when_a_line_is_out_of_range(
-    module_seeded_url, client, owner, tutor
+MAX_RATE = "9999999999.9999"
+
+
+def test_d11_a_line_out_of_range_answers_409_and_writes_nothing(
+    module_seeded_url, client, owner, finance, tutor
 ):
     url = module_seeded_url
     add_rule(url, "no_show", "2025-01-01", "percent", percent="1000")
-    period = paid_tutor(url, tutor.id, rate="9999999999.9999")
+    period = paid_tutor(url, tutor.id, rate=MAX_RATE)
     worked(url, client, owner, tutor, local("11-03"), minutes=60)
     run(url, period)
     before = lines(url, period)
-    worked(url, client, owner, tutor, local("11-04"), statuses=["absent"], minutes=720)
+    made = worked(
+        url, client, owner, tutor, local("11-04"), statuses=["absent"], minutes=720
+    )
+    staff = sign_in(client, finance.username)
 
-    with pytest.raises(PayrollAmountOutOfRangeError):
-        run(url, period)
+    response = post(client, staff, f"{ROOT}/{period}/recalculate", None)
 
+    assert code_of(response) == OUT_OF_RANGE
+    assert response.json()["details"] == {"class_session_id": made.id}
+    assert "99999" not in response.text
+    assert lines(url, period) == before
+
+
+def test_a_total_out_of_range_answers_409_and_writes_nothing(
+    module_seeded_url, client, owner, finance, tutor
+):
+    """#107 D3 (engineer): each line fits, about 6 x 10^11, and their sum
+    doesn't."""
+    url = module_seeded_url
+    add_rule(url, "no_show", "2025-01-01", "percent", percent="1000")
+    period = paid_tutor(url, tutor.id, rate=MAX_RATE)
+    worked(url, client, owner, tutor, local("11-03"), statuses=["absent"], minutes=360)
+    assert run(url, period).line_count == 1
+    before = lines(url, period)
+    worked(url, client, owner, tutor, local("11-04"), statuses=["absent"], minutes=360)
+    staff = sign_in(client, finance.username)
+
+    response = post(client, staff, f"{ROOT}/{period}/recalculate", None)
+
+    assert code_of(response) == OUT_OF_RANGE
+    assert response.json().get("details") is None
+    assert "99999" not in response.text
     assert lines(url, period) == before
 
 
