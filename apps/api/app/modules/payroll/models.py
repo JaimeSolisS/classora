@@ -1,5 +1,5 @@
-"""Payroll tables (#105, #106, #441, #107; ADR-0017 E1, E2, E4, E6, E9;
-data-model §11.1-§11.6, §14.2, §14.3).
+"""Payroll tables (#105, #106, #441, #107, #109; ADR-0017 E1, E2, E4, E6, E8, E9;
+data-model §11.1-§11.8, §14.2, §14.3).
 
 ``tutor_pay_terms`` holds what applies to a tutor as a whole and
 ``compensation_rates`` the rate per class kind. Each is a list of versions:
@@ -24,11 +24,18 @@ makeup rule versions, guarded by time (migration ``0075``): nothing changes,
 and only an upcoming version can go away. ``percent`` and ``amount`` are masked
 in the audit log, as above.
 
-``payroll_lines`` holds one line per source: the four session kinds and one
-``salary`` line per piece (#108), and #109 and #111 widen it. Lines are working
-data until the period is finalized, so the table isn't ``Audited``, and a trigger
-refuses every write to a line of a finalized period (migration ``0076``). Only
-``recalculate`` and the deletion of a rate, rule or terms version write them.
+``pay_item_types`` and ``pay_items`` are the bonuses and deductions (#109). A
+type's ``direction`` never changes (migration ``0078``). An item is guarded the
+way a custom price is: once a finalized line uses it, only ``effective_to``
+moves. Its ``amount`` and ``description`` are masked in the audit log (#109 E7):
+free text can state an amount or a personal reason.
+
+``payroll_lines`` holds one line per source: the four session kinds, one
+``salary`` line per piece (#108) and one ``pay_item`` line per item and period
+(#109), and #111 widens it. Lines are working data until the period is finalized,
+so the table isn't ``Audited``, and a trigger refuses every write to a line of a
+finalized period (migration ``0076``). Only ``recalculate`` and the deletion of a
+rate, rule, terms version or item write them.
 """
 
 import uuid
@@ -46,7 +53,9 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID, ExcludeConstraint
@@ -69,7 +78,10 @@ PAY_RULE_MODES: Final = ("none", "percent", "fixed")
 LINE_EVENT_KINDS: Final = PAY_RULE_EVENTS
 SESSION_LINE_KINDS: Final = ("session", *LINE_EVENT_KINDS)
 SALARY: Final = "salary"
-LINE_KINDS: Final = (*SESSION_LINE_KINDS, SALARY)
+PAY_ITEM: Final = "pay_item"
+LINE_KINDS: Final = (*SESSION_LINE_KINDS, SALARY, PAY_ITEM)
+PAY_ITEM_DIRECTIONS: Final = ("bonus", "deduction")
+PAY_ITEM_RECURRENCES: Final = ("one_time", "recurring")
 
 PAY_FREQUENCY_MAX: Final = 10
 PERIOD_STATUS_MAX: Final = 10
@@ -79,6 +91,10 @@ RATE_MODEL_MAX: Final = 20
 PAY_RULE_EVENT_MAX: Final = 20
 PAY_RULE_MODE_MAX: Final = 10
 LINE_KIND_MAX: Final = 20
+PAY_ITEM_TYPE_NAME_MAX: Final = 100
+PAY_ITEM_DIRECTION_MAX: Final = 10
+PAY_ITEM_RECURRENCE_MAX: Final = 10
+PAY_ITEM_DESCRIPTION_MAX: Final = 500
 
 TERMS_KEY: Final = "uq_tutor_pay_terms_tutor_user_id_effective_from"
 RATE_KEY: Final = "uq_compensation_rates_tutor_user_id_class_kind_effective_from"
@@ -92,6 +108,9 @@ PERIOD_RANGE_SQL: Final = "daterange(starts_on, ends_on, '[]')"
 LINE_SESSION_UNIQUE: Final = "uq_payroll_lines_session_sourced"
 LINE_TUTOR_KEY: Final = "uq_payroll_lines_id_tutor"
 LINE_SALARY_PIECE: Final = "uq_payroll_lines_salary_piece"
+LINE_PAY_ITEM_PERIOD: Final = "uq_payroll_lines_pay_item_period"
+PAY_ITEM_TYPE_NAME_KEY: Final = "uq_pay_item_types_lower_name"
+PAY_ITEM_TARGET_KEY: Final = "uq_pay_items_id_tutor_user_id"
 
 
 def _one_of(column: str, values: tuple[str, ...]) -> str:
@@ -313,12 +332,81 @@ class PayrollPeriod(Model):
     )
 
 
+class PayItemType(Audited, VersionedMixin, Model):
+    """A staff-defined kind of bonus or deduction (data-model §11.7). It holds
+    no pay, so nothing is masked. There is no delete: ``is_active`` retires it."""
+
+    __tablename__ = "pay_item_types"
+    __table_args__ = (
+        CheckConstraint(
+            _one_of("direction", PAY_ITEM_DIRECTIONS), name="direction_valid"
+        ),
+        CheckConstraint(
+            f"char_length(name) BETWEEN 1 AND {PAY_ITEM_TYPE_NAME_MAX}"
+            " AND name = btrim(name)",
+            name="name_trimmed",
+        ),
+        Index(PAY_ITEM_TYPE_NAME_KEY, func.lower(text("name")), unique=True),
+    )
+
+    name: Mapped[str] = mapped_column(String(PAY_ITEM_TYPE_NAME_MAX))
+    direction: Mapped[str] = mapped_column(String(PAY_ITEM_DIRECTION_MAX))
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
+
+
+class PayItem(Audited, VersionedMixin, Model):
+    """A fixed bonus or deduction of one tutor (data-model §11.8). ``amount``
+    is always positive: the type's direction gives a line its sign."""
+
+    __tablename__ = "pay_items"
+    __audit_mask__: ClassVar[frozenset[str]] = frozenset({"amount", "description"})
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="amount_positive"),
+        CheckConstraint(
+            _one_of("recurrence", PAY_ITEM_RECURRENCES), name="recurrence_valid"
+        ),
+        CheckConstraint(
+            f"char_length(description) BETWEEN 1 AND {PAY_ITEM_DESCRIPTION_MAX}"
+            " AND description = btrim(description)",
+            name="description_trimmed",
+        ),
+        CheckConstraint("effective_to >= effective_from", name="dates_ordered"),
+        CheckConstraint(
+            "recurrence = 'recurring' OR effective_to IS NULL",
+            name="end_only_recurring",
+        ),
+        UniqueConstraint("id", "tutor_user_id", name=PAY_ITEM_TARGET_KEY),
+        Index(
+            "ix_pay_items_tutor_user_id_effective_from",
+            "tutor_user_id",
+            "effective_from",
+        ),
+        Index("ix_pay_items_pay_item_type_id", "pay_item_type_id"),
+    )
+
+    tutor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    pay_item_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pay_item_types.id", ondelete="RESTRICT")
+    )
+    description: Mapped[str] = mapped_column(Text)
+    amount: Mapped[Money] = mapped_column(MoneyType())
+    recurrence: Mapped[str] = mapped_column(String(PAY_ITEM_RECURRENCE_MAX))
+    effective_from: Mapped[date] = mapped_column(Date)
+    effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
 class PayrollLine(Model):
     """One line of a period (data-model §11.6): a session-sourced line of the
-    tutor, or a piece of salary. ``approval_id`` is the revision used, ``NULL``
-    on a line that comes from a cancellation. A line "covered by salary" has
-    kind ``session``, ``0.00`` and no rate snapshot. A ``salary`` line has no
-    session, and its seven columns say how the amount was reached (#108 E1)."""
+    tutor, a piece of salary or a pay item. ``approval_id`` is the revision
+    used, ``NULL`` on a line that comes from a cancellation. A line "covered by
+    salary" has kind ``session``, ``0.00`` and no rate snapshot. A ``salary`` line
+    has no session, and its seven columns say how the amount was reached (#108
+    E1). A ``pay_item`` line has only ``pay_item_id``, and is the one signed kind:
+    a deduction is negative (#109)."""
 
     __tablename__ = "payroll_lines"
     __table_args__ = (
@@ -330,6 +418,8 @@ class PayrollLine(Model):
             " OR (kind = 'late_cancellation'"
             " AND class_session_id IS NOT NULL AND approval_id IS NULL)"
             " OR (kind = 'salary' AND class_session_id IS NULL"
+            " AND approval_id IS NULL)"
+            " OR (kind = 'pay_item' AND class_session_id IS NULL"
             " AND approval_id IS NULL)",
             name="source_per_kind",
         ),
@@ -342,7 +432,11 @@ class PayrollLine(Model):
         ),
         CheckConstraint(_one_of("class_kind", CLASS_KINDS), name="class_kind_valid"),
         CheckConstraint(_one_of("rate_model", RATE_MODELS), name="rate_model_valid"),
-        CheckConstraint("amount >= 0", name="amount_non_negative"),
+        CheckConstraint(
+            "(kind = 'pay_item' AND amount <> 0)"
+            " OR (kind <> 'pay_item' AND amount >= 0)",
+            name="amount_sign",
+        ),
         CheckConstraint("minutes >= 0", name="minutes_non_negative"),
         CheckConstraint(
             "(rate_model IS NULL) = (rate IS NULL)"
@@ -379,10 +473,22 @@ class PayrollLine(Model):
         CheckConstraint(
             _one_of("proration_basis", PRORATION_BASES), name="proration_basis_valid"
         ),
+        CheckConstraint(
+            "(pay_item_id IS NOT NULL) = (kind = 'pay_item')", name="pay_item_fields"
+        ),
+        CheckConstraint(
+            "kind <> 'pay_item' OR rate_model IS NULL", name="pay_item_no_rate"
+        ),
         ForeignKeyConstraint(
             ["payroll_period_id", "tutor_user_id"],
             ["payroll_periods.id", "payroll_periods.tutor_user_id"],
             name="fk_payroll_lines_period_tutor",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["pay_item_id", "tutor_user_id"],
+            ["pay_items.id", "pay_items.tutor_user_id"],
+            name="fk_payroll_lines_pay_item_tutor",
             ondelete="RESTRICT",
         ),
         UniqueConstraint("id", "tutor_user_id", name=LINE_TUTOR_KEY),
@@ -398,6 +504,13 @@ class PayrollLine(Model):
             "salary_starts_on",
             unique=True,
             postgresql_where=text("kind = 'salary'"),
+        ),
+        Index(
+            LINE_PAY_ITEM_PERIOD,
+            "pay_item_id",
+            "payroll_period_id",
+            unique=True,
+            postgresql_where=text("kind = 'pay_item'"),
         ),
         Index("ix_payroll_lines_payroll_period_id", "payroll_period_id"),
         Index(
@@ -419,6 +532,11 @@ class PayrollLine(Model):
             "ix_payroll_lines_tutor_pay_terms_id",
             "tutor_pay_terms_id",
             postgresql_where=text("tutor_pay_terms_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_payroll_lines_pay_item_id",
+            "pay_item_id",
+            postgresql_where=text("pay_item_id IS NOT NULL"),
         ),
     )
 
@@ -471,4 +589,7 @@ class PayrollLine(Model):
     proration_denominator: Mapped[int | None] = mapped_column(Integer, nullable=True)
     proration_basis: Mapped[str | None] = mapped_column(
         String(PRORATION_BASIS_MAX), nullable=True
+    )
+    pay_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
     )

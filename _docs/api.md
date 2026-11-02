@@ -298,8 +298,16 @@ Codes in use today:
 | `policy_version_in_effect` | 409 | Deleting a scheduling policy version or a cancellation billing rule version that is in force or in the past; only an upcoming version can be deleted (see Scheduling policies and Cancellation billing rules). |
 | `pay_rule_in_effect` | 409 | Deleting a session pay rule version that is in force or in the past; only an upcoming version can be deleted (see Session pay rules). |
 | `session_pay_rule_in_use` | 409 | Deleting an upcoming session pay rule version that a line keeps: in practice a recalculation committed a line of that version while the delete waited. Lines already in open periods go with the version. |
+| `pay_item_type_exists` | 409 | Another pay item type has this name, ignoring case. |
+| `pay_item_type_in_use` | 409 | Deactivating a pay item type while a recurring item of it is still running. |
+| `pay_item_type_unknown` | 422 | The body names no existing pay item type. |
+| `pay_item_type_inactive` | 409 | A new item on a deactivated type, or a `PATCH` that reopens an item of one or moves its end later. |
+| `pay_item_not_recurring` | 409 | Setting the end of a one-time item. |
+| `pay_item_end_before_start` | 422 | A pay item's new end is before its start. |
+| `pay_item_end_before_paid_period` | 422 | A pay item's new end is before the start of the latest finalized period holding its line. |
+| `pay_item_in_use` | 409 | Deleting a pay item a prepared or finalized period uses. |
 | `payroll_period_not_open` | 409 | Recalculating a payroll period that isn't `open`. `details.status` is its status. |
-| `payroll_amount_out_of_range` | 409 | A payroll line, or the period's total, is beyond the money range: nothing is written. `details.class_session_id` names the line's session; no amount is in the body. |
+| `payroll_amount_out_of_range` | 409 | A payroll line, or the period's total, is beyond the money range: nothing is written. `GET …/lines` answers it too when the stored lines sum beyond the range. `details.class_session_id` names the line's session; no amount is in the body. |
 | `pay_rule_values_mismatch` / `percent_out_of_range` | 422 | Field codes of a session pay rule body: a `percent` or `amount` that doesn't match `mode`, a `percent` outside 0 to 1000 (see Session pay rules). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
@@ -7206,18 +7214,19 @@ and the web page M7-04b.
 
 ### Payroll calculation
 
-Implemented by M7-04 (#107) and M7-05 (#108, salary; ADR-0017 E1, E2, E4, E5,
-E7, E9, its #107 and #108 notes). Routes in
+Implemented by M7-04 (#107), M7-05 (#108, salary) and M7-06 (#109, pay items;
+ADR-0017 E1, E2, E4, E5, E7, E8, E9, its #107, #108 and #109 notes). Routes in
 `app/workflows/payroll_calculation_router.py`, the run in
 `app/workflows/payroll_calculation.py`, the pure rules in
-`app/modules/payroll/calculation.py` and `salary.py`, table `payroll_lines`
+`app/modules/payroll/calculation.py`, `salary.py` and `pay_item_lines.py`, table
+`payroll_lines`
 (`_docs/data-model.md` §11.6). Pay is derived in a run, never posted by a
 closeout, a cancellation or a reschedule.
 
 | Route | Access | Notes |
 |---|---|---|
-| `POST /api/v1/payroll/periods/{period_id}/recalculate` | `require("payroll.prepare")` | `200` with `PayrollRecalculation`: `line_count`, `total`. No body. Repeatable. |
-| `GET /api/v1/payroll/periods/{period_id}/lines` | `require("payroll.view")` | `PayrollPeriodLines`: `period` (`id`, `tutor_user_id`, `starts_on`, `ends_on`, `pay_frequency`, `status`), `lines[]` by `service_date`, then `class_session_id`, then `salary_starts_on`, with salary lines after the session lines, and `total`, the sum of the rounded lines. Not paginated: one period. |
+| `POST /api/v1/payroll/periods/{period_id}/recalculate` | `require("payroll.prepare")` | `200` with `PayrollRecalculation`: `line_count` and `total` of **all** the period's lines after the run, as `GET …/lines` shows them (#109 E2). The total may be negative. No body. Repeatable. |
+| `GET /api/v1/payroll/periods/{period_id}/lines` | `require("payroll.view")` | `PayrollPeriodLines`: `period` (`id`, `tutor_user_id`, `starts_on`, `ends_on`, `pay_frequency`, `status`), `lines[]` by `service_date`, then `class_session_id`, then `salary_starts_on`, then `pay_item_id`: session lines, then salary, then items. And `total`, the sum of the rounded lines. Not paginated: one period. `409 payroll_amount_out_of_range` when the lines sum beyond the money range. |
 | `GET /api/v1/payroll/unresolved-work` | `require("payroll.view")` | `CursorPage[UnresolvedWorkItem]`, newest `service_date` first, then `class_session_id`. Query `tutor_user_id?`, `reason?`, `limit?`, `cursor?`. An unknown `reason` or a malformed id is `422 validation_error`, a bad cursor `400 invalid_cursor`, an unknown tutor an empty page. |
 
 - **Access:** Owners and Finance Staff hold both. A Finance tutor may run their
@@ -7227,8 +7236,8 @@ closeout, a cancellation or a reschedule.
   `Idempotency-Key` and no reauthentication.
 - **A run:** the period `FOR UPDATE`, re-read → `404` → `409
   payroll_period_not_open` with `details.status` → the lines are computed →
-  the `session`, `late_cancellation`, `no_show`, `makeup` and `salary` lines are
-  replaced → the event. An `open` period may run before it ends, as a preview. Line ids
+  the `session`, `late_cancellation`, `no_show`, `makeup`, `salary` and
+  `pay_item` lines are replaced → the event. An `open` period may run before it ends, as a preview. Line ids
   change on every run; a second run otherwise leaves the same lines.
 - **What pays:** the current approval revision of a session, attributed to the
   revision's tutor, also while the closeout is back in review, and a family's
@@ -7244,8 +7253,10 @@ closeout, a cancellation or a reschedule.
   `cumulative_sessions`, `cohort_sessions`, and the salary fields
   `tutor_pay_terms_id`, `salary_amount`, `salary_starts_on`, `salary_ends_on`,
   `proration_numerator`, `proration_denominator`, `proration_basis`, `null` on
-  every other kind. "Covered by salary" is a `0.00` `session` line with no rate.
-  No student data.
+  every other kind, and the item fields `pay_item_id`, `pay_item_type_name` and
+  `pay_item_description`, likewise. "Covered by salary" is a `0.00` `session` line
+  with no rate. `amount` is negative on a deduction, the only negative kind. No
+  student data.
 - **Salary (#108):** a tutor with a salary on the terms in effect gets one
   `salary` line per piece: a terms version's days in the period, split at the
   natural weeks, biweekly blocks or months of its frequency. A line pays
@@ -7255,8 +7266,8 @@ closeout, a cancellation or a reschedule.
   natural period pays exactly `salary_amount`, a piece with no paid days `0.00`.
   Nothing else reduces salary, it doesn't depend on today, and a rate pays on
   top of it. A basis change reaches `open` periods on their next run only. A
-  terms version added or deleted shows on the next run too. See
-  `_docs/data-model.md` §11.6.
+  terms version added shows on the next run too, and a deleted one takes its
+  lines in `open` periods at once. See `_docs/data-model.md` §11.6.
 - **Per-course (#442):** a `per_course` line pays the tutor's next share of the
   cohort: `cumulative_sessions` of `cohort_sessions` at the rate in effect on
   the cohort's first session, minus what earlier sessions earned. The two
@@ -7286,6 +7297,80 @@ closeout, a cancellation or a reschedule.
   listed. See `_docs/data-model.md` §13.2. #110 refuses `prepare`, after its
   recalculation, and `finalize` on blocking items dated on or before the
   period's end.
+
+### Bonuses and deductions
+
+Implemented by M7-06 (#109; spec §7; ADR-0017 E8, E12, its #109 notes). Routes in
+`app/workflows/payroll_pay_items_router.py`, the workflow in
+`app/workflows/payroll_pay_items.py`, the rules in
+`app/modules/payroll/pay_items.py` and the pure placement in `pay_item_lines.py`,
+tables `pay_item_types` and `pay_items` (`_docs/data-model.md` §11.7, §11.8). Fixed
+amounts only: no percentages, tax or social security.
+
+| Route | Access | Notes |
+|---|---|---|
+| `GET /api/v1/payroll/pay-item-types` | `require("payroll.view")` | Every type (`PayItemTypeItem`: `id`, `name`, `direction`, `is_active`, `version`), active first, then by name. Not paginated. |
+| `POST /api/v1/payroll/pay-item-types` | `require("payroll.manage")` | Body `{name, direction}`. `201`. `409 pay_item_type_exists` on a name taken, ignoring case. A name that is empty, too long or holds a character PostgreSQL can't store is `422 validation_error` (`text_empty`, `text_too_long`, `text_invalid`). |
+| `PATCH /api/v1/payroll/pay-item-types/{type_id}` | `require("payroll.manage")` | Body `{version, name?, is_active?}`; `direction` is `422`. `409 version_conflict`, `404`, `409 pay_item_type_exists`, and `409 pay_item_type_in_use` when deactivating while a recurring item of the type has no end, or one on or after the center's today. Reactivating always passes. |
+| `GET /api/v1/payroll/tutors/{tutor_user_id}/pay-items` | `require("payroll.view")` | Offset pagination, newest `effective_from` first, then `id`. Items are `PayItemDetail`. The number of statements doesn't grow with the page. |
+| `POST /api/v1/payroll/tutors/{tutor_user_id}/pay-items` | `require("payroll.manage")`, `Idempotency-Key` | Body `PayItemCreate`: `pay_item_type_id`, `description`, `amount`, `recurrence`, `effective_from`, `effective_to?`. `201`. |
+| `PATCH /api/v1/payroll/tutors/{tutor_user_id}/pay-items/{item_id}` | `require("payroll.manage")` | Body `{version, effective_to}`, both required, `null` reopens the end; any other field `422`. |
+| `DELETE /api/v1/payroll/tutors/{tutor_user_id}/pay-items/{item_id}` | `require("payroll.manage")` | `204`, and the item's lines in `open` periods go with it. `409 pay_item_in_use` while a prepared or finalized period uses it. |
+
+- **Access:** Owners and Finance Staff. Administrators get `403
+  permission_denied`, also with `payroll.finalize` delegated, as do Academic
+  Coordinators, Tutors (their own items too: #113 is their read), Students and
+  Guardians. Nobody writes their own items but an Owner (`403
+  payroll_own_compensation`). No reauthentication (#109 E6). There is no route to
+  delete a type.
+- **Order of a write:** `401` → `403 csrf_failed` → `403 permission_denied` → the
+  key on `POST` (`400 idempotency_key_required|invalid`) → `422` → `403
+  payroll_own_compensation` → `404` → the rules. An id that isn't a tutor and an
+  item of another tutor are the same `404`.
+- **`PayItemDetail`:** `id`, `tutor_user_id`, `pay_item_type` (`id`, `name`,
+  `direction`), `description`, `amount` (always positive), `recurrence`
+  (`one_time` or `recurring`), `effective_from`, `effective_to`, `version`,
+  `applied` (a finalized line uses it), `placed_period` (`id`, `starts_on`,
+  `ends_on`, `status`, or `null`, always on a recurring item), `created_at`.
+- **The body of a `POST`:** `amount` above zero, two places; `description`
+  trimmed, 1–500, with no NUL or lone surrogate (`text_invalid`); `effective_to`
+  only on a recurring item, on or after `effective_from`: otherwise `422
+  validation_error`. A lone surrogate anywhere in the body is `text_invalid` on the
+  path `body`, ahead of a missing key's `400`, because the key's hash needs UTF-8. An unknown type is `422
+  pay_item_type_unknown`, an inactive one `409 pay_item_type_inactive`. Any
+  `effective_from` is accepted, past or future, also before the first period.
+- **Where an item lands:** a recurring item pays in full in every not-finalized
+  period overlapping its dates, both ends inclusive, with no proration: the
+  amount is per period, so a weekly tutor gets it every week. A one-time item
+  lands in the tutor's earliest not-finalized period with `ends_on` on or after
+  `effective_from`, and is done once a finalized line holds it. With no such
+  period it waits, with `placed_period: null`. A `prepared` period holding no line
+  for a new item goes stale at finalize (#110), and nothing moves to a later month
+  by itself. See `_docs/data-model.md` §11.8.
+- **No hook:** a run applies items, the one `prepare` runs too. Between runs, a
+  change simply isn't shown yet.
+- **Changing an item:** `PATCH` sets the end of a recurring item only (`409
+  pay_item_not_recurring` on a one-time one), never before its start (`422
+  pay_item_end_before_start`) or the start of the latest finalized period holding
+  its line (`422 pay_item_end_before_paid_period`). On an inactive type the end
+  can only come earlier: reopening it or moving it later is `409
+  pay_item_type_inactive`, so a retired type doesn't pay again. Anything else is a
+  delete and a new item.
+- **Lines beyond the money range:** signed lines can offset each other, so a
+  deleted deduction can leave lines that sum beyond the range. `GET …/lines` and
+  `recalculate` then answer `409 payroll_amount_out_of_range`. The item routes
+  still work: end or delete a bonus, then `recalculate`.
+- **Work before the first period:** `before_first_period` work is paid by a
+  one-time item, for an amount Finance types: what the line would have paid on the
+  rate in effect on the service date. For the first `k0` sessions of a `per_course`
+  cohort, `rate.to_money(k0, N1)`, where `N1` is the `cohort_sessions` of the
+  tutor's earliest finalized line of the cohort, so pay it after that line is
+  finalized. With no rate on that date, or for a salaried tutor, the amount agreed
+  with the tutor. See `_docs/data-model.md` §13.2.
+- **Audit:** `pay_item_types` and `pay_items` have the automatic create, update
+  and delete events with the staff actor. `amount` and `description` of an item
+  read `[masked]`: Administrators read the audit log and see no pay, and free text
+  can state either. Logs carry ids and counts only.
 
 ### Payroll settings
 

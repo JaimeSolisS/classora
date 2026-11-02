@@ -2087,6 +2087,33 @@ reauth = "user.password_reset.issue"
 
 [[route]]
 method = "GET"
+path = "/api/v1/payroll/pay-item-types"
+access = "permission"
+permission = "payroll.view"
+allow = ["owner", "finance_staff"]
+# #109 D1, ADR-0017 E12: Administrators see no pay.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/pay-item-types"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #109 D2: the empty body is 422 for the allowed roles. A name is a natural
+# key, so no Idempotency-Key.
+json = {}
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/payroll/pay-item-types/{type_id}"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #109 D3: the empty body is 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
 path = "/api/v1/payroll/pay-rules"
 access = "permission"
 permission = "payroll.view"
@@ -2161,6 +2188,43 @@ access = "authenticated"
 # #105 E6: the record policy answers 404 for everyone but a payroll.view
 # holder and the tutor, and the placeholder id is no tutor: 404 for all. The
 # 200 cases are in tests/integration/test_payroll_compensation_access.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/pay-items"
+access = "permission"
+permission = "payroll.view"
+allow = ["owner", "finance_staff"]
+# #109 F1: a tutor reads finalized lines through #113, not here. The placeholder
+# id is no tutor: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/pay-items"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+idempotency = true
+# #109 F2, E5: no natural key, so an Idempotency-Key. The empty body is 422 for
+# the allowed roles. No reauthentication (E6).
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/pay-items/{item_id}"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #109 F6: the placeholder ids are no tutor: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/pay-items/{item_id}"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #109 F5: the empty body is 422 for the allowed roles.
+json = {}
 
 [[route]]
 method = "POST"

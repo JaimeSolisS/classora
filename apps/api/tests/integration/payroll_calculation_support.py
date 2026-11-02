@@ -17,7 +17,11 @@ from tests.integration.auth_support import CreatedUser
 from tests.integration.conftest import run_sql
 from tests.integration.invitation_support import sign_in
 from tests.integration.lifecycle_support import code_of, in_uow
-from tests.integration.payroll_period_support import add_period_row, d
+from tests.integration.payroll_period_support import (
+    add_period_row,
+    clear_pay_items,
+    d,
+)
 from tests.integration.series_edit_support import Ctx, as_user
 from tests.integration.test_attendance import Lesson, mark
 from tests.integration.test_closeout_review import approve, version_of
@@ -105,9 +109,55 @@ def add_rule(
     return uuid.UUID(str(row.id))
 
 
+def add_pay_type(
+    url: str, name: str | None = None, direction: str = "bonus", *, active: bool = True
+) -> uuid.UUID:
+    [row] = run_sql(
+        url,
+        "INSERT INTO pay_item_types (name, direction, is_active)"
+        " VALUES (:name, :direction, :active) RETURNING id",
+        {
+            "name": name or f"Tipo {uuid.uuid4().hex[:8]}",
+            "direction": direction,
+            "active": active,
+        },
+    )
+    return uuid.UUID(str(row.id))
+
+
+def add_item(
+    url: str,
+    tutor: uuid.UUID,
+    pay_type: uuid.UUID,
+    amount: str = "100.00",
+    on: str = "11-03",
+    until: str | None = None,
+    *,
+    recurrence: str = "one_time",
+    description: str = "Bono",
+) -> uuid.UUID:
+    [row] = run_sql(
+        url,
+        "INSERT INTO pay_items (tutor_user_id, pay_item_type_id, description, amount,"
+        " recurrence, effective_from, effective_to)"
+        " VALUES (:u, :t, :description, :amount, :recurrence, :on, :until)"
+        " RETURNING id",
+        {
+            "u": tutor,
+            "t": pay_type,
+            "description": description,
+            "amount": Decimal(amount),
+            "recurrence": recurrence,
+            "on": d(on),
+            "until": None if until is None else d(until),
+        },
+    )
+    return uuid.UUID(str(row.id))
+
+
 def clear(url: str) -> None:
-    """No lines, no periods, and only the seeded rules. Rates stay, each of
-    its own tutor."""
+    """No lines, items, types or periods, and only the seeded rules. Rates
+    stay, each of its own tutor."""
     triggers = (
         ("payroll_lines", "payroll_lines_no_finalized_change"),
         ("payroll_periods", "payroll_periods_no_finalized_change"),
@@ -116,6 +166,7 @@ def clear(url: str) -> None:
     for table, trigger in triggers:
         run_sql(url, f"ALTER TABLE {table} DISABLE TRIGGER {trigger}")
     run_sql(url, "DELETE FROM payroll_lines")
+    clear_pay_items(url)
     run_sql(url, "DELETE FROM payroll_periods")
     run_sql(
         url,
@@ -175,6 +226,10 @@ def line_of(url: str, period: uuid.UUID) -> Any:
 def session_lines(url: str, period: uuid.UUID) -> list[Any]:
     """The lines but for salary, which a tutor with a salary always has too."""
     return [line for line in lines(url, period) if line.kind != "salary"]
+
+
+def item_lines(url: str, period: uuid.UUID) -> list[Any]:
+    return [line for line in lines(url, period) if line.kind == "pay_item"]
 
 
 def salary_lines(url: str, period: uuid.UUID) -> list[Any]:

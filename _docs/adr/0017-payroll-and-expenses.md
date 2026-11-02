@@ -198,6 +198,23 @@ Recommended options taken while grooming and building #108. They are orchestrato
 - **Natural key:** `(pay_item_id, payroll_period_id)` on the lines. Each is a separate line; deductions are negative lines.
 - **Fixed amounts only, no percentages:** there is no tax or social-security calculation (spec, #109 out of scope). An item applied to a finalized line can only have its `effective_to` set.
 
+#### Implementation notes (#109)
+
+Recommended options taken while grooming and building #109. They are orchestrator-recommended and pending owner review, like the rest of this ADR. E numbers here are #109's own items. E3 refines E8's wording; the rest settle what E8 leaves silent.
+
+- **Split (#109 E1):** #109 is the API, M7-06b the pages.
+- **One total (#109 E2):** `recalculate` returns `line_count` and `total` of all the period's lines after the run, as `GET …/lines` does, and #110 stores that figure. Both routes may show a negative total; only `prepare` refuses one (E9).
+- **One-time placement (#109 E3, refining "the tutor's next open period"):** an item with a finalized line is done. Otherwise its period is the tutor's earliest not-finalized period with `ends_on >= effective_from`. One answer in every state: if that period is `prepared`, the item has no line there, so finalize answers `409 payroll_period_stale` and the period goes back (E10). Nothing moves to a later month by itself. A leaver with no later period keeps the item waiting (`placed_period: null`), and #111's `manual` adjustment pays it.
+- **Work before the first period (#109 E4, shared with #111):** a fixed amount typed by Finance, with no formula in the code and no link to the session. The rule is in data-model §13.2: for `per_course`, `rate.to_money(k0, N1)`. #111 must not pay this work.
+- **Double submit (#109 E5):** an item has no natural key, so its `POST` requires an `Idempotency-Key`. A type's name is one.
+- **Reauthentication (#109 E6):** none on items, the rate precedent. The controls are the own-pay refusal, the masked audit trail, the key, a line per item, and `finalize` by a second person with reauthentication (E10). #105 O1 stays open: an Administrator who self-assigns `finance_staff` can now also write items.
+- **Audit masks (#109 E7):** `amount` and `description`, because free text can state an amount or a personal reason.
+- **Types (#109 E8):** `direction` can't change, no delete route, deactivation refused while a recurring item runs, none seeded.
+- **Changing an item (#109 E9):** `PATCH` sets `effective_to` only; otherwise a delete and a new item. A recurring item never reaches a finalized period, so a back-dated start pays open periods only, and the difference is a one-time item.
+- **A retired type doesn't pay again (#109 QA O3, ruled by the orchestrator):** a `PATCH` that reopens an item on an inactive type or moves its end later is `409 pay_item_type_inactive`, the reasoning E8 gives for refusing deactivation. Ending or shortening passes.
+- **"Apply automatically" (spec §7):** at every `recalculate`, including the one `prepare` runs, with no job and no hook.
+- **`amount_sign` replaces `amount_non_negative`:** the old CHECK refused every deduction. The item FK on a line is composite (P12), tightening data-model §11.6's plain FK.
+
 ### Lines and calculation (E9 (a), spec §7, §16, ADR-0004, #107, #110; product for the negative-total rule only)
 
 - **One `payroll_lines` row per source:** a session, a pay event, a salary piece, a pay item or an adjustment. A rate change mid-period therefore splits naturally by service date, each line references its session, and an adjustment can reference the exact line. Each line snapshots `service_date`, `class_kind`, `minutes`, `rate_model`, `rate`, the rate version and the rule version. The period total is the sum of rounded lines (ADR-0004).

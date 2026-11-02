@@ -30,6 +30,12 @@ frozen values. Per-course pay (#442) adds :func:`finalized_period_dates`,
 :func:`finalized_course_lines` and :func:`planned_sessions`. Salary (#108) adds
 the pure :func:`salary_drafts` (:mod:`~app.modules.payroll.salary`).
 
+**Bonuses and deductions** (#109; :mod:`~app.modules.payroll.pay_items`, the pure
+placement in :mod:`~app.modules.payroll.pay_item_lines`): the reads and writes
+the ``app.workflows.payroll_pay_items`` workflow calls, and for a run
+:func:`pay_item_facts`, :func:`unfinalized_periods`,
+:func:`finalized_pay_item_ids` and :func:`pay_item_drafts`.
+
 **Unresolved work** (#443): the pure :func:`classify_unresolved`, the unexecuted
 :func:`has_no_session_line`, and the lock-free batch reads
 :func:`first_period_starts`, :func:`rate_versions_of_tutors` and
@@ -65,6 +71,26 @@ from app.modules.payroll.lines import (
     lock_open_period,
     period_lines,
     replace_lines,
+)
+from app.modules.payroll.pay_item_lines import (
+    RECURRING,
+    PayItemFact,
+    PeriodDates,
+    pay_item_drafts,
+    placed_period,
+)
+from app.modules.payroll.pay_items import (
+    add_pay_item,
+    add_pay_item_type,
+    change_pay_item_type,
+    delete_pay_item,
+    end_pay_item,
+    finalized_pay_item_ids,
+    get_pay_item,
+    list_pay_item_types,
+    list_pay_items,
+    pay_item_facts,
+    unfinalized_periods,
 )
 from app.modules.payroll.pay_rules import (
     create_session_pay_rule,
@@ -107,6 +133,7 @@ from app.modules.payroll.settings import (
 
 __all__ = [
     "REBUILT_KINDS",
+    "RECURRING",
     "ApprovedSession",
     "CohortStep",
     "CohortWalk",
@@ -114,36 +141,50 @@ __all__ = [
     "FinalizedCourseLine",
     "LineDraft",
     "PayBasis",
+    "PayItemFact",
     "PayableCancellation",
     "PayrollOwnCompensationError",
+    "PeriodDates",
     "TermsBasisVersion",
     "UnresolvedCandidate",
     "UnresolvedItem",
     "add_compensation_rate",
+    "add_pay_item",
+    "add_pay_item_type",
     "add_pay_terms",
     "biweekly_anchor",
     "can_view_compensation",
     "can_write_compensation",
+    "change_pay_item_type",
     "classify_unresolved",
     "compensation_summaries",
     "create_session_pay_rule",
     "delete_compensation_rate",
+    "delete_pay_item",
     "delete_pay_terms",
     "delete_session_pay_rule",
     "draft_lines",
+    "end_pay_item",
     "finalized_course_lines",
+    "finalized_pay_item_ids",
     "finalized_period_dates",
     "first_period_starts",
+    "get_pay_item",
     "get_session_pay_rule_overview",
     "has_no_session_line",
     "list_compensation_rates",
+    "list_pay_item_types",
+    "list_pay_items",
     "list_pay_terms",
     "lock_open_period",
     "lock_payroll_periods",
     "natural_bounds",
     "open_due_periods",
+    "pay_item_drafts",
+    "pay_item_facts",
     "payroll_starts_on",
     "period_lines",
+    "placed_period",
     "planned_sessions",
     "rate_in_effect",
     "rate_versions",
@@ -157,4 +198,5 @@ __all__ = [
     "terms_basis_versions_of_tutors",
     "terms_in_effect",
     "tutors_with_terms",
+    "unfinalized_periods",
 ]

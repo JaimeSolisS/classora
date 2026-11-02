@@ -22224,7 +22224,7 @@
           "payroll"
         ],
         "summary": "Recalculate Period",
-        "description": "Rebuild the session-sourced lines of an open period from approved work\nand approved pay events. It may run before the period ends, as a\npreview.",
+        "description": "Rebuild the session, salary and pay item lines of an open period from\napproved work, approved pay events, the tutor's terms and their pay items.\nIt may run before the period ends, as a preview. `line_count` and `total`\ndescribe all the period's lines, as `GET …/lines` does, and the total may be\nnegative.",
         "operationId": "recalculate_period_api_v1_payroll_periods__period_id__recalculate_post",
         "parameters": [
           {
@@ -22308,7 +22308,7 @@
           "payroll"
         ],
         "summary": "Get Period Lines",
-        "description": "The period and its lines, by service date, then session, with their\ntotal.",
+        "description": "The period and its lines, by service date, then session, then salary\npiece, then pay item, with their total.",
         "operationId": "get_period_lines_api_v1_payroll_periods__period_id__lines_get",
         "parameters": [
           {
@@ -22355,6 +22355,16 @@
           },
           "404": {
             "description": "No such period (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The lines sum beyond the money range (payroll_amount_out_of_range): end or delete a pay item, then recalculate.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -23030,6 +23040,617 @@
           },
           "409": {
             "description": "A finalized payroll period uses this version (compensation_rate_in_use).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/pay-item-types": {
+      "get": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "List Pay Item Types",
+        "description": "Every bonus and deduction type, active first, then by name.",
+        "operationId": "list_pay_item_types_api_v1_payroll_pay_item_types_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PayItemTypeItem"
+                  },
+                  "type": "array",
+                  "title": "Response List Pay Item Types Api V1 Payroll Pay Item Types Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Create Pay Item Type",
+        "description": "Add a type. Its direction can't change later.",
+        "operationId": "create_pay_item_type_api_v1_payroll_pay_item_types_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayItemTypeCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayItemTypeItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A type has this name, ignoring case (pay_item_type_exists).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/pay-item-types/{type_id}": {
+      "patch": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Update Pay Item Type",
+        "description": "Rename, deactivate or reactivate a type. A new name shows on every line\nthat uses it. Deactivating needs every recurring item of the type to have\nended before the center's today.",
+        "operationId": "update_pay_item_type_api_v1_payroll_pay_item_types__type_id__patch",
+        "parameters": [
+          {
+            "name": "type_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Type Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayItemTypeUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayItemTypeItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such type (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The version is stale (version_conflict), a type has this name (pay_item_type_exists), or a recurring item of this type is still running (pay_item_type_in_use).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/tutors/{tutor_user_id}/pay-items": {
+      "get": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "List Pay Items",
+        "description": "A tutor's bonuses and deductions, newest start first.",
+        "operationId": "list_pay_items_api_v1_payroll_tutors__tutor_user_id__pay_items_get",
+        "parameters": [
+          {
+            "name": "tutor_user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tutor User Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_PayItemDetail_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Create Pay Item",
+        "description": "Give a tutor a bonus or deduction. A one-time item lands in the earliest\nnot-finalized period ending on or after its date. A recurring amount is\npaid in full in every period overlapping its dates. Each shows on the next\nrecalculation. Send a new `Idempotency-Key` per item and the same one to\nretry it.",
+        "operationId": "create_pay_item_api_v1_payroll_tutors__tutor_user_id__pay_items_post",
+        "parameters": [
+          {
+            "name": "tutor_user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tutor User Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayItemCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayItemDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed (permission_denied), or the caller's own pay (payroll_own_compensation; only an Owner may write their own).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The type is inactive (pay_item_type_inactive).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/tutors/{tutor_user_id}/pay-items/{item_id}": {
+      "patch": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "End Pay Item",
+        "description": "Set or clear a recurring item's end. Any other change is a delete and a\nnew item. On an inactive type the end can only come earlier.",
+        "operationId": "end_pay_item_api_v1_payroll_tutors__tutor_user_id__pay_items__item_id__patch",
+        "parameters": [
+          {
+            "name": "tutor_user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tutor User Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayItemUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayItemDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed (permission_denied), or the caller's own pay (payroll_own_compensation; only an Owner may write their own).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tutor, or no such item of this tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The version is stale (version_conflict), the item is one-time (pay_item_not_recurring), or the change reopens it or moves its end later on an inactive type (pay_item_type_inactive).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Delete Pay Item",
+        "description": "Delete an item, with its lines in open periods, until a prepared or\nfinalized period uses it.",
+        "operationId": "delete_pay_item_api_v1_payroll_tutors__tutor_user_id__pay_items__item_id__delete",
+        "parameters": [
+          {
+            "name": "tutor_user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tutor User Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed (permission_denied), or the caller's own pay (payroll_own_compensation; only an Owner may write their own).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tutor, or no such item of this tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A prepared or finalized payroll period uses this item (pay_item_in_use).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -45101,7 +45722,8 @@
           "late_cancellation",
           "no_show",
           "makeup",
-          "salary"
+          "salary",
+          "pay_item"
         ]
       },
       "LoginRequest": {
@@ -46276,6 +46898,37 @@
           "offset"
         ],
         "title": "OffsetPage[PackageProductItem]"
+      },
+      "OffsetPage_PayItemDetail_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PayItemDetail"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[PayItemDetail]"
       },
       "OffsetPage_PaymentItem_": {
         "properties": {
@@ -47860,6 +48513,346 @@
           "monthly"
         ]
       },
+      "PayItemCreate": {
+        "properties": {
+          "pay_item_type_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pay Item Type Id"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Up to 500 characters. The tutor reads it once it is finalized."
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "description": "Above zero, whatever the direction. A recurring amount is per period, with no proration.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "recurrence": {
+            "$ref": "#/components/schemas/PayItemRecurrence"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective From"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pay_item_type_id",
+          "description",
+          "amount",
+          "recurrence",
+          "effective_from"
+        ],
+        "title": "PayItemCreate",
+        "description": "``POST /api/v1/payroll/tutors/{id}/pay-items`` (#109 F2). Any\n``effective_from`` is accepted, past or future."
+      },
+      "PayItemDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tutor_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tutor User Id"
+          },
+          "pay_item_type": {
+            "$ref": "#/components/schemas/PayItemTypeReference"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "recurrence": {
+            "$ref": "#/components/schemas/PayItemRecurrence"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective From"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "applied": {
+            "type": "boolean",
+            "title": "Applied"
+          },
+          "placed_period": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayItemPlacedPeriod"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tutor_user_id",
+          "pay_item_type",
+          "description",
+          "amount",
+          "recurrence",
+          "effective_from",
+          "effective_to",
+          "version",
+          "applied",
+          "placed_period",
+          "created_at"
+        ],
+        "title": "PayItemDetail",
+        "description": "One bonus or deduction (#109 F1). ``amount`` is positive: the type's\ndirection gives a line its sign. ``applied`` is true once a finalized line\nuses it. ``placed_period`` is where a one-time item lands, ``null`` when no\nperiod can take it yet or it has been paid, and on every recurring item."
+      },
+      "PayItemDirection": {
+        "type": "string",
+        "enum": [
+          "bonus",
+          "deduction"
+        ]
+      },
+      "PayItemPeriodStatus": {
+        "type": "string",
+        "enum": [
+          "open",
+          "prepared"
+        ]
+      },
+      "PayItemPlacedPeriod": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Ends On"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PayItemPeriodStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "starts_on",
+          "ends_on",
+          "status"
+        ],
+        "title": "PayItemPlacedPeriod",
+        "description": "The period a one-time item lands in (#109 E3)."
+      },
+      "PayItemRecurrence": {
+        "type": "string",
+        "enum": [
+          "one_time",
+          "recurring"
+        ]
+      },
+      "PayItemTypeCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/PayItemDirection",
+            "description": "It can't change later: a wrong direction is a new type."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "direction"
+        ],
+        "title": "PayItemTypeCreate",
+        "description": "``POST /api/v1/payroll/pay-item-types`` (#109 D2)."
+      },
+      "PayItemTypeItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/PayItemDirection"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "direction",
+          "is_active",
+          "version"
+        ],
+        "title": "PayItemTypeItem",
+        "description": "A bonus or deduction type (#109 D1)."
+      },
+      "PayItemTypeReference": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/PayItemDirection"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "direction"
+        ],
+        "title": "PayItemTypeReference",
+        "description": "An item's type."
+      },
+      "PayItemTypeUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "PayItemTypeUpdate",
+        "description": "``PATCH /api/v1/payroll/pay-item-types/{type_id}`` (#109 D3). A missing\nfield stays as it is. ``direction`` isn't a field."
+      },
+      "PayItemUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "effective_to"
+        ],
+        "title": "PayItemUpdate",
+        "description": "``PATCH /api/v1/payroll/tutors/{id}/pay-items/{item_id}`` (#109 F5):\nonly the end moves, and ``null`` reopens it. Anything else is a delete and a\nnew item (#109 E9)."
+      },
       "PayRuleEvent": {
         "type": "string",
         "enum": [
@@ -48856,6 +49849,40 @@
                 "type": "null"
               }
             ]
+          },
+          "pay_item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pay Item Id"
+          },
+          "pay_item_type_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pay Item Type Name"
+          },
+          "pay_item_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pay Item Description"
           }
         },
         "type": "object",
@@ -48880,10 +49907,13 @@
           "salary_ends_on",
           "proration_numerator",
           "proration_denominator",
-          "proration_basis"
+          "proration_basis",
+          "pay_item_id",
+          "pay_item_type_name",
+          "pay_item_description"
         ],
         "title": "PayrollLineItem",
-        "description": "One line (#107 H3): ``rate`` is text, and a \"covered by salary\" line has\nno rate snapshot. A ``salary`` line has no session, and says how its amount\nwas reached: ``salary_amount`` × ``proration_numerator`` /\n``proration_denominator`` for the piece ``salary_starts_on`` to\n``salary_ends_on`` (#108 H1). No student data."
+        "description": "One line (#107 H3): ``rate`` is text, and a \"covered by salary\" line has\nno rate snapshot. A ``salary`` line has no session, and says how its amount\nwas reached: ``salary_amount`` × ``proration_numerator`` /\n``proration_denominator`` for the piece ``salary_starts_on`` to\n``salary_ends_on`` (#108 H1). A ``pay_item`` line is a fixed amount, negative\nfor a deduction, with the type's current name and the item's description\n(#109 G1). No student data."
       },
       "PayrollPeriodLines": {
         "properties": {
@@ -48914,7 +49944,7 @@
           "total"
         ],
         "title": "PayrollPeriodLines",
-        "description": "``GET /api/v1/payroll/periods/{id}/lines`` (#107 H3). ``total`` is the\nsum of the rounded lines."
+        "description": "``GET /api/v1/payroll/periods/{id}/lines`` (#107 H3). ``total`` is the\nsum of the rounded lines, and may be negative."
       },
       "PayrollPeriodSummary": {
         "properties": {
@@ -48979,7 +50009,7 @@
           "total"
         ],
         "title": "PayrollRecalculation",
-        "description": "``POST /api/v1/payroll/periods/{id}/recalculate`` (#107 H2)."
+        "description": "``POST /api/v1/payroll/periods/{id}/recalculate`` (#107 H2). After the\nrun, all the period's lines, the same as ``GET …/lines`` (#109 E2): ``total``\nmay be negative, and only ``prepare`` refuses that."
       },
       "PayrollSettingsDetail": {
         "properties": {

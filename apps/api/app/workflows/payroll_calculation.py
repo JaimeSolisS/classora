@@ -10,11 +10,11 @@ and neither side waits for the other (§15).
 
 - :func:`compute_lines` only reads and returns frozen drafts: the session lines
   by service date, then session, then the salary lines by their first day
-  (#108 C2). #110's drift check compares them, with no write. It reads the
-  period's work in center-local dates: ``floor_instant(starts_on)`` to
-  ``floor_instant(ends_on + 1)``, half-open, and a service date is the local
-  date of the start. It takes the versions of the tutor ``FOR KEY SHARE``, so a
-  concurrent delete waits for the run.
+  (#108 C2), then the item lines by item (#109 C1). #110's drift check compares
+  them, with no write. It reads the period's work in center-local dates:
+  ``floor_instant(starts_on)`` to ``floor_instant(ends_on + 1)``, half-open, and a
+  service date is the local date of the start. It takes the versions and the
+  items of the tutor ``FOR KEY SHARE``, so a concurrent delete waits for the run.
 - :func:`recalculate`: the period ``FOR UPDATE``, re-read → ``404`` → ``409
   payroll_period_not_open`` → :func:`compute_lines` → replace the rebuilt kinds
   → the event. A second run leaves the same lines but for ``id`` and
@@ -48,10 +48,17 @@ the anchor only for a tutor with a salary on some terms version, and
 never keeps work off the unresolved list, which looks at session-sourced lines
 only.
 
-**Statements:** eleven for a run, whatever the number of sessions, with the
-zone not yet read, the event included; sixteen with a course session in the
+**Bonuses and deductions (#109; ADR-0017 E8).** :func:`_item_lines` reads the
+tutor's items, and the periods and finalized lines only for a one-time item.
+:func:`~app.modules.payroll.pay_item_lines.pay_item_drafts` decides the lines.
+Pull model, like everything here: a change to an item shows on the next run. An
+item line keeps no work off the unresolved list.
+
+**Statements:** thirteen for a run, whatever the number of sessions, with the
+zone not yet read, the event included; eighteen with a course session in the
 period, whatever the number of sessions or cohorts. A salary on the terms adds
-two, whatever the number of pieces: thirteen and eighteen.
+two, whatever the number of pieces: fifteen and twenty. A one-time item adds two,
+whatever the number of items.
 
 The unresolved reads cost eight statements, ten with a course session among the
 candidates, and the route one more for the names, whatever the number of items.
@@ -189,6 +196,24 @@ async def _salary_lines(
     )
 
 
+async def _item_lines(
+    session: AsyncSession, period: PayrollPeriodSummary
+) -> list[payroll.LineDraft]:
+    """The period's item lines. One statement, three with a one-time item."""
+    items = await payroll.pay_item_facts(session, period.tutor_user_id)
+    one_time = [item.id for item in items if item.recurrence != payroll.RECURRING]
+    return payroll.pay_item_drafts(
+        period=payroll.PeriodDates(period.id, period.starts_on, period.ends_on),
+        items=items,
+        unfinalized_periods=(
+            await payroll.unfinalized_periods(session, period.tutor_user_id)
+            if one_time
+            else []
+        ),
+        finalized_item_ids=await payroll.finalized_pay_item_ids(session, one_time),
+    )
+
+
 async def compute_lines(
     session: AsyncSession, period: PayrollPeriodSummary
 ) -> list[payroll.LineDraft]:
@@ -228,13 +253,18 @@ async def compute_lines(
         ],
         cohorts=await _cohort_walks(session, tutor, zone, approvals, makeups),
     )
-    return [*session_lines, *await _salary_lines(session, period, basis.terms)]
+    return [
+        *session_lines,
+        *await _salary_lines(session, period, basis.terms),
+        *await _item_lines(session, period),
+    ]
 
 
 async def recalculate(
     session: AsyncSession, period_id: uuid.UUID
 ) -> PayrollRecalculation:
-    """Rebuild the session-sourced and salary lines of an ``open`` period."""
+    """Rebuild the session-sourced, salary and item lines of an ``open``
+    period. The result describes all its lines (#109 E2)."""
     period = await payroll.lock_open_period(session, period_id)
     drafts = await compute_lines(session, period)
     result = await payroll.replace_lines(session, period, drafts)

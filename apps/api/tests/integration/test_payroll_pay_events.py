@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.money import Money
 from tests.conftest import frozen_clock
 from tests.integration.auth_support import CreatedUser, auth_client
 from tests.integration.catalog_support import post
@@ -159,6 +160,43 @@ def test_a_late_cancellation_under_percent_uses_the_scheduled_minutes(scene):
     )
     assert (line.approval_id, line.session_pay_rule_id) == (None, rule)
     assert str(line.class_session_id) == scene.session["id"]
+
+
+def test_a_covered_cancellation_has_no_line_beside_the_salary(
+    scene, module_seeded_url, client
+):
+    """#108 QA O2, through a real change request: a salaried tutor with no rate
+    gets the salary and nothing for the cancellation. The control tutor with a
+    rate, on the same rule, gets the line."""
+    add_rule(
+        scene.url,
+        "late_cancellation",
+        from_scene_start(scene),
+        "percent",
+        percent="50",
+    )
+    first: date = scene.ctx.tl.monday
+    add_terms(scene.url, scene.ctx.tutor.id, salary="3000.00")
+    salaried = add_period_row(
+        scene.url,
+        scene.ctx.tutor.id,
+        first.isoformat(),
+        (first + timedelta(days=60)).isoformat(),
+        "monthly",
+    )
+
+    cancelled_by_family(scene)
+    result = run(scene.url, salaried)
+
+    found = lines(scene.url, salaried)
+    assert {line.kind for line in found} == {"salary"}
+    assert result.total == Money.total(Money(str(line.amount)) for line in found)
+
+    control = make_scene(module_seeded_url, client)
+    period = on_payroll(control)
+    cancelled_by_family(control)
+    run(control.url, period)
+    assert {line.kind for line in lines(control.url, period)} == {"late_cancellation"}
 
 
 def test_a_late_cancellation_is_paid_on_its_own_scheduled_minutes(scene):

@@ -535,6 +535,7 @@ DECORATED_ROUTES = {
     ("/api/v1/billing/packages/{package_id}/cancellation", "post"),
     ("/api/v1/billing/withdrawals/account-credit", "post"),
     ("/api/v1/billing/withdrawals/refund", "post"),
+    ("/api/v1/payroll/tutors/{tutor_user_id}/pay-items", "post"),
 }
 
 

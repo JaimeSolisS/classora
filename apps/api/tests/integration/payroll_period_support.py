@@ -16,6 +16,12 @@ def d(text: str) -> date:
     return date.fromisoformat(text if len(text) > 5 else f"2026-{text}")
 
 
+def clear_pay_items(url: str) -> None:
+    """No items and no types. The lines are gone already."""
+    run_sql(url, "DELETE FROM pay_items")
+    run_sql(url, "DELETE FROM pay_item_types")
+
+
 def reset(url: str) -> None:
     """No lines, terms or periods, payroll off, the seeded anchor and
     basis."""
@@ -23,6 +29,7 @@ def reset(url: str) -> None:
     run_sql(url, lines.format("DISABLE"))
     run_sql(url, "DELETE FROM payroll_lines")
     run_sql(url, lines.format("ENABLE"))
+    clear_pay_items(url)
     guard = "ALTER TABLE payroll_periods {} TRIGGER payroll_periods_no_finalized_change"
     run_sql(url, guard.format("DISABLE"))
     run_sql(url, "DELETE FROM payroll_periods")
