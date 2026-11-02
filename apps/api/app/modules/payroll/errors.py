@@ -1,5 +1,7 @@
-"""Payroll errors (#105 G, #106 B, F, #441 C). Each ``AppError`` renders as
+"""Payroll errors (#105 G, #106 B, F, #441 C, #107 G, H6). Each ``AppError`` renders as
 Problem Details (``app.core.errors``) and carries no amount."""
+
+import uuid
 
 from app.core.errors import AppError
 
@@ -30,11 +32,12 @@ class PayTermsInUseError(AppError):
 
 
 class CompensationRateInUseError(AppError):
-    """A finalized payroll line uses this version (the guard's 42501)."""
+    """A line of a prepared or finalized period uses this version (the
+    foreign key's refusal, or the guard's 42501; #107 E8)."""
 
     status = 409
     code = "compensation_rate_in_use"
-    detail = "A finalized payroll period uses this rate."
+    detail = "A payroll period uses this rate."
 
 
 class PayrollOwnCompensationError(AppError):
@@ -80,6 +83,43 @@ class PayRuleInEffectError(AppError):
     status = 409
     code = "pay_rule_in_effect"
     detail = "This pay rule is in force or in the past, so it can't be deleted."
+
+
+class SessionPayRuleInUseError(AppError):
+    """A line of a prepared or finalized period uses this version (#107 G3)."""
+
+    status = 409
+    code = "session_pay_rule_in_use"
+    detail = "A payroll period uses this pay rule."
+
+
+class PayrollPeriodNotOpenError(AppError):
+    """Only an ``open`` period is calculated (#107 E7). ``details.status`` is
+    the period's status."""
+
+    status = 409
+    code = "payroll_period_not_open"
+    detail = "Only an open payroll period can be recalculated."
+
+    def __init__(self, status: str) -> None:
+        super().__init__(details={"status": status})
+
+
+class PayrollAmountOutOfRangeError(AppError):
+    """A line, or the period's total, is beyond the money range (#107 D11).
+    ``details.class_session_id`` names the line's session; the amount is never
+    in the body."""
+
+    status = 409
+    code = "payroll_amount_out_of_range"
+    detail = "An amount of this payroll period is too large to record."
+
+    def __init__(self, class_session_id: uuid.UUID | None = None) -> None:
+        super().__init__(
+            details=None
+            if class_session_id is None
+            else {"class_session_id": str(class_session_id)}
+        )
 
 
 class PayrollStartLockedError(AppError):

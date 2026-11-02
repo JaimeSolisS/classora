@@ -180,6 +180,75 @@ async def current_approval(
 
 
 @dataclass(frozen=True)
+class CurrentApproval:
+    """A current revision as payroll reads it (#107 C1): the revision's own
+    values, never the closeout's or the session's."""
+
+    approval_id: uuid.UUID
+    class_session_id: uuid.UUID
+    tutor_user_id: uuid.UUID
+    session_starts_at: datetime
+    session_kind: str
+    scheduled_minutes: int
+    approved_minutes: int
+    attendance: Mapping[uuid.UUID, str]
+
+
+async def current_approvals(
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID,
+    starts_from: datetime,
+    starts_before: datetime,
+) -> list[CurrentApproval]:
+    """The tutor's current revisions of sessions starting in ``[starts_from,
+    starts_before)``, oldest first. It doesn't filter on the closeout's
+    ``status``: a closeout back in review keeps its revision in force
+    (ADR-0017 E2). A closeout with no revision never appears. One statement,
+    on ``ix_session_closeout_approvals_tutor_user_id_session_starts_at``, no
+    lock."""
+    rows = await session.execute(
+        select(
+            SessionCloseoutApproval.id,
+            SessionCloseoutApproval.class_session_id,
+            SessionCloseoutApproval.tutor_user_id,
+            SessionCloseoutApproval.session_starts_at,
+            SessionCloseoutApproval.session_kind,
+            SessionCloseoutApproval.scheduled_minutes,
+            SessionCloseoutApproval.approved_minutes,
+            SessionCloseoutApproval.attendance,
+        )
+        .join(
+            SessionCloseout,
+            SessionCloseout.current_approval_id == SessionCloseoutApproval.id,
+        )
+        .where(
+            SessionCloseoutApproval.tutor_user_id == tutor_user_id,
+            SessionCloseoutApproval.session_starts_at >= starts_from,
+            SessionCloseoutApproval.session_starts_at < starts_before,
+        )
+        .order_by(
+            SessionCloseoutApproval.session_starts_at,
+            SessionCloseoutApproval.class_session_id,
+        )
+    )
+    return [
+        CurrentApproval(
+            approval_id=row.id,
+            class_session_id=row.class_session_id,
+            tutor_user_id=row.tutor_user_id,
+            session_starts_at=row.session_starts_at,
+            session_kind=row.session_kind,
+            scheduled_minutes=row.scheduled_minutes,
+            approved_minutes=row.approved_minutes,
+            attendance={
+                uuid.UUID(student): status for student, status in row.attendance.items()
+            },
+        )
+        for row in rows
+    ]
+
+
+@dataclass(frozen=True)
 class CloseoutHistory:
     """A closeout's approval revisions and staff corrections, newest
     first."""

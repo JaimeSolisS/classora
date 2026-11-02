@@ -72,8 +72,10 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0075"
+HEAD = "0076"
 PAY_RULES = "session_pay_rules"
+LINES = "payroll_lines"
+CANCELLED_INDEX = "ix_class_sessions_cancelled_tutor_user_id_starts_at"
 MAKEUP_COLUMN = "makeup_of_session_id"
 MAKEUP_INDEX = "uq_class_sessions_makeup_of_session_id"
 
@@ -441,6 +443,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *COMPENSATION_TABLES,
             *PAYROLL_PERIOD_TABLES,
             PAY_RULES,
+            LINES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4754,9 +4757,24 @@ def _of_0075(diff: Any) -> bool:
     return diff[0] == "add_table" and diff[1].name == PAY_RULES
 
 
+def _of_0076(diff: Any) -> bool:
+    """A metadata difference that revision 0076 adds: the payroll lines table
+    and the cancelled sessions' index (#107 A)."""
+    if diff[0] == "add_table":
+        return bool(diff[1].name == LINES)
+    return diff[0] == "add_index" and (
+        diff[1].name == CANCELLED_INDEX or diff[1].table.name == LINES
+    )
+
+
+def _of_0075_on(diff: Any) -> bool:
+    """A metadata difference that revision 0075 or a later one adds."""
+    return _of_0075(diff) or _of_0076(diff)
+
+
 def _of_0074_on(diff: Any) -> bool:
     """A metadata difference that revision 0074 or a later one adds."""
-    return _of_0074(diff) or _of_0075(diff)
+    return _of_0074(diff) or _of_0075_on(diff)
 
 
 def _of_0073_on(diff: Any) -> bool:
@@ -5004,6 +5022,8 @@ def test_class_sessions_columns_constraints_and_indexes(fresh_database_url):
         OVERDUE_INDEX,
         # 0074 (#423 A2)
         MAKEUP_INDEX,
+        # 0076 (#107 A7)
+        CANCELLED_INDEX,
         "ex_class_sessions_tutor_overlap",
         "ex_class_sessions_room_overlap",
         "uq_class_sessions_series_original_start",
@@ -13390,7 +13410,7 @@ def test_0074_adds_the_link_to_existing_rows_without_touching_them(
     command.upgrade(config, "0074")
 
     assert version_nums(dsn) == ["0074"]
-    assert [d for d in metadata_diff(dsn) if not _of_0075(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0075_on(d)] == []
     assert (
         run_sql(
             dsn,
@@ -13526,7 +13546,7 @@ def test_0075_adds_the_table_and_its_seeds_and_downgrade_restores_0074(
     command.upgrade(config, "0075")
 
     assert version_nums(dsn) == ["0075"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0076(d)] == []
     assert public_tables(dsn) - tables == {PAY_RULES}
     assert run_sql(dsn, guard, name)[0].n == 1
     assert {
@@ -13547,7 +13567,7 @@ def test_0075_adds_the_table_and_its_seeds_and_downgrade_restores_0074(
     assert version_nums(dsn) == ["0074"]
     assert public_tables(dsn) == tables
     assert run_sql(dsn, guard, name)[0].n == 0
-    assert [d for d in metadata_diff(dsn) if not _of_0075(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0075_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -13722,10 +13742,395 @@ def test_0075_update_and_truncate_are_refused_on_the_seeds(fresh_database_url):
     for statement in (
         "UPDATE session_pay_rules SET mode = 'fixed', amount = 1",
         "DELETE FROM session_pay_rules",
-        "TRUNCATE session_pay_rules",
+        "TRUNCATE session_pay_rules CASCADE",
     ):
         with pytest.raises(DBAPIError) as caught:
             run_sql(dsn, statement)
         assert getattr(caught.value.orig, "sqlstate", "") == "42501", statement
 
     assert run_sql(dsn, "SELECT count(*) AS n FROM session_pay_rules")[0].n == 3
+
+
+# --- 0076 payroll lines (#107 A, K4) ---------------------------------------------
+
+STATE_OF_LINE = {
+    "kind": "session",
+    "amount": Decimal("10.00"),
+    "class_kind": "individual",
+    "minutes": 60,
+    "service_date": date(2031, 1, 6),
+}
+
+
+def _lines_world(dsn: str) -> dict[str, Any]:
+    """A tutor, a session with an approval, a rate, a rule and an open period,
+    at head, by SQL."""
+    command.upgrade(alembic_config(dsn), "head")
+    [user] = run_sql(
+        dsn,
+        "INSERT INTO users (username, email, password_hash, display_name)"
+        " VALUES ('tutora', 'tutora@example.com', 'x', 'Tutora') RETURNING id",
+    )
+    [level] = run_sql(
+        dsn,
+        "INSERT INTO education_levels (name, sort_order) VALUES ('Prepa', 1)"
+        " RETURNING id",
+    )
+    [subject] = run_sql(
+        dsn,
+        "INSERT INTO subjects (name, education_level_id) VALUES ('Mate', :l)"
+        " RETURNING id",
+        {"l": level.id},
+    )
+    [session] = run_sql(
+        dsn,
+        "INSERT INTO class_sessions (kind, state, subject_id, starts_at, ends_at,"
+        " scheduled_minutes, cancelled_at, cancellation_reason) VALUES"
+        " ('individual', 'cancelled', :s, '2031-01-06 16:00+00', '2031-01-06 17:00+00',"
+        " 60, now(), 'x') RETURNING id",
+        {"s": subject.id},
+    )
+    [rate] = run_sql(
+        dsn,
+        "INSERT INTO compensation_rates (tutor_user_id, class_kind, effective_from,"
+        " rate_model, rate) VALUES (:u, 'individual', '2030-01-01', 'per_hour', 100)"
+        " RETURNING id",
+        {"u": user.id},
+    )
+    [rule] = run_sql(
+        dsn, "SELECT id FROM session_pay_rules WHERE event = 'makeup' LIMIT 1"
+    )
+    [period] = run_sql(
+        dsn,
+        "INSERT INTO payroll_periods (tutor_user_id, starts_on, ends_on,"
+        " pay_frequency, is_first_period) VALUES"
+        " (:u, '2031-01-06', '2031-01-12', 'weekly', true) RETURNING id",
+        {"u": user.id},
+    )
+    return {
+        "tutor": user.id,
+        "session": session.id,
+        "rate": rate.id,
+        "rule": rule.id,
+        "period": period.id,
+    }
+
+
+def _0076_insert(dsn: str, world: dict[str, Any], **row: Any) -> Any:
+    """A ``late_cancellation`` line by default, the one kind with no
+    revision."""
+    values: dict[str, Any] = {
+        **STATE_OF_LINE,
+        "kind": "late_cancellation",
+        "payroll_period_id": world["period"],
+        "tutor_user_id": world["tutor"],
+        "class_session_id": world["session"],
+        "compensation_rate_id": world["rate"],
+        "rate_model": "per_hour",
+        "rate": Decimal("100.0000"),
+        "session_pay_rule_id": world["rule"],
+        "approval_id": None,
+        "cumulative_sessions": None,
+        "cohort_sessions": None,
+        **row,
+    }
+    columns = ", ".join(values)
+    binds = ", ".join(f":{name}" for name in values)
+    return run_sql(
+        dsn,
+        f"INSERT INTO payroll_lines ({columns}) VALUES ({binds}) RETURNING id",  # noqa: S608
+        values,
+    )[0].id
+
+
+def _finalize_0076(dsn: str, world: dict[str, Any]) -> None:
+    params = {"id": world["period"], "u": world["tutor"]}
+    run_sql(
+        dsn,
+        "UPDATE payroll_periods SET status = 'prepared', prepared_at = now(),"
+        " prepared_by_user_id = :u WHERE id = :id",
+        params,
+    )
+    run_sql(
+        dsn,
+        "UPDATE payroll_periods SET status = 'finalized', finalized_at = now(),"
+        " finalized_by_user_id = :u, total_amount = 0 WHERE id = :id",
+        params,
+    )
+
+
+def _sqlstate_0076(dsn: str, statement: str, params: Any = None) -> str:
+    with pytest.raises(DBAPIError) as caught:
+        run_sql(dsn, statement, params or {})
+    return str(getattr(caught.value.orig, "sqlstate", ""))
+
+
+def test_0076_adds_the_table_and_downgrade_restores_0075(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0075")
+    tables = public_tables(dsn)
+    guard = "SELECT count(*) AS n FROM pg_proc WHERE proname = :name"
+    name = {"name": "payroll_lines_guard"}
+    body = (
+        "SELECT prosrc FROM pg_proc WHERE proname = 'compensation_rate_is_referenced'"
+    )
+
+    command.upgrade(config, "0076")
+
+    assert version_nums(dsn) == ["0076"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == {LINES}
+    assert run_sql(dsn, guard, name)[0].n == 1
+    assert CANCELLED_INDEX in _indexes(dsn, "class_sessions")
+    assert "EXISTS" in run_sql(dsn, body)[0].prosrc
+
+    command.downgrade(config, "0075")
+
+    assert version_nums(dsn) == ["0075"]
+    assert public_tables(dsn) == tables
+    assert run_sql(dsn, guard, name)[0].n == 0
+    assert CANCELLED_INDEX not in _indexes(dsn, "class_sessions")
+    assert "SELECT false" in run_sql(dsn, body)[0].prosrc
+    assert [d for d in metadata_diff(dsn) if not _of_0076(d)] == []
+
+    command.upgrade(config, "head")
+
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_0076_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    standard = {k: v for k, v in STANDARD_COLUMNS.items() if k != "version"}
+    assert _columns(dsn, LINES) == {
+        **standard,
+        "payroll_period_id": ("uuid", "NO", None, None),
+        "tutor_user_id": ("uuid", "NO", None, None),
+        "kind": ("character varying", "NO", 20, None),
+        "amount": ("numeric", "NO", None, None),
+        "class_session_id": ("uuid", "YES", None, None),
+        "approval_id": ("uuid", "YES", None, None),
+        "service_date": ("date", "YES", None, None),
+        "class_kind": ("character varying", "YES", 20, None),
+        "minutes": ("integer", "YES", None, None),
+        "rate_model": ("character varying", "YES", 20, None),
+        "rate": ("numeric", "YES", None, None),
+        "compensation_rate_id": ("uuid", "YES", None, None),
+        "session_pay_rule_id": ("uuid", "YES", None, None),
+        "cumulative_sessions": ("integer", "YES", None, None),
+        "cohort_sessions": ("integer", "YES", None, None),
+    }
+    constraints = _constraints(dsn, LINES)
+    assert set(constraints) == {
+        "pk_payroll_lines",
+        "uq_payroll_lines_id_tutor",
+        "fk_payroll_lines_period_tutor",
+        "fk_payroll_lines_tutor_user_id_users",
+        "fk_payroll_lines_class_session_id_class_sessions",
+        "fk_payroll_lines_approval_id_session_closeout_approvals",
+        "fk_payroll_lines_compensation_rate_id_compensation_rates",
+        "fk_payroll_lines_session_pay_rule_id_session_pay_rules",
+        "ck_payroll_lines_kind_valid",
+        "ck_payroll_lines_source_per_kind",
+        "ck_payroll_lines_session_fields",
+        "ck_payroll_lines_class_kind_valid",
+        "ck_payroll_lines_rate_model_valid",
+        "ck_payroll_lines_amount_non_negative",
+        "ck_payroll_lines_minutes_non_negative",
+        "ck_payroll_lines_rate_snapshot",
+        "ck_payroll_lines_pay_rule_with_event",
+        "ck_payroll_lines_course_share",
+    }
+    for name, definition in constraints.items():
+        if name.startswith("fk_"):
+            assert definition.endswith("ON DELETE RESTRICT"), name
+    assert (
+        "(payroll_period_id, tutor_user_id)"
+        in (constraints["fk_payroll_lines_period_tutor"])
+    )
+    indexes = _indexes(dsn, LINES)
+    assert set(indexes) == {
+        "pk_payroll_lines",
+        "uq_payroll_lines_id_tutor",
+        "uq_payroll_lines_session_sourced",
+        "ix_payroll_lines_payroll_period_id",
+        "ix_payroll_lines_class_session_id",
+        "ix_payroll_lines_compensation_rate_id",
+        "ix_payroll_lines_session_pay_rule_id",
+    }
+    assert "UNIQUE" in indexes["uq_payroll_lines_session_sourced"]
+    assert "WHERE" in indexes["uq_payroll_lines_session_sourced"]
+    assert (
+        "(tutor_user_id, starts_at) WHERE"
+        in (_indexes(dsn, "class_sessions")[CANCELLED_INDEX])
+    )
+    assert _triggers(dsn, LINES) == {
+        "payroll_lines_no_finalized_change",
+        "payroll_lines_no_truncate",
+    }
+
+
+@pytest.mark.parametrize(
+    ("row", "constraint"),
+    [
+        ({"kind": "salary"}, "kind_valid"),
+        ({"amount": Decimal("-0.01")}, "amount_non_negative"),
+        ({"minutes": -1}, "minutes_non_negative"),
+        ({"class_kind": "tutoring"}, "class_kind_valid"),
+        ({"rate_model": "per_day"}, "rate_model_valid"),
+        ({"rate": None}, "rate_snapshot"),
+        ({"compensation_rate_id": None}, "rate_snapshot"),
+        ({"session_pay_rule_id": None}, "pay_rule_with_event"),
+        (
+            {"kind": "session", "approval_id": None, "session_pay_rule_id": None},
+            "source_per_kind",
+        ),
+        (
+            {
+                "class_session_id": None,
+                "service_date": None,
+                "class_kind": None,
+                "minutes": None,
+            },
+            "source_per_kind",
+        ),
+        ({"cumulative_sessions": 1}, "course_share"),
+        (
+            {
+                "cumulative_sessions": 1,
+                "cohort_sessions": 4,
+                "rate_model": "per_hour",
+            },
+            "course_share",
+        ),
+        ({"service_date": None}, "session_fields"),
+        ({"minutes": None}, "session_fields"),
+    ],
+)
+def test_0076_checks(fresh_database_url, row, constraint):
+    dsn = fresh_database_url
+    world = _lines_world(dsn)
+
+    with pytest.raises(IntegrityError) as caught:
+        _0076_insert(dsn, world, **row)
+
+    assert f"ck_payroll_lines_{constraint}" in str(caught.value.orig)
+
+
+def test_0076_a_per_course_line_needs_its_share(fresh_database_url):
+    dsn = fresh_database_url
+    world = _lines_world(dsn)
+    course = {"rate_model": "per_course", "class_kind": "course"}
+
+    with pytest.raises(IntegrityError) as caught:
+        _0076_insert(dsn, world, **course)
+    assert "ck_payroll_lines_course_share" in str(caught.value.orig)
+
+    assert _0076_insert(dsn, world, **course, cumulative_sessions=1, cohort_sessions=4)
+
+
+def test_0076_one_session_sourced_line_per_session(fresh_database_url):
+    dsn = fresh_database_url
+    world = _lines_world(dsn)
+    _0076_insert(dsn, world)
+
+    with pytest.raises(IntegrityError) as caught:
+        _0076_insert(dsn, world, kind="no_show")
+
+    assert "uq_payroll_lines_session_sourced" in str(caught.value.orig)
+
+
+def test_0076_the_period_must_be_the_tutors(fresh_database_url):
+    dsn = fresh_database_url
+    world = _lines_world(dsn)
+    [other] = run_sql(
+        dsn,
+        "INSERT INTO users (username, email, password_hash, display_name)"
+        " VALUES ('otra', 'otra@example.com', 'x', 'Otra') RETURNING id",
+    )
+
+    with pytest.raises(IntegrityError) as caught:
+        _0076_insert(dsn, world, tutor_user_id=other.id)
+
+    assert "fk_payroll_lines_period_tutor" in str(caught.value.orig)
+
+
+def test_0076_a_finalized_period_keeps_its_lines(fresh_database_url):
+    dsn = fresh_database_url
+    world = _lines_world(dsn)
+    line = _0076_insert(dsn, world)
+    params = {"id": line}
+    _finalize_0076(dsn, world)
+
+    for statement in (
+        "UPDATE payroll_lines SET amount = 1 WHERE id = :id",
+        "DELETE FROM payroll_lines WHERE id = :id",
+    ):
+        assert _sqlstate_0076(dsn, statement, params) == "42501", statement
+    with pytest.raises(DBAPIError) as caught:
+        run_sql(
+            dsn,
+            "INSERT INTO payroll_lines (payroll_period_id, tutor_user_id, kind,"
+            " amount, class_session_id, session_pay_rule_id, service_date,"
+            " class_kind, minutes) VALUES (:p, :u, 'late_cancellation', 0, :s, :r,"
+            " '2031-01-06', 'individual', 0)",
+            {
+                "p": world["period"],
+                "u": world["tutor"],
+                "s": world["session"],
+                "r": world["rule"],
+            },
+        )
+    assert getattr(caught.value.orig, "sqlstate", "") == "42501"
+    assert _sqlstate_0076(dsn, "TRUNCATE payroll_lines") == "42501"
+
+
+def test_0076_an_update_checks_both_periods(fresh_database_url):
+    dsn = fresh_database_url
+    world = _lines_world(dsn)
+    line = _0076_insert(dsn, world)
+    [finalized] = run_sql(
+        dsn,
+        "INSERT INTO payroll_periods (tutor_user_id, starts_on, ends_on,"
+        " pay_frequency, is_first_period) VALUES"
+        " (:u, '2031-01-13', '2031-01-19', 'weekly', false) RETURNING id",
+        {"u": world["tutor"]},
+    )
+    _finalize_0076(dsn, {**world, "period": finalized.id})
+
+    move = "UPDATE payroll_lines SET payroll_period_id = :p WHERE id = :id"
+    state = _sqlstate_0076(dsn, move, {"p": finalized.id, "id": line})
+
+    assert state == "42501"
+
+
+def test_0076_the_rate_guard_sees_only_a_finalized_line(fresh_database_url):
+    """A6: the body must compare the line with the function's parameter. With
+    an unqualified ``id`` it compares a line's own id, so a mutation that drops
+    the qualification fails the first assertion."""
+    dsn = fresh_database_url
+    world = _lines_world(dsn)
+    _0076_insert(dsn, world)
+    change = "UPDATE compensation_rates SET rate = 1 WHERE id = :id"
+    remove = "DELETE FROM compensation_rates WHERE id = :id"
+    params = {"id": world["rate"]}
+
+    # Open line: the guard passes, the foreign key refuses the delete.
+    run_sql(dsn, change, params)
+    assert _sqlstate_0076(dsn, remove, params) == "23001"
+
+    _finalize_0076(dsn, world)
+    assert _sqlstate_0076(dsn, change, params) == "42501"
+    assert _sqlstate_0076(dsn, remove, params) == "42501"
+
+    [unreferenced] = run_sql(
+        dsn,
+        "INSERT INTO compensation_rates (tutor_user_id, class_kind, effective_from,"
+        " rate_model, rate) VALUES (:u, 'individual', '2030-02-01', 'per_hour', 100)"
+        " RETURNING id",
+        {"u": world["tutor"]},
+    )
+    run_sql(dsn, remove, {"id": unreferenced.id})

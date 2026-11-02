@@ -825,7 +825,8 @@ def test_an_unreferenced_version_changes_in_sql_only(
 
 @pytest.mark.parametrize("table", sorted(PREDICATES))
 def test_truncate_is_always_refused(module_seeded_url, table):
-    assert _state_of(module_seeded_url, f"TRUNCATE {table}", {}) == "42501"
+    statement = f"TRUNCATE {table} CASCADE"  # payroll_lines references one of them
+    assert _state_of(module_seeded_url, statement, {}) == "42501"
 
 
 # --- G12: the insert race ------------------------------------------------------------

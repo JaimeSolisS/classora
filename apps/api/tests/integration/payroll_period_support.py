@@ -17,7 +17,12 @@ def d(text: str) -> date:
 
 
 def reset(url: str) -> None:
-    """No terms, no periods, payroll off, the seeded anchor and basis."""
+    """No lines, terms or periods, payroll off, the seeded anchor and
+    basis."""
+    lines = "ALTER TABLE payroll_lines {} TRIGGER payroll_lines_no_finalized_change"
+    run_sql(url, lines.format("DISABLE"))
+    run_sql(url, "DELETE FROM payroll_lines")
+    run_sql(url, lines.format("ENABLE"))
     guard = "ALTER TABLE payroll_periods {} TRIGGER payroll_periods_no_finalized_change"
     run_sql(url, guard.format("DISABLE"))
     run_sql(url, "DELETE FROM payroll_periods")

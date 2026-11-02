@@ -17,15 +17,17 @@ classification (#55 E3).
   outside the scheduling transaction (#99 Q1: a billing failure never rolls
   a cancellation back). The cancel and change-request approval routes queue
   it after their commit.
-- **M7-04** (tutor pay) adds its step here: apply the cancellation pay rule
-  to the tutor of the session.
+- **Tutor pay stays out of this seam** (ADR-0017 E9). Payroll derives pay from
+  committed state in ``recalculate``
+  (:mod:`app.workflows.payroll_calculation`).
 
 ``initiated_by`` is ``"center"`` for an administrator's cancel (#55) and
 ``"family"`` / ``"tutor"`` for an approved request (#62, M4-17), which also
-passes its ``change_request_id`` (``None`` otherwise). M7-04 reads
-the request's effective outcome (classification, makeup) with
-``scheduling.service.get_change_request_outcome(session, change_request_id)``
-instead of classifying the cancellation again.
+passes its ``change_request_id`` (``None`` otherwise). Payroll consumes the
+stored columns of the approved request through the batch reader
+``scheduling.service.payable_cancellations`` (the same ones
+``get_change_request_outcome`` returns) and never classifies a cancellation
+again.
 """
 
 import uuid
@@ -45,7 +47,7 @@ async def on_session_cancelled(
     by_user_id: uuid.UUID | None,
     change_request_id: uuid.UUID | None = None,
 ) -> None:
-    """Run the pay steps of one cancelled session (none yet; billing runs in
-    the #99 job)."""
+    """No step: billing runs in the #99 job, and payroll reads committed state
+    in ``recalculate``."""
     del session, class_session_id, initiated_by, cancelled_at, by_user_id
     del change_request_id

@@ -37,9 +37,10 @@ W1.5; ADR-0005 D2, D9).
     own decision notification instead);
 11. the cancellation steps registered by the composition root
     (:func:`register_cancellation_step`; ``app/workflows/
-    session_cancellation.py``, the E3 seam for billing M6-14 and pay
-    M7-04), in the same transaction. No policy classification is stored
-    for a center cancellation (#55 E3).
+    session_cancellation.py``, the E3 seam, pay-free: billing runs in the
+    #99 job and payroll derives pay from committed state in ``recalculate``),
+    in the same transaction. No policy classification is stored for a center
+    cancellation (#55 E3).
 
 A cancelled occurrence keeps ``series_id`` and ``original_start``, so the
 nightly materialization never re-creates its date (``UNIQUE(series_id,

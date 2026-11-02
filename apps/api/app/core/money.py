@@ -495,6 +495,7 @@ decimals."""
 _RATE_TEXT: Final = re.compile(RATE_PATTERN, re.ASCII)
 _RATE_SCALE: Final = 10_000
 _CENTS_PER_RATE_UNIT: Final = 100  # ten-thousandths in one centavo
+_RATE_UNITS_PER_WHOLE_PERCENT: Final = 100 * _RATE_SCALE  # p / 100 on integers
 _MAX_RATE_UNITS: Final = 99_999_999_999_999
 _MAX_RATE_UNITS_EXPONENT: Final = 14
 
@@ -620,11 +621,24 @@ class Rate:
         """The ``Decimal`` value: exponent ``-4``, never ``-0.0000``."""
         return self._amount
 
-    def to_money(self, numerator: int = 1, denominator: int = 1) -> Money:
+    def to_money(
+        self,
+        numerator: int = 1,
+        denominator: int = 1,
+        *,
+        percent: Rate | None = None,
+    ) -> Money:
         """``rate * numerator / denominator`` rounded once half away from
         zero to the centavo, on integers (#105 A2): no result depends on the
         ``decimal`` context. :class:`MoneyRangeError` beyond the ``Money``
         range. ``denominator > 0`` and ``numerator >= 0``.
+
+        With ``percent`` (a :class:`Rate`, ``>= 0``) the result is ``rate *
+        numerator / denominator * percent / 100``, still one integer
+        computation and one rounding (#107 E2): the base is the exact value,
+        never a rounded line, so ``Rate("175").to_money(50, 60,
+        percent=Rate("15"))`` is ``21.88``, not the ``21.87`` of a rounded
+        base.
 
         #107 calls ``rate.to_money(approved_minutes, 60)`` for hourly pay and
         ``rate.to_money()`` for a session or a course.
@@ -635,9 +649,19 @@ class Rate:
             raise ValueError("Rate.to_money() needs a denominator > 0")
         if numerator < 0:
             raise ValueError("Rate.to_money() needs a numerator >= 0")
-        return Money._from_cents(
-            _round_half_up(self._units * numerator, denominator * _CENTS_PER_RATE_UNIT)
-        )
+        scaled = self._units * numerator
+        divisor = denominator * _CENTS_PER_RATE_UNIT
+        if percent is not None:
+            if not isinstance(percent, Rate):
+                raise TypeError(
+                    "Rate.to_money() takes percent as a Rate, not "
+                    f"{type(percent).__name__}"
+                )
+            if percent._units < 0:
+                raise ValueError("Rate.to_money() needs a percent >= 0")
+            scaled *= percent._units
+            divisor *= _RATE_UNITS_PER_WHOLE_PERCENT
+        return Money._from_cents(_round_half_up(scaled, divisor))
 
     # --- Predicates ---
 

@@ -59,6 +59,8 @@ EXPECTED = {
     # the record policy, not through payroll.view.
     "payroll.view": {OWNER, FINANCE_STAFF},
     "payroll.manage": {OWNER, FINANCE_STAFF},
+    # #107 E10: who runs the calculation.
+    "payroll.prepare": {OWNER, FINANCE_STAFF},
     "schedule.override": {OWNER},
     "finance.refund.approve": {OWNER},
     # Owner decision #43 E1 (a): no Finance Staff, Student or Guardian.
@@ -116,8 +118,8 @@ def test_catalog_matches_the_approved_table():
     }
 
     assert by_permission == EXPECTED
-    assert len(PERMISSIONS) == 40
-    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 103
+    assert len(PERMISSIONS) == 41
+    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 105
 
 
 def test_every_code_has_the_dotted_form():

@@ -98,7 +98,17 @@ Recommended options taken while grooming and building #106. They are orchestrato
 Recommended options taken while grooming and building #107 and its split issues. They are orchestrator-recommended and pending owner review, like the rest of this ADR. Plain E numbers here are #107's own items. #107 adds the rest of this section.
 
 - **Pay rule dates (#107 E9):** a new version of a session pay rule takes the center's today or later, and later than every version of its event (`422 invalid_effective_from`). No rule can reach a prepared or finalized period, because `prepare` needs `ends_on` before today, so a rule change never needs an adjustment. Past work can't be repriced by a rule; use a one-time item.
-- **Percent cap (#441):** `percent` runs from 0 to 1000, in the column's CHECK and the body, which keeps `Rate.to_money` in range. Values above 100 stay allowed.
+- **Percent cap (#441):** `percent` runs from 0 to 1000, in the column's CHECK and the body. Values above 100 stay allowed. A line beyond the money range refuses the run (`409 payroll_amount_out_of_range`).
+- **Split (#107 E1):** #441 pay rules API → #107 lines and calculation → #442 per-course pay → #443 unresolved work → #444 web → #108.
+- **Percent of a line (#107 E2), refining E4's wording:** the base is the exact expression, never a rounded line: `Rate.to_money(numerator, denominator, percent=)` rounds once. `175.0000 × 50/60 × 15%` is `21.88`, not the `21.87` of a rounded base.
+- **A makeup that is also a no-show (#107 E3):** `no_show` wins. With the seeds both are 100%; it matters only if the owner lowers `no_show`.
+- **The makeup chain (#107 E4):** pay is per session actually worked. Calculation never walks the chain, reads the target or re-checks the deadline, so a late-cancelled session under a paying rule and its makeup both pay the tutor: two events.
+- **Salary coverage (#107 E5):** coverage beats every event: a `0.00` `session` line, with no rule. A cancellation gets no line.
+- **One basis (#107 E6):** every session-sourced path, `fixed` included, resolves terms, then rate, then coverage on the service date. A `fixed` rule pays nothing with no terms or no rate.
+- **`recalculate` (#107 E7):** open periods only (`409 payroll_period_not_open`), also before the period ends. A read-only `compute_lines` returns frozen drafts, for #110's drift check. Only `REBUILT_KINDS` are deleted. Line ids change on every run, so nothing references a line of an open period.
+- **Deleting a rate an open line uses (#107 E8), correcting data-model §11.6:** `recalculate` would pick the same version, so the delete removes the lines in open periods itself, periods locked first. A prepared line refuses with `23001`, a finalized one with `42501`: the same `409`. Upcoming pay rules follow suit.
+- **Running and reading (#107 E10):** `payroll.prepare` runs, `payroll.view` reads, Owner and Finance Staff. A named event with ids and a count, no amounts. A delegated Administrator gets `403` until #110.
+- **Per-course (#107 E11), refining E3's formula (`Money.prorate` rounds twice), unresolved items (#107 E12, E13), refining E2:** delivered by #442 and #443.
 
 ### Paid work (E2 (a), spec §3, §7, W3, ISSUE-F2, #107, #111, #117, product)
 
@@ -281,7 +291,8 @@ A reporting rule for #117, in the new read-only `reporting` module (ADR-0002 D3)
   - **#105 (M7-02):** `tutor_pay_terms`, `compensation_rates`, the lookup, the guarded triggers with their staged predicates; seeds `payroll.view` and `payroll.manage` (E1, E12).
   - **#106 (M7-03):** `payroll_settings`, `payroll_periods`, the no-overlap and no-gap mechanisms, the job `payroll:open_periods` (E2 floor, E6).
   - **#423 (M7-04a):** `class_sessions.makeup_of_session_id` and its form field (E5). A prerequisite of #107.
-  - **#107 (M7-04):** `session_pay_rules`, `payroll_lines`, `recalculate`, per-hour, per-session and per-course lines, pay events, unresolved work, the seam docstrings; seeds `payroll.prepare` (E2, E3, E4, E9, E12).
+  - **#441 (M7-04c):** `session_pay_rules` and its routes (E4, #107 E9).
+  - **#107 (M7-04):** `payroll_lines`, `recalculate`, per-hour and per-session lines, pay events, the seam docstrings; seeds `payroll.prepare` (E2, E4, E9, E12). Split by #107 E1: per-course amounts are #442 (E3), unresolved work #443 (E2), the web #444.
   - **#108 (M7-05):** `salary` lines and proration (E1, E7).
   - **#109 (M7-06):** `pay_item_types`, `pay_items`, `pay_item` lines (E8).
   - **#110 (M7-07):** the workflow, finalization, the proof of the lock triggers (created with their tables in #106 and #107), the inbox type, notifications (E9, E10).

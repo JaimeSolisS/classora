@@ -4,7 +4,7 @@ exception handling, and audit trails"; architecture §4.2; ADR-0005 D2, D6).
 The review routes (:mod:`app.workflows.change_requests_router`) call these
 functions. Each runs in the request's **one Unit of Work**: the change to
 the session (through the existing occurrence services), the request's
-decision and effective outcome, the audit trail, the billing and pay seams,
+decision and effective outcome, the audit trail, the seams,
 the inbox item and the notifications commit together or not at all.
 
 **Approve** (:func:`approve_change_request`), after the route's ``401`` /
@@ -48,13 +48,14 @@ UPDATE``, taken by ``decide_approval_request``). A reject takes the request
 locks again inside the same transaction, which is safe:
 ``pg_advisory_xact_lock`` and row locks are re-entrant within a transaction.
 
-**Consumers (M6-14 billing, M7-04 tutor pay):** they add their steps to
+**Consumers (M6-14 billing, M7-04 tutor pay):** both read committed state
+outside this Unit of Work, and the seams
 ``app/workflows/session_cancellation.py`` and
-``app/workflows/session_reschedule.py`` (both receive the
-``change_request_id``) and read the effective outcome (classification,
-makeup, policy version) with
-``scheduling.service.get_change_request_outcome``. A rejected or withdrawn
-request has no money effect.
+``app/workflows/session_reschedule.py`` stay free of them. The job
+``billing:reconcile_session_charges`` and payroll's ``recalculate`` consume the
+stored effective outcome (``scheduling.service.get_change_request_outcome``,
+``cancellation_classification``, ``payable_cancellations``). A rejected or
+withdrawn request has no money effect.
 """
 
 import uuid

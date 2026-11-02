@@ -1,5 +1,5 @@
-"""Payroll tables (#105, #106, #441; ADR-0017 E1, E2, E4, E6; data-model
-§11.1-§11.5, §14.2, §14.3).
+"""Payroll tables (#105, #106, #441, #107; ADR-0017 E1, E2, E4, E6, E9;
+data-model §11.1-§11.6, §14.2, §14.3).
 
 ``tutor_pay_terms`` holds what applies to a tutor as a whole and
 ``compensation_rates`` the rate per class kind. Each is a list of versions:
@@ -23,6 +23,12 @@ opens the rows and the status moves carry named events (#110).
 makeup rule versions, guarded by time (migration ``0075``): nothing changes,
 and only an upcoming version can go away. ``percent`` and ``amount`` are masked
 in the audit log, as above.
+
+``payroll_lines`` holds one line per source: here the four session kinds, and
+#108, #109 and #111 widen it. Lines are working data until the period is
+finalized, so the table isn't ``Audited``, and a trigger refuses every write
+to a line of a finalized period (migration ``0076``). Only ``recalculate``
+and the deletion of a rate or rule write them.
 """
 
 import uuid
@@ -38,6 +44,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     String,
     UniqueConstraint,
     text,
@@ -59,6 +66,8 @@ PRORATION_BASES: Final = ("calendar_days", "weekdays")
 PERIOD_STATUSES: Final = ("open", "prepared", "finalized")
 PAY_RULE_EVENTS: Final = ("late_cancellation", "no_show", "makeup")
 PAY_RULE_MODES: Final = ("none", "percent", "fixed")
+LINE_EVENT_KINDS: Final = PAY_RULE_EVENTS
+SESSION_LINE_KINDS: Final = ("session", *LINE_EVENT_KINDS)
 
 PAY_FREQUENCY_MAX: Final = 10
 PERIOD_STATUS_MAX: Final = 10
@@ -67,6 +76,7 @@ CLASS_KIND_MAX: Final = 20
 RATE_MODEL_MAX: Final = 20
 PAY_RULE_EVENT_MAX: Final = 20
 PAY_RULE_MODE_MAX: Final = 10
+LINE_KIND_MAX: Final = 20
 
 TERMS_KEY: Final = "uq_tutor_pay_terms_tutor_user_id_effective_from"
 RATE_KEY: Final = "uq_compensation_rates_tutor_user_id_class_kind_effective_from"
@@ -77,6 +87,8 @@ PERIOD_TARGET_KEY: Final = "uq_payroll_periods_id_tutor_user_id"
 PERIOD_OVERLAP: Final = "ex_payroll_periods_tutor_overlap"
 PERIOD_RANGE_SQL: Final = "daterange(starts_on, ends_on, '[]')"
 """The inclusive span of a period."""
+LINE_SESSION_UNIQUE: Final = "uq_payroll_lines_session_sourced"
+LINE_TUTOR_KEY: Final = "uq_payroll_lines_id_tutor"
 
 
 def _one_of(column: str, values: tuple[str, ...]) -> str:
@@ -296,3 +308,117 @@ class PayrollPeriod(Model):
     finalized_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )
+
+
+class PayrollLine(Model):
+    """One line of a period (data-model §11.6): a session-sourced line of the
+    tutor, in this issue. ``approval_id`` is the revision used, ``NULL`` on a
+    line that comes from a cancellation. A line "covered by salary" has kind
+    ``session``, ``0.00`` and no rate snapshot."""
+
+    __tablename__ = "payroll_lines"
+    __table_args__ = (
+        CheckConstraint(_one_of("kind", SESSION_LINE_KINDS), name="kind_valid"),
+        CheckConstraint(
+            "(kind IN ('session', 'makeup')"
+            " AND class_session_id IS NOT NULL AND approval_id IS NOT NULL)"
+            " OR (kind = 'no_show' AND class_session_id IS NOT NULL)"
+            " OR (kind = 'late_cancellation'"
+            " AND class_session_id IS NOT NULL AND approval_id IS NULL)",
+            name="source_per_kind",
+        ),
+        CheckConstraint(
+            "(class_session_id IS NULL AND service_date IS NULL"
+            " AND class_kind IS NULL AND minutes IS NULL)"
+            " OR (class_session_id IS NOT NULL AND service_date IS NOT NULL"
+            " AND class_kind IS NOT NULL AND minutes IS NOT NULL)",
+            name="session_fields",
+        ),
+        CheckConstraint(_one_of("class_kind", CLASS_KINDS), name="class_kind_valid"),
+        CheckConstraint(_one_of("rate_model", RATE_MODELS), name="rate_model_valid"),
+        CheckConstraint("amount >= 0", name="amount_non_negative"),
+        CheckConstraint("minutes >= 0", name="minutes_non_negative"),
+        CheckConstraint(
+            "(rate_model IS NULL) = (rate IS NULL)"
+            " AND (rate IS NULL) = (compensation_rate_id IS NULL)",
+            name="rate_snapshot",
+        ),
+        CheckConstraint(
+            "(session_pay_rule_id IS NOT NULL)"
+            f" = ({_one_of('kind', LINE_EVENT_KINDS)})",
+            name="pay_rule_with_event",
+        ),
+        CheckConstraint(
+            "(cumulative_sessions IS NOT NULL) = (cohort_sessions IS NOT NULL)"
+            " AND (cumulative_sessions IS NOT NULL)"
+            " = COALESCE(rate_model = 'per_course', false)",
+            name="course_share",
+        ),
+        ForeignKeyConstraint(
+            ["payroll_period_id", "tutor_user_id"],
+            ["payroll_periods.id", "payroll_periods.tutor_user_id"],
+            name="fk_payroll_lines_period_tutor",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint("id", "tutor_user_id", name=LINE_TUTOR_KEY),
+        Index(
+            LINE_SESSION_UNIQUE,
+            "class_session_id",
+            unique=True,
+            postgresql_where=text(_one_of("kind", SESSION_LINE_KINDS)),
+        ),
+        Index("ix_payroll_lines_payroll_period_id", "payroll_period_id"),
+        Index(
+            "ix_payroll_lines_class_session_id",
+            "class_session_id",
+            postgresql_where=text("class_session_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_payroll_lines_compensation_rate_id",
+            "compensation_rate_id",
+            postgresql_where=text("compensation_rate_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_payroll_lines_session_pay_rule_id",
+            "session_pay_rule_id",
+            postgresql_where=text("session_pay_rule_id IS NOT NULL"),
+        ),
+    )
+
+    payroll_period_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    tutor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    kind: Mapped[str] = mapped_column(String(LINE_KIND_MAX))
+    amount: Mapped[Money] = mapped_column(MoneyType())
+    class_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("class_sessions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    approval_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("session_closeout_approvals.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    service_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    class_kind: Mapped[str | None] = mapped_column(
+        String(CLASS_KIND_MAX), nullable=True
+    )
+    minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rate_model: Mapped[str | None] = mapped_column(
+        String(RATE_MODEL_MAX), nullable=True
+    )
+    rate: Mapped[Rate | None] = mapped_column(RateType(), nullable=True)
+    compensation_rate_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("compensation_rates.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    session_pay_rule_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("session_pay_rules.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    cumulative_sessions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cohort_sessions: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -31,10 +31,11 @@ so this never forms a cycle with the sweeper (session → settings →
 account), a purchase (idempotency key → product → account) or the expiry
 job (session → account).
 
-**M7-04 / M7-08** (tutor pay, still to add): payroll reads the current
-revision (``session_closeouts.current_approval_id``); a revision that
-supersedes one already paid in a finalized period becomes an adjustment in
-the next open period (M7-08).
+**Tutor pay stays out of this seam** (ADR-0017 E9). Payroll derives pay from
+committed state in ``recalculate``
+(:mod:`app.workflows.payroll_calculation`), which reads the current revision
+(``session_closeouts.current_approval_id``); a revision that supersedes one
+paid in a finalized period becomes an adjustment (#111).
 """
 
 import uuid

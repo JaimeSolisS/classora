@@ -19,13 +19,33 @@ writes the ``app.workflows.payroll_compensation`` workflow calls.
 and writes the ``app.workflows.session_pay_rules`` workflow calls.
 
 **For the calculation:** :func:`rate_in_effect`, :func:`terms_in_effect`,
-:func:`session_pay_rule_in_effect` and :func:`session_pay_rule_versions`.
+:func:`session_pay_rule_in_effect`, and the run's batch reads
+:func:`rate_versions`, :func:`terms_basis_versions` and
+:func:`session_pay_rule_versions`.
+
+**Lines** (#107; :mod:`~app.modules.payroll.lines`, the pure rules in
+:mod:`~app.modules.payroll.calculation`): :func:`lock_open_period`,
+:func:`replace_lines`, :func:`period_lines`, and :func:`draft_lines` with its
+frozen values.
 
 **Record policies** (:mod:`~app.modules.payroll.permissions`):
 :func:`can_view_compensation`, :func:`can_write_compensation`.
 """
 
+from app.modules.payroll.calculation import (
+    ApprovedSession,
+    LineDraft,
+    PayableCancellation,
+    PayBasis,
+    draft_lines,
+)
 from app.modules.payroll.errors import PayrollOwnCompensationError
+from app.modules.payroll.lines import (
+    REBUILT_KINDS,
+    lock_open_period,
+    period_lines,
+    replace_lines,
+)
 from app.modules.payroll.pay_rules import (
     create_session_pay_rule,
     delete_session_pay_rule,
@@ -52,6 +72,8 @@ from app.modules.payroll.rates import (
     list_compensation_rates,
     list_pay_terms,
     rate_in_effect,
+    rate_versions,
+    terms_basis_versions,
     terms_in_effect,
 )
 from app.modules.payroll.settings import (
@@ -61,6 +83,11 @@ from app.modules.payroll.settings import (
 )
 
 __all__ = [
+    "REBUILT_KINDS",
+    "ApprovedSession",
+    "LineDraft",
+    "PayBasis",
+    "PayableCancellation",
     "PayrollOwnCompensationError",
     "add_compensation_rate",
     "add_pay_terms",
@@ -72,17 +99,23 @@ __all__ = [
     "delete_compensation_rate",
     "delete_pay_terms",
     "delete_session_pay_rule",
+    "draft_lines",
     "get_session_pay_rule_overview",
     "list_compensation_rates",
     "list_pay_terms",
+    "lock_open_period",
     "lock_payroll_periods",
     "natural_bounds",
     "open_due_periods",
     "payroll_starts_on",
+    "period_lines",
     "rate_in_effect",
+    "rate_versions",
+    "replace_lines",
     "salary_proration_basis",
     "session_pay_rule_in_effect",
     "session_pay_rule_versions",
+    "terms_basis_versions",
     "terms_in_effect",
     "tutors_with_terms",
 ]
