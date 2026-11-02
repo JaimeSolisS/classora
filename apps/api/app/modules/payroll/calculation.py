@@ -31,9 +31,13 @@ ordinary work on its own date, and a ``per_course`` version there is no line
 tutor's sessions of the cohort in order. Each approved one advances ``k`` and
 ``cum = max(previous cum, rate.to_money(k, N))``, whatever its event and whichever
 period it falls in, and the line is the difference, so a recalculation gives
-the same lines in any period order. A finalized line sets ``k`` and ``cum`` from
-its stored ``k``, ``N`` and rate (:class:`FinalizedCourseLine`). A course session
-has no cancellation request and no makeup link (D3).
+the same lines in any period order. A finalized line sets ``k`` to its stored
+value and ``cum`` to the highest of the finalized lines so far, from each one's
+stored ``k``, ``N`` and rate (:class:`FinalizedCourseLine`): a line floored at
+``0.00`` stores less than was already paid, and the next line must not pay it
+again. Only finalized lines feed that maximum, so sessions walked before a
+finalized line can't hide what the sessions after it earn. A course session has
+no cancellation request and no makeup link (D3).
 
 Nothing here touches a ``Decimal`` or an ``.amount``, on a ``Rate`` or a
 ``Money``: ``tests/unit/test_payroll_calculation_pure.py`` reads this file's syntax
@@ -392,11 +396,15 @@ def walk_cohort(
     n = cohort.planned_sessions
     k = 0
     cum = ZERO
+    finalized_peak = ZERO
     drafts: list[LineDraft] = []
     for step in cohort.steps:
         if isinstance(step, FinalizedCourseLine):
             k = step.cumulative_sessions
-            cum = step.rate.to_money(k, step.cohort_sessions)
+            finalized_peak = max(
+                finalized_peak, step.rate.to_money(k, step.cohort_sessions)
+            )
+            cum = finalized_peak
             continue
         k += 1
         if k > n:

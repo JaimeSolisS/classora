@@ -484,6 +484,188 @@ def test_an_open_period_keeps_its_share_when_a_later_one_is_finalized_first(ctx)
     assert amounts(ctx.url, second) == cents("333.33")
 
 
+# --- QA #442 N1, state (c): cum at a finalized line -----
+
+
+def test_n1_a_floored_finalized_line_isnt_paid_again(ctx):
+    cohort = make_cohort(ctx, 2)  # Monday, Wednesday; N = 2
+    add_terms(ctx.url, ctx.tutor.id)
+    add_rate(ctx.url, ctx.tutor.id, rate="1000", kind="course", model="per_course")
+    one = period_of(ctx, ctx.tutor, 0, 2)
+    two = period_of(ctx, ctx.tutor, 2, 3)
+    rest = period_of(ctx, ctx.tutor, 5, 60)
+    teach(ctx, cohort, 0)
+    run(ctx.url, one)
+    finalize(ctx.url, one, ctx.owner.id)
+    assert amounts(ctx.url, one) == cents("500.00")
+
+    grow(ctx, cohort, 2, 3, 4, 5)  # N = 6
+    teach(ctx, cohort, 1)
+    run(ctx.url, two)
+    finalize(ctx.url, two, ctx.owner.id)
+    assert amounts(ctx.url, two) == cents("0.00")
+    assert shares(ctx.url, two) == [(2, 6)]
+
+    for session in rows_of(ctx, cohort.id)[2:]:
+        closed_out(ctx, session, minutes=60)
+    run(ctx.url, rest)
+
+    # k = 3..6: 500.00, 666.67, 833.33, 1000.00, from the 500.00 already paid.
+    assert amounts(ctx.url, rest) == cents("0.00", "166.67", "166.66", "166.67")
+    assert shares(ctx.url, rest) == [(3, 6), (4, 6), (5, 6), (6, 6)]
+    paid = [*amounts(ctx.url, one), *amounts(ctx.url, two), *amounts(ctx.url, rest)]
+    assert sum(paid) == Decimal("1000.00")
+
+
+def test_state_c_late_approvals_before_a_finalized_line_pay_200_each(ctx):
+    """S3 finalized at 1 of 5 while S1 and S2 had no approval. ``max(cum, line)``
+    would keep S1 and S2's 400.00 at S3, and S4 would pay 0.00."""
+    cohort = make_cohort(ctx, 5)  # Monday, Wednesday, Monday, Wednesday, Monday
+    add_terms(ctx.url, ctx.tutor.id)
+    add_rate(ctx.url, ctx.tutor.id, rate="1000", kind="course", model="per_course")
+    early = period_of(ctx, ctx.tutor, 0, 7)
+    middle = period_of(ctx, ctx.tutor, 7, 2)
+    late = period_of(ctx, ctx.tutor, 9, 60)
+    teach(ctx, cohort, 2)
+    run(ctx.url, middle)
+    finalize(ctx.url, middle, ctx.owner.id)
+    assert shares(ctx.url, middle) == [(1, 5)]
+    teach(ctx, cohort, 0, 1, 3, 4)
+
+    run(ctx.url, early)
+    run(ctx.url, late)
+
+    assert amounts(ctx.url, early) == cents("200.00", "200.00")
+    assert amounts(ctx.url, late) == cents("200.00", "200.00")
+    assert shares(ctx.url, early) == [(1, 5), (2, 5)]
+    assert shares(ctx.url, late) == [(2, 5), (3, 5)]
+    assert amounts(ctx.url, middle) == cents("200.00")
+
+
+# --- QA #442 test gaps: m3-m8 -----
+
+
+def test_m3_another_tutors_finalized_period_doesnt_hide_these_dates(ctx):
+    cohort = make_cohort(ctx, 3)
+    period = on_payroll(ctx)
+    teach(ctx, cohort, 0)
+    stranger = create_user(ctx.url, roles=(TUTOR,))
+    add_terms(ctx.url, stranger.id)
+    theirs = period_of(ctx, stranger, 0, 70)
+    finalize(ctx.url, theirs, ctx.owner.id)
+
+    run(ctx.url, period)
+
+    assert amounts(ctx.url, period) == cents("333.33")
+    assert shares(ctx.url, period) == [(1, 3)]
+
+
+def test_m4_a_substitutes_finalized_line_doesnt_anchor_the_original_tutor(ctx):
+    cohort = make_cohort(ctx, 3)
+    substitute = new_tutor_user(ctx.url, qualified_for=(ctx.subject,))
+    period = on_payroll(ctx)
+    their_period = on_payroll(ctx, substitute, "600")
+    updated = sub_in(ctx, cohort.id_of(1), substitute)
+    closed_out(ctx, updated, tutor=substitute, minutes=60)
+    run(ctx.url, their_period)
+    finalize(ctx.url, their_period, ctx.owner.id)
+    assert shares(ctx.url, their_period) == [(1, 3)]
+    teach(ctx, cohort, 0, 2)
+
+    run(ctx.url, period)
+
+    assert shares(ctx.url, period) == [(1, 3), (2, 3)]
+    assert amounts(ctx.url, period) == cents("333.33", "333.34")
+
+
+def test_m5_d6_an_hourly_finalized_line_doesnt_anchor(ctx):
+    cohort = make_cohort(ctx, 3)
+    add_terms(ctx.url, ctx.tutor.id)
+    add_rate(ctx.url, ctx.tutor.id, rate="120", kind="course")
+    first = period_of(ctx, ctx.tutor, 0, 2)
+    later = period_of(ctx, ctx.tutor, 2, 60)
+    teach(ctx, cohort, 0)
+    run(ctx.url, first)
+    finalize(ctx.url, first, ctx.owner.id)
+    assert shares(ctx.url, first) == [(None, None)]
+    add_rate(
+        ctx.url,
+        ctx.tutor.id,
+        day(ctx, -1),
+        "1000",
+        kind="course",
+        model="per_course",
+    )
+    teach(ctx, cohort, 1)
+
+    run(ctx.url, later)
+
+    assert shares(ctx.url, later) == [(1, 3)]
+    assert amounts(ctx.url, later) == cents("333.33")
+
+
+def test_m6_two_interleaved_cohorts_of_one_tutor_walk_apart(ctx):
+    first = make_cohort(ctx, 3)
+    second = make_cohort(ctx, 2, start_time="18:00", enrolled=False)
+    run_sql(
+        ctx.url,
+        "INSERT INTO class_session_participants (class_session_id, student_id)"
+        " SELECT id, :student FROM class_sessions WHERE cohort_id = :cohort",
+        {"student": ctx.student, "cohort": second.id},
+    )
+    period = on_payroll(ctx)
+    teach(ctx, first, 0, 1, 2)
+    teach(ctx, second, 0, 1)
+
+    run(ctx.url, period)
+
+    found = {str(line.class_session_id): line for line in lines(ctx.url, period)}
+    assert [
+        (found[first.id_of(i)].amount, found[first.id_of(i)].cumulative_sessions)
+        for i in range(3)
+    ] == [
+        (Decimal("333.33"), 1),
+        (Decimal("333.34"), 2),
+        (Decimal("333.33"), 3),
+    ]
+    assert [
+        (found[second.id_of(i)].amount, found[second.id_of(i)].cumulative_sessions)
+        for i in range(2)
+    ] == [(Decimal("500.00"), 1), (Decimal("500.00"), 2)]
+    assert {found[first.id_of(i)].cohort_sessions for i in range(3)} == {3}
+    assert {found[second.id_of(i)].cohort_sessions for i in range(2)} == {2}
+
+
+def test_m7_the_first_session_date_is_the_center_date(ctx):
+    """18:30 in Mexico City is 00:30 UTC the next day."""
+    cohort = make_cohort(ctx, 2, start_time="18:30")
+    period = on_payroll(ctx)
+    add_rate(
+        ctx.url, ctx.tutor.id, day(ctx, 1), "3000", kind="course", model="per_course"
+    )
+    teach(ctx, cohort, 0, 1)
+
+    run(ctx.url, period)
+
+    assert amounts(ctx.url, period) == cents("500.00", "500.00")
+
+
+def test_m8_a_session_on_the_periods_last_day_is_in_it(ctx):
+    cohort = make_cohort(ctx, 3)
+    add_terms(ctx.url, ctx.tutor.id)
+    add_rate(ctx.url, ctx.tutor.id, rate="1000", kind="course", model="per_course")
+    first = period_of(ctx, ctx.tutor, 0, 3)  # ends on the first Wednesday
+    later = period_of(ctx, ctx.tutor, 3, 60)
+    teach(ctx, cohort, 0, 1, 2)
+
+    run(ctx.url, first)
+    run(ctx.url, later)
+
+    assert by_order(ctx.url, first) == [cohort.id_of(0), cohort.id_of(1)]
+    assert amounts(ctx.url, first) == cents("333.33", "333.34")
+    assert by_order(ctx.url, later) == [cohort.id_of(2)]
+
+
 # --- G6: any order -----
 
 

@@ -646,6 +646,31 @@ def test_an_open_period_before_a_finalized_one_keeps_its_own_share():
     assert sorted(line.cumulative_sessions for line in lines) == [1, 3]
 
 
+def test_n1_a_floored_finalized_line_doesnt_lower_what_was_paid():
+    # 500.00 paid at 1 of 2. N = 6: 2/6 = 333.33 floors at 0.00 and stores less.
+    # Then 500.00, 666.67, 833.33, 1000.00 from the 500.00 already paid.
+    steps = same_day(4)
+    lines = walk(basis(rates=[per_course()]), 6, fixed(1, 2), fixed(2, 6), *steps)
+    assert by_step(lines, steps) == [
+        Money(0),
+        Money("166.67"),
+        Money("166.66"),
+        Money("166.67"),
+    ]
+    assert Money.total(amounts(lines)) == Money("500.00")
+
+
+def test_state_c_a_finalized_line_can_lower_k_and_cum_after_late_approvals():
+    # S3 finalized at 1 of 5, then S1 and S2 approved: 200 each, and S3's own 200
+    # stands. k drops to 1, and S4, S5 pay 400 - 200, 600 - 400.
+    early = same_day(2, on=START)
+    late = same_day(2, on=DAY)
+    lines = walk(basis(rates=[per_course()]), 5, *early, fixed(1, 5), *late)
+    assert by_step(lines, (*early, *late)) == [Money("200.00")] * 4
+    ks = {line.class_session_id: line.cumulative_sessions for line in lines}
+    assert [ks[step.class_session_id] for step in (*early, *late)] == [1, 2, 2, 3]
+
+
 def test_c5_k_beyond_n_is_a_bug_and_never_a_capped_line():
     with pytest.raises(CourseWalkError):
         walk(basis(rates=[per_course()]), 1, course(BEFORE), course(DAY))
