@@ -35,6 +35,9 @@ interface SearchPickerProps<T> {
   errorMessage?: string;
   /** Focus the search field when it mounts (a dialog's first field). */
   autoFocus?: boolean;
+  /** Extra classes for the field and each option (44 px targets, #444 D3). */
+  inputClassName?: string;
+  optionClassName?: string;
 }
 
 export function SearchPicker<T>({
@@ -49,6 +52,8 @@ export function SearchPicker<T>({
   onSelect,
   errorMessage,
   autoFocus,
+  inputClassName,
+  optionClassName,
 }: SearchPickerProps<T>) {
   const { t } = useTranslation();
   const id = useId();
@@ -114,6 +119,7 @@ export function SearchPicker<T>({
         spellCheck={false}
         maxLength={SEARCH_MAX_LENGTH}
         autoFocus={autoFocus}
+        className={inputClassName}
         aria-invalid={errorMessage ? true : undefined}
         aria-describedby={describedBy}
         value={text}
@@ -147,6 +153,7 @@ export function SearchPicker<T>({
                   disabled
                     ? 'cursor-not-allowed text-muted-foreground'
                     : 'cursor-pointer has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring',
+                  optionClassName,
                 )}
               >
                 <input

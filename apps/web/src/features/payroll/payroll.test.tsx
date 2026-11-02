@@ -226,6 +226,8 @@ describe('access (A)', () => {
     ].map((a) => [a.textContent, a.getAttribute('aria-current')]);
     expect(tabs).toEqual([
       ['Tutors', 'page'],
+      ['Pay rules', null],
+      ['Unresolved work', null],
       ['Settings', null],
     ]);
   });

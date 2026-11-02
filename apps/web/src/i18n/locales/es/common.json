@@ -6302,6 +6302,8 @@
     "tabs": {
       "label": "Secciones de nómina",
       "tutors": "Tutores",
+      "payRules": "Reglas de pago",
+      "unresolved": "Trabajo sin resolver",
       "settings": "Configuración"
     },
     "frequencies": {
@@ -6442,6 +6444,110 @@
     "myPay": {
       "title": "Mi pago",
       "empty": "Tu pago aún no está configurado. Consulta con administración."
+    },
+    "payRules": {
+      "title": "Reglas de pago",
+      "intro": "Qué se le paga al tutor por una clase que no se dio como estaba previsto. La regla se aplica según la fecha de la sesión y nunca cambia el trabajo ya pasado.",
+      "versionsHelp": "Una versión nueva empieza hoy o después, y después de todas las versiones de ese evento. Para cambiar una versión próxima, elimínala y crea otra.",
+      "lateNote": "En una cancelación tardía, «No paga» significa que el tutor no gana nada por ese espacio. El valor inicial es «No paga», pendiente de revisión del dueño.",
+      "events": {
+        "late_cancellation": "Cancelación tardía",
+        "no_show": "Inasistencia",
+        "makeup": "Reposición"
+      },
+      "sentences": {
+        "none": "No paga",
+        "percent": "Paga {{percent}}% de la clase",
+        "fixed": "Paga {{amount}}"
+      },
+      "modes": {
+        "none": "No paga",
+        "percent": "Porcentaje de la clase",
+        "fixed": "Monto fijo"
+      },
+      "upcoming": "Próximas versiones",
+      "noUpcoming": "Sin versiones próximas.",
+      "historyShow_one": "Ver {{count}} versión anterior",
+      "historyShow_many": "Ver {{count}} versiones anteriores",
+      "historyShow_other": "Ver {{count}} versiones anteriores",
+      "historyHide": "Ocultar versiones anteriores",
+      "range": "Del {{from}} al {{until}}",
+      "newVersion": "Nueva versión",
+      "newVersionFor": "Nueva versión: {{event}}",
+      "deleteFor": "Eliminar la versión de {{event}} del {{date}}",
+      "deleteBody": "Se eliminará la versión de {{event}} del {{date}}: {{value}}.",
+      "fields": {
+        "mode": "Qué paga",
+        "percent": "Porcentaje de la clase",
+        "amount": "Monto (MXN)",
+        "effectiveFrom": "Aplica desde"
+      },
+      "dialogHelp": "Las versiones no se editan. Esta se aplica a las sesiones de esa fecha en adelante; nunca cambia el trabajo ya pasado.",
+      "percentHelp": "De 0 a 1000, con hasta cuatro decimales.",
+      "dateHelp": "Hoy o después, y después de la versión más reciente ({{date}}).",
+      "save": "Publicar versión",
+      "reload": "Recargar",
+      "conflictReloaded": "Alguien más cambió esta regla. Estos son los valores actuales y tus cambios no se guardaron. Revísalos y vuelve a guardar.",
+      "saved": "Versión publicada.",
+      "deleted": "Versión eliminada.",
+      "alreadyGone": "Esa versión ya no existe. La lista está actualizada.",
+      "validation": {
+        "percentRequired": "Escribe el porcentaje.",
+        "percentRange": "Elige un porcentaje de 0 a 1000.",
+        "amountRequired": "Escribe el monto.",
+        "datePast": "Elige hoy o una fecha posterior.",
+        "dateLater": "Elige hoy o después, y una fecha posterior a todas las versiones de este evento."
+      }
+    },
+    "unresolved": {
+      "title": "Trabajo sin resolver",
+      "intro": "Trabajo aprobado que no se puede pagar, y por qué. Aquí no se muestran montos.",
+      "caption": "Trabajo aprobado que no se puede pagar",
+      "empty": "Todo el trabajo aprobado tiene pago",
+      "emptyFiltered": "Nada coincide con estos filtros.",
+      "payrollOff": "La nómina aún no está activa, así que esta lista está vacía.",
+      "payrollOffLink": "Ir a Ajustes",
+      "columns": {
+        "date": "Fecha",
+        "tutor": "Tutor",
+        "kind": "Tipo de clase",
+        "source": "Origen",
+        "reason": "Motivo",
+        "blocking": "Nómina",
+        "session": "Sesión"
+      },
+      "sources": {
+        "closeout": "Cierre aprobado",
+        "cancellation": "Cancelación"
+      },
+      "reasons": {
+        "no_pay_terms": "No tiene condiciones de pago en esa fecha",
+        "no_rate": "No tiene tarifa para este tipo de clase",
+        "before_first_period": "Antes de su primer periodo: no bloquea; se paga con un concepto único"
+      },
+      "blocks": "Bloquea la nómina",
+      "doesNotBlock": "No bloquea",
+      "fix": "Ver el pago del tutor",
+      "fixFor": "Ver el pago del tutor: {{name}}",
+      "open": "Ver sesión",
+      "openFor": "Ver sesión: {{name}}, {{date}}",
+      "more": "Cargar más",
+      "filters": {
+        "label": "Filtros",
+        "tutor": "Tutor",
+        "tutorHelp": "Busca por nombre o usuario.",
+        "reason": "Motivo",
+        "allReasons": "Todos los motivos",
+        "reasons": {
+          "no_pay_terms": "Sin condiciones de pago",
+          "no_rate": "Sin tarifa",
+          "before_first_period": "Antes del primer periodo"
+        },
+        "clear": "Quitar filtros",
+        "chip": "Tutor: {{name}}",
+        "remove": "Quitar filtro: Tutor {{name}}",
+        "selected": "Tutor seleccionado"
+      }
     }
   },
   "familyBilling": {

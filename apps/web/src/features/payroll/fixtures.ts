@@ -3,8 +3,11 @@ import type {
   PayrollSettings,
   PayrollTutor,
   PayrollTutorPage,
+  PayRule,
+  PayRuleOverview,
   PayTerms,
   TutorCompensation,
+  UnresolvedItem,
 } from './api';
 
 // Payroll fixtures (#425 H1, H2) for the tests and the stories. The center's
@@ -196,3 +199,104 @@ export const SETTINGS_LOCKED: PayrollSettings = {
   anchor_locked: true,
   version: 3,
 };
+
+// ------------------------------------------------- pay rules (#444 D2)
+
+const payRule = (
+  n: number,
+  event: PayRule['event'],
+  effectiveFrom: string,
+  mode: PayRule['mode'],
+  percent: string | null = null,
+  amount: string | null = null,
+): PayRule => ({
+  id: `73000000-0000-4000-8000-00000000000${n}`,
+  event,
+  effective_from: effectiveFrom,
+  mode,
+  percent,
+  amount,
+  created_by_user_id: null,
+  created_at: '2026-01-01T00:00:00Z',
+});
+
+export const LATE_SEED = payRule(1, 'late_cancellation', '2000-01-01', 'none');
+export const NO_SHOW_SEED = payRule(
+  2,
+  'no_show',
+  '2000-01-01',
+  'percent',
+  '100.0000',
+);
+export const NO_SHOW_CURRENT = payRule(
+  3,
+  'no_show',
+  '2026-09-01',
+  'percent',
+  '12.5000',
+);
+export const NO_SHOW_UPCOMING = payRule(
+  4,
+  'no_show',
+  '2026-12-01',
+  'fixed',
+  null,
+  '150.00',
+);
+export const NO_SHOW_LATER = payRule(5, 'no_show', '2027-01-01', 'none');
+export const MAKEUP_SEED = payRule(
+  6,
+  'makeup',
+  '2000-01-01',
+  'percent',
+  '100.0000',
+);
+
+/** The three seeds: what a new center has. */
+export const RULES_SEEDED: PayRuleOverview = {
+  today: TODAY,
+  late_cancellation: { current: LATE_SEED, upcoming: [], history: [] },
+  no_show: { current: NO_SHOW_SEED, upcoming: [], history: [] },
+  makeup: { current: MAKEUP_SEED, upcoming: [], history: [] },
+};
+
+/** A no-show rule with two upcoming versions and one earlier. */
+export const RULES_VERSIONED: PayRuleOverview = {
+  ...RULES_SEEDED,
+  no_show: {
+    current: NO_SHOW_CURRENT,
+    upcoming: [NO_SHOW_UPCOMING, NO_SHOW_LATER],
+    history: [NO_SHOW_SEED],
+  },
+};
+
+// --------------------------------------------- unresolved work (#444 D2)
+
+const unresolved = (
+  n: number,
+  partial: Partial<UnresolvedItem>,
+): UnresolvedItem => ({
+  class_session_id: `74000000-0000-4000-8000-00000000000${n}`,
+  tutor_user_id: TUTOR_ID,
+  tutor_display_name: 'Ana Tutora',
+  service_date: '2026-10-15',
+  class_kind: 'individual',
+  source: 'closeout',
+  reason: 'no_rate',
+  blocking: true,
+  ...partial,
+});
+
+export const UNRESOLVED_NO_RATE = unresolved(1, {});
+export const UNRESOLVED_NO_TERMS = unresolved(2, {
+  service_date: '2026-10-14',
+  class_kind: 'group',
+  source: 'cancellation',
+  reason: 'no_pay_terms',
+});
+export const UNRESOLVED_BEFORE_FIRST = unresolved(3, {
+  service_date: '2026-08-03',
+  class_kind: 'course',
+  reason: 'before_first_period',
+  blocking: false,
+});

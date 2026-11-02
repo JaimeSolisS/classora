@@ -4,8 +4,8 @@ import { Link, useLocation } from 'react-router';
 import { cn } from '@/lib/utils';
 
 // The payroll pages' tab bar (#425 A4), on the BillingTabs pattern: links,
-// the current section marked with aria-current="page". #107b and #110b add
-// their sections here.
+// the current section marked with aria-current="page". #110b adds its section
+// here.
 
 interface PayrollSection {
   to: string;
@@ -14,6 +14,8 @@ interface PayrollSection {
 
 const PAYROLL_SECTIONS: readonly PayrollSection[] = [
   { to: '/payroll/tutors', labelKey: 'payroll.tabs.tutors' },
+  { to: '/payroll/pay-rules', labelKey: 'payroll.tabs.payRules' },
+  { to: '/payroll/unresolved', labelKey: 'payroll.tabs.unresolved' },
   { to: '/payroll/settings', labelKey: 'payroll.tabs.settings' },
 ];
 

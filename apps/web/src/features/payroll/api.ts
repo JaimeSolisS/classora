@@ -1,10 +1,10 @@
 import type { components } from '@classora/api-client';
 import { api, apiCall } from '@/app/api';
 
-// The payroll calls of #425: the tutor list, one tutor's compensation and the
-// settings are queries; adding and deleting a version and saving the settings
-// are direct calls after which the pages invalidate the queries. Every amount
-// stays the API's decimal string.
+// The payroll calls of #425 and #444: the tutor list, one tutor's compensation,
+// the settings, the pay rules and the unresolved work are queries; adding and
+// deleting a version and saving the settings are direct calls after which the
+// pages invalidate the queries. Every amount stays the API's decimal string.
 
 export type PayrollTutor = components['schemas']['PayrollTutorItem'];
 export type PayrollTutorPage =
@@ -24,6 +24,17 @@ export type PayrollSettings = components['schemas']['PayrollSettingsDetail'];
 export type PayrollSettingsUpdate =
   components['schemas']['PayrollSettingsUpdate'];
 export type UserState = components['schemas']['UserState'];
+export type PayRule = components['schemas']['SessionPayRuleItem'];
+export type PayRuleCreate = components['schemas']['SessionPayRuleCreate'];
+export type PayRuleOverview = components['schemas']['SessionPayRuleOverview'];
+export type PayRuleEventOverview =
+  components['schemas']['SessionPayRuleEventOverview'];
+export type PayRuleEvent = components['schemas']['PayRuleEvent'];
+export type PayRuleMode = components['schemas']['PayRuleMode'];
+export type UnresolvedItem = components['schemas']['UnresolvedWorkItem'];
+export type UnresolvedPage =
+  components['schemas']['CursorPage_UnresolvedWorkItem_'];
+export type UnresolvedReason = components['schemas']['UnresolvedReason'];
 
 /** Rows per page of the tutor list (the API default). */
 export const PAYROLL_TUTORS_PAGE_SIZE = 25;
@@ -31,6 +42,9 @@ export const PAYROLL_TUTORS_PAGE_SIZE = 25;
 /** Every cached payroll tutor query (the list pages and each tutor). */
 export const PAYROLL_TUTORS_KEY = ['payroll', 'tutors'] as const;
 export const PAYROLL_SETTINGS_KEY = ['payroll', 'settings'] as const;
+export const PAY_RULES_KEY = ['payroll', 'pay-rules'] as const;
+/** Every cached page of the unresolved work, whatever the filters. */
+export const UNRESOLVED_KEY = ['payroll', 'unresolved'] as const;
 
 export interface PayrollTutorListParams {
   q: string;
@@ -141,4 +155,61 @@ export function updatePayrollSettings(
   body: PayrollSettingsUpdate,
 ): Promise<PayrollSettings> {
   return apiCall(() => api.PATCH('/api/v1/payroll/settings', { body }));
+}
+
+export function fetchPayRules(signal: AbortSignal): Promise<PayRuleOverview> {
+  return apiCall(() => api.GET('/api/v1/payroll/pay-rules', { signal }), {
+    signal,
+  });
+}
+
+export function createPayRule(body: PayRuleCreate): Promise<PayRule> {
+  return apiCall(() => api.POST('/api/v1/payroll/pay-rules', { body }));
+}
+
+export async function deletePayRule(ruleId: string): Promise<void> {
+  await apiCall(() =>
+    api.DELETE('/api/v1/payroll/pay-rules/{rule_id}', {
+      params: { path: { rule_id: ruleId } },
+    }),
+  );
+}
+
+export interface UnresolvedFilters {
+  tutor: string | null;
+  reason: UnresolvedReason | null;
+}
+
+export function unresolvedKey(filters: UnresolvedFilters) {
+  return [...UNRESOLVED_KEY, filters] as const;
+}
+
+export function fetchUnresolved(
+  { tutor, reason }: UnresolvedFilters,
+  cursor: string | null,
+  signal: AbortSignal,
+): Promise<UnresolvedPage> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/payroll/unresolved-work', {
+        params: {
+          query: {
+            ...(tutor ? { tutor_user_id: tutor } : {}),
+            ...(reason ? { reason } : {}),
+            ...(cursor ? { cursor } : {}),
+          },
+        },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+/** The tutor filter's picker: the Payroll list, in every state (#444). */
+export async function searchPayrollTutors(
+  q: string,
+  signal: AbortSignal,
+): Promise<PayrollTutor[]> {
+  const page = await fetchPayrollTutors({ q, state: 'all', page: 1 }, signal);
+  return page.items;
 }

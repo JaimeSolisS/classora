@@ -999,6 +999,23 @@ export const routes: RouteObject[] = [
             }),
             handle: PAYROLL_ACCESS,
           },
+          // #444 A1: the pay rules and the unresolved work.
+          {
+            path: 'payroll/pay-rules',
+            lazy: async () => ({
+              Component: (await import('@/features/payroll/PayRulesPage'))
+                .PayRulesPage,
+            }),
+            handle: PAYROLL_ACCESS,
+          },
+          {
+            path: 'payroll/unresolved',
+            lazy: async () => ({
+              Component: (await import('@/features/payroll/UnresolvedWorkPage'))
+                .UnresolvedWorkPage,
+            }),
+            handle: PAYROLL_ACCESS,
+          },
           // #425 F: a tutor's own pay (code-split).
           {
             path: 'my-pay',

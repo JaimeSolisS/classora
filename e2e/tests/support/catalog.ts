@@ -59,6 +59,14 @@ type Common = {
     termsDialog: { title: string; submit: string };
     rateDialog: { title: string; submit: string };
     deleteDialog: { confirm: string };
+    tabs: { payRules: string };
+    payRules: {
+      title: string;
+      newVersionFor: string;
+      save: string;
+      events: { makeup: string };
+      fields: Record<'mode' | 'amount' | 'effectiveFrom', string>;
+    };
     settings: {
       title: string;
       change: string;

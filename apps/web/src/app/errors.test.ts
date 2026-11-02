@@ -375,6 +375,9 @@ const API_CODES = [
   'effective_from_before_first_period',
   'payroll_start_locked',
   'biweekly_anchor_locked',
+  'pay_rule_in_effect',
+  'session_pay_rule_in_use',
+  'pay_rule_values_mismatch',
   'anchor_not_monday',
   // The makeup link (#436 C1, C2).
   'makeup_target_unknown',

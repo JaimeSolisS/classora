@@ -6182,6 +6182,8 @@
     "tabs": {
       "label": "Payroll sections",
       "tutors": "Tutors",
+      "payRules": "Pay rules",
+      "unresolved": "Unresolved work",
       "settings": "Settings"
     },
     "frequencies": {
@@ -6322,6 +6324,109 @@
     "myPay": {
       "title": "My pay",
       "empty": "Your pay isn't set up yet. Check with administration."
+    },
+    "payRules": {
+      "title": "Pay rules",
+      "intro": "What a tutor is paid for a class that didn't run as planned. A rule applies by the session's date and never changes past work.",
+      "versionsHelp": "A new version starts today or later, and after every version of its event. To change an upcoming version, delete it and create another.",
+      "lateNote": "For a late cancellation, “Doesn't pay” means the tutor earns nothing for that slot. The starting value is “Doesn't pay”, pending the owner's review.",
+      "events": {
+        "late_cancellation": "Late cancellation",
+        "no_show": "No-show",
+        "makeup": "Makeup"
+      },
+      "sentences": {
+        "none": "Doesn't pay",
+        "percent": "Pays {{percent}}% of the class",
+        "fixed": "Pays {{amount}}"
+      },
+      "modes": {
+        "none": "Doesn't pay",
+        "percent": "Percent of the class",
+        "fixed": "Fixed amount"
+      },
+      "upcoming": "Upcoming versions",
+      "noUpcoming": "No upcoming versions.",
+      "historyShow_one": "Show {{count}} earlier version",
+      "historyShow_other": "Show {{count}} earlier versions",
+      "historyHide": "Hide earlier versions",
+      "range": "{{from}} to {{until}}",
+      "newVersion": "New version",
+      "newVersionFor": "New version: {{event}}",
+      "deleteFor": "Delete the {{event}} version from {{date}}",
+      "deleteBody": "This deletes the {{event}} version from {{date}}: {{value}}.",
+      "fields": {
+        "mode": "What it pays",
+        "percent": "Percent of the class",
+        "amount": "Amount (MXN)",
+        "effectiveFrom": "Applies from"
+      },
+      "dialogHelp": "Versions aren't edited. This one applies to sessions from that date on; it never changes past work.",
+      "percentHelp": "From 0 to 1000, with up to four decimals.",
+      "dateHelp": "Today or later, and after the latest version ({{date}}).",
+      "save": "Publish version",
+      "reload": "Reload",
+      "conflictReloaded": "Someone else changed this rule. These are the current values and your changes weren't saved. Review them and save again.",
+      "saved": "Version published.",
+      "deleted": "Version deleted.",
+      "alreadyGone": "That version no longer exists. The list is up to date.",
+      "validation": {
+        "percentRequired": "Enter the percent.",
+        "percentRange": "Choose a percent from 0 to 1000.",
+        "amountRequired": "Enter the amount.",
+        "datePast": "Choose today or a later date.",
+        "dateLater": "Choose today or later, and a date after every version of this event."
+      }
+    },
+    "unresolved": {
+      "title": "Unresolved work",
+      "intro": "Approved work that can't be paid, and why. No amounts are shown here.",
+      "caption": "Approved work that can't be paid",
+      "empty": "All approved work has pay",
+      "emptyFiltered": "Nothing matches these filters.",
+      "payrollOff": "Payroll isn't on yet, so this list is empty.",
+      "payrollOffLink": "Go to Settings",
+      "columns": {
+        "date": "Date",
+        "tutor": "Tutor",
+        "kind": "Class type",
+        "source": "Source",
+        "reason": "Reason",
+        "blocking": "Payroll",
+        "session": "Session"
+      },
+      "sources": {
+        "closeout": "Approved closeout",
+        "cancellation": "Cancellation"
+      },
+      "reasons": {
+        "no_pay_terms": "Has no pay terms on that date",
+        "no_rate": "Has no rate for this class type",
+        "before_first_period": "Before their first period: doesn't block; it's paid with a one-time item"
+      },
+      "blocks": "Blocks payroll",
+      "doesNotBlock": "Doesn't block",
+      "fix": "See the tutor's pay",
+      "fixFor": "See the tutor's pay: {{name}}",
+      "open": "Open session",
+      "openFor": "Open session: {{name}}, {{date}}",
+      "more": "Load more",
+      "filters": {
+        "label": "Filters",
+        "tutor": "Tutor",
+        "tutorHelp": "Search by name or username.",
+        "reason": "Reason",
+        "allReasons": "All reasons",
+        "reasons": {
+          "no_pay_terms": "No pay terms",
+          "no_rate": "No rate",
+          "before_first_period": "Before the first period"
+        },
+        "clear": "Clear filters",
+        "chip": "Tutor: {{name}}",
+        "remove": "Remove filter: Tutor {{name}}",
+        "selected": "Selected tutor"
+      }
     }
   },
   "familyBilling": {
