@@ -18,6 +18,7 @@ import {
 import { SearchPicker } from '@/features/guardians/SearchPicker';
 import { useFormatters } from '@/lib/formatters';
 import {
+  PAY_ITEMS_ANCHOR,
   UNRESOLVED_KEY,
   type PayrollTutor,
   type UnresolvedFilters,
@@ -92,6 +93,22 @@ function Reason({ item }: { item: UnresolvedItem }) {
         >
           {t('payroll.unresolved.fix')}
         </Link>
+      ) : null}
+      {item.reason === 'before_first_period' ? (
+        <>
+          <span className="text-sm break-words text-muted-foreground">
+            {t('payroll.unresolved.payWithItemHelp')}
+          </span>
+          <Link
+            to={`/payroll/tutors/${encodeURIComponent(item.tutor_user_id)}#${PAY_ITEMS_ANCHOR}`}
+            aria-label={t('payroll.unresolved.payWithItemFor', {
+              name: item.tutor_display_name,
+            })}
+            className={LINK_CLASS}
+          >
+            {t('payroll.unresolved.payWithItem')}
+          </Link>
+        </>
       ) : null}
     </div>
   );

@@ -1,9 +1,11 @@
 import type { components } from '@classora/api-client';
 import { api, apiCall } from '@/app/api';
+import { idempotencyHeaders } from '@/lib/idempotency';
 
-// The payroll calls of #425 and #444: the tutor list, one tutor's compensation,
-// the settings, the pay rules and the unresolved work are queries; adding and
-// deleting a version and saving the settings are direct calls after which the
+// The payroll calls of #425, #444 and #454: the tutor list, one tutor's
+// compensation, the settings, the pay rules, the unresolved work, the pay item
+// types and a tutor's items are queries; adding and deleting a version, saving
+// the settings and changing a type or an item are direct calls after which the
 // pages invalidate the queries. Every amount stays the API's decimal string.
 
 export type PayrollTutor = components['schemas']['PayrollTutorItem'];
@@ -35,9 +37,19 @@ export type UnresolvedItem = components['schemas']['UnresolvedWorkItem'];
 export type UnresolvedPage =
   components['schemas']['CursorPage_UnresolvedWorkItem_'];
 export type UnresolvedReason = components['schemas']['UnresolvedReason'];
+export type PayItemType = components['schemas']['PayItemTypeItem'];
+export type PayItemTypeCreate = components['schemas']['PayItemTypeCreate'];
+export type PayItemTypeUpdate = components['schemas']['PayItemTypeUpdate'];
+export type PayItemDirection = components['schemas']['PayItemDirection'];
+export type PayItem = components['schemas']['PayItemDetail'];
+export type PayItemCreate = components['schemas']['PayItemCreate'];
+export type PayItemRecurrence = components['schemas']['PayItemRecurrence'];
+export type PayItemPage = components['schemas']['OffsetPage_PayItemDetail_'];
 
 /** Rows per page of the tutor list (the API default). */
 export const PAYROLL_TUTORS_PAGE_SIZE = 25;
+/** Rows per "Load more" of a tutor's bonuses and deductions. */
+export const PAY_ITEMS_PAGE_SIZE = 25;
 
 /** Every cached payroll tutor query (the list pages and each tutor). */
 export const PAYROLL_TUTORS_KEY = ['payroll', 'tutors'] as const;
@@ -45,6 +57,12 @@ export const PAYROLL_SETTINGS_KEY = ['payroll', 'settings'] as const;
 export const PAY_RULES_KEY = ['payroll', 'pay-rules'] as const;
 /** Every cached page of the unresolved work, whatever the filters. */
 export const UNRESOLVED_KEY = ['payroll', 'unresolved'] as const;
+export const PAY_ITEM_TYPES_KEY = ['payroll', 'pay-item-types'] as const;
+/** Every tutor's items. Apart from the tutor queries: a change to an item
+ * refreshes the items and nothing else (#454 B8). */
+export const PAY_ITEMS_KEY = ['payroll', 'pay-items'] as const;
+/** The section's anchor, which the Unresolved page links to (#454 C1). */
+export const PAY_ITEMS_ANCHOR = 'pay-items';
 
 export interface PayrollTutorListParams {
   q: string;
@@ -60,6 +78,10 @@ export function payrollTutorsListKey(params: PayrollTutorListParams) {
 
 export function compensationKey(tutorUserId: string) {
   return [...PAYROLL_TUTORS_KEY, 'compensation', tutorUserId] as const;
+}
+
+export function payItemsKey(tutorUserId: string) {
+  return [...PAY_ITEMS_KEY, tutorUserId] as const;
 }
 
 export function fetchPayrollTutors(
@@ -212,4 +234,89 @@ export async function searchPayrollTutors(
 ): Promise<PayrollTutor[]> {
   const page = await fetchPayrollTutors({ q, state: 'all', page: 1 }, signal);
   return page.items;
+}
+
+export function fetchPayItemTypes(signal: AbortSignal): Promise<PayItemType[]> {
+  return apiCall(() => api.GET('/api/v1/payroll/pay-item-types', { signal }), {
+    signal,
+  });
+}
+
+export function createPayItemType(
+  body: PayItemTypeCreate,
+): Promise<PayItemType> {
+  return apiCall(() => api.POST('/api/v1/payroll/pay-item-types', { body }));
+}
+
+export function updatePayItemType(
+  typeId: string,
+  body: PayItemTypeUpdate,
+): Promise<PayItemType> {
+  return apiCall(() =>
+    api.PATCH('/api/v1/payroll/pay-item-types/{type_id}', {
+      params: { path: { type_id: typeId } },
+      body,
+    }),
+  );
+}
+
+export function fetchPayItems(
+  tutorUserId: string,
+  offset: number,
+  signal: AbortSignal,
+): Promise<PayItemPage> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/payroll/tutors/{tutor_user_id}/pay-items', {
+        params: {
+          path: { tutor_user_id: tutorUserId },
+          query: { limit: PAY_ITEMS_PAGE_SIZE, offset },
+        },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+/**
+ * Adds an item (#454 B4). `idempotencyKey` comes from the dialog's
+ * `IdempotentSubmission.keyFor(body)`, computed before this call so that a
+ * retry after a lost response resends it and can't pay twice.
+ */
+export function createPayItem(
+  tutorUserId: string,
+  body: PayItemCreate,
+  idempotencyKey: string,
+): Promise<PayItem> {
+  const headers = idempotencyHeaders(idempotencyKey);
+  return apiCall(() =>
+    api.POST('/api/v1/payroll/tutors/{tutor_user_id}/pay-items', {
+      params: { path: { tutor_user_id: tutorUserId }, header: headers },
+      body,
+    }),
+  );
+}
+
+export function endPayItem(
+  tutorUserId: string,
+  item: Pick<PayItem, 'id' | 'version'>,
+  effectiveTo: string,
+): Promise<PayItem> {
+  return apiCall(() =>
+    api.PATCH('/api/v1/payroll/tutors/{tutor_user_id}/pay-items/{item_id}', {
+      params: { path: { tutor_user_id: tutorUserId, item_id: item.id } },
+      body: { version: item.version, effective_to: effectiveTo },
+    }),
+  );
+}
+
+export async function deletePayItem(
+  tutorUserId: string,
+  itemId: string,
+): Promise<void> {
+  await apiCall(() =>
+    api.DELETE('/api/v1/payroll/tutors/{tutor_user_id}/pay-items/{item_id}', {
+      params: { path: { tutor_user_id: tutorUserId, item_id: itemId } },
+    }),
+  );
 }

@@ -448,6 +448,22 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['pay_rule_in_effect', 'pay_rule_in_effect'],
   ['session_pay_rule_in_use', 'session_pay_rule_in_use'],
   ['pay_rule_values_mismatch', 'pay_rule_values_mismatch'],
+  // Bonuses and deductions (#454 D1): problem codes, then the field codes of
+  // their bodies, and the money refusal of a period's lines.
+  ['pay_item_type_exists', 'pay_item_type_exists'],
+  ['pay_item_type_in_use', 'pay_item_type_in_use'],
+  ['pay_item_type_inactive', 'pay_item_type_inactive'],
+  ['pay_item_type_unknown', 'pay_item_type_unknown'],
+  ['pay_item_not_recurring', 'pay_item_not_recurring'],
+  ['pay_item_end_before_start', 'pay_item_end_before_start'],
+  ['pay_item_end_before_paid_period', 'pay_item_end_before_paid_period'],
+  ['pay_item_in_use', 'pay_item_in_use'],
+  ['text_empty', 'text_empty'],
+  ['text_too_long', 'text_too_long'],
+  ['text_invalid', 'text_invalid'],
+  ['effective_to_not_allowed', 'effective_to_not_allowed'],
+  ['effective_to_before_from', 'effective_to_before_from'],
+  ['payroll_amount_out_of_range', 'payroll_amount_out_of_range'],
   // The makeup link (#436 C1, C2): field codes, and the one problem code.
   ['makeup_target_unknown', 'makeup_target_unknown'],
   ['makeup_target_not_cancelled', 'makeup_target_not_cancelled'],

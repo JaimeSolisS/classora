@@ -6303,6 +6303,7 @@
       "label": "Secciones de nómina",
       "tutors": "Tutores",
       "payRules": "Reglas de pago",
+      "payItemTypes": "Tipos de bonos y deducciones",
       "unresolved": "Trabajo sin resolver",
       "settings": "Configuración"
     },
@@ -6413,7 +6414,16 @@
       "classKindRequired": "Elige el tipo de clase.",
       "modelRequired": "Elige el modelo.",
       "rateRequired": "Escribe la tarifa.",
-      "rateInvalid": "Escribe una tarifa válida, sin signo y con hasta cuatro decimales."
+      "rateInvalid": "Escribe una tarifa válida, sin signo y con hasta cuatro decimales.",
+      "nameRequired": "Escribe el nombre.",
+      "nameTooLong": "Usa como máximo 100 caracteres.",
+      "directionRequired": "Elige bono o deducción.",
+      "typeRequired": "Elige un tipo.",
+      "descriptionRequired": "Escribe la descripción.",
+      "descriptionTooLong": "Usa como máximo 500 caracteres.",
+      "amountRequired": "Escribe el monto.",
+      "amountInvalid": "Escribe un monto válido, por ejemplo 500 o 500.50.",
+      "amountPositive": "El monto debe ser mayor que cero."
     },
     "settings": {
       "title": "Configuración de nómina",
@@ -6506,7 +6516,7 @@
       "empty": "Todo el trabajo aprobado tiene pago",
       "emptyFiltered": "Nada coincide con estos filtros.",
       "payrollOff": "La nómina aún no está activa, así que esta lista está vacía.",
-      "payrollOffLink": "Ir a Ajustes",
+      "payrollOffLink": "Ir a Configuración",
       "columns": {
         "date": "Fecha",
         "tutor": "Tutor",
@@ -6547,6 +6557,139 @@
         "chip": "Tutor: {{name}}",
         "remove": "Quitar filtro: Tutor {{name}}",
         "selected": "Tutor seleccionado"
+      },
+      "payWithItem": "Pagar con un concepto único",
+      "payWithItemFor": "Pagar con un concepto único: {{name}}",
+      "payWithItemHelp": "Agrega un concepto único por lo que la línea habría pagado. El trabajo seguirá en esta lista."
+    },
+    "payItems": {
+      "title": "Bonos y deducciones",
+      "note": "Los cambios llegan a un periodo en su siguiente cálculo. Aquí no se muestran los totales del periodo.",
+      "caption": "Bonos y deducciones del tutor",
+      "empty": "Este tutor no tiene bonos ni deducciones.",
+      "add": "Agregar bono o deducción",
+      "more": "Cargar más",
+      "columns": {
+        "type": "Tipo",
+        "description": "Descripción",
+        "amount": "Monto",
+        "recurrence": "Frecuencia",
+        "dates": "Fechas",
+        "lands": "Dónde cae",
+        "actions": "Acciones"
+      },
+      "directions": {
+        "bonus": "Bono",
+        "deduction": "Deducción"
+      },
+      "recurrences": {
+        "one_time": "Una vez",
+        "recurring": "Recurrente"
+      },
+      "rangeDates": "{{from}} – {{to}}",
+      "openDates": "Desde {{from}}, sin fin",
+      "lands": {
+        "paid": "Pagado",
+        "waiting": "Aún no hay periodo abierto",
+        "period": "{{from}} – {{to}} · {{status}}",
+        "status": {
+          "open": "Abierto",
+          "prepared": "Preparado"
+        },
+        "everyRange": "Cada periodo del {{from}} al {{to}}",
+        "everyOpen": "Cada periodo desde el {{from}}"
+      },
+      "end": "Terminar",
+      "changeEnd": "Cambiar fin",
+      "delete": "Eliminar",
+      "endFor": "Terminar {{type}} del {{date}}",
+      "changeEndFor": "Cambiar fin: {{type}} del {{date}}",
+      "deleteFor": "Eliminar {{type}} del {{date}}",
+      "saved": "Concepto agregado.",
+      "ended": "Fecha de fin guardada.",
+      "deleted": "Concepto eliminado.",
+      "gone": "Ese concepto ya no existe. La lista se volvió a cargar.",
+      "goneNotReloaded": "Ese concepto ya no existe. No se pudo volver a cargar la lista.",
+      "stale": "No se pudo actualizar la lista y puede estar desactualizada. Vuelve a cargarla antes de agregar un concepto.",
+      "reloadList": "Volver a cargar la lista",
+      "dialog": {
+        "title": "Agregar bono o deducción",
+        "help": "Un monto fijo para este tutor. Si hubo un error, se elimina y se agrega de nuevo.",
+        "type": "Tipo",
+        "chooseType": "Elige un tipo",
+        "noTypes": "No hay tipos activos.",
+        "typesLink": "Ir a los tipos",
+        "typesLoading": "Cargando tipos…",
+        "outcomeUnknown": "Puede que el concepto se haya guardado. Si lo envías de nuevo desde aquí sin cambios, no se duplica. Si cierras, revisa la lista antes de agregarlo otra vez.",
+        "description": "Descripción",
+        "descriptionHelp": "El tutor verá esta descripción en su recibo.",
+        "amount": "Monto (MXN)",
+        "recurrence": "Frecuencia",
+        "effectiveFrom": "Aplica desde",
+        "effectiveTo": "Termina el (opcional)",
+        "recurringHelp": "El monto se paga completo en cada periodo que toquen las fechas, también para tutores semanales.",
+        "submit": "Agregar"
+      },
+      "endDialog": {
+        "title": "Terminar concepto",
+        "help": "{{type}}: {{description}}. Es el último día que paga, y se puede poner en cualquier fecha desde el {{from}}.",
+        "date": "Último día",
+        "submit": "Guardar fin",
+        "conflictReloaded": "Alguien más cambió este concepto. Se volvió a cargar: revísalo e inténtalo de nuevo.",
+        "reload": "Volver a cargar"
+      },
+      "deleteDialog": {
+        "title": "Eliminar concepto",
+        "body": "Se eliminará {{type}} ({{direction}}) del {{date}} por {{amount}}. No se puede deshacer.",
+        "confirm": "Eliminar"
+      }
+    },
+    "payItemTypes": {
+      "title": "Tipos de bonos y deducciones",
+      "intro": "Los tipos con los que se agregan bonos y deducciones en la página de pago de cada tutor.",
+      "caption": "Tipos de bonos y deducciones",
+      "empty": "Aún no hay tipos. Ninguno viene precargado.",
+      "emptyManage": "Aún no hay tipos: ninguno viene precargado. Agrega uno para poder dar bonos y deducciones.",
+      "add": "Agregar tipo",
+      "columns": {
+        "name": "Nombre",
+        "direction": "Clase",
+        "state": "Estado",
+        "actions": "Acciones"
+      },
+      "states": {
+        "active": "Activo",
+        "inactive": "Inactivo"
+      },
+      "edit": "Editar",
+      "deactivate": "Desactivar",
+      "reactivate": "Reactivar",
+      "editFor": "Editar {{name}}",
+      "deactivateFor": "Desactivar {{name}}",
+      "reactivateFor": "Reactivar {{name}}",
+      "saved": "Tipo guardado.",
+      "deactivated": "Tipo desactivado.",
+      "reactivated": "Tipo reactivado.",
+      "gone": "Ese tipo ya no existe. La lista se volvió a cargar.",
+      "conflictRefreshed": "Alguien más cambió este tipo. La lista se volvió a cargar: revísalo e inténtalo de nuevo.",
+      "conflictReloaded": "Alguien más cambió este tipo. Se volvió a cargar: revísalo e inténtalo de nuevo.",
+      "reload": "Volver a cargar",
+      "dialog": {
+        "addTitle": "Agregar tipo",
+        "editTitle": "Editar tipo",
+        "addHelp": "La clase no se puede cambiar después.",
+        "editHelp": "Solo se puede cambiar el nombre.",
+        "name": "Nombre",
+        "direction": "Clase",
+        "chooseDirection": "Elige bono o deducción",
+        "directionLocked": "Si la clase está mal, crea un tipo nuevo.",
+        "submit": "Guardar"
+      },
+      "toggle": {
+        "deactivateTitle": "Desactivar tipo",
+        "deactivateBody": "{{name}} ya no se podrá usar en conceptos nuevos. Los conceptos que ya existen se conservan.",
+        "reactivateTitle": "Reactivar tipo",
+        "reactivateBody": "{{name}} se podrá volver a usar en conceptos nuevos."
       }
     }
   },

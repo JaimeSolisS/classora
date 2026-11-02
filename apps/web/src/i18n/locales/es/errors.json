@@ -420,5 +420,19 @@
   "makeup_student_mismatch": "La reposición debe ser para el estudiante de la clase cancelada.",
   "makeup_subject_mismatch": "La reposición debe ser de la materia de la clase cancelada.",
   "makeup_window_passed": "La reposición debe iniciar dentro de su plazo. Elige una fecha anterior o programa una clase normal.",
-  "makeup_already_scheduled": "Esta clase cancelada ya tiene una reposición programada."
+  "makeup_already_scheduled": "Esta clase cancelada ya tiene una reposición programada.",
+  "pay_item_type_exists": "Ya existe un tipo con este nombre. Usa otro nombre.",
+  "pay_item_type_in_use": "Aún hay conceptos recurrentes de este tipo en curso. Termínalos primero y luego desactiva el tipo.",
+  "pay_item_type_inactive": "Este tipo está desactivado, así que no puede volver a pagar. Reactívalo o usa otro tipo.",
+  "pay_item_type_unknown": "Este tipo ya no existe. Elige otro.",
+  "pay_item_not_recurring": "Solo un concepto recurrente tiene fecha de fin. Elimínalo y agrégalo de nuevo si hace falta.",
+  "pay_item_end_before_start": "El fin no puede ser antes del inicio.",
+  "pay_item_end_before_paid_period": "Este concepto ya se pagó en un periodo finalizado que empieza después de esa fecha. Elige una fecha posterior.",
+  "pay_item_in_use": "Un periodo preparado o finalizado usa este concepto, así que no se puede eliminar. Primero hay que devolver el periodo, o termina el concepto.",
+  "text_empty": "Escribe un texto.",
+  "text_too_long": "Este texto es demasiado largo.",
+  "text_invalid": "Este texto tiene un carácter no válido. Vuelve a escribirlo.",
+  "effective_to_not_allowed": "Solo un concepto recurrente tiene fecha de fin.",
+  "effective_to_before_from": "El fin no puede ser antes del inicio.",
+  "payroll_amount_out_of_range": "Las líneas o el total de este periodo superan el monto máximo. Termina o elimina un bono del tutor y vuelve a calcular."
 }

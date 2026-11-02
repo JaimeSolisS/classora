@@ -1,5 +1,8 @@
 import type {
   CompensationRate,
+  PayItem,
+  PayItemPage,
+  PayItemType,
   PayrollSettings,
   PayrollTutor,
   PayrollTutorPage,
@@ -300,3 +303,106 @@ export const UNRESOLVED_BEFORE_FIRST = unresolved(3, {
   reason: 'before_first_period',
   blocking: false,
 });
+
+// ----------------------------------- bonuses and deductions (#454 F2)
+
+const payItemType = (
+  n: number,
+  name: string,
+  direction: PayItemType['direction'],
+  isActive = true,
+): PayItemType => ({
+  id: `75000000-0000-4000-8000-00000000000${n}`,
+  name,
+  direction,
+  is_active: isActive,
+  version: 1,
+});
+
+export const TYPE_BONUS = payItemType(1, 'Bono de puntualidad', 'bonus');
+export const TYPE_DEDUCTION = payItemType(2, 'Préstamo', 'deduction');
+export const TYPE_RETIRED = payItemType(3, 'Bono viejo', 'bonus', false);
+/** Active first, as the API returns them. */
+export const PAY_ITEM_TYPES = [TYPE_BONUS, TYPE_DEDUCTION, TYPE_RETIRED];
+
+const payItem = (n: number, partial: Partial<PayItem>): PayItem => ({
+  id: `76000000-0000-4000-8000-00000000000${n}`,
+  tutor_user_id: TUTOR_ID,
+  pay_item_type: {
+    id: TYPE_BONUS.id,
+    name: TYPE_BONUS.name,
+    direction: 'bonus',
+  },
+  description: 'Sin faltas en el mes',
+  amount: '500.00',
+  recurrence: 'one_time',
+  effective_from: '2026-10-15',
+  effective_to: null,
+  version: 1,
+  applied: false,
+  placed_period: null,
+  created_at: '2026-10-15T12:00:00Z',
+  ...partial,
+});
+
+const DEDUCTION_TYPE: PayItem['pay_item_type'] = {
+  id: TYPE_DEDUCTION.id,
+  name: TYPE_DEDUCTION.name,
+  direction: 'deduction',
+};
+
+/** B2's four states, and a recurring one with and without an end. */
+export const ITEM_WAITING = payItem(1, {});
+export const ITEM_PLACED = payItem(2, {
+  placed_period: {
+    id: '77000000-0000-4000-8000-000000000001',
+    starts_on: '2026-10-01',
+    ends_on: '2026-10-31',
+    status: 'open',
+  },
+});
+export const ITEM_PREPARED = payItem(3, {
+  placed_period: {
+    id: '77000000-0000-4000-8000-000000000002',
+    starts_on: '2026-09-01',
+    ends_on: '2026-09-30',
+    status: 'prepared',
+  },
+});
+export const ITEM_PAID = payItem(4, {
+  pay_item_type: DEDUCTION_TYPE,
+  description: 'Anticipo',
+  amount: '1250.50',
+  applied: true,
+});
+export const ITEM_RECURRING = payItem(5, {
+  pay_item_type: DEDUCTION_TYPE,
+  description: 'Abono del préstamo',
+  amount: '300.00',
+  recurrence: 'recurring',
+  effective_from: '2026-09-01',
+});
+export const ITEM_ENDED = payItem(6, {
+  recurrence: 'recurring',
+  description: 'Apoyo de transporte',
+  effective_from: '2026-08-01',
+  effective_to: '2026-12-31',
+  applied: true,
+});
+export const ITEM_LONG = payItem(7, {
+  description: 'Descripción-sin-espacios-'.repeat(20),
+});
+export const PAY_ITEMS: PayItem[] = [
+  ITEM_WAITING,
+  ITEM_PLACED,
+  ITEM_PREPARED,
+  ITEM_PAID,
+  ITEM_RECURRING,
+  ITEM_ENDED,
+];
+
+export const payItemPage = (
+  items: PayItem[],
+  total = items.length,
+  offset = 0,
+): PayItemPage => ({ items, total, limit: 25, offset });

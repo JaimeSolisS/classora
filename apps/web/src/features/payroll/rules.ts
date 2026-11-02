@@ -143,7 +143,7 @@ export function isRealDay(value: string): boolean {
   }
 }
 
-function serverMessage(code: string): PayrollMessage {
+export function serverMessage(code: string): PayrollMessage {
   return `errors:${codeMessageKey(code) ?? 'validation_error'}`;
 }
 
@@ -157,7 +157,7 @@ const DATE_RULES: readonly string[] = [
  * A 422's field errors on a form's fields (the first per field), plus the
  * payroll date rules on `dateField`; null when none is about the form.
  */
-function serverErrors<F extends string>(
+export function serverErrors<F extends string>(
   error: unknown,
   fields: Readonly<Record<string, F>>,
   dateField?: F,
@@ -197,7 +197,7 @@ export function emptyTermsForm(today: LocalDate): TermsFormValues {
   return { effectiveFrom: today, stop: false, frequency: '', salary: '' };
 }
 
-const ZERO = /^0+(\.0+)?$/;
+export const ZERO = /^0+(\.0+)?$/;
 
 export function validateTermsForm(values: TermsFormValues): TermsErrors {
   const errors: TermsErrors = {};

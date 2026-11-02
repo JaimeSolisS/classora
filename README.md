@@ -402,6 +402,9 @@ unless a bullet says otherwise.
 - Finance staff and owners version what a late cancellation, a no-show and a
   makeup pay (Payroll → Pay rules), and see which approved work can't be paid
   and why, with a link to the fix (Payroll → Unresolved work).
+- Finance staff and owners define bonus and deduction types (Payroll → Bonus
+  and deduction types) and add one-time or recurring items on each tutor's pay
+  page, which shows where each one lands.
 
 **Notifications**
 

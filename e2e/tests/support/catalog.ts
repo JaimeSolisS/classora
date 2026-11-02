@@ -59,7 +59,31 @@ type Common = {
     termsDialog: { title: string; submit: string };
     rateDialog: { title: string; submit: string };
     deleteDialog: { confirm: string };
-    tabs: { payRules: string };
+    tabs: { payRules: string; payItemTypes: string };
+    // #454 F3: bonuses and deductions.
+    payItems: {
+      title: string;
+      add: string;
+      end: string;
+      directions: { bonus: string };
+      recurrences: { recurring: string };
+      dialog: Record<
+        | 'title'
+        | 'type'
+        | 'description'
+        | 'amount'
+        | 'recurrence'
+        | 'effectiveFrom'
+        | 'submit',
+        string
+      >;
+      endDialog: Record<'title' | 'date' | 'submit', string>;
+    };
+    payItemTypes: {
+      title: string;
+      add: string;
+      dialog: Record<'addTitle' | 'name' | 'direction' | 'submit', string>;
+    };
     payRules: {
       title: string;
       newVersionFor: string;
