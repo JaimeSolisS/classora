@@ -8,8 +8,9 @@ It takes no lock on either module and no advisory lock, and no writer of those
 modules takes a period lock, so a payroll failure can't roll back a closeout,
 and neither side waits for the other (§15).
 
-- :func:`compute_lines` only reads and returns frozen drafts, by service date,
-  then session. #110's drift check compares them, with no write. It reads the
+- :func:`compute_lines` only reads and returns frozen drafts: the session lines
+  by service date, then session, then the salary lines by their first day
+  (#108 C2). #110's drift check compares them, with no write. It reads the
   period's work in center-local dates: ``floor_instant(starts_on)`` to
   ``floor_instant(ends_on + 1)``, half-open, and a service date is the local
   date of the start. It takes the versions of the tutor ``FOR KEY SHARE``, so a
@@ -41,9 +42,16 @@ route. It reads the whole of "approved, no line, since the floor" into memory.
 That is small for one center: a run empties most of it, and what is left is what
 Finance has to fix. It takes no lock, so it can't delay a run.
 
+**Salary (#108; ADR-0017 E1, E7).** :func:`_salary_lines` reads the basis and
+the anchor only for a tutor with a salary on some terms version, and
+:func:`~app.modules.payroll.salary.salary_drafts` decides the lines. A salary line
+never keeps work off the unresolved list, which looks at session-sourced lines
+only.
+
 **Statements:** eleven for a run, whatever the number of sessions, with the
 zone not yet read, the event included; sixteen with a course session in the
-period, whatever the number of sessions or cohorts.
+period, whatever the number of sessions or cohorts. A salary on the terms adds
+two, whatever the number of pieces: thirteen and eighteen.
 
 The unresolved reads cost eight statements, ten with a course session among the
 candidates, and the route one more for the names, whatever the number of items.
@@ -164,6 +172,23 @@ async def _cohort_walks(
     return walks
 
 
+async def _salary_lines(
+    session: AsyncSession,
+    period: PayrollPeriodSummary,
+    terms: Sequence[payroll.TermsBasisVersion],
+) -> list[payroll.LineDraft]:
+    """The period's salary lines. Two statements, none with no salary."""
+    if all(version.salary is None for version in terms):
+        return []
+    return payroll.salary_drafts(
+        starts_on=period.starts_on,
+        ends_on=period.ends_on,
+        terms=terms,
+        anchor=await payroll.biweekly_anchor(session),
+        proration_basis=await payroll.salary_proration_basis(session),
+    )
+
+
 async def compute_lines(
     session: AsyncSession, period: PayrollPeriodSummary
 ) -> list[payroll.LineDraft]:
@@ -186,7 +211,7 @@ async def compute_lines(
     cancellations = await scheduling.payable_cancellations(
         session, tutor, starts_from, starts_before
     )
-    return payroll.draft_lines(
+    session_lines = payroll.draft_lines(
         starts_on=period.starts_on,
         ends_on=period.ends_on,
         basis=basis,
@@ -203,12 +228,13 @@ async def compute_lines(
         ],
         cohorts=await _cohort_walks(session, tutor, zone, approvals, makeups),
     )
+    return [*session_lines, *await _salary_lines(session, period, basis.terms)]
 
 
 async def recalculate(
     session: AsyncSession, period_id: uuid.UUID
 ) -> PayrollRecalculation:
-    """Rebuild the session-sourced lines of an ``open`` period."""
+    """Rebuild the session-sourced and salary lines of an ``open`` period."""
     period = await payroll.lock_open_period(session, period_id)
     drafts = await compute_lines(session, period)
     result = await payroll.replace_lines(session, period, drafts)

@@ -1,7 +1,7 @@
 """The pure payroll calculation (#107 D, B2; ADR-0017 E2, E4; #107 E3-E6).
 
 The integration tests walk the real flows; these cover every branch of the
-rules, and read the syntax tree of the two calculation files (B2).
+rules, and read the syntax tree of the calculation files (B2).
 """
 
 import ast
@@ -88,6 +88,7 @@ def terms_row(
     salary: str | None = None,
 ) -> TermsBasisVersion:
     return TermsBasisVersion(
+        id=uuid.uuid7(),
         effective_from=on,
         pay_frequency=frequency,
         salary=None if salary is None else Money(salary),
@@ -409,6 +410,7 @@ def test_two_runs_on_the_same_facts_make_equal_drafts():
 
 GUARDED_FILES = (
     "app/modules/payroll/calculation.py",
+    "app/modules/payroll/salary.py",
     "app/workflows/payroll_calculation.py",
 )
 MONEY_NAMES = {"rate", "percent", "amount"}

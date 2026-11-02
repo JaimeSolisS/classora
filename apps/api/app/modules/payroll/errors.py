@@ -24,7 +24,8 @@ class CompensationRateExistsError(AppError):
 
 
 class PayTermsInUseError(AppError):
-    """A finalized payroll line uses this version (the guard's 42501)."""
+    """A line of a prepared period (the foreign key's 23001) or a finalized one
+    (the guard's 42501) uses this version."""
 
     status = 409
     code = "pay_terms_in_use"

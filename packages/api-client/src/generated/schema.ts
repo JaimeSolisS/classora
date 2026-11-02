@@ -13686,7 +13686,7 @@ export interface components {
             denominator: number;
         };
         /** @enum {string} */
-        LineKind: "session" | "late_cancellation" | "no_show" | "makeup";
+        LineKind: "session" | "late_cancellation" | "no_show" | "makeup" | "salary";
         /**
          * LoginRequest
          * @description Username and password. The bounds do not depend on any account.
@@ -15259,7 +15259,10 @@ export interface components {
         /**
          * PayrollLineItem
          * @description One line (#107 H3): ``rate`` is text, and a "covered by salary" line has
-         *     no rate snapshot. No student data.
+         *     no rate snapshot. A ``salary`` line has no session, and says how its amount
+         *     was reached: ``salary_amount`` × ``proration_numerator`` /
+         *     ``proration_denominator`` for the piece ``salary_starts_on`` to
+         *     ``salary_ends_on`` (#108 H1). No student data.
          */
         PayrollLineItem: {
             /**
@@ -15294,6 +15297,19 @@ export interface components {
             cumulative_sessions: number | null;
             /** Cohort Sessions */
             cohort_sessions: number | null;
+            /** Tutor Pay Terms Id */
+            tutor_pay_terms_id: string | null;
+            /** Salary Amount */
+            salary_amount: string | null;
+            /** Salary Starts On */
+            salary_starts_on: string | null;
+            /** Salary Ends On */
+            salary_ends_on: string | null;
+            /** Proration Numerator */
+            proration_numerator: number | null;
+            /** Proration Denominator */
+            proration_denominator: number | null;
+            proration_basis: components["schemas"]["ProrationBasis"] | null;
         };
         /**
          * PayrollPeriodLines

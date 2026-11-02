@@ -3,15 +3,16 @@
 **Replacing.** :func:`lock_open_period` takes the period row ``FOR UPDATE``,
 re-read, so a run that waited sees a status that changed meanwhile, and refuses
 anything but ``open`` (``409 payroll_period_not_open``). :func:`replace_lines`
-deletes only :data:`REBUILT_KINDS` and inserts the drafts: #108 and #109 extend
-the tuple, and #111's ``adjustment`` lines survive (#107 E7). Line ids change
-on every run, which is why nothing may reference a line of an open period.
+deletes only :data:`REBUILT_KINDS` and inserts the drafts: #109 extends the
+tuple, and #111's ``adjustment`` lines survive (#107 E7). Line ids change on
+every run, which is why nothing may reference a line of an open period.
 
 **Deleting a version a line uses (#107 E8).** The period locks come first, then
 the version, as in a run. :func:`lock_open_periods_of_tutor` and
 :func:`lock_open_periods_of_pay_rule` take the rows oldest first; a period
 that isn't ``open`` keeps its line, and the foreign key refuses the delete of
-the version (:data:`FOREIGN_KEY_REFUSALS`).
+the version (:data:`FOREIGN_KEY_REFUSALS`). A terms version works the same way
+(#108 F).
 
 Every function runs in the caller's Unit of Work and never commits.
 """
@@ -31,7 +32,12 @@ from app.modules.payroll.errors import (
     PayrollAmountOutOfRangeError,
     PayrollPeriodNotOpenError,
 )
-from app.modules.payroll.models import SESSION_LINE_KINDS, PayrollLine, PayrollPeriod
+from app.modules.payroll.models import (
+    SALARY,
+    SESSION_LINE_KINDS,
+    PayrollLine,
+    PayrollPeriod,
+)
 from app.modules.payroll.schemas import (
     PayrollLineItem,
     PayrollPeriodLines,
@@ -39,8 +45,8 @@ from app.modules.payroll.schemas import (
     PayrollRecalculation,
 )
 
-REBUILT_KINDS: Final = SESSION_LINE_KINDS
-"""The kinds ``recalculate`` replaces (#107 E7)."""
+REBUILT_KINDS: Final = (*SESSION_LINE_KINDS, SALARY)
+"""The kinds ``recalculate`` replaces (#107 E7, #108)."""
 
 OPEN: Final = "open"
 FINALIZED: Final = "finalized"
@@ -91,7 +97,8 @@ async def replace_lines(
     )
     if drafts:
         await session.execute(
-            insert(PayrollLine),
+            # render_nulls: one INSERT, whichever columns each kind leaves NULL.
+            insert(PayrollLine).execution_options(render_nulls=True),
             [
                 {
                     "payroll_period_id": period.id,
@@ -109,6 +116,13 @@ async def replace_lines(
                     "session_pay_rule_id": draft.session_pay_rule_id,
                     "cumulative_sessions": draft.cumulative_sessions,
                     "cohort_sessions": draft.cohort_sessions,
+                    "tutor_pay_terms_id": draft.tutor_pay_terms_id,
+                    "salary_amount": draft.salary_amount,
+                    "salary_starts_on": draft.salary_starts_on,
+                    "salary_ends_on": draft.salary_ends_on,
+                    "proration_numerator": draft.proration_numerator,
+                    "proration_denominator": draft.proration_denominator,
+                    "proration_basis": draft.proration_basis,
                 }
                 for draft in drafts
             ],
@@ -119,8 +133,9 @@ async def replace_lines(
 async def period_lines(
     session: AsyncSession, period_id: uuid.UUID
 ) -> PayrollPeriodLines:
-    """A period's lines by service date, then session, and their total
-    (``404`` for an unknown id). Two statements, no lock."""
+    """A period's lines by service date, then session, then piece, salary
+    after the session lines, and their total (``404`` for an unknown id). Two
+    statements, no lock."""
     period = await session.get(PayrollPeriod, period_id)
     if period is None:
         raise RecordNotFoundError()
@@ -128,7 +143,11 @@ async def period_lines(
         await session.scalars(
             select(PayrollLine)
             .where(PayrollLine.payroll_period_id == period_id)
-            .order_by(PayrollLine.service_date, PayrollLine.class_session_id)
+            .order_by(
+                PayrollLine.service_date.asc().nulls_last(),
+                PayrollLine.class_session_id,
+                PayrollLine.salary_starts_on,
+            )
         )
     )
     return PayrollPeriodLines(
@@ -261,6 +280,19 @@ async def delete_lines_of_rate(
         await session.execute(
             delete(PayrollLine).where(
                 PayrollLine.compensation_rate_id == rate_id,
+                PayrollLine.payroll_period_id.in_(period_ids),
+            )
+        )
+
+
+async def delete_lines_of_terms(
+    session: AsyncSession, terms_id: uuid.UUID, period_ids: Sequence[uuid.UUID]
+) -> None:
+    """Delete the lines of this terms version in these locked periods."""
+    if period_ids:
+        await session.execute(
+            delete(PayrollLine).where(
+                PayrollLine.tutor_pay_terms_id == terms_id,
                 PayrollLine.payroll_period_id.in_(period_ids),
             )
         )

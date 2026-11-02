@@ -55,6 +55,7 @@ from tests.integration.payroll_calculation_support import (
     paid_tutor,
     refused_status,
     run,
+    session_lines,
     stable,
 )
 from tests.integration.payroll_period_support import finalize
@@ -401,7 +402,8 @@ def test_a_salaried_tutor_with_a_rate_gets_the_ordinary_line(
 
     run(url, period)
 
-    assert line_of(url, period).amount == Decimal("120.00")
+    [line] = session_lines(url, period)
+    assert line.amount == Decimal("120.00")
 
 
 def test_a_covered_session_is_a_zero_line(module_seeded_url, client, owner, tutor):
@@ -411,8 +413,8 @@ def test_a_covered_session_is_a_zero_line(module_seeded_url, client, owner, tuto
 
     result = run(url, period)
 
-    assert (result.line_count, str(result.total)) == (1, "0.00")
-    line = line_of(url, period)
+    assert (result.line_count, str(result.total)) == (2, "9000.00")  # the salary
+    [line] = session_lines(url, period)
     assert (line.kind, line.amount, line.minutes) == ("session", Decimal("0.00"), 60)
     assert (line.rate_model, line.rate, line.compensation_rate_id) == (
         None,
@@ -429,7 +431,7 @@ def test_a_fixed_no_show_stays_covered(module_seeded_url, client, owner, tutor):
 
     run(url, period)
 
-    line = line_of(url, period)
+    [line] = session_lines(url, period)
     assert (line.kind, line.amount, line.session_pay_rule_id) == (
         "session",
         Decimal("0.00"),
@@ -538,12 +540,14 @@ def test_a_closed_period_refuses_and_keeps_its_lines(
 
 
 def test_the_run_replaces_only_the_rebuilt_kinds():
-    """#107 E7: #108 and #109 extend the tuple, and #111's lines survive."""
+    """#107 E7: #109 extends the tuple, and #111's lines survive. A kind outside
+    it surviving a run is ``test_payroll_salary.py``."""
     assert payroll.REBUILT_KINDS == (
         "session",
         "late_cancellation",
         "no_show",
         "makeup",
+        "salary",
     )
 
 
@@ -773,6 +777,13 @@ def test_the_routes(module_seeded_url, client, owner, finance, tutor):
         "session_pay_rule_id",
         "cumulative_sessions",
         "cohort_sessions",
+        "tutor_pay_terms_id",
+        "salary_amount",
+        "salary_starts_on",
+        "salary_ends_on",
+        "proration_numerator",
+        "proration_denominator",
+        "proration_basis",
     }
 
 
@@ -944,8 +955,7 @@ def test_a_run_costs_the_same_statements_whatever_the_sessions(
     )
 
     assert (first.line_count, second.line_count) == (3, 30)
-    assert few == many
-    assert many <= 15
+    assert few == many == 10  # eleven with the audit insert at commit
 
 
 def test_compute_lines_writes_nothing(module_seeded_url, client, owner, tutor):

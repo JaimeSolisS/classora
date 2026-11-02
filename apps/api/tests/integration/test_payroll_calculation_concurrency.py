@@ -364,6 +364,82 @@ def test_a_rate_delete_takes_the_period_before_the_version(
     assert lines(url, period) == []
 
 
+def test_a_terms_delete_takes_the_period_before_the_version(
+    module_seeded_url, client, owner, tutor, monkeypatch
+):
+    """#108 F5, as above: a delete that locked the version first would wait for
+    the period while the run waits for the version."""
+    url = module_seeded_url
+    terms = add_terms(url, tutor.id, salary="3000.00")
+    period = add_period_row(url, tutor.id, "11-02", "11-08")
+
+    def delete_terms(session: AsyncSession) -> Awaitable[None]:
+        return payroll.delete_pay_terms(session, tutor.id, terms)
+
+    result, deleted = paused_run(
+        url, monkeypatch, payroll_calculation, "compute_lines", period, delete_terms
+    )
+
+    assert result.line_count == 1
+    assert deleted is None
+    assert lines(url, period) == []
+
+
+def test_a_terms_delete_after_a_run_removes_its_lines(module_seeded_url, tutor):
+    url = module_seeded_url
+    kept = add_terms(url, tutor.id, salary="3000.00")
+    gone = add_terms(url, tutor.id, "11-05", salary="3500.00")
+    period = add_period_row(url, tutor.id, "11-02", "11-08")
+
+    def delete_terms(session: AsyncSession) -> Awaitable[None]:
+        return payroll.delete_pay_terms(session, tutor.id, gone)
+
+    result, deleted = in_turns(url, recalculating(period), delete_terms)
+
+    assert result.line_count == 2
+    assert deleted is None
+    assert line_of(url, period).tutor_pay_terms_id == kept
+
+
+def test_a_run_after_a_terms_delete_uses_the_versions_left(module_seeded_url, tutor):
+    url = module_seeded_url
+    kept = add_terms(url, tutor.id, salary="3000.00")
+    gone = add_terms(url, tutor.id, "11-05", salary="3500.00")
+    period = add_period_row(url, tutor.id, "11-02", "11-08")
+
+    def delete_terms(session: AsyncSession) -> Awaitable[None]:
+        return payroll.delete_pay_terms(session, tutor.id, gone)
+
+    deleted, result = in_turns(url, delete_terms, recalculating(period))
+
+    assert deleted is None
+    assert result.line_count == 1
+    line = line_of(url, period)
+    assert (line.tutor_pay_terms_id, line.proration_numerator) == (kept, 7)
+
+
+def test_a_terms_version_read_by_a_run_waits_for_it(
+    module_seeded_url, tutor, monkeypatch
+):
+    """#108 C3: the run stops after reading the versions and before any line
+    exists, so only the ``FOR KEY SHARE`` of that read can hold this writer, which
+    takes the version as a delete does, with no period lock."""
+    url = module_seeded_url
+    terms = add_terms(url, tutor.id, salary="3000.00")
+    period = add_period_row(url, tutor.id, "11-02", "11-08")
+
+    async def take(session: AsyncSession) -> None:
+        await session.execute(
+            text("SELECT id FROM tutor_pay_terms WHERE id = :id FOR UPDATE"),
+            {"id": terms},
+        )
+
+    result, taken = paused_run(url, monkeypatch, payroll, "replace_lines", period, take)
+
+    assert result.line_count == 1
+    assert taken is None
+
+
 # --- I4 -----
 
 

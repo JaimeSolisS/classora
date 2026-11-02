@@ -180,6 +180,17 @@ A payroll-owned, center-wide table `session_pay_rules`, with one row per `(event
 - **Finance review** is the line display before `prepare`; a different amount is a one-time pay item (E8), never an edited line.
 - Closures and absences don't reduce salary.
 
+#### Implementation notes (#108)
+
+Recommended options taken while grooming and building #108. They are orchestrator-recommended and pending owner review, like the rest of this ADR. E numbers here are #108's own items.
+
+- **One line per piece (#108 E1), correcting data-model §11.6:** the key `(payroll_period_id, tutor_pay_terms_id)` can't hold, because pieces also split at natural boundaries (#106 E5) and one terms version can cover two natural periods inside a long returning period. A line has `salary_starts_on`, `salary_ends_on` and a `salary_amount` snapshot, and the key is `(payroll_period_id, salary_starts_on) WHERE kind = 'salary'`.
+- **A piece with no paid days (#108 E2):** on `weekdays`, a Saturday and Sunday piece is a `0.00` line, `0/5`, so Finance sees why the salary is zero.
+- **Two versions with the same salary (#108 E3):** each piece rounds once, so they can differ from the whole by a centavo per version boundary (`100.01` biweekly with a version on day 8 pays `100.02`). "Exactly `salary_amount`" holds for one terms version over a natural period.
+- **No web issue (#108 E4):** the basis is already edited in Payroll → Settings (#425). Until #110's web half shows lines, Finance's review reads `GET /api/v1/payroll/periods/{period_id}/lines`. #110's web half carries the salary fields.
+- **Downgrade (#108 E5):** the downgrade of `0077` removes `salary` rows, with the finalized-line trigger disabled, because the old CHECKs can't hold them. Nothing is deployed until M9.
+- **Deleting a terms version (#108 F), mirroring #107 E8:** the advisory lock, the tutor's open periods, the version, the #106 refusals, its lines in those periods, the version. A prepared line refuses with `23001`, a finalized one with `42501`, both `409 pay_terms_in_use`.
+
 ### Bonuses and deductions (E8 (a), spec §7, #109, product)
 
 - `pay_item_types` (staff-defined name, `direction` `bonus` or `deduction`, `is_active`), and `pay_items` (tutor, type, description, positive `amount`, `recurrence` `one_time` or `recurring`, `effective_from`, `effective_to NULL`).

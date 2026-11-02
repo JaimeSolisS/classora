@@ -14,12 +14,13 @@ concurrent identical insert is the same ``409``. :func:`delete_pay_terms` and
 :func:`delete_compensation_rate` map the guard's 42501 (a finalized line uses
 the row) to ``409 …_in_use``.
 
-**Deleting a rate an open line uses (#107 E8).** ``recalculate`` would pick the
-same version again, so the line can't free it. The delete locks every ``open``
-period of the tutor, oldest first, then the version, then deletes its lines in
-those periods, then the version. A line of a ``prepared`` period stays, and the
-foreign key refuses (``23001``, ``409 compensation_rate_in_use``). The order is
-the run's, periods before versions, or the two deadlock.
+**Deleting a version an open line uses (#107 E8, #108 F).** ``recalculate``
+would pick the same version again, so the line can't free it. The delete locks
+every ``open`` period of the tutor, oldest first, then the version, then deletes
+its lines in those periods, then the version. A line of a ``prepared`` period
+stays, and the foreign key refuses (``23001``, ``409 …_in_use``). The order is
+the run's, periods before versions, or the two deadlock. A terms delete takes
+the advisory lock below before any of that.
 
 **Terms against generated periods** (#106 F): the terms insert and delete take
 the advisory lock of :mod:`~app.modules.payroll.period_rows` first, then
@@ -38,11 +39,12 @@ or state, because the calculation must find a rate for a tutor who left. The
 caller passes the service date or, for ``per_course``, the cohort's first
 session date (ADR-0017 E3).
 
-**The run's reads (#107 C4).** :func:`rate_versions` (``FOR KEY SHARE``) and
-:func:`terms_basis_versions` read every version of a tutor in one statement
-each; the pure pick of :mod:`~app.modules.payroll.calculation` replaces a
-lookup per session. The lock makes a concurrent delete wait for the run, then
-fail on the new line, instead of an insert failing on the foreign key.
+**The run's reads (#107 C4, #108 C3).** :func:`rate_versions` and
+:func:`terms_basis_versions`, both ``FOR KEY SHARE``, read every version of a
+tutor in one statement each; the pure pick of
+:mod:`~app.modules.payroll.calculation` replaces a lookup per session. The lock
+makes a concurrent delete wait for the run, then fail on the new line, instead
+of an insert failing on the foreign key.
 """
 
 import uuid
@@ -69,6 +71,7 @@ from app.modules.payroll.errors import (
 from app.modules.payroll.lines import (
     FOREIGN_KEY_REFUSALS,
     delete_lines_of_rate,
+    delete_lines_of_terms,
     lock_open_periods_of_tutor,
 )
 from app.modules.payroll.models import (
@@ -191,10 +194,12 @@ async def add_compensation_rate(
 async def delete_pay_terms(
     session: AsyncSession, tutor_user_id: uuid.UUID, terms_id: uuid.UUID
 ) -> None:
-    """Delete a terms version of this tutor, whatever its date (#105 E4):
-    ``404`` for a row of another tutor, the #106 refusals, then ``409
-    pay_terms_in_use`` for a used one."""
+    """Delete a terms version of this tutor, whatever its date (#105 E4), with
+    its lines in ``open`` periods (#108 F, module docstring): ``404`` for a row
+    of another tutor, the #106 refusals, then ``409 pay_terms_in_use`` for a
+    version a prepared or finalized period uses."""
     await lock_payroll_periods(session)
+    period_ids = await lock_open_periods_of_tutor(session, tutor_user_id)
     terms = await session.scalar(
         select(TutorPayTerms)
         .where(
@@ -211,11 +216,13 @@ async def delete_pay_terms(
         tutor_user_id,
         [v for v in before if v.effective_from != terms.effective_from],
     )
+    await delete_lines_of_terms(session, terms_id, period_ids)
     await session.delete(terms)
     try:
         await session.flush()
     except DBAPIError as exc:
-        if getattr(exc.orig, "sqlstate", None) == INSUFFICIENT_PRIVILEGE:
+        state = getattr(exc.orig, "sqlstate", None)
+        if state == INSUFFICIENT_PRIVILEGE or state in FOREIGN_KEY_REFUSALS:
             raise PayTermsInUseError() from None
         raise
 
@@ -352,6 +359,7 @@ async def rate_versions_of_tutors(
 
 def _terms_basis_columns() -> Select[*tuple[Any, ...]]:
     return select(
+        TutorPayTerms.id,
         TutorPayTerms.tutor_user_id,
         TutorPayTerms.effective_from,
         TutorPayTerms.pay_frequency,
@@ -361,6 +369,7 @@ def _terms_basis_columns() -> Select[*tuple[Any, ...]]:
 
 def _terms_basis_version(row: Row[Any]) -> TermsBasisVersion:
     return TermsBasisVersion(
+        id=row.id,
         effective_from=row.effective_from,
         pay_frequency=row.pay_frequency,
         salary=row.salary_amount,
@@ -370,9 +379,12 @@ def _terms_basis_version(row: Row[Any]) -> TermsBasisVersion:
 async def terms_basis_versions(
     session: AsyncSession, tutor_user_id: uuid.UUID
 ) -> list[TermsBasisVersion]:
-    """Every terms version of the tutor. One statement."""
+    """Every terms version of the tutor, ``FOR KEY SHARE`` (module docstring).
+    One statement."""
     rows = await session.execute(
-        _terms_basis_columns().where(TutorPayTerms.tutor_user_id == tutor_user_id)
+        _terms_basis_columns()
+        .where(TutorPayTerms.tutor_user_id == tutor_user_id)
+        .with_for_update(read=True, key_share=True)
     )
     return [_terms_basis_version(row) for row in rows]
 
@@ -380,8 +392,8 @@ async def terms_basis_versions(
 async def terms_basis_versions_of_tutors(
     session: AsyncSession, tutor_user_ids: Collection[uuid.UUID]
 ) -> dict[uuid.UUID, list[TermsBasisVersion]]:
-    """Every terms version of these tutors, by tutor (#443). One statement,
-    none for no ids."""
+    """Every terms version of these tutors, by tutor. It writes no line, so it
+    takes no lock (#443). One statement, none for no ids."""
     versions: dict[uuid.UUID, list[TermsBasisVersion]] = {}
     if tutor_user_ids:
         rows = await session.execute(

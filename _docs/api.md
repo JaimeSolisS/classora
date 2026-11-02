@@ -7104,7 +7104,7 @@ are in `app/workflows/payroll_compensation_router.py` and
 | `GET /api/v1/payroll/tutors/{tutor_user_id}/compensation` | `authenticated()` + record policy | `TutorCompensation`: `tutor`, `today`, `terms[]` newest first, `rates[]` by class kind, then newest first. |
 | `POST /api/v1/payroll/tutors/{tutor_user_id}/pay-terms` | `require("payroll.manage")` | Body `PayTermsCreate`: `effective_from`, `pay_frequency`, `salary_amount` (all required, `null` written out). `201` with `PayTermsItem`. |
 | `POST /api/v1/payroll/tutors/{tutor_user_id}/rates` | `require("payroll.manage")` | Body `CompensationRateCreate`: `class_kind`, `effective_from`, `rate_model`, `rate` (all required, `null` written out). `201` with `CompensationRateItem`. |
-| `DELETE /api/v1/payroll/tutors/{tutor_user_id}/pay-terms/{terms_id}` | `require("payroll.manage")` | `204`. `409 pay_terms_in_use` once a finalized period uses the version. |
+| `DELETE /api/v1/payroll/tutors/{tutor_user_id}/pay-terms/{terms_id}` | `require("payroll.manage")` | `204`, and the version's salary lines in `open` periods go with it. `409 pay_terms_in_use` once a prepared or finalized period uses the version. |
 | `DELETE /api/v1/payroll/tutors/{tutor_user_id}/rates/{rate_id}` | `require("payroll.manage")` | `204`, removing the version's lines in the tutor's open periods until the next recalculation. `409 compensation_rate_in_use` once a prepared or finalized period uses the version (#107 E8). |
 
 - **Access:** `payroll.view` and `payroll.manage` are held by Owners and
@@ -7206,17 +7206,18 @@ and the web page M7-04b.
 
 ### Payroll calculation
 
-Implemented by M7-04 (#107; ADR-0017 E2, E4, E5, E9, its #107 notes). Routes in
+Implemented by M7-04 (#107) and M7-05 (#108, salary; ADR-0017 E1, E2, E4, E5,
+E7, E9, its #107 and #108 notes). Routes in
 `app/workflows/payroll_calculation_router.py`, the run in
 `app/workflows/payroll_calculation.py`, the pure rules in
-`app/modules/payroll/calculation.py`, table `payroll_lines`
+`app/modules/payroll/calculation.py` and `salary.py`, table `payroll_lines`
 (`_docs/data-model.md` §11.6). Pay is derived in a run, never posted by a
 closeout, a cancellation or a reschedule.
 
 | Route | Access | Notes |
 |---|---|---|
 | `POST /api/v1/payroll/periods/{period_id}/recalculate` | `require("payroll.prepare")` | `200` with `PayrollRecalculation`: `line_count`, `total`. No body. Repeatable. |
-| `GET /api/v1/payroll/periods/{period_id}/lines` | `require("payroll.view")` | `PayrollPeriodLines`: `period` (`id`, `tutor_user_id`, `starts_on`, `ends_on`, `pay_frequency`, `status`), `lines[]` by `service_date`, then `class_session_id`, and `total`, the sum of the rounded lines. Not paginated: one period. |
+| `GET /api/v1/payroll/periods/{period_id}/lines` | `require("payroll.view")` | `PayrollPeriodLines`: `period` (`id`, `tutor_user_id`, `starts_on`, `ends_on`, `pay_frequency`, `status`), `lines[]` by `service_date`, then `class_session_id`, then `salary_starts_on`, with salary lines after the session lines, and `total`, the sum of the rounded lines. Not paginated: one period. |
 | `GET /api/v1/payroll/unresolved-work` | `require("payroll.view")` | `CursorPage[UnresolvedWorkItem]`, newest `service_date` first, then `class_session_id`. Query `tutor_user_id?`, `reason?`, `limit?`, `cursor?`. An unknown `reason` or a malformed id is `422 validation_error`, a bad cursor `400 invalid_cursor`, an unknown tutor an empty page. |
 
 - **Access:** Owners and Finance Staff hold both. A Finance tutor may run their
@@ -7226,8 +7227,8 @@ closeout, a cancellation or a reschedule.
   `Idempotency-Key` and no reauthentication.
 - **A run:** the period `FOR UPDATE`, re-read → `404` → `409
   payroll_period_not_open` with `details.status` → the lines are computed →
-  the `session`, `late_cancellation`, `no_show` and `makeup` lines are replaced
-  → the event. An `open` period may run before it ends, as a preview. Line ids
+  the `session`, `late_cancellation`, `no_show`, `makeup` and `salary` lines are
+  replaced → the event. An `open` period may run before it ends, as a preview. Line ids
   change on every run; a second run otherwise leaves the same lines.
 - **What pays:** the current approval revision of a session, attributed to the
   revision's tutor, also while the closeout is back in review, and a family's
@@ -7240,8 +7241,22 @@ closeout, a cancellation or a reschedule.
 - **Line:** `id`, `kind`, `amount`, `class_session_id`, `approval_id` (`null` on
   a cancellation), `service_date`, `class_kind`, `minutes`, `rate_model`, `rate`
   (text, four places), `compensation_rate_id`, `session_pay_rule_id`,
-  `cumulative_sessions`, `cohort_sessions`. "Covered by salary" is a `0.00`
-  `session` line with no rate. No student data.
+  `cumulative_sessions`, `cohort_sessions`, and the salary fields
+  `tutor_pay_terms_id`, `salary_amount`, `salary_starts_on`, `salary_ends_on`,
+  `proration_numerator`, `proration_denominator`, `proration_basis`, `null` on
+  every other kind. "Covered by salary" is a `0.00` `session` line with no rate.
+  No student data.
+- **Salary (#108):** a tutor with a salary on the terms in effect gets one
+  `salary` line per piece: a terms version's days in the period, split at the
+  natural weeks, biweekly blocks or months of its frequency. A line pays
+  `salary_amount` × `proration_numerator` / `proration_denominator`, rounded
+  once: the piece's days over its natural period's, counted on the
+  `salary_proration_basis` in force at the run, which the line stores. A full
+  natural period pays exactly `salary_amount`, a piece with no paid days `0.00`.
+  Nothing else reduces salary, it doesn't depend on today, and a rate pays on
+  top of it. A basis change reaches `open` periods on their next run only. A
+  terms version added or deleted shows on the next run too. See
+  `_docs/data-model.md` §11.6.
 - **Per-course (#442):** a `per_course` line pays the tutor's next share of the
   cohort: `cumulative_sessions` of `cohort_sessions` at the rate in effect on
   the cohort's first session, minus what earlier sessions earned. The two
