@@ -22218,6 +22218,164 @@
         }
       }
     },
+    "/api/v1/payroll/periods/{period_id}/recalculate": {
+      "post": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Recalculate Period",
+        "description": "Rebuild the session-sourced lines of an open period from approved work\nand approved pay events. It may run before the period ends, as a\npreview.",
+        "operationId": "recalculate_period_api_v1_payroll_periods__period_id__recalculate_post",
+        "parameters": [
+          {
+            "name": "period_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Period Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollRecalculation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such period (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The period isn't open (payroll_period_not_open, with details.status), or a line or the total is beyond the money range (payroll_amount_out_of_range, with details.class_session_id for a line).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/periods/{period_id}/lines": {
+      "get": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Get Period Lines",
+        "description": "The period and its lines, by service date, then session, with their\ntotal.",
+        "operationId": "get_period_lines_api_v1_payroll_periods__period_id__lines_get",
+        "parameters": [
+          {
+            "name": "period_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Period Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollPeriodLines"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such period (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/payroll/tutors": {
       "get": {
         "tags": [
@@ -44783,6 +44941,15 @@
         "title": "LineBasis",
         "description": "The counts behind a line's credit: ``credit = net × unused /\ndenominator`` (S1)."
       },
+      "LineKind": {
+        "type": "string",
+        "enum": [
+          "session",
+          "late_cancellation",
+          "no_show",
+          "makeup"
+        ]
+      },
       "LoginRequest": {
         "properties": {
           "username": {
@@ -48304,6 +48471,271 @@
         "title": "PaymentReversed",
         "description": "``201`` of a payment reversal (#100 C3): the reversal, the payment\nafterwards, the allocations released and the account credit afterwards\n(the payment's remainder no longer counts)."
       },
+      "PayrollLineItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LineKind"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "class_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Class Session Id"
+          },
+          "approval_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Id"
+          },
+          "service_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Date"
+          },
+          "class_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes"
+          },
+          "rate_model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RateModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,10}(\\.\\d{1,4})?$",
+                "format": "decimal",
+                "examples": [
+                  "250.0000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          },
+          "compensation_rate_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compensation Rate Id"
+          },
+          "session_pay_rule_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Pay Rule Id"
+          },
+          "cumulative_sessions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cumulative Sessions"
+          },
+          "cohort_sessions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Sessions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "amount",
+          "class_session_id",
+          "approval_id",
+          "service_date",
+          "class_kind",
+          "minutes",
+          "rate_model",
+          "rate",
+          "compensation_rate_id",
+          "session_pay_rule_id",
+          "cumulative_sessions",
+          "cohort_sessions"
+        ],
+        "title": "PayrollLineItem",
+        "description": "One line (#107 H3): ``rate`` is text, and a \"covered by salary\" line has\nno rate snapshot. No student data."
+      },
+      "PayrollPeriodLines": {
+        "properties": {
+          "period": {
+            "$ref": "#/components/schemas/PayrollPeriodSummary"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/PayrollLineItem"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Total",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "period",
+          "lines",
+          "total"
+        ],
+        "title": "PayrollPeriodLines",
+        "description": "``GET /api/v1/payroll/periods/{id}/lines`` (#107 H3). ``total`` is the\nsum of the rounded lines."
+      },
+      "PayrollPeriodSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tutor_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tutor User Id"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Ends On"
+          },
+          "pay_frequency": {
+            "$ref": "#/components/schemas/PayFrequency"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PeriodStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tutor_user_id",
+          "starts_on",
+          "ends_on",
+          "pay_frequency",
+          "status"
+        ],
+        "title": "PayrollPeriodSummary",
+        "description": "The head of a period's lines (#107 H3)."
+      },
+      "PayrollRecalculation": {
+        "properties": {
+          "line_count": {
+            "type": "integer",
+            "title": "Line Count"
+          },
+          "total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Total",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "line_count",
+          "total"
+        ],
+        "title": "PayrollRecalculation",
+        "description": "``POST /api/v1/payroll/periods/{id}/recalculate`` (#107 H2)."
+      },
       "PayrollSettingsDetail": {
         "properties": {
           "payroll_starts_on": {
@@ -48528,6 +48960,14 @@
           "due"
         ]
       },
+      "PeriodStatus": {
+        "type": "string",
+        "enum": [
+          "open",
+          "prepared",
+          "finalized"
+        ]
+      },
       "PeriodType": {
         "type": "string",
         "enum": [
@@ -48557,6 +48997,7 @@
           "payment.record",
           "payroll.finalize",
           "payroll.manage",
+          "payroll.prepare",
           "payroll.view",
           "progress_report.review",
           "qualification.review",

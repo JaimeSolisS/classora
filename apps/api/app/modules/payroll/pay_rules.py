@@ -23,7 +23,10 @@ creates can't reach the unique key together:
   finalized period → the insert.
 - :func:`delete_session_pay_rule`: only an upcoming version (``404`` for an
   unknown id, ``409 pay_rule_in_effect`` for one in force or past, also when
-  the table's guard refuses it).
+  the table's guard refuses it). Lines of ``open`` periods that use it go with
+  it, the periods locked first, oldest first; a line those locks didn't find
+  keeps it, in practice one a run committed while the delete waited: ``409
+  session_pay_rule_in_use`` (#107 G3, E8).
 
 There is no update: the guard (migration ``0075``) refuses every ``UPDATE``.
 The workflow (:mod:`app.workflows.session_pay_rules`) passes the center's
@@ -44,6 +47,12 @@ from app.core.errors import VersionConflictError
 from app.modules.payroll.errors import (
     PayRuleEffectiveFromError,
     PayRuleInEffectError,
+    SessionPayRuleInUseError,
+)
+from app.modules.payroll.lines import (
+    FOREIGN_KEY_REFUSALS,
+    delete_lines_of_pay_rule,
+    lock_open_periods_of_pay_rule,
 )
 from app.modules.payroll.models import SessionPayRule
 from app.modules.payroll.schemas import (
@@ -111,12 +120,14 @@ async def session_pay_rule_in_effect(
 async def session_pay_rule_versions(
     session: AsyncSession,
 ) -> list[SessionPayRuleVersion]:
-    """Every version of every event, by event, then newest first. One
+    """Every version of every event, by event, then newest first, ``FOR KEY
+    SHARE``: a concurrent delete waits for this run, then fails on the new
+    line, instead of the insert failing on the foreign key (#107 C4). One
     statement."""
     rows = await session.scalars(
-        select(SessionPayRule).order_by(
-            SessionPayRule.event, SessionPayRule.effective_from.desc()
-        )
+        select(SessionPayRule)
+        .order_by(SessionPayRule.event, SessionPayRule.effective_from.desc())
+        .with_for_update(read=True, key_share=True)
     )
     return [_version(row) for row in rows]
 
@@ -202,17 +213,26 @@ async def delete_session_pay_rule(
 ) -> None:
     """Delete an upcoming version. Under the advisory lock: ``404`` for an
     unknown id → ``409 pay_rule_in_effect`` for a version in force or in the
-    past (the seeds always are)."""
+    past (the seeds always are) → the ``open`` periods holding a line of it
+    ``FOR UPDATE``, oldest first → the version ``FOR UPDATE`` → its lines in
+    those periods → the version, or ``409 session_pay_rule_in_use`` for a line
+    they didn't cover."""
     await _lock(session)
     row = await session.get(SessionPayRule, rule_id)
     if row is None:
         raise RecordNotFoundError()
     if row.effective_from <= today:
         raise PayRuleInEffectError()
+    period_ids = await lock_open_periods_of_pay_rule(session, rule_id)
+    await session.refresh(row, with_for_update=True)
+    await delete_lines_of_pay_rule(session, rule_id, period_ids)
     await session.delete(row)
     try:
         await session.flush()
     except DBAPIError as exc:
-        if getattr(exc.orig, "sqlstate", None) == INSUFFICIENT_PRIVILEGE:
+        state = getattr(exc.orig, "sqlstate", None)
+        if state == INSUFFICIENT_PRIVILEGE:
             raise PayRuleInEffectError() from None
+        if state in FOREIGN_KEY_REFUSALS:
+            raise SessionPayRuleInUseError() from None
         raise

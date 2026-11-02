@@ -11,10 +11,11 @@ of Work (there is no event bus). Today it is a **no-op**.
   job ``billing:reconcile_session_charges``
   (:mod:`app.workflows.schedule_reconciliation`), outside this Unit of
   Work; the approval route queues it after its commit.
-- **M7-04** (tutor pay) adds its step here: apply the reschedule pay rule
-  to the session's tutor.
+- **Tutor pay stays out of this seam** (ADR-0017 E4, E9): a reschedule has no
+  pay effect, and payroll derives pay from committed state in ``recalculate``
+  (:mod:`app.workflows.payroll_calculation`).
 
-Neither step stores money here. A staff move (``PATCH
+No money is stored here. A staff move (``PATCH
 /api/v1/class-sessions/{id}``) doesn't call it.
 """
 
@@ -35,7 +36,7 @@ async def on_session_rescheduled(
     change_request_id: uuid.UUID | None,
     by_user_id: uuid.UUID | None,
 ) -> None:
-    """Run the pay steps of one rescheduled session (none yet; billing runs
-    in the #99 job)."""
+    """No step: billing runs in the #99 job, and a reschedule has no pay
+    effect."""
     del session, class_session_id, previous_starts_at, previous_ends_at
     del initiated_by, change_request_id, by_user_id

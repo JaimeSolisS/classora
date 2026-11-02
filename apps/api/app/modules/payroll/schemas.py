@@ -307,6 +307,12 @@ class SessionPayRuleVersion:
     percent: Rate | None
     amount: Money | None
 
+    @property
+    def fixed_pay(self) -> Money | None:
+        """``amount`` under the name the calculation reads, whose files keep
+        away from ``.amount`` (#107 B2)."""
+        return self.amount
+
 
 @dataclass(frozen=True)
 class RateInEffect:
@@ -334,3 +340,54 @@ class CompensationSummary:
 
     current_terms: CurrentTerms | None = None
     current_rate_kinds: tuple[ClassKind, ...] = ()
+
+
+type LineKind = Literal["session", "late_cancellation", "no_show", "makeup"]
+type PeriodStatus = Literal["open", "prepared", "finalized"]
+
+
+class PayrollPeriodSummary(BaseModel):
+    """The head of a period's lines (#107 H3)."""
+
+    id: uuid.UUID
+    tutor_user_id: uuid.UUID
+    starts_on: date
+    ends_on: date
+    pay_frequency: PayFrequency
+    status: PeriodStatus
+
+
+class PayrollLineItem(BaseModel):
+    """One line (#107 H3): ``rate`` is text, and a "covered by salary" line has
+    no rate snapshot. No student data."""
+
+    id: uuid.UUID
+    kind: LineKind
+    amount: Money
+    class_session_id: uuid.UUID | None
+    approval_id: uuid.UUID | None
+    service_date: date | None
+    class_kind: ClassKind | None
+    minutes: int | None
+    rate_model: RateModel | None
+    rate: Rate | None
+    compensation_rate_id: uuid.UUID | None
+    session_pay_rule_id: uuid.UUID | None
+    cumulative_sessions: int | None
+    cohort_sessions: int | None
+
+
+class PayrollPeriodLines(BaseModel):
+    """``GET /api/v1/payroll/periods/{id}/lines`` (#107 H3). ``total`` is the
+    sum of the rounded lines."""
+
+    period: PayrollPeriodSummary
+    lines: list[PayrollLineItem]
+    total: Money
+
+
+class PayrollRecalculation(BaseModel):
+    """``POST /api/v1/payroll/periods/{id}/recalculate`` (#107 H2)."""
+
+    line_count: int
+    total: Money

@@ -14,8 +14,8 @@ queued after commit by the routes that change sessions and at the end of
 its **committed** session and posts what is missing (Q1). Nothing is posted
 inside a scheduling transaction, so a billing failure never rolls back a
 schedule change, and a path added later is covered too. The seams
-``on_session_cancelled`` and ``on_session_rescheduled`` stay billing
-no-ops (M7-04 keeps them for tutor pay).
+``on_session_cancelled`` and ``on_session_rescheduled`` stay no-ops: tutor
+pay too is derived from committed state, in ``recalculate``.
 
 **Candidates** (:func:`candidate_page`; one statement per keyset page of
 :data:`PAGE_SIZE` by ``(class_session_id, student_id)``, until a short

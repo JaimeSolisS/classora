@@ -311,3 +311,49 @@ def test_a_rate_literal_renders():
         )
     )
     assert "1.5000" in text
+
+
+# --- #107 B1: a percent of the line, rounded once ------------------------------
+
+
+@pytest.mark.parametrize(
+    ("rate", "numerator", "denominator", "percent", "expected"),
+    [
+        ("250", 61, 60, None, "254.17"),
+        ("0.0049", 61, 60, None, "0.00"),
+        # 21.875 exact; through a rounded base (145.83) it would be 21.87.
+        ("175", 50, 60, "15", "21.88"),
+        ("175", 50, 60, "0", "0.00"),
+        ("175", 50, 60, "100", "145.83"),
+        ("175", 50, 60, "250", "364.58"),
+        ("100", 1, 1, "1000", "1000.00"),
+        ("100", 0, 60, "50", "0.00"),
+        ("0.0100", 1, 1, "50", "0.01"),  # 0.005 is half away from zero
+    ],
+)
+def test_to_money_with_a_percent_rounds_once(
+    rate, numerator, denominator, percent, expected
+):
+    share = None if percent is None else Rate(percent)
+    assert Rate(rate).to_money(numerator, denominator, percent=share) == Money(expected)
+
+
+def test_to_money_percent_defaults_keep_the_plain_call():
+    assert Rate("250").to_money(percent=Rate("10")) == Money("25.00")
+    assert Rate("250").to_money(percent=None) == Rate("250").to_money()
+
+
+@pytest.mark.parametrize("percent", [50.0, Decimal("50"), Money("50"), 50, "50", True])
+def test_to_money_percent_is_a_rate_only(percent):
+    with pytest.raises(TypeError):
+        Rate("250").to_money(percent=percent)
+
+
+def test_to_money_percent_is_never_negative():
+    with pytest.raises(ValueError, match="percent >= 0"):
+        Rate("250").to_money(percent=Rate("-1"))
+
+
+def test_to_money_percent_is_range_checked():
+    with pytest.raises(MoneyRangeError):
+        Rate("9999999999.9999").to_money(1440, 60, percent=Rate("1000"))

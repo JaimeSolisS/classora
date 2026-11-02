@@ -2113,6 +2113,23 @@ allow = ["owner", "finance_staff"]
 
 [[route]]
 method = "GET"
+path = "/api/v1/payroll/periods/{period_id}/lines"
+access = "permission"
+permission = "payroll.view"
+allow = ["owner", "finance_staff"]
+# #107 H3, H4: the placeholder id is no period: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/periods/{period_id}/recalculate"
+access = "permission"
+permission = "payroll.prepare"
+allow = ["owner", "finance_staff"]
+# #107 H2, E10: no Idempotency-Key and no reauthentication. The placeholder
+# id is no period: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
 path = "/api/v1/payroll/settings"
 access = "permission"
 permission = "payroll.view"

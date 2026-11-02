@@ -1087,11 +1087,15 @@ The configurable late-cancellation, no-show and makeup payments (E4). One row pe
   - `no_show`: the current revision's `attendance` has every participant `absent`, or a future cancellation classified `no_show`; base: the ordinary line on `approved_minutes`.
   - `makeup`: `class_sessions.makeup_of_session_id IS NOT NULL`; base: the ordinary line.
 - **`none` (detail for #107):** a cancellation under `none` writes no line. An approved closeout under `none` writes a `0.00` line of its kind, so the anti-joins of §15 see it as handled.
-- **Left to #107:** which kind applies to a makeup session that is also a no-show. E4 doesn't decide it, and §11.6 allows one session-sourced line per session.
+- **A makeup that is also a no-show (#107 E3):** `no_show` wins, because it describes what happened in the session and `makeup` why it was booked. §11.6 allows one session-sourced line per session.
+- **The makeup chain (#107 E4):** pay is per session worked. The `makeup` rule applies to each session with `makeup_of_session_id` and a current revision, by itself; nothing walks the chain, reads the target or re-checks the deadline.
+- **Salary coverage (#107 E5):** with salary terms and no rate for the kind on the service date, every approved closeout is a `0.00` `session` line with `session_pay_rule_id` `NULL`, whatever its event, and a cancellation has no line.
+- **One basis (#107 E6):** every path, `fixed` included, first resolves terms, then rate, then coverage on the service date. With no basis there is no line.
+- **Base (#107 E2):** a `percent` is taken of the exact value, never a rounded line: `Rate.to_money(numerator, denominator, percent=)` rounds once.
 
 ### 11.6 `payroll_lines` (#107)
 
-One row per source (E9). Not `Audited`: working data until finalized. **Locked with the period** (§14.3). #107 creates the table with the session-sourced kinds; #108, #109 and #111 add their kinds, columns and indexes.
+One row per source (E9). Not `Audited`: working data until finalized. **Locked with the period** (§14.3). #107 creates the table with the four session-sourced kinds and without `tutor_pay_terms_id`, `proration_*`, `pay_item_id` and `payroll_adjustment_id`; #108, #109 and #111 add their kinds, columns and indexes and widen `kind` and the source CHECK. `recalculate` replaces only the kinds it rebuilds (`REBUILT_KINDS`, #107 E7), so #111's lines survive.
 
 | Column | Type | Null | Check / note |
 |---|---|---|---|
@@ -1131,9 +1135,9 @@ One row per source (E9). Not `Audited`: working data until finalized. **Locked w
   - `(payroll_period_id, tutor_pay_terms_id) WHERE kind = 'salary'`: one line per terms piece (#108);
   - `(pay_item_id, payroll_period_id) WHERE kind = 'pay_item'` (#109);
   - `(payroll_adjustment_id) WHERE kind = 'adjustment'` (#111).
-- **Amounts (E2, E3):** `per_hour` = `rate × approved_minutes / 60`; `per_session` = `rate`; `per_course` = cumulative `rate × k / N` (`Money.prorate`) now minus before, floored at `0.00`.
+- **Amounts (E2, E3):** `per_hour` = `rate.to_money(approved_minutes, 60)`; `per_session` = `rate.to_money()`; `per_course` = cumulative `rate × k / N` now minus before, floored at `0.00` (#442; #107 E11 replaces `Money.prorate` here).
 - **Salary (E7):** `salary_amount × paid_days / natural_days` (`Money.prorate`); exactly `salary_amount` on a full period with one terms version.
-- **A version on an open line:** the `RESTRICT` foreign keys refuse deleting a rate or terms version an open line still references, until `recalculate` rebuilds the line.
+- **A version on an open line (#107 E8):** `recalculate` would pick the same version again, so it can't free one. Deleting a rate locks every `open` period of that tutor, oldest first, then the version, deletes its lines in those periods, then the version; the period shows fewer lines until the next run. An upcoming pay rule follows the same order, over the `open` periods that hold a line of it. A line of a `prepared` period keeps the version: the `RESTRICT` foreign key refuses (`23001`, `409 compensation_rate_in_use`, `409 session_pay_rule_in_use`), and a return and recalculate clears it. A finalized line stays `42501`, the same `409`.
 
 ### 11.7 `pay_item_types` (#109)
 
@@ -1412,7 +1416,9 @@ Line writes are serialized by the period row lock (§15); the trigger is the bac
   The App invariants of §13.1 are checked after step 3.
 - **Terms and periods (#106 E10):** one `pg_advisory_xact_lock` key (`b"clsPyPrd"`, `payroll.period_rows`), taken first by each per-tutor unit of `payroll:open_periods` and by the terms insert and delete. The refusal reads periods, the job reads terms, and a first write has no period row to lock, so a row lock can't serialize them. Then the job reads `payroll_settings FOR SHARE`, the terms and the last period; a terms delete takes its row `FOR UPDATE`. A settings `PATCH` takes the settings row `FOR UPDATE` and reads the locks after it, so it and the job wait for each other. Every writer of terms takes this lock (#111 too). No scheduling or academics write takes any of these locks.
 - **Lock order, expense mutations:** the `idempotency_keys` row, on the routes that take a key → `expenses` row `FOR UPDATE`, the **last business lock** of finance. Payments, reversals and adjustments of one expense serialize on it.
-- **`recalculate`:** reads committed scheduling and academics state with **no lock on them**, under the period row lock. No scheduling or academics write ever takes a period lock, so there is no cycle, and a payroll failure can't roll back a closeout or a cancellation (E9).
+- **`recalculate`:** reads committed scheduling and academics state with **no lock on them** and no advisory lock, under the period row lock. No scheduling or academics write ever takes a period lock, so there is no cycle, and a payroll failure can't roll back a closeout or a cancellation (E9). The period row is re-read after the lock, so a run that waited sees a status that changed.
+- **Versions in a run (#107 C4):** `compensation_rates` and `session_pay_rules` are read `FOR KEY SHARE`, after the period lock, so a concurrent delete waits for the run and then fails on the new line, instead of an insert failing with `23503`.
+- **Deleting a version (#107 E8):** periods before the version, always, or a run and a delete deadlock: the open periods `FOR UPDATE`, oldest first, then the version `FOR UPDATE`. Two rule deletes also share the `session_pay_rules` advisory lock, taken first.
 - **After-lock approvals:** an approval committed after a period's finalize sees no line and lands as a `late_approval` adjustment (E11). One committed between `prepare` and `finalize` is caught by the drift comparison (`409 payroll_period_stale`).
 - **Jobs (`queueing_lock`, natural keys):**
   - `payroll:open_periods`, daily at 07:50 UTC, on `(tutor_user_id, starts_on)`, one Unit of Work per tutor. `payroll_periods` isn't `Audited`, so it uses `ON CONFLICT DO NOTHING`.
@@ -1427,12 +1433,13 @@ Beyond primary keys, unique keys and natural keys, for the access paths of spec 
 - `payroll_lines (payroll_period_id)`;
 - `payroll_lines (class_session_id) WHERE class_session_id IS NOT NULL`;
 - `payroll_lines (compensation_rate_id) WHERE compensation_rate_id IS NOT NULL`: the guard predicate and the `RESTRICT` check;
+- `payroll_lines (session_pay_rule_id) WHERE session_pay_rule_id IS NOT NULL`: the rule delete and its `RESTRICT` check (#107);
 - `payroll_adjustments (target_period_id)` and `(origin_line_id)`;
 - `payroll_payments (payroll_period_id)` and `(paid_on)`;
 - `expenses (due_on)`, `(incurred_on)`, `(category_id, incurred_on)` and `(vendor_id)`;
 - `expense_payments (expense_id)` and `(paid_on)`.
 
-#107's read path over approvals is the existing `ix_session_closeout_approvals_tutor_user_id_session_starts_at` (`tutor_user_id`, `session_starts_at`).
+#107's read path over approvals is the existing `ix_session_closeout_approvals_tutor_user_id_session_starts_at` (`tutor_user_id`, `session_starts_at`). Its read of a tutor's cancelled sessions needs a new one, `ix_class_sessions_cancelled_tutor_user_id_starts_at` on `class_sessions (tutor_user_id, starts_at) WHERE state = 'cancelled'`, because `class_sessions` had no btree on the tutor.
 
 ## 17. Payroll and expense migration strategy
 
@@ -1486,7 +1493,7 @@ Each M7 issue, the ADR-0017 decision items it relies on, and the tables it creat
 | #106 M7-03 Payroll periods | E2 (`payroll_starts_on`), E6 (calendars in local `DATE`s, stubs, no overlaps, no gaps, idempotent `payroll:open_periods`, the `effective_from_inside_generated_period` and `effective_from_before_first_period` refusals on the terms insert and delete, not on a stop) | `payroll_settings`, `payroll_periods` |
 | #423 M7-04a Makeup link | E5 | `class_sessions.makeup_of_session_id` |
 | #441 M7-04c Session pay rules | E4 (the three events, `none`, `percent`, `fixed`, seeds), E12 (`payroll.view`, `payroll.manage`, masked in the audit log); #107 E9 | `session_pay_rules` |
-| #107 M7-04 Calculation | E2 (current revision, attribution, service date, unresolved work), E3, E4 (rules consuming the #62 outcomes), E5, E9 (one line per source with its session, repeatable `recalculate`, no hooks), E12 (`payroll.prepare`) | `session_pay_rules` (reads), `payroll_lines` (session-sourced kinds) |
+| #107 M7-04 Calculation | E2 (current revision, attribution, service date), E4 (rules consuming the #62 outcomes), E5, E9 (one line per source with its session, repeatable `recalculate`, no hooks), E12 (`payroll.prepare`). Per-course amounts (E3) are #442, unresolved work (E2) #443 | `session_pay_rules` (reads), `payroll_lines` (session-sourced kinds) |
 | #108 M7-05 Salary and proration | E1 (salary plus extras), E7 (configurable basis, `Money.prorate`, review through line display) | `payroll_lines` (`salary`), `payroll_settings` (`salary_proration_basis`) |
 | #109 M7-06 Bonuses and deductions | E8 (recurring per period on `(pay_item_id, payroll_period_id)`, one line per item, fixed amounts) | `pay_item_types`, `pay_items`, `payroll_lines` (`pay_item`) |
 | #110 M7-07 Workflow and lock | E9 (negative total, named events), E10 (states, return, drift check, duty separation, inbox, triggers, notifications), E12 (`payroll.prepare`, `payroll.finalize`, reauthentication), ADR-0006 E6 (key); P4, P5 | `payroll_periods`, `payroll_lines` |

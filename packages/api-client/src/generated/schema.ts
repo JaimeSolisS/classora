@@ -4502,6 +4502,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payroll/periods/{period_id}/recalculate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recalculate Period
+         * @description Rebuild the session-sourced lines of an open period from approved work
+         *     and approved pay events. It may run before the period ends, as a
+         *     preview.
+         */
+        post: operations["recalculate_period_api_v1_payroll_periods__period_id__recalculate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payroll/periods/{period_id}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Period Lines
+         * @description The period and its lines, by service date, then session, with their
+         *     total.
+         */
+        get: operations["get_period_lines_api_v1_payroll_periods__period_id__lines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payroll/tutors": {
         parameters: {
             query?: never;
@@ -13612,6 +13655,8 @@ export interface components {
             /** Denominator */
             denominator: number;
         };
+        /** @enum {string} */
+        LineKind: "session" | "late_cancellation" | "no_show" | "makeup";
         /**
          * LoginRequest
          * @description Username and password. The bounds do not depend on any account.
@@ -15182,6 +15227,103 @@ export interface components {
             account_credit_after: string;
         };
         /**
+         * PayrollLineItem
+         * @description One line (#107 H3): ``rate`` is text, and a "covered by salary" line has
+         *     no rate snapshot. No student data.
+         */
+        PayrollLineItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["LineKind"];
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            /** Class Session Id */
+            class_session_id: string | null;
+            /** Approval Id */
+            approval_id: string | null;
+            /** Service Date */
+            service_date: string | null;
+            class_kind: components["schemas"]["ClassKind"] | null;
+            /** Minutes */
+            minutes: number | null;
+            rate_model: components["schemas"]["RateModel"] | null;
+            /** Rate */
+            rate: string | null;
+            /** Compensation Rate Id */
+            compensation_rate_id: string | null;
+            /** Session Pay Rule Id */
+            session_pay_rule_id: string | null;
+            /** Cumulative Sessions */
+            cumulative_sessions: number | null;
+            /** Cohort Sessions */
+            cohort_sessions: number | null;
+        };
+        /**
+         * PayrollPeriodLines
+         * @description ``GET /api/v1/payroll/periods/{id}/lines`` (#107 H3). ``total`` is the
+         *     sum of the rounded lines.
+         */
+        PayrollPeriodLines: {
+            period: components["schemas"]["PayrollPeriodSummary"];
+            /** Lines */
+            lines: components["schemas"]["PayrollLineItem"][];
+            /**
+             * Total
+             * Format: decimal
+             * @example 1250.00
+             */
+            total: string;
+        };
+        /**
+         * PayrollPeriodSummary
+         * @description The head of a period's lines (#107 H3).
+         */
+        PayrollPeriodSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tutor User Id
+             * Format: uuid
+             */
+            tutor_user_id: string;
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+            pay_frequency: components["schemas"]["PayFrequency"];
+            status: components["schemas"]["PeriodStatus"];
+        };
+        /**
+         * PayrollRecalculation
+         * @description ``POST /api/v1/payroll/periods/{id}/recalculate`` (#107 H2).
+         */
+        PayrollRecalculation: {
+            /** Line Count */
+            line_count: number;
+            /**
+             * Total
+             * Format: decimal
+             * @example 1250.00
+             */
+            total: string;
+        };
+        /**
          * PayrollSettingsDetail
          * @description ``GET /api/v1/payroll/settings`` (#106 B1). ``payroll_starts_on`` is a
          *     center-local date: ``null`` means payroll is off and no period opens.
@@ -15297,9 +15439,11 @@ export interface components {
         /** @enum {string} */
         PeriodState: "not_due" | "below_floor" | "after_end" | "paused" | "enrollment_ended" | "due";
         /** @enum {string} */
+        PeriodStatus: "open" | "prepared" | "finalized";
+        /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "billing.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payment.record" | "payroll.finalize" | "payroll.manage" | "payroll.view" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "billing.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payment.record" | "payroll.finalize" | "payroll.manage" | "payroll.prepare" | "payroll.view" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /** @enum {string} */
         PlanAction: "activate" | "complete" | "discontinue";
         /** @enum {string} */
@@ -35467,6 +35611,131 @@ export interface operations {
             };
             /** @description The receipt could not be rendered (internal_error). */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    recalculate_period_api_v1_payroll_periods__period_id__recalculate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollRecalculation"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such period (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The period isn't open (payroll_period_not_open, with details.status), or a line or the total is beyond the money range (payroll_amount_out_of_range, with details.class_session_id for a line). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_period_lines_api_v1_payroll_periods__period_id__lines_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollPeriodLines"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such period (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

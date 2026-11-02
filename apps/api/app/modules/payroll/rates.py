@@ -14,6 +14,13 @@ concurrent identical insert is the same ``409``. :func:`delete_pay_terms` and
 :func:`delete_compensation_rate` map the guard's 42501 (a finalized line uses
 the row) to ``409 …_in_use``.
 
+**Deleting a rate an open line uses (#107 E8).** ``recalculate`` would pick the
+same version again, so the line can't free it. The delete locks every ``open``
+period of the tutor, oldest first, then the version, then deletes its lines in
+those periods, then the version. A line of a ``prepared`` period stays, and the
+foreign key refuses (``23001``, ``409 compensation_rate_in_use``). The order is
+the run's, periods before versions, or the two deadlock.
+
 **Terms against generated periods** (#106 F): the terms insert and delete take
 the advisory lock of :mod:`~app.modules.payroll.period_rows` first, then
 evaluate the terms as they would be after the write
@@ -30,6 +37,12 @@ there is none. They take a plain date, and they don't check the tutor's role
 or state, because the calculation must find a rate for a tutor who left. The
 caller passes the service date or, for ``per_course``, the cohort's first
 session date (ADR-0017 E3).
+
+**The run's reads (#107 C4).** :func:`rate_versions` (``FOR KEY SHARE``) and
+:func:`terms_basis_versions` read every version of a tutor in one statement
+each; the pure pick of :mod:`~app.modules.payroll.calculation` replaces a
+lookup per session. The lock makes a concurrent delete wait for the run, then
+fail on the new line, instead of an insert failing on the foreign key.
 """
 
 import uuid
@@ -44,6 +57,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import RecordNotFoundError
 from app.core.money import Money, Rate
+from app.modules.payroll.calculation import RateVersion, TermsBasisVersion
 from app.modules.payroll.errors import (
     CompensationRateExistsError,
     CompensationRateInUseError,
@@ -51,6 +65,11 @@ from app.modules.payroll.errors import (
     EffectiveFromInsideGeneratedPeriodError,
     PayTermsExistsError,
     PayTermsInUseError,
+)
+from app.modules.payroll.lines import (
+    FOREIGN_KEY_REFUSALS,
+    delete_lines_of_rate,
+    lock_open_periods_of_tutor,
 )
 from app.modules.payroll.models import (
     CLASS_KINDS,
@@ -204,9 +223,11 @@ async def delete_pay_terms(
 async def delete_compensation_rate(
     session: AsyncSession, tutor_user_id: uuid.UUID, rate_id: uuid.UUID
 ) -> None:
-    """Delete a rate version of this tutor, whatever its date (#105 E4);
-    ``404`` for a row of another tutor, ``409 compensation_rate_in_use`` for
-    a used one."""
+    """Delete a rate version of this tutor, whatever its date (#105 E4), with
+    its lines in ``open`` periods (#107 E8, module docstring); ``404`` for a
+    row of another tutor, ``409 compensation_rate_in_use`` for a version a
+    prepared or finalized period uses."""
+    period_ids = await lock_open_periods_of_tutor(session, tutor_user_id)
     version = await session.scalar(
         select(CompensationRate)
         .where(
@@ -217,11 +238,13 @@ async def delete_compensation_rate(
     )
     if version is None:
         raise RecordNotFoundError()
+    await delete_lines_of_rate(session, rate_id, period_ids)
     await session.delete(version)
     try:
         await session.flush()
     except DBAPIError as exc:
-        if getattr(exc.orig, "sqlstate", None) == INSUFFICIENT_PRIVILEGE:
+        state = getattr(exc.orig, "sqlstate", None)
+        if state == INSUFFICIENT_PRIVILEGE or state in FOREIGN_KEY_REFUSALS:
             raise CompensationRateInUseError() from None
         raise
 
@@ -274,6 +297,58 @@ async def terms_in_effect(
         salary_amount=terms.salary_amount,
         effective_from=terms.effective_from,
     )
+
+
+async def rate_versions(
+    session: AsyncSession, tutor_user_id: uuid.UUID
+) -> list[RateVersion]:
+    """Every rate version of the tutor, ``FOR KEY SHARE`` (module docstring).
+    One statement."""
+    rows = await session.execute(
+        select(
+            CompensationRate.id,
+            CompensationRate.class_kind,
+            CompensationRate.effective_from,
+            CompensationRate.rate_model,
+            CompensationRate.rate,
+        )
+        .where(CompensationRate.tutor_user_id == tutor_user_id)
+        .order_by(CompensationRate.class_kind, CompensationRate.effective_from)
+        .with_for_update(read=True, key_share=True)
+    )
+    return [
+        RateVersion(
+            id=row.id,
+            class_kind=row.class_kind,
+            effective_from=row.effective_from,
+            rate_model=row.rate_model,
+            rate=row.rate,
+        )
+        for row in rows
+    ]
+
+
+async def terms_basis_versions(
+    session: AsyncSession, tutor_user_id: uuid.UUID
+) -> list[TermsBasisVersion]:
+    """Every terms version of the tutor. One statement."""
+    rows = await session.execute(
+        select(
+            TutorPayTerms.effective_from,
+            TutorPayTerms.pay_frequency,
+            TutorPayTerms.salary_amount,
+        )
+        .where(TutorPayTerms.tutor_user_id == tutor_user_id)
+        .order_by(TutorPayTerms.effective_from)
+    )
+    return [
+        TermsBasisVersion(
+            effective_from=row.effective_from,
+            pay_frequency=row.pay_frequency,
+            salary=row.salary_amount,
+        )
+        for row in rows
+    ]
 
 
 # --- Reads ---------------------------------------------------------------------------

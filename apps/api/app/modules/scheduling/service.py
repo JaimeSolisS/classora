@@ -336,6 +336,9 @@ from app.modules.scheduling.billing_context import (
     CancellationFacts as CancellationFacts,
 )
 from app.modules.scheduling.billing_context import (
+    PayableCancellationFacts as PayableCancellationFacts,
+)
+from app.modules.scheduling.billing_context import (
     billable_participant_columns as billable_participant_columns,
 )
 from app.modules.scheduling.billing_context import (
@@ -343,6 +346,9 @@ from app.modules.scheduling.billing_context import (
 )
 from app.modules.scheduling.billing_context import (
     lock_session_for_billing as lock_session_for_billing,
+)
+from app.modules.scheduling.billing_context import (
+    payable_cancellations as payable_cancellations,
 )
 from app.modules.scheduling.billing_context import (
     reconciliation_session_columns as reconciliation_session_columns,
@@ -635,6 +641,9 @@ from app.modules.scheduling.groups import (
 )
 from app.modules.scheduling.locks import lock_students as lock_students
 from app.modules.scheduling.locks import lock_tutor as lock_tutor
+from app.modules.scheduling.makeups import (
+    makeup_session_ids as makeup_session_ids,
+)
 from app.modules.scheduling.materialize import (
     OCCURRENCE_CONFLICT_TYPE as OCCURRENCE_CONFLICT_TYPE,
 )

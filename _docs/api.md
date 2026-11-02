@@ -297,6 +297,9 @@ Codes in use today:
 | `invalid_effective_from` | 422 | A new scheduling policy version, cancellation billing rule version or session pay rule version whose `effective_from` (now when omitted, on the first two) is in the past or not later than every existing version (of the event, on a pay rule); nothing is created (see Scheduling policies, Cancellation billing rules and Session pay rules). |
 | `policy_version_in_effect` | 409 | Deleting a scheduling policy version or a cancellation billing rule version that is in force or in the past; only an upcoming version can be deleted (see Scheduling policies and Cancellation billing rules). |
 | `pay_rule_in_effect` | 409 | Deleting a session pay rule version that is in force or in the past; only an upcoming version can be deleted (see Session pay rules). |
+| `session_pay_rule_in_use` | 409 | Deleting an upcoming session pay rule version that a line keeps: in practice a recalculation committed a line of that version while the delete waited. Lines already in open periods go with the version. |
+| `payroll_period_not_open` | 409 | Recalculating a payroll period that isn't `open`. `details.status` is its status. |
+| `payroll_amount_out_of_range` | 409 | A payroll line, or the period's total, is beyond the money range: nothing is written. `details.class_session_id` names the line's session; no amount is in the body. |
 | `pay_rule_values_mismatch` / `percent_out_of_range` | 422 | Field codes of a session pay rule body: a `percent` or `amount` that doesn't match `mode`, a `percent` outside 0 to 1000 (see Session pay rules). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
@@ -4537,7 +4540,8 @@ student data. The web opens the closeout page.
 revision (`session_closeouts.current_approval_id`): `tutor_user_id`,
 `session_starts_at`, `session_kind`, `scheduled_minutes`, `approved_minutes`,
 `attendance`, `approved_at` and `id`. A closeout without a current revision
-is never paid. M7-08: a revision with `supersedes_approval_id` whose
+is never paid, and it stays in force while the closeout is back in review
+(`payroll_calculation`, #107). M7-08: a revision with `supersedes_approval_id` whose
 superseded revision is on a finalized line yields one adjustment. M6 /
 ISSUE-F1: the package debit runs in `on_closeout_approved` for revision 1
 only.
@@ -7098,7 +7102,7 @@ are in `app/workflows/payroll_compensation_router.py` and
 | `POST /api/v1/payroll/tutors/{tutor_user_id}/pay-terms` | `require("payroll.manage")` | Body `PayTermsCreate`: `effective_from`, `pay_frequency`, `salary_amount` (all required, `null` written out). `201` with `PayTermsItem`. |
 | `POST /api/v1/payroll/tutors/{tutor_user_id}/rates` | `require("payroll.manage")` | Body `CompensationRateCreate`: `class_kind`, `effective_from`, `rate_model`, `rate` (all required, `null` written out). `201` with `CompensationRateItem`. |
 | `DELETE /api/v1/payroll/tutors/{tutor_user_id}/pay-terms/{terms_id}` | `require("payroll.manage")` | `204`. `409 pay_terms_in_use` once a finalized period uses the version. |
-| `DELETE /api/v1/payroll/tutors/{tutor_user_id}/rates/{rate_id}` | `require("payroll.manage")` | `204`. `409 compensation_rate_in_use` once a finalized period uses the version. |
+| `DELETE /api/v1/payroll/tutors/{tutor_user_id}/rates/{rate_id}` | `require("payroll.manage")` | `204`, removing the version's lines in the tutor's open periods until the next recalculation. `409 compensation_rate_in_use` once a prepared or finalized period uses the version (#107 E8). |
 
 - **Access:** `payroll.view` and `payroll.manage` are held by Owners and
   Finance Staff; not delegable; seeded by `make seed`. The compensation read
@@ -7189,10 +7193,54 @@ and the web page M7-04b.
   of another event → `422 invalid_effective_from` → `201`.
 - **Check order of the `DELETE`:** `401` → `403 csrf_failed` → `403
   permission_denied` → the advisory lock → `404` → `409 pay_rule_in_effect` for
-  a version in force or past, the seeds included → `204`.
+  a version in force or past, the seeds included → the open periods with a line
+  of it, oldest first → `409 session_pay_rule_in_use` when a line keeps the
+  version, in practice one a recalculation committed while the delete waited →
+  `204`, removing its lines in those open periods.
 - **Audit:** automatic `create` and `delete` events with the staff actor.
   `percent` and `amount` appear as `"[masked]"` for every reader, the Owner
   included, because Administrators hold `audit.view` and see no pay.
+
+### Payroll calculation
+
+Implemented by M7-04 (#107; ADR-0017 E2, E4, E5, E9, its #107 notes). Routes in
+`app/workflows/payroll_calculation_router.py`, the run in
+`app/workflows/payroll_calculation.py`, the pure rules in
+`app/modules/payroll/calculation.py`, table `payroll_lines`
+(`_docs/data-model.md` §11.6). Pay is derived in a run, never posted by a
+closeout, a cancellation or a reschedule.
+
+| Route | Access | Notes |
+|---|---|---|
+| `POST /api/v1/payroll/periods/{period_id}/recalculate` | `require("payroll.prepare")` | `200` with `PayrollRecalculation`: `line_count`, `total`. No body. Repeatable. |
+| `GET /api/v1/payroll/periods/{period_id}/lines` | `require("payroll.view")` | `PayrollPeriodLines`: `period` (`id`, `tutor_user_id`, `starts_on`, `ends_on`, `pay_frequency`, `status`), `lines[]` by `service_date`, then `class_session_id`, and `total`, the sum of the rounded lines. Not paginated: one period. |
+
+- **Access:** Owners and Finance Staff hold both. A Finance tutor may run their
+  own period: it applies no judgment. Administrators get `403
+  permission_denied`, also with `payroll.finalize` delegated, as do Academic
+  Coordinators, Tutors (their own period too), Students and Guardians. No
+  `Idempotency-Key` and no reauthentication.
+- **A run:** the period `FOR UPDATE`, re-read → `404` → `409
+  payroll_period_not_open` with `details.status` → the lines are computed →
+  the `session`, `late_cancellation`, `no_show` and `makeup` lines are replaced
+  → the event. An `open` period may run before it ends, as a preview. Line ids
+  change on every run; a second run otherwise leaves the same lines.
+- **What pays:** the current approval revision of a session, attributed to the
+  revision's tutor, also while the closeout is back in review, and a family's
+  approved cancellation finally classified `late` or `no_show` under a paying
+  rule. Everything dates by the center-local date of the session's start, which
+  picks the period, the rate and the rule.
+- **Later changes:** an approval or a revision shows on the next run of an open
+  period. A prepared period waits for its return or #110's drift check; a
+  finalized one keeps its lines, and #111 posts the difference.
+- **Line:** `id`, `kind`, `amount`, `class_session_id`, `approval_id` (`null` on
+  a cancellation), `service_date`, `class_kind`, `minutes`, `rate_model`, `rate`
+  (text, four places), `compensation_rate_id`, `session_pay_rule_id`,
+  `cumulative_sessions`, `cohort_sessions`. "Covered by salary" is a `0.00`
+  `session` line with no rate. No student data.
+- **Audit:** the named event `payroll.period_recalculated` `{payroll_period_id,
+  tutor_user_id, line_count}`, with no amount, because Administrators read the
+  audit log. Lines aren't audited.
 
 ### Payroll settings
 

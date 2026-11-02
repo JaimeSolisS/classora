@@ -171,6 +171,9 @@ from app.workflows.overdue_closeouts_router import (
 )
 from app.workflows.package_products_router import router as package_products_router
 from app.workflows.packages_router import router as packages_router
+from app.workflows.payroll_calculation_router import (
+    router as payroll_calculation_router,
+)
 from app.workflows.payroll_compensation_router import (
     router as payroll_compensation_router,
 )
@@ -341,6 +344,7 @@ def build_app(
     app.include_router(billing_payments_router)
     app.include_router(billing_corrections_router)
     app.include_router(billing_receipts_router)
+    app.include_router(payroll_calculation_router)
     app.include_router(payroll_compensation_router)
     app.include_router(payroll_pay_rules_router)
     app.include_router(payroll_settings_router)

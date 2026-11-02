@@ -15,6 +15,8 @@ ADR-0005 D6, ``_docs/data-model.md`` §11.13).
   (#423 E5). Two creates for one target share a student, so ``lock_students``
   serializes them; the index is the backstop.
 - :func:`session_makeup`: the ``makeup`` block of a cancelled session.
+- :func:`makeup_session_ids`: which sessions are makeups, for payroll (#107 C2,
+  E4: each session by itself, with no chain walk).
 
 The rules run at create only: a later move keeps the link (#423 E6), and no
 route edits it. Billing never reads the link (ADR-0006 E3).
@@ -23,6 +25,7 @@ Every function runs in the caller's Unit of Work and never commits.
 """
 
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Final
@@ -180,4 +183,21 @@ async def session_makeup(
         allowed=window.allowed,
         until=window.until,
         session_id=await _live_makeup_id(session, class_session_id),
+    )
+
+
+async def makeup_session_ids(
+    session: AsyncSession, class_session_ids: Collection[uuid.UUID]
+) -> set[uuid.UUID]:
+    """Which of these sessions have ``makeup_of_session_id`` (#107 C2). One
+    statement, none for no ids."""
+    if not class_session_ids:
+        return set()
+    return set(
+        await session.scalars(
+            select(ClassSession.id).where(
+                ClassSession.id.in_(set(class_session_ids)),
+                ClassSession.makeup_of_session_id.is_not(None),
+            )
+        )
     )

@@ -424,6 +424,13 @@ class ClassSession(Audited, VersionedMixin, Model):
             "id",
             postgresql_where=text("state = 'confirmed'"),
         ),
+        # #107 A7: the calculation reads a tutor's cancelled sessions by date.
+        Index(
+            "ix_class_sessions_cancelled_tutor_user_id_starts_at",
+            "tutor_user_id",
+            "starts_at",
+            postgresql_where=text("state = 'cancelled'"),
+        ),
         # #423 A2, A3 (E5): one live makeup per cancelled session; a cancelled
         # makeup keeps its link and leaves the index.
         Index(

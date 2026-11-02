@@ -171,6 +171,7 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "tutor_pay_terms",
         "compensation_rates",
         "payroll_settings",
+        "payroll_lines",
         "payroll_periods",
         "session_pay_rules",
         "number_series",
