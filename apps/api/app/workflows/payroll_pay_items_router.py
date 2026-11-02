@@ -22,11 +22,17 @@ tutor reads finalized lines through #113. No reauthentication (#109 E6).
 import uuid
 from typing import Annotated, Final
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Depends, Request, Response
+from fastapi.exceptions import RequestValidationError
 
 from app.core.authz import PERMISSION_RESPONSES, Principal, require
 from app.core.errors import problem_response_doc
-from app.core.idempotency import IDEMPOTENCY_RESPONSES, IdempotentRequest, idempotent
+from app.core.idempotency import (
+    IDEMPOTENCY_RESPONSES,
+    IdempotentRequest,
+    canonical_body,
+    idempotent,
+)
 from app.core.pagination import OffsetPage, OffsetPagination
 from app.core.uow import UnitOfWorkDep
 from app.modules.payroll import service as payroll
@@ -59,6 +65,24 @@ _WRITE_RESPONSES: Final = {
         " (payroll_own_compensation; only an Owner may write their own)."
     ),
 }
+
+
+async def _hashable_body(request: Request) -> None:
+    """``422 text_invalid`` for a body with a lone surrogate. The key's hash needs
+    UTF-8 and runs before the body's own validators, so the check comes first
+    (#109 QA D2). Such a body gets this ``422`` ahead of a missing key's ``400``."""
+    try:
+        canonical_body(await request.body())
+    except UnicodeEncodeError:
+        raise RequestValidationError(
+            [
+                {
+                    "type": "text_invalid",
+                    "loc": ("body",),
+                    "msg": "This has an invalid character.",
+                }
+            ]
+        ) from None
 
 
 @router.get(_TYPES, responses=PERMISSION_RESPONSES)
@@ -161,6 +185,7 @@ async def list_pay_items(
 )
 async def create_pay_item(
     principal: Annotated[Principal, require(PAYROLL_MANAGE)],
+    _: Annotated[None, Depends(_hashable_body)],
     idem: Annotated[IdempotentRequest, idempotent()],
     tutor_user_id: uuid.UUID,
     body: PayItemCreate,
@@ -181,8 +206,9 @@ async def create_pay_item(
         **_WRITE_RESPONSES,
         404: _NO_ITEM,
         409: problem_response_doc(
-            "The version is stale (version_conflict), or the item is one-time"
-            " (pay_item_not_recurring)."
+            "The version is stale (version_conflict), the item is one-time"
+            " (pay_item_not_recurring), or the change reopens it or moves its"
+            " end later on an inactive type (pay_item_type_inactive)."
         ),
         422: problem_response_doc(
             "The body is not valid (validation_error), any field but version"
@@ -200,7 +226,7 @@ async def end_pay_item(
     uow: UnitOfWorkDep,
 ) -> PayItemDetail:
     """Set or clear a recurring item's end. Any other change is a delete and a
-    new item."""
+    new item. On an inactive type the end can only come earlier."""
     return await payroll_pay_items.end_item(
         uow.session, principal, tutor_user_id, item_id, body
     )

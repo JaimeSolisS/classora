@@ -22363,6 +22363,16 @@
               }
             }
           },
+          "409": {
+            "description": "The lines sum beyond the money range (payroll_amount_out_of_range): end or delete a pay item, then recalculate.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -23479,7 +23489,7 @@
           "payroll"
         ],
         "summary": "End Pay Item",
-        "description": "Set or clear a recurring item's end. Any other change is a delete and a\nnew item.",
+        "description": "Set or clear a recurring item's end. Any other change is a delete and a\nnew item. On an inactive type the end can only come earlier.",
         "operationId": "end_pay_item_api_v1_payroll_tutors__tutor_user_id__pay_items__item_id__patch",
         "parameters": [
           {
@@ -23555,7 +23565,7 @@
             }
           },
           "409": {
-            "description": "The version is stale (version_conflict), or the item is one-time (pay_item_not_recurring).",
+            "description": "The version is stale (version_conflict), the item is one-time (pay_item_not_recurring), or the change reopens it or moves its end later on an inactive type (pay_item_type_inactive).",
             "content": {
               "application/problem+json": {
                 "schema": {

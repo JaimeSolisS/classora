@@ -301,13 +301,13 @@ Codes in use today:
 | `pay_item_type_exists` | 409 | Another pay item type has this name, ignoring case. |
 | `pay_item_type_in_use` | 409 | Deactivating a pay item type while a recurring item of it is still running. |
 | `pay_item_type_unknown` | 422 | The body names no existing pay item type. |
-| `pay_item_type_inactive` | 409 | A new item on a deactivated type. |
+| `pay_item_type_inactive` | 409 | A new item on a deactivated type, or a `PATCH` that reopens an item of one or moves its end later. |
 | `pay_item_not_recurring` | 409 | Setting the end of a one-time item. |
 | `pay_item_end_before_start` | 422 | A pay item's new end is before its start. |
 | `pay_item_end_before_paid_period` | 422 | A pay item's new end is before the start of the latest finalized period holding its line. |
 | `pay_item_in_use` | 409 | Deleting a pay item a prepared or finalized period uses. |
 | `payroll_period_not_open` | 409 | Recalculating a payroll period that isn't `open`. `details.status` is its status. |
-| `payroll_amount_out_of_range` | 409 | A payroll line, or the period's total, is beyond the money range: nothing is written. `details.class_session_id` names the line's session; no amount is in the body. |
+| `payroll_amount_out_of_range` | 409 | A payroll line, or the period's total, is beyond the money range: nothing is written. `GET …/lines` answers it too when the stored lines sum beyond the range. `details.class_session_id` names the line's session; no amount is in the body. |
 | `pay_rule_values_mismatch` / `percent_out_of_range` | 422 | Field codes of a session pay rule body: a `percent` or `amount` that doesn't match `mode`, a `percent` outside 0 to 1000 (see Session pay rules). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
@@ -7226,7 +7226,7 @@ closeout, a cancellation or a reschedule.
 | Route | Access | Notes |
 |---|---|---|
 | `POST /api/v1/payroll/periods/{period_id}/recalculate` | `require("payroll.prepare")` | `200` with `PayrollRecalculation`: `line_count` and `total` of **all** the period's lines after the run, as `GET …/lines` shows them (#109 E2). The total may be negative. No body. Repeatable. |
-| `GET /api/v1/payroll/periods/{period_id}/lines` | `require("payroll.view")` | `PayrollPeriodLines`: `period` (`id`, `tutor_user_id`, `starts_on`, `ends_on`, `pay_frequency`, `status`), `lines[]` by `service_date`, then `class_session_id`, then `salary_starts_on`, then `pay_item_id`: session lines, then salary, then items. And `total`, the sum of the rounded lines. Not paginated: one period. |
+| `GET /api/v1/payroll/periods/{period_id}/lines` | `require("payroll.view")` | `PayrollPeriodLines`: `period` (`id`, `tutor_user_id`, `starts_on`, `ends_on`, `pay_frequency`, `status`), `lines[]` by `service_date`, then `class_session_id`, then `salary_starts_on`, then `pay_item_id`: session lines, then salary, then items. And `total`, the sum of the rounded lines. Not paginated: one period. `409 payroll_amount_out_of_range` when the lines sum beyond the money range. |
 | `GET /api/v1/payroll/unresolved-work` | `require("payroll.view")` | `CursorPage[UnresolvedWorkItem]`, newest `service_date` first, then `class_session_id`. Query `tutor_user_id?`, `reason?`, `limit?`, `cursor?`. An unknown `reason` or a malformed id is `422 validation_error`, a bad cursor `400 invalid_cursor`, an unknown tutor an empty page. |
 
 - **Access:** Owners and Finance Staff hold both. A Finance tutor may run their
@@ -7310,7 +7310,7 @@ amounts only: no percentages, tax or social security.
 | Route | Access | Notes |
 |---|---|---|
 | `GET /api/v1/payroll/pay-item-types` | `require("payroll.view")` | Every type (`PayItemTypeItem`: `id`, `name`, `direction`, `is_active`, `version`), active first, then by name. Not paginated. |
-| `POST /api/v1/payroll/pay-item-types` | `require("payroll.manage")` | Body `{name, direction}`. `201`. `409 pay_item_type_exists` on a name taken, ignoring case. |
+| `POST /api/v1/payroll/pay-item-types` | `require("payroll.manage")` | Body `{name, direction}`. `201`. `409 pay_item_type_exists` on a name taken, ignoring case. A name that is empty, too long or holds a character PostgreSQL can't store is `422 validation_error` (`text_empty`, `text_too_long`, `text_invalid`). |
 | `PATCH /api/v1/payroll/pay-item-types/{type_id}` | `require("payroll.manage")` | Body `{version, name?, is_active?}`; `direction` is `422`. `409 version_conflict`, `404`, `409 pay_item_type_exists`, and `409 pay_item_type_in_use` when deactivating while a recurring item of the type has no end, or one on or after the center's today. Reactivating always passes. |
 | `GET /api/v1/payroll/tutors/{tutor_user_id}/pay-items` | `require("payroll.view")` | Offset pagination, newest `effective_from` first, then `id`. Items are `PayItemDetail`. The number of statements doesn't grow with the page. |
 | `POST /api/v1/payroll/tutors/{tutor_user_id}/pay-items` | `require("payroll.manage")`, `Idempotency-Key` | Body `PayItemCreate`: `pay_item_type_id`, `description`, `amount`, `recurrence`, `effective_from`, `effective_to?`. `201`. |
@@ -7333,8 +7333,10 @@ amounts only: no percentages, tax or social security.
   `applied` (a finalized line uses it), `placed_period` (`id`, `starts_on`,
   `ends_on`, `status`, or `null`, always on a recurring item), `created_at`.
 - **The body of a `POST`:** `amount` above zero, two places; `description`
-  trimmed, 1–500; `effective_to` only on a recurring item, on or after
-  `effective_from`: otherwise `422 validation_error`. An unknown type is `422
+  trimmed, 1–500, with no NUL or lone surrogate (`text_invalid`); `effective_to`
+  only on a recurring item, on or after `effective_from`: otherwise `422
+  validation_error`. A lone surrogate anywhere in the body is `text_invalid` on the
+  path `body`, ahead of a missing key's `400`, because the key's hash needs UTF-8. An unknown type is `422
   pay_item_type_unknown`, an inactive one `409 pay_item_type_inactive`. Any
   `effective_from` is accepted, past or future, also before the first period.
 - **Where an item lands:** a recurring item pays in full in every not-finalized
@@ -7350,8 +7352,14 @@ amounts only: no percentages, tax or social security.
 - **Changing an item:** `PATCH` sets the end of a recurring item only (`409
   pay_item_not_recurring` on a one-time one), never before its start (`422
   pay_item_end_before_start`) or the start of the latest finalized period holding
-  its line (`422 pay_item_end_before_paid_period`). Anything else is a delete and a
-  new item.
+  its line (`422 pay_item_end_before_paid_period`). On an inactive type the end
+  can only come earlier: reopening it or moving it later is `409
+  pay_item_type_inactive`, so a retired type doesn't pay again. Anything else is a
+  delete and a new item.
+- **Lines beyond the money range:** signed lines can offset each other, so a
+  deleted deduction can leave lines that sum beyond the range. `GET …/lines` and
+  `recalculate` then answer `409 payroll_amount_out_of_range`. The item routes
+  still work: end or delete a bonus, then `recalculate`.
 - **Work before the first period:** `before_first_period` work is paid by a
   one-time item, for an amount Finance types: what the line would have paid on the
   rate in effect on the service date. For the first `k0` sessions of a `per_course`

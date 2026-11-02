@@ -11,8 +11,9 @@ Unit of Work and never commits.
 ``409 pay_item_type_exists``, because ``ON CONFLICT`` would pass the audit by.
 ``direction`` never changes, and a type is never deleted. Deactivating takes the
 type ``FOR UPDATE`` and refuses while a recurring item of it is running (#109 E8).
-A new item reads its type ``FOR SHARE``, so the two take turns and an item never
-lands on a type that just went inactive.
+A new item, and an end that runs an item longer, read the type ``FOR SHARE``, so
+they take turns with a deactivation and nothing starts or resumes paying under a
+type that just went inactive.
 
 **Items.** There is no edit (#109 E9): ``PATCH`` sets ``effective_to`` only, and
 anything else is a delete and a new item. Both take the tutor's not-finalized
@@ -392,6 +393,13 @@ async def _locked_item(
     return open_ids, item
 
 
+def _runs_longer(current: date | None, new: date | None) -> bool:
+    """Whether this end keeps the item paying past its current one."""
+    if current is None:
+        return False
+    return new is None or new > current
+
+
 async def end_pay_item(
     session: AsyncSession,
     tutor_user_id: uuid.UUID,
@@ -401,7 +409,10 @@ async def end_pay_item(
     """Set a recurring item's end, or reopen it with ``None``: the locks →
     ``409 version_conflict`` → ``409 pay_item_not_recurring`` → ``422
     pay_item_end_before_start`` → ``422 pay_item_end_before_paid_period``, so an
-    item's dates never disown a paid line. Allowed on an applied item."""
+    item's dates never disown a paid line → ``409 pay_item_type_inactive`` when
+    the change reopens the item or moves its end later, because a retired type
+    doesn't pay again (#109 QA O3). The type is read ``FOR SHARE``, as a new item
+    reads it. Ending or shortening passes. Allowed on an applied item."""
     _, item = await _locked_item(session, tutor_user_id, item_id)
     ensure_version(item, body.version)
     if item.recurrence != RECURRING:
@@ -418,6 +429,14 @@ async def end_pay_item(
         )
         if paid_until is not None and body.effective_to < paid_until:
             raise PayItemEndBeforePaidPeriodError()
+    if _runs_longer(item.effective_to, body.effective_to) and not (
+        await session.scalar(
+            select(PayItemType.is_active)
+            .where(PayItemType.id == item.pay_item_type_id)
+            .with_for_update(read=True)
+        )
+    ):
+        raise PayItemTypeInactiveError()
     item.effective_to = body.effective_to
     await session.flush()
 

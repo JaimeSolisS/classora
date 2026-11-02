@@ -31,8 +31,8 @@ The pay rule body (:class:`SessionPayRuleCreate`) follows the same rule:
 The pay item bodies (:class:`PayItemCreate`): ``amount`` is a
 :class:`~app.core.money.Money` string (``money_*``) above zero
 (``amount_not_positive``), ``description`` and a type's ``name`` are trimmed and
-not empty (``text_empty``), too long (``text_too_long``) or holding a NUL
-(``text_invalid``), and ``effective_to``
+not empty (``text_empty``), too long (``text_too_long``) or holding a NUL or a
+lone surrogate (``text_invalid``), and ``effective_to``
 is only for a recurring item (``effective_to_not_allowed``), on or after
 ``effective_from`` (``effective_to_before_from``).
 """
@@ -355,12 +355,21 @@ class CompensationSummary:
     current_rate_kinds: tuple[ClassKind, ...] = ()
 
 
+def _encodable(text: str) -> bool:
+    """False for a lone surrogate, which JSON can carry and UTF-8 can't."""
+    try:
+        text.encode()
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 def _trimmed(value: str, maximum: int) -> str:
     text = value.strip()
     if not text:
         raise PydanticCustomError("text_empty", "This can't be empty.")
-    if "\x00" in text:
-        # PostgreSQL text can't hold it, so it would reach the database as a 500.
+    if "\x00" in text or not _encodable(text):
+        # PostgreSQL text holds neither, so they would reach the database as a 500.
         raise PydanticCustomError("text_invalid", "This has an invalid character.")
     if len(text) > maximum:
         raise PydanticCustomError(

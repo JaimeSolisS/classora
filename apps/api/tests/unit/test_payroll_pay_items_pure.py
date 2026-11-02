@@ -219,6 +219,7 @@ def test_an_end_on_the_start_day_is_valid():
         ({"description": "   "}, "text_empty"),
         ({"description": "x" * 501}, "text_too_long"),
         ({"description": "a\x00b"}, "text_invalid"),
+        ({"description": "a\ud800b"}, "text_invalid"),
         ({"effective_to": "2026-10-31"}, "effective_to_before_from"),
         (
             {"recurrence": "one_time", "effective_to": "2026-12-01"},
@@ -242,11 +243,17 @@ def test_a_description_of_500_characters_is_valid():
         ({"name": "  ", "direction": "bonus"}, "text_empty"),
         ({"name": "x" * 101, "direction": "bonus"}, "text_too_long"),
         ({"name": "a\x00b", "direction": "bonus"}, "text_invalid"),
+        ({"name": "a\ud800b", "direction": "bonus"}, "text_invalid"),
         ({"name": "Bono", "direction": "gift"}, "literal_error"),
     ],
 )
 def test_a_bad_type_body(body, code):
     assert code in errors_of(lambda: PayItemTypeCreate.model_validate(body))
+
+
+def test_a_type_rename_refuses_a_lone_surrogate():
+    body = {"version": 1, "name": "a\ud800"}
+    assert errors_of(lambda: PayItemTypeUpdate.model_validate(body)) == {"text_invalid"}
 
 
 def test_d3_the_direction_isnt_a_field():

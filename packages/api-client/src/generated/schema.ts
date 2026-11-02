@@ -4792,7 +4792,7 @@ export interface paths {
         /**
          * End Pay Item
          * @description Set or clear a recurring item's end. Any other change is a delete and a
-         *     new item.
+         *     new item. On an inactive type the end can only come earlier.
          */
         patch: operations["end_pay_item_api_v1_payroll_tutors__tutor_user_id__pay_items__item_id__patch"];
         trace?: never;
@@ -36109,6 +36109,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
+            /** @description The lines sum beyond the money range (payroll_amount_out_of_range): end or delete a pay item, then recalculate. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -36998,7 +37007,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The version is stale (version_conflict), or the item is one-time (pay_item_not_recurring). */
+            /** @description The version is stale (version_conflict), the item is one-time (pay_item_not_recurring), or the change reopens it or moves its end later on an inactive type (pay_item_type_inactive). */
             409: {
                 headers: {
                     [name: string]: unknown;

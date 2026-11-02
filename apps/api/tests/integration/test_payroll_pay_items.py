@@ -4,10 +4,11 @@ ADR-0017 E8, its #109 notes). The placement is
 ``test_payroll_calculation_concurrency.py``, the guard ``test_migrations.py``.
 """
 
+import json
 import logging
 import uuid
 from collections.abc import Iterator
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -18,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.idempotency import REPLAYED_HEADER
 from app.core.pagination import OffsetParams
+from app.modules.administration import service as administration
 from app.modules.identity.permissions import (
     ACADEMIC_COORDINATOR,
     ADMINISTRATOR,
@@ -666,6 +668,37 @@ def test_d4_deactivating_refuses_while_a_recurring_item_runs(
     assert code_of(response) == expected, response.text
 
 
+def test_d4_the_boundary_is_the_centers_today(module_seeded_url, client, staff, tutor):
+    """#109 QA O2: an end of today still runs today, and yesterday's doesn't."""
+    url = module_seeded_url
+    today = in_uow(url, administration.center_today)
+    running = add_pay_type(url)
+    ended = add_pay_type(url)
+    add_item(
+        url,
+        tutor.id,
+        running,
+        on="2026-01-01",
+        until=today.isoformat(),
+        recurrence="recurring",
+    )
+    add_item(
+        url,
+        tutor.id,
+        ended,
+        on="2026-01-01",
+        until=(today - timedelta(days=1)).isoformat(),
+        recurrence="recurring",
+    )
+    off = {"version": 1, "is_active": False}
+
+    refused = patch(client, staff, f"{TYPES}/{running}", off)
+    passed = patch(client, staff, f"{TYPES}/{ended}", off)
+
+    assert code_of(refused) == (409, "pay_item_type_in_use")
+    assert code_of(passed) == (200, None), passed.text
+
+
 def test_d4_a_one_time_item_doesnt_hold_a_type_and_reactivating_passes(
     module_seeded_url, client, staff, tutor
 ):
@@ -998,6 +1031,206 @@ def test_f6_a_used_item_refuses_and_keeps_every_line(
     assert code_of(response) == IN_USE
     assert counted(url, "pay_items", tutor.id) == 1
     assert [line.id for line in lines(url, still_open)] == kept
+
+
+SURROGATE_BODY = '{"name": "a\\ud800b", "direction": "bonus"}'
+
+
+def raw_post(
+    client: TestClient, cookie: SetCookie, path: str, body: str, *, keyed: bool = False
+) -> Response:
+    """``body`` as sent: ``json=`` can't carry a lone surrogate."""
+    client.cookies.clear()
+    headers = {**signed_headers(cookie), "Content-Type": "application/json"}
+    if keyed:
+        headers["Idempotency-Key"] = key()
+    return client.post(path, content=body.encode(), headers=headers)
+
+
+def errors_of(response: Response) -> list[tuple[Any, str]]:
+    return [(tuple(e["path"]), e["code"]) for e in response.json()["errors"]]
+
+
+def test_d2_a_lone_surrogate_in_a_types_name_is_422(module_seeded_url, client, staff):
+    pay_type = add_pay_type(module_seeded_url)
+
+    created = raw_post(client, staff, TYPES, SURROGATE_BODY)
+    client.cookies.clear()
+    renamed = client.patch(
+        f"{TYPES}/{pay_type}",
+        content=b'{"version": 1, "name": "a\\ud800"}',
+        headers={**signed_headers(staff), "Content-Type": "application/json"},
+    )
+
+    for response in (created, renamed):
+        assert code_of(response) == (422, "validation_error"), response.text
+        assert errors_of(response) == [(("body", "name"), "text_invalid")]
+
+
+def test_d2_a_lone_surrogate_in_an_item_never_reaches_the_key(
+    module_seeded_url, client, staff, tutor
+):
+    url = module_seeded_url
+    body = item_body(add_pay_type(url), description="@@")
+    raw = json.dumps(body).replace("@@", "a\\ud800b")
+
+    response = raw_post(client, staff, items_path(tutor.id), raw, keyed=True)
+
+    assert code_of(response) == (422, "validation_error"), response.text
+    assert errors_of(response) == [(("body",), "text_invalid")]
+    assert counted(url, "pay_items", tutor.id) == 0
+
+
+def test_d2_access_still_answers_before_the_body(module_seeded_url, client, cookies):
+    who = create_user(module_seeded_url, roles=(TUTOR,)).id
+
+    response = raw_post(
+        client, cookies["coordinator"], items_path(who), SURROGATE_BODY, keyed=True
+    )
+
+    assert code_of(response) == DENIED
+
+
+def over_the_range(
+    url: str, tutor: uuid.UUID
+) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+    """QA D1: two recurring bonuses of the limit and a deduction of it, run, then
+    the deduction deleted by the caller. The period, a bonus and the deduction."""
+    period = add_period_row(url, tutor, "11-02", "11-08")
+    pay_type = add_pay_type(url)
+    add_item(url, tutor, pay_type, MONEY_LIMIT, on="10-01", recurrence="recurring")
+    bonus = add_item(
+        url, tutor, pay_type, MONEY_LIMIT, on="10-01", recurrence="recurring"
+    )
+    deduction = add_item(
+        url, tutor, add_pay_type(url, direction="deduction"), MONEY_LIMIT
+    )
+    assert str(run(url, period).total) == MONEY_LIMIT
+    return period, bonus, deduction
+
+
+def test_d1_lines_beyond_the_range_are_a_typed_refusal(
+    module_seeded_url, client, staff, tutor
+):
+    url = module_seeded_url
+    period, _, deduction = over_the_range(url, tutor.id)
+    lines_path = f"{ROOT}/periods/{period}/lines"
+
+    assert delete(client, staff, items_path(tutor.id, deduction)).status_code == 204
+
+    assert code_of(get(client, staff, lines_path)) == OUT_OF_RANGE
+    assert code_of(
+        post(client, staff, f"{ROOT}/periods/{period}/recalculate", None)
+    ) == (OUT_OF_RANGE)
+    assert len(get(client, staff, items_path(tutor.id)).json()["items"]) == 2
+
+
+@pytest.mark.parametrize("way_out", ["delete", "end"])
+def test_d1_finance_gets_out_through_the_item_routes(
+    module_seeded_url, client, staff, tutor, way_out
+):
+    url = module_seeded_url
+    period, bonus, deduction = over_the_range(url, tutor.id)
+    assert delete(client, staff, items_path(tutor.id, deduction)).status_code == 204
+    path = items_path(tutor.id, bonus)
+
+    if way_out == "delete":
+        response = delete(client, staff, path)
+        assert response.status_code == 204
+    else:
+        response = patch(
+            client, staff, path, {"version": 1, "effective_to": "2026-11-01"}
+        )
+        assert code_of(response) == (200, None), response.text
+
+    ran = post(client, staff, f"{ROOT}/periods/{period}/recalculate", None)
+    assert ran.json() == {"line_count": 1, "total": MONEY_LIMIT}
+    assert read_lines(client, staff, period)["total"] == MONEY_LIMIT
+
+
+def item_on_a_retired_type(
+    url: str, tutor: uuid.UUID, until: str = "2026-10-31"
+) -> uuid.UUID:
+    return add_item(
+        url,
+        tutor,
+        add_pay_type(url, active=False),
+        on="10-01",
+        until=until,
+        recurrence="recurring",
+    )
+
+
+@pytest.mark.parametrize("end", [None, "2026-11-01"])
+def test_o3_a_retired_type_doesnt_pay_again(
+    module_seeded_url, client, staff, tutor, end
+):
+    url = module_seeded_url
+    item = item_on_a_retired_type(url, tutor.id)
+
+    response = patch(
+        client, staff, items_path(tutor.id, item), {"version": 1, "effective_to": end}
+    )
+
+    assert code_of(response) == (409, "pay_item_type_inactive")
+
+
+@pytest.mark.parametrize("end", ["2026-10-31", "2026-10-15"])
+def test_o3_a_retired_types_item_can_keep_or_shorten_its_end(
+    module_seeded_url, client, staff, tutor, end
+):
+    url = module_seeded_url
+    item = item_on_a_retired_type(url, tutor.id)
+
+    response = patch(
+        client, staff, items_path(tutor.id, item), {"version": 1, "effective_to": end}
+    )
+
+    assert code_of(response) == (200, None), response.text
+
+
+def test_o3_an_open_item_on_a_retired_type_can_be_ended(
+    module_seeded_url, client, staff, tutor
+):
+    """By SQL: a deactivation refuses this state, and ending stays safe in it."""
+    url = module_seeded_url
+    item = add_item(
+        url,
+        tutor.id,
+        add_pay_type(url, active=False),
+        on="10-01",
+        recurrence="recurring",
+    )
+
+    response = patch(
+        client,
+        staff,
+        items_path(tutor.id, item),
+        {"version": 1, "effective_to": "2026-10-31"},
+    )
+
+    assert code_of(response) == (200, None), response.text
+
+
+def test_o3_an_active_type_reopens_as_before(module_seeded_url, client, staff, tutor):
+    url = module_seeded_url
+    item = add_item(
+        url,
+        tutor.id,
+        add_pay_type(url),
+        on="10-01",
+        until="10-31",
+        recurrence="recurring",
+    )
+
+    response = patch(
+        client,
+        staff,
+        items_path(tutor.id, item),
+        {"version": 1, "effective_to": None},
+    )
+
+    assert code_of(response) == (200, None), response.text
 
 
 def test_a_change_shows_only_on_the_next_run(module_seeded_url, client, staff, tutor):

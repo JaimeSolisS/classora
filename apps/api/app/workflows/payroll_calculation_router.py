@@ -68,7 +68,15 @@ async def recalculate_period(
 
 @router.get(
     "/periods/{period_id}/lines",
-    responses={**PERMISSION_RESPONSES, 404: _NOT_FOUND},
+    responses={
+        **PERMISSION_RESPONSES,
+        404: _NOT_FOUND,
+        409: problem_response_doc(
+            "The lines sum beyond the money range"
+            " (payroll_amount_out_of_range): end or delete a pay item, then"
+            " recalculate."
+        ),
+    },
 )
 async def get_period_lines(
     period_id: uuid.UUID,

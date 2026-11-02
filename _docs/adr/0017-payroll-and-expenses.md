@@ -211,6 +211,7 @@ Recommended options taken while grooming and building #109. They are orchestrato
 - **Audit masks (#109 E7):** `amount` and `description`, because free text can state an amount or a personal reason.
 - **Types (#109 E8):** `direction` can't change, no delete route, deactivation refused while a recurring item runs, none seeded.
 - **Changing an item (#109 E9):** `PATCH` sets `effective_to` only; otherwise a delete and a new item. A recurring item never reaches a finalized period, so a back-dated start pays open periods only, and the difference is a one-time item.
+- **A retired type doesn't pay again (#109 QA O3, ruled by the orchestrator):** a `PATCH` that reopens an item on an inactive type or moves its end later is `409 pay_item_type_inactive`, the reasoning E8 gives for refusing deactivation. Ending or shortening passes.
 - **"Apply automatically" (spec §7):** at every `recalculate`, including the one `prepare` runs, with no job and no hook.
 - **`amount_sign` replaces `amount_non_negative`:** the old CHECK refused every deduction. The item FK on a line is composite (P12), tightening data-model §11.6's plain FK.
 

@@ -151,8 +151,10 @@ async def period_lines(
 ) -> PayrollPeriodLines:
     """A period's lines by service date, then session, then piece, then item:
     salary after the session lines, items last (never by ``id``, which changes
-    on every run). With their total (``404`` for an unknown id). Two statements,
-    no lock."""
+    on every run). With their total (``404`` for an unknown id). A delete can
+    lift lines already written beyond the money range, because signed lines can
+    offset each other: that is ``409 payroll_amount_out_of_range``, as a run says,
+    and the item routes are the way out (#109 QA D1). Two statements, no lock."""
     period = await session.get(PayrollPeriod, period_id)
     if period is None:
         raise RecordNotFoundError()
@@ -174,12 +176,16 @@ async def period_lines(
             )
         )
     ).all()
+    try:
+        total = Money.total(line.amount for line in lines)
+    except MoneyRangeError:
+        raise PayrollAmountOutOfRangeError() from None
     return PayrollPeriodLines(
         period=_summary(period),
         lines=[
             PayrollLineItem.model_validate(line, from_attributes=True) for line in lines
         ],
-        total=Money.total(line.amount for line in lines),
+        total=total,
     )
 
 

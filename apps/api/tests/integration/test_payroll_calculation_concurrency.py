@@ -30,7 +30,7 @@ from app.modules.payroll.errors import (
     PayrollPeriodNotOpenError,
     SessionPayRuleInUseError,
 )
-from app.modules.payroll.schemas import PayItemTypeUpdate
+from app.modules.payroll.schemas import PayItemTypeUpdate, PayItemUpdate
 from app.workflows import payroll_calculation, session_closeout_review
 from tests.conftest import FrozenClock, frozen_clock
 from tests.integration.auth_support import (
@@ -692,6 +692,28 @@ def test_i4_a_deactivation_that_waited_for_an_item_is_refused(module_seeded_url,
         "SELECT is_active FROM pay_item_types WHERE id = :id",
         {"id": pay_type},
     )[0].is_active
+
+
+def test_o3_a_reopen_that_waited_for_a_deactivation_is_refused(
+    module_seeded_url, tutor
+):
+    """#109 QA O3: the item ended in the past, so the deactivation passes. Only
+    the ``FOR SHARE`` on the type holds the reopen back."""
+    url = module_seeded_url
+    pay_type = add_pay_type(url)
+    item = add_item(
+        url, tutor.id, pay_type, on="10-01", until="10-31", recurrence="recurring"
+    )
+
+    def reopen(session: AsyncSession) -> Awaitable[None]:
+        return payroll.end_pay_item(
+            session, tutor.id, item, PayItemUpdate(version=1, effective_to=None)
+        )
+
+    deactivated, refused = in_turns(url, deactivating(pay_type), reopen)
+
+    assert deactivated.is_active is False
+    assert isinstance(refused, PayItemTypeInactiveError)
 
 
 def test_i1_two_posts_with_one_key_make_one_item(
