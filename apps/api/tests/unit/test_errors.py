@@ -375,6 +375,8 @@ def test_production_app_has_no_demo_route(
         "/api/v1/auth/invitation/redeem",
         "/api/v1/invitations",
         "/api/v1/invitations/{user_id}/reissue",
+        "/api/v1/payroll/pay-rules",
+        "/api/v1/payroll/pay-rules/{rule_id}",
         "/api/v1/payroll/settings",
         "/api/v1/payroll/tutors",
         "/api/v1/payroll/tutors/{tutor_user_id}/compensation",

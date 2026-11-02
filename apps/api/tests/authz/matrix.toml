@@ -2087,6 +2087,32 @@ reauth = "user.password_reset.issue"
 
 [[route]]
 method = "GET"
+path = "/api/v1/payroll/pay-rules"
+access = "permission"
+permission = "payroll.view"
+allow = ["owner", "finance_staff"]
+# #441 D1, ADR-0017 E12: Administrators see no pay rules.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/pay-rules"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #441 D2: the empty body is 422 for the allowed roles. No reauthentication
+# and no Idempotency-Key: a rule is configuration.
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/payroll/pay-rules/{rule_id}"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #441 D3: the placeholder id is no version: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
 path = "/api/v1/payroll/settings"
 access = "permission"
 permission = "payroll.view"

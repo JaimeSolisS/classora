@@ -174,6 +174,9 @@ from app.workflows.packages_router import router as packages_router
 from app.workflows.payroll_compensation_router import (
     router as payroll_compensation_router,
 )
+from app.workflows.payroll_pay_rules_router import (
+    router as payroll_pay_rules_router,
+)
 from app.workflows.price_catalog_router import router as price_catalog_router
 from app.workflows.progress_dashboard_router import (
     student_router as student_progress_dashboard_router,
@@ -339,6 +342,7 @@ def build_app(
     app.include_router(billing_corrections_router)
     app.include_router(billing_receipts_router)
     app.include_router(payroll_compensation_router)
+    app.include_router(payroll_pay_rules_router)
     app.include_router(payroll_settings_router)
     app.include_router(billing_overdue_router)
     app.include_router(billing_settings_router)

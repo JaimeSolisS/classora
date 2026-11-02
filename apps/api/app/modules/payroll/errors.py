@@ -1,5 +1,5 @@
-"""Payroll errors (#105 G, #106 B, F). Each ``AppError`` renders as Problem Details
-(``app.core.errors``) and carries no amount."""
+"""Payroll errors (#105 G, #106 B, F, #441 C). Each ``AppError`` renders as
+Problem Details (``app.core.errors``) and carries no amount."""
 
 from app.core.errors import AppError
 
@@ -61,6 +61,25 @@ class EffectiveFromBeforeFirstPeriodError(AppError):
     status = 422
     code = "effective_from_before_first_period"
     detail = "Pay terms can't start before the tutor's first payroll period."
+
+
+class PayRuleEffectiveFromError(AppError):
+    """A new pay rule version would start in the past, or not after every
+    version of its event (#107 E9; the #61 code)."""
+
+    status = 422
+    code = "invalid_effective_from"
+    detail = (
+        "A new version starts today or later, and after every version of this event."
+    )
+
+
+class PayRuleInEffectError(AppError):
+    """Only an upcoming pay rule version can be deleted (#441 C3)."""
+
+    status = 409
+    code = "pay_rule_in_effect"
+    detail = "This pay rule is in force or in the past, so it can't be deleted."
 
 
 class PayrollStartLockedError(AppError):

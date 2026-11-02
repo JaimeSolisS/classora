@@ -102,6 +102,7 @@ from app.modules.identity.models import (
 from app.modules.payroll.models import (
     CompensationRate,
     PayrollSettings,
+    SessionPayRule,
     TutorPayTerms,
 )
 from app.modules.scheduling.models import (
@@ -231,6 +232,7 @@ def test_the_guard_scans_the_real_audited_models():
         SessionChangeRequest,
         SessionCloseout,
         SessionNote,
+        SessionPayRule,
         SessionRequest,
         Student,
         StudentEmergencyContact,
