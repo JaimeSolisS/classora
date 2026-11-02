@@ -410,6 +410,7 @@ def test_two_runs_on_the_same_facts_make_equal_drafts():
 
 GUARDED_FILES = (
     "app/modules/payroll/calculation.py",
+    "app/modules/payroll/pay_item_lines.py",
     "app/modules/payroll/salary.py",
     "app/workflows/payroll_calculation.py",
 )
@@ -787,3 +788,27 @@ def test_a_share_beyond_the_money_range_names_its_session():
     with pytest.raises(PayrollAmountOutOfRangeError) as caught:
         walk(basis(rates=[per_course("9999999999.9999")], rules=rules), 1, no_show)
     assert caught.value.details == {"class_session_id": str(no_show.class_session_id)}
+
+
+# --- #109 L8: E4's figure for work before the first period, through the real walk.
+
+
+def test_l8_lines_plus_the_item_equal_the_rate_when_n_grows():
+    """QA's case: 1000.00, S1 before the first period, S2 finalized at 2 of 2,
+    then ``N`` grows to 6. ``rate.to_money(k0, N1)`` is 500.00, and the cohort's
+    final share of 166.67 would underpay by 333.33."""
+    pay = basis(rates=[per_course()], terms=[terms_row()])
+    before_first_period = course(on=date(2026, 10, 26))
+    second = course()
+
+    finalized_first = walk(pay, 2, before_first_period, second)
+
+    later = (course() for _ in range(4))
+    open_lines = walk(pay, 6, before_first_period, fixed(2, 2), *later)
+
+    item = Rate("1000").to_money(1, 2)
+    assert amounts(finalized_first) == [Money("500.00")]
+    assert item == Money("500.00")
+    assert Money.total([*amounts(finalized_first), *amounts(open_lines), item]) == (
+        Money("1000.00")
+    )

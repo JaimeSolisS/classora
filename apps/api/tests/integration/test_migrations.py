@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0077"
+HEAD = "0078"
 PAY_RULES = "session_pay_rules"
 LINES = "payroll_lines"
 SALARY_LINE_COLUMNS = frozenset(
@@ -88,6 +88,10 @@ SALARY_LINE_COLUMNS = frozenset(
 )
 SALARY_LINE_INDEXES = frozenset(
     {"uq_payroll_lines_salary_piece", "ix_payroll_lines_tutor_pay_terms_id"}
+)
+PAY_ITEM_TABLES = frozenset({"pay_item_types", "pay_items"})
+PAY_ITEM_LINE_INDEXES = frozenset(
+    {"uq_payroll_lines_pay_item_period", "ix_payroll_lines_pay_item_id"}
 )
 CANCELLED_INDEX = "ix_class_sessions_cancelled_tutor_user_id_starts_at"
 MAKEUP_COLUMN = "makeup_of_session_id"
@@ -458,6 +462,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *PAYROLL_PERIOD_TABLES,
             PAY_RULES,
             LINES,
+            *PAY_ITEM_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4792,9 +4797,29 @@ def _of_0077(diff: Any) -> bool:
     return diff[0] == "add_index" and diff[1].name in SALARY_LINE_INDEXES
 
 
+def _of_0078(diff: Any) -> bool:
+    """A metadata difference that revision 0078 adds: the two tables, and the
+    item column, foreign key and indexes of the lines (#109 A). CHECKs are not
+    compared."""
+    if diff[0] == "add_table":
+        return diff[1].name in PAY_ITEM_TABLES
+    if diff[0] == "add_column":
+        return bool(diff[2] == LINES and diff[3].name == "pay_item_id")
+    if diff[0] == "add_fk":
+        return bool(diff[1].name == "fk_payroll_lines_pay_item_tutor")
+    return diff[0] == "add_index" and (
+        diff[1].name in PAY_ITEM_LINE_INDEXES or diff[1].table.name in PAY_ITEM_TABLES
+    )
+
+
+def _of_0077_on(diff: Any) -> bool:
+    """A metadata difference that revision 0077 or a later one adds."""
+    return _of_0077(diff) or _of_0078(diff)
+
+
 def _of_0076_on(diff: Any) -> bool:
     """A metadata difference that revision 0076 or a later one adds."""
-    return _of_0076(diff) or _of_0077(diff)
+    return _of_0076(diff) or _of_0077_on(diff)
 
 
 def _of_0075_on(diff: Any) -> bool:
@@ -13909,7 +13934,7 @@ def test_0076_adds_the_table_and_downgrade_restores_0075(fresh_database_url):
     command.upgrade(config, "0076")
 
     assert version_nums(dsn) == ["0076"]
-    assert [d for d in metadata_diff(dsn) if not _of_0077(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0077_on(d)] == []
     assert public_tables(dsn) - tables == {LINES}
     assert run_sql(dsn, guard, name)[0].n == 1
     assert CANCELLED_INDEX in _indexes(dsn, "class_sessions")
@@ -13958,6 +13983,7 @@ def test_0076_columns_constraints_and_indexes(fresh_database_url):
         "salary_ends_on": ("date", "YES", None, None),
         "proration_numerator": ("integer", "YES", None, None),
         "proration_denominator": ("integer", "YES", None, None),
+        "pay_item_id": ("uuid", "YES", None, None),
         "proration_basis": ("character varying", "YES", 20, None),
     }
     constraints = _constraints(dsn, LINES)
@@ -13971,12 +13997,13 @@ def test_0076_columns_constraints_and_indexes(fresh_database_url):
         "fk_payroll_lines_compensation_rate_id_compensation_rates",
         "fk_payroll_lines_session_pay_rule_id_session_pay_rules",
         "fk_payroll_lines_tutor_pay_terms_id_tutor_pay_terms",
+        "fk_payroll_lines_pay_item_tutor",
         "ck_payroll_lines_kind_valid",
         "ck_payroll_lines_source_per_kind",
         "ck_payroll_lines_session_fields",
         "ck_payroll_lines_class_kind_valid",
         "ck_payroll_lines_rate_model_valid",
-        "ck_payroll_lines_amount_non_negative",
+        "ck_payroll_lines_amount_sign",
         "ck_payroll_lines_minutes_non_negative",
         "ck_payroll_lines_rate_snapshot",
         "ck_payroll_lines_pay_rule_with_event",
@@ -13987,6 +14014,8 @@ def test_0076_columns_constraints_and_indexes(fresh_database_url):
         "ck_payroll_lines_salary_dates",
         "ck_payroll_lines_proration_fraction",
         "ck_payroll_lines_proration_basis_valid",
+        "ck_payroll_lines_pay_item_fields",
+        "ck_payroll_lines_pay_item_no_rate",
     }
     for name, definition in constraints.items():
         if name.startswith("fk_"):
@@ -14006,6 +14035,8 @@ def test_0076_columns_constraints_and_indexes(fresh_database_url):
         "ix_payroll_lines_session_pay_rule_id",
         "ix_payroll_lines_tutor_pay_terms_id",
         "uq_payroll_lines_salary_piece",
+        "uq_payroll_lines_pay_item_period",
+        "ix_payroll_lines_pay_item_id",
     }
     assert "UNIQUE" in indexes["uq_payroll_lines_session_sourced"]
     assert "WHERE" in indexes["uq_payroll_lines_session_sourced"]
@@ -14029,7 +14060,7 @@ def test_0076_columns_constraints_and_indexes(fresh_database_url):
     ("row", "constraint"),
     [
         ({"kind": "bonus"}, "kind_valid"),
-        ({"amount": Decimal("-0.01")}, "amount_non_negative"),
+        ({"amount": Decimal("-0.01")}, "amount_sign"),
         ({"minutes": -1}, "minutes_non_negative"),
         ({"class_kind": "tutoring"}, "class_kind_valid"),
         ({"rate_model": "per_day"}, "rate_model_valid"),
@@ -14262,7 +14293,7 @@ def test_0077_adds_the_columns_and_downgrade_restores_0076(fresh_database_url):
     command.upgrade(config, "0077")
 
     assert version_nums(dsn) == ["0077"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0078(d)] == []
     assert "EXISTS" in run_sql(dsn, TERMS_BODY)[0].prosrc
 
     command.downgrade(config, "0076")
@@ -14271,7 +14302,7 @@ def test_0077_adds_the_columns_and_downgrade_restores_0076(fresh_database_url):
     assert "SELECT false" in run_sql(dsn, TERMS_BODY)[0].prosrc
     assert SALARY_LINE_INDEXES.isdisjoint(_indexes(dsn, LINES))
     assert SALARY_LINE_COLUMNS.isdisjoint(_columns(dsn, LINES))
-    assert [d for d in metadata_diff(dsn) if not _of_0077(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0077_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -14416,3 +14447,388 @@ def test_0077_the_terms_guard_sees_only_a_finalized_line(fresh_database_url):
     )
     run_sql(dsn, change, {"id": neighbour.id})
     run_sql(dsn, remove, {"id": neighbour.id})
+
+
+# --- 0078: bonuses and deductions (#109 A, J) -----
+
+PAY_ITEM_BODY = "SELECT prosrc FROM pg_proc WHERE proname = 'pay_item_is_referenced'"
+
+
+def _pay_type_0078(dsn: str, direction: str = "bonus") -> Any:
+    return run_sql(
+        dsn,
+        "INSERT INTO pay_item_types (name, direction) VALUES (:n, :d) RETURNING id",
+        {"n": f"Tipo {uuid.uuid4().hex[:8]}", "d": direction},
+    )[0].id
+
+
+def _pay_item_0078(dsn: str, world: dict[str, Any], **row: Any) -> Any:
+    """A recurring item of the world's tutor."""
+    values: dict[str, Any] = {
+        "tutor_user_id": world["tutor"],
+        "pay_item_type_id": world.get("pay_type") or _pay_type_0078(dsn),
+        "description": "Bono",
+        "amount": Decimal("100.00"),
+        "recurrence": "recurring",
+        "effective_from": date(2031, 1, 1),
+        "effective_to": None,
+        **row,
+    }
+    columns = ", ".join(values)
+    binds = ", ".join(f":{name}" for name in values)
+    return run_sql(
+        dsn,
+        f"INSERT INTO pay_items ({columns}) VALUES ({binds}) RETURNING id",  # noqa: S608
+        values,
+    )[0].id
+
+
+def _pay_line_0078(dsn: str, world: dict[str, Any], item: Any, **row: Any) -> Any:
+    values: dict[str, Any] = {
+        "payroll_period_id": world["period"],
+        "tutor_user_id": world["tutor"],
+        "kind": "pay_item",
+        "amount": Decimal("100.00"),
+        "pay_item_id": item,
+        **row,
+    }
+    columns = ", ".join(values)
+    binds = ", ".join(f":{name}" for name in values)
+    return run_sql(
+        dsn,
+        f"INSERT INTO payroll_lines ({columns}) VALUES ({binds}) RETURNING id",  # noqa: S608
+        values,
+    )[0].id
+
+
+def test_0078_adds_the_tables_and_downgrade_restores_0077(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0077")
+    tables = public_tables(dsn)
+    constraints = _constraints(dsn, LINES)
+
+    command.upgrade(config, "0078")
+
+    assert version_nums(dsn) == ["0078"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == PAY_ITEM_TABLES
+    assert "EXISTS" in run_sql(dsn, PAY_ITEM_BODY)[0].prosrc
+
+    command.downgrade(config, "0077")
+
+    assert version_nums(dsn) == ["0077"]
+    assert public_tables(dsn) == tables
+    assert run_sql(dsn, PAY_ITEM_BODY) == []
+    assert PAY_ITEM_LINE_INDEXES.isdisjoint(_indexes(dsn, LINES))
+    assert "pay_item_id" not in _columns(dsn, LINES)
+    assert _constraints(dsn, LINES) == constraints
+    assert [d for d in metadata_diff(dsn) if not _of_0078(d)] == []
+    guards = "SELECT count(*) AS n FROM pg_proc WHERE proname LIKE 'pay_item%'"
+    assert run_sql(dsn, guards)[0].n == 0
+
+    command.upgrade(config, "head")
+
+    assert version_nums(dsn) == [HEAD]
+    assert metadata_diff(dsn) == []
+
+
+def test_0078_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    assert _columns(dsn, "pay_item_types") == {
+        **STANDARD_COLUMNS,
+        "name": ("character varying", "NO", 100, None),
+        "direction": ("character varying", "NO", 10, None),
+        "is_active": ("boolean", "NO", None, "true"),
+    }
+    assert _columns(dsn, "pay_items") == {
+        **STANDARD_COLUMNS,
+        "tutor_user_id": ("uuid", "NO", None, None),
+        "pay_item_type_id": ("uuid", "NO", None, None),
+        "description": ("text", "NO", None, None),
+        "amount": ("numeric", "NO", None, None),
+        "recurrence": ("character varying", "NO", 10, None),
+        "effective_from": ("date", "NO", None, None),
+        "effective_to": ("date", "YES", None, None),
+    }
+    assert set(_constraints(dsn, "pay_item_types")) == {
+        "pk_pay_item_types",
+        "ck_pay_item_types_direction_valid",
+        "ck_pay_item_types_name_trimmed",
+    }
+    item_constraints = _constraints(dsn, "pay_items")
+    assert set(item_constraints) == {
+        "pk_pay_items",
+        "uq_pay_items_id_tutor_user_id",
+        "fk_pay_items_tutor_user_id_users",
+        "fk_pay_items_pay_item_type_id_pay_item_types",
+        "ck_pay_items_amount_positive",
+        "ck_pay_items_recurrence_valid",
+        "ck_pay_items_description_trimmed",
+        "ck_pay_items_dates_ordered",
+        "ck_pay_items_end_only_recurring",
+    }
+    assert set(_indexes(dsn, "pay_item_types")) == {
+        "pk_pay_item_types",
+        "uq_pay_item_types_lower_name",
+    }
+    assert (
+        "lower((name)::text)"
+        in _indexes(dsn, "pay_item_types")["uq_pay_item_types_lower_name"]
+    )
+    assert set(_indexes(dsn, "pay_items")) == {
+        "pk_pay_items",
+        "uq_pay_items_id_tutor_user_id",
+        "ix_pay_items_tutor_user_id_effective_from",
+        "ix_pay_items_pay_item_type_id",
+    }
+    line_fk = _constraints(dsn, LINES)["fk_payroll_lines_pay_item_tutor"]
+    assert "(pay_item_id, tutor_user_id)" in line_fk
+    assert "pay_items(id, tutor_user_id)" in line_fk
+    assert "ON DELETE RESTRICT" in line_fk
+    assert (
+        "(pay_item_id, payroll_period_id) WHERE"
+        in (_indexes(dsn, LINES)["uq_payroll_lines_pay_item_period"])
+    )
+    assert _triggers(dsn, "pay_item_types") == {
+        "pay_item_types_no_direction_change",
+        "pay_item_types_no_truncate",
+    }
+    assert _triggers(dsn, "pay_items") == {
+        "pay_items_no_referenced_change",
+        "pay_items_no_truncate",
+    }
+
+
+@pytest.mark.parametrize(
+    ("row", "constraint"),
+    [
+        ({"amount": Decimal("0.00")}, "amount_positive"),
+        ({"amount": Decimal("-1.00")}, "amount_positive"),
+        ({"recurrence": "monthly"}, "recurrence_valid"),
+        ({"description": ""}, "description_trimmed"),
+        ({"description": " x"}, "description_trimmed"),
+        ({"description": "x" * 501}, "description_trimmed"),
+        ({"effective_to": date(2030, 12, 31)}, "dates_ordered"),
+        (
+            {"recurrence": "one_time", "effective_to": date(2031, 2, 1)},
+            "end_only_recurring",
+        ),
+    ],
+)
+def test_0078_item_checks(fresh_database_url, row, constraint):
+    dsn = fresh_database_url
+    world = _salary_world(dsn)
+
+    with pytest.raises(IntegrityError) as caught:
+        _pay_item_0078(dsn, world, **row)
+
+    assert f"ck_pay_items_{constraint}" in str(caught.value.orig)
+
+
+@pytest.mark.parametrize(
+    ("name", "direction", "constraint"),
+    [
+        ("", "bonus", "name_trimmed"),
+        (" x", "bonus", "name_trimmed"),
+        ("Bono", "gift", "direction_valid"),
+    ],
+)
+def test_0078_type_checks(fresh_database_url, name, direction, constraint):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    with pytest.raises(IntegrityError) as caught:
+        run_sql(
+            dsn,
+            "INSERT INTO pay_item_types (name, direction) VALUES (:n, :d)",
+            {"n": name, "d": direction},
+        )
+
+    assert f"ck_pay_item_types_{constraint}" in str(caught.value.orig)
+
+
+def test_0078_a_type_name_is_unique_ignoring_case(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    insert = "INSERT INTO pay_item_types (name, direction) VALUES (:n, 'bonus')"
+    run_sql(dsn, insert, {"n": "Bono"})
+
+    with pytest.raises(IntegrityError) as caught:
+        run_sql(dsn, insert, {"n": "bONO"})
+
+    assert "uq_pay_item_types_lower_name" in str(caught.value.orig)
+
+
+def test_0078_a_types_direction_never_changes_and_nothing_truncates(fresh_database_url):
+    dsn = fresh_database_url
+    world = _salary_world(dsn)
+    pay_type = _pay_type_0078(dsn)
+    params = {"id": pay_type}
+
+    run_sql(dsn, "UPDATE pay_item_types SET name = 'Otro' WHERE id = :id", params)
+    change = "UPDATE pay_item_types SET direction = 'deduction' WHERE id = :id"
+    assert _sqlstate_0076(dsn, change, params) == "42501"
+    assert _sqlstate_0076(dsn, "TRUNCATE pay_item_types CASCADE") == "42501"
+    _pay_item_0078(dsn, world)
+    assert _sqlstate_0076(dsn, "TRUNCATE pay_items CASCADE") == "42501"
+
+
+def test_0078_a_bonus_and_a_deduction_line_fit(fresh_database_url):
+    dsn = fresh_database_url
+    world = _salary_world(dsn)
+    _pay_line_0078(dsn, world, _pay_item_0078(dsn, world))
+    _pay_line_0078(
+        dsn, world, _pay_item_0078(dsn, world), amount=Decimal("-999999999999.99")
+    )
+
+    rows = run_sql(dsn, "SELECT amount FROM payroll_lines ORDER BY amount")
+
+    assert [row.amount for row in rows] == [
+        Decimal("-999999999999.99"),
+        Decimal("100.00"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("row", "constraint"),
+    [
+        ({"amount": Decimal("0.00")}, "amount_sign"),
+        ({"pay_item_id": None}, "pay_item_fields"),
+        (
+            {
+                "rate_model": "per_hour",
+                "rate": Decimal("1.0000"),
+                "compensation_rate_id": "rate",
+            },
+            "pay_item_no_rate",
+        ),
+        ({"approval_id": "approval"}, "source_per_kind"),
+        ({"salary_amount": Decimal("1.00")}, "salary_fields"),
+    ],
+)
+def test_0078_line_checks(fresh_database_url, row, constraint):
+    dsn = fresh_database_url
+    world = _salary_world(dsn)
+    item = _pay_item_0078(dsn, world)
+    values = {k: world.get(v, v) if isinstance(v, str) else v for k, v in row.items()}
+    if "approval_id" in row:
+        values["approval_id"] = uuid.uuid4()
+
+    with pytest.raises(IntegrityError) as caught:
+        _pay_line_0078(dsn, world, values.pop("pay_item_id", item), **values)
+
+    assert f"ck_payroll_lines_{constraint}" in str(caught.value.orig)
+
+
+def test_0078_a_session_line_cant_name_an_item(fresh_database_url):
+    dsn = fresh_database_url
+    world = _salary_world(dsn)
+
+    with pytest.raises(IntegrityError) as caught:
+        _0076_insert(dsn, world, pay_item_id=_pay_item_0078(dsn, world))
+
+    assert "ck_payroll_lines_pay_item_fields" in str(caught.value.orig)
+
+
+def test_0078_a_negative_amount_on_another_kind_is_refused(fresh_database_url):
+    dsn = fresh_database_url
+    world = _salary_world(dsn)
+
+    with pytest.raises(IntegrityError) as caught:
+        _salary_insert(dsn, world, amount=Decimal("-1.00"))
+
+    assert "ck_payroll_lines_amount_sign" in str(caught.value.orig)
+
+
+def test_0078_one_line_per_item_and_period(fresh_database_url):
+    dsn = fresh_database_url
+    world = _salary_world(dsn)
+    item = _pay_item_0078(dsn, world)
+    _pay_line_0078(dsn, world, item)
+
+    with pytest.raises(IntegrityError) as caught:
+        _pay_line_0078(dsn, world, item)
+
+    assert "uq_payroll_lines_pay_item_period" in str(caught.value.orig)
+
+
+def test_0078_a_line_of_another_tutors_item_is_refused(fresh_database_url):
+    """J3, P12: the foreign key is composite."""
+    dsn = fresh_database_url
+    world = _salary_world(dsn)
+    [other] = run_sql(
+        dsn,
+        "INSERT INTO users (username, email, password_hash, display_name)"
+        " VALUES ('otra', 'otra@example.com', 'x', 'Otra') RETURNING id",
+    )
+    item = _pay_item_0078(dsn, world, tutor_user_id=other.id)
+
+    with pytest.raises(IntegrityError) as caught:
+        _pay_line_0078(dsn, world, item)
+
+    assert "fk_payroll_lines_pay_item_tutor" in str(caught.value.orig)
+
+
+def test_0078_the_guard_sees_only_a_finalized_line_of_this_item(fresh_database_url):
+    """J1: only ``effective_to`` moves, and the sibling of the same tutor stays
+    writable, so the predicate reads its parameter."""
+    dsn = fresh_database_url
+    world = _salary_world(dsn)
+    item = _pay_item_0078(dsn, world)
+    sibling = _pay_item_0078(dsn, world)
+    _pay_line_0078(dsn, world, item)
+    change = "UPDATE pay_items SET amount = amount + 1 WHERE id = :id"
+    text_change = "UPDATE pay_items SET description = 'x' WHERE id = :id"
+    end = (
+        "UPDATE pay_items SET effective_to = '2031-12-31', version = version + 1,"
+        " updated_at = now() WHERE id = :id"
+    )
+    remove = "DELETE FROM pay_items WHERE id = :id"
+    params = {"id": item}
+
+    # Open line: the guard passes, the foreign key refuses the delete.
+    run_sql(dsn, change, params)
+    assert _sqlstate_0076(dsn, remove, params) == "23001"
+
+    _finalize_0076(dsn, world)
+    assert _sqlstate_0076(dsn, change, params) == "42501"
+    assert _sqlstate_0076(dsn, text_change, params) == "42501"
+    assert _sqlstate_0076(dsn, remove, params) == "42501"
+    run_sql(dsn, end, params)
+
+    run_sql(dsn, change, {"id": sibling})
+    run_sql(dsn, remove, {"id": sibling})
+
+
+def test_0078_the_predicate_qualifies_its_parameter(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    assert "pay_item_is_referenced.id" in run_sql(dsn, PAY_ITEM_BODY)[0].prosrc
+
+
+def test_0078_downgrade_removes_item_rows_also_of_a_finalized_period(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    world = _salary_world(dsn)
+    _pay_line_0078(dsn, world, _pay_item_0078(dsn, world), amount=Decimal("-5.00"))
+    session_line = _0076_insert(dsn, world)
+    _finalize_0076(dsn, world)
+    config = alembic_config(dsn)
+
+    command.downgrade(config, "0077")
+
+    assert [row.id for row in run_sql(dsn, "SELECT id FROM payroll_lines")] == [
+        session_line
+    ]
+    assert "pay_item" not in _constraints(dsn, LINES)["ck_payroll_lines_kind_valid"]
+    assert (
+        _sqlstate_0076(
+            dsn, "DELETE FROM payroll_lines WHERE id = :id", {"id": session_line}
+        )
+        == "42501"
+    )

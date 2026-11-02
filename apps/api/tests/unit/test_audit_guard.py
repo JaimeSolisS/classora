@@ -101,6 +101,8 @@ from app.modules.identity.models import (
 )
 from app.modules.payroll.models import (
     CompensationRate,
+    PayItem,
+    PayItemType,
     PayrollSettings,
     SessionPayRule,
     TutorPayTerms,
@@ -214,6 +216,8 @@ def test_the_guard_scans_the_real_audited_models():
         Package,
         PackageCreditTransaction,
         PackageProduct,
+        PayItem,
+        PayItemType,
         Payment,
         PaymentAllocation,
         PaymentMethod,

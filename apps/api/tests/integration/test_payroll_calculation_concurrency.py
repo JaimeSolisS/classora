@@ -3,30 +3,47 @@
 """
 
 import asyncio
+import threading
 import uuid
 from collections.abc import Awaitable, Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
 from typing import Any
 
+import anyio
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.db import create_sessionmaker
+from app.core.idempotency import REPLAYED_HEADER
+from app.core.money import Money
+from app.core.pagination import OffsetParams
 from app.core.uow import UnitOfWork
 from app.modules.academics.schemas import CloseoutApprove
 from app.modules.identity.permissions import OWNER, TUTOR
 from app.modules.payroll import service as payroll
 from app.modules.payroll.errors import (
+    PayItemTypeInactiveError,
+    PayItemTypeInUseError,
     PayrollPeriodNotOpenError,
     SessionPayRuleInUseError,
 )
+from app.modules.payroll.schemas import PayItemTypeUpdate
 from app.workflows import payroll_calculation, session_closeout_review
 from tests.conftest import FrozenClock, frozen_clock
-from tests.integration.auth_support import CreatedUser, auth_client, create_user
+from tests.integration.auth_support import (
+    CreatedUser,
+    auth_client,
+    create_user,
+    signed_headers,
+)
 from tests.integration.conftest import run_sql, short_lived_engine
+from tests.integration.invitation_support import sign_in
 from tests.integration.payroll_calculation_support import (
+    add_item,
+    add_pay_type,
     add_period_row,
     add_rate,
     add_rule,
@@ -536,3 +553,197 @@ def test_a_run_that_waited_rereads_the_status(module_seeded_url, owner, tutor):
         ].status
         == "prepared"
     )
+
+
+# --- #109 I: pay items -----
+
+
+def recurring_on_a_period(url: str, tutor: CreatedUser) -> tuple[uuid.UUID, uuid.UUID]:
+    item = add_item(
+        url, tutor.id, add_pay_type(url), on="10-01", recurrence="recurring"
+    )
+    return item, add_period_row(url, tutor.id, "11-02", "11-08")
+
+
+def test_i2_an_item_delete_during_a_run_waits_and_removes_the_line(
+    module_seeded_url, tutor, monkeypatch
+):
+    """F6: the delete takes the period before the item. The run stops before it
+    reads the item, so a delete that took the item first would wait for the
+    period while the run waits for the item, a deadlock."""
+    url = module_seeded_url
+    item, period = recurring_on_a_period(url, tutor)
+
+    def remove(session: AsyncSession) -> Awaitable[None]:
+        return payroll.delete_pay_item(session, tutor.id, item)
+
+    result, deleted = paused_run(
+        url, monkeypatch, payroll_calculation, "compute_lines", period, remove
+    )
+
+    assert result.line_count == 1
+    assert deleted is None
+    assert lines(url, period) == []
+
+
+def test_i3_an_item_read_by_a_run_waits_for_it_before_any_line_exists(
+    module_seeded_url, tutor, monkeypatch
+):
+    """C2: the run stops after reading the items and before any line exists, so
+    only the ``FOR KEY SHARE`` of that read can hold this writer."""
+    url = module_seeded_url
+    item, period = recurring_on_a_period(url, tutor)
+
+    async def take(session: AsyncSession) -> None:
+        await session.execute(
+            text("SELECT id FROM pay_items WHERE id = :id FOR UPDATE"), {"id": item}
+        )
+
+    result, taken = paused_run(url, monkeypatch, payroll, "replace_lines", period, take)
+
+    assert result.line_count == 1
+    assert taken is None
+
+
+def test_i3_a_lines_read_takes_no_item_lock(module_seeded_url, tutor):
+    """A reader that writes no line takes no lock (C2)."""
+    url = module_seeded_url
+    item, period = recurring_on_a_period(url, tutor)
+    run(url, period)
+
+    async def _run() -> None:
+        engine = short_lived_engine(url)
+        sessions = create_sessionmaker(engine)
+        try:
+            async with UnitOfWork(sessions) as holder:
+                await holder.session.execute(
+                    text("SELECT id FROM pay_items WHERE id = :id FOR UPDATE"),
+                    {"id": item},
+                )
+                async with UnitOfWork(sessions) as reader:
+                    await asyncio.wait_for(
+                        payroll.period_lines(reader.session, period), WAIT_LIMIT
+                    )
+                    await asyncio.wait_for(
+                        payroll.list_pay_items(
+                            reader.session, tutor.id, OffsetParams(limit=5, offset=0)
+                        ),
+                        WAIT_LIMIT,
+                    )
+        finally:
+            await engine.dispose()
+
+    asyncio.run(_run())
+
+
+def adding_item(
+    tutor: CreatedUser, pay_type: uuid.UUID
+) -> Callable[[AsyncSession], Awaitable[Any]]:
+    def call(session: AsyncSession) -> Awaitable[Any]:
+        return payroll.add_pay_item(
+            session,
+            tutor.id,
+            pay_item_type_id=pay_type,
+            description="Bono",
+            amount=Money("100.00"),
+            recurrence="recurring",
+            effective_from=date(2026, 1, 1),
+            effective_to=None,
+        )
+
+    return call
+
+
+def deactivating(pay_type: uuid.UUID) -> Callable[[AsyncSession], Awaitable[Any]]:
+    def call(session: AsyncSession) -> Awaitable[Any]:
+        return payroll.change_pay_item_type(
+            session,
+            pay_type,
+            PayItemTypeUpdate(version=1, is_active=False),
+            today=date(2026, 12, 7),
+        )
+
+    return call
+
+
+def test_i4_an_item_that_waited_for_a_deactivation_is_refused(module_seeded_url, tutor):
+    url = module_seeded_url
+    pay_type = add_pay_type(url)
+
+    deactivated, refused = in_turns(
+        url, deactivating(pay_type), adding_item(tutor, pay_type)
+    )
+
+    assert deactivated.is_active is False
+    assert isinstance(refused, PayItemTypeInactiveError)
+    assert run_sql(url, "SELECT id FROM pay_items") == []
+
+
+def test_i4_a_deactivation_that_waited_for_an_item_is_refused(module_seeded_url, tutor):
+    url = module_seeded_url
+    pay_type = add_pay_type(url)
+
+    added, refused = in_turns(url, adding_item(tutor, pay_type), deactivating(pay_type))
+
+    assert isinstance(added, uuid.UUID)
+    assert isinstance(refused, PayItemTypeInUseError)
+    assert run_sql(
+        url,
+        "SELECT is_active FROM pay_item_types WHERE id = :id",
+        {"id": pay_type},
+    )[0].is_active
+
+
+def test_i1_two_posts_with_one_key_make_one_item(
+    module_seeded_url, client, frozen, owner, tutor, monkeypatch
+):
+    """The first holds its transaction after writing; the second, with the same
+    key, waits and replays."""
+    url = module_seeded_url
+    pay_type = add_pay_type(url)
+    cookie = sign_in(client, owner.username)
+    entered, release = threading.Event(), threading.Event()
+    original = payroll.add_pay_item
+
+    async def held(*args: Any, **kwargs: Any) -> Any:
+        result = await original(*args, **kwargs)
+        if not entered.is_set():
+            entered.set()
+            await anyio.to_thread.run_sync(release.wait, 10)
+        return result
+
+    monkeypatch.setattr(payroll, "add_pay_item", held)
+    same = f"key-{uuid.uuid4().hex}"
+    body = {
+        "pay_item_type_id": str(pay_type),
+        "description": "Bono",
+        "amount": "100.00",
+        "recurrence": "one_time",
+        "effective_from": "2026-11-03",
+    }
+    headers = {**signed_headers(cookie), "Idempotency-Key": same}
+    path = f"/api/v1/payroll/tutors/{tutor.id}/pay-items"
+
+    def send() -> Any:
+        return client.post(path, json=body, headers=headers)
+
+    def second() -> Any:
+        entered.wait(10)
+        timer = threading.Timer(0.5, release.set)
+        timer.start()
+        return send()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first_future = pool.submit(send)
+        second_future = pool.submit(second)
+        responses = [first_future.result(30), second_future.result(30)]
+
+    assert [r.status_code for r in responses] == [201, 201]
+    assert sorted(r.headers.get(REPLAYED_HEADER, "") for r in responses) == ["", "true"]
+    assert responses[0].json() == responses[1].json()
+    count = run_sql(
+        url,
+        "SELECT count(*) AS n FROM pay_items WHERE tutor_user_id = :u",
+        {"u": tutor.id},
+    )
+    assert count[0].n == 1

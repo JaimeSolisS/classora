@@ -192,8 +192,8 @@ def test_a_full_month_is_one_line_with_everything_it_needs(module_seeded_url):
 
 
 def test_c4_statements_with_and_without_a_salary(module_seeded_url, owner):
-    """Ten sent, eleven with the audit insert at commit, and two more with a
-    salary, whatever the number of pieces."""
+    """Twelve sent, thirteen with the audit insert at commit, and two more with
+    a salary, whatever the number of pieces."""
     url = module_seeded_url
     hourly = create_user(url, roles=(TUTOR,))
     hourly_period = paid_tutor(url, hourly.id)
@@ -217,7 +217,7 @@ def test_c4_statements_with_and_without_a_salary(module_seeded_url, owner):
     many, many_result = count(many_period)
 
     assert (one_result.line_count, many_result.line_count) == (4, 11)
-    assert (none, one, many) == (10, 12, 12)
+    assert (none, one, many) == (12, 14, 14)
 
 
 def test_a_version_with_a_frequency_and_no_salary_adds_no_line(
@@ -345,8 +345,8 @@ def salaried_with_session(
 def test_d2_a_kind_outside_the_rebuilt_kinds_survives_a_run(
     module_seeded_url, client, owner, tutor, monkeypatch
 ):
-    """After #108 every kind in the CHECK is rebuilt, so the tuple is narrowed.
-    The new version ends the salary before the period: a narrowed run has no
+    """Every kind in the CHECK is rebuilt, so the tuple is narrowed. The new
+    version ends the salary before the period: a narrowed run has no
     salary draft to insert over the row that stays (the piece's unique index)."""
     url = module_seeded_url
     period = salaried_with_session(url, client, owner, tutor)

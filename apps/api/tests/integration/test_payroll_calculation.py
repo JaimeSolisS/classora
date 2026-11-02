@@ -540,14 +540,15 @@ def test_a_closed_period_refuses_and_keeps_its_lines(
 
 
 def test_the_run_replaces_only_the_rebuilt_kinds():
-    """#107 E7: #109 extends the tuple, and #111's lines survive. A kind outside
-    it surviving a run is ``test_payroll_salary.py``."""
+    """#107 E7: #111's lines survive. A kind outside it surviving a run is
+    ``test_payroll_salary.py``."""
     assert payroll.REBUILT_KINDS == (
         "session",
         "late_cancellation",
         "no_show",
         "makeup",
         "salary",
+        "pay_item",
     )
 
 
@@ -784,6 +785,9 @@ def test_the_routes(module_seeded_url, client, owner, finance, tutor):
         "proration_numerator",
         "proration_denominator",
         "proration_basis",
+        "pay_item_id",
+        "pay_item_type_name",
+        "pay_item_description",
     }
 
 
@@ -955,7 +959,7 @@ def test_a_run_costs_the_same_statements_whatever_the_sessions(
     )
 
     assert (first.line_count, second.line_count) == (3, 30)
-    assert few == many == 10  # eleven with the audit insert at commit
+    assert few == many == 12  # thirteen with the audit insert at commit
 
 
 def test_compute_lines_writes_nothing(module_seeded_url, client, owner, tutor):

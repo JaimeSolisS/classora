@@ -58,9 +58,11 @@ async def recalculate_period(
     principal: Annotated[Principal, require(PAYROLL_PREPARE)],
     uow: UnitOfWorkDep,
 ) -> PayrollRecalculation:
-    """Rebuild the session-sourced lines of an open period from approved work
-    and approved pay events. It may run before the period ends, as a
-    preview."""
+    """Rebuild the session, salary and pay item lines of an open period from
+    approved work, approved pay events, the tutor's terms and their pay items.
+    It may run before the period ends, as a preview. `line_count` and `total`
+    describe all the period's lines, as `GET …/lines` does, and the total may be
+    negative."""
     return await payroll_calculation.recalculate(uow.session, period_id)
 
 
@@ -73,8 +75,8 @@ async def get_period_lines(
     principal: Annotated[Principal, require(PAYROLL_VIEW)],
     uow: UnitOfWorkDep,
 ) -> PayrollPeriodLines:
-    """The period and its lines, by service date, then session, with their
-    total."""
+    """The period and its lines, by service date, then session, then salary
+    piece, then pay item, with their total."""
     return await payroll_calculation.read_lines(uow.session, period_id)
 
 

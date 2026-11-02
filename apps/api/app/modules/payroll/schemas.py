@@ -1,5 +1,5 @@
-"""Payroll shapes (#105, #106, #441): the compensation bodies, their items, the
-lookup results, the settings and the session pay rules.
+"""Payroll shapes (#105, #106, #441, #109): the compensation bodies, their items,
+the lookup results, the settings, the session pay rules and the pay items.
 
 The bodies check everything that needs no database read and report every
 failing field in one ``422``. Each rule is a field validator on the later
@@ -27,6 +27,14 @@ The pay rule body (:class:`SessionPayRuleCreate`) follows the same rule:
 :class:`~app.core.money.Money` string (``money_*``), not negative
 (``amount_negative``), and each is set exactly when ``mode`` asks for it
 (``pay_rule_values_mismatch``, on that field).
+
+The pay item bodies (:class:`PayItemCreate`): ``amount`` is a
+:class:`~app.core.money.Money` string (``money_*``) above zero
+(``amount_not_positive``), ``description`` and a type's ``name`` are trimmed and
+not empty (``text_empty``), too long (``text_too_long``) or holding a NUL
+(``text_invalid``), and ``effective_to``
+is only for a recurring item (``effective_to_not_allowed``), on or after
+``effective_from`` (``effective_to_before_from``).
 """
 
 import uuid
@@ -46,11 +54,16 @@ type CompensationStatus = Literal["current", "upcoming", "past"]
 type ProrationBasis = Literal["calendar_days", "weekdays"]
 type PayRuleEvent = Literal["late_cancellation", "no_show", "makeup"]
 type PayRuleMode = Literal["none", "percent", "fixed"]
+type PayItemDirection = Literal["bonus", "deduction"]
+type PayItemRecurrence = Literal["one_time", "recurring"]
+type PayItemPeriodStatus = Literal["open", "prepared"]
 
 SETTINGS_DATE_MIN: Final = date(2000, 1, 1)
 SETTINGS_DATE_MAX: Final = date(2099, 12, 31)
 MONDAY: Final = 0
 PERCENT_MAX: Final = Rate(1000)
+PAY_ITEM_TYPE_NAME_MAX: Final = 100
+PAY_ITEM_DESCRIPTION_MAX: Final = 500
 
 
 def _in_range(value: date) -> date:
@@ -342,7 +355,167 @@ class CompensationSummary:
     current_rate_kinds: tuple[ClassKind, ...] = ()
 
 
-type LineKind = Literal["session", "late_cancellation", "no_show", "makeup", "salary"]
+def _trimmed(value: str, maximum: int) -> str:
+    text = value.strip()
+    if not text:
+        raise PydanticCustomError("text_empty", "This can't be empty.")
+    if "\x00" in text:
+        # PostgreSQL text can't hold it, so it would reach the database as a 500.
+        raise PydanticCustomError("text_invalid", "This has an invalid character.")
+    if len(text) > maximum:
+        raise PydanticCustomError(
+            "text_too_long",
+            "Use at most {maximum} characters.",
+            {"maximum": maximum},
+        )
+    return text
+
+
+class PayItemTypeCreate(BaseModel):
+    """``POST /api/v1/payroll/pay-item-types`` (#109 D2)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    direction: PayItemDirection = Field(
+        description="It can't change later: a wrong direction is a new type."
+    )
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, value: str) -> str:
+        return _trimmed(value, PAY_ITEM_TYPE_NAME_MAX)
+
+
+class PayItemTypeUpdate(BaseModel):
+    """``PATCH /api/v1/payroll/pay-item-types/{type_id}`` (#109 D3). A missing
+    field stays as it is. ``direction`` isn't a field."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int
+    name: str | None = None
+    is_active: bool | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, value: str | None) -> str | None:
+        return None if value is None else _trimmed(value, PAY_ITEM_TYPE_NAME_MAX)
+
+
+class PayItemTypeItem(BaseModel):
+    """A bonus or deduction type (#109 D1)."""
+
+    id: uuid.UUID
+    name: str
+    direction: PayItemDirection
+    is_active: bool
+    version: int
+
+
+class PayItemCreate(BaseModel):
+    """``POST /api/v1/payroll/tutors/{id}/pay-items`` (#109 F2). Any
+    ``effective_from`` is accepted, past or future."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pay_item_type_id: uuid.UUID
+    description: str = Field(
+        description="Up to 500 characters. The tutor reads it once it is finalized."
+    )
+    amount: Money = Field(
+        description=(
+            "Above zero, whatever the direction. A recurring amount is per"
+            " period, with no proration."
+        )
+    )
+    recurrence: PayItemRecurrence
+    effective_from: date
+    effective_to: date | None = None
+
+    @field_validator("description")
+    @classmethod
+    def _description(cls, value: str) -> str:
+        return _trimmed(value, PAY_ITEM_DESCRIPTION_MAX)
+
+    @field_validator("amount")
+    @classmethod
+    def _amount(cls, value: Money) -> Money:
+        if not value.is_positive():
+            raise PydanticCustomError(
+                "amount_not_positive", "The amount must be above zero."
+            )
+        return value
+
+    @field_validator("effective_to")
+    @classmethod
+    def _end(cls, value: date | None, info: ValidationInfo) -> date | None:
+        if value is None:
+            return None
+        if info.data.get("recurrence") == "one_time":
+            raise PydanticCustomError(
+                "effective_to_not_allowed", "Only a recurring item has an end date."
+            )
+        start = info.data.get("effective_from")
+        if start is not None and value < start:
+            raise PydanticCustomError(
+                "effective_to_before_from",
+                "The end date can't be before the start date.",
+            )
+        return value
+
+
+class PayItemUpdate(BaseModel):
+    """``PATCH /api/v1/payroll/tutors/{id}/pay-items/{item_id}`` (#109 F5):
+    only the end moves, and ``null`` reopens it. Anything else is a delete and a
+    new item (#109 E9)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int
+    effective_to: date | None
+
+
+class PayItemTypeReference(BaseModel):
+    """An item's type."""
+
+    id: uuid.UUID
+    name: str
+    direction: PayItemDirection
+
+
+class PayItemPlacedPeriod(BaseModel):
+    """The period a one-time item lands in (#109 E3)."""
+
+    id: uuid.UUID
+    starts_on: date
+    ends_on: date
+    status: PayItemPeriodStatus
+
+
+class PayItemDetail(BaseModel):
+    """One bonus or deduction (#109 F1). ``amount`` is positive: the type's
+    direction gives a line its sign. ``applied`` is true once a finalized line
+    uses it. ``placed_period`` is where a one-time item lands, ``null`` when no
+    period can take it yet or it has been paid, and on every recurring item."""
+
+    id: uuid.UUID
+    tutor_user_id: uuid.UUID
+    pay_item_type: PayItemTypeReference
+    description: str
+    amount: Money
+    recurrence: PayItemRecurrence
+    effective_from: date
+    effective_to: date | None
+    version: int
+    applied: bool
+    placed_period: PayItemPlacedPeriod | None
+    created_at: datetime
+
+
+type LineKind = Literal[
+    "session", "late_cancellation", "no_show", "makeup", "salary", "pay_item"
+]
 type PeriodStatus = Literal["open", "prepared", "finalized"]
 type UnresolvedReason = Literal["before_first_period", "no_pay_terms", "no_rate"]
 type UnresolvedSource = Literal["closeout", "cancellation"]
@@ -364,7 +537,9 @@ class PayrollLineItem(BaseModel):
     no rate snapshot. A ``salary`` line has no session, and says how its amount
     was reached: ``salary_amount`` × ``proration_numerator`` /
     ``proration_denominator`` for the piece ``salary_starts_on`` to
-    ``salary_ends_on`` (#108 H1). No student data."""
+    ``salary_ends_on`` (#108 H1). A ``pay_item`` line is a fixed amount, negative
+    for a deduction, with the type's current name and the item's description
+    (#109 G1). No student data."""
 
     id: uuid.UUID
     kind: LineKind
@@ -387,11 +562,14 @@ class PayrollLineItem(BaseModel):
     proration_numerator: int | None
     proration_denominator: int | None
     proration_basis: ProrationBasis | None
+    pay_item_id: uuid.UUID | None
+    pay_item_type_name: str | None
+    pay_item_description: str | None
 
 
 class PayrollPeriodLines(BaseModel):
     """``GET /api/v1/payroll/periods/{id}/lines`` (#107 H3). ``total`` is the
-    sum of the rounded lines."""
+    sum of the rounded lines, and may be negative."""
 
     period: PayrollPeriodSummary
     lines: list[PayrollLineItem]
@@ -399,7 +577,9 @@ class PayrollPeriodLines(BaseModel):
 
 
 class PayrollRecalculation(BaseModel):
-    """``POST /api/v1/payroll/periods/{id}/recalculate`` (#107 H2)."""
+    """``POST /api/v1/payroll/periods/{id}/recalculate`` (#107 H2). After the
+    run, all the period's lines, the same as ``GET …/lines`` (#109 E2): ``total``
+    may be negative, and only ``prepare`` refuses that."""
 
     line_count: int
     total: Money

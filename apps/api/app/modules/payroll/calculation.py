@@ -176,7 +176,8 @@ class PayBasis:
 class LineDraft:
     """A line before it is written. Two runs that see the same facts make
     equal drafts, so #110 compares them with no write. A session-sourced line
-    fills the session fields, a ``salary`` line (#108) the salary ones."""
+    fills the session fields, a ``salary`` line (#108) the salary ones, and a
+    ``pay_item`` line (#109) only ``pay_item_id``."""
 
     kind: str
     amount: Money
@@ -198,6 +199,7 @@ class LineDraft:
     proration_numerator: int | None = None
     proration_denominator: int | None = None
     proration_basis: str | None = None
+    pay_item_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)

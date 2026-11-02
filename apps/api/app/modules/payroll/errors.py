@@ -1,5 +1,5 @@
-"""Payroll errors (#105 G, #106 B, F, #441 C, #107 G, H6). Each ``AppError`` renders as
-Problem Details (``app.core.errors``) and carries no amount."""
+"""Payroll errors (#105 G, #106 B, F, #441 C, #107 G, H6, #109). Each ``AppError``
+renders as Problem Details (``app.core.errors``) and carries no amount."""
 
 import uuid
 
@@ -94,6 +94,74 @@ class SessionPayRuleInUseError(AppError):
     status = 409
     code = "session_pay_rule_in_use"
     detail = "A payroll period uses this pay rule."
+
+
+class PayItemTypeExistsError(AppError):
+    """Another type has this name, ignoring case (#109 D2)."""
+
+    status = 409
+    code = "pay_item_type_exists"
+    detail = "A pay item type with this name already exists."
+
+
+class PayItemTypeInUseError(AppError):
+    """A recurring item of this type is still running, so deactivating it would
+    leave it paying under a retired type (#109 E8)."""
+
+    status = 409
+    code = "pay_item_type_in_use"
+    detail = "A recurring pay item of this type is still running."
+
+
+class PayItemTypeUnknownError(AppError):
+    """No such type (#109 F3)."""
+
+    status = 422
+    code = "pay_item_type_unknown"
+    detail = "This pay item type doesn't exist."
+
+
+class PayItemTypeInactiveError(AppError):
+    """The type was deactivated (#109 F3)."""
+
+    status = 409
+    code = "pay_item_type_inactive"
+    detail = "This pay item type is inactive."
+
+
+class PayItemNotRecurringError(AppError):
+    """Only a recurring item has an end (#109 F5)."""
+
+    status = 409
+    code = "pay_item_not_recurring"
+    detail = "Only a recurring pay item can be ended."
+
+
+class PayItemEndBeforeStartError(AppError):
+    """The new end is before the item's start (#109 F5, the ``422`` a create
+    gets from its body)."""
+
+    status = 422
+    code = "pay_item_end_before_start"
+    detail = "The end date can't be before the start date."
+
+
+class PayItemEndBeforePaidPeriodError(AppError):
+    """The new end would disown a paid line: it is before the start of the
+    latest finalized period holding one (#109 F5)."""
+
+    status = 422
+    code = "pay_item_end_before_paid_period"
+    detail = "The end date can't be before a finalized period that paid this item."
+
+
+class PayItemInUseError(AppError):
+    """A line of a prepared period (the foreign key's 23001) or a finalized one
+    (the guard's 42501) uses this item (#109 F6)."""
+
+    status = 409
+    code = "pay_item_in_use"
+    detail = "A prepared or finalized payroll period uses this pay item."
 
 
 class PayrollPeriodNotOpenError(AppError):
