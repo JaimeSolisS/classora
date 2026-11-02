@@ -440,6 +440,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *WITHDRAWAL_TABLES,
             *COMPENSATION_TABLES,
             *PAYROLL_PERIOD_TABLES,
+            PAY_RULES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
