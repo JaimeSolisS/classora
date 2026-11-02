@@ -368,7 +368,13 @@ async def blocking_work(
     """What stops ``prepare`` of this period (#107 E12, #443 B2): the tutor's
     items with a blocking reason dated on or before ``ends_on``. Earlier items
     count, in whatever status their own period is. #110 turns a result into
-    ``409 payroll_unresolved_work``."""
+    ``409 payroll_unresolved_work``.
+
+    **The contract with #110 (#443 D9):** ``prepare`` runs :func:`recalculate`
+    first, then this. An existing line keeps work off the list, so a line that a
+    recalculation would drop isn't an item until it has run. ``finalize`` calls
+    this again: work approved after ``prepare`` with no basis has no draft and no
+    line, so the drift comparison can't see it."""
     items = await unresolved_work(session, period.tutor_user_id, period.ends_on)
     return [item for item in items if item.blocking]
 

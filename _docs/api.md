@@ -7259,11 +7259,15 @@ closeout, a cancellation or a reschedule.
   `before_first_period` (not blocking; Finance pays it with a one-time item),
   `no_pay_terms`, `no_rate`. A tutor with no periods is never
   `before_first_period`. The period's status plays no part: an item in a
-  finalized period stays until it has a basis, and #111 pays it then. An item
+  finalized period stays until it has a basis, and #111 pays it then (still to
+  build): a closeout by `late_approval` under its approval, a cancellation by
+  `late_approval` under `source_key` `cancellation:<class_session_id>`, with no
+  `approval_id`. An item
   leaves the list when its basis exists, before any `recalculate`. Nothing marks
   an item resolved, so `before_first_period` work paid by a one-time item stays
-  listed. See `_docs/data-model.md` §13.2. #110 refuses `prepare` on blocking
-  items dated on or before the period's end.
+  listed. See `_docs/data-model.md` §13.2. #110 refuses `prepare`, after its
+  recalculation, and `finalize` on blocking items dated on or before the
+  period's end.
 
 ### Payroll settings
 

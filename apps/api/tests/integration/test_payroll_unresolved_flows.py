@@ -8,7 +8,7 @@ requests, offers, cohorts and closeouts are real.
 
 import uuid
 from collections.abc import Iterator
-from datetime import timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 import pytest
@@ -19,7 +19,7 @@ from app.modules.payroll import service as payroll
 from app.workflows import payroll_calculation
 from tests.conftest import frozen_clock
 from tests.integration.auth_support import CreatedUser, auth_client
-from tests.integration.catalog_support import get, post
+from tests.integration.catalog_support import count_statements, get, post
 from tests.integration.change_request_support import Scene, make_scene
 from tests.integration.conftest import run_sql
 from tests.integration.lifecycle_support import code_of, in_uow
@@ -78,6 +78,10 @@ def scene(module_seeded_url: str, client: TestClient) -> Scene:
 @pytest.fixture
 def ctx(module_seeded_url: str, client: TestClient) -> Ctx:
     return make_ctx(module_seeded_url, client)
+
+
+def tuesday(ctx: Ctx) -> date:
+    return ctx.tl.monday + timedelta(days=1)
 
 
 def items(url: str, tutor: CreatedUser) -> list[tuple[str, str, str]]:
@@ -241,6 +245,68 @@ def test_a_cancellation_with_no_tutor_is_nobodys_work(scene):
     }
 
 
+def near_midnight(scene: Scene) -> tuple[str, str]:
+    """The cancelled session moved by SQL to 23:00 in the center, 05:00 the next
+    day in UTC: no real path moves a cancelled session. Returns its center date
+    and the UTC date."""
+    day_after = scene.ctx.tl.monday + timedelta(days=8)
+    starts = datetime.combine(day_after, time(5), tzinfo=UTC)
+    run_sql(
+        scene.url,
+        "UPDATE class_sessions SET starts_at = CAST(:s AS timestamptz),"
+        " ends_at = CAST(:s AS timestamptz)"
+        " + (scheduled_minutes * interval '1 minute') WHERE id = :id",
+        {"s": starts, "id": scene.session["id"]},
+    )
+    return (day_after - timedelta(days=1)).isoformat(), day_after.isoformat()
+
+
+def test_a_cancellations_service_date_is_the_center_date(scene):
+    url, tutor = scene.url, scene.ctx.tutor
+    paying_late(scene)
+    cancelled_by_family(scene)
+    center, utc = near_midnight(scene)
+
+    async def read_items(session: AsyncSession) -> Any:
+        return await payroll_calculation.unresolved_work(session, tutor.id, None)
+
+    [item] = in_uow(url, read_items)
+
+    assert item.service_date.isoformat() == center
+    assert center != utc
+
+
+def test_a5_a_cancellation_before_the_floor_by_the_center_date(scene):
+    url, tutor = scene.url, scene.ctx.tutor
+    paying_late(scene)
+    cancelled_by_family(scene)
+    center, utc = near_midnight(scene)
+    expected = [(scene.session["id"], "cancellation", "no_pay_terms")]
+
+    set_floor(url, center)
+    assert items(url, tutor) == expected
+
+    # The UTC date is the floor, and the center date is before it.
+    set_floor(url, utc)
+    assert items(url, tutor) == []
+
+
+def test_a_cancellation_of_another_initiator_isnt_listed(scene):
+    # Set by SQL: a real tutor request is always excused, so it never gets here.
+    url, tutor = scene.url, scene.ctx.tutor
+    paying_late(scene)
+    cancelled_by_family(scene)
+    assert len(items(url, tutor)) == 1
+    run_sql(
+        url,
+        "UPDATE session_change_requests SET initiated_by = 'tutor',"
+        " student_id = NULL WHERE class_session_id = :id",
+        {"id": scene.session["id"]},
+    )
+
+    assert items(url, tutor) == []
+
+
 # --- F7: a substitute with no terms (C3) -----
 
 
@@ -388,6 +454,36 @@ def test_442_d4_a_walked_session_in_a_terms_gap_is_no_pay_terms(ctx):
         (cohort.id_of(1), "closeout", "no_pay_terms"),
     ]
     assert blocking(ctx.url, period) == [cohort.id_of(1)]
+
+
+def test_f10_a_course_candidate_costs_two_statements_whatever_the_cohorts(ctx):
+    first = make_cohort(ctx, 2, start_time="16:00")
+    add_terms(ctx.url, ctx.tutor.id, "2000-01-01", None)
+    teach(ctx, first, 0, 1)
+
+    async def reader(session: AsyncSession) -> Any:
+        return await payroll_calculation.unresolved_work(session, ctx.tutor.id, None)
+
+    async def route(session: AsyncSession) -> Any:
+        return await payroll_calculation.list_unresolved_work(
+            session,
+            page=payroll_calculation.CursorParams(25, None),
+            tutor_user_id=ctx.tutor.id,
+        )
+
+    small, found = count_statements(ctx.url, reader)
+    assert (small, len(found)) == (10, 2)
+
+    second = make_cohort(ctx, 2, start_time="18:00")
+    third = make_cohort(
+        ctx, 2, start_time="12:00", weekdays=[2, 4], starts_on=tuesday(ctx)
+    )
+    teach(ctx, second, 0, 1)
+    teach(ctx, third, 0, 1)
+
+    large, found = count_statements(ctx.url, reader)
+    assert (large, len(found)) == (10, 6)
+    assert count_statements(ctx.url, route)[0] == 11
 
 
 def test_a_finalized_course_line_anchors_and_isnt_an_item(ctx):

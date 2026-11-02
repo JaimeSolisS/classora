@@ -18,6 +18,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import encode_cursor
@@ -696,6 +698,63 @@ def test_f10_statements_dont_grow_with_items_or_tutors(
     wider, _ = count_statements(url, lambda s: page(s))
     assert len(body.items) == 25
     assert single == wide == wider == 9
+
+
+def test_the_readers_take_no_lock(module_seeded_url, owner, tutor):
+    url = module_seeded_url
+    stored(url, owner, tutor, local("11-03"))
+    add_period_row(url, tutor.id, "11-02", "11-08")
+    seen: list[str] = []
+
+    def record(conn, cursor, statement, *_: Any) -> None:  # type: ignore[no-untyped-def]
+        seen.append(statement)
+
+    async def read(session: AsyncSession) -> Any:
+        page = payroll_calculation.CursorParams(25, None)
+        return await payroll_calculation.list_unresolved_work(session, page=page)
+
+    event.listen(Engine, "before_cursor_execute", record)
+    try:
+        in_uow(url, read)
+    finally:
+        event.remove(Engine, "before_cursor_execute", record)
+
+    assert seen
+    assert [text for text in seen if " FOR " in text.upper()] == []
+
+
+def test_only_a_session_sourced_line_keeps_work_off_the_list(
+    module_seeded_url, owner, tutor
+):
+    # #111's `adjustment` kind doesn't exist yet: the CHECKs refuse it, so they
+    # are dropped for this test and restored. The row is what #111 will write.
+    url = module_seeded_url
+    period = add_period_row(url, tutor.id, "11-02", "11-08")
+    made = stored(url, owner, tutor, local("11-03"))
+    checks = run_sql(
+        url,
+        "SELECT conname, pg_get_constraintdef(oid) AS body FROM pg_constraint"
+        " WHERE conrelid = 'payroll_lines'::regclass AND contype = 'c'",
+    )
+    try:
+        for check in checks:
+            run_sql(url, f'ALTER TABLE payroll_lines DROP CONSTRAINT "{check.conname}"')
+        run_sql(
+            url,
+            "INSERT INTO payroll_lines (payroll_period_id, tutor_user_id, kind,"
+            " amount, class_session_id) VALUES (:p, :t, 'adjustment', 10, :s)",
+            {"p": period, "t": tutor.id, "s": made.id},
+        )
+
+        assert items(url, tutor) == [(made.id, "no_pay_terms")]
+    finally:
+        run_sql(url, "DELETE FROM payroll_lines WHERE kind = 'adjustment'")
+        for check in checks:
+            run_sql(
+                url,
+                f'ALTER TABLE payroll_lines ADD CONSTRAINT "{check.conname}"'
+                f" {check.body}",
+            )
 
 
 def test_f11_the_body_holds_no_amount_or_student_data(
