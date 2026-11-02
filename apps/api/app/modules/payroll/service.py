@@ -26,7 +26,8 @@ and writes the ``app.workflows.session_pay_rules`` workflow calls.
 **Lines** (#107; :mod:`~app.modules.payroll.lines`, the pure rules in
 :mod:`~app.modules.payroll.calculation`): :func:`lock_open_period`,
 :func:`replace_lines`, :func:`period_lines`, and :func:`draft_lines` with its
-frozen values.
+frozen values. Per-course pay (#442) adds :func:`finalized_period_dates`,
+:func:`finalized_course_lines` and :func:`planned_sessions`.
 
 **Record policies** (:mod:`~app.modules.payroll.permissions`):
 :func:`can_view_compensation`, :func:`can_write_compensation`.
@@ -34,14 +35,21 @@ frozen values.
 
 from app.modules.payroll.calculation import (
     ApprovedSession,
+    CohortStep,
+    CohortWalk,
+    CourseWalkError,
+    FinalizedCourseLine,
     LineDraft,
     PayableCancellation,
     PayBasis,
     draft_lines,
+    planned_sessions,
 )
 from app.modules.payroll.errors import PayrollOwnCompensationError
 from app.modules.payroll.lines import (
     REBUILT_KINDS,
+    finalized_course_lines,
+    finalized_period_dates,
     lock_open_period,
     period_lines,
     replace_lines,
@@ -85,6 +93,10 @@ from app.modules.payroll.settings import (
 __all__ = [
     "REBUILT_KINDS",
     "ApprovedSession",
+    "CohortStep",
+    "CohortWalk",
+    "CourseWalkError",
+    "FinalizedCourseLine",
     "LineDraft",
     "PayBasis",
     "PayableCancellation",
@@ -100,6 +112,8 @@ __all__ = [
     "delete_pay_terms",
     "delete_session_pay_rule",
     "draft_lines",
+    "finalized_course_lines",
+    "finalized_period_dates",
     "get_session_pay_rule_overview",
     "list_compensation_rates",
     "list_pay_terms",
@@ -109,6 +123,7 @@ __all__ = [
     "open_due_periods",
     "payroll_starts_on",
     "period_lines",
+    "planned_sessions",
     "rate_in_effect",
     "rate_versions",
     "replace_lines",

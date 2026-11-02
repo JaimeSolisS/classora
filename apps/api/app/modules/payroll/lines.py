@@ -17,7 +17,8 @@ Every function runs in the caller's Unit of Work and never commits.
 """
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
+from datetime import date
 from typing import Final
 
 from sqlalchemy import delete, insert, select
@@ -25,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import RecordNotFoundError
 from app.core.money import Money, MoneyRangeError
-from app.modules.payroll.calculation import LineDraft
+from app.modules.payroll.calculation import FinalizedCourseLine, LineDraft
 from app.modules.payroll.errors import (
     PayrollAmountOutOfRangeError,
     PayrollPeriodNotOpenError,
@@ -42,6 +43,7 @@ REBUILT_KINDS: Final = SESSION_LINE_KINDS
 """The kinds ``recalculate`` replaces (#107 E7)."""
 
 OPEN: Final = "open"
+FINALIZED: Final = "finalized"
 FOREIGN_KEY_REFUSALS: Final = frozenset({"23001", "23503"})
 """``restrict_violation``, the value on this PostgreSQL, and
 ``foreign_key_violation``."""
@@ -105,6 +107,8 @@ async def replace_lines(
                     "rate": draft.rate,
                     "compensation_rate_id": draft.compensation_rate_id,
                     "session_pay_rule_id": draft.session_pay_rule_id,
+                    "cumulative_sessions": draft.cumulative_sessions,
+                    "cohort_sessions": draft.cohort_sessions,
                 }
                 for draft in drafts
             ],
@@ -134,6 +138,55 @@ async def period_lines(
         ],
         total=Money.total(line.amount for line in lines),
     )
+
+
+async def finalized_period_dates(
+    session: AsyncSession, tutor_user_id: uuid.UUID
+) -> list[tuple[date, date]]:
+    """``(starts_on, ends_on)`` of the tutor's ``finalized`` periods. One
+    statement, no lock (#442 C2)."""
+    rows = await session.execute(
+        select(PayrollPeriod.starts_on, PayrollPeriod.ends_on).where(
+            PayrollPeriod.tutor_user_id == tutor_user_id,
+            PayrollPeriod.status == FINALIZED,
+        )
+    )
+    return [(row.starts_on, row.ends_on) for row in rows]
+
+
+async def finalized_course_lines(
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID,
+    class_session_ids: Collection[uuid.UUID],
+) -> list[FinalizedCourseLine]:
+    """The tutor's per-course lines of ``finalized`` periods on these sessions
+    (#442 A3). One statement, none for no ids, no lock."""
+    if not class_session_ids:
+        return []
+    rows = await session.execute(
+        select(
+            PayrollLine.class_session_id,
+            PayrollLine.cumulative_sessions,
+            PayrollLine.cohort_sessions,
+            PayrollLine.rate,
+        )
+        .join(PayrollPeriod, PayrollPeriod.id == PayrollLine.payroll_period_id)
+        .where(
+            PayrollPeriod.status == FINALIZED,
+            PayrollLine.tutor_user_id == tutor_user_id,
+            PayrollLine.class_session_id.in_(set(class_session_ids)),
+            PayrollLine.cumulative_sessions.is_not(None),
+        )
+    )
+    return [
+        FinalizedCourseLine(
+            class_session_id=row.class_session_id,
+            cumulative_sessions=row.cumulative_sessions,
+            cohort_sessions=row.cohort_sessions,
+            rate=row.rate,
+        )
+        for row in rows
+    ]
 
 
 async def lock_open_periods_of_tutor(

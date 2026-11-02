@@ -7238,6 +7238,12 @@ closeout, a cancellation or a reschedule.
   (text, four places), `compensation_rate_id`, `session_pay_rule_id`,
   `cumulative_sessions`, `cohort_sessions`. "Covered by salary" is a `0.00`
   `session` line with no rate. No student data.
+- **Per-course (#442):** a `per_course` line pays the tutor's next share of the
+  cohort: `cumulative_sessions` of `cohort_sessions` at the rate in effect on
+  the cohort's first session, minus what earlier sessions earned. The two
+  fields are `null` on every other line. A later cancellation changes
+  `cohort_sessions`, so open lines can change on the next run. See
+  `_docs/data-model.md` §11.6.
 - **Audit:** the named event `payroll.period_recalculated` `{payroll_period_id,
   tutor_user_id, line_count}`, with no amount, because Administrators read the
   audit log. Lines aren't audited.

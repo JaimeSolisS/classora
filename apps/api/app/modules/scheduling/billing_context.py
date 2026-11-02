@@ -36,6 +36,8 @@ Tutor pay (#107; ``app.workflows.payroll_calculation``):
 
 - :func:`payable_cancellations`: a tutor's family cancellations finally
   classified ``late`` or ``no_show``, from the stored outcome.
+- :func:`cohort_ids_of_sessions`, :func:`cohort_sessions`: the cohorts of some
+  sessions and every session of those cohorts, for per-course pay (#442).
 """
 
 import uuid
@@ -315,6 +317,64 @@ async def payable_cancellations(
             starts_at=row.starts_at,
             scheduled_minutes=row.scheduled_minutes,
             classification=row.final_classification,
+        )
+        for row in rows
+    ]
+
+
+async def cohort_ids_of_sessions(
+    session: AsyncSession, class_session_ids: Collection[uuid.UUID]
+) -> set[uuid.UUID]:
+    """The cohorts these sessions belong to. One statement, none for no ids."""
+    if not class_session_ids:
+        return set()
+    return set(
+        await session.scalars(
+            select(ClassSession.cohort_id)
+            .where(
+                ClassSession.id.in_(set(class_session_ids)),
+                ClassSession.cohort_id.is_not(None),
+            )
+            .distinct()
+        )
+    )
+
+
+@dataclass(frozen=True)
+class CohortSessionFacts:
+    """One session of a cohort, in any state (#442 A1)."""
+
+    cohort_id: uuid.UUID
+    class_session_id: uuid.UUID
+    starts_at: datetime
+    state: str
+
+
+async def cohort_sessions(
+    session: AsyncSession, cohort_ids: Collection[uuid.UUID]
+) -> list[CohortSessionFacts]:
+    """Every session of these cohorts, any state, oldest first in each cohort
+    (#442 A1). A cohort is joined by its id, so a cohort that owns several
+    series is one list. One statement, none for no ids, on
+    ``ix_class_sessions_cohort_id_starts_at``, no lock."""
+    if not cohort_ids:
+        return []
+    rows = await session.execute(
+        select(
+            ClassSession.cohort_id,
+            ClassSession.id,
+            ClassSession.starts_at,
+            ClassSession.state,
+        )
+        .where(ClassSession.cohort_id.in_(set(cohort_ids)))
+        .order_by(ClassSession.cohort_id, ClassSession.starts_at, ClassSession.id)
+    )
+    return [
+        CohortSessionFacts(
+            cohort_id=row.cohort_id,
+            class_session_id=row.id,
+            starts_at=row.starts_at,
+            state=row.state,
         )
         for row in rows
     ]

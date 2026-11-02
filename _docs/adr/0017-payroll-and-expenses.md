@@ -109,6 +109,7 @@ Recommended options taken while grooming and building #107 and its split issues.
 - **Deleting a rate an open line uses (#107 E8), correcting data-model §11.6:** `recalculate` would pick the same version, so the delete removes the lines in open periods itself, periods locked first. A prepared line refuses with `23001`, a finalized one with `42501`: the same `409`. Upcoming pay rules follow suit.
 - **Running and reading (#107 E10):** `payroll.prepare` runs, `payroll.view` reads, Owner and Finance Staff. A named event with ids and a count, no amounts. A delegated Administrator gets `403` until #110.
 - **Per-course (#107 E11), refining E3's formula (`Money.prorate` rounds twice), unresolved items (#107 E12, E13), refining E2:** delivered by #442 and #443.
+- **Per-course anchors (#442, orchestrator-recommended, pending owner review), refining #107 E11:** a finalized line sets `k` and `cum` for the sessions **after it**, not for every session. A cohort can hold approved sessions earlier than a finalized line that aren't in a finalized period: work before the tutor's first period, or an earlier period still open when a later one is finalized. Their share is already in that line's `k`, so anchoring them on the latest line would count them twice. When every finalized line comes before the walked sessions, this is E11's rule exactly. No rule yet makes a tutor's periods finalize oldest first; #110 decides that.
 
 ### Paid work (E2 (a), spec §3, §7, W3, ISSUE-F2, #107, #111, #117, product)
 
