@@ -37,9 +37,12 @@ blocking reason (``withdrawal_exists``, ``withdrawal_closeout_pending``,
 ``package_not_withdrawable``, ``student_has_no_family``,
 ``withdrawal_spans_accounts``) is still a ``200``. The ``fingerprint`` is
 SHA-256 over the canonical JSON of the subject, the enrollment's status and
-version, ``at`` to the minute, every line (charge, net, valid allocations,
-counts, policy, computed credit, posting), the automatic credits and the
-refundable cash (B7).
+version, every line (charge, net, valid allocations, counts, policy,
+computed credit, posting), the automatic credits and the refundable cash
+(B7 as amended by #447). ``at`` isn't covered, so a confirm's stale check
+doesn't depend on the minute: what the clock really changes shows in the
+line counts, the set of lines, the automatic credits or the recomputed
+blocking reasons.
 
 **Confirm** (:func:`confirm_withdrawal`), after the route's access rule,
 reauthentication, idempotency key and body:
@@ -177,16 +180,11 @@ class _Computed:
 # --- Shared pieces -------------------------------------------------------------------
 
 
-def _minute(at: datetime) -> str:
-    return at.astimezone(UTC).replace(second=0, microsecond=0).isoformat()
-
-
 def _fingerprint(
     *,
     subject: WithdrawalSubject,
     status: str | None,
     version: int | None,
-    at: datetime,
     lines: Sequence[_Line],
     automatic: Sequence[enrollment_charges.RemovalCredit],
     automatic_allocations: Mapping[uuid.UUID, Sequence[billing.AllocationFact]],
@@ -210,7 +208,6 @@ def _fingerprint(
             "subject": {"kind": subject.kind, "id": subject.id},
             "enrollment_status": status,
             "enrollment_version": version,
-            "at": _minute(at),
             "lines": [
                 {
                     "charge_id": line.item.charge_id,
@@ -329,7 +326,6 @@ def _finish(
             subject=subject,
             status=status,
             version=version,
-            at=at,
             lines=lines,
             automatic=automatic,
             automatic_allocations=automatic_allocations,

@@ -8,9 +8,17 @@ enrollment (``at`` = ``withdrawn_at``); overrides; a paid fee (the release
 becomes account credit, no allocation) and an unpaid one (only the debt);
 S6 fees and tuition periods posted now, then credited; ``withdrawal_exists``;
 the M4 ``version_conflict``; stale previews; the J5 re-enrollment and the
-#92 restoration boundary."""
+#92 restoration boundary.
+
+**The clock is not a stale reason (#447).** A confirm in a later minute than
+its preview is accepted for a package and an active enrollment. Only what
+the clock really changes refuses it: a session starting, the local date
+passing a tuition period's end, a package expiring. Every confirm stays
+inside the 5-minute reauthentication window."""
 
 import uuid
+from collections.abc import Callable
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -20,11 +28,20 @@ from app.modules.billing import service as billing_service
 from tests.conftest import frozen_clock
 from tests.integration import corrections_support as cs
 from tests.integration import enrollment_charge_support as ec
+from tests.integration import package_support as pks
+from tests.integration import payment_support as ps
 from tests.integration import withdrawal_support as ws
 from tests.integration.auth_support import auth_client
+from tests.integration.catalog_support import post
 from tests.integration.conftest import run_sql
 from tests.integration.lifecycle_support import code_of, events
-from tests.integration.series_support import timeline
+from tests.integration.series_support import Timeline, owner_cookie, timeline
+from tests.integration.tuition_support import PLANS, YEARS
+from tests.integration.tuition_support import run as run_tuition
+
+SOLD = date(2031, 3, 1)
+BEFORE_THE_MARK = ps.NOW - timedelta(seconds=1)  # 11:59:59, center zone
+ONE_SECOND = timedelta(seconds=1)
 
 
 @pytest.fixture(scope="module")
@@ -472,3 +489,199 @@ def test_a_re_enrollment_after_a_full_credit_charges_again(
     # The #92 restoration never touches the withdrawal adjustment.
     assert len(ws.withdrawal_adjustments(url, response.json()["withdrawal"]["id"])) == 1
     assert ec.net_of(url, fee.id) == "0.00"
+
+
+# --- The clock is not a stale reason (#447) -------------------------------------------
+
+
+def _package(url: str, *, validity_days: int = 90) -> tuple[pks.World, uuid.UUID, Any]:
+    """A package sold on :data:`SOLD`, and its purchase charge."""
+    pks.reset(url)
+    world = pks.world(url)
+    product = pks.product(url, validity_days=validity_days)
+    package = pks.sell(url, world.student, product, SOLD)
+    [purchase] = run_sql(
+        url, "SELECT * FROM charges WHERE package_id = :p", {"p": package}
+    )
+    return world, package, purchase
+
+
+@pytest.mark.parametrize(
+    "later", [ONE_SECOND, timedelta(minutes=2)], ids=["next_minute", "two_minutes"]
+)
+def test_a_package_confirm_in_a_later_minute_is_accepted(
+    module_seeded_url: str, client: TestClient, later: timedelta
+) -> None:
+    url = module_seeded_url
+    with frozen_clock(BEFORE_THE_MARK) as clock:
+        _, package, _ = _package(url)
+        staff = ws.owner(url, client)
+        found = ws.preview_of(client, staff.cookie, package_id=package)
+        confirmed_at = clock.advance(later)
+        response = ws.credit(client, staff.cookie, ws.body(found))
+
+    assert response.status_code == 201, response.text
+    assert response.json()["withdrawal"]["amount"] == "1000.00"
+    [row] = ws.withdrawal_rows(url, package_id=package)
+    assert row.withdrawn_at == confirmed_at
+
+
+def test_a_package_refund_in_the_next_minute_is_accepted(
+    module_seeded_url: str, client: TestClient
+) -> None:
+    url = module_seeded_url
+    with frozen_clock(BEFORE_THE_MARK) as clock:
+        _, package, purchase = _package(url)
+        staff = ws.owner(url, client)
+        cs.recorded_payment(
+            url,
+            staff.user.id,
+            purchase.billing_account_id,
+            "1000.00",
+            [(purchase.id, "1000.00")],
+        )
+        found = ws.preview_of(client, staff.cookie, package_id=package)
+        clock.advance(ONE_SECOND)
+        response = ws.refund(client, staff.cookie, ws.body(found, refund_on=ps.TODAY))
+
+    assert response.status_code == 201, response.text
+    assert response.json()["withdrawal"]["refund_amount"] == "1000.00"
+
+
+@pytest.mark.parametrize("make", [ws.group_world, ws.cohort_world])
+def test_an_active_enrollment_confirm_in_the_next_minute_is_accepted(
+    module_seeded_url: str,
+    client: TestClient,
+    make: Callable[[str, TestClient, Timeline], ws.World],
+) -> None:
+    url = module_seeded_url
+    tl = timeline()
+    with frozen_clock(tl.now) as clock:
+        world = make(url, client, tl)
+        clock.set(ws.thursday(tl, 2) - ONE_SECOND)  # no session until Monday
+        staff = ws.owner(url, client)
+        found = ws.preview_of(client, staff.cookie, **world.subject_query)
+        clock.advance(ONE_SECOND)
+        response = ws.credit(client, staff.cookie, ws.body(found))
+
+    assert response.status_code == 201, response.text
+    assert response.json()["withdrawal"]["amount"] == found["totals"]["credit"]
+
+
+def test_a_session_starting_since_the_preview_is_stale(
+    module_seeded_url: str, client: TestClient
+) -> None:
+    url = module_seeded_url
+    tl = timeline()
+    start: datetime = tl.at(tl.week(3, 1), "16:00")
+    with frozen_clock(tl.now) as clock:
+        world = ws.cohort_world(url, client, tl)
+        clock.set(start - timedelta(seconds=30))  # 4 of 10 held
+        staff = ws.owner(url, client)
+        found = ws.preview_of(client, staff.cookie, **world.subject_query)
+        assert found["lines"][0]["basis"]["unused"] == 6
+        clock.set(start + timedelta(seconds=30))  # the fifth one started
+        key = f"key-{uuid.uuid4().hex}"
+        stale = ws.credit(client, staff.cookie, ws.body(found), key=key)
+
+    assert code_of(stale) == (409, "withdrawal_preview_stale")
+    [line] = stale.json()["details"]["preview"]["lines"]
+    assert line["basis"] == {"consumed": 5, "unused": 5, "denominator": 10}
+    assert line["computed_credit"] == "1500.00"
+    assert stale.json()["details"]["preview"]["sessions"]["consumed"] == 5
+    assert ws.withdrawal_rows(url, cohort_enrollment_id=world.enrollment_id) == []
+    assert ws.key_rows(url, key) == 0
+    [period] = run_sql(
+        url,
+        "SELECT withdrawn_at FROM cohort_enrollments WHERE id = :id",
+        {"id": world.enrollment_id},
+    )
+    assert period.withdrawn_at is None
+
+
+def test_a_tuition_period_ending_since_the_preview_is_stale(
+    module_seeded_url: str, client: TestClient
+) -> None:
+    url = module_seeded_url
+    tl = timeline(next(YEARS))  # plan dates must be before 2100
+    midnight = tl.at(tl.week(3, 1), "00:00")  # week 2's period ended
+    with frozen_clock(tl.now) as clock:
+        world = ws.group_world(url, client, tl, fee=None, count=24)
+        item = ec.price(
+            url,
+            world.subject,
+            "200.00",
+            class_type="group",
+            pricing_model="per_period",
+            period_frequency="weekly",
+        )
+        ec.set_floor(url, None)
+        linked = post(
+            client,
+            owner_cookie(url, client),
+            PLANS,
+            {
+                "student_id": str(world.student),
+                "service_price_id": str(item),
+                "group_enrollment_id": world.enrollment_id,
+                "starts_on": str(tl.monday),
+            },
+        )
+        assert linked.status_code == 201, linked.text
+        ec.set_floor(url, ec.floor_of(tl))
+        assert run_tuition(url, tl.at(tl.week(2, 1), "08:00")).posted == 2
+        clock.set(midnight - timedelta(seconds=30))
+        staff = ws.owner(url, client)
+        found = ws.preview_of(client, staff.cookie, **world.subject_query)
+        week_two = str(tl.week(2, 1))
+        assert [line["service_date"] for line in found["lines"]] == [week_two]
+        clock.set(midnight + timedelta(seconds=30))
+        stale = ws.credit(client, staff.cookie, ws.body(found))
+
+    assert code_of(stale) == (409, "withdrawal_preview_stale")
+    fresh = stale.json()["details"]["preview"]
+    assert week_two not in [line["service_date"] for line in fresh["lines"]]
+    assert ws.withdrawal_rows(url, group_enrollment_id=world.enrollment_id) == []
+
+
+def test_a_package_expiring_since_the_preview_is_refused(
+    module_seeded_url: str, client: TestClient
+) -> None:
+    url = module_seeded_url
+    midnight = ps.NOW.replace(hour=0) + ws.ONE_DAY  # 2031-03-10 is the last day
+    with frozen_clock(midnight - ONE_SECOND) as clock:
+        _, package, _ = _package(url, validity_days=9)
+        staff = ws.owner(url, client)
+        found = ws.preview_of(client, staff.cookie, package_id=package)
+        assert found["blocking"] == []
+        clock.advance(2 * ONE_SECOND)
+        response = ws.credit(client, staff.cookie, ws.body(found))
+
+    assert code_of(response) == (409, "package_not_withdrawable")
+    assert response.json()["details"] == {"reason": "expired"}
+    assert ws.withdrawal_rows(url, package_id=package) == []
+
+
+def test_a_payment_on_the_package_since_the_preview_is_stale(
+    module_seeded_url: str, client: TestClient
+) -> None:
+    url = module_seeded_url
+    with frozen_clock(ps.NOW):  # the same minute: only the payment differs
+        world, package, purchase = _package(url)
+        staff = ws.owner(url, client)
+        found = ws.preview_of(client, staff.cookie, package_id=package)
+        ws.pay(
+            client,
+            staff.cookie,
+            world.family,
+            "500.00",
+            [(purchase.id, "500.00")],
+            ps.TODAY,
+        )
+        key = f"key-{uuid.uuid4().hex}"
+        stale = ws.credit(client, staff.cookie, ws.body(found), key=key)
+
+    assert code_of(stale) == (409, "withdrawal_preview_stale")
+    assert stale.json()["details"]["preview"]["lines"][0]["allocated"] == "500.00"
+    assert ws.withdrawal_rows(url, package_id=package) == []
+    assert ws.key_rows(url, key) == 0

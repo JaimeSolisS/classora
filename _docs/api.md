@@ -6528,12 +6528,15 @@ is M6-16b (#387).
   credit_override_unknown_charge`). No query parameter.
 - **Fingerprint / stale flow:** the confirm recomputes the preview under
   the locks; a different `fingerprint` (it covers the subject, the
-  enrollment's status and version, `at` to the minute, every line with its
-  allocations and counts, the automatic credits and the refundable cash)
-  is `409 withdrawal_preview_stale` with `details.preview`, the fresh
-  preview; show it and confirm again with its fingerprint. A billing write
-  between the locks and the account lock that changes the real releases
-  gives the same `409`.
+  enrollment's status and version, every line with its allocations and
+  counts, the automatic credits and the refundable cash) is `409
+  withdrawal_preview_stale` with `details.preview`, the fresh preview; show
+  it and confirm again with its fingerprint. A billing write between the
+  locks and the account lock that changes the real releases gives the same
+  `409`. The fingerprint doesn't cover `at`, so the stale check doesn't
+  depend on the minute of the confirm: only a change that affects the
+  withdrawal refuses it, such as a session starting or a tuition period
+  ending since the preview.
 - **Effects:** an active enrollment is withdrawn (the M4 change, with the
   reason); due fees and tuition periods are posted (S6); each line with a
   credit gets a `withdrawal` adjustment (E5 releases the newest
