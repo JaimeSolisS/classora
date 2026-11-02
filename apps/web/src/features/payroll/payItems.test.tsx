@@ -791,7 +791,12 @@ describe('add dialog (B3, B4)', () => {
       await settleUntil(() => alerts(dialog()).length > 0);
       expect(
         dialog().querySelector('[data-pay-item-unknown]')?.textContent,
-      ).toContain('may have been saved');
+      ).toContain('Sending it again from here unchanged');
+      expect(
+        dialog()
+          .querySelector('[data-pay-item-unknown]')
+          ?.closest('[role="alert"]'),
+      ).not.toBeNull();
       expect(posted(api, ITEMS)).toHaveLength(1);
 
       await close();
@@ -800,6 +805,73 @@ describe('add dialog (B3, B4)', () => {
       expect(posted(api, ITEMS)).toHaveLength(2);
     },
   );
+
+  it.each([
+    [
+      'an aborted fetch',
+      () => Promise.reject(new TypeError('Failed to fetch')),
+    ],
+    ['a 502', () => problem(502, 'internal_error')],
+  ] as const)(
+    'when the refresh fails with %s, says so; the retry shows the item (D4)',
+    async (_how, failure) => {
+      let down = false;
+      const api: ApiStub = stub({
+        [ITEMS]: () =>
+          down
+            ? failure()
+            : jsonResponse(
+                200,
+                payItemPage(api.calls(ITEM_POST).length ? [ITEM_WAITING] : []),
+              ),
+        [ITEM_POST]: () => {
+          down = true;
+          return Promise.reject(new TypeError('Failed to fetch'));
+        },
+      });
+      await openAdd();
+      fillOneTime();
+      await click(buttonNamed(dialog(), 'Add'));
+      await settleUntil(() => alerts(dialog()).length > 0);
+      await click(buttonNamed(dialog(), 'Cancel'));
+      await settleUntil(() => !openDialog());
+
+      await settleUntil(() => named(section(), 'Reload the list'));
+      expect(alerts(section()).join(' ')).toContain('may be out of date');
+      expect(row(ITEM_WAITING)).toBeNull();
+
+      down = false;
+      await click(named(section(), 'Reload the list')!);
+      await settleUntil(() => row(ITEM_WAITING));
+      await settleUntil(() => !named(section(), 'Reload the list'));
+      expect(alerts(section())).toEqual([]);
+    },
+  );
+
+  it('keeps the notice when the retry fails too', async () => {
+    let down = false;
+    const api = stub({
+      [ITEMS]: () =>
+        down
+          ? problem(400, 'database_unavailable')
+          : jsonResponse(200, payItemPage([])),
+      [ITEM_POST]: () => {
+        down = true;
+        return Promise.reject(new TypeError('Failed to fetch'));
+      },
+    });
+    await openAdd();
+    fillOneTime();
+    await click(buttonNamed(dialog(), 'Add'));
+    await settleUntil(() => alerts(dialog()).length > 0);
+    await click(buttonNamed(dialog(), 'Cancel'));
+    await settleUntil(() => named(section(), 'Reload the list'));
+    const reads = posted(api, ITEMS).length;
+    await click(named(section(), 'Reload the list')!);
+    await settleUntil(() => posted(api, ITEMS).length > reads);
+    await settle();
+    expect(named(section(), 'Reload the list')).toBeDefined();
+  });
 
   it('does not refresh on a plain close', async () => {
     const api = stub();
@@ -1038,6 +1110,26 @@ describe('end dialog (B5)', () => {
     expect(posted(api, ITEMS).length).toBeGreaterThan(reads);
   });
 
+  it('does not say the list reloaded when it did not (D4)', async () => {
+    let down = false;
+    stub({
+      [ITEMS]: () =>
+        down
+          ? problem(400, 'database_unavailable')
+          : jsonResponse(200, payItemPage(PAY_ITEMS)),
+      [ROUTE]: () => {
+        down = true;
+        return problem(404, 'not_found');
+      },
+    });
+    await open();
+    await click(buttonNamed(dialog(), 'Save end'));
+    await settleUntil(() => !openDialog());
+    await settleUntil(() => statusText().includes("couldn't be reloaded"));
+    expect(statusText()).not.toContain('was reloaded');
+    expect(named(section(), 'Reload the list')).toBeDefined();
+  });
+
   it('moves the focus to the heading when the item is gone (QA D3)', async () => {
     stub({
       [ITEMS]: [
@@ -1126,6 +1218,25 @@ describe('delete (B6)', () => {
     await settleUntil(() => !openDialog());
     expect(statusText()).toContain('That item no longer exists');
     expect(posted(api, ITEMS).length).toBeGreaterThan(reads);
+  });
+
+  it('does not say the list reloaded when it did not (D4)', async () => {
+    let down = false;
+    stub({
+      [ITEMS]: () =>
+        down
+          ? problem(400, 'database_unavailable')
+          : jsonResponse(200, payItemPage(PAY_ITEMS)),
+      [ROUTE]: () => {
+        down = true;
+        return problem(404, 'not_found');
+      },
+    });
+    await open();
+    await click(buttonNamed(dialog(), 'Delete'));
+    await settleUntil(() => !openDialog());
+    await settleUntil(() => statusText().includes("couldn't be reloaded"));
+    expect(named(section(), 'Reload the list')).toBeDefined();
   });
 });
 

@@ -54,6 +54,8 @@ const ready = (items = PAY_ITEMS, hasMore = false) =>
     loadingMore: false,
     moreError: null,
     onMore: fn(),
+    refreshError: null,
+    onRefresh: fn(),
   }) as const;
 
 const actions: PayItemActions = {
@@ -103,6 +105,26 @@ export const Section: Story = {
     await expect(table.getByText('-$1,250.50')).toBeVisible();
     await expect(
       canvas.getByText(i18n.t('payroll.payItems.note')),
+    ).toBeVisible();
+  },
+};
+
+/** The refresh failed: the rows may be old, and the retry is offered. */
+export const RefreshFailed: Story = {
+  args: {
+    state: {
+      ...ready([ITEM_WAITING]),
+      refreshError: refused('internal_error', 502),
+    },
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('alert')).toHaveTextContent(
+      i18n.t('payroll.payItems.stale'),
+    );
+    await expect(
+      canvas.getByRole('button', {
+        name: i18n.t('payroll.payItems.reloadList'),
+      }),
     ).toBeVisible();
   },
 };

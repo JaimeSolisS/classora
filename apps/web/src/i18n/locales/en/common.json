@@ -6488,6 +6488,9 @@
       "ended": "End date saved.",
       "deleted": "Item deleted.",
       "gone": "That item no longer exists. The list was reloaded.",
+      "goneNotReloaded": "That item no longer exists. The list couldn't be reloaded.",
+      "stale": "The list couldn't be refreshed and may be out of date. Reload it before adding an item.",
+      "reloadList": "Reload the list",
       "dialog": {
         "title": "Add bonus or deduction",
         "help": "A fixed amount for this tutor. A mistake is fixed by deleting it and adding it again.",
@@ -6496,7 +6499,7 @@
         "noTypes": "There are no active types.",
         "typesLink": "Go to the types",
         "typesLoading": "Loading types…",
-        "outcomeUnknown": "The item may have been saved. Adding again unchanged won't duplicate it; closing refreshes the list.",
+        "outcomeUnknown": "The item may have been saved. Sending it again from here unchanged won't duplicate it. If you close, check the list before adding it again.",
         "description": "Description",
         "descriptionHelp": "The tutor will see this description on their payslip.",
         "amount": "Amount (MXN)",

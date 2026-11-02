@@ -44,7 +44,9 @@ import { INPUT_CLASS, SELECT_CLASS, SHEET_CLASS } from './sheet';
 // with two bodies. Only active types are offered. A type deactivated meanwhile
 // is refused on the field and the list refetched, which drops it; with none
 // left the dialog links to the types page. After an answer that doesn't settle
-// it, the dialog says the item may be stored, and closing refreshes the list.
+// it, the alert says the item may be stored: only a resend from this opening is
+// safe, because the key belongs to it. Closing refreshes the list, which may
+// fail too, so the words promise nothing about it (QA #454 D4).
 
 export type PayItemTypeOptions =
   | { status: 'loading' }
@@ -223,11 +225,17 @@ function DialogBody({
           {t('payroll.payItems.dialog.help')}
         </DialogDescription>
       </DialogHeader>
-      {failure ? <ErrorAlert error={failure} /> : null}
-      {outcomeUnknown(failure) ? (
-        <p className="text-sm" data-pay-item-unknown>
-          {t('payroll.payItems.dialog.outcomeUnknown')}
-        </p>
+      {failure ? (
+        <ErrorAlert
+          error={failure}
+          detail={
+            outcomeUnknown(failure) ? (
+              <span data-pay-item-unknown>
+                {t('payroll.payItems.dialog.outcomeUnknown')}
+              </span>
+            ) : undefined
+          }
+        />
       ) : null}
       {types.status === 'error' ? (
         <ErrorAlert error={types.error} onRetry={types.onRetry} />

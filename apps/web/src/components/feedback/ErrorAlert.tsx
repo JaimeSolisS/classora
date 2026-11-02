@@ -1,4 +1,5 @@
 import { CircleAlert } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { errorMessage, errorRequestId } from '@/app/errors';
@@ -19,6 +20,9 @@ interface ErrorAlertProps {
    * context the code's message doesn't give (#36: a preference not saved).
    */
   title?: string;
+  /** More on what to do (already translated), below the message and read
+   * with it: `role="alert"` covers it. */
+  detail?: ReactNode;
   className?: string;
 }
 
@@ -31,6 +35,7 @@ export function ErrorAlert({
   retryLabel,
   message,
   title,
+  detail,
   className,
 }: ErrorAlertProps) {
   const { t } = useTranslation();
@@ -54,6 +59,7 @@ export function ErrorAlert({
         <p className={title ? undefined : 'font-medium text-destructive'}>
           {message ?? errorMessage(error, tErrors)}
         </p>
+        {detail ? <p className="text-sm">{detail}</p> : null}
         {requestId ? <RequestReference requestId={requestId} /> : null}
         {onRetry ? (
           <Button type="button" variant="outline" size="sm" onClick={onRetry}>

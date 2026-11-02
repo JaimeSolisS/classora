@@ -28,8 +28,9 @@ import { PayItemsView, type PayItemsState } from './PayItemsView';
 // CompensationView, which /my-pay shares: a tutor sees no items here (#113).
 // "Load more" walks the API's offset; a change refreshes the items and nothing
 // else (B8), and refetches every page already shown. Closing the add dialog
-// after a failed attempt refreshes too (QA #454 D2). The types load only when
-// the add dialog opens.
+// after a failed attempt refreshes too (QA #454 D2). A refresh that fails keeps
+// the old rows, so the section says so, with a retry (D4). The types load only
+// when the add dialog opens.
 
 export interface PayItemsSectionProps {
   tutorUserId: string;
@@ -82,6 +83,8 @@ export function PayItemsSection({
         loadingMore: list.isFetchingNextPage,
         moreError: list.isFetchNextPageError ? list.error : null,
         onMore: () => void list.fetchNextPage(),
+        refreshError: list.isRefetchError ? list.error : null,
+        onRefresh: () => void list.refetch(),
       }
     : list.isError
       ? {
@@ -101,10 +104,21 @@ export function PayItemsSection({
         }
       : { status: 'loading' };
 
-  async function refresh() {
-    await queryClient.invalidateQueries({
-      queryKey: payItemsKey(tutorUserId),
-    });
+  /** Whether the list reloaded: invalidating never rejects. */
+  async function refresh(): Promise<boolean> {
+    const queryKey = payItemsKey(tutorUserId);
+    await queryClient.invalidateQueries({ queryKey });
+    return queryClient.getQueryState(queryKey)?.status !== 'error';
+  }
+
+  /** The item is gone. The section's notice covers a reload that failed. */
+  async function refreshGone() {
+    const reloaded = await refresh();
+    setAnnouncement(
+      reloaded
+        ? t('payroll.payItems.gone')
+        : t('payroll.payItems.goneNotReloaded'),
+    );
   }
 
   async function add(body: PayItemCreate, idempotencyKey: string) {
@@ -124,8 +138,7 @@ export function PayItemsSection({
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 404) {
         setEnding(null);
-        setAnnouncement(t('payroll.payItems.gone'));
-        await refresh();
+        await refreshGone();
         setFocusRequest((current) => current + 1);
         return;
       }
@@ -141,8 +154,7 @@ export function PayItemsSection({
       await deletePayItem(tutorUserId, item.id);
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 404) {
-        await refresh();
-        setAnnouncement(t('payroll.payItems.gone'));
+        await refreshGone();
         return;
       }
       throw caught;

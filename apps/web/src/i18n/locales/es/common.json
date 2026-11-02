@@ -6609,6 +6609,9 @@
       "ended": "Fecha de fin guardada.",
       "deleted": "Concepto eliminado.",
       "gone": "Ese concepto ya no existe. La lista se volvió a cargar.",
+      "goneNotReloaded": "Ese concepto ya no existe. No se pudo volver a cargar la lista.",
+      "stale": "No se pudo actualizar la lista y puede estar desactualizada. Vuelve a cargarla antes de agregar un concepto.",
+      "reloadList": "Volver a cargar la lista",
       "dialog": {
         "title": "Agregar bono o deducción",
         "help": "Un monto fijo para este tutor. Si hubo un error, se elimina y se agrega de nuevo.",
@@ -6617,7 +6620,7 @@
         "noTypes": "No hay tipos activos.",
         "typesLink": "Ir a los tipos",
         "typesLoading": "Cargando tipos…",
-        "outcomeUnknown": "Puede que el concepto se haya guardado. Agregar de nuevo sin cambios no lo duplica; al cerrar, la lista se actualiza.",
+        "outcomeUnknown": "Puede que el concepto se haya guardado. Si lo envías de nuevo desde aquí sin cambios, no se duplica. Si cierras, revisa la lista antes de agregarlo otra vez.",
         "description": "Descripción",
         "descriptionHelp": "El tutor verá esta descripción en su recibo.",
         "amount": "Monto (MXN)",

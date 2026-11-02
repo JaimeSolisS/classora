@@ -34,6 +34,9 @@ export type PayItemsState =
       loadingMore: boolean;
       moreError: unknown;
       onMore: () => void;
+      /** The last refresh failed: the rows on screen may be out of date. */
+      refreshError: unknown;
+      onRefresh: () => void;
     };
 
 export interface PayItemActions {
@@ -382,6 +385,14 @@ export function PayItemsView({
       {state.status === 'loading' ? <LoadingState /> : null}
       {state.status === 'error' ? (
         <ErrorAlert error={state.error} onRetry={state.onRetry} />
+      ) : null}
+      {state.status === 'ready' && state.refreshError ? (
+        <ErrorAlert
+          error={state.refreshError}
+          message={t('payroll.payItems.stale')}
+          onRetry={state.onRefresh}
+          retryLabel={t('payroll.payItems.reloadList')}
+        />
       ) : null}
       {state.status === 'ready' && state.items.length === 0 ? (
         <p className="text-sm" data-pay-items-empty>
