@@ -49,6 +49,9 @@ export interface PayItemsViewProps {
   actions?: PayItemActions;
   /** Moves the keyboard to the section's heading, for the #pay-items link. */
   focusOnMount?: boolean;
+  /** Each new value moves the keyboard to the heading: the row that opened a
+   * dialog is gone, so its button can't take the focus back. */
+  focusRequest?: number;
   announcement?: string;
   /** Stories: the item whose confirmation starts open, and its refusal. */
   initialDelete?: PayItem;
@@ -297,12 +300,13 @@ export function PayItemsView({
   state,
   actions,
   focusOnMount = false,
+  focusRequest = 0,
   announcement = '',
   initialDelete,
   initialDeleteError = null,
 }: PayItemsViewProps) {
   const { t } = useTranslation();
-  const { formatLocalDate, formatMoney } = useFormatters();
+  const itemText = useItemText();
   const heading = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [deleting, setDeleting] = useState<PayItem | null>(
@@ -315,6 +319,15 @@ export function PayItemsView({
       headingRef.current?.focus();
     }
   }, [focusOnMount]);
+
+  useEffect(() => {
+    if (focusRequest === 0) {
+      return;
+    }
+    // After the dialog's own cleanup.
+    const timer = window.setTimeout(() => headingRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [focusRequest]);
 
   function startDelete(item: PayItem) {
     setDeleteError(null);
@@ -408,9 +421,7 @@ export function PayItemsView({
           body={
             deleting
               ? t('payroll.payItems.deleteDialog.body', {
-                  type: deleting.pay_item_type.name,
-                  date: formatLocalDate(deleting.effective_from),
-                  amount: formatMoney(deleting.amount),
+                  ...itemText(deleting),
                 })
               : ''
           }

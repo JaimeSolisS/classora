@@ -3,7 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router';
 import { ApiError } from '@/app/api';
@@ -27,7 +27,8 @@ import { PayItemsView, type PayItemsState } from './PayItemsView';
 // The items section of /payroll/tutors/:tutorUserId (#454 B). It lives outside
 // CompensationView, which /my-pay shares: a tutor sees no items here (#113).
 // "Load more" walks the API's offset; a change refreshes the items and nothing
-// else (B8), and refetches every page already shown. The types load only when
+// else (B8), and refetches every page already shown. Closing the add dialog
+// after a failed attempt refreshes too (QA #454 D2). The types load only when
 // the add dialog opens.
 
 export interface PayItemsSectionProps {
@@ -48,6 +49,10 @@ export function PayItemsSection({
   const [adding, setAdding] = useState(false);
   const [ending, setEnding] = useState<PayItem | null>(null);
   const [announcement, setAnnouncement] = useState('');
+  const [focusRequest, setFocusRequest] = useState(0);
+  // A failed add may still have been stored (a lost response): the list must
+  // show it before anyone adds it again, however the dialog closes.
+  const addFailed = useRef(false);
 
   const list = useInfiniteQuery({
     queryKey: payItemsKey(tutorUserId),
@@ -103,7 +108,13 @@ export function PayItemsSection({
   }
 
   async function add(body: PayItemCreate, idempotencyKey: string) {
-    await createPayItem(tutorUserId, body, idempotencyKey);
+    try {
+      await createPayItem(tutorUserId, body, idempotencyKey);
+    } catch (caught) {
+      addFailed.current = true;
+      throw caught;
+    }
+    addFailed.current = false;
     await refresh();
   }
 
@@ -115,6 +126,7 @@ export function PayItemsSection({
         setEnding(null);
         setAnnouncement(t('payroll.payItems.gone'));
         await refresh();
+        setFocusRequest((current) => current + 1);
         return;
       }
       throw caught;
@@ -150,6 +162,7 @@ export function PayItemsSection({
       <PayItemsView
         state={state}
         focusOnMount={hash === `#${PAY_ITEMS_ANCHOR}`}
+        focusRequest={focusRequest}
         actions={
           canEdit
             ? {
@@ -180,6 +193,10 @@ export function PayItemsSection({
             setAdding(false);
             if (saved) {
               setAnnouncement(t('payroll.payItems.saved'));
+            }
+            if (addFailed.current) {
+              addFailed.current = false;
+              void refresh();
             }
           }}
         />

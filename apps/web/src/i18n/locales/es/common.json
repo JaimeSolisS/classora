@@ -6617,6 +6617,7 @@
         "noTypes": "No hay tipos activos.",
         "typesLink": "Ir a los tipos",
         "typesLoading": "Cargando tipos…",
+        "outcomeUnknown": "Puede que el concepto se haya guardado. Agregar de nuevo sin cambios no lo duplica; al cerrar, la lista se actualiza.",
         "description": "Descripción",
         "descriptionHelp": "El tutor verá esta descripción en su recibo.",
         "amount": "Monto (MXN)",
@@ -6636,7 +6637,7 @@
       },
       "deleteDialog": {
         "title": "Eliminar concepto",
-        "body": "Se eliminará {{type}} del {{date}} por {{amount}}. No se puede deshacer.",
+        "body": "Se eliminará {{type}} ({{direction}}) del {{date}} por {{amount}}. No se puede deshacer.",
         "confirm": "Eliminar"
       }
     },

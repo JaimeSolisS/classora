@@ -13,7 +13,14 @@ import {
   type ApiStub,
   type Responder,
 } from '@/test/api-stub';
-import { alerts, click, labelled, openDialog, setFieldValue } from '@/test/dom';
+import {
+  alerts,
+  click,
+  labelled,
+  openDialog,
+  pressEscape,
+  setFieldValue,
+} from '@/test/dom';
 import {
   buttonNamed,
   jsonResponse,
@@ -764,6 +771,54 @@ describe('add dialog (B3, B4)', () => {
     expect(keys[1]).not.toBe(keys[0]);
   });
 
+  it.each([
+    ['Cancel', () => click(buttonNamed(dialog(), 'Cancel'))],
+    ['Escape', () => pressEscape()],
+  ] as const)(
+    'after a lost response, %s shows the stored item (QA D2)',
+    async (_how, close) => {
+      const lost = () => Promise.reject(new TypeError('Failed to fetch'));
+      const api = stub({
+        [ITEMS]: [
+          () => jsonResponse(200, payItemPage([])),
+          () => jsonResponse(200, payItemPage([ITEM_WAITING])),
+        ],
+        [ITEM_POST]: lost,
+      });
+      await openAdd();
+      fillOneTime();
+      await click(buttonNamed(dialog(), 'Add'));
+      await settleUntil(() => alerts(dialog()).length > 0);
+      expect(
+        dialog().querySelector('[data-pay-item-unknown]')?.textContent,
+      ).toContain('may have been saved');
+      expect(posted(api, ITEMS)).toHaveLength(1);
+
+      await close();
+      await settleUntil(() => !openDialog());
+      await settleUntil(() => row(ITEM_WAITING));
+      expect(posted(api, ITEMS)).toHaveLength(2);
+    },
+  );
+
+  it('does not refresh on a plain close', async () => {
+    const api = stub();
+    await openAdd();
+    await click(buttonNamed(dialog(), 'Cancel'));
+    await settleUntil(() => !openDialog());
+    await settle();
+    expect(posted(api, ITEMS)).toHaveLength(1);
+  });
+
+  it('says nothing about a stored item after a plain refusal', async () => {
+    stub({ [ITEM_POST]: () => problem(403, 'payroll_own_compensation') });
+    await openAdd();
+    fillOneTime();
+    await click(buttonNamed(dialog(), 'Add'));
+    await settleUntil(() => alerts(dialog()).length > 0);
+    expect(dialog().querySelector('[data-pay-item-unknown]')).toBeNull();
+  });
+
   it('takes a new key when the body changes', async () => {
     const api = stub({
       [ITEM_POST]: [
@@ -982,6 +1037,28 @@ describe('end dialog (B5)', () => {
     expect(statusText()).toContain('That item no longer exists');
     expect(posted(api, ITEMS).length).toBeGreaterThan(reads);
   });
+
+  it('moves the focus to the heading when the item is gone (QA D3)', async () => {
+    stub({
+      [ITEMS]: [
+        () => jsonResponse(200, payItemPage(PAY_ITEMS)),
+        () =>
+          jsonResponse(
+            200,
+            payItemPage(
+              PAY_ITEMS.filter((item) => item.id !== ITEM_RECURRING.id),
+            ),
+          ),
+      ],
+      [ROUTE]: () => problem(404, 'not_found'),
+    });
+    await open();
+    await click(buttonNamed(dialog(), 'Save end'));
+    await settleUntil(() => !openDialog());
+    await settleUntil(() => !row(ITEM_RECURRING));
+    await settle();
+    expect(document.activeElement?.textContent).toBe('Bonuses and deductions');
+  });
 });
 
 describe('delete (B6)', () => {
@@ -1008,6 +1085,27 @@ describe('delete (B6)', () => {
     expect(statusText()).toContain('Item deleted.');
     await settle();
     expect(document.activeElement?.textContent).toBe('Bonuses and deductions');
+  });
+
+  it('shows a deduction with its sign and word, as the list does', async () => {
+    stub();
+    await openPage();
+    await click(
+      [...row(ITEM_RECURRING).querySelectorAll('button')].find(
+        (button) => button.textContent === 'Delete',
+      )!,
+    );
+    await settleUntil(() => openDialog());
+    expect(dialog().textContent).toContain('-$300.00');
+    expect(dialog().textContent).toContain('(Deduction)');
+  });
+
+  it('shows a bonus with no sign, and its word', async () => {
+    stub();
+    await open();
+    expect(dialog().textContent).toContain('$500.00');
+    expect(dialog().textContent).not.toContain('-$');
+    expect(dialog().textContent).toContain('(Bonus)');
   });
 
   it('stays open with the message on pay_item_in_use', async () => {

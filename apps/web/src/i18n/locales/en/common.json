@@ -6496,6 +6496,7 @@
         "noTypes": "There are no active types.",
         "typesLink": "Go to the types",
         "typesLoading": "Loading types…",
+        "outcomeUnknown": "The item may have been saved. Adding again unchanged won't duplicate it; closing refreshes the list.",
         "description": "Description",
         "descriptionHelp": "The tutor will see this description on their payslip.",
         "amount": "Amount (MXN)",
@@ -6515,7 +6516,7 @@
       },
       "deleteDialog": {
         "title": "Delete item",
-        "body": "{{type}} of {{date}} for {{amount}} will be deleted. This can't be undone.",
+        "body": "{{type}} ({{direction}}) of {{date}} for {{amount}} will be deleted. This can't be undone.",
         "confirm": "Delete"
       }
     },

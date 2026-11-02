@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
+import { ApiError } from '@/app/api';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
@@ -42,7 +43,8 @@ import { INPUT_CLASS, SELECT_CLASS, SHEET_CLASS } from './sheet';
 // new submission, as everywhere (lib/idempotency): the server refuses one key
 // with two bodies. Only active types are offered. A type deactivated meanwhile
 // is refused on the field and the list refetched, which drops it; with none
-// left the dialog links to the types page.
+// left the dialog links to the types page. After an answer that doesn't settle
+// it, the dialog says the item may be stored, and closing refreshes the list.
 
 export type PayItemTypeOptions =
   | { status: 'loading' }
@@ -63,6 +65,14 @@ export interface PayItemDialogProps {
   /** Stories: the values and the errors to start from. */
   initialValues?: Partial<PayItemFormValues>;
   initialErrors?: PayItemErrors;
+}
+
+/** No answer, or a server failure: the item may have been stored. */
+function outcomeUnknown(failure: unknown): boolean {
+  if (!failure) {
+    return false;
+  }
+  return !(failure instanceof ApiError) || (failure.status ?? 500) >= 500;
 }
 
 export function PayItemDialog(props: PayItemDialogProps) {
@@ -214,6 +224,11 @@ function DialogBody({
         </DialogDescription>
       </DialogHeader>
       {failure ? <ErrorAlert error={failure} /> : null}
+      {outcomeUnknown(failure) ? (
+        <p className="text-sm" data-pay-item-unknown>
+          {t('payroll.payItems.dialog.outcomeUnknown')}
+        </p>
+      ) : null}
       {types.status === 'error' ? (
         <ErrorAlert error={types.error} onRetry={types.onRetry} />
       ) : null}
