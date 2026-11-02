@@ -517,6 +517,37 @@ def test_n1_a_floored_finalized_line_isnt_paid_again(ctx):
     assert sum(paid) == Decimal("1000.00")
 
 
+def test_d8_a_no_show_at_50_percent_on_a_floored_share_pays_nothing(ctx):
+    add_rule(ctx.url, "no_show", "2025-01-01", "percent", percent="50")
+    cohort = make_cohort(ctx, 2)  # Monday, Wednesday; N = 2
+    add_terms(ctx.url, ctx.tutor.id)
+    add_rate(ctx.url, ctx.tutor.id, rate="1000", kind="course", model="per_course")
+    one = period_of(ctx, ctx.tutor, 0, 2)
+    two = period_of(ctx, ctx.tutor, 2, 3)
+    rest = period_of(ctx, ctx.tutor, 5, 60)
+    teach(ctx, cohort, 0)
+    run(ctx.url, one)
+    finalize(ctx.url, one, ctx.owner.id)
+    assert amounts(ctx.url, one) == cents("500.00")
+
+    grow(ctx, cohort, 2, 3)  # N = 4
+    closed_out(ctx, cohort.session(1), status="absent", minutes=60)
+    run(ctx.url, two)
+    finalize(ctx.url, two, ctx.owner.id)
+    [no_show] = lines(ctx.url, two)
+    # 2 of 4 is 500.00, already paid. Uncapped: 50% of 250.00 = 125.00.
+    assert (no_show.kind, no_show.amount) == ("no_show", Decimal("0.00"))
+
+    for session in rows_of(ctx, cohort.id)[2:]:
+        closed_out(ctx, session, minutes=60)
+    run(ctx.url, rest)
+
+    assert amounts(ctx.url, rest) == cents("250.00", "250.00")
+    paid = [*amounts(ctx.url, one), no_show.amount, *amounts(ctx.url, rest)]
+    assert paid == cents("500.00", "0.00", "250.00", "250.00")
+    assert sum(paid) == Decimal("1000.00")
+
+
 def test_state_c_late_approvals_before_a_finalized_line_pay_200_each(ctx):
     """S3 finalized at 1 of 5 while S1 and S2 had no approval. ``max(cum, line)``
     would keep S1 and S2's 400.00 at S3, and S4 would pay 0.00."""

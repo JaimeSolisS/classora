@@ -733,6 +733,39 @@ def test_d2_fixed_and_none():
     assert (line.kind, line.amount) == ("no_show", Money(0))
 
 
+def floored_no_show(*rules: SessionPayRuleVersion) -> list[Money]:
+    """S1 finalized at 1 of 2 (500.00). N = 4: S2 is 2 of 4, 500.00, floored at
+    0.00, and absent. S3 and S4 taught: 750.00, 1000.00."""
+    steps = (absent(), course(), course())
+    lines = walk(
+        basis(rates=[per_course()], rules=[*rules, rule("makeup")]),
+        4,
+        fixed(1, 2),
+        *steps,
+    )
+    return by_step(lines, steps)
+
+
+def test_d8_a_no_show_below_100_percent_is_capped_at_the_floored_share():
+    # Uncapped: 50% of 1000 x 2/4 - 50% of 1000 x 1/4 = 125.00.
+    paid = floored_no_show(rule("no_show", "percent", percent="50"))
+    assert paid == [Money(0), Money("250.00"), Money("250.00")]
+    assert Money("500.00") + Money.total(paid) == Money("1000.00")
+
+
+def test_d8_a_percent_above_100_stays_uncapped_on_a_floored_share():
+    # 150% of 1000 x 2/4 - 150% of 1000 x 1/4 = 750.00 - 375.00. Above the rate.
+    paid = floored_no_show(rule("no_show", "percent", percent="150"))
+    assert paid == [Money("375.00"), Money("250.00"), Money("250.00")]
+    assert Money("500.00") + Money.total(paid) == Money("1375.00")
+
+
+def test_d8_fixed_stays_uncapped_on_a_floored_share():
+    paid = floored_no_show(rule("no_show", "fixed", amount="75.50"))
+    assert paid == [Money("75.50"), Money("250.00"), Money("250.00")]
+    assert Money("500.00") + Money.total(paid) == Money("1075.50")
+
+
 def test_d1_a_no_show_in_an_earlier_period_still_advances_the_walk():
     rules = [rule("no_show"), rule("makeup")]
     [line] = walk(

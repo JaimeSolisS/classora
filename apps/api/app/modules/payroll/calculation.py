@@ -290,17 +290,22 @@ def course_event_amount(
 ) -> Money:
     """What the rule pays for this session of ``k`` of ``n`` (#442 D2). ``share``
     is the line it would have been. Other percents take the difference of two
-    amounts rounded once each, never a percent of ``share``."""
+    amounts rounded once each, never a percent of ``share``. Below 100 that is
+    capped at ``share``, so a no-show never pays more than teaching the session
+    (#442 D8). Above 100 it isn't, and neither is ``fixed``: the Owner set those on
+    purpose, they aren't shares of the course, and they can take the course's
+    total above the rate."""
     if rule.mode == "none":
         return ZERO
     if rule.mode == "percent" and rule.percent is not None:
         if rule.percent == WHOLE_LINE:
             return share
-        return max(
+        amount = max(
             ZERO,
             rate.to_money(k, n, percent=rule.percent)
             - rate.to_money(k - 1, n, percent=rule.percent),
         )
+        return amount if rule.percent > WHOLE_LINE else min(share, amount)
     fixed = rule.fixed_pay
     if rule.mode == "fixed" and fixed is not None:
         return fixed
