@@ -57,7 +57,7 @@ import uuid
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date
-from typing import Final, Literal, Protocol, get_args
+from typing import Final, Literal, Protocol, cast, get_args
 
 from app.core.money import Money, MoneyRangeError, Rate
 from app.modules.payroll.errors import PayrollAmountOutOfRangeError
@@ -108,6 +108,7 @@ class RateVersion:
 class TermsBasisVersion:
     """What the calculation needs of one ``tutor_pay_terms`` row."""
 
+    id: uuid.UUID
     effective_from: date
     pay_frequency: str | None
     salary: Money | None
@@ -174,21 +175,29 @@ class PayBasis:
 @dataclass(frozen=True)
 class LineDraft:
     """A line before it is written. Two runs that see the same facts make
-    equal drafts, so #110 compares them with no write."""
+    equal drafts, so #110 compares them with no write. A session-sourced line
+    fills the session fields, a ``salary`` line (#108) the salary ones."""
 
     kind: str
     amount: Money
-    class_session_id: uuid.UUID
-    approval_id: uuid.UUID | None
-    service_date: date
-    class_kind: str
-    minutes: int
-    rate_model: str | None
-    rate: Rate | None
-    compensation_rate_id: uuid.UUID | None
-    session_pay_rule_id: uuid.UUID | None
+    class_session_id: uuid.UUID | None = None
+    approval_id: uuid.UUID | None = None
+    service_date: date | None = None
+    class_kind: str | None = None
+    minutes: int | None = None
+    rate_model: str | None = None
+    rate: Rate | None = None
+    compensation_rate_id: uuid.UUID | None = None
+    session_pay_rule_id: uuid.UUID | None = None
     cumulative_sessions: int | None = None
     cohort_sessions: int | None = None
+    tutor_pay_terms_id: uuid.UUID | None = None
+    salary_amount: Money | None = None
+    salary_starts_on: date | None = None
+    salary_ends_on: date | None = None
+    proration_numerator: int | None = None
+    proration_denominator: int | None = None
+    proration_basis: str | None = None
 
 
 @dataclass(frozen=True)
@@ -530,7 +539,7 @@ def draft_lines(
     cancellations: Iterable[PayableCancellation],
     cohorts: Iterable[CohortWalk] = (),
 ) -> list[LineDraft]:
-    """The period's lines, by service date, then session. An amount beyond
+    """The period's session lines, by service date, then session. An amount beyond
     the money range refuses the run (D11). A session of a cohort paid
     ``per_course`` takes its line from the walk, all others from ``approved``."""
 
@@ -569,7 +578,10 @@ def draft_lines(
     )
     return sorted(
         (draft for draft in candidates if draft is not None),
-        key=lambda draft: (draft.service_date, draft.class_session_id),
+        key=lambda draft: (
+            cast(date, draft.service_date),
+            cast(uuid.UUID, draft.class_session_id),
+        ),
     )
 
 

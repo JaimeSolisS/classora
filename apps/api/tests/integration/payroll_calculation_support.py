@@ -172,6 +172,19 @@ def line_of(url: str, period: uuid.UUID) -> Any:
     return line
 
 
+def session_lines(url: str, period: uuid.UUID) -> list[Any]:
+    """The lines but for salary, which a tutor with a salary always has too."""
+    return [line for line in lines(url, period) if line.kind != "salary"]
+
+
+def salary_lines(url: str, period: uuid.UUID) -> list[Any]:
+    """The salary lines, by their first day."""
+    return sorted(
+        (line for line in lines(url, period) if line.kind == "salary"),
+        key=lambda line: line.salary_starts_on,
+    )
+
+
 def stable(rows: list[Any]) -> list[dict[str, Any]]:
     """Each line, but for ``id``, ``created_at`` and ``updated_at``."""
     moving = {"id", "created_at", "updated_at"}
@@ -259,5 +272,7 @@ __all__ = [
     "paid_tutor",
     "refused_status",
     "run",
+    "salary_lines",
+    "session_lines",
     "stable",
 ]

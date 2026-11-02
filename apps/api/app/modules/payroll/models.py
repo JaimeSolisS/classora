@@ -24,11 +24,11 @@ makeup rule versions, guarded by time (migration ``0075``): nothing changes,
 and only an upcoming version can go away. ``percent`` and ``amount`` are masked
 in the audit log, as above.
 
-``payroll_lines`` holds one line per source: here the four session kinds, and
-#108, #109 and #111 widen it. Lines are working data until the period is
-finalized, so the table isn't ``Audited``, and a trigger refuses every write
-to a line of a finalized period (migration ``0076``). Only ``recalculate``
-and the deletion of a rate or rule write them.
+``payroll_lines`` holds one line per source: the four session kinds and one
+``salary`` line per piece (#108), and #109 and #111 widen it. Lines are working
+data until the period is finalized, so the table isn't ``Audited``, and a trigger
+refuses every write to a line of a finalized period (migration ``0076``). Only
+``recalculate`` and the deletion of a rate, rule or terms version write them.
 """
 
 import uuid
@@ -68,6 +68,8 @@ PAY_RULE_EVENTS: Final = ("late_cancellation", "no_show", "makeup")
 PAY_RULE_MODES: Final = ("none", "percent", "fixed")
 LINE_EVENT_KINDS: Final = PAY_RULE_EVENTS
 SESSION_LINE_KINDS: Final = ("session", *LINE_EVENT_KINDS)
+SALARY: Final = "salary"
+LINE_KINDS: Final = (*SESSION_LINE_KINDS, SALARY)
 
 PAY_FREQUENCY_MAX: Final = 10
 PERIOD_STATUS_MAX: Final = 10
@@ -89,6 +91,7 @@ PERIOD_RANGE_SQL: Final = "daterange(starts_on, ends_on, '[]')"
 """The inclusive span of a period."""
 LINE_SESSION_UNIQUE: Final = "uq_payroll_lines_session_sourced"
 LINE_TUTOR_KEY: Final = "uq_payroll_lines_id_tutor"
+LINE_SALARY_PIECE: Final = "uq_payroll_lines_salary_piece"
 
 
 def _one_of(column: str, values: tuple[str, ...]) -> str:
@@ -312,19 +315,22 @@ class PayrollPeriod(Model):
 
 class PayrollLine(Model):
     """One line of a period (data-model §11.6): a session-sourced line of the
-    tutor, in this issue. ``approval_id`` is the revision used, ``NULL`` on a
-    line that comes from a cancellation. A line "covered by salary" has kind
-    ``session``, ``0.00`` and no rate snapshot."""
+    tutor, or a piece of salary. ``approval_id`` is the revision used, ``NULL``
+    on a line that comes from a cancellation. A line "covered by salary" has
+    kind ``session``, ``0.00`` and no rate snapshot. A ``salary`` line has no
+    session, and its seven columns say how the amount was reached (#108 E1)."""
 
     __tablename__ = "payroll_lines"
     __table_args__ = (
-        CheckConstraint(_one_of("kind", SESSION_LINE_KINDS), name="kind_valid"),
+        CheckConstraint(_one_of("kind", LINE_KINDS), name="kind_valid"),
         CheckConstraint(
             "(kind IN ('session', 'makeup')"
             " AND class_session_id IS NOT NULL AND approval_id IS NOT NULL)"
             " OR (kind = 'no_show' AND class_session_id IS NOT NULL)"
             " OR (kind = 'late_cancellation'"
-            " AND class_session_id IS NOT NULL AND approval_id IS NULL)",
+            " AND class_session_id IS NOT NULL AND approval_id IS NULL)"
+            " OR (kind = 'salary' AND class_session_id IS NULL"
+            " AND approval_id IS NULL)",
             name="source_per_kind",
         ),
         CheckConstraint(
@@ -354,6 +360,25 @@ class PayrollLine(Model):
             " = COALESCE(rate_model = 'per_course', false)",
             name="course_share",
         ),
+        CheckConstraint(
+            "num_nonnulls(tutor_pay_terms_id, salary_amount, salary_starts_on,"
+            " salary_ends_on, proration_numerator, proration_denominator,"
+            " proration_basis) = CASE WHEN kind = 'salary' THEN 7 ELSE 0 END",
+            name="salary_fields",
+        ),
+        CheckConstraint(
+            "kind <> 'salary' OR rate_model IS NULL", name="salary_no_rate"
+        ),
+        CheckConstraint("salary_amount > 0", name="salary_amount_positive"),
+        CheckConstraint("salary_starts_on <= salary_ends_on", name="salary_dates"),
+        CheckConstraint(
+            "proration_denominator > 0 AND proration_numerator >= 0"
+            " AND proration_numerator <= proration_denominator",
+            name="proration_fraction",
+        ),
+        CheckConstraint(
+            _one_of("proration_basis", PRORATION_BASES), name="proration_basis_valid"
+        ),
         ForeignKeyConstraint(
             ["payroll_period_id", "tutor_user_id"],
             ["payroll_periods.id", "payroll_periods.tutor_user_id"],
@@ -366,6 +391,13 @@ class PayrollLine(Model):
             "class_session_id",
             unique=True,
             postgresql_where=text(_one_of("kind", SESSION_LINE_KINDS)),
+        ),
+        Index(
+            LINE_SALARY_PIECE,
+            "payroll_period_id",
+            "salary_starts_on",
+            unique=True,
+            postgresql_where=text("kind = 'salary'"),
         ),
         Index("ix_payroll_lines_payroll_period_id", "payroll_period_id"),
         Index(
@@ -382,6 +414,11 @@ class PayrollLine(Model):
             "ix_payroll_lines_session_pay_rule_id",
             "session_pay_rule_id",
             postgresql_where=text("session_pay_rule_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_payroll_lines_tutor_pay_terms_id",
+            "tutor_pay_terms_id",
+            postgresql_where=text("tutor_pay_terms_id IS NOT NULL"),
         ),
     )
 
@@ -422,3 +459,16 @@ class PayrollLine(Model):
     )
     cumulative_sessions: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cohort_sessions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tutor_pay_terms_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tutor_pay_terms.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    salary_amount: Mapped[Money | None] = mapped_column(MoneyType(), nullable=True)
+    salary_starts_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    salary_ends_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    proration_numerator: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    proration_denominator: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    proration_basis: Mapped[str | None] = mapped_column(
+        String(PRORATION_BASIS_MAX), nullable=True
+    )

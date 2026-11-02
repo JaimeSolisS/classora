@@ -57,6 +57,7 @@ from tests.integration.payroll_calculation_support import (
     lines,
     paid_tutor,
     run,
+    session_lines,
 )
 from tests.integration.payroll_period_support import (
     d,
@@ -357,7 +358,8 @@ def test_a5_salary_covers_a_kind_with_no_rate(module_seeded_url, client, owner, 
 
     assert items(url, tutor) == []
     run(url, period)
-    assert line_of(url, period).amount == 0
+    [line] = session_lines(url, period)
+    assert line.amount == 0
     assert items(url, tutor) == []
 
 

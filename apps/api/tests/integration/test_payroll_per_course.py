@@ -52,6 +52,7 @@ from tests.integration.payroll_calculation_support import (
     closed_out,
     lines,
     run,
+    session_lines,
     stable,
 )
 from tests.integration.payroll_period_support import finalize
@@ -289,7 +290,7 @@ def test_b4_a_salaried_tutor_with_no_rate_is_covered(ctx):
 
     run(ctx.url, period)
 
-    [line] = lines(ctx.url, period)
+    [line] = session_lines(ctx.url, period)
     assert (line.kind, line.amount, line.rate_model) == ("session", 0, None)
 
 
@@ -1012,6 +1013,23 @@ def test_f1_a_run_costs_the_same_whatever_the_sessions_and_cohorts(ctx):
 
     assert (first.line_count, second.line_count) == (3, 30)
     assert few == most == 15  # sixteen with the audit insert at commit
+
+
+def test_f1_a_salary_adds_two_statements_to_a_course_run(ctx):
+    """#108 C4: the basis and the anchor, whatever the pieces."""
+    url = ctx.url
+    cohort = make_cohort(ctx, 3, enrolled=False)
+    _stored(ctx, cohort, ctx.tutor)
+    add_terms(url, ctx.tutor.id, salary="9000")
+    add_rate(url, ctx.tutor.id, "2000-01-01", "1000", model="per_course", kind="course")
+    period = period_of(ctx, ctx.tutor, 0, 70)
+
+    count, result = count_statements(
+        url, lambda s: payroll_calculation.recalculate(s, period)
+    )
+
+    assert result.line_count > 3
+    assert count == 17  # eighteen with the audit insert at commit
 
 
 # --- Routes -----

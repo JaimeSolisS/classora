@@ -342,7 +342,7 @@ class CompensationSummary:
     current_rate_kinds: tuple[ClassKind, ...] = ()
 
 
-type LineKind = Literal["session", "late_cancellation", "no_show", "makeup"]
+type LineKind = Literal["session", "late_cancellation", "no_show", "makeup", "salary"]
 type PeriodStatus = Literal["open", "prepared", "finalized"]
 type UnresolvedReason = Literal["before_first_period", "no_pay_terms", "no_rate"]
 type UnresolvedSource = Literal["closeout", "cancellation"]
@@ -361,7 +361,10 @@ class PayrollPeriodSummary(BaseModel):
 
 class PayrollLineItem(BaseModel):
     """One line (#107 H3): ``rate`` is text, and a "covered by salary" line has
-    no rate snapshot. No student data."""
+    no rate snapshot. A ``salary`` line has no session, and says how its amount
+    was reached: ``salary_amount`` × ``proration_numerator`` /
+    ``proration_denominator`` for the piece ``salary_starts_on`` to
+    ``salary_ends_on`` (#108 H1). No student data."""
 
     id: uuid.UUID
     kind: LineKind
@@ -377,6 +380,13 @@ class PayrollLineItem(BaseModel):
     session_pay_rule_id: uuid.UUID | None
     cumulative_sessions: int | None
     cohort_sessions: int | None
+    tutor_pay_terms_id: uuid.UUID | None
+    salary_amount: Money | None
+    salary_starts_on: date | None
+    salary_ends_on: date | None
+    proration_numerator: int | None
+    proration_denominator: int | None
+    proration_basis: ProrationBasis | None
 
 
 class PayrollPeriodLines(BaseModel):

@@ -27,7 +27,8 @@ and writes the ``app.workflows.session_pay_rules`` workflow calls.
 :mod:`~app.modules.payroll.calculation`): :func:`lock_open_period`,
 :func:`replace_lines`, :func:`period_lines`, and :func:`draft_lines` with its
 frozen values. Per-course pay (#442) adds :func:`finalized_period_dates`,
-:func:`finalized_course_lines` and :func:`planned_sessions`.
+:func:`finalized_course_lines` and :func:`planned_sessions`. Salary (#108) adds
+the pure :func:`salary_drafts` (:mod:`~app.modules.payroll.salary`).
 
 **Unresolved work** (#443): the pure :func:`classify_unresolved`, the unexecuted
 :func:`has_no_session_line`, and the lock-free batch reads
@@ -47,6 +48,7 @@ from app.modules.payroll.calculation import (
     LineDraft,
     PayableCancellation,
     PayBasis,
+    TermsBasisVersion,
     UnresolvedCandidate,
     UnresolvedItem,
     classify_unresolved,
@@ -96,6 +98,7 @@ from app.modules.payroll.rates import (
     terms_basis_versions_of_tutors,
     terms_in_effect,
 )
+from app.modules.payroll.salary import salary_drafts
 from app.modules.payroll.settings import (
     biweekly_anchor,
     payroll_starts_on,
@@ -113,6 +116,7 @@ __all__ = [
     "PayBasis",
     "PayableCancellation",
     "PayrollOwnCompensationError",
+    "TermsBasisVersion",
     "UnresolvedCandidate",
     "UnresolvedItem",
     "add_compensation_rate",
@@ -145,6 +149,7 @@ __all__ = [
     "rate_versions",
     "rate_versions_of_tutors",
     "replace_lines",
+    "salary_drafts",
     "salary_proration_basis",
     "session_pay_rule_in_effect",
     "session_pay_rule_versions",

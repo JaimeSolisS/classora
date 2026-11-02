@@ -45100,7 +45100,8 @@
           "session",
           "late_cancellation",
           "no_show",
-          "makeup"
+          "makeup",
+          "salary"
         ]
       },
       "LoginRequest": {
@@ -48771,6 +48772,90 @@
               }
             ],
             "title": "Cohort Sessions"
+          },
+          "tutor_pay_terms_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tutor Pay Terms Id"
+          },
+          "salary_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Salary Amount"
+          },
+          "salary_starts_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Salary Starts On"
+          },
+          "salary_ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Salary Ends On"
+          },
+          "proration_numerator": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proration Numerator"
+          },
+          "proration_denominator": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proration Denominator"
+          },
+          "proration_basis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProrationBasis"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -48788,10 +48873,17 @@
           "compensation_rate_id",
           "session_pay_rule_id",
           "cumulative_sessions",
-          "cohort_sessions"
+          "cohort_sessions",
+          "tutor_pay_terms_id",
+          "salary_amount",
+          "salary_starts_on",
+          "salary_ends_on",
+          "proration_numerator",
+          "proration_denominator",
+          "proration_basis"
         ],
         "title": "PayrollLineItem",
-        "description": "One line (#107 H3): ``rate`` is text, and a \"covered by salary\" line has\nno rate snapshot. No student data."
+        "description": "One line (#107 H3): ``rate`` is text, and a \"covered by salary\" line has\nno rate snapshot. A ``salary`` line has no session, and says how its amount\nwas reached: ``salary_amount`` × ``proration_numerator`` /\n``proration_denominator`` for the piece ``salary_starts_on`` to\n``salary_ends_on`` (#108 H1). No student data."
       },
       "PayrollPeriodLines": {
         "properties": {
