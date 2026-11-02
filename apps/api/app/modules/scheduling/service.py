@@ -345,6 +345,12 @@ from app.modules.scheduling.billing_context import (
     cancellation_classification as cancellation_classification,
 )
 from app.modules.scheduling.billing_context import (
+    cohort_ids_of_sessions as cohort_ids_of_sessions,
+)
+from app.modules.scheduling.billing_context import (
+    cohort_sessions as cohort_sessions,
+)
+from app.modules.scheduling.billing_context import (
     lock_session_for_billing as lock_session_for_billing,
 )
 from app.modules.scheduling.billing_context import (

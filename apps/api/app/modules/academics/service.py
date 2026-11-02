@@ -17,6 +17,7 @@ of the session sweeper and the expiry job); the rules :func:`closeout_block`,
 Closeout review (#78, :mod:`~app.modules.academics.closeout_review`): the
 closeout lock :func:`lock_closeout`, the immutable approval revisions
 (:func:`add_approval`, :func:`current_approval`, :func:`current_approvals`,
+:func:`current_approvals_for_sessions`,
 payroll's batch read (#107 C1), :func:`closeout_history`),
 the staff corrections (:func:`add_correction`), the E6 attendance unlock
 predicate :func:`closeout_awaits_tutor` (registered by ``app.wiring``) and
@@ -189,6 +190,9 @@ from app.modules.academics.closeout_review import (
     ApprovalSnapshot as ApprovalSnapshot,
 )
 from app.modules.academics.closeout_review import CloseoutHistory as CloseoutHistory
+from app.modules.academics.closeout_review import (
+    CurrentApproval as CurrentApproval,
+)
 from app.modules.academics.closeout_review import add_approval as add_approval
 from app.modules.academics.closeout_review import add_correction as add_correction
 from app.modules.academics.closeout_review import (
@@ -202,6 +206,9 @@ from app.modules.academics.closeout_review import (
 )
 from app.modules.academics.closeout_review import (
     current_approvals as current_approvals,
+)
+from app.modules.academics.closeout_review import (
+    current_approvals_for_sessions as current_approvals_for_sessions,
 )
 from app.modules.academics.closeout_review import lock_closeout as lock_closeout
 from app.modules.academics.closeout_rules import (

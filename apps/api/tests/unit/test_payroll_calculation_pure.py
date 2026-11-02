@@ -16,12 +16,17 @@ from app.core.money import Money, Rate
 from app.modules.payroll.calculation import (
     COVERED,
     ApprovedSession,
+    CohortStep,
+    CohortWalk,
+    CourseWalkError,
+    FinalizedCourseLine,
     PayableCancellation,
     PayBasis,
     RateVersion,
     ServiceDateOutsidePeriodError,
     TermsBasisVersion,
     draft_lines,
+    planned_sessions,
     resolve_basis,
 )
 from app.modules.payroll.errors import PayrollAmountOutOfRangeError
@@ -208,9 +213,8 @@ def test_zero_approved_minutes_per_hour_is_a_zero_line():
     assert one(basis(), work(approved_minutes=0)).amount == Money(0)
 
 
-def test_per_course_writes_no_line_here():
+def test_a_per_course_cancellation_has_no_line():
     pay = basis(rates=[rate_row("9000", model="per_course", kind="course")])
-    assert run(pay, (work(class_kind="course"),)) == []
     assert run(pay, (), (cancellation(class_kind="course"),)) == []
 
 
@@ -457,3 +461,327 @@ def test_b2_the_calculation_files_keep_to_the_money_paths(path):
 )
 def test_b2_the_rule_catches_each_breach(source):
     assert b2_breaches(source) != []
+
+
+# --- #442: per-course pay (ADR-0017 E3, #107 E11). Every expected amount is worked
+# by hand from rate x k / N, half away from zero to the centavo. -----
+
+BEFORE = date(2026, 10, 26)
+AFTER = date(2026, 11, 9)
+
+
+def course(on: date = DAY, **changes: Any) -> ApprovedSession:
+    return work(class_kind="course", service_date=on, **changes)
+
+
+def per_course(rate: str = "1000", on: date = LONG_AGO) -> RateVersion:
+    return rate_row(rate, model="per_course", kind="course", on=on)
+
+
+def fixed(k: int, n: int, rate: str = "1000") -> FinalizedCourseLine:
+    return FinalizedCourseLine(
+        class_session_id=uuid.uuid7(),
+        cumulative_sessions=k,
+        cohort_sessions=n,
+        rate=Rate(rate),
+    )
+
+
+def walk(
+    pay: PayBasis,
+    n: int,
+    *steps: CohortStep,
+    first: date = START,
+) -> list[Any]:
+    period = [step for step in steps if isinstance(step, ApprovedSession)]
+    in_period = tuple(item for item in period if START <= item.service_date <= END)
+    return draft_lines(
+        starts_on=START,
+        ends_on=END,
+        basis=pay,
+        approved=in_period,
+        cancellations=(),
+        cohorts=[CohortWalk(first, n, steps)],
+    )
+
+
+def amounts(lines: list[Any]) -> list[Money]:
+    return [line.amount for line in lines]
+
+
+def same_day(n: int, **changes: Any) -> tuple[ApprovedSession, ...]:
+    """``n`` sessions the walk sees in this order, ids oldest first."""
+    return tuple(course(**changes) for _ in range(n))
+
+
+def by_step(lines: list[Any], steps: tuple[ApprovedSession, ...]) -> list[Money]:
+    """``draft_lines`` sorts by date, then id: map back to the walk's order."""
+    found = {line.class_session_id: line.amount for line in lines}
+    return [found[step.class_session_id] for step in steps]
+
+
+def test_g1_a_third_at_a_time_sums_to_the_rate():
+    steps = same_day(3)
+    lines = walk(basis(rates=[per_course()]), 3, *steps)
+    # cum: 333.33, 666.67, 1000.00
+    assert by_step(lines, steps) == [
+        Money("333.33"),
+        Money("333.34"),
+        Money("333.33"),
+    ]
+    assert Money.total(amounts(lines)) == Money("1000.00")
+
+
+def test_g1_the_share_rounds_once_from_the_four_place_rate():
+    # 100.0050 / 2 = 50.0025 -> 50.00. Through Money, 100.01 / 2 = 50.005 -> 50.01.
+    only = walk(basis(rates=[per_course("100.0050")]), 2, course())
+    assert amounts(only) == [Money("50.00")]
+
+
+def test_c7_a_line_stores_its_share_and_rate():
+    version = per_course()
+    work_item = course()
+    [line] = walk(basis(rates=[version]), 4, work_item)
+    assert (line.kind, line.rate_model, line.rate) == (
+        "session",
+        "per_course",
+        Rate("1000"),
+    )
+    assert line.compensation_rate_id == version.id
+    assert (line.cumulative_sessions, line.cohort_sessions) == (1, 4)
+    assert (line.approval_id, line.minutes) == (work_item.approval_id, 50)
+
+
+@pytest.mark.parametrize(
+    ("states", "expected"),
+    [
+        (["completed", "confirmed", "cancelled", "skipped_closure"], 2),
+        (["conflict", "unassigned", "offered"], 3),
+        (["cancelled"], 0),
+    ],
+)
+def test_c1_n_leaves_out_only_cancelled_and_skipped(states, expected):
+    assert planned_sessions(states) == expected
+
+
+def test_b2_the_first_sessions_version_applies_whatever_later_versions_say():
+    early = per_course("1000", on=date(2026, 1, 1))
+    later = [
+        per_course("2000", on=START),
+        rate_row("500", kind="course", on=DAY),
+        rate_row(None, kind="course", on=END),
+    ]
+    [line] = walk(basis(rates=[early, *later]), 2, course(), first=date(2026, 3, 1))
+    assert line.compensation_rate_id == early.id
+    assert line.amount == Money("500.00")
+
+
+def test_b3_no_per_course_on_the_first_date_pays_by_the_sessions_own_version():
+    hourly = rate_row("120", kind="course", on=date(2026, 1, 1))
+    # 120 x 50 / 60 = 100.00
+    [line] = walk(basis(rates=[hourly]), 2, course(), first=date(2026, 3, 1))
+    assert (line.rate_model, line.amount) == ("per_hour", Money("100.00"))
+    assert (line.cumulative_sessions, line.cohort_sessions) == (None, None)
+
+
+def test_b3_per_course_only_after_the_first_date_is_no_line():
+    late = per_course(on=START)
+    assert walk(basis(rates=[late]), 2, course(), first=date(2026, 3, 1)) == []
+    stopped = [per_course(on=START), rate_row(None, kind="course", on=date(2026, 1, 1))]
+    assert walk(basis(rates=stopped), 2, course(), first=date(2026, 3, 1)) == []
+
+
+def test_b4_a_salaried_tutor_with_no_rate_on_either_date_is_covered():
+    pay = basis(terms=[terms_row(salary="9000")], rates=[])
+    [line] = walk(pay, 2, course())
+    assert (line.kind, line.amount, line.rate_model) == ("session", Money(0), None)
+
+
+def test_c6_only_the_periods_lines_come_back_but_every_session_counts():
+    before = course(BEFORE)
+    now = course(DAY)
+    after = course(AFTER)
+    [line] = walk(basis(rates=[per_course()]), 3, before, now, after)
+    assert line.class_session_id == now.class_session_id
+    # cum 333.33 -> 666.67
+    assert (line.amount, line.cumulative_sessions) == (Money("333.34"), 2)
+
+
+def test_c3_an_anchor_with_another_n_and_rate():
+    # cum0 = 1000 x 2 / 4 = 500.00, then 900 x 3 / 5 = 540.00, 900 x 4 / 5 = 720.00.
+    steps = same_day(2)
+    lines = walk(basis(rates=[per_course("900")]), 5, fixed(2, 4), *steps)
+    assert by_step(lines, steps) == [Money("40.00"), Money("180.00")]
+    assert sorted(line.cumulative_sessions for line in lines) == [3, 4]
+
+
+def test_c4_a_growing_n_floors_at_zero_and_never_goes_negative():
+    # cum0 = 1000 x 2 / 3 = 666.67. With N = 6: 500.00, 666.67, 833.33.
+    steps = same_day(3)
+    lines = walk(basis(rates=[per_course()]), 6, fixed(2, 3), *steps)
+    assert by_step(lines, steps) == [Money(0), Money(0), Money("166.66")]
+
+
+def test_c4_n_shrinking_under_a_finalized_line_catches_up():
+    # cum0 = 1000 x 1 / 4 = 250.00. With N = 2: 1000 x 2 / 2 = 1000.00.
+    [line] = walk(basis(rates=[per_course()]), 2, fixed(1, 4), course())
+    assert line.amount == Money("750.00")
+
+
+def test_a_session_before_the_anchor_isnt_counted_again():
+    """The tutor's first session, in no period, was counted in the anchor's k.
+    With the anchor applied first it would count twice: k = 4 of 3."""
+    steps = (course(BEFORE), fixed(2, 3), course(DAY))
+    [line] = walk(basis(rates=[per_course()]), 3, *steps)
+    assert (line.cumulative_sessions, line.amount) == (3, Money("333.33"))
+
+
+def test_an_open_period_before_a_finalized_one_keeps_its_own_share():
+    early = course(START)
+    late = course(DAY)
+    lines = walk(
+        basis(rates=[per_course()]), 4, early, fixed(2, 4), late, course(AFTER)
+    )
+    assert by_step(lines, (early, late)) == [Money("250.00"), Money("250.00")]
+    assert sorted(line.cumulative_sessions for line in lines) == [1, 3]
+
+
+def test_n1_a_floored_finalized_line_doesnt_lower_what_was_paid():
+    # 500.00 paid at 1 of 2. N = 6: 2/6 = 333.33 floors at 0.00 and stores less.
+    # Then 500.00, 666.67, 833.33, 1000.00 from the 500.00 already paid.
+    steps = same_day(4)
+    lines = walk(basis(rates=[per_course()]), 6, fixed(1, 2), fixed(2, 6), *steps)
+    assert by_step(lines, steps) == [
+        Money(0),
+        Money("166.67"),
+        Money("166.66"),
+        Money("166.67"),
+    ]
+    assert Money.total(amounts(lines)) == Money("500.00")
+
+
+def test_state_c_a_finalized_line_can_lower_k_and_cum_after_late_approvals():
+    # S3 finalized at 1 of 5, then S1 and S2 approved: 200 each, and S3's own 200
+    # stands. k drops to 1, and S4, S5 pay 400 - 200, 600 - 400.
+    early = same_day(2, on=START)
+    late = same_day(2, on=DAY)
+    lines = walk(basis(rates=[per_course()]), 5, *early, fixed(1, 5), *late)
+    assert by_step(lines, (*early, *late)) == [Money("200.00")] * 4
+    ks = {line.class_session_id: line.cumulative_sessions for line in lines}
+    assert [ks[step.class_session_id] for step in (*early, *late)] == [1, 2, 2, 3]
+
+
+def test_c5_k_beyond_n_is_a_bug_and_never_a_capped_line():
+    with pytest.raises(CourseWalkError):
+        walk(basis(rates=[per_course()]), 1, course(BEFORE), course(DAY))
+
+
+def test_no_terms_on_the_date_is_no_line_and_the_next_doesnt_catch_up():
+    terms = [terms_row(), terms_row(on=START, frequency=None), terms_row(on=DAY)]
+    gap = course(START)
+    paid = course(DAY)
+    [line] = walk(basis(terms=terms, rates=[per_course()]), 4, gap, paid)
+    assert line.class_session_id == paid.class_session_id
+    assert (line.cumulative_sessions, line.amount) == (2, Money("250.00"))
+
+
+def test_a_rate_of_zero_earns_zero_lines():
+    [line] = walk(basis(rates=[per_course("0")]), 3, course())
+    assert (line.amount, line.rate_model) == (Money(0), "per_course")
+
+
+# --- #442 D: pay events -----
+
+
+def absent() -> ApprovedSession:
+    return course(all_absent=True)
+
+
+def test_d2_no_show_at_100_percent_is_the_line():
+    no_show = absent()
+    [line] = walk(basis(rates=[per_course()]), 3, no_show)
+    assert (line.kind, line.amount) == ("no_show", Money("333.33"))
+    assert line.session_pay_rule_id is not None
+
+
+def test_d2_another_percent_rounds_each_side_once():
+    # 50% of 1000 x 2/3 = 333.33; of 1000 x 1/3 = 166.67: 166.66. Half of the rounded
+    # line, 333.34, would be 166.67.
+    rules = [rule("no_show", "percent", percent="50"), rule("makeup")]
+    first = course()
+    second = absent()
+    lines = walk(basis(rates=[per_course()], rules=rules), 3, first, second)
+    assert by_step(lines, (first, second)) == [Money("333.33"), Money("166.66")]
+
+
+def test_g8_a_cut_no_show_isnt_caught_up_by_the_next_session():
+    # 50%: 1000 x 1/3 x 50% = 166.67. Next: cum 666.67 - 333.33 = 333.34.
+    rules = [rule("no_show", "percent", percent="50"), rule("makeup")]
+    first = absent()
+    second = course()
+    lines = walk(basis(rates=[per_course()], rules=rules), 3, first, second)
+    assert by_step(lines, (first, second)) == [Money("166.67"), Money("333.34")]
+
+
+def test_d2_fixed_and_none():
+    fixed_rule = [rule("no_show", "fixed", amount="75.50"), rule("makeup")]
+    assert amounts(
+        walk(basis(rates=[per_course()], rules=fixed_rule), 3, absent())
+    ) == [Money("75.50")]
+    none_rule = [rule("no_show"), rule("makeup")]
+    [line] = walk(basis(rates=[per_course()], rules=none_rule), 3, absent())
+    assert (line.kind, line.amount) == ("no_show", Money(0))
+
+
+def floored_no_show(*rules: SessionPayRuleVersion) -> list[Money]:
+    """S1 finalized at 1 of 2 (500.00). N = 4: S2 is 2 of 4, 500.00, floored at
+    0.00, and absent. S3 and S4 taught: 750.00, 1000.00."""
+    steps = (absent(), course(), course())
+    lines = walk(
+        basis(rates=[per_course()], rules=[*rules, rule("makeup")]),
+        4,
+        fixed(1, 2),
+        *steps,
+    )
+    return by_step(lines, steps)
+
+
+def test_d8_a_no_show_below_100_percent_is_capped_at_the_floored_share():
+    # Uncapped: 50% of 1000 x 2/4 - 50% of 1000 x 1/4 = 125.00.
+    paid = floored_no_show(rule("no_show", "percent", percent="50"))
+    assert paid == [Money(0), Money("250.00"), Money("250.00")]
+    assert Money("500.00") + Money.total(paid) == Money("1000.00")
+
+
+def test_d8_a_percent_above_100_stays_uncapped_on_a_floored_share():
+    # 150% of 1000 x 2/4 - 150% of 1000 x 1/4 = 750.00 - 375.00. Above the rate.
+    paid = floored_no_show(rule("no_show", "percent", percent="150"))
+    assert paid == [Money("375.00"), Money("250.00"), Money("250.00")]
+    assert Money("500.00") + Money.total(paid) == Money("1375.00")
+
+
+def test_d8_fixed_stays_uncapped_on_a_floored_share():
+    paid = floored_no_show(rule("no_show", "fixed", amount="75.50"))
+    assert paid == [Money("75.50"), Money("250.00"), Money("250.00")]
+    assert Money("500.00") + Money.total(paid) == Money("1075.50")
+
+
+def test_d1_a_no_show_in_an_earlier_period_still_advances_the_walk():
+    rules = [rule("no_show"), rule("makeup")]
+    [line] = walk(
+        basis(rates=[per_course()], rules=rules),
+        3,
+        course(BEFORE, all_absent=True),
+        course(DAY),
+    )
+    assert (line.cumulative_sessions, line.amount) == (2, Money("333.34"))
+
+
+def test_a_share_beyond_the_money_range_names_its_session():
+    """Beyond the API's 1000%, which can't reach this: the top rate x 1 x 1000%
+    still fits ``Money``, so only this pure test gets here."""
+    rules = [rule("no_show", "percent", percent="100000"), rule("makeup")]
+    no_show = absent()
+    with pytest.raises(PayrollAmountOutOfRangeError) as caught:
+        walk(basis(rates=[per_course("9999999999.9999")], rules=rules), 1, no_show)
+    assert caught.value.details == {"class_session_id": str(no_show.class_session_id)}

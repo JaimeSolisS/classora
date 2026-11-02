@@ -22,7 +22,22 @@ own link, no chain walk, nothing read from the target). Else ``session``.
 ``rate.to_money()``, whatever the minutes. Under a rule, ``none`` pays ``0.00``,
 ``percent`` passes ``percent=`` to the same call, and ``fixed`` pays the rule's
 amount. Every amount is rounded once, inside ``Rate.to_money`` (#107 E2).
-``per_course`` writes no line here (#442 replaces this).
+
+**Per-course (#442; ADR-0017 E3, #107 E11).** The rate is the version on the
+cohort's first session's date (:func:`course_rate`), for all the tutor's
+sessions of the cohort. If that version isn't ``per_course``, each session is
+ordinary work on its own date, and a ``per_course`` version there is no line
+(``no_rate``, fixed by a back-dated version). :class:`CohortWalk` holds the
+tutor's sessions of the cohort in order. Each approved one advances ``k`` and
+``cum = max(previous cum, rate.to_money(k, N))``, whatever its event and whichever
+period it falls in, and the line is the difference, so a recalculation gives
+the same lines in any period order. A finalized line sets ``k`` to its stored
+value and ``cum`` to the highest of the finalized lines so far, from each one's
+stored ``k``, ``N`` and rate (:class:`FinalizedCourseLine`): a line floored at
+``0.00`` stores less than was already paid, and the next line must not pay it
+again. Only finalized lines feed that maximum, so sessions walked before a
+finalized line can't hide what the sessions after it earn. A course session has
+no cancellation request and no makeup link (D3).
 
 Nothing here touches a ``Decimal`` or an ``.amount``, on a ``Rate`` or a
 ``Money``: ``tests/unit/test_payroll_calculation_pure.py`` reads this file's syntax
@@ -42,7 +57,13 @@ from app.modules.payroll.schemas import RateInEffect, SessionPayRuleVersion
 ZERO: Final = Money(0)
 PER_HOUR: Final = "per_hour"
 PER_SESSION: Final = "per_session"
+PER_COURSE: Final = "per_course"
+COURSE: Final = "course"
 MINUTES_PER_HOUR: Final = 60
+WHOLE_LINE: Final = Rate(100)
+NOT_PLANNED_STATES: Final = frozenset({"cancelled", "skipped_closure"})
+"""The states that leave a cohort's ``N`` (#442 C1). Everything else is a
+session still planned, ``conflict``, ``unassigned`` and ``offered`` included."""
 
 ORDINARY_MODELS: Final = frozenset({PER_HOUR, PER_SESSION})
 CANCELLATION_KINDS: Final = {"late": "late_cancellation", "no_show": "no_show"}
@@ -96,6 +117,31 @@ class PayableCancellation:
 
 
 @dataclass(frozen=True)
+class FinalizedCourseLine:
+    """What a line of a finalized period fixes for good (#442 C3)."""
+
+    class_session_id: uuid.UUID
+    cumulative_sessions: int
+    cohort_sessions: int
+    rate: Rate
+
+
+type CohortStep = ApprovedSession | FinalizedCourseLine
+
+
+@dataclass(frozen=True)
+class CohortWalk:
+    """A cohort as one tutor's per-course pay reads it (#442 C).
+
+    ``steps`` are that tutor's approved sessions not in a finalized period and
+    their finalized lines, by ``(session_starts_at, class_session_id)``."""
+
+    first_session_date: date
+    planned_sessions: int
+    steps: Sequence[CohortStep]
+
+
+@dataclass(frozen=True)
 class PayBasis:
     """Every version of the tutor and every rule, any order."""
 
@@ -120,11 +166,18 @@ class LineDraft:
     rate: Rate | None
     compensation_rate_id: uuid.UUID | None
     session_pay_rule_id: uuid.UUID | None
+    cumulative_sessions: int | None = None
+    cohort_sessions: int | None = None
 
 
 class ServiceDateOutsidePeriodError(RuntimeError):
     """A fact dated outside the period: the bounds of a read are wrong (D1).
     An error, never a line (P6)."""
+
+
+class CourseWalkError(RuntimeError):
+    """``k > N``: an approved session left ``N``, which can't happen, because an
+    approved session is ``completed`` (#442 C5). A bug, never a capped line."""
 
 
 class _Dated(Protocol):
@@ -151,29 +204,51 @@ def _in_effect[V: _Dated](versions: Iterable[V], on: date) -> V | None:
     return latest
 
 
+def _rate_in_effect(basis: PayBasis, class_kind: str, on: date) -> RateInEffect | None:
+    """The version of ``class_kind`` on ``on``, if it has a model."""
+    version = _in_effect(
+        (rate for rate in basis.rates if rate.class_kind == class_kind), on
+    )
+    if version is None or version.rate_model is None or version.rate is None:
+        return None
+    return RateInEffect(
+        compensation_rate_id=version.id,
+        rate_model=version.rate_model,
+        rate=version.rate,
+        effective_from=version.effective_from,
+    )
+
+
+def _paying_terms(basis: PayBasis, on: date) -> TermsBasisVersion | None:
+    """The terms on ``on``, unless there are none or they stop pay (#107 E6)."""
+    terms = _in_effect(basis.terms, on)
+    return None if terms is None or terms.pay_frequency is None else terms
+
+
 def resolve_basis(
     basis: PayBasis, class_kind: str, on: date
 ) -> RateInEffect | Covered | None:
     """What pays work of ``class_kind`` on ``on`` (#107 E6). Terms and rates
     are looked up whatever the tutor's role or state."""
-    terms = _in_effect(basis.terms, on)
-    if terms is None or terms.pay_frequency is None:
+    terms = _paying_terms(basis, on)
+    if terms is None:
         return None
-    version = _in_effect(
-        (rate for rate in basis.rates if rate.class_kind == class_kind), on
-    )
-    if (
-        version is not None
-        and version.rate_model is not None
-        and version.rate is not None
-    ):
-        return RateInEffect(
-            compensation_rate_id=version.id,
-            rate_model=version.rate_model,
-            rate=version.rate,
-            effective_from=version.effective_from,
-        )
+    paid = _rate_in_effect(basis, class_kind, on)
+    if paid is not None:
+        return paid
     return COVERED if terms.salary is not None else None
+
+
+def course_rate(basis: PayBasis, first_session_date: date) -> RateInEffect | None:
+    """The ``per_course`` version on the cohort's first session's date, if that
+    version is one (#442 B1, B2)."""
+    paid = _rate_in_effect(basis, COURSE, first_session_date)
+    return paid if paid is not None and paid.rate_model == PER_COURSE else None
+
+
+def planned_sessions(states: Iterable[str]) -> int:
+    """``N``: the cohort's sessions not cancelled or skipped (#442 C1)."""
+    return sum(1 for state in states if state not in NOT_PLANNED_STATES)
 
 
 def rule_in_effect(basis: PayBasis, event: str, on: date) -> SessionPayRuleVersion:
@@ -204,6 +279,33 @@ def event_amount(
         return ZERO
     if rule.mode == "percent" and rule.percent is not None:
         return ordinary_amount(paid, minutes, percent=rule.percent)
+    fixed = rule.fixed_pay
+    if rule.mode == "fixed" and fixed is not None:
+        return fixed
+    raise ValueError(f"Malformed session pay rule {rule.id}")  # pragma: no cover
+
+
+def course_event_amount(
+    rule: SessionPayRuleVersion, rate: Rate, share: Money, k: int, n: int
+) -> Money:
+    """What the rule pays for this session of ``k`` of ``n`` (#442 D2). ``share``
+    is the line it would have been. Other percents take the difference of two
+    amounts rounded once each, never a percent of ``share``. Below 100 that is
+    capped at ``share``, so a no-show never pays more than teaching the session
+    (#442 D8). Above 100 it isn't, and neither is ``fixed``: the Owner set those on
+    purpose, they aren't shares of the course, and they can take the course's
+    total above the rate."""
+    if rule.mode == "none":
+        return ZERO
+    if rule.mode == "percent" and rule.percent is not None:
+        if rule.percent == WHOLE_LINE:
+            return share
+        amount = max(
+            ZERO,
+            rate.to_money(k, n, percent=rule.percent)
+            - rate.to_money(k - 1, n, percent=rule.percent),
+        )
+        return amount if rule.percent > WHOLE_LINE else min(share, amount)
     fixed = rule.fixed_pay
     if rule.mode == "fixed" and fixed is not None:
         return fixed
@@ -256,6 +358,73 @@ def _approved_draft(basis: PayBasis, work: ApprovedSession) -> LineDraft | None:
     )
 
 
+def _course_draft(
+    basis: PayBasis,
+    paid: RateInEffect,
+    work: ApprovedSession,
+    share: Money,
+    k: int,
+    n: int,
+) -> LineDraft:
+    kind = _approved_kind(work)
+    rule = None if kind == "session" else rule_in_effect(basis, kind, work.service_date)
+    return LineDraft(
+        kind=kind,
+        amount=(
+            share if rule is None else course_event_amount(rule, paid.rate, share, k, n)
+        ),
+        class_session_id=work.class_session_id,
+        approval_id=work.approval_id,
+        service_date=work.service_date,
+        class_kind=work.class_kind,
+        minutes=work.approved_minutes,
+        rate_model=paid.rate_model,
+        rate=paid.rate,
+        compensation_rate_id=paid.compensation_rate_id,
+        session_pay_rule_id=None if rule is None else rule.id,
+        cumulative_sessions=k,
+        cohort_sessions=n,
+    )
+
+
+def walk_cohort(
+    basis: PayBasis,
+    paid: RateInEffect,
+    cohort: CohortWalk,
+    *,
+    starts_on: date,
+    ends_on: date,
+) -> list[LineDraft]:
+    """The lines of ``cohort`` in the period (#442 C, D1). Every step counts,
+    in any period, and a session with no terms on its date too: it earns no line,
+    and the next line doesn't catch it up."""
+    n = cohort.planned_sessions
+    k = 0
+    cum = ZERO
+    finalized_peak = ZERO
+    drafts: list[LineDraft] = []
+    for step in cohort.steps:
+        if isinstance(step, FinalizedCourseLine):
+            k = step.cumulative_sessions
+            finalized_peak = max(
+                finalized_peak, step.rate.to_money(k, step.cohort_sessions)
+            )
+            cum = finalized_peak
+            continue
+        k += 1
+        if k > n:
+            raise CourseWalkError(str(step.class_session_id))
+        try:
+            reached = max(cum, paid.rate.to_money(k, n))
+            in_period = starts_on <= step.service_date <= ends_on
+            if in_period and _paying_terms(basis, step.service_date) is not None:
+                drafts.append(_course_draft(basis, paid, step, reached - cum, k, n))
+        except MoneyRangeError:
+            raise PayrollAmountOutOfRangeError(step.class_session_id) from None
+        cum = reached
+    return drafts
+
+
 def _cancellation_draft(basis: PayBasis, work: PayableCancellation) -> LineDraft | None:
     kind = CANCELLATION_KINDS.get(work.classification)
     if kind is None:
@@ -291,9 +460,11 @@ def draft_lines(
     basis: PayBasis,
     approved: Iterable[ApprovedSession],
     cancellations: Iterable[PayableCancellation],
+    cohorts: Iterable[CohortWalk] = (),
 ) -> list[LineDraft]:
     """The period's lines, by service date, then session. An amount beyond
-    the money range refuses the run (D11)."""
+    the money range refuses the run (D11). A session of a cohort paid
+    ``per_course`` takes its line from the walk, all others from ``approved``."""
 
     def draft_of[W: _Work](
         work: W, draft: Callable[[PayBasis, W], LineDraft | None]
@@ -305,8 +476,27 @@ def draft_lines(
         except MoneyRangeError:
             raise PayrollAmountOutOfRangeError(work.class_session_id) from None
 
+    walked: set[uuid.UUID] = set()
+    course_lines: list[LineDraft] = []
+    for cohort in cohorts:
+        paid = course_rate(basis, cohort.first_session_date)
+        if paid is not None:
+            walked.update(
+                step.class_session_id
+                for step in cohort.steps
+                if isinstance(step, ApprovedSession)
+            )
+            course_lines += walk_cohort(
+                basis, paid, cohort, starts_on=starts_on, ends_on=ends_on
+            )
+
     candidates = (
-        *(draft_of(work, _approved_draft) for work in approved),
+        *course_lines,
+        *(
+            draft_of(work, _approved_draft)
+            for work in approved
+            if work.class_session_id not in walked
+        ),
         *(draft_of(work, _cancellation_draft) for work in cancellations),
     )
     return sorted(

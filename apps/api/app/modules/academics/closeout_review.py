@@ -16,12 +16,12 @@ Every function runs in the caller's Unit of Work and never commits.
 """
 
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import cast
+from typing import Any, cast
 
-from sqlalchemy import exists, select
+from sqlalchemy import Row, Select, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
@@ -194,19 +194,9 @@ class CurrentApproval:
     attendance: Mapping[uuid.UUID, str]
 
 
-async def current_approvals(
-    session: AsyncSession,
-    tutor_user_id: uuid.UUID,
-    starts_from: datetime,
-    starts_before: datetime,
-) -> list[CurrentApproval]:
-    """The tutor's current revisions of sessions starting in ``[starts_from,
-    starts_before)``, oldest first. It doesn't filter on the closeout's
-    ``status``: a closeout back in review keeps its revision in force
-    (ADR-0017 E2). A closeout with no revision never appears. One statement,
-    on ``ix_session_closeout_approvals_tutor_user_id_session_starts_at``, no
-    lock."""
-    rows = await session.execute(
+def _current_approval_rows() -> Select[Any]:
+    """The current revisions: a closeout with no revision never joins."""
+    return (
         select(
             SessionCloseoutApproval.id,
             SessionCloseoutApproval.class_session_id,
@@ -221,31 +211,67 @@ async def current_approvals(
             SessionCloseout,
             SessionCloseout.current_approval_id == SessionCloseoutApproval.id,
         )
-        .where(
-            SessionCloseoutApproval.tutor_user_id == tutor_user_id,
-            SessionCloseoutApproval.session_starts_at >= starts_from,
-            SessionCloseoutApproval.session_starts_at < starts_before,
-        )
         .order_by(
             SessionCloseoutApproval.session_starts_at,
             SessionCloseoutApproval.class_session_id,
         )
     )
-    return [
-        CurrentApproval(
-            approval_id=row.id,
-            class_session_id=row.class_session_id,
-            tutor_user_id=row.tutor_user_id,
-            session_starts_at=row.session_starts_at,
-            session_kind=row.session_kind,
-            scheduled_minutes=row.scheduled_minutes,
-            approved_minutes=row.approved_minutes,
-            attendance={
-                uuid.UUID(student): status for student, status in row.attendance.items()
-            },
+
+
+def _current_approval(row: Row[Any]) -> CurrentApproval:
+    return CurrentApproval(
+        approval_id=row.id,
+        class_session_id=row.class_session_id,
+        tutor_user_id=row.tutor_user_id,
+        session_starts_at=row.session_starts_at,
+        session_kind=row.session_kind,
+        scheduled_minutes=row.scheduled_minutes,
+        approved_minutes=row.approved_minutes,
+        attendance={
+            uuid.UUID(student): status for student, status in row.attendance.items()
+        },
+    )
+
+
+async def current_approvals(
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID,
+    starts_from: datetime,
+    starts_before: datetime,
+) -> list[CurrentApproval]:
+    """The tutor's current revisions of sessions starting in ``[starts_from,
+    starts_before)``, oldest first. It doesn't filter on the closeout's
+    ``status``: a closeout back in review keeps its revision in force
+    (ADR-0017 E2). A closeout with no revision never appears. One statement,
+    on ``ix_session_closeout_approvals_tutor_user_id_session_starts_at``, no
+    lock."""
+    rows = await session.execute(
+        _current_approval_rows().where(
+            SessionCloseoutApproval.tutor_user_id == tutor_user_id,
+            SessionCloseoutApproval.session_starts_at >= starts_from,
+            SessionCloseoutApproval.session_starts_at < starts_before,
         )
-        for row in rows
-    ]
+    )
+    return [_current_approval(row) for row in rows]
+
+
+async def current_approvals_for_sessions(
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID,
+    class_session_ids: Collection[uuid.UUID],
+) -> list[CurrentApproval]:
+    """As :func:`current_approvals`, by session id (#442 A2): a tutor's current
+    revisions of these sessions, oldest first. One statement, none for no ids,
+    no lock."""
+    if not class_session_ids:
+        return []
+    rows = await session.execute(
+        _current_approval_rows().where(
+            SessionCloseoutApproval.tutor_user_id == tutor_user_id,
+            SessionCloseoutApproval.class_session_id.in_(set(class_session_ids)),
+        )
+    )
+    return [_current_approval(row) for row in rows]
 
 
 @dataclass(frozen=True)
