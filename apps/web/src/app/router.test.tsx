@@ -158,6 +158,8 @@ describe('route tree', () => {
       'payroll/tutors',
       'payroll/tutors/:tutorUserId',
       'payroll/settings',
+      'payroll/pay-rules',
+      'payroll/unresolved',
       'my-pay',
       'account/password',
       'privacy-notice',
@@ -430,17 +432,18 @@ describe('route tree', () => {
     const payroll = { anyPermission: ['payroll.view', 'payroll.manage'] };
     expect(children[100]!.handle).toEqual(payroll);
     expect(children[100]!.element).toBeDefined();
-    for (const index of [101, 102, 103]) {
+    // #444 A1: the pay rules and the unresolved work are code-split the same.
+    for (const index of [101, 102, 103, 104, 105]) {
       expect(children[index]!.handle).toEqual(payroll);
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
-    expect(children[104]!.handle).toEqual({ anyRole: ['tutor'] });
-    expect(children[104]!.lazy).toBeTypeOf('function');
-    expect(children[105]!.handle).toBeUndefined();
+    expect(children[106]!.handle).toEqual({ anyRole: ['tutor'] });
+    expect(children[106]!.lazy).toBeTypeOf('function');
+    expect(children[107]!.handle).toBeUndefined();
     // #174 G1: any signed-in user, no permission.
-    expect(children[106]!.id).toBe('privacy-notice');
-    expect(children[106]!.handle).toBeUndefined();
+    expect(children[108]!.id).toBe('privacy-notice');
+    expect(children[108]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

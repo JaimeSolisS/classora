@@ -444,6 +444,10 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['payroll_start_locked', 'payroll_start_locked'],
   ['biweekly_anchor_locked', 'biweekly_anchor_locked'],
   ['anchor_not_monday', 'anchor_not_monday'],
+  // Session pay rules (#444 B3).
+  ['pay_rule_in_effect', 'pay_rule_in_effect'],
+  ['session_pay_rule_in_use', 'session_pay_rule_in_use'],
+  ['pay_rule_values_mismatch', 'pay_rule_values_mismatch'],
   // The makeup link (#436 C1, C2): field codes, and the one problem code.
   ['makeup_target_unknown', 'makeup_target_unknown'],
   ['makeup_target_not_cancelled', 'makeup_target_not_cancelled'],

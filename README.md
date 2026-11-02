@@ -399,6 +399,9 @@ unless a bullet says otherwise.
   history per class type (Payroll → Tutors), and the payroll start date,
   biweekly anchor and salary proration basis (Payroll → Settings). Tutors
   read their own terms and rates under My pay.
+- Finance staff and owners version what a late cancellation, a no-show and a
+  makeup pay (Payroll → Pay rules), and see which approved work can't be paid
+  and why, with a link to the fix (Payroll → Unresolved work).
 
 **Notifications**
 

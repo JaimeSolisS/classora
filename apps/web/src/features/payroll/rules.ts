@@ -134,7 +134,7 @@ export function paySummary(
 
 // ---------------------------------------------------------- shared checks
 
-function isRealDay(value: string): boolean {
+export function isRealDay(value: string): boolean {
   try {
     parseLocalDate(value);
     return true;

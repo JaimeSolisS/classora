@@ -52,7 +52,7 @@ export function PayStatusBadge({ status }: { status: CompensationStatus }) {
   );
 }
 
-function VersionRow({
+export function VersionRow({
   id,
   status,
   date,
