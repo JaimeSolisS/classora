@@ -1016,6 +1016,15 @@ export const routes: RouteObject[] = [
             }),
             handle: PAYROLL_ACCESS,
           },
+          // #454 A1: the bonus and deduction types.
+          {
+            path: 'payroll/pay-item-types',
+            lazy: async () => ({
+              Component: (await import('@/features/payroll/PayItemTypesPage'))
+                .PayItemTypesPage,
+            }),
+            handle: PAYROLL_ACCESS,
+          },
           // #425 F: a tutor's own pay (code-split).
           {
             path: 'my-pay',

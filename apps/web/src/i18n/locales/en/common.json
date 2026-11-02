@@ -6183,6 +6183,7 @@
       "label": "Payroll sections",
       "tutors": "Tutors",
       "payRules": "Pay rules",
+      "payItemTypes": "Bonus and deduction types",
       "unresolved": "Unresolved work",
       "settings": "Settings"
     },
@@ -6293,7 +6294,16 @@
       "classKindRequired": "Choose the class type.",
       "modelRequired": "Choose the model.",
       "rateRequired": "Enter the rate.",
-      "rateInvalid": "Enter a valid rate, with no sign and up to four decimals."
+      "rateInvalid": "Enter a valid rate, with no sign and up to four decimals.",
+      "nameRequired": "Enter the name.",
+      "nameTooLong": "Use at most 100 characters.",
+      "directionRequired": "Choose bonus or deduction.",
+      "typeRequired": "Choose a type.",
+      "descriptionRequired": "Enter the description.",
+      "descriptionTooLong": "Use at most 500 characters.",
+      "amountRequired": "Enter the amount.",
+      "amountInvalid": "Enter a valid amount, for example 500 or 500.50.",
+      "amountPositive": "The amount must be above zero."
     },
     "settings": {
       "title": "Payroll settings",
@@ -6426,6 +6436,135 @@
         "chip": "Tutor: {{name}}",
         "remove": "Remove filter: Tutor {{name}}",
         "selected": "Selected tutor"
+      },
+      "payWithItem": "Pay with a one-time item",
+      "payWithItemFor": "Pay with a one-time item: {{name}}",
+      "payWithItemHelp": "Add a one-time item for what the line would have paid. The work stays on this list."
+    },
+    "payItems": {
+      "title": "Bonuses and deductions",
+      "note": "Changes reach a period at its next recalculation. Period totals aren't shown here.",
+      "caption": "The tutor's bonuses and deductions",
+      "empty": "This tutor has no bonuses or deductions.",
+      "add": "Add bonus or deduction",
+      "more": "Load more",
+      "columns": {
+        "type": "Type",
+        "description": "Description",
+        "amount": "Amount",
+        "recurrence": "Recurrence",
+        "dates": "Dates",
+        "lands": "Where it lands",
+        "actions": "Actions"
+      },
+      "directions": {
+        "bonus": "Bonus",
+        "deduction": "Deduction"
+      },
+      "recurrences": {
+        "one_time": "One time",
+        "recurring": "Recurring"
+      },
+      "rangeDates": "{{from}} – {{to}}",
+      "openDates": "From {{from}}, no end",
+      "lands": {
+        "paid": "Paid",
+        "waiting": "No open period yet",
+        "period": "{{from}} – {{to}} · {{status}}",
+        "status": {
+          "open": "Open",
+          "prepared": "Prepared"
+        },
+        "everyRange": "Every period from {{from}} to {{to}}",
+        "everyOpen": "Every period from {{from}}"
+      },
+      "end": "End",
+      "changeEnd": "Change end",
+      "delete": "Delete",
+      "endFor": "End {{type}} of {{date}}",
+      "changeEndFor": "Change end: {{type}} of {{date}}",
+      "deleteFor": "Delete {{type}} of {{date}}",
+      "saved": "Item added.",
+      "ended": "End date saved.",
+      "deleted": "Item deleted.",
+      "gone": "That item no longer exists. The list was reloaded.",
+      "dialog": {
+        "title": "Add bonus or deduction",
+        "help": "A fixed amount for this tutor. A mistake is fixed by deleting it and adding it again.",
+        "type": "Type",
+        "chooseType": "Choose a type",
+        "noTypes": "There are no active types.",
+        "typesLink": "Go to the types",
+        "typesLoading": "Loading types…",
+        "description": "Description",
+        "descriptionHelp": "The tutor will see this description on their payslip.",
+        "amount": "Amount (MXN)",
+        "recurrence": "Recurrence",
+        "effectiveFrom": "Applies from",
+        "effectiveTo": "Ends on (optional)",
+        "recurringHelp": "The amount is paid in full in every period the dates touch, weekly tutors included.",
+        "submit": "Add"
+      },
+      "endDialog": {
+        "title": "End item",
+        "help": "{{type}}: {{description}}. This is the last day it pays, on any date from {{from}}.",
+        "date": "Last day",
+        "submit": "Save end",
+        "conflictReloaded": "Someone else changed this item. It was reloaded: check it and try again.",
+        "reload": "Reload"
+      },
+      "deleteDialog": {
+        "title": "Delete item",
+        "body": "{{type}} of {{date}} for {{amount}} will be deleted. This can't be undone.",
+        "confirm": "Delete"
+      }
+    },
+    "payItemTypes": {
+      "title": "Bonus and deduction types",
+      "intro": "The types used to add bonuses and deductions on each tutor's pay page.",
+      "caption": "Bonus and deduction types",
+      "empty": "There are no types yet. None come preset.",
+      "emptyManage": "There are no types yet: none come preset. Add one to start giving bonuses and deductions.",
+      "add": "Add type",
+      "columns": {
+        "name": "Name",
+        "direction": "Direction",
+        "state": "State",
+        "actions": "Actions"
+      },
+      "states": {
+        "active": "Active",
+        "inactive": "Inactive"
+      },
+      "edit": "Edit",
+      "deactivate": "Deactivate",
+      "reactivate": "Reactivate",
+      "editFor": "Edit {{name}}",
+      "deactivateFor": "Deactivate {{name}}",
+      "reactivateFor": "Reactivate {{name}}",
+      "saved": "Type saved.",
+      "deactivated": "Type deactivated.",
+      "reactivated": "Type reactivated.",
+      "gone": "That type no longer exists. The list was reloaded.",
+      "conflictRefreshed": "Someone else changed this type. The list was reloaded: check it and try again.",
+      "conflictReloaded": "Someone else changed this type. It was reloaded: check it and try again.",
+      "reload": "Reload",
+      "dialog": {
+        "addTitle": "Add type",
+        "editTitle": "Edit type",
+        "addHelp": "The direction can't change later.",
+        "editHelp": "Only the name can change.",
+        "name": "Name",
+        "direction": "Direction",
+        "chooseDirection": "Choose bonus or deduction",
+        "directionLocked": "A wrong direction needs a new type.",
+        "submit": "Save"
+      },
+      "toggle": {
+        "deactivateTitle": "Deactivate type",
+        "deactivateBody": "{{name}} can't be used on new items any more. Existing items stay.",
+        "reactivateTitle": "Reactivate type",
+        "reactivateBody": "{{name}} can be used on new items again."
       }
     }
   },

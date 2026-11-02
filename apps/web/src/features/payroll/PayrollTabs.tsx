@@ -15,6 +15,7 @@ interface PayrollSection {
 const PAYROLL_SECTIONS: readonly PayrollSection[] = [
   { to: '/payroll/tutors', labelKey: 'payroll.tabs.tutors' },
   { to: '/payroll/pay-rules', labelKey: 'payroll.tabs.payRules' },
+  { to: '/payroll/pay-item-types', labelKey: 'payroll.tabs.payItemTypes' },
   { to: '/payroll/unresolved', labelKey: 'payroll.tabs.unresolved' },
   { to: '/payroll/settings', labelKey: 'payroll.tabs.settings' },
 ];

@@ -2,6 +2,7 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionUserBody } from '@/features/auth/session';
 import { applyLanguage } from '@/i18n';
+import es from '@/i18n/locales/es/common.json';
 import {
   meAs,
   problem,
@@ -158,19 +159,33 @@ describe('the table (C1, C2, C3, C5)', () => {
     expect(row(UNRESOLVED_BEFORE_FIRST).textContent).toContain(words[2]);
   });
 
-  it('links the two fixable reasons to the tutor, and the third to nothing', async () => {
+  it('links the two fixable reasons to the tutor, and the third to the items', async () => {
     stub();
     await openWithRows();
     const pay = `/payroll/tutors/${TUTOR_ID}`;
     expect(links(row(UNRESOLVED_NO_RATE))).toContain(pay);
     expect(links(row(UNRESOLVED_NO_TERMS))).toContain(pay);
+    expect(links(row(UNRESOLVED_BEFORE_FIRST))).toContain(`${pay}#pay-items`);
     expect(links(row(UNRESOLVED_BEFORE_FIRST))).not.toContain(pay);
+  });
+
+  it('names the rule and says the work stays listed (#454 C1)', async () => {
+    stub();
+    await openWithRows();
+    const text = row(UNRESOLVED_BEFORE_FIRST).textContent;
+    expect(text).toContain('what the line would have paid');
+    expect(text).toContain('stays on this list');
+  });
+
+  it('says Configuración, never Ajustes, for the settings link (#454 C2)', () => {
+    expect(es.payroll.unresolved.payrollOffLink).toBe('Ir a Configuración');
   });
 
   it('links the session with schedule.view', async () => {
     stub();
     await openWithRows();
     expect(links(row(UNRESOLVED_BEFORE_FIRST))).toEqual([
+      `/payroll/tutors/${TUTOR_ID}#pay-items`,
       `/schedule/sessions/${UNRESOLVED_BEFORE_FIRST.class_session_id}`,
     ]);
   });
@@ -178,7 +193,9 @@ describe('the table (C1, C2, C3, C5)', () => {
   it('has no session link without schedule.view', async () => {
     stub({}, { as: NO_SCHEDULE });
     await openWithRows();
-    expect(links(row(UNRESOLVED_BEFORE_FIRST))).toEqual([]);
+    expect(links(row(UNRESOLVED_BEFORE_FIRST))).toEqual([
+      `/payroll/tutors/${TUTOR_ID}#pay-items`,
+    ]);
     expect(main().querySelector('[href^="/schedule/"]')).toBeNull();
     expect(main().textContent).not.toContain('Session');
   });
@@ -447,6 +464,7 @@ describe('pages and states (C4, edge cases)', () => {
     expect(links(nav)).toEqual([
       '/payroll/tutors',
       '/payroll/pay-rules',
+      '/payroll/pay-item-types',
       '/payroll/unresolved',
       '/payroll/settings',
     ]);

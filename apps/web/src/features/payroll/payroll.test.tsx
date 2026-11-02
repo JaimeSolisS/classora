@@ -188,6 +188,7 @@ describe('access (A)', () => {
         '/payroll/tutors',
         `/payroll/tutors/${TUTOR_ID}`,
         '/payroll/settings',
+        '/payroll/pay-item-types',
       ]) {
         const api = stub({}, { as });
         await open(path);
@@ -227,6 +228,7 @@ describe('access (A)', () => {
     expect(tabs).toEqual([
       ['Tutors', 'page'],
       ['Pay rules', null],
+      ['Bonus and deduction types', null],
       ['Unresolved work', null],
       ['Settings', null],
     ]);

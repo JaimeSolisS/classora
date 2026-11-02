@@ -420,5 +420,19 @@
   "makeup_student_mismatch": "The makeup must be for the cancelled session's student.",
   "makeup_subject_mismatch": "The makeup must be for the cancelled session's subject.",
   "makeup_window_passed": "The makeup must start by its deadline. Choose an earlier date, or schedule a regular session.",
-  "makeup_already_scheduled": "This cancelled session already has a makeup scheduled."
+  "makeup_already_scheduled": "This cancelled session already has a makeup scheduled.",
+  "pay_item_type_exists": "A type with this name already exists. Use another name.",
+  "pay_item_type_in_use": "Recurring items of this type are still running. End them first, then deactivate the type.",
+  "pay_item_type_inactive": "This type is inactive, so it can't pay again. Reactivate it or use another type.",
+  "pay_item_type_unknown": "This type no longer exists. Choose another.",
+  "pay_item_not_recurring": "Only a recurring item has an end date. Delete it and add it again if needed.",
+  "pay_item_end_before_start": "The end can't be before the start.",
+  "pay_item_end_before_paid_period": "This item was already paid in a finalized period starting after that date. Choose a later date.",
+  "pay_item_in_use": "A prepared or finalized period uses this item, so it can't be deleted. The period must be returned first, or end the item.",
+  "text_empty": "Enter some text.",
+  "text_too_long": "This text is too long.",
+  "text_invalid": "This text has an invalid character. Enter it again.",
+  "effective_to_not_allowed": "Only a recurring item has an end date.",
+  "effective_to_before_from": "The end can't be before the start.",
+  "payroll_amount_out_of_range": "This period's lines or total are beyond the maximum amount. End or delete one of the tutor's bonuses, then recalculate."
 }

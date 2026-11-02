@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
 import { ApiError } from '@/app/api';
@@ -24,6 +24,7 @@ import {
 } from './api';
 import { CompensationView } from './CompensationView';
 import { usePayLabels } from './labels';
+import { PayItemsSection } from './PayItemsSection';
 import { PayrollTabs } from './PayrollTabs';
 import { PayTermsDialog } from './PayTermsDialog';
 import { RateDialog } from './RateDialog';
@@ -40,7 +41,9 @@ import {
 // too). There is no edit: a typo is a delete and an add. A version that is
 // gone by the time it's deleted refreshes the page; a paid one stays, with
 // the API's message in the confirmation. After a change the tutor queries
-// (this page and the list) are invalidated.
+// (this page and the list) are invalidated. The bonuses and deductions are
+// their own section after the rates (#454 B): CompensationView stays as it is,
+// because /my-pay shares it.
 
 function BackLink() {
   const { t } = useTranslation();
@@ -126,6 +129,13 @@ export function TutorPayPage() {
         await refresh();
       }}
       onReload={refresh}
+      items={
+        <PayItemsSection
+          tutorUserId={tutorUserId}
+          canEdit={canManage && !ownPay}
+          today={detail.data.today as LocalDate}
+        />
+      }
     />
   );
 }
@@ -144,6 +154,8 @@ interface TutorPayPageViewProps {
   onAddRate: (values: RateFormValues) => Promise<void>;
   onDelete: (version: DeletedVersion) => Promise<void>;
   onReload: () => Promise<void>;
+  /** The bonuses and deductions section. */
+  items?: ReactNode;
 }
 
 /** The page's content, without any query. */
@@ -155,6 +167,7 @@ export function TutorPayPageView({
   onAddRate,
   onDelete,
   onReload,
+  items,
 }: TutorPayPageViewProps) {
   const { t } = useTranslation();
   const labels = usePayLabels();
@@ -222,6 +235,7 @@ export function TutorPayPageView({
           }
         />
       </div>
+      {items}
       <p role="status" className="text-sm">
         {announcement}
       </p>
