@@ -39,6 +39,15 @@ again. Only finalized lines feed that maximum, so sessions walked before a
 finalized line can't hide what the sessions after it earn. A course session has
 no cancellation request and no makeup link (D3).
 
+**Unresolved work (#443; ADR-0017 E2, #106 E4, #107 E12, E13).**
+:func:`unresolved_reason` says why work with no line can't get one. It asks
+:func:`has_basis`, which is built from the same helpers the lines use, and a test
+feeds the same cases to both, so a line and an item can't disagree. The reason is
+the first of ``before_first_period`` (a date no period can ever cover, and the
+only reason that doesn't block), ``no_pay_terms`` and ``no_rate``. The period's
+status plays no part: an item in a finalized period stays listed until it has a
+basis, and #111 pays it then.
+
 Nothing here touches a ``Decimal`` or an ``.amount``, on a ``Rate`` or a
 ``Money``: ``tests/unit/test_payroll_calculation_pure.py`` reads this file's syntax
 tree, and the workflow's.
@@ -48,11 +57,16 @@ import uuid
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date
-from typing import Final, Literal, Protocol
+from typing import Final, Literal, Protocol, get_args
 
 from app.core.money import Money, MoneyRangeError, Rate
 from app.modules.payroll.errors import PayrollAmountOutOfRangeError
-from app.modules.payroll.schemas import RateInEffect, SessionPayRuleVersion
+from app.modules.payroll.schemas import (
+    RateInEffect,
+    SessionPayRuleVersion,
+    UnresolvedReason,
+    UnresolvedSource,
+)
 
 ZERO: Final = Money(0)
 PER_HOUR: Final = "per_hour"
@@ -67,6 +81,13 @@ session still planned, ``conflict``, ``unassigned`` and ``offered`` included."""
 
 ORDINARY_MODELS: Final = frozenset({PER_HOUR, PER_SESSION})
 CANCELLATION_KINDS: Final = {"late": "late_cancellation", "no_show": "no_show"}
+
+BEFORE_FIRST_PERIOD: Final[UnresolvedReason] = "before_first_period"
+NO_PAY_TERMS: Final[UnresolvedReason] = "no_pay_terms"
+NO_RATE: Final[UnresolvedReason] = "no_rate"
+UNRESOLVED_REASONS: Final[tuple[UnresolvedReason, ...]] = get_args(
+    UnresolvedReason.__value__
+)
 
 type Covered = Literal["covered"]
 COVERED: Final[Covered] = "covered"
@@ -170,6 +191,39 @@ class LineDraft:
     cohort_sessions: int | None = None
 
 
+@dataclass(frozen=True)
+class UnresolvedCandidate:
+    """Approved work with no line, and what deciding on it needs (#443 A2).
+
+    ``classification`` is a cancellation's final outcome. ``first_session_date``
+    is the cohort's first session, for a closeout of a course session."""
+
+    class_session_id: uuid.UUID
+    tutor_user_id: uuid.UUID
+    class_kind: str
+    service_date: date
+    source: UnresolvedSource
+    classification: str | None = None
+    first_session_date: date | None = None
+
+
+@dataclass(frozen=True)
+class UnresolvedItem:
+    """Work that can't be paid, and why (#443 A3)."""
+
+    class_session_id: uuid.UUID
+    tutor_user_id: uuid.UUID
+    class_kind: str
+    service_date: date
+    source: UnresolvedSource
+    reason: UnresolvedReason
+
+    @property
+    def blocking(self) -> bool:
+        """``before_first_period`` is the one thing no fix reaches (#106 E4)."""
+        return self.reason != BEFORE_FIRST_PERIOD
+
+
 class ServiceDateOutsidePeriodError(RuntimeError):
     """A fact dated outside the period: the bounds of a read are wrong (D1).
     An error, never a line (P6)."""
@@ -237,6 +291,17 @@ def resolve_basis(
     if paid is not None:
         return paid
     return COVERED if terms.salary is not None else None
+
+
+def _ordinary_basis(
+    basis: PayBasis, class_kind: str, on: date
+) -> RateInEffect | Covered | None:
+    """:func:`resolve_basis`, but for a ``per_course`` version, which pays only
+    through a cohort's walk (#442 B3)."""
+    paid = resolve_basis(basis, class_kind, on)
+    if paid is None or paid == COVERED or paid.rate_model in ORDINARY_MODELS:
+        return paid
+    return None
 
 
 def course_rate(basis: PayBasis, first_session_date: date) -> RateInEffect | None:
@@ -319,8 +384,8 @@ def _approved_kind(work: ApprovedSession) -> str:
 
 
 def _approved_draft(basis: PayBasis, work: ApprovedSession) -> LineDraft | None:
-    paid = resolve_basis(basis, work.class_kind, work.service_date)
-    if paid is None or (paid != COVERED and paid.rate_model not in ORDINARY_MODELS):
+    paid = _ordinary_basis(basis, work.class_kind, work.service_date)
+    if paid is None:
         return None
     minutes = work.approved_minutes
     if paid == COVERED:
@@ -425,21 +490,24 @@ def walk_cohort(
     return drafts
 
 
-def _cancellation_draft(basis: PayBasis, work: PayableCancellation) -> LineDraft | None:
-    kind = CANCELLATION_KINDS.get(work.classification)
+def _paying_cancellation_rule(
+    basis: PayBasis, classification: str, on: date
+) -> SessionPayRuleVersion | None:
+    """The rule of this outcome on ``on``, unless nothing is owed under it."""
+    kind = CANCELLATION_KINDS.get(classification)
     if kind is None:
         return None
-    rule = rule_in_effect(basis, kind, work.service_date)
-    paid = resolve_basis(basis, work.class_kind, work.service_date)
-    if (
-        rule.mode == "none"
-        or paid is None
-        or paid == COVERED
-        or paid.rate_model not in ORDINARY_MODELS
-    ):
+    rule = rule_in_effect(basis, kind, on)
+    return None if rule.mode == "none" else rule
+
+
+def _cancellation_draft(basis: PayBasis, work: PayableCancellation) -> LineDraft | None:
+    rule = _paying_cancellation_rule(basis, work.classification, work.service_date)
+    paid = _ordinary_basis(basis, work.class_kind, work.service_date)
+    if rule is None or paid is None or paid == COVERED:
         return None
     return LineDraft(
-        kind=kind,
+        kind=rule.event,
         amount=event_amount(rule, paid, work.scheduled_minutes),
         class_session_id=work.class_session_id,
         approval_id=None,
@@ -503,3 +571,65 @@ def draft_lines(
         (draft for draft in candidates if draft is not None),
         key=lambda draft: (draft.service_date, draft.class_session_id),
     )
+
+
+def has_basis(
+    basis: PayBasis,
+    class_kind: str,
+    on: date,
+    first_session_date: date | None = None,
+) -> bool:
+    """Whether work has what it needs to be paid, or is covered (#443 A1). As
+    :func:`draft_lines`: a cohort paid ``per_course`` needs only terms on the
+    date, because the rate comes from its first session (:func:`walk_cohort`).
+    All other work goes by :func:`_ordinary_basis`."""
+    if (
+        first_session_date is not None
+        and course_rate(basis, first_session_date) is not None
+    ):
+        return _paying_terms(basis, on) is not None
+    return _ordinary_basis(basis, class_kind, on) is not None
+
+
+def unresolved_reason(
+    basis: PayBasis,
+    work: UnresolvedCandidate,
+    first_period_starts_on: date | None,
+) -> UnresolvedReason | None:
+    """Why this work, which has no line, can't get one (#443 A2, A3); ``None``
+    if it can, or if nothing is owed. A tutor with no periods has no first
+    period, so no ``before_first_period``: adding terms opens a period (A4)."""
+    on = work.service_date
+    if work.source == "cancellation" and (
+        work.classification is None
+        or _paying_cancellation_rule(basis, work.classification, on) is None
+    ):
+        return None
+    if has_basis(basis, work.class_kind, on, work.first_session_date):
+        return None
+    if first_period_starts_on is not None and on < first_period_starts_on:
+        return BEFORE_FIRST_PERIOD
+    return NO_PAY_TERMS if _paying_terms(basis, on) is None else NO_RATE
+
+
+def classify_unresolved(
+    basis: PayBasis,
+    work: Iterable[UnresolvedCandidate],
+    first_period_starts_on: date | None,
+) -> list[UnresolvedItem]:
+    """The items among one tutor's candidates."""
+    items = []
+    for candidate in work:
+        reason = unresolved_reason(basis, candidate, first_period_starts_on)
+        if reason is not None:
+            items.append(
+                UnresolvedItem(
+                    class_session_id=candidate.class_session_id,
+                    tutor_user_id=candidate.tutor_user_id,
+                    class_kind=candidate.class_kind,
+                    service_date=candidate.service_date,
+                    source=candidate.source,
+                    reason=reason,
+                )
+            )
+    return items

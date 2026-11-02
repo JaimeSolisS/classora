@@ -48,9 +48,9 @@ fail on the new line, instead of an insert failing on the foreign key.
 import uuid
 from collections.abc import Collection, Hashable, Sequence
 from datetime import date
-from typing import Final, cast
+from typing import Any, Final, cast
 
-from sqlalchemy import select
+from sqlalchemy import Row, Select, select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -299,33 +299,72 @@ async def terms_in_effect(
     )
 
 
+def _rate_version_columns() -> Select[*tuple[Any, ...]]:
+    return select(
+        CompensationRate.id,
+        CompensationRate.tutor_user_id,
+        CompensationRate.class_kind,
+        CompensationRate.effective_from,
+        CompensationRate.rate_model,
+        CompensationRate.rate,
+    ).order_by(CompensationRate.class_kind, CompensationRate.effective_from)
+
+
+def _rate_version(row: Row[Any]) -> RateVersion:
+    return RateVersion(
+        id=row.id,
+        class_kind=row.class_kind,
+        effective_from=row.effective_from,
+        rate_model=row.rate_model,
+        rate=row.rate,
+    )
+
+
 async def rate_versions(
     session: AsyncSession, tutor_user_id: uuid.UUID
 ) -> list[RateVersion]:
     """Every rate version of the tutor, ``FOR KEY SHARE`` (module docstring).
     One statement."""
     rows = await session.execute(
-        select(
-            CompensationRate.id,
-            CompensationRate.class_kind,
-            CompensationRate.effective_from,
-            CompensationRate.rate_model,
-            CompensationRate.rate,
-        )
+        _rate_version_columns()
         .where(CompensationRate.tutor_user_id == tutor_user_id)
-        .order_by(CompensationRate.class_kind, CompensationRate.effective_from)
         .with_for_update(read=True, key_share=True)
     )
-    return [
-        RateVersion(
-            id=row.id,
-            class_kind=row.class_kind,
-            effective_from=row.effective_from,
-            rate_model=row.rate_model,
-            rate=row.rate,
+    return [_rate_version(row) for row in rows]
+
+
+async def rate_versions_of_tutors(
+    session: AsyncSession, tutor_user_ids: Collection[uuid.UUID]
+) -> dict[uuid.UUID, list[RateVersion]]:
+    """Every rate version of these tutors, by tutor. It writes no line, so it
+    takes no lock (#443). One statement, none for no ids."""
+    versions: dict[uuid.UUID, list[RateVersion]] = {}
+    if tutor_user_ids:
+        rows = await session.execute(
+            _rate_version_columns().where(
+                CompensationRate.tutor_user_id.in_(set(tutor_user_ids))
+            )
         )
-        for row in rows
-    ]
+        for row in rows:
+            versions.setdefault(row.tutor_user_id, []).append(_rate_version(row))
+    return versions
+
+
+def _terms_basis_columns() -> Select[*tuple[Any, ...]]:
+    return select(
+        TutorPayTerms.tutor_user_id,
+        TutorPayTerms.effective_from,
+        TutorPayTerms.pay_frequency,
+        TutorPayTerms.salary_amount,
+    ).order_by(TutorPayTerms.effective_from)
+
+
+def _terms_basis_version(row: Row[Any]) -> TermsBasisVersion:
+    return TermsBasisVersion(
+        effective_from=row.effective_from,
+        pay_frequency=row.pay_frequency,
+        salary=row.salary_amount,
+    )
 
 
 async def terms_basis_versions(
@@ -333,22 +372,26 @@ async def terms_basis_versions(
 ) -> list[TermsBasisVersion]:
     """Every terms version of the tutor. One statement."""
     rows = await session.execute(
-        select(
-            TutorPayTerms.effective_from,
-            TutorPayTerms.pay_frequency,
-            TutorPayTerms.salary_amount,
-        )
-        .where(TutorPayTerms.tutor_user_id == tutor_user_id)
-        .order_by(TutorPayTerms.effective_from)
+        _terms_basis_columns().where(TutorPayTerms.tutor_user_id == tutor_user_id)
     )
-    return [
-        TermsBasisVersion(
-            effective_from=row.effective_from,
-            pay_frequency=row.pay_frequency,
-            salary=row.salary_amount,
+    return [_terms_basis_version(row) for row in rows]
+
+
+async def terms_basis_versions_of_tutors(
+    session: AsyncSession, tutor_user_ids: Collection[uuid.UUID]
+) -> dict[uuid.UUID, list[TermsBasisVersion]]:
+    """Every terms version of these tutors, by tutor (#443). One statement,
+    none for no ids."""
+    versions: dict[uuid.UUID, list[TermsBasisVersion]] = {}
+    if tutor_user_ids:
+        rows = await session.execute(
+            _terms_basis_columns().where(
+                TutorPayTerms.tutor_user_id.in_(set(tutor_user_ids))
+            )
         )
-        for row in rows
-    ]
+        for row in rows:
+            versions.setdefault(row.tutor_user_id, []).append(_terms_basis_version(row))
+    return versions
 
 
 # --- Reads ---------------------------------------------------------------------------

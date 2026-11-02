@@ -218,6 +218,22 @@ def _current_approval_rows() -> Select[Any]:
     )
 
 
+def current_approval_columns(
+    *, starts_from: datetime, tutor_user_id: uuid.UUID | None = None
+) -> Select[Any]:
+    """The current revisions of sessions starting at or after ``starts_from``
+    (optionally one tutor's), **not executed** (#443 C4). Like
+    :func:`current_approvals`, it doesn't filter on the closeout's ``status``."""
+    query = (
+        _current_approval_rows()
+        .order_by(None)
+        .where(SessionCloseoutApproval.session_starts_at >= starts_from)
+    )
+    if tutor_user_id is not None:
+        query = query.where(SessionCloseoutApproval.tutor_user_id == tutor_user_id)
+    return query
+
+
 def _current_approval(row: Row[Any]) -> CurrentApproval:
     return CurrentApproval(
         approval_id=row.id,

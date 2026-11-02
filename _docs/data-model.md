@@ -1188,10 +1188,10 @@ Corrections after lock (E11). Audited. **Append-only** (§5.1).
 | `origin_line_id` | UUID | yes | `NULL` iff `late_approval` (P8) |
 | `class_session_id` | UUID | yes | FK `class_sessions` RESTRICT; set iff `late_approval` |
 | `origin_period_id` | UUID | yes | FK `payroll_periods` RESTRICT; set iff `late_approval` |
-| `approval_id` | UUID | yes | FK `session_closeout_approvals` RESTRICT; set for `hours_correction` and `late_approval` |
+| `approval_id` | UUID | yes | FK `session_closeout_approvals` RESTRICT; set for `hours_correction` and for a closeout's `late_approval`; `NULL` for a cancellation's `late_approval` (#443 D8) |
 | `amount` | NUMERIC(14,2) | no | `<> 0` (P9) |
 | `reason` | TEXT | yes | trimmed, 1–1000; required for `manual` |
-| `source_key` | TEXT | yes | **UNIQUE**; `approval:<approval_id>`, `event:<line_id>:<n>`; `NULL` iff `manual` |
+| `source_key` | TEXT | yes | **UNIQUE**; `approval:<approval_id>`, `cancellation:<class_session_id>` (#443 D8), `event:<line_id>:<n>`; `NULL` iff `manual` |
 | `created_by_user_id` | UUID | yes | FK `users` RESTRICT; `NULL` for the job |
 
 - **Composite FKs:** `(target_period_id, tutor_user_id)` → `payroll_periods (id, tutor_user_id)`; `(origin_line_id, tutor_user_id)` → `payroll_lines (id, tutor_user_id)`.
@@ -1383,8 +1383,14 @@ Nothing below is stored.
 
 - **Period total before finalization:** Σ `payroll_lines.amount`. It is stored as `total_amount` only at finalize.
 - **Period paid state:** with `paid` = Σ payments without a reversal: `unpaid` (`paid` = 0), `partially_paid` (0 < `paid` < `total_amount`), `paid` (`paid` = `total_amount`). A finalized period with a `0.00` total is `paid`.
-- **Unresolved work:** an approved closeout (current revision) dated on or after `payroll_starts_on` whose tutor has no terms (`no_pay_terms`) or no rate (`no_rate`) on the service date and no line. A salaried tutor's class kind with no rate isn't unresolved: it is covered by salary (E1).
-  - **`before_first_period` (#106 E4, for #107):** an approved closeout dated on or after the floor and before the tutor's first period can't be fixed by any terms change. It gets this reason, stays on the staff list and doesn't block `prepare`; Finance pays it with a one-time item. Every other `no_pay_terms` stays blocking.
+- **Unresolved work (#443):** work with no session-sourced line, in a period of any status, dated on or after `payroll_starts_on`, and with no basis on the service date (#107 E6, read by the same code as a line). While `payroll_starts_on` is `NULL` nothing is listed. The **`source`** is `closeout` for an approved closeout (current revision), or `cancellation` for a family's `late` or `no_show` cancellation whose rule on that date isn't `none` (#107 E13). A salaried tutor's class kind with no rate isn't unresolved: it is covered by salary (E1), and so is a cancellation, which then has no line. A resolvable closeout not yet recalculated isn't either. The reason is the first that applies:
+  1. **`before_first_period` (#106 E4):** the tutor has periods and the date is before the first one's `starts_on`. No terms change can fix it, so it stays on the staff list and doesn't block `prepare`; Finance pays it with a one-time item. Nothing links the two, so it stays listed.
+  2. **`no_pay_terms`:** no terms, or `pay_frequency NULL`, on the date. A tutor with no periods at all lands here, since adding terms opens a period.
+  3. **`no_rate`:** terms, but no rate model and no salary. A `per_course` version outside its cohort's first date is `no_rate` too (#442 B3). A cohort paid `per_course` needs terms on the date and nothing else.
+  - **Which items block `prepare` (#107 E12):** every item but `before_first_period` dated on or before that period's `ends_on`, in whatever status its own period is. A later-dated item doesn't. An item in a finalized period stays listed and blocking until it has a basis; #111's `late_approval` then pays it.
+  - **Paying finalized work (#443 D8, #111 to build):** a closeout's `late_approval` has `source_key` `approval:<approval_id>`. A cancellation has no approval, so its `late_approval` has `source_key` `cancellation:<class_session_id>` and `approval_id` `NULL`. Either kind leaves the list when it has a basis, and #111's job pays it from then on. P8 is unchanged: both have `class_session_id` and `origin_period_id`.
+  - **The order in #110 (#443 D9):** `prepare` runs `recalculate` first, then `blocking_work`, so a line a recalculation drops has become an item before the check. `finalize` calls `blocking_work` again, because work approved after `prepare` with no basis has no draft and no line, so the drift comparison can't see it.
+  - Work paid by a line whose basis later goes isn't listed: the line pays it until a `recalculate` drops it.
 - **Expense `net`** = `amount + Σ expense_adjustments.amount`.
 - **Expense `open`** = `net − Σ` payments without a reversal.
 - **Expense status:** `void` (net = 0); `paid` (open = 0 and not `void`); `overdue` (open > 0 and `due_on` before the center's today); `partially_paid` (open > 0, some valid payment, not overdue); `unpaid` (open > 0, no valid payment, not overdue).
@@ -1424,7 +1430,7 @@ Line writes are serialized by the period row lock (§15); the trigger is the bac
 - **`recalculate`:** reads committed scheduling and academics state with **no lock on them** and no advisory lock, under the period row lock. No scheduling or academics write ever takes a period lock, so there is no cycle, and a payroll failure can't roll back a closeout or a cancellation (E9). The period row is re-read after the lock, so a run that waited sees a status that changed.
 - **Versions in a run (#107 C4):** `compensation_rates` and `session_pay_rules` are read `FOR KEY SHARE`, after the period lock, so a concurrent delete waits for the run and then fails on the new line, instead of an insert failing with `23503`.
 - **Deleting a version (#107 E8):** periods before the version, always, or a run and a delete deadlock: the open periods `FOR UPDATE`, oldest first, then the version `FOR UPDATE`. Two rule deletes also share the `session_pay_rules` advisory lock, taken first.
-- **After-lock approvals:** an approval committed after a period's finalize sees no line and lands as a `late_approval` adjustment (E11). One committed between `prepare` and `finalize` is caught by the drift comparison (`409 payroll_period_stale`).
+- **After-lock approvals:** an approval committed after a period's finalize sees no line and lands as a `late_approval` adjustment (E11). One committed between `prepare` and `finalize` with a basis is caught by the drift comparison (`409 payroll_period_stale`); one with no basis has no draft, so `finalize`'s call to `blocking_work` catches it (#443 D9).
 - **Jobs (`queueing_lock`, natural keys):**
   - `payroll:open_periods`, daily at 07:50 UTC, on `(tutor_user_id, starts_on)`, one Unit of Work per tutor. `payroll_periods` isn't `Audited`, so it uses `ON CONFLICT DO NOTHING`.
   - `payroll:post_adjustments`, every 15 minutes, by anti-join on `source_key`, one Unit of Work per adjustment: the target period `FOR UPDATE` → the insert in a savepoint. Closeout corrections may enqueue it after commit.
@@ -1498,7 +1504,8 @@ Each M7 issue, the ADR-0017 decision items it relies on, and the tables it creat
 | #106 M7-03 Payroll periods | E2 (`payroll_starts_on`), E6 (calendars in local `DATE`s, stubs, no overlaps, no gaps, idempotent `payroll:open_periods`, the `effective_from_inside_generated_period` and `effective_from_before_first_period` refusals on the terms insert and delete, not on a stop) | `payroll_settings`, `payroll_periods` |
 | #423 M7-04a Makeup link | E5 | `class_sessions.makeup_of_session_id` |
 | #441 M7-04c Session pay rules | E4 (the three events, `none`, `percent`, `fixed`, seeds), E12 (`payroll.view`, `payroll.manage`, masked in the audit log); #107 E9 | `session_pay_rules` |
-| #107 M7-04 Calculation | E2 (current revision, attribution, service date), E4 (rules consuming the #62 outcomes), E5, E9 (one line per source with its session, repeatable `recalculate`, no hooks), E12 (`payroll.prepare`). Per-course amounts (E3) are #442, unresolved work (E2) #443 | `session_pay_rules` (reads), `payroll_lines` (session-sourced kinds) |
+| #107 M7-04 Calculation | E2 (current revision, attribution, service date), E4 (rules consuming the #62 outcomes), E5, E9 (one line per source with its session, repeatable `recalculate`, no hooks), E12 (`payroll.prepare`). Per-course amounts (E3) are #442 | `session_pay_rules` (reads), `payroll_lines` (session-sourced kinds) |
+| #443 M7-04e Unresolved work | E2 (`no_pay_terms`, `no_rate`, the staff list), #106 E4 (`before_first_period`), #107 E12 (what blocks `prepare`), E13 (cancellations) | none: derived from `payroll_lines`, `session_closeout_approvals`, `class_sessions` |
 | #108 M7-05 Salary and proration | E1 (salary plus extras), E7 (configurable basis, `Money.prorate`, review through line display) | `payroll_lines` (`salary`), `payroll_settings` (`salary_proration_basis`) |
 | #109 M7-06 Bonuses and deductions | E8 (recurring per period on `(pay_item_id, payroll_period_id)`, one line per item, fixed amounts) | `pay_item_types`, `pay_items`, `payroll_lines` (`pay_item`) |
 | #110 M7-07 Workflow and lock | E9 (negative total, named events), E10 (states, return, drift check, duty separation, inbox, triggers, notifications), E12 (`payroll.prepare`, `payroll.finalize`, reauthentication), ADR-0006 E6 (key); P4, P5 | `payroll_periods`, `payroll_lines` |

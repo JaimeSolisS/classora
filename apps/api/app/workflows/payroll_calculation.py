@@ -29,30 +29,57 @@ state, the tutor's approvals of them, and what the tutor's finalized periods
 fix. The period bounds pick which lines are written, not which sessions count,
 so periods may run in any order.
 
+**Unresolved work (#443; ADR-0017 E2, #106 E4, #107 E12, E13).** Work that was
+approved, or a paying family cancellation, with no session-sourced line, since
+the floor. :func:`_unresolved_items` composes the anti-join here, from the
+unexecuted ``SELECT`` s of ``academics`` and ``scheduling`` (ADR-0002), reads the
+tutors' versions in one statement each, and classifies in Python
+(:func:`~app.modules.payroll.calculation.classify_unresolved`): the same rules
+as a line. :func:`unresolved_work` is one tutor's list, :func:`blocking_work`
+what #110 refuses ``prepare`` on, and :func:`list_unresolved_work` the staff
+route. It reads the whole of "approved, no line, since the floor" into memory.
+That is small for one center: a run empties most of it, and what is left is what
+Finance has to fix. It takes no lock, so it can't delay a run.
+
 **Statements:** eleven for a run, whatever the number of sessions, with the
 zone not yet read, the event included; sixteen with a course session in the
 period, whatever the number of sessions or cohorts.
+
+The unresolved reads cost eight statements, ten with a course session among the
+candidates, and the route one more for the names, whatever the number of items.
 
 Log lines and the event carry ids and counts, never an amount.
 """
 
 import uuid
 from collections.abc import Collection, Sequence
-from datetime import timedelta
+from datetime import date, timedelta
 from itertools import groupby
 from operator import attrgetter
-from typing import Final
+from typing import Final, cast
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import record_audit_event
+from app.core.pagination import (
+    CursorPage,
+    CursorParams,
+    InvalidCursorError,
+    build_cursor_page,
+    decode_cursor,
+)
 from app.modules.academics import service as academics
 from app.modules.administration import service as administration
+from app.modules.identity import service as identity
 from app.modules.payroll import service as payroll
 from app.modules.payroll.schemas import (
+    ClassKind,
     PayrollPeriodLines,
     PayrollPeriodSummary,
     PayrollRecalculation,
+    UnresolvedReason,
+    UnresolvedWorkItem,
 )
 from app.modules.scheduling import service as scheduling
 from app.workflows.charge_pricing import floor_instant, local_date
@@ -202,3 +229,208 @@ async def recalculate(
 async def read_lines(session: AsyncSession, period_id: uuid.UUID) -> PayrollPeriodLines:
     """``GET /api/v1/payroll/periods/{id}/lines``."""
     return await payroll.period_lines(session, period_id)
+
+
+async def _first_session_dates(
+    session: AsyncSession, class_session_ids: Collection[uuid.UUID], zone: str
+) -> dict[uuid.UUID, date]:
+    """Each of these sessions' cohort's first date, from the rows
+    :func:`_cohort_walks` reads, so a cohort's first session is one thing. Two
+    statements, none for no ids."""
+    cohort_ids = await scheduling.cohort_ids_of_sessions(session, class_session_ids)
+    rows = await scheduling.cohort_sessions(session, cohort_ids)
+    dates: dict[uuid.UUID, date] = {}
+    for _, group in groupby(rows, key=attrgetter("cohort_id")):
+        cohort = list(group)
+        first = local_date(cohort[0].starts_at, zone)
+        for row in cohort:
+            dates[row.class_session_id] = first
+    return dates
+
+
+async def _unresolved_candidates(
+    session: AsyncSession, tutor_user_id: uuid.UUID | None, floor: date, zone: str
+) -> list[payroll.UnresolvedCandidate]:
+    """Work since the floor with no session-sourced line, in two statements,
+    and the first date of its cohorts in two more."""
+    starts_from = floor_instant(floor, zone)
+    closeouts = academics.current_approval_columns(
+        starts_from=starts_from, tutor_user_id=tutor_user_id
+    ).subquery()
+    cancellations = scheduling.payable_cancellation_columns(
+        starts_from=starts_from, tutor_user_id=tutor_user_id
+    ).subquery()
+    approved = (
+        await session.execute(
+            select(
+                closeouts.c.class_session_id,
+                closeouts.c.tutor_user_id,
+                closeouts.c.session_kind,
+                closeouts.c.session_starts_at,
+            ).where(payroll.has_no_session_line(closeouts.c.class_session_id))
+        )
+    ).all()
+    cancelled = (
+        await session.execute(
+            select(
+                cancellations.c.class_session_id,
+                cancellations.c.tutor_user_id,
+                cancellations.c.kind,
+                cancellations.c.starts_at,
+                cancellations.c.classification,
+            ).where(payroll.has_no_session_line(cancellations.c.class_session_id))
+        )
+    ).all()
+    first_dates = await _first_session_dates(
+        session,
+        [row.class_session_id for row in approved if row.session_kind == COURSE],
+        zone,
+    )
+    return [
+        *(
+            payroll.UnresolvedCandidate(
+                class_session_id=row.class_session_id,
+                tutor_user_id=row.tutor_user_id,
+                class_kind=row.session_kind,
+                service_date=local_date(row.session_starts_at, zone),
+                source="closeout",
+                first_session_date=first_dates.get(row.class_session_id),
+            )
+            for row in approved
+        ),
+        *(
+            payroll.UnresolvedCandidate(
+                class_session_id=row.class_session_id,
+                tutor_user_id=row.tutor_user_id,
+                class_kind=row.kind,
+                service_date=local_date(row.starts_at, zone),
+                source="cancellation",
+                classification=row.classification,
+            )
+            for row in cancelled
+        ),
+    ]
+
+
+async def _unresolved_items(
+    session: AsyncSession, tutor_user_id: uuid.UUID | None
+) -> list[payroll.UnresolvedItem]:
+    """Every tutor's items, or one's, in no order. Empty while payroll is off.
+    A tutor is whoever has a candidate, with a terms row or not: a substitute
+    may otherwise be paid nothing (#443 C3)."""
+    floor = await payroll.payroll_starts_on(session)
+    if floor is None:
+        return []
+    zone = await administration.get_center_time_zone(session)
+    candidates = await _unresolved_candidates(session, tutor_user_id, floor, zone)
+    by_tutor: dict[uuid.UUID, list[payroll.UnresolvedCandidate]] = {}
+    for candidate in candidates:
+        by_tutor.setdefault(candidate.tutor_user_id, []).append(candidate)
+    terms = await payroll.terms_basis_versions_of_tutors(session, by_tutor)
+    rates = await payroll.rate_versions_of_tutors(session, by_tutor)
+    first_periods = await payroll.first_period_starts(session, by_tutor)
+    rules = await payroll.session_pay_rule_versions(session, lock=False)
+    return [
+        item
+        for tutor, work in by_tutor.items()
+        for item in payroll.classify_unresolved(
+            payroll.PayBasis(
+                terms=terms.get(tutor, []),
+                rates=rates.get(tutor, []),
+                rules=rules,
+            ),
+            work,
+            first_periods.get(tutor),
+        )
+    ]
+
+
+def _newest_first(item: payroll.UnresolvedItem) -> tuple[int, uuid.UUID]:
+    """Newest service date first, then session."""
+    return -item.service_date.toordinal(), item.class_session_id
+
+
+async def unresolved_work(
+    session: AsyncSession, tutor_user_id: uuid.UUID, through: date | None
+) -> list[payroll.UnresolvedItem]:
+    """The tutor's items dated on or before ``through``, if given (#443 B1),
+    newest first."""
+    items = await _unresolved_items(session, tutor_user_id)
+    return sorted(
+        (item for item in items if through is None or item.service_date <= through),
+        key=_newest_first,
+    )
+
+
+async def blocking_work(
+    session: AsyncSession, period: PayrollPeriodSummary
+) -> list[payroll.UnresolvedItem]:
+    """What stops ``prepare`` of this period (#107 E12, #443 B2): the tutor's
+    items with a blocking reason dated on or before ``ends_on``. Earlier items
+    count, in whatever status their own period is. #110 turns a result into
+    ``409 payroll_unresolved_work``.
+
+    **The contract with #110 (#443 D9):** ``prepare`` runs :func:`recalculate`
+    first, then this. An existing line keeps work off the list, so a line that a
+    recalculation would drop isn't an item until it has run. ``finalize`` calls
+    this again: work approved after ``prepare`` with no basis has no draft and no
+    line, so the drift comparison can't see it."""
+    items = await unresolved_work(session, period.tutor_user_id, period.ends_on)
+    return [item for item in items if item.blocking]
+
+
+def _position(cursor: str) -> tuple[int, uuid.UUID]:
+    service_date, class_session_id = decode_cursor(cursor, types=(str, str))
+    try:
+        return (
+            -date.fromisoformat(str(service_date)).toordinal(),
+            uuid.UUID(str(class_session_id)),
+        )
+    except ValueError:
+        raise InvalidCursorError() from None
+
+
+async def list_unresolved_work(
+    session: AsyncSession,
+    *,
+    page: CursorParams,
+    tutor_user_id: uuid.UUID | None = None,
+    reason: UnresolvedReason | None = None,
+) -> CursorPage[UnresolvedWorkItem]:
+    """``GET /api/v1/payroll/unresolved-work`` (#443 C). Filters and the cursor
+    apply after the classification, because the reason isn't stored."""
+    items = sorted(
+        (
+            item
+            for item in await _unresolved_items(session, tutor_user_id)
+            if reason is None or item.reason == reason
+        ),
+        key=_newest_first,
+    )
+    if page.cursor is not None:
+        after = _position(page.cursor)
+        items = [item for item in items if _newest_first(item) > after]
+    built = build_cursor_page(
+        items[: page.limit + 1],
+        limit=page.limit,
+        key=lambda item: (item.service_date.isoformat(), str(item.class_session_id)),
+    )
+    accounts = await identity.get_account_references(
+        session, {item.tutor_user_id for item in built.items}
+    )
+    return CursorPage[UnresolvedWorkItem](
+        items=[
+            UnresolvedWorkItem(
+                class_session_id=item.class_session_id,
+                tutor_user_id=item.tutor_user_id,
+                tutor_display_name=accounts[item.tutor_user_id].display_name,
+                service_date=item.service_date,
+                class_kind=cast(ClassKind, item.class_kind),
+                source=item.source,
+                reason=item.reason,
+                blocking=item.blocking,
+            )
+            for item in built.items
+        ],
+        next_cursor=built.next_cursor,
+    )

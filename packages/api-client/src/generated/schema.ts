@@ -4545,6 +4545,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payroll/unresolved-work": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Unresolved Work
+         * @description Approved work that can't be paid, newest service date first, then
+         *     session. A ``blocking`` item stops ``prepare`` of a period ending on or
+         *     after its date; ``before_first_period`` work doesn't, and Finance pays it
+         *     with a one-time item.
+         */
+        get: operations["list_unresolved_work_api_v1_payroll_unresolved_work_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payroll/tutors": {
         parameters: {
             query?: never;
@@ -10785,6 +10808,13 @@ export interface components {
         CursorPage_SessionNoteView_: {
             /** Items */
             items: components["schemas"]["SessionNoteView"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** CursorPage[UnresolvedWorkItem] */
+        CursorPage_UnresolvedWorkItem_: {
+            /** Items */
+            items: components["schemas"]["UnresolvedWorkItem"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -19636,6 +19666,39 @@ export interface components {
             subject: components["schemas"]["TuitionRecord"];
             group: components["schemas"]["TuitionRecord"] | null;
             reason: components["schemas"]["TuitionUnbilledReason"];
+        };
+        /** @enum {string} */
+        UnresolvedReason: "before_first_period" | "no_pay_terms" | "no_rate";
+        /** @enum {string} */
+        UnresolvedSource: "closeout" | "cancellation";
+        /**
+         * UnresolvedWorkItem
+         * @description One piece of approved work that can't be paid (#443 C2). No amount, no
+         *     minutes, no student data.
+         */
+        UnresolvedWorkItem: {
+            /**
+             * Class Session Id
+             * Format: uuid
+             */
+            class_session_id: string;
+            /**
+             * Tutor User Id
+             * Format: uuid
+             */
+            tutor_user_id: string;
+            /** Tutor Display Name */
+            tutor_display_name: string;
+            /**
+             * Service Date
+             * Format: date
+             */
+            service_date: string;
+            class_kind: components["schemas"]["ClassKind"];
+            source: components["schemas"]["UnresolvedSource"];
+            reason: components["schemas"]["UnresolvedReason"];
+            /** Blocking */
+            blocking: boolean;
         };
         /**
          * UserAllowedActions
@@ -35727,6 +35790,67 @@ export interface operations {
             };
             /** @description No such period (not_found). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_unresolved_work_api_v1_payroll_unresolved_work_get: {
+        parameters: {
+            query?: {
+                tutor_user_id?: string | null;
+                reason?: components["schemas"]["UnresolvedReason"] | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CursorPage_UnresolvedWorkItem_"];
+                };
+            };
+            /** @description The cursor isn't valid (invalid_cursor). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

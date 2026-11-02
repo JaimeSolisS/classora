@@ -2199,6 +2199,14 @@ allow = ["owner", "finance_staff"]
 
 [[route]]
 method = "GET"
+path = "/api/v1/payroll/unresolved-work"
+access = "permission"
+permission = "payroll.view"
+allow = ["owner", "finance_staff"]
+# #443 C5: Administrators get 403, also with payroll.finalize delegated.
+
+[[route]]
+method = "GET"
 path = "/api/v1/privacy-notice"
 access = "authenticated"
 notice_exempt = true

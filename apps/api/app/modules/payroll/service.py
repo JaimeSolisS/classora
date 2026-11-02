@@ -29,6 +29,11 @@ and writes the ``app.workflows.session_pay_rules`` workflow calls.
 frozen values. Per-course pay (#442) adds :func:`finalized_period_dates`,
 :func:`finalized_course_lines` and :func:`planned_sessions`.
 
+**Unresolved work** (#443): the pure :func:`classify_unresolved`, the unexecuted
+:func:`has_no_session_line`, and the lock-free batch reads
+:func:`first_period_starts`, :func:`rate_versions_of_tutors` and
+:func:`terms_basis_versions_of_tutors`.
+
 **Record policies** (:mod:`~app.modules.payroll.permissions`):
 :func:`can_view_compensation`, :func:`can_write_compensation`.
 """
@@ -42,6 +47,9 @@ from app.modules.payroll.calculation import (
     LineDraft,
     PayableCancellation,
     PayBasis,
+    UnresolvedCandidate,
+    UnresolvedItem,
+    classify_unresolved,
     draft_lines,
     planned_sessions,
 )
@@ -50,6 +58,8 @@ from app.modules.payroll.lines import (
     REBUILT_KINDS,
     finalized_course_lines,
     finalized_period_dates,
+    first_period_starts,
+    has_no_session_line,
     lock_open_period,
     period_lines,
     replace_lines,
@@ -81,7 +91,9 @@ from app.modules.payroll.rates import (
     list_pay_terms,
     rate_in_effect,
     rate_versions,
+    rate_versions_of_tutors,
     terms_basis_versions,
+    terms_basis_versions_of_tutors,
     terms_in_effect,
 )
 from app.modules.payroll.settings import (
@@ -101,11 +113,14 @@ __all__ = [
     "PayBasis",
     "PayableCancellation",
     "PayrollOwnCompensationError",
+    "UnresolvedCandidate",
+    "UnresolvedItem",
     "add_compensation_rate",
     "add_pay_terms",
     "biweekly_anchor",
     "can_view_compensation",
     "can_write_compensation",
+    "classify_unresolved",
     "compensation_summaries",
     "create_session_pay_rule",
     "delete_compensation_rate",
@@ -114,7 +129,9 @@ __all__ = [
     "draft_lines",
     "finalized_course_lines",
     "finalized_period_dates",
+    "first_period_starts",
     "get_session_pay_rule_overview",
+    "has_no_session_line",
     "list_compensation_rates",
     "list_pay_terms",
     "lock_open_period",
@@ -126,11 +143,13 @@ __all__ = [
     "planned_sessions",
     "rate_in_effect",
     "rate_versions",
+    "rate_versions_of_tutors",
     "replace_lines",
     "salary_proration_basis",
     "session_pay_rule_in_effect",
     "session_pay_rule_versions",
     "terms_basis_versions",
+    "terms_basis_versions_of_tutors",
     "terms_in_effect",
     "tutors_with_terms",
 ]

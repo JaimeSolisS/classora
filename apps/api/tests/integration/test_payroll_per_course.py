@@ -14,7 +14,7 @@ import asyncio
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -119,6 +119,7 @@ def make_cohort(
     student: uuid.UUID | None = None,
     enrolled: bool = True,
     weekdays: list[int] | None = None,
+    starts_on: date | None = None,
 ) -> Cohort:
     """A real cohort of ``sessions`` 60-minute sessions, ``confirmed``."""
     who = tutor or ctx.tutor
@@ -137,7 +138,7 @@ def make_cohort(
             cohort_body(
                 template=template["id"],
                 subject=ctx.subject,
-                starts_on=ctx.tl.monday,
+                starts_on=starts_on or ctx.tl.monday,
                 tutor=who.id,
                 start_time=start_time,
                 weekdays=weekdays,

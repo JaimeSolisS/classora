@@ -118,18 +118,18 @@ async def session_pay_rule_in_effect(
 
 
 async def session_pay_rule_versions(
-    session: AsyncSession,
+    session: AsyncSession, *, lock: bool = True
 ) -> list[SessionPayRuleVersion]:
-    """Every version of every event, by event, then newest first, ``FOR KEY
-    SHARE``: a concurrent delete waits for this run, then fails on the new
-    line, instead of the insert failing on the foreign key (#107 C4). One
-    statement."""
-    rows = await session.scalars(
-        select(SessionPayRule)
-        .order_by(SessionPayRule.event, SessionPayRule.effective_from.desc())
-        .with_for_update(read=True, key_share=True)
+    """Every version of every event, by event, then newest first. ``FOR KEY
+    SHARE`` by default: a concurrent delete waits for this run, then fails on
+    the new line, instead of the insert failing on the foreign key (#107 C4).
+    A reader that writes no line passes ``lock=False`` (#443). One statement."""
+    query = select(SessionPayRule).order_by(
+        SessionPayRule.event, SessionPayRule.effective_from.desc()
     )
-    return [_version(row) for row in rows]
+    if lock:
+        query = query.with_for_update(read=True, key_share=True)
+    return [_version(row) for row in await session.scalars(query)]
 
 
 async def _event_overview(

@@ -354,6 +354,9 @@ from app.modules.scheduling.billing_context import (
     lock_session_for_billing as lock_session_for_billing,
 )
 from app.modules.scheduling.billing_context import (
+    payable_cancellation_columns as payable_cancellation_columns,
+)
+from app.modules.scheduling.billing_context import (
     payable_cancellations as payable_cancellations,
 )
 from app.modules.scheduling.billing_context import (
