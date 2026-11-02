@@ -1240,6 +1240,179 @@ describe('delete (B6)', () => {
   });
 });
 
+describe('the list may be out of date (D5, D6)', () => {
+  const NOTICE = 'may be out of date';
+  const older = (n: number): PayItem => ({
+    ...ITEM_PLACED,
+    id: `78000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
+    description: `Lote ${n}`,
+  });
+  const offsetOf = (request: Request) =>
+    Number(new URL(request.url).searchParams.get('offset'));
+  const everyRow = () =>
+    [...section().querySelectorAll('[data-pay-items-table] tbody tr')].map(
+      (tr) => tr.getAttribute('data-pay-item-id'),
+    );
+
+  /** 28 older items, a stored add lost on the way back, and the list down. */
+  function server() {
+    const world = {
+      stored: Array.from({ length: 28 }, (_, n) => older(n)),
+      down: false,
+      moreFails: false,
+    };
+    stub({
+      [ITEMS]: (request) => {
+        const offset = offsetOf(request);
+        if (offset > 0 && world.moreFails) {
+          return problem(400, 'database_unavailable');
+        }
+        if (world.down) {
+          return problem(502, 'internal_error');
+        }
+        return jsonResponse(
+          200,
+          payItemPage(
+            world.stored.slice(offset, offset + 25),
+            world.stored.length,
+            offset,
+          ),
+        );
+      },
+      [ITEM_POST]: () => {
+        world.stored = [ITEM_WAITING, ...world.stored];
+        world.down = true;
+        return Promise.reject(new TypeError('Failed to fetch'));
+      },
+    });
+    return world;
+  }
+
+  async function loseAnAdd() {
+    await openAdd();
+    fillOneTime();
+    await click(buttonNamed(dialog(), 'Add'));
+    await settleUntil(() => alerts(dialog()).length > 0);
+    await click(buttonNamed(dialog(), 'Cancel'));
+    await settleUntil(() => named(section(), 'Reload the list'));
+  }
+
+  it('keeps the notice after a Load more that succeeds', async () => {
+    const world = server();
+    await loseAnAdd();
+    world.down = false;
+    await click(named(section(), 'Load more')!);
+    await settleUntil(() => everyRow().length >= 28);
+
+    expect(alerts(section()).join(' ')).toContain(NOTICE);
+    expect(row(ITEM_WAITING)).toBeNull();
+    // The stored item pushed one row onto page 2: it still shows once.
+    expect(new Set(everyRow()).size).toBe(everyRow().length);
+  });
+
+  it('only a full reload clears it, and shows the stored item', async () => {
+    const world = server();
+    await loseAnAdd();
+    world.down = false;
+    await click(named(section(), 'Load more')!);
+    await settleUntil(() => everyRow().length >= 28);
+
+    await click(named(section(), 'Reload the list')!);
+    await settleUntil(() => row(ITEM_WAITING));
+    await settleUntil(() => alerts(section()).length === 0);
+    expect(everyRow()).toHaveLength(29);
+  });
+
+  it('keeps the notice beside a failed Load more', async () => {
+    const world = server();
+    await loseAnAdd();
+    world.down = false;
+    world.moreFails = true;
+    await click(named(section(), 'Load more')!);
+    await settleUntil(() => alerts(section()).length === 2);
+    expect(alerts(section()).join(' ')).toContain(NOTICE);
+
+    world.moreFails = false;
+    await click(named(section(), 'Reload the list')!);
+    await settleUntil(() => row(ITEM_WAITING));
+    await settleUntil(() => alerts(section()).length === 0);
+  });
+
+  it('a failed reload after a Load more keeps the notice', async () => {
+    const world = server();
+    await loseAnAdd();
+    world.down = false;
+    await click(named(section(), 'Load more')!);
+    await settleUntil(() => everyRow().length >= 28);
+
+    world.down = true;
+    await click(named(section(), 'Reload the list')!);
+    await settle();
+    expect(alerts(section()).join(' ')).toContain(NOTICE);
+  });
+
+  it.each([
+    ['end', 'PATCH', ITEM_RECURRING, 'End', 'Save end'],
+    ['delete', 'DELETE', ITEM_WAITING, 'Delete', 'Delete'],
+  ] as const)(
+    'after the reload works, %s of a gone item stops claiming failure',
+    async (_what, method, item, open, confirm) => {
+      let down = false;
+      stub({
+        [ITEMS]: () =>
+          down
+            ? problem(400, 'database_unavailable')
+            : jsonResponse(200, payItemPage(PAY_ITEMS)),
+        [itemRoute(method, item.id)]: () => {
+          down = true;
+          return problem(404, 'not_found');
+        },
+      });
+      await openPage();
+      await click(
+        [...row(item).querySelectorAll('button')].find(
+          (button) => button.textContent === open,
+        )!,
+      );
+      await settleUntil(() => openDialog());
+      await click(buttonNamed(dialog(), confirm));
+      await settleUntil(() => statusText().includes("couldn't be reloaded"));
+
+      down = false;
+      await click(named(section(), 'Reload the list')!);
+      await settleUntil(() => !named(section(), 'Reload the list'));
+      expect(statusText()).not.toContain("couldn't be reloaded");
+      expect(statusText()).toContain('The list was reloaded');
+    },
+  );
+
+  it('a later action replaces the failure text', async () => {
+    let down = false;
+    stub({
+      [ITEMS]: () =>
+        down
+          ? problem(400, 'database_unavailable')
+          : jsonResponse(200, payItemPage(PAY_ITEMS)),
+      [itemRoute('DELETE', ITEM_WAITING.id)]: () => {
+        down = true;
+        return problem(404, 'not_found');
+      },
+    });
+    await openPage();
+    await click(
+      [...row(ITEM_WAITING).querySelectorAll('button')].find(
+        (button) => button.textContent === 'Delete',
+      )!,
+    );
+    await settleUntil(() => openDialog());
+    await click(buttonNamed(dialog(), 'Delete'));
+    await settleUntil(() => statusText().includes("couldn't be reloaded"));
+    await click(named(section(), 'Add bonus or deduction')!);
+    await settleUntil(() => openDialog());
+    expect(statusText()).not.toContain("couldn't be reloaded");
+  });
+});
+
 describe('language and display (D)', () => {
   it('reads in Spanish, with Bono and Deducción', async () => {
     applyLanguage('es');

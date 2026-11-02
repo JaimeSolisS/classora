@@ -29,8 +29,8 @@ import { PayItemsView, type PayItemsState } from './PayItemsView';
 // "Load more" walks the API's offset; a change refreshes the items and nothing
 // else (B8), and refetches every page already shown. Closing the add dialog
 // after a failed attempt refreshes too (QA #454 D2). A refresh that fails keeps
-// the old rows, so the section says so, with a retry (D4). The types load only
-// when the add dialog opens.
+// the old rows, so the section says so, with a retry, until a full refetch
+// succeeds (D4, D5). The types load only when the add dialog opens.
 
 export interface PayItemsSectionProps {
   tutorUserId: string;
@@ -50,6 +50,12 @@ export function PayItemsSection({
   const [adding, setAdding] = useState(false);
   const [ending, setEnding] = useState<PayItem | null>(null);
   const [announcement, setAnnouncement] = useState('');
+  // A gone item whose reload failed: said until a full refetch succeeds.
+  const [goneNotReloaded, setGoneNotReloaded] = useState(false);
+  // The list may be out of date: the error of a full refetch, kept until a
+  // full refetch succeeds. The query's own status won't do, because "Load
+  // more" resets it having read one page only (QA #454 D5).
+  const [staleError, setStaleError] = useState<unknown>(null);
   const [focusRequest, setFocusRequest] = useState(0);
   // A failed add may still have been stored (a lost response): the list must
   // show it before anyone adds it again, however the dialog closes.
@@ -71,10 +77,31 @@ export function PayItemsSection({
     enabled: adding,
   });
 
-  const items = useMemo(
-    () => list.data?.pages.flatMap((page) => page.items) ?? [],
-    [list.data],
-  );
+  if (list.isRefetchError && staleError !== list.error) {
+    setStaleError(list.error);
+  }
+  // Adjusting state while rendering. A query remembers what its last fetch
+  // was, so a finished "Load more" is never taken for a full refetch.
+  const lastFetch = queryClient.getQueryState(payItemsKey(tutorUserId));
+  const fullRefetchDone =
+    list.isSuccess && !list.isFetching && !lastFetch?.fetchMeta;
+  if (staleError && fullRefetchDone) {
+    setStaleError(null);
+    if (goneNotReloaded) {
+      announce(t('payroll.payItems.gone'));
+    }
+  }
+
+  // Pages read at different times can repeat a row that moved across them.
+  const items = useMemo(() => {
+    const byId = new Map<string, PayItem>();
+    for (const page of list.data?.pages ?? []) {
+      for (const item of page.items) {
+        byId.set(item.id, byId.get(item.id) ?? item);
+      }
+    }
+    return [...byId.values()];
+  }, [list.data]);
   const state: PayItemsState = list.data
     ? {
         status: 'ready',
@@ -82,8 +109,9 @@ export function PayItemsSection({
         hasMore: list.hasNextPage,
         loadingMore: list.isFetchingNextPage,
         moreError: list.isFetchNextPageError ? list.error : null,
-        onMore: () => void list.fetchNextPage(),
-        refreshError: list.isRefetchError ? list.error : null,
+        // A running refetch must finish, not be cancelled by this.
+        onMore: () => void list.fetchNextPage({ cancelRefetch: false }),
+        refreshError: staleError,
         onRefresh: () => void list.refetch(),
       }
     : list.isError
@@ -104,6 +132,11 @@ export function PayItemsSection({
         }
       : { status: 'loading' };
 
+  function announce(text: string) {
+    setGoneNotReloaded(false);
+    setAnnouncement(text);
+  }
+
   /** Whether the list reloaded: invalidating never rejects. */
   async function refresh(): Promise<boolean> {
     const queryKey = payItemsKey(tutorUserId);
@@ -114,11 +147,8 @@ export function PayItemsSection({
   /** The item is gone. The section's notice covers a reload that failed. */
   async function refreshGone() {
     const reloaded = await refresh();
-    setAnnouncement(
-      reloaded
-        ? t('payroll.payItems.gone')
-        : t('payroll.payItems.goneNotReloaded'),
-    );
+    announce(reloaded ? t('payroll.payItems.gone') : '');
+    setGoneNotReloaded(!reloaded);
   }
 
   async function add(body: PayItemCreate, idempotencyKey: string) {
@@ -145,11 +175,11 @@ export function PayItemsSection({
       throw caught;
     }
     await refresh();
-    setAnnouncement(t('payroll.payItems.ended'));
+    announce(t('payroll.payItems.ended'));
   }
 
   async function remove(item: PayItem) {
-    setAnnouncement('');
+    announce('');
     try {
       await deletePayItem(tutorUserId, item.id);
     } catch (caught) {
@@ -160,7 +190,7 @@ export function PayItemsSection({
       throw caught;
     }
     await refresh();
-    setAnnouncement(t('payroll.payItems.deleted'));
+    announce(t('payroll.payItems.deleted'));
   }
 
   // The live row, so a colleague's version reaches an open dialog; the
@@ -179,18 +209,20 @@ export function PayItemsSection({
           canEdit
             ? {
                 onAdd: () => {
-                  setAnnouncement('');
+                  announce('');
                   setAdding(true);
                 },
                 onEnd: (item) => {
-                  setAnnouncement('');
+                  announce('');
                   setEnding(item);
                 },
                 onDelete: remove,
               }
             : undefined
         }
-        announcement={announcement}
+        announcement={
+          goneNotReloaded ? t('payroll.payItems.goneNotReloaded') : announcement
+        }
       />
       {canEdit ? (
         <PayItemDialog
@@ -204,7 +236,7 @@ export function PayItemsSection({
           onClose={(saved) => {
             setAdding(false);
             if (saved) {
-              setAnnouncement(t('payroll.payItems.saved'));
+              announce(t('payroll.payItems.saved'));
             }
             if (addFailed.current) {
               addFailed.current = false;
