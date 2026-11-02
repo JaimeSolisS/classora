@@ -7214,6 +7214,7 @@ closeout, a cancellation or a reschedule.
 |---|---|---|
 | `POST /api/v1/payroll/periods/{period_id}/recalculate` | `require("payroll.prepare")` | `200` with `PayrollRecalculation`: `line_count`, `total`. No body. Repeatable. |
 | `GET /api/v1/payroll/periods/{period_id}/lines` | `require("payroll.view")` | `PayrollPeriodLines`: `period` (`id`, `tutor_user_id`, `starts_on`, `ends_on`, `pay_frequency`, `status`), `lines[]` by `service_date`, then `class_session_id`, and `total`, the sum of the rounded lines. Not paginated: one period. |
+| `GET /api/v1/payroll/unresolved-work` | `require("payroll.view")` | `CursorPage[UnresolvedWorkItem]`, newest `service_date` first, then `class_session_id`. Query `tutor_user_id?`, `reason?`, `limit?`, `cursor?`. An unknown `reason` or a malformed id is `422 validation_error`, a bad cursor `400 invalid_cursor`, an unknown tutor an empty page. |
 
 - **Access:** Owners and Finance Staff hold both. A Finance tutor may run their
   own period: it applies no judgment. Administrators get `403
@@ -7247,6 +7248,22 @@ closeout, a cancellation or a reschedule.
 - **Audit:** the named event `payroll.period_recalculated` `{payroll_period_id,
   tutor_user_id, line_count}`, with no amount, because Administrators read the
   audit log. Lines aren't audited.
+- **Unresolved work (#443):** approved work that can't be paid. An item is an
+  approved closeout, or a family's `late` or `no_show` cancellation under a
+  rule that isn't `none`, dated on or after `payroll_starts_on`, with no
+  session-sourced line and no basis on its date. Nothing is listed while
+  `payroll_starts_on` is `null`. Each item has `class_session_id`,
+  `tutor_user_id`, `tutor_display_name`, `service_date`, `class_kind`, `source`
+  (`closeout` or `cancellation`), `reason` and `blocking`, and no amount,
+  minutes or student data. The first `reason` that applies wins:
+  `before_first_period` (not blocking; Finance pays it with a one-time item),
+  `no_pay_terms`, `no_rate`. A tutor with no periods is never
+  `before_first_period`. The period's status plays no part: an item in a
+  finalized period stays until it has a basis, and #111 pays it then. An item
+  leaves the list when its basis exists, before any `recalculate`. Nothing marks
+  an item resolved, so `before_first_period` work paid by a one-time item stays
+  listed. See `_docs/data-model.md` §13.2. #110 refuses `prepare` on blocking
+  items dated on or before the period's end.
 
 ### Payroll settings
 

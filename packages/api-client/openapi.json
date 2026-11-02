@@ -22376,6 +22376,131 @@
         }
       }
     },
+    "/api/v1/payroll/unresolved-work": {
+      "get": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "List Unresolved Work",
+        "description": "Approved work that can't be paid, newest service date first, then\nsession. A ``blocking`` item stops ``prepare`` of a period ending on or\nafter its date; ``before_first_period`` work doesn't, and Finance pays it\nwith a one-time item.",
+        "operationId": "list_unresolved_work_api_v1_payroll_unresolved_work_get",
+        "parameters": [
+          {
+            "name": "tutor_user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tutor User Id"
+            }
+          },
+          {
+            "name": "reason",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/UnresolvedReason"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_UnresolvedWorkItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The cursor isn't valid (invalid_cursor).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/payroll/tutors": {
       "get": {
         "tags": [
@@ -38549,6 +38674,34 @@
           "next_cursor"
         ],
         "title": "CursorPage[SessionNoteView]"
+      },
+      "CursorPage_UnresolvedWorkItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UnresolvedWorkItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CursorPage[UnresolvedWorkItem]"
       },
       "CustomPriceCreate": {
         "properties": {
@@ -58083,6 +58236,70 @@
         ],
         "title": "UnbilledTuitionItem",
         "description": "A due tuition period that is not posted (#93 G1): ``no_price`` (the\npinned price has no version in effect on the period's start, or it says\n\"not offered\") or ``family_changed`` (the student is no longer in the\nfamily whose account the plan bills, K9). ``family`` is the student's\ncurrent family."
+      },
+      "UnresolvedReason": {
+        "type": "string",
+        "enum": [
+          "before_first_period",
+          "no_pay_terms",
+          "no_rate"
+        ]
+      },
+      "UnresolvedSource": {
+        "type": "string",
+        "enum": [
+          "closeout",
+          "cancellation"
+        ]
+      },
+      "UnresolvedWorkItem": {
+        "properties": {
+          "class_session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Class Session Id"
+          },
+          "tutor_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tutor User Id"
+          },
+          "tutor_display_name": {
+            "type": "string",
+            "title": "Tutor Display Name"
+          },
+          "service_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Service Date"
+          },
+          "class_kind": {
+            "$ref": "#/components/schemas/ClassKind"
+          },
+          "source": {
+            "$ref": "#/components/schemas/UnresolvedSource"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/UnresolvedReason"
+          },
+          "blocking": {
+            "type": "boolean",
+            "title": "Blocking"
+          }
+        },
+        "type": "object",
+        "required": [
+          "class_session_id",
+          "tutor_user_id",
+          "tutor_display_name",
+          "service_date",
+          "class_kind",
+          "source",
+          "reason",
+          "blocking"
+        ],
+        "title": "UnresolvedWorkItem",
+        "description": "One piece of approved work that can't be paid (#443 C2). No amount, no\nminutes, no student data."
       },
       "UserAllowedActions": {
         "properties": {

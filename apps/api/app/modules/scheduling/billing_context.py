@@ -36,6 +36,8 @@ Tutor pay (#107; ``app.workflows.payroll_calculation``):
 
 - :func:`payable_cancellations`: a tutor's family cancellations finally
   classified ``late`` or ``no_show``, from the stored outcome.
+- :func:`payable_cancellation_columns`: the same rows of a period or of every
+  tutor, as an **unexecuted** ``SELECT``, for unresolved work (#443).
 - :func:`cohort_ids_of_sessions`, :func:`cohort_sessions`: the cohorts of some
   sessions and every session of those cohorts, for per-course pay (#442).
 """
@@ -44,7 +46,7 @@ import uuid
 from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Final
+from typing import Any, Final
 
 from sqlalchemy import Select, literal, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -278,45 +280,68 @@ class PayableCancellationFacts:
     classification: str
 
 
+def payable_cancellation_columns(
+    *,
+    starts_from: datetime,
+    starts_before: datetime | None = None,
+    tutor_user_id: uuid.UUID | None = None,
+) -> Select[Any]:
+    """``SELECT class_session_id, tutor_user_id, kind, starts_at,
+    scheduled_minutes, classification``, **not executed**: the ``cancelled``
+    sessions of a tutor (optionally one) starting at or after ``starts_from``
+    (optionally before ``starts_before``), with an approved family request
+    finally classified ``late`` or ``no_show``. It consumes the stored outcome
+    and never classifies again, so center, tutor, on-time and excused
+    cancellations aren't returned, nor a session with no tutor."""
+    request = approved_cancellation_request()
+    query = (
+        select(
+            ClassSession.id.label("class_session_id"),
+            ClassSession.tutor_user_id,
+            ClassSession.kind,
+            ClassSession.starts_at,
+            ClassSession.scheduled_minutes,
+            request.c.final_classification.label("classification"),
+        )
+        .join(request, true())
+        .where(
+            ClassSession.tutor_user_id.is_not(None),
+            ClassSession.state == SessionState.CANCELLED,
+            ClassSession.starts_at >= starts_from,
+            request.c.initiated_by == FAMILY_INITIATED,
+            request.c.final_classification.in_(PAYABLE_CLASSIFICATIONS),
+        )
+    )
+    if starts_before is not None:
+        query = query.where(ClassSession.starts_at < starts_before)
+    if tutor_user_id is not None:
+        query = query.where(ClassSession.tutor_user_id == tutor_user_id)
+    return query
+
+
 async def payable_cancellations(
     session: AsyncSession,
     tutor_user_id: uuid.UUID,
     starts_from: datetime,
     starts_before: datetime,
 ) -> list[PayableCancellationFacts]:
-    """The tutor's ``cancelled`` sessions starting in ``[starts_from,
-    starts_before)`` with an approved family request finally classified
-    ``late`` or ``no_show``. It consumes the stored outcome and never
-    classifies again, so center, tutor, on-time and excused cancellations
-    aren't returned. One statement, on
+    """The tutor's :func:`payable_cancellation_columns` starting in
+    ``[starts_from, starts_before)``. One statement, on
     ``ix_class_sessions_cancelled_tutor_user_id_starts_at``."""
-    request = approved_cancellation_request()
     rows = await session.execute(
-        select(
-            ClassSession.id,
-            ClassSession.kind,
-            ClassSession.starts_at,
-            ClassSession.scheduled_minutes,
-            request.c.final_classification,
-        )
-        .join(request, true())
-        .where(
-            ClassSession.tutor_user_id == tutor_user_id,
-            ClassSession.state == SessionState.CANCELLED,
-            ClassSession.starts_at >= starts_from,
-            ClassSession.starts_at < starts_before,
-            request.c.initiated_by == FAMILY_INITIATED,
-            request.c.final_classification.in_(PAYABLE_CLASSIFICATIONS),
-        )
-        .order_by(ClassSession.starts_at, ClassSession.id)
+        payable_cancellation_columns(
+            starts_from=starts_from,
+            starts_before=starts_before,
+            tutor_user_id=tutor_user_id,
+        ).order_by(ClassSession.starts_at, ClassSession.id)
     )
     return [
         PayableCancellationFacts(
-            class_session_id=row.id,
+            class_session_id=row.class_session_id,
             kind=row.kind,
             starts_at=row.starts_at,
             scheduled_minutes=row.scheduled_minutes,
-            classification=row.final_classification,
+            classification=row.classification,
         )
         for row in rows
     ]

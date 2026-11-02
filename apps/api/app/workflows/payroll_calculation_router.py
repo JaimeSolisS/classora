@@ -6,6 +6,9 @@ ADR-0017 E9, E12; #107 E10).
   ``Idempotency-Key``, and no reauthentication: it applies no judgment.
 - ``GET /api/v1/payroll/periods/{period_id}/lines``:
   ``require("payroll.view")``. Not paginated: one period.
+- ``GET /api/v1/payroll/unresolved-work``: ``require("payroll.view")``, cursor
+  pagination (#443). Approved work that can't be paid, and why: no amount,
+  minutes or student data.
 
 Both permissions are held by Owners and Finance Staff. Administrators get
 ``403`` here, also with ``payroll.finalize`` delegated, as do Coordinators,
@@ -19,20 +22,26 @@ from fastapi import APIRouter
 
 from app.core.authz import PERMISSION_RESPONSES, Principal, require
 from app.core.errors import problem_response_doc
+from app.core.pagination import CursorPage, CursorPagination
 from app.core.uow import UnitOfWorkDep
-from app.modules.payroll.schemas import PayrollPeriodLines, PayrollRecalculation
+from app.modules.payroll.schemas import (
+    PayrollPeriodLines,
+    PayrollRecalculation,
+    UnresolvedReason,
+    UnresolvedWorkItem,
+)
 from app.workflows import payroll_calculation
 
 PAYROLL_VIEW: Final = "payroll.view"
 PAYROLL_PREPARE: Final = "payroll.prepare"
 
-router = APIRouter(prefix="/api/v1/payroll/periods", tags=["payroll"])
+router = APIRouter(prefix="/api/v1/payroll", tags=["payroll"])
 
 _NOT_FOUND = problem_response_doc("No such period (not_found).")
 
 
 @router.post(
-    "/{period_id}/recalculate",
+    "/periods/{period_id}/recalculate",
     responses={
         **PERMISSION_RESPONSES,
         404: _NOT_FOUND,
@@ -56,7 +65,7 @@ async def recalculate_period(
 
 
 @router.get(
-    "/{period_id}/lines",
+    "/periods/{period_id}/lines",
     responses={**PERMISSION_RESPONSES, 404: _NOT_FOUND},
 )
 async def get_period_lines(
@@ -67,3 +76,26 @@ async def get_period_lines(
     """The period and its lines, by service date, then session, with their
     total."""
     return await payroll_calculation.read_lines(uow.session, period_id)
+
+
+@router.get(
+    "/unresolved-work",
+    responses={
+        **PERMISSION_RESPONSES,
+        400: problem_response_doc("The cursor isn't valid (invalid_cursor)."),
+    },
+)
+async def list_unresolved_work(
+    principal: Annotated[Principal, require(PAYROLL_VIEW)],
+    uow: UnitOfWorkDep,
+    page: CursorPagination,
+    tutor_user_id: uuid.UUID | None = None,
+    reason: UnresolvedReason | None = None,
+) -> CursorPage[UnresolvedWorkItem]:
+    """Approved work that can't be paid, newest service date first, then
+    session. A ``blocking`` item stops ``prepare`` of a period ending on or
+    after its date; ``before_first_period`` work doesn't, and Finance pays it
+    with a one-time item."""
+    return await payroll_calculation.list_unresolved_work(
+        uow.session, page=page, tutor_user_id=tutor_user_id, reason=reason
+    )

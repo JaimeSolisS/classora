@@ -386,6 +386,7 @@ def test_production_app_has_no_demo_route(
         "/api/v1/payroll/tutors/{tutor_user_id}/pay-terms/{terms_id}",
         "/api/v1/payroll/tutors/{tutor_user_id}/rates",
         "/api/v1/payroll/tutors/{tutor_user_id}/rates/{rate_id}",
+        "/api/v1/payroll/unresolved-work",
         "/api/v1/privacy-notice",
         "/api/v1/privacy-notice/acceptance",
         "/api/v1/auth/password",

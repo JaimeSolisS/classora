@@ -19,9 +19,9 @@ Every function runs in the caller's Unit of Work and never commits.
 import uuid
 from collections.abc import Collection, Sequence
 from datetime import date
-from typing import Final
+from typing import Any, Final
 
-from sqlalchemy import delete, insert, select
+from sqlalchemy import ColumnElement, delete, exists, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import RecordNotFoundError
@@ -187,6 +187,31 @@ async def finalized_course_lines(
         )
         for row in rows
     ]
+
+
+def has_no_session_line(class_session_id: ColumnElement[Any]) -> ColumnElement[bool]:
+    """``NOT EXISTS`` a session-sourced line of this session, **not executed**
+    (#443 C4), on the partial unique index of those lines, in a period of any
+    status. Only session kinds: an adjustment doesn't pay the session itself."""
+    return ~exists().where(
+        PayrollLine.class_session_id == class_session_id,
+        PayrollLine.kind.in_(SESSION_LINE_KINDS),
+    )
+
+
+async def first_period_starts(
+    session: AsyncSession, tutor_user_ids: Collection[uuid.UUID]
+) -> dict[uuid.UUID, date]:
+    """The start of each tutor's first period, whatever its status; a tutor
+    with no periods is left out (#443 A3). One statement, none for no ids."""
+    if not tutor_user_ids:
+        return {}
+    rows = await session.execute(
+        select(PayrollPeriod.tutor_user_id, func.min(PayrollPeriod.starts_on))
+        .where(PayrollPeriod.tutor_user_id.in_(set(tutor_user_ids)))
+        .group_by(PayrollPeriod.tutor_user_id)
+    )
+    return {row[0]: row[1] for row in rows}
 
 
 async def lock_open_periods_of_tutor(

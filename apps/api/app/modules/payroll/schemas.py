@@ -344,6 +344,8 @@ class CompensationSummary:
 
 type LineKind = Literal["session", "late_cancellation", "no_show", "makeup"]
 type PeriodStatus = Literal["open", "prepared", "finalized"]
+type UnresolvedReason = Literal["before_first_period", "no_pay_terms", "no_rate"]
+type UnresolvedSource = Literal["closeout", "cancellation"]
 
 
 class PayrollPeriodSummary(BaseModel):
@@ -391,3 +393,17 @@ class PayrollRecalculation(BaseModel):
 
     line_count: int
     total: Money
+
+
+class UnresolvedWorkItem(BaseModel):
+    """One piece of approved work that can't be paid (#443 C2). No amount, no
+    minutes, no student data."""
+
+    class_session_id: uuid.UUID
+    tutor_user_id: uuid.UUID
+    tutor_display_name: str
+    service_date: date
+    class_kind: ClassKind
+    source: UnresolvedSource
+    reason: UnresolvedReason
+    blocking: bool
