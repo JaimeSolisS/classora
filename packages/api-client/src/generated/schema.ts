@@ -6018,7 +6018,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            kind: components["schemas"]["AdjustmentKind"];
+            kind: components["schemas"]["app__modules__billing__schemas__AdjustmentKind"];
             /**
              * Amount
              * Format: decimal
@@ -6035,8 +6035,6 @@ export interface components {
             /** Posted By User Id */
             posted_by_user_id: string | null;
         };
-        /** @enum {string} */
-        AdjustmentKind: "duration_change" | "cancellation_credit" | "closure_credit" | "enrollment_removal" | "withdrawal" | "manual" | "package_cancellation";
         /**
          * AffectedSessionItem
          * @description A scheduled session a change affects, as it was when the change was
@@ -13877,7 +13875,7 @@ export interface components {
             denominator: number;
         };
         /** @enum {string} */
-        LineKind: "session" | "late_cancellation" | "no_show" | "makeup" | "salary" | "pay_item";
+        LineKind: "session" | "late_cancellation" | "no_show" | "makeup" | "salary" | "pay_item" | "adjustment";
         /**
          * LoginRequest
          * @description Username and password. The bounds do not depend on any account.
@@ -15650,7 +15648,11 @@ export interface components {
          *     ``proration_denominator`` for the piece ``salary_starts_on`` to
          *     ``salary_ends_on`` (#108 H1). A ``pay_item`` line is a fixed amount, negative
          *     for a deduction, with the type's current name and the item's description
-         *     (#109 G1). No student data.
+         *     (#109 G1). An ``adjustment`` line has only its amount and
+         *     ``payroll_adjustment_id``; the ``adjustment_*`` fields come from the
+         *     adjustment: the session, date and class kind it corrects, the line or the
+         *     finalized period it references, and the reason, on ``manual`` only (#111
+         *     G1). No student data.
          */
         PayrollLineItem: {
             /**
@@ -15704,6 +15706,20 @@ export interface components {
             pay_item_type_name: string | null;
             /** Pay Item Description */
             pay_item_description: string | null;
+            /** Payroll Adjustment Id */
+            payroll_adjustment_id: string | null;
+            adjustment_kind: components["schemas"]["app__modules__payroll__schemas__AdjustmentKind"] | null;
+            /** Adjustment Reason */
+            adjustment_reason: string | null;
+            /** Adjustment Class Session Id */
+            adjustment_class_session_id: string | null;
+            /** Adjustment Service Date */
+            adjustment_service_date: string | null;
+            adjustment_class_kind: components["schemas"]["ClassKind"] | null;
+            /** Adjustment Origin Line Id */
+            adjustment_origin_line_id: string | null;
+            /** Adjustment Origin Period Id */
+            adjustment_origin_period_id: string | null;
         };
         /**
          * PayrollPeriodDetail
@@ -20734,6 +20750,10 @@ export interface components {
             /** Package Id */
             package_id?: string | null;
         };
+        /** @enum {string} */
+        app__modules__billing__schemas__AdjustmentKind: "duration_change" | "cancellation_credit" | "closure_credit" | "enrollment_removal" | "withdrawal" | "manual" | "package_cancellation";
+        /** @enum {string} */
+        app__modules__payroll__schemas__AdjustmentKind: "late_approval" | "hours_correction" | "manual" | "carry_forward";
         /**
          * ScheduleSubject
          * @description The session's subject with its level's name.
@@ -36651,7 +36671,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The period isn't prepared (payroll_period_not_prepared, with details.status); it was prepared again after this review (payroll_review_outdated); an earlier period isn't finalized (payroll_period_out_of_order, with details.earliest_period_id and details.status); the facts changed (payroll_period_stale, with details.added, removed and changed); work with no basis stops it (payroll_unresolved_work, with details.count and at most 20 details.items); or the total is beyond the money range (payroll_amount_out_of_range). */
+            /** @description The period isn't prepared (payroll_period_not_prepared, with details.status); it was prepared again after this review (payroll_review_outdated); an earlier period isn't finalized (payroll_period_out_of_order, with details.earliest_period_id and details.status); the facts changed (payroll_period_stale, with details.added, removed and changed); work with no basis stops it (payroll_unresolved_work, with details.count and at most 20 details.items); the total is beyond the money range (payroll_amount_out_of_range); or it is below zero (payroll_negative_total). A refusal changes nothing. */
             409: {
                 headers: {
                     [name: string]: unknown;

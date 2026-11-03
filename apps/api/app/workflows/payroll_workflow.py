@@ -24,9 +24,10 @@ UPDATE``, re-read → the versions and items ``FOR KEY SHARE`` → the
 - :func:`finalize`: ``404`` → ``409 payroll_period_not_prepared`` → ``403
   payroll_self_finalize`` → ``409 payroll_review_outdated`` (#110 E4) → ``409
   payroll_period_out_of_order`` (#110 E2) → drift, ``409 payroll_period_stale``
-  → ``blocking_work`` again, ``409 payroll_unresolved_work`` → the total → the
-  write. ``blocking_work`` runs again because work approved after ``prepare``
-  with no basis has no draft and no line, so the drift comparison can't see it.
+  → ``blocking_work`` again, ``409 payroll_unresolved_work`` → the total, ``409
+  payroll_negative_total`` below ``0.00`` (#111 E8) → the write.
+  ``blocking_work`` runs again because work approved after ``prepare`` with no
+  basis has no draft and no line, so the drift comparison can't see it.
 
 **Oldest first (#110 E2).** An out-of-order finalize pays wrongly when a cohort's
 ``N`` changes afterwards (833.33 or 1166.67 on 1000.00). Every earlier period
@@ -253,6 +254,10 @@ async def finalize(
         )
     await _refuse_blocking_work(session, period)
     total = payroll.lines_total(stored)
+    if total.is_negative():
+        # #111 E8: no route puts an adjustment into a prepared period, but the
+        # CHECK on total_amount would answer this with a 500.
+        raise payroll.PayrollNegativeTotalError()
     finalized = await payroll.mark_finalized(
         session, period_id, by=principal.user_id, at=clock.now(), total=total
     )

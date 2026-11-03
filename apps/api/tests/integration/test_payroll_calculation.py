@@ -540,8 +540,8 @@ def test_a_closed_period_refuses_and_keeps_its_lines(
 
 
 def test_the_run_replaces_only_the_rebuilt_kinds():
-    """#107 E7: #111's lines survive. A kind outside it surviving a run is
-    ``test_payroll_salary.py``."""
+    """#107 E7, #111 A4: ``adjustment`` isn't one. A real adjustment line
+    surviving runs and ``prepare`` is ``test_payroll_adjustments.py`` (F1)."""
     assert payroll.REBUILT_KINDS == (
         "session",
         "late_cancellation",
@@ -791,6 +791,14 @@ def test_the_routes(module_seeded_url, client, owner, finance, tutor):
         "pay_item_id",
         "pay_item_type_name",
         "pay_item_description",
+        "payroll_adjustment_id",
+        "adjustment_kind",
+        "adjustment_reason",
+        "adjustment_class_session_id",
+        "adjustment_service_date",
+        "adjustment_class_kind",
+        "adjustment_origin_line_id",
+        "adjustment_origin_period_id",
     }
 
 

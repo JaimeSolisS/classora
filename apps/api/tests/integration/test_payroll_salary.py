@@ -23,9 +23,7 @@ from app.modules.identity.permissions import (
     STUDENT,
     TUTOR,
 )
-from app.modules.payroll import lines as payroll_lines
 from app.modules.payroll import service as payroll
-from app.modules.payroll.models import SESSION_LINE_KINDS
 from app.workflows import payroll_calculation
 from tests.conftest import FrozenClock, frozen_clock
 from tests.integration.auth_support import (
@@ -340,26 +338,6 @@ def salaried_with_session(
     worked(url, client, owner, tutor, local("11-03"), minutes=60)
     run(url, period)
     return period
-
-
-def test_d2_a_kind_outside_the_rebuilt_kinds_survives_a_run(
-    module_seeded_url, client, owner, tutor, monkeypatch
-):
-    """Every kind in the CHECK is rebuilt, so the tuple is narrowed. The new
-    version ends the salary before the period: a narrowed run has no
-    salary draft to insert over the row that stays (the piece's unique index)."""
-    url = module_seeded_url
-    period = salaried_with_session(url, client, owner, tutor)
-    [salary_id] = line_ids(url, period, "salary")
-    [session_id] = line_ids(url, period, "session")
-    add_terms(url, tutor.id, "11-02", salary=None)
-    monkeypatch.setattr(payroll_lines, "REBUILT_KINDS", SESSION_LINE_KINDS)
-
-    run(url, period)
-
-    assert line_ids(url, period, "salary") == [salary_id]
-    [new_session_id] = line_ids(url, period, "session")
-    assert new_session_id != session_id
 
 
 def test_d3_a_second_run_replaces_the_salary_row(

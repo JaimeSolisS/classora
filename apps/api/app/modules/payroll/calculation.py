@@ -62,7 +62,7 @@ import uuid
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Final, Literal, Protocol, cast, get_args
 
 from app.core.money import Money, MoneyRangeError, Rate
@@ -108,6 +108,19 @@ class RateVersion:
     effective_from: date
     rate_model: str | None
     rate: Rate | None
+    created_at: datetime | None = None
+    """When the version was written: #111 E4 ignores a version written after a
+    salaried period was finalized. ``None`` counts as always there."""
+
+
+@dataclass(frozen=True)
+class SalaryCover:
+    """Dates a ``salary`` line of a **finalized** period paid, and when that
+    period was finalized (#111 E4)."""
+
+    starts_on: date
+    ends_on: date
+    finalized_at: datetime
 
 
 @dataclass(frozen=True)
@@ -176,6 +189,9 @@ class PayBasis:
     terms: Sequence[TermsBasisVersion]
     rates: Sequence[RateVersion]
     rules: Sequence[SessionPayRuleVersion]
+    salary_covers: Sequence[SalaryCover] = ()
+    """Work after lock only (#111 E4): the job and the unresolved reads pass
+    them, a run of an open period never does."""
 
 
 @dataclass(frozen=True)
@@ -366,10 +382,26 @@ def _in_effect[V: _Dated](versions: Iterable[V], on: date) -> V | None:
     return latest
 
 
-def _rate_in_effect(basis: PayBasis, class_kind: str, on: date) -> RateInEffect | None:
-    """The version of ``class_kind`` on ``on``, if it has a model."""
+def _rate_in_effect(
+    basis: PayBasis,
+    class_kind: str,
+    on: date,
+    written_by: datetime | None = None,
+) -> RateInEffect | None:
+    """The version of ``class_kind`` on ``on``, if it has a model. With
+    ``written_by``, only the versions that existed then."""
     version = _in_effect(
-        (rate for rate in basis.rates if rate.class_kind == class_kind), on
+        (
+            rate
+            for rate in basis.rates
+            if rate.class_kind == class_kind
+            and (
+                written_by is None
+                or rate.created_at is None
+                or rate.created_at <= written_by
+            )
+        ),
+        on,
     )
     if version is None or version.rate_model is None or version.rate is None:
         return None
@@ -401,11 +433,31 @@ def resolve_basis(
     return COVERED if terms.salary is not None else None
 
 
+def salary_cover_of(basis: PayBasis, on: date) -> datetime | None:
+    """When the finalized period whose salary line paid ``on`` was finalized,
+    or ``None`` (#111 E4)."""
+    for cover in basis.salary_covers:
+        if cover.starts_on <= on <= cover.ends_on:
+            return cover.finalized_at
+    return None
+
+
 def _ordinary_basis(
     basis: PayBasis, class_kind: str, on: date
 ) -> RateInEffect | Covered | None:
     """:func:`resolve_basis`, but for a ``per_course`` version, which pays only
-    through a cohort's walk (#442 B3)."""
+    through a cohort's walk (#442 B3).
+
+    **A date a finalized salary line paid (#111 E4)** is judged as it stood at
+    that period's finalize: a rate version written later is ignored, and the
+    salary covers whatever has no rate, whatever the terms say now (a late stop
+    included). A rate that existed then still pays."""
+    finalized_at = salary_cover_of(basis, on)
+    if finalized_at is not None:
+        settled = _rate_in_effect(basis, class_kind, on, finalized_at)
+        if settled is None:
+            return COVERED
+        return settled if settled.rate_model in ORDINARY_MODELS else None
     paid = resolve_basis(basis, class_kind, on)
     if paid is None or paid == COVERED or paid.rate_model in ORDINARY_MODELS:
         return paid
@@ -510,6 +562,15 @@ def _approved_draft(basis: PayBasis, work: ApprovedSession) -> LineDraft | None:
             compensation_rate_id=None,
             session_pay_rule_id=None,
         )
+    return _priced_approved_draft(basis, paid, work)
+
+
+def _priced_approved_draft(
+    basis: PayBasis, paid: RateInEffect, work: ApprovedSession
+) -> LineDraft:
+    """The line of ``work`` at ``paid``, with the rule of its event on the service
+    date from ``basis``. A line and an adjustment share it (pm-107)."""
+    minutes = work.approved_minutes
     kind = _approved_kind(work)
     rule = None if kind == "session" else rule_in_effect(basis, kind, work.service_date)
     return LineDraft(
@@ -744,3 +805,66 @@ def classify_unresolved(
                 )
             )
     return items
+
+
+# --- Work after lock (#111; ADR-0017 E11 and its #111 notes) -----
+
+
+@dataclass(frozen=True)
+class OriginSnapshot:
+    """What paid a session first, in a finalized way (#111 E2): a finalized
+    session line, or a ``late_approval``. ``None`` values: "covered by salary"."""
+
+    rate_model: str | None
+    rate: Rate | None
+    compensation_rate_id: uuid.UUID | None
+
+
+def late_approval_draft(
+    basis: PayBasis, work: ApprovedSession | PayableCancellation
+) -> LineDraft | None:
+    """What a session line would have been, from the same functions as a line
+    (pm-107), on the service date's basis (ADR-0017 E11, #110 E5), with #111 E4's
+    salaried dates applied through ``basis.salary_covers``. ``None``: no basis, or
+    nothing owed under the rule."""
+    try:
+        if isinstance(work, ApprovedSession):
+            return _approved_draft(basis, work)
+        return _cancellation_draft(basis, work)
+    except MoneyRangeError:
+        raise PayrollAmountOutOfRangeError(work.class_session_id) from None
+
+
+def correction_draft(
+    basis: PayBasis, origin: OriginSnapshot, work: ApprovedSession
+) -> LineDraft | None:
+    """The current revision priced on the origin's snapshot, with the rule of
+    its event on the service date (#111 E2). A covered origin has no price, so
+    no correction (C7); a ``per_course`` one is M7-08d's, never priced here."""
+    if (
+        origin.rate_model not in ORDINARY_MODELS
+        or origin.rate is None
+        or origin.compensation_rate_id is None
+    ):
+        return None
+    paid = RateInEffect(
+        compensation_rate_id=origin.compensation_rate_id,
+        rate_model=origin.rate_model,
+        rate=origin.rate,
+        effective_from=work.service_date,
+    )
+    try:
+        return _priced_approved_draft(basis, paid, work)
+    except MoneyRangeError:
+        raise PayrollAmountOutOfRangeError(work.class_session_id) from None
+
+
+def owed(target: Money, paid: Iterable[Money]) -> Money | None:
+    """``target`` minus what was paid so far, or ``None`` when that is ``0.00``:
+    an adjustment is never ``0`` (P9), and a zero difference is worked out again
+    on the next run (#111 E2)."""
+    try:
+        difference = target - Money.total(paid)
+    except MoneyRangeError:
+        raise PayrollAmountOutOfRangeError() from None
+    return None if difference.is_zero() else difference

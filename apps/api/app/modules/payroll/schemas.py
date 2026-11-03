@@ -531,7 +531,16 @@ class PayItemDetail(BaseModel):
 
 
 type LineKind = Literal[
-    "session", "late_cancellation", "no_show", "makeup", "salary", "pay_item"
+    "session",
+    "late_cancellation",
+    "no_show",
+    "makeup",
+    "salary",
+    "pay_item",
+    "adjustment",
+]
+type AdjustmentKind = Literal[
+    "late_approval", "hours_correction", "manual", "carry_forward"
 ]
 type PeriodStatus = Literal["open", "prepared", "finalized"]
 type UnresolvedReason = Literal["before_first_period", "no_pay_terms", "no_rate"]
@@ -614,7 +623,11 @@ class PayrollLineItem(BaseModel):
     ``proration_denominator`` for the piece ``salary_starts_on`` to
     ``salary_ends_on`` (#108 H1). A ``pay_item`` line is a fixed amount, negative
     for a deduction, with the type's current name and the item's description
-    (#109 G1). No student data."""
+    (#109 G1). An ``adjustment`` line has only its amount and
+    ``payroll_adjustment_id``; the ``adjustment_*`` fields come from the
+    adjustment: the session, date and class kind it corrects, the line or the
+    finalized period it references, and the reason, on ``manual`` only (#111
+    G1). No student data."""
 
     id: uuid.UUID
     kind: LineKind
@@ -640,6 +653,14 @@ class PayrollLineItem(BaseModel):
     pay_item_id: uuid.UUID | None
     pay_item_type_name: str | None
     pay_item_description: str | None
+    payroll_adjustment_id: uuid.UUID | None
+    adjustment_kind: AdjustmentKind | None
+    adjustment_reason: str | None
+    adjustment_class_session_id: uuid.UUID | None
+    adjustment_service_date: date | None
+    adjustment_class_kind: ClassKind | None
+    adjustment_origin_line_id: uuid.UUID | None
+    adjustment_origin_period_id: uuid.UUID | None
 
 
 class PayrollPeriodLines(BaseModel):

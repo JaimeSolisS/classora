@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0079"
+HEAD = "0080"
 PAY_RULES = "session_pay_rules"
 LINES = "payroll_lines"
 SALARY_LINE_COLUMNS = frozenset(
@@ -213,6 +213,7 @@ WITHDRAWAL_TABLES = ["withdrawals"]
 COMPENSATION_TABLES = ["tutor_pay_terms", "compensation_rates"]
 PAYROLL_PERIOD_TABLES = ["payroll_settings", "payroll_periods"]
 RETURN_COLUMNS = ("returned_at", "returned_by_user_id", "return_reason")
+ADJUSTMENTS = "payroll_adjustments"
 """The tables revision 0072 adds (#105 B1, B2)."""
 APPEND_ONLY_LEDGER_TABLES = [
     "charges",
@@ -464,6 +465,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             PAY_RULES,
             LINES,
             *PAY_ITEM_TABLES,
+            ADJUSTMENTS,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4823,9 +4825,30 @@ def _of_0079(diff: Any) -> bool:
     )
 
 
+def _of_0080(diff: Any) -> bool:
+    """A metadata difference that revision 0080 adds: the adjustments table, and
+    the adjustment column, foreign key and index of the lines (#111 A). CHECKs
+    are not compared."""
+    if diff[0] == "add_table":
+        return bool(diff[1].name == ADJUSTMENTS)
+    if diff[0] == "add_column":
+        return bool(diff[2] == LINES and diff[3].name == "payroll_adjustment_id")
+    if diff[0] == "add_fk":
+        return bool(diff[1].name == "fk_payroll_lines_adjustment")
+    return diff[0] == "add_index" and (
+        diff[1].name == "uq_payroll_lines_adjustment"
+        or diff[1].table.name == ADJUSTMENTS
+    )
+
+
+def _of_0079_on(diff: Any) -> bool:
+    """A metadata difference that revision 0079 or a later one adds."""
+    return _of_0079(diff) or _of_0080(diff)
+
+
 def _of_0078_on(diff: Any) -> bool:
     """A metadata difference that revision 0078 or a later one adds."""
-    return _of_0078(diff) or _of_0079(diff)
+    return _of_0078(diff) or _of_0079_on(diff)
 
 
 def _of_0077_on(diff: Any) -> bool:
@@ -14001,6 +14024,7 @@ def test_0076_columns_constraints_and_indexes(fresh_database_url):
         "proration_denominator": ("integer", "YES", None, None),
         "pay_item_id": ("uuid", "YES", None, None),
         "proration_basis": ("character varying", "YES", 20, None),
+        "payroll_adjustment_id": ("uuid", "YES", None, None),
     }
     constraints = _constraints(dsn, LINES)
     assert set(constraints) == {
@@ -14032,6 +14056,8 @@ def test_0076_columns_constraints_and_indexes(fresh_database_url):
         "ck_payroll_lines_proration_basis_valid",
         "ck_payroll_lines_pay_item_fields",
         "ck_payroll_lines_pay_item_no_rate",
+        "fk_payroll_lines_adjustment",
+        "ck_payroll_lines_adjustment_fields",
     }
     for name, definition in constraints.items():
         if name.startswith("fk_"):
@@ -14053,6 +14079,7 @@ def test_0076_columns_constraints_and_indexes(fresh_database_url):
         "uq_payroll_lines_salary_piece",
         "uq_payroll_lines_pay_item_period",
         "ix_payroll_lines_pay_item_id",
+        "uq_payroll_lines_adjustment",
     }
     assert "UNIQUE" in indexes["uq_payroll_lines_session_sourced"]
     assert "WHERE" in indexes["uq_payroll_lines_session_sourced"]
@@ -14184,7 +14211,10 @@ def test_0076_a_finalized_period_keeps_its_lines(fresh_database_url):
             },
         )
     assert getattr(caught.value.orig, "sqlstate", "") == "42501"
-    assert _sqlstate_0076(dsn, "TRUNCATE payroll_lines") == "42501"
+    # payroll_adjustments references it since 0080 (0A000 alone).
+    assert _sqlstate_0076(dsn, "TRUNCATE payroll_lines, payroll_adjustments") == (
+        "42501"
+    )
 
 
 def test_0076_an_update_checks_both_periods(fresh_database_url):
@@ -14527,7 +14557,7 @@ def test_0078_adds_the_tables_and_downgrade_restores_0077(fresh_database_url):
     command.upgrade(config, "0078")
 
     assert version_nums(dsn) == ["0078"]
-    assert [d for d in metadata_diff(dsn) if not _of_0079(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0079_on(d)] == []
     assert public_tables(dsn) - tables == PAY_ITEM_TABLES
     assert "EXISTS" in run_sql(dsn, PAY_ITEM_BODY)[0].prosrc
 
@@ -14862,7 +14892,7 @@ def test_0079_adds_the_columns_and_downgrade_restores_0078(fresh_database_url):
     command.upgrade(config, "0079")
 
     assert version_nums(dsn) == ["0079"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0080(d)] == []
     columns = {
         r.column_name: (r.is_nullable, r.data_type, r.character_maximum_length)
         for r in run_sql(
@@ -14890,7 +14920,7 @@ def test_0079_adds_the_columns_and_downgrade_restores_0078(fresh_database_url):
     assert version_nums(dsn) == ["0078"]
     assert _constraints(dsn, "payroll_periods") == constraints
     assert set(RETURN_COLUMNS).isdisjoint(_columns(dsn, "payroll_periods"))
-    assert [d for d in metadata_diff(dsn) if not _of_0079(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0079_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -14984,3 +15014,524 @@ def test_0079_a_returning_user_cannot_be_deleted(fresh_database_url):
         _sqlstate_0076(dsn, "DELETE FROM users WHERE id = :id", {"id": user.id})
         == "23001"
     )
+
+
+# --- 0080: payroll adjustments (#111 A) -----
+
+ADJUSTMENT_CONSTRAINTS_0080 = {
+    "pk_payroll_adjustments",
+    "fk_payroll_adjustments_target_period",
+    "fk_payroll_adjustments_origin_line",
+    "fk_payroll_adjustments_tutor_user_id_users",
+    "fk_payroll_adjustments_origin_period_id_payroll_periods",
+    "fk_payroll_adjustments_class_session_id_class_sessions",
+    "fk_payroll_adjustments_approval_id_session_closeout_approvals",
+    "fk_payroll_adjustments_paired_adjustment_id_payroll_adjustments",
+    "fk_payroll_adjustments_created_by_user_id_users",
+    "fk_payroll_adjustments_compensation_rate_id_compensation_rates",
+    "fk_payroll_adjustments_session_pay_rule_id_session_pay_rules",
+    "uq_payroll_adjustments_source_key",
+    "uq_payroll_adjustments_id_target",
+    "ck_payroll_adjustments_kind_valid",
+    "ck_payroll_adjustments_amount_non_zero",
+    "ck_payroll_adjustments_reason_trimmed",
+    "ck_payroll_adjustments_line_kind_valid",
+    "ck_payroll_adjustments_class_kind_valid",
+    "ck_payroll_adjustments_rate_model_valid",
+    "ck_payroll_adjustments_minutes_non_negative",
+    "ck_payroll_adjustments_rate_snapshot",
+    "ck_payroll_adjustments_pay_rule_with_event",
+    "ck_payroll_adjustments_course_share",
+    "ck_payroll_adjustments_late_approval_fields",
+    "ck_payroll_adjustments_hours_correction_fields",
+    "ck_payroll_adjustments_manual_fields",
+    "ck_payroll_adjustments_carry_forward_fields",
+}
+ADJUSTMENT_INDEXES_0080 = {
+    "pk_payroll_adjustments",
+    "uq_payroll_adjustments_source_key",
+    "uq_payroll_adjustments_id_target",
+    "uq_payroll_adjustments_first_payment",
+    "ix_payroll_adjustments_target_period_id",
+    "ix_payroll_adjustments_origin_line_id",
+    "ix_payroll_adjustments_class_session_id",
+}
+LINE_NAMES_0080 = {
+    "fk_payroll_lines_adjustment",
+    "ck_payroll_lines_adjustment_fields",
+}
+
+
+def test_0080_adds_the_table_and_downgrade_restores_0079(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0079")
+    tables = public_tables(dsn)
+    line_constraints = _constraints(dsn, LINES)
+    line_indexes = _indexes(dsn, LINES)
+
+    command.upgrade(config, "0080")
+
+    assert version_nums(dsn) == ["0080"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == {ADJUSTMENTS}
+    constraints = _constraints(dsn, ADJUSTMENTS)
+    assert set(constraints) == ADJUSTMENT_CONSTRAINTS_0080
+    for name, definition in constraints.items():
+        if name.startswith("fk_"):
+            assert definition.endswith("ON DELETE RESTRICT"), name
+    assert (
+        "(target_period_id, tutor_user_id)"
+        in (constraints["fk_payroll_adjustments_target_period"])
+    )
+    assert (
+        "(origin_line_id, tutor_user_id)"
+        in (constraints["fk_payroll_adjustments_origin_line"])
+    )
+    indexes = _indexes(dsn, ADJUSTMENTS)
+    assert set(indexes) == ADJUSTMENT_INDEXES_0080
+    first = indexes["uq_payroll_adjustments_first_payment"]
+    assert "UNIQUE" in first and "(class_session_id) WHERE" in first
+    assert _triggers(dsn, ADJUSTMENTS) == {
+        "payroll_adjustments_no_update_delete",
+        "payroll_adjustments_no_truncate",
+    }
+    added = {
+        name: body
+        for name, body in _constraints(dsn, LINES).items()
+        if name not in line_constraints
+    }
+    assert set(added) == LINE_NAMES_0080
+    assert (
+        "(payroll_adjustment_id, payroll_period_id, tutor_user_id)"
+        " REFERENCES payroll_adjustments(id, target_period_id, tutor_user_id)"
+    ) in added["fk_payroll_lines_adjustment"]
+    assert set(_indexes(dsn, LINES)) - set(line_indexes) == {
+        "uq_payroll_lines_adjustment"
+    }
+    assert "'adjustment'" in _constraints(dsn, LINES)["ck_payroll_lines_kind_valid"]
+
+    command.downgrade(config, "0079")
+
+    assert version_nums(dsn) == ["0079"]
+    assert public_tables(dsn) == tables
+    assert _constraints(dsn, LINES) == line_constraints
+    assert _indexes(dsn, LINES) == line_indexes
+    assert "payroll_adjustment_id" not in _columns(dsn, LINES)
+    assert (
+        run_sql(
+            dsn,
+            "SELECT count(*) AS n FROM pg_proc WHERE proname = :n",
+            {"n": "payroll_adjustments_append_only"},
+        )[0].n
+        == 0
+    )
+    assert [d for d in metadata_diff(dsn) if not _of_0080(d)] == []
+
+    command.upgrade(config, "head")
+
+    assert metadata_diff(dsn) == []
+
+
+def _adjustment_world(dsn: str) -> dict[str, Any]:
+    """:func:`_lines_world` with a closeout revision of its session, a finalized
+    first period, an open second one and a session line in the first."""
+    world = _lines_world(dsn)
+    [closeout] = run_sql(
+        dsn,
+        CLOSEOUT_INSERT,
+        {
+            "s": world["session"],
+            "u": world["tutor"],
+            "status": "submitted",
+            "topics": "x",
+            "performance": "x",
+            "homework": "x",
+            "next_steps": "x",
+        },
+    )
+    [approval] = run_sql(
+        dsn,
+        APPROVAL_INSERT,
+        {
+            "c": closeout.id,
+            "revision": 1,
+            "supersedes": None,
+            "source": "review",
+            "s": world["session"],
+            "u": world["tutor"],
+            "minutes": 60,
+        },
+    )
+    [line] = run_sql(
+        dsn,
+        "INSERT INTO payroll_lines (payroll_period_id, tutor_user_id, kind, amount,"
+        " class_session_id, approval_id, service_date, class_kind, minutes,"
+        " rate_model, rate, compensation_rate_id) VALUES (:p, :u, 'session', 100,"
+        " :s, :a, '2031-01-06', 'individual', 60, 'per_hour', 100, :r) RETURNING id",
+        {
+            "p": world["period"],
+            "u": world["tutor"],
+            "s": world["session"],
+            "a": approval.id,
+            "r": world["rate"],
+        },
+    )
+    [target] = run_sql(
+        dsn,
+        "INSERT INTO payroll_periods (tutor_user_id, starts_on, ends_on,"
+        " pay_frequency, is_first_period) VALUES"
+        " (:u, '2031-01-13', '2031-01-19', 'weekly', false) RETURNING id",
+        {"u": world["tutor"]},
+    )
+    _finalize_0080(dsn, world["period"], world["tutor"])
+    return {
+        **world,
+        "approval": approval.id,
+        "line": line.id,
+        "origin": world["period"],
+        "target": target.id,
+    }
+
+
+def _finalize_0080(dsn: str, period: Any, by: Any) -> None:
+    params = {"id": period, "u": by}
+    run_sql(
+        dsn,
+        "UPDATE payroll_periods SET status = 'prepared', prepared_at = now(),"
+        " prepared_by_user_id = :u WHERE id = :id",
+        params,
+    )
+    run_sql(
+        dsn,
+        "UPDATE payroll_periods SET status = 'finalized', finalized_at = now(),"
+        " finalized_by_user_id = :u, total_amount = 100 WHERE id = :id",
+        params,
+    )
+
+
+def _snapshot_0080(world: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "line_kind": "session",
+        "service_date": date(2031, 1, 6),
+        "class_kind": "individual",
+        "minutes": 60,
+        "rate_model": "per_hour",
+        "rate": Decimal("100"),
+        "compensation_rate_id": world["rate"],
+    }
+
+
+def _adjustment_row_0080(world: dict[str, Any], kind: str) -> dict[str, Any]:
+    """A valid row of ``kind``."""
+    base = {
+        "kind": kind,
+        "tutor_user_id": world["tutor"],
+        "target_period_id": world["target"],
+        "amount": Decimal("-25.00"),
+    }
+    if kind == "late_approval":
+        return {
+            **base,
+            "class_session_id": world["session"],
+            "origin_period_id": world["origin"],
+            "approval_id": world["approval"],
+            "source_key": f"approval:{world['approval']}",
+            **_snapshot_0080(world),
+        }
+    if kind == "hours_correction":
+        return {
+            **base,
+            "origin_line_id": world["line"],
+            "class_session_id": world["session"],
+            "approval_id": world["approval"],
+            "source_key": f"approval:{world['approval']}",
+            **_snapshot_0080(world),
+        }
+    if kind == "manual":
+        return {
+            **base,
+            "reason": "Pago por fuera",
+            "created_by_user_id": world["tutor"],
+            "origin_line_id": world["line"],
+        }
+    return {
+        **base,
+        "origin_period_id": world["origin"],
+        "created_by_user_id": world["tutor"],
+    }
+
+
+def _insert_adjustment_0080(dsn: str, row: dict[str, Any]) -> Any:
+    columns = ", ".join(row)
+    binds = ", ".join(f":{name}" for name in row)
+    return run_sql(
+        dsn,
+        f"INSERT INTO payroll_adjustments ({columns}) VALUES ({binds})"  # noqa: S608
+        " RETURNING id",
+        row,
+    )[0].id
+
+
+def _adjustment_line_0080(
+    dsn: str, adjustment: Any, period: Any, tutor: Any, **row: Any
+) -> Any:
+    values = {
+        "payroll_period_id": period,
+        "tutor_user_id": tutor,
+        "kind": "adjustment",
+        "amount": Decimal("-25.00"),
+        "payroll_adjustment_id": adjustment,
+        **row,
+    }
+    columns = ", ".join(values)
+    binds = ", ".join(f":{name}" for name in values)
+    return run_sql(
+        dsn,
+        f"INSERT INTO payroll_lines ({columns}) VALUES ({binds}) RETURNING id",  # noqa: S608
+        values,
+    )[0].id
+
+
+def _refused_by_0080(dsn: str, row: dict[str, Any]) -> str:
+    with pytest.raises(IntegrityError) as caught:
+        _insert_adjustment_0080(dsn, row)
+    return str(caught.value.orig)
+
+
+@pytest.mark.parametrize(
+    "kind", ["late_approval", "hours_correction", "manual", "carry_forward"]
+)
+def test_0080_each_kind_has_its_shape(fresh_database_url, kind):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+
+    _insert_adjustment_0080(dsn, _adjustment_row_0080(world, kind))
+
+
+# (kind, a column it needs, a column it must not have, with a value)
+KIND_SHAPES_0080 = [
+    ("late_approval", "origin_period_id", ("origin_line_id", "line")),
+    ("late_approval", "service_date", ("reason", "Pago")),
+    ("late_approval", "class_session_id", ("created_by_user_id", "tutor")),
+    ("hours_correction", "origin_line_id", ("origin_period_id", "origin")),
+    ("hours_correction", "approval_id", ("reason", "Pago")),
+    ("manual", "reason", ("source_key", "manual:1")),
+    ("manual", "created_by_user_id", ("approval_id", "approval")),
+    ("carry_forward", "origin_period_id", ("class_session_id", "session")),
+    ("carry_forward", "created_by_user_id", ("origin_line_id", "line")),
+]
+
+
+@pytest.mark.parametrize(("kind", "needed", "extra"), KIND_SHAPES_0080)
+def test_0080_each_kinds_check_refuses_a_missing_and_an_extra_column(
+    fresh_database_url, kind, needed, extra
+):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+    check = f"ck_payroll_adjustments_{kind}_fields"
+    row = _adjustment_row_0080(world, kind)
+    column, value = extra
+
+    assert check in _refused_by_0080(dsn, {**row, needed: None})
+    assert check in _refused_by_0080(dsn, {**row, column: world.get(value, value)})
+
+
+def test_0080_the_approval_goes_with_an_approval_key(fresh_database_url):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+    row = _adjustment_row_0080(world, "late_approval")
+    check = "ck_payroll_adjustments_late_approval_fields"
+
+    assert check in _refused_by_0080(dsn, {**row, "approval_id": None})
+    assert check in _refused_by_0080(
+        dsn, {**row, "source_key": f"cancellation:{world['session']}"}
+    )
+    _insert_adjustment_0080(
+        dsn,
+        {**row, "approval_id": None, "source_key": f"cancellation:{world['session']}"},
+    )
+
+
+def test_0080_manual_names_at_most_one_of_line_and_session(fresh_database_url):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+    row = _adjustment_row_0080(world, "manual")
+
+    assert "ck_payroll_adjustments_manual_fields" in _refused_by_0080(
+        dsn, {**row, "class_session_id": world["session"]}
+    )
+
+
+@pytest.mark.parametrize(
+    ("change", "constraint"),
+    [
+        ({"amount": Decimal("0.00")}, "amount_non_zero"),
+        ({"kind": "pay_event_change"}, "kind_valid"),
+        ({"rate": None}, "rate_snapshot"),
+        ({"line_kind": "salary"}, "line_kind_valid"),
+        ({"minutes": -1}, "minutes_non_negative"),
+        ({"cumulative_sessions": 1, "cohort_sessions": 2}, "course_share"),
+        ({"line_kind": "no_show"}, "pay_rule_with_event"),
+    ],
+)
+def test_0080_the_column_checks(fresh_database_url, change, constraint):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+    row = {**_adjustment_row_0080(world, "hours_correction"), **change}
+
+    assert f"ck_payroll_adjustments_{constraint}" in _refused_by_0080(dsn, row)
+
+
+@pytest.mark.parametrize("reason", ["", " Pago", "x" * 1001])
+def test_0080_a_reason_is_trimmed_and_bounded(fresh_database_url, reason):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+    row = {**_adjustment_row_0080(world, "manual"), "reason": reason}
+
+    assert "ck_payroll_adjustments_reason_trimmed" in _refused_by_0080(dsn, row)
+
+
+def test_0080_one_key_and_one_first_payment(fresh_database_url):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+    late = _adjustment_row_0080(world, "late_approval")
+    _insert_adjustment_0080(dsn, late)
+
+    # Another key, the same session: the first payment is taken.
+    assert "uq_payroll_adjustments_first_payment" in _refused_by_0080(
+        dsn,
+        {**late, "approval_id": None, "source_key": f"cancellation:{world['session']}"},
+    )
+    # A manual payment of the same session is a first payment too.
+    manual = _adjustment_row_0080(world, "manual")
+    assert "uq_payroll_adjustments_first_payment" in _refused_by_0080(
+        dsn, {**manual, "origin_line_id": None, "class_session_id": world["session"]}
+    )
+    # The same key on another kind.
+    assert "uq_payroll_adjustments_source_key" in _refused_by_0080(
+        dsn, _adjustment_row_0080(world, "hours_correction")
+    )
+    # A correction and a manual on a line are no first payment.
+    _insert_adjustment_0080(
+        dsn, {**_adjustment_row_0080(world, "hours_correction"), "source_key": "k"}
+    )
+    _insert_adjustment_0080(dsn, manual)
+
+
+def test_0080_adjustments_are_append_only(fresh_database_url):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+    adjustment = _insert_adjustment_0080(dsn, _adjustment_row_0080(world, "manual"))
+
+    for statement in (
+        "UPDATE payroll_adjustments SET amount = 1 WHERE id = :id",
+        "DELETE FROM payroll_adjustments WHERE id = :id",
+        # payroll_lines references it: alone, the TRUNCATE is 0A000 first.
+        "TRUNCATE payroll_adjustments, payroll_lines",
+        "TRUNCATE payroll_adjustments CASCADE",
+    ):
+        assert _sqlstate_0076(dsn, statement, {"id": adjustment}) == "42501"
+
+
+def test_0080_an_adjustment_line_is_in_its_target_and_of_its_tutor(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+    adjustment = _insert_adjustment_0080(dsn, _adjustment_row_0080(world, "manual"))
+    [other] = run_sql(
+        dsn,
+        "INSERT INTO users (username, email, password_hash, display_name)"
+        " VALUES ('otra', 'otra@example.com', 'x', 'Otra') RETURNING id",
+    )
+    [elsewhere_row] = run_sql(
+        dsn,
+        "INSERT INTO payroll_periods (tutor_user_id, starts_on, ends_on,"
+        " pay_frequency, is_first_period) VALUES"
+        " (:u, '2031-01-13', '2031-01-19', 'weekly', true) RETURNING id",
+        {"u": other.id},
+    )
+    [later_row] = run_sql(
+        dsn,
+        "INSERT INTO payroll_periods (tutor_user_id, starts_on, ends_on,"
+        " pay_frequency, is_first_period) VALUES"
+        " (:u, '2031-01-20', '2031-01-26', 'weekly', false) RETURNING id",
+        {"u": world["tutor"]},
+    )
+    elsewhere, later = elsewhere_row.id, later_row.id
+
+    for period, tutor in ((later, world["tutor"]), (elsewhere, other.id)):
+        with pytest.raises(IntegrityError) as caught:
+            _adjustment_line_0080(dsn, adjustment, period, tutor)
+        assert "fk_payroll_lines_adjustment" in str(caught.value.orig)
+    # The finalized origin period refuses any line.
+    assert (
+        _sqlstate_0076(
+            dsn,
+            "INSERT INTO payroll_lines (payroll_period_id, tutor_user_id, kind,"
+            " amount, payroll_adjustment_id) VALUES (:p, :u, 'adjustment', 1, :a)",
+            {"p": world["origin"], "u": world["tutor"], "a": adjustment},
+        )
+        == "42501"
+    )
+
+    _adjustment_line_0080(dsn, adjustment, world["target"], world["tutor"])
+
+    with pytest.raises(IntegrityError) as caught:
+        _adjustment_line_0080(dsn, adjustment, world["target"], world["tutor"])
+    assert "uq_payroll_lines_adjustment" in str(caught.value.orig)
+
+
+@pytest.mark.parametrize(
+    ("row", "constraint"),
+    [
+        ({"amount": Decimal("0.00")}, "amount_sign"),
+        ({"payroll_adjustment_id": None}, "adjustment_fields"),
+        (
+            {"rate_model": "per_hour", "rate": 1, "compensation_rate_id": "rate"},
+            "source_per_kind",
+        ),
+        (
+            {
+                "class_session_id": "session",
+                "service_date": date(2031, 1, 6),
+                "class_kind": "individual",
+                "minutes": 60,
+            },
+            "source_per_kind",
+        ),
+        ({"pay_item_id": None, "salary_amount": 1}, "salary_fields"),
+    ],
+)
+def test_0080_an_adjustment_line_has_only_its_amount(
+    fresh_database_url, row, constraint
+):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+    adjustment = _insert_adjustment_0080(dsn, _adjustment_row_0080(world, "manual"))
+    values = {
+        key: world.get(value, value) if isinstance(value, str) else value
+        for key, value in row.items()
+    }
+
+    with pytest.raises(IntegrityError) as caught:
+        _adjustment_line_0080(
+            dsn, adjustment, world["target"], world["tutor"], **values
+        )
+    assert f"ck_payroll_lines_{constraint}" in str(caught.value.orig)
+
+
+def test_0080_downgrade_refuses_while_an_adjustment_exists(fresh_database_url):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+    adjustment = _insert_adjustment_0080(dsn, _adjustment_row_0080(world, "manual"))
+    _adjustment_line_0080(dsn, adjustment, world["target"], world["tutor"])
+    config = alembic_config(dsn)
+
+    with pytest.raises(DBAPIError) as caught:
+        command.downgrade(config, "0079")
+
+    assert getattr(caught.value.orig, "sqlstate", None) == "55000"
+    assert version_nums(dsn) == [HEAD]
+    assert run_sql(dsn, "SELECT count(*) AS n FROM payroll_adjustments")[0].n == 1

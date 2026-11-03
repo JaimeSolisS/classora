@@ -1097,7 +1097,7 @@ The configurable late-cancellation, no-show and makeup payments (E4). One row pe
 
 ### 11.6 `payroll_lines` (#107)
 
-One row per source (E9). Not `Audited`: working data until finalized. **Locked with the period** (§14.3). #107 creates the table with the four session-sourced kinds and without `pay_item_id` and `payroll_adjustment_id`; #108 adds `salary` with its columns, #109 adds `pay_item`, and #111 adds its kind, columns and indexes and widens `kind` and the source CHECK. `recalculate` replaces only the kinds it rebuilds (`REBUILT_KINDS`, #107 E7), today the session kinds, `salary` and `pay_item`, so #111's lines survive.
+One row per source (E9). Not `Audited`: working data until finalized. **Locked with the period** (§14.3). #107 creates the table with the four session-sourced kinds and without `pay_item_id` and `payroll_adjustment_id`; #108 adds `salary` with its columns, #109 adds `pay_item`, and #111 adds its kind, columns and indexes and widens `kind` and the source CHECK. `recalculate` replaces only the kinds it rebuilds (`REBUILT_KINDS`, #107 E7), the session kinds, `salary` and `pay_item`, so `adjustment` lines survive: written once with their adjustment, never rebuilt, outside drift and inside the total (#110 D3, D4; #111 A4).
 
 | Column | Type | Null | Check / note |
 |---|---|---|---|
@@ -1122,29 +1122,29 @@ One row per source (E9). Not `Audited`: working data until finalized. **Locked w
 | `proration_numerator`, `proration_denominator` | INTEGER | yes | `paid_days` and `natural_days`; `0 <= numerator <= denominator`, `denominator > 0`; set iff `salary`; equal on a full natural period (#108) |
 | `proration_basis` | VARCHAR(20) | yes | `calendar_days` \| `weekdays`; set iff `salary` (#108) |
 | `pay_item_id` | UUID | yes | composite FK, below; set iff `pay_item` (#109) |
-| `payroll_adjustment_id` | UUID | yes | FK `payroll_adjustments` RESTRICT; set iff `adjustment` (#111) |
+| `payroll_adjustment_id` | UUID | yes | composite FK, below; set iff `adjustment` (#111) |
 
-- **Composite FK:** `(payroll_period_id, tutor_user_id)` → `payroll_periods (id, tutor_user_id)` (P6). `UNIQUE (id, tutor_user_id)` is the target of the adjustment's origin-line FK. `(pay_item_id, tutor_user_id)` → `pay_items (id, tutor_user_id)` `RESTRICT` (P12, #109 tightening the plain FK), so no item reaches another tutor's line.
+- **Composite FK:** `(payroll_period_id, tutor_user_id)` → `payroll_periods (id, tutor_user_id)` (P6). `UNIQUE (id, tutor_user_id)` is the target of the adjustment's origin-line FK. `(pay_item_id, tutor_user_id)` → `pay_items (id, tutor_user_id)` `RESTRICT` (P12, #109 tightening the plain FK), so no item reaches another tutor's line. `(payroll_adjustment_id, payroll_period_id, tutor_user_id)` → `payroll_adjustments (id, target_period_id, tutor_user_id)` `RESTRICT` (`fk_payroll_lines_adjustment`, #111): an adjustment line is in its adjustment's target period, and of its tutor, by construction.
 - **Source CHECK, per kind:**
   - `session`, `makeup`: `class_session_id` and `approval_id` set, all of `tutor_pay_terms_id`, `pay_item_id`, `payroll_adjustment_id` `NULL`;
   - `no_show`: `class_session_id` set, `approval_id` optional, and the same three `NULL`;
   - `late_cancellation`: `class_session_id` set, `approval_id` `NULL`, and the same three `NULL`;
   - `salary`: `tutor_pay_terms_id` set, `class_session_id`, `approval_id`, `pay_item_id`, `payroll_adjustment_id` `NULL`, and `rate_model` `NULL`. A CHECK sets the seven salary columns together on this kind and leaves them `NULL` on every other;
   - `pay_item`: `pay_item_id` set, the others `NULL`, and `rate_model` `NULL`;
-  - `adjustment`: `payroll_adjustment_id` set, the others `NULL`.
-- **Sign rules:** `ck_payroll_lines_amount_sign`: session-sourced and `salary` lines `>= 0`; `pay_item` lines `<> 0`, positive for a `bonus` and negative for a `deduction` (App, from the type's direction); `adjustment` lines `<> 0` (#111 widens the CHECK).
+  - `adjustment`: `payroll_adjustment_id` set (`ck_payroll_lines_adjustment_fields`), `class_session_id`, `approval_id` and `rate_model` `NULL`, so every session, salary, item and rate column is `NULL` (`source_per_kind`, `session_fields`, `rate_snapshot`, `salary_fields`, `pay_item_fields`). Its references are on the adjustment.
+- **Sign rules:** `ck_payroll_lines_amount_sign`: session-sourced and `salary` lines `>= 0`; `pay_item` lines `<> 0`, positive for a `bonus` and negative for a `deduction` (App, from the type's direction); `adjustment` lines `<> 0`: `(kind IN ('pay_item', 'adjustment') AND amount <> 0) OR (kind NOT IN ('pay_item', 'adjustment') AND amount >= 0)` (#111).
 - **"Covered by salary" (E1):** kind `session`, `amount = 0.00`, `rate_model`, `rate` and `compensation_rate_id` `NULL`.
 - **Natural keys (partial unique indexes):**
   - `(class_session_id) WHERE kind IN ('session', 'late_cancellation', 'no_show', 'makeup')`: one session-sourced line per session;
   - `(payroll_period_id, salary_starts_on) WHERE kind = 'salary'`: one line per piece (#108 E1, correcting `(payroll_period_id, tutor_pay_terms_id)`: one version can pay several natural periods inside a long period);
   - `(pay_item_id, payroll_period_id) WHERE kind = 'pay_item'` (#109);
   - `(payroll_adjustment_id) WHERE kind = 'adjustment'` (#111).
-- **Sort (#109 G2):** `service_date` `NULLS LAST`, `class_session_id`, `salary_starts_on`, `pay_item_id`: session lines, then salary, then items, oldest item first. Never `id`, which changes on every run. #111 adds a fifth key.
+- **Sort (#109 G2, #111 F4):** `service_date` `NULLS LAST`, `class_session_id`, `salary_starts_on`, `pay_item_id`, `payroll_adjustment_id`: session lines, then salary, then items, oldest item first, then adjustments, oldest first. Never `id`, which changes on every run.
 - **Amounts (E2, E3):** `per_hour` = `rate.to_money(approved_minutes, 60)`; `per_session` = `rate.to_money()`; `per_course` = cumulative `rate.to_money(k, N)` now minus before, floored at `0.00` (#442; #107 E11 replaces `Money.prorate` here).
 - **Per-course (#442, #107 E11):**
   - **Rate:** the version on the local date of the cohort's first session, the earliest `starts_at` in any state. If it is `per_course` it applies to all the tutor's sessions of the cohort, whatever later versions say. Otherwise each session uses the version on its own date: `per_hour` and `per_session` as usual, `per_course` no line (`no_rate`, fixed by a back-dated version).
   - **`N`:** the cohort's sessions not `cancelled` or `skipped_closure`, at calculation time.
-  - **The walk:** the tutor's approved sessions and finalized per-course lines of the cohort, by session start. An approved session not in a finalized period adds one to `k`, in any period and with any event, and `cum = max(previous cum, rate.to_money(k, N))`. A finalized line sets `k` to its stored value and `cum` to the highest `rate.to_money(k, N)` of the finalized lines so far, each from its stored values: a line floored at `0.00` stores less than was already paid. Sessions walked between finalized lines don't feed that maximum. A session approved inside a finalized period isn't walked and has no line (#111).
+  - **The walk:** the tutor's approved sessions and finalized per-course lines of the cohort, by session start. An approved session not in a finalized period adds one to `k`, in any period and with any event, and `cum = max(previous cum, rate.to_money(k, N))`. A finalized line sets `k` to its stored value and `cum` to the highest `rate.to_money(k, N)` of the finalized lines so far, each from its stored values: a line floored at `0.00` stores less than was already paid. Sessions walked between finalized lines don't feed that maximum. A session approved inside a finalized period isn't walked and has no line; `payroll:post_adjustments` skips it and counts it in `skipped_course` until M7-08d.
   - **A line** is `cum` minus the previous `cum`, written only for a session in the period and with terms on its date. A `no_show` at `percent` 100 is that line; below 100 it is `min(line, max(0.00, rate.to_money(k, N, percent=p) − rate.to_money(k − 1, N, percent=p)))`, so a no-show never pays more than teaching the session (#442 D8); above 100 it is the same difference with no cap; `fixed` is the amount; `none` is `0.00`. A percent above 100 and `fixed` aren't shares of the course: the Owner sets them on purpose, and they can take the course's total above the rate. Each line stores `k` and `N`.
 - **Salary (E7, #108):** inside a period, for the terms versions in date order:
   1. A version's window is `[max(effective_from, starts_on), min(next version's effective_from − 1, ends_on)]`. Every version counts as "next", a stop included. An empty window, `pay_frequency NULL` or `salary_amount NULL` gives no line.
@@ -1193,27 +1193,38 @@ Fixed amounts only (E8). Audited. **Guarded** (§14.2).
 
 ### 11.9 `payroll_adjustments` (#111)
 
-Corrections after lock (E11). Audited. **Append-only** (§5.1).
+Corrections after lock (E11 and its #111 notes). Audited, `amount`, `rate` and `reason` masked (#111 E9). **Append-only** (§14.1): `payroll_adjustments_append_only()` refuses `UPDATE`, `DELETE` and `TRUNCATE` with 42501. Created by migration `0080` with every kind and column M7-08c and M7-08d need.
 
 | Column | Type | Null | Check / note |
 |---|---|---|---|
 | `id` | UUID | no | PK |
-| `kind` | VARCHAR(20) | no | `hours_correction` \| `pay_event_change` \| `late_approval` \| `manual` |
-| `tutor_user_id` | UUID | no | composite FKs, below |
-| `target_period_id` | UUID | no | the tutor's earliest open period at insert (P9) |
-| `origin_line_id` | UUID | yes | `NULL` iff `late_approval` (P8) |
-| `class_session_id` | UUID | yes | FK `class_sessions` RESTRICT; set iff `late_approval` |
-| `origin_period_id` | UUID | yes | FK `payroll_periods` RESTRICT; set iff `late_approval` |
-| `approval_id` | UUID | yes | FK `session_closeout_approvals` RESTRICT; set for `hours_correction` and for a closeout's `late_approval`; `NULL` for a cancellation's `late_approval` (#443 D8) |
+| `kind` | VARCHAR(20) | no | `late_approval` \| `hours_correction` \| `manual` \| `carry_forward` (no `pay_event_change`, #111 E3) |
+| `tutor_user_id` | UUID | no | FK `users` RESTRICT; composite FKs, below |
+| `target_period_id` | UUID | no | the tutor's earliest `open` period at insert (P9); composite FK, below |
 | `amount` | NUMERIC(14,2) | no | `<> 0` (P9) |
-| `reason` | TEXT | yes | trimmed, 1–1000; required for `manual` |
-| `source_key` | TEXT | yes | **UNIQUE**; `approval:<approval_id>`, `cancellation:<class_session_id>` (#443 D8), `event:<line_id>:<n>`; `NULL` iff `manual` |
+| `origin_line_id` | UUID | yes | composite FK, below; the origin of an `hours_correction` (#111 E2) |
+| `origin_period_id` | UUID | yes | FK `payroll_periods` RESTRICT; the finalized period a `late_approval` belongs to, or a `carry_forward`'s source |
+| `class_session_id` | UUID | yes | FK `class_sessions` RESTRICT |
+| `approval_id` | UUID | yes | FK `session_closeout_approvals` RESTRICT; the revision paid |
+| `paired_adjustment_id` | UUID | yes | FK `payroll_adjustments` RESTRICT (M7-08c's carry pair) |
+| `reason` | TEXT | yes | trimmed, 1–1000 |
+| `source_key` | TEXT | yes | **UNIQUE**; `approval:<approval_id>` or `cancellation:<class_session_id>` |
 | `created_by_user_id` | UUID | yes | FK `users` RESTRICT; `NULL` for the job |
+| `line_kind`, `service_date`, `class_kind`, `minutes` | | yes | the snapshot's session fields: a session line kind, the date, the class kind, the minutes priced (`>= 0`) |
+| `rate_model`, `rate`, `compensation_rate_id` | | yes | the rate snapshot (`rate` NUMERIC(14,4), FK `compensation_rates` RESTRICT), all set or all `NULL` |
+| `session_pay_rule_id` | UUID | yes | FK `session_pay_rules` RESTRICT; set iff `line_kind` is an event |
+| `cumulative_sessions`, `cohort_sessions` | INTEGER | yes | set iff `rate_model = 'per_course'` (M7-08d) |
 
-- **Composite FKs:** `(target_period_id, tutor_user_id)` → `payroll_periods (id, tutor_user_id)`; `(origin_line_id, tutor_user_id)` → `payroll_lines (id, tutor_user_id)`.
-- **Amount:** `target − (origin line + earlier adjustments of that line)`, using the origin line's rate snapshot. `late_approval` uses the service date's rate and rule.
-- **Idempotency:** the job `payroll:post_adjustments` finds work by anti-join on `source_key`; `manual` rows use the API `Idempotency-Key` plus `finance.correction` reauthentication. The table is `Audited`, so the job inserts through the ORM in a savepoint, not with `ON CONFLICT` (§6, ADR-0006 #90 clarification).
-- **Display:** a line of kind `adjustment` in the target period. `recalculate` rebuilds it from this row.
+- **CHECKs per kind (#111 A2, P8 refined):**
+  - `late_approval`: `class_session_id`, `origin_period_id`, `source_key` and the session snapshot set; `origin_line_id`, `reason`, `created_by_user_id`, `paired_adjustment_id` `NULL`; `approval_id` set iff `source_key` starts `approval:`;
+  - `hours_correction`: `origin_line_id`, `class_session_id`, `approval_id`, `source_key` and the session snapshot set; `origin_period_id`, `reason`, `paired_adjustment_id` `NULL`;
+  - `manual`: `reason` and `created_by_user_id` set; `source_key`, the whole snapshot, `paired_adjustment_id`, `approval_id`, `origin_period_id` `NULL`; at most one of `origin_line_id` and `class_session_id`;
+  - `carry_forward`: `origin_period_id` and `created_by_user_id` set; `source_key`, the whole snapshot, `origin_line_id`, `class_session_id`, `approval_id` `NULL`.
+- **Composite FKs:** `(target_period_id, tutor_user_id)` → `payroll_periods (id, tutor_user_id)`; `(origin_line_id, tutor_user_id)` → `payroll_lines (id, tutor_user_id)`. `UNIQUE (id, target_period_id, tutor_user_id)` is the target of the line's FK (§11.6).
+- **Indexes:** `UNIQUE (source_key)`; **first payment per session** `uq_payroll_adjustments_first_payment`: `UNIQUE (class_session_id) WHERE kind = 'late_approval' OR (kind = 'manual' AND class_session_id IS NOT NULL)` (P13); `(target_period_id)`, `(origin_line_id)`, `(class_session_id) WHERE class_session_id IS NOT NULL`.
+- **Amounts (#111 E2):** a `late_approval` is what the session line would have been, from the same functions, on the service date's basis, with E4's salaried dates (§13.2). An `hours_correction` is the current revision priced on the origin's snapshot (rate model, rate, and the rule on the service date) minus what was paid so far: the origin session line's amount and every earlier `late_approval` and `hours_correction` of the session. Never `0`; a zero difference writes nothing.
+- **Idempotency:** the job finds work by anti-join and inserts through the ORM in a savepoint (the table is `Audited`); a `source_key` or first-payment conflict rolls the savepoint back and counts as done. `manual` rows are M7-08c's, with the API `Idempotency-Key` and `finance.correction` reauthentication.
+- **Display:** exactly one line of kind `adjustment` in the target period, inserted in the same transaction and never rebuilt. A downgrade of `0080` refuses while a row exists.
 
 ### 11.10 `payroll_payments` (#112)
 
@@ -1386,11 +1397,12 @@ A generated expense has `incurred_on = period_start` and `due_on = period_start 
 | P5 | `total_amount` = Σ lines, and it is ≥ `0.00` | App (under the period lock) for the sum of **all** the lines and the refusal at `prepare`; DB (`CHECK`) for ≥ `0.00`, the backstop | #110 |
 | P6 | A line's tutor is its period's tutor; its `service_date` is inside the period, except `adjustment` lines (which, with `salary` and `pay_item` lines, have none); a `salary` line's piece is inside the period | DB (composite FK) for the tutor; App (under the period lock) for the dates | #107, #108 |
 | P7 | Σ valid payments ≤ `total_amount`; payments only on finalized periods | App (under the period lock) | #112 |
-| P8 | Every adjustment has `origin_line_id`, except `late_approval`, which has `class_session_id` and `origin_period_id` | DB (`CHECK`) | #111 |
+| P8 | Each adjustment kind names exactly its references (§11.9): `hours_correction` its origin line, session and revision; `late_approval` its session and origin period (and its revision iff keyed `approval:`); `manual` a reason and at most one of a line and a session; `carry_forward` its origin period | DB (`CHECK` per kind) | #111 |
 | P9 | An adjustment's target was open at insert; adjustment amounts aren't 0; `source_key` is unique | App (under the period lock) for the target; DB (`CHECK`, `UNIQUE`) for the others | #111 |
 | P10 | Payslip numbers are gap-free per series and year; one payslip per period | DB (`payslips.number` and `payroll_period_id` UNIQUE) + App (`number_series` row lock) | #113 |
 | P11 | A one-time item reaches at most one finalized period | App (#109 E3's placement, under the period lock, and #110's oldest-first finalize). Placement reaches a later period only once the earlier is finalized, so a line in a later period can't come from a route: `prepare` drops it, and a prepared period holding one goes stale (#110 H10) | #109, #110 |
 | P12 | A pay item's line is its tutor's | DB (composite FK) | #109 |
+| P13 | Work in a finalized period has at most one first payment, and the lines plus adjustments of a session equal its current revision priced on the origin's snapshot | DB (`uq_payroll_adjustments_first_payment`) for the first; App (the job, under the target period lock) for the sum | #111 |
 | X1 | Expense `net ≥ 0`, `open ≥ 0` | App (under the expense lock) | #115 |
 | X2 | One expense per `(expense_template_id, period_start)` | DB (partial UNIQUE) | #116 |
 | X3 | Posted expense rows never change | DB (triggers, §5.1) | #115 |
@@ -1410,8 +1422,10 @@ Nothing below is stored.
   1. **`before_first_period` (#106 E4):** the tutor has periods and the date is before the first one's `starts_on`. No terms change can fix it, so it stays on the staff list and doesn't block `prepare`; Finance pays it with a one-time item. Nothing links the two, so it stays listed.
   2. **`no_pay_terms`:** no terms, or `pay_frequency NULL`, on the date. A tutor with no periods at all lands here, since adding terms opens a period.
   3. **`no_rate`:** terms, but no rate model and no salary. A `per_course` version outside its cohort's first date is `no_rate` too (#442 B3). A cohort paid `per_course` needs terms on the date and nothing else.
-  - **Which items block `prepare` (#107 E12):** every item but `before_first_period` dated on or before that period's `ends_on`, in whatever status its own period is. A later-dated item doesn't. An item in a finalized period stays listed and blocking until it has a basis; #111's `late_approval` then pays it.
-  - **Paying finalized work (#443 D8, #111 to build):** a closeout's `late_approval` has `source_key` `approval:<approval_id>`. A cancellation has no approval, so its `late_approval` has `source_key` `cancellation:<class_session_id>` and `approval_id` `NULL`. Either kind leaves the list when it has a basis, and #111's job pays it from then on. P8 is unchanged: both have `class_session_id` and `origin_period_id`.
+  - **Which items block `prepare` (#107 E12):** every item but `before_first_period` dated on or before that period's `ends_on`, in whatever status its own period is. A later-dated item doesn't. An item in a finalized period stays listed and blocking until it has a basis; the job's `late_approval` then pays it.
+  - **Paying finalized work (#443 D8, #111):** a closeout's `late_approval` has `source_key` `approval:<approval_id>`. A cancellation has no approval, so its `late_approval` has `source_key` `cancellation:<class_session_id>` and `approval_id` `NULL`. Either kind leaves the list when it has a basis, and the job pays it within 15 minutes.
+  - **Settled work (#111 E7):** a session an adjustment names (`class_session_id`, any kind) is never listed and never blocks, even if its basis later goes. The job never pays it a second time.
+  - **Salaried dates (#111 E4):** on a date a `salary` line of a finalized period paid, the list and the job judge work as it stood at that period's finalize (the row's `updated_at`, its database time): a rate version written later is ignored, and the salary covers whatever has no rate, a late stop included. Covered work is neither listed nor paid. Any other date uses the current basis.
   - **A refused `prepare` (#110 E3):** one transaction, so a refusal rolls its recalculation back, and the `409` lists work the Unresolved page may not show yet. `details.items` names it, and the page then runs `recalculate`, which commits.
   - **The order in #110 (#443 D9):** `prepare` runs `recalculate` first, then `blocking_work`, so a line a recalculation drops has become an item before the check. `finalize` calls `blocking_work` again, because work approved after `prepare` with no basis has no draft and no line, so the drift comparison can't see it.
   - Work paid by a line whose basis later goes isn't listed: the line pays it until a `recalculate` drops it.
@@ -1462,7 +1476,7 @@ Line writes are serialized by the period row lock (§15); the trigger is the bac
 - **After-lock approvals:** an approval committed after a period's finalize sees no line and lands as a `late_approval` adjustment (E11). One committed between `prepare` and `finalize` with a basis is caught by the drift comparison (`409 payroll_period_stale`); one with no basis has no draft, so `finalize`'s call to `blocking_work` catches it (#443 D9).
 - **Jobs (`queueing_lock`, natural keys):**
   - `payroll:open_periods`, daily at 07:50 UTC, on `(tutor_user_id, starts_on)`, one Unit of Work per tutor. `payroll_periods` isn't `Audited`, so it uses `ON CONFLICT DO NOTHING`.
-  - `payroll:post_adjustments`, every 15 minutes, by anti-join on `source_key`, one Unit of Work per adjustment: the target period `FOR UPDATE` → the insert in a savepoint. Closeout corrections may enqueue it after commit.
+  - `payroll:post_adjustments`, every 15 minutes, nothing else enqueues it (#111 E10). The selection reads with no lock. One Unit of Work per adjustment (#111 B4): the terms-and-periods advisory lock, only when a period must be opened → the target period `FOR UPDATE`, re-read, the next open one if its status changed → the versions `FOR KEY SHARE` → the facts re-read and the amount computed → the adjustment in a savepoint (a key or first-payment conflict counts as done) → its line. A rate delete waits for it and then meets the snapshot's foreign key (`409 compensation_rate_in_use`), or the run waits for the delete and sees no basis. It locks only the target, so a `finalize` of an earlier period never waits on it.
   - `finance:generate_recurring_expenses`, daily at 07:55 UTC, on `(expense_template_id, period_start)`, one Unit of Work per template: the template row `FOR UPDATE` → each due period in a savepoint → `next_period_start`.
 
 ## 16. Payroll and expense indexes
@@ -1541,7 +1555,7 @@ Each M7 issue, the ADR-0017 decision items it relies on, and the tables it creat
 | #108 M7-05 Salary and proration | E1 (salary plus extras), E7 (configurable basis, `Money.prorate`, review through line display) | `payroll_lines` (`salary`), `payroll_settings` (`salary_proration_basis`) |
 | #109 M7-06 Bonuses and deductions | E8 (recurring per period on `(pay_item_id, payroll_period_id)`, one line per item, fixed amounts) | `pay_item_types`, `pay_items`, `payroll_lines` (`pay_item`) |
 | #110 M7-07 Workflow and lock | E9 (negative total, named events), E10 (states, return, drift check, duty separation, inbox, triggers, notifications), E12 (`payroll.prepare`, `payroll.finalize`, reauthentication), ADR-0006 E6 (key); P4, P5, P11 proved | `payroll_periods` (migration `0079`: the return columns), `payroll_lines` |
-| #111 M7-08 Corrections after lock | E11 (kinds, earliest open target, origin line reference and the `late_approval` exception, `source_key`, `payroll:post_adjustments`), E12 (`finance.correction`); P8, P9 | `payroll_adjustments`, `payroll_lines` (`adjustment`) |
+| #111 M7-08 Corrections after lock | E11 and its #111 notes (E2 one key per revision, E3 no `pay_event_change`, E4 salaried dates, E6 earliest open target, E7 settled work, E8 negative finalize, `payroll:post_adjustments`), E12 (`finance.correction`, M7-08c); P8, P9, P13; migration 0080 | `payroll_adjustments`, `payroll_lines` (`adjustment`) |
 | #112 M7-09 Payroll payments | E12 (`payroll.payment.record`, reversals), E13 (finalized only, partial, reference and note with no file, key, duplicate rejected); P7 | `payroll_payments`, `payroll_payment_reversals` |
 | #113 M7-10 Earnings portal, payslips | E12 (tutors by record policy, same `404`), E14 (`P-YYYY-NNNNNN`, tutor's language, finalized-only earnings, non-fiscal statement); P10 | `payslips`, `number_series` |
 | #114 M7-11 Categories, vendors | E12 (`expense.configure`), E15 (stable ids, current name shown instead of the name used at the time, deactivation) | `expense_categories`, `vendors` |

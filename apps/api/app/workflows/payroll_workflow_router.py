@@ -165,8 +165,9 @@ async def return_payroll_period(
             " (payroll_review_outdated); an earlier period isn't finalized"
             " (payroll_period_out_of_order, with details.earliest_period_id and"
             " details.status); the facts changed (payroll_period_stale, with"
-            f" details.added, removed and changed); {_UNRESOLVED}; or the total is"
-            " beyond the money range (payroll_amount_out_of_range)."
+            f" details.added, removed and changed); {_UNRESOLVED}; the total is"
+            " beyond the money range (payroll_amount_out_of_range); or it is below"
+            " zero (payroll_negative_total). A refusal changes nothing."
         ),
     },
 )

@@ -45,6 +45,14 @@ const line = (n: number, overrides: Partial<PayrollLine>): PayrollLine => ({
   pay_item_id: null,
   pay_item_type_name: null,
   pay_item_description: null,
+  payroll_adjustment_id: null,
+  adjustment_kind: null,
+  adjustment_reason: null,
+  adjustment_class_session_id: null,
+  adjustment_service_date: null,
+  adjustment_class_kind: null,
+  adjustment_origin_line_id: null,
+  adjustment_origin_period_id: null,
   ...overrides,
 });
 
@@ -142,9 +150,9 @@ export const LINE_DEDUCTION = line(10, {
   pay_item_type_name: 'Préstamo',
   pay_item_description: 'Abono al préstamo',
 });
-/** #111's kind, not in the types yet (C9). */
+/** #111's kind (C9); M7-08b renders its adjustment fields. */
 export const LINE_ADJUSTMENT = line(11, {
-  kind: 'adjustment' as PayrollLine['kind'],
+  kind: 'adjustment',
   amount: '50.00',
   service_date: '2026-10-12',
 });

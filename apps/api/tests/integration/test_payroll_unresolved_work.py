@@ -11,6 +11,7 @@ are real (:func:`worked`). Real cancellations, substitutes and cohorts are in
 The center is ``America/Mexico_City``, UTC-6 in November.
 """
 
+import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
@@ -34,7 +35,8 @@ from app.modules.identity.permissions import (
     TUTOR,
 )
 from app.modules.payroll import service as payroll
-from app.workflows import payroll_calculation
+from app.workflows import payroll_adjustments, payroll_calculation
+from app.workflows.payroll_adjustments import PostAdjustmentsRunResult
 from tests.conftest import FrozenClock, frozen_clock
 from tests.integration.auth_support import (
     CreatedUser,
@@ -43,7 +45,7 @@ from tests.integration.auth_support import (
     create_user,
 )
 from tests.integration.catalog_support import count_statements, get
-from tests.integration.conftest import run_sql
+from tests.integration.conftest import run_sql, settings_for
 from tests.integration.invitation_support import sign_in
 from tests.integration.lifecycle_support import code_of, in_uow
 from tests.integration.payroll_calculation_support import (
@@ -181,6 +183,10 @@ def blocking(url: str, period: Any) -> list[str]:
         return await payroll_calculation.blocking_work(session, summary)
 
     return [str(item.class_session_id) for item in in_uow(url, read)]
+
+
+def run_adjustments(url: str) -> PostAdjustmentsRunResult:
+    return asyncio.run(payroll_adjustments.run_post_adjustments(settings_for(url)))
 
 
 def listed(client: TestClient, cookie: SetCookie, **params: Any) -> Any:
@@ -731,37 +737,29 @@ def test_the_readers_take_no_lock(module_seeded_url, owner, tutor):
 
 
 def test_only_a_session_sourced_line_keeps_work_off_the_list(
-    module_seeded_url, owner, tutor
+    module_seeded_url, client, owner, tutor
 ):
-    # #111's `adjustment` kind doesn't exist yet: the CHECKs refuse it, so they
-    # are dropped for this test and restored. The row is what #111 will write.
+    """#443 D10, #111 F2, on real rows: the job pays A late, so A is settled; B
+    has no basis and stays listed, although an ``adjustment`` line is in its
+    period."""
     url = module_seeded_url
-    period = add_period_row(url, tutor.id, "11-02", "11-08")
-    made = stored(url, owner, tutor, local("11-03"))
-    checks = run_sql(
-        url,
-        "SELECT conname, pg_get_constraintdef(oid) AS body FROM pg_constraint"
-        " WHERE conrelid = 'payroll_lines'::regclass AND contype = 'c'",
-    )
-    try:
-        for check in checks:
-            run_sql(url, f'ALTER TABLE payroll_lines DROP CONSTRAINT "{check.conname}"')
-        run_sql(
-            url,
-            "INSERT INTO payroll_lines (payroll_period_id, tutor_user_id, kind,"
-            " amount, class_session_id) VALUES (:p, :t, 'adjustment', 10, :s)",
-            {"p": period, "t": tutor.id, "s": made.id},
-        )
+    add_terms(url, tutor.id)
+    add_rate(url, tutor.id)
+    first = add_period_row(url, tutor.id, "11-02", "11-08")
+    second = add_period_row(url, tutor.id, "11-09", "11-15", first=False)
+    finalize(url, first, owner.id)
+    settled = worked(url, client, owner, tutor, local("11-03"))
+    unpaid = worked(url, client, owner, tutor, local("11-10"), kind="group")
 
-        assert items(url, tutor) == [(made.id, "no_pay_terms")]
-    finally:
-        run_sql(url, "DELETE FROM payroll_lines WHERE kind = 'adjustment'")
-        for check in checks:
-            run_sql(
-                url,
-                f'ALTER TABLE payroll_lines ADD CONSTRAINT "{check.conname}"'
-                f" {check.body}",
-            )
+    assert run_adjustments(url).posted == 1
+
+    [line] = lines(url, second)
+    assert line.kind == "adjustment"
+    # A's basis goes after it was paid: it stays settled.
+    add_rate(url, tutor.id, "11-03", rate=None)
+    assert items(url, tutor) == [(unpaid.id, "no_rate")]
+    assert settled.id not in dict(items(url, tutor))
+    assert blocking(url, second) == [unpaid.id]
 
 
 def test_f11_the_body_holds_no_amount_or_student_data(

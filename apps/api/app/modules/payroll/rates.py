@@ -423,6 +423,7 @@ def _rate_version_columns() -> Select[*tuple[Any, ...]]:
         CompensationRate.effective_from,
         CompensationRate.rate_model,
         CompensationRate.rate,
+        CompensationRate.created_at,
     ).order_by(CompensationRate.class_kind, CompensationRate.effective_from)
 
 
@@ -433,6 +434,7 @@ def _rate_version(row: Row[Any]) -> RateVersion:
         effective_from=row.effective_from,
         rate_model=row.rate_model,
         rate=row.rate,
+        created_at=row.created_at,
     )
 
 

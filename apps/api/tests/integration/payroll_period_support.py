@@ -22,9 +22,25 @@ def clear_pay_items(url: str) -> None:
     run_sql(url, "DELETE FROM pay_item_types")
 
 
+def clear_adjustments(url: str) -> None:
+    """No adjustments and no adjustment lines. The table is append-only and the
+    two reference each other, so every trigger of both is off meanwhile, the
+    foreign keys' included (a test database runs as a superuser)."""
+    tables = ("payroll_lines", "payroll_adjustments")
+    for table in tables:
+        run_sql(url, f"ALTER TABLE {table} DISABLE TRIGGER ALL")
+    try:
+        run_sql(url, "DELETE FROM payroll_lines WHERE kind = 'adjustment'")
+        run_sql(url, "DELETE FROM payroll_adjustments")
+    finally:
+        for table in tables:
+            run_sql(url, f"ALTER TABLE {table} ENABLE TRIGGER ALL")
+
+
 def reset(url: str) -> None:
-    """No lines, terms or periods, payroll off, the seeded anchor and
-    basis."""
+    """No adjustments, lines, terms or periods, payroll off, the seeded anchor
+    and basis."""
+    clear_adjustments(url)
     lines = "ALTER TABLE payroll_lines {} TRIGGER payroll_lines_no_finalized_change"
     run_sql(url, lines.format("DISABLE"))
     run_sql(url, "DELETE FROM payroll_lines")
@@ -115,6 +131,7 @@ def finalize(url: str, period: uuid.UUID, by: uuid.UUID) -> None:
     run_sql(
         url,
         "UPDATE payroll_periods SET status = 'finalized', finalized_at = now(),"
-        " finalized_by_user_id = :by, total_amount = 0 WHERE id = :id",
+        " finalized_by_user_id = :by, total_amount = 0, updated_at = now()"
+        " WHERE id = :id",
         params,
     )

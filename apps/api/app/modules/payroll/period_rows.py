@@ -7,6 +7,8 @@ terms refusal reads periods and the job reads terms, and a first write has no
 period row to lock, so neither side can miss the other. It comes before
 ``payroll_periods FOR UPDATE``, which stays the last business lock of payroll.
 A terms write and a job unit are both short, and terms writes are rare.
+``payroll:post_adjustments`` takes it too, only when it must open a period
+(#106 E10, #111 D4): :func:`open_period_for_adjustment`.
 
 Every function runs in the caller's Unit of Work and never commits.
 """
@@ -24,7 +26,12 @@ from app.modules.payroll.models import (
     PayrollPeriod,
     TutorPayTerms,
 )
-from app.modules.payroll.periods import PeriodSpan, TermsVersion, next_period
+from app.modules.payroll.periods import (
+    PeriodSpan,
+    TermsVersion,
+    adjustment_period,
+    next_period,
+)
 from app.modules.payroll.settings import biweekly_anchor, payroll_starts_on
 
 PAYROLL_PERIODS_LOCK_KEY: Final = int.from_bytes(b"clsPyPrd", "big")
@@ -131,4 +138,53 @@ async def _last_ends_on(session: AsyncSession, tutor_user_id: uuid.UUID) -> date
         select(func.max(PayrollPeriod.ends_on)).where(
             PayrollPeriod.tutor_user_id == tutor_user_id
         )
+    )
+
+
+async def open_period_for_adjustment(
+    session: AsyncSession, tutor_user_id: uuid.UUID, *, today: date
+) -> None:
+    """A tutor with no ``open`` period gets one (#111 E6, D3, D4), under the
+    advisory lock: first by the normal rule, as the daily job would, and if that
+    opens nothing (a leaver), one period for the adjustment, from the day after
+    the last one, with the last frequency, to that calendar's natural end
+    (:func:`~app.modules.payroll.periods.adjustment_period`). The caller locks
+    and re-reads whichever is now the earliest open period."""
+    await open_due_periods(session, tutor_user_id, today=today)
+    has_open = await session.scalar(
+        select(PayrollPeriod.id)
+        .where(
+            PayrollPeriod.tutor_user_id == tutor_user_id,
+            PayrollPeriod.status == "open",
+        )
+        .limit(1)
+    )
+    if has_open is not None:
+        return
+    last = (
+        await session.execute(
+            select(PayrollPeriod.ends_on, PayrollPeriod.pay_frequency)
+            .where(PayrollPeriod.tutor_user_id == tutor_user_id)
+            .order_by(PayrollPeriod.ends_on.desc())
+            .limit(1)
+        )
+    ).first()
+    if last is None:  # pragma: no cover - finalized work has a period
+        return
+    span = adjustment_period(
+        last_ends_on=last.ends_on,
+        last_frequency=last.pay_frequency,
+        terms=await terms_versions(session, tutor_user_id),
+        anchor=await biweekly_anchor(session),
+    )
+    await session.execute(
+        insert(PayrollPeriod)
+        .values(
+            tutor_user_id=tutor_user_id,
+            starts_on=span.starts_on,
+            ends_on=span.ends_on,
+            pay_frequency=span.pay_frequency,
+            is_first_period=False,
+        )
+        .on_conflict_do_nothing(constraint=PERIOD_START_KEY)
     )
