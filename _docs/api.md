@@ -7141,20 +7141,23 @@ are in `app/workflows/payroll_compensation_router.py` and
 - **Target:** `{tutor_user_id}` is a user holding the `tutor` role now, in any
   account state, so a leaver who is archived can still get a stop row. Anything
   else is `404 not_found`. The rows of a user who lost the role stay stored.
-- **A rate under a finalized line (#110 E5, narrowing #105 E4, QA D1):** `POST
-  …/rates` answers `422 effective_from_under_finalized_line` when the new version,
-  in any direction, would re-price a finalized line of that tutor and class kind.
-  The window runs from `effective_from` to the next version of that kind. For
-  `individual` and `group` it is compared with the line's `service_date`. For
-  `course` it is compared with the **cohort's first date**, where a course line
-  looks up its version, and an ordinary (`per_hour`, `per_session`) course line
-  also with its own date. A later `service_date` alone never refuses a per-course
-  line. `details.latest_finalized_on` is the newest date taken over. Correcting: a
-  new version after that date, and a `manual` adjustment (#111) for what was paid.
-  `no_rate` work has no line and a "covered by salary" line no rate snapshot, so a
-  back-dated rate stays the exit of unresolved work, for courses too. The insert
-  first locks the tutor's not-finalized periods, so it can't race a finalize. A
-  late stop or a back-dated salary isn't refused.
+- **A rate under a finalized line (#110 E5, narrowing #105 E4, QA D1, D2):** `POST
+  …/rates` answers `422 effective_from_under_finalized_line` when the new version
+  would change the price of a finalized line of that tutor and class kind, whichever
+  way it moves it, and for no other reason. The window runs from `effective_from` to
+  the next version of that kind. `individual` and `group` compare it with the line's
+  `service_date`. For `course` it goes by the line's model and the version's:
+  a `per_course` line is refused when the window holds its **cohort's first date**,
+  any model. A `per_hour` or `per_session` course line is refused when the window
+  holds its own date, any model, and when it holds the first date only for a
+  `per_course` version, which would turn the cohort per-course. `details.latest_finalized_on`
+  is the newest date taken over, so a version after it passes, unless that day is
+  already the next version's. Correcting: a new version after that date, and a
+  `manual` adjustment (#111) for what was paid. `no_rate` work has no line and a
+  "covered by salary" line no rate snapshot, so a back-dated rate stays the exit of
+  unresolved work, for courses too. The insert first locks the tutor's not-finalized
+  periods, so it can't race a finalize. A late stop or a back-dated salary isn't
+  refused.
 - **Versions:** any `effective_from` is accepted, past or future, also between
   two versions. There is no `PATCH` or `PUT`: a correction is a delete and a
   new version. `status` is `current` (the version in effect on the center's

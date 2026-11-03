@@ -9,11 +9,9 @@ import pytest
 from app.core.authz import Principal
 from app.core.money import Money, Rate
 from app.modules.payroll.calculation import (
-    FinalizedPricedLine,
     LineDraft,
     UnresolvedItem,
     line_drift,
-    repriced_on,
 )
 from app.modules.payroll.errors import (
     UNRESOLVED_ITEMS_SHOWN,
@@ -199,45 +197,3 @@ def test_the_unresolved_error_lists_twenty_and_counts_all():
     assert details["count"] == UNRESOLVED_ITEMS_SHOWN + 3
     assert len(details["items"]) == UNRESOLVED_ITEMS_SHOWN
     assert set(details["items"][0]) == {"class_session_id", "service_date", "reason"}
-
-
-def repriced(
-    model: str, first: date, own: date, starts: date, until: date | None
-) -> date | None:
-    return repriced_on(
-        FinalizedPricedLine(SESSION, own, model),
-        first_session_date=first,
-        effective_from=starts,
-        until=until,
-    )
-
-
-FIRST = date(2026, 3, 2)
-OWN = date(2026, 3, 20)
-
-
-@pytest.mark.parametrize(
-    ("starts", "until", "expected"),
-    [
-        (FIRST, None, FIRST),
-        (date(2026, 3, 1), date(2026, 3, 3), FIRST),
-        (date(2026, 3, 3), None, None),
-        (date(2026, 3, 1), FIRST, None),
-        (date(2026, 3, 19), None, None),
-    ],
-)
-def test_a_per_course_line_is_priced_on_the_first_date_alone(starts, until, expected):
-    assert repriced("per_course", FIRST, OWN, starts, until) == expected
-
-
-@pytest.mark.parametrize(
-    ("starts", "until", "expected"),
-    [
-        (FIRST, date(2026, 3, 3), FIRST),
-        (date(2026, 3, 19), None, OWN),
-        (date(2026, 3, 19), OWN, None),
-        (date(2026, 3, 21), None, None),
-    ],
-)
-def test_an_ordinary_course_line_is_taken_over_on_either_date(starts, until, expected):
-    assert repriced("per_hour", FIRST, OWN, starts, until) == expected

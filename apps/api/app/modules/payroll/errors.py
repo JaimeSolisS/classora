@@ -184,8 +184,9 @@ class PayItemInUseError(AppError):
 class EffectiveFromUnderFinalizedLineError(AppError):
     """The new version would re-price a finalized line of this tutor and class
     kind (#110 E5). ``details.latest_finalized_on`` is the newest date it would
-    take over, the cohort's first date for a per-course line: correct with a
-    version after it, and a ``manual`` adjustment (#111) for what was paid."""
+    take over, the cohort's first date for a per-course line, so a version after
+    it passes: correct with one, and a ``manual`` adjustment (#111) for what was
+    paid."""
 
     status = 422
     code = "effective_from_under_finalized_line"

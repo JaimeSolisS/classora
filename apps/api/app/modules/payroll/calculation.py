@@ -221,25 +221,32 @@ def repriced_on(
     line: FinalizedPricedLine,
     *,
     first_session_date: date,
+    new_model: str | None,
     effective_from: date,
     until: date | None,
 ) -> date | None:
-    """The date on which a new ``course`` version, in force from
-    ``effective_from`` to ``until``, would price this finalized line, or ``None``
-    (#110 E5, the QA D1 ruling).
+    """The newest date on which a new ``course`` version of ``new_model``, in
+    force from ``effective_from`` to ``until``, would change this finalized line's
+    price, or ``None`` (#110 E5, QA D1, D2, D3). A date after the answer clears the
+    refusal: the window shrinks, so it can't take a new date.
 
-    Every ``course`` line looks up its version on the cohort's first date. A
-    ``per_course`` line stops there. An ordinary line is priced on its own date,
-    and only because the first date's version isn't ``per_course``, so a version
-    taking over either date changes it."""
+    - A ``per_course`` line is priced by the version on the cohort's first date,
+      and only there: whatever takes that date over changes it.
+    - An ordinary line is priced by the version on its own date, so whatever takes
+      that date over changes it. It reads the first date for one thing, that the
+      version there isn't ``per_course``, so only a ``per_course`` version can
+      change it from there. Any other model, a stop included, leaves it as it is,
+      and that is the way out for a ``no_rate`` first session."""
 
     def taken(day: date) -> bool:
         return effective_from <= day and (until is None or day < until)
 
-    if taken(first_session_date):
-        return first_session_date
-    if line.rate_model != PER_COURSE and taken(line.service_date):
+    if line.rate_model == PER_COURSE:
+        return first_session_date if taken(first_session_date) else None
+    if taken(line.service_date):
         return line.service_date
+    if new_model == PER_COURSE and taken(first_session_date):
+        return first_session_date
     return None
 
 

@@ -37,10 +37,10 @@ aren't affected.
 can't race a finalize, and refuses a version that would take over a date holding
 a finalized priced line of that class kind: ``422
 effective_from_under_finalized_line``. The window runs from ``effective_from`` to
-the next version of the kind. For ``course`` it is compared with the cohort's first
-date, where a ``course`` line looks up its version, not with the line's own date:
-a version refused is one that would re-price a finalized line, and no other (#110
-QA D1; :func:`~app.modules.payroll.calculation.repriced_on`). The first dates are
+the next version of the kind. For ``course`` the rule goes by the line's model and
+the new version's (#110 QA D1, D2; :func:`~app.modules.payroll.calculation.
+repriced_on`): a version refused is one that would change a finalized line's
+price, and no other. The first dates are
 ``scheduling``'s, so the workflow passes them in (``first_session_dates``).
 ``no_rate`` work has no line and "covered by salary" no rate snapshot, so a
 back-dated rate stays the way out of #443 D7's blocking item.
@@ -222,7 +222,12 @@ async def add_compensation_rate(
     until = await _next_rate_date(session, tutor_user_id, class_kind, effective_from)
     latest = (
         await _latest_repriced_course_date(
-            session, tutor_user_id, effective_from, until, first_session_dates
+            session,
+            tutor_user_id,
+            rate_model,
+            effective_from,
+            until,
+            first_session_dates,
         )
         if class_kind == COURSE
         else await latest_finalized_priced_date(
@@ -241,6 +246,7 @@ async def add_compensation_rate(
 async def _latest_repriced_course_date(
     session: AsyncSession,
     tutor_user_id: uuid.UUID,
+    rate_model: str | None,
     effective_from: date,
     until: date | None,
     first_session_dates: FirstSessionDates,
@@ -261,6 +267,7 @@ async def _latest_repriced_course_date(
                     first_session_date=first.get(
                         line.class_session_id, line.service_date
                     ),
+                    new_model=rate_model,
                     effective_from=effective_from,
                     until=until,
                 )
