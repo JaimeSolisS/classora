@@ -36,10 +36,14 @@ aren't affected.
 :func:`add_compensation_rate` first locks the tutor's not-finalized periods, so it
 can't race a finalize, and refuses a version that would take over a date holding
 a finalized priced line of that class kind: ``422
-effective_from_under_finalized_line``. The window runs to the next version of the
-kind. For ``course`` it has no upper end, because a per-course line is priced on
-its cohort's first date. ``no_rate`` work has no line and "covered by salary" no
-rate snapshot, so a back-dated rate stays the way out of #443 D7's blocking item.
+effective_from_under_finalized_line``. The window runs from ``effective_from`` to
+the next version of the kind. For ``course`` it is compared with the cohort's first
+date, where a ``course`` line looks up its version, not with the line's own date:
+a version refused is one that would re-price a finalized line, and no other (#110
+QA D1; :func:`~app.modules.payroll.calculation.repriced_on`). The first dates are
+``scheduling``'s, so the workflow passes them in (``first_session_dates``).
+``no_rate`` work has no line and "covered by salary" no rate snapshot, so a
+back-dated rate stays the way out of #443 D7's blocking item.
 
 **Lookups.** :func:`rate_in_effect` and :func:`terms_in_effect` return the
 version with the greatest ``effective_from <= on`` (W3.4), or ``None`` when
@@ -58,7 +62,7 @@ of an insert failing on the foreign key.
 """
 
 import uuid
-from collections.abc import Collection, Hashable, Sequence
+from collections.abc import Awaitable, Callable, Collection, Hashable, Mapping, Sequence
 from datetime import date
 from typing import Any, Final, cast
 
@@ -69,7 +73,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import RecordNotFoundError
 from app.core.money import Money, Rate
-from app.modules.payroll.calculation import RateVersion, TermsBasisVersion
+from app.modules.payroll.calculation import (
+    RateVersion,
+    TermsBasisVersion,
+    repriced_on,
+)
 from app.modules.payroll.errors import (
     CompensationRateExistsError,
     CompensationRateInUseError,
@@ -83,6 +91,7 @@ from app.modules.payroll.lines import (
     FOREIGN_KEY_REFUSALS,
     delete_lines_of_rate,
     delete_lines_of_terms,
+    finalized_course_kind_lines,
     latest_finalized_priced_date,
     lock_open_periods_of_tutor,
     lock_unfinalized_periods_of_tutor,
@@ -119,6 +128,11 @@ INSUFFICIENT_PRIVILEGE: Final = "42501"
 
 
 # --- Writes --------------------------------------------------------------------------
+
+type FirstSessionDates = Callable[
+    [Collection[uuid.UUID]], Awaitable[Mapping[uuid.UUID, date]]
+]
+"""Each session's cohort's first date, which ``scheduling`` knows (ADR-0002)."""
 
 
 async def _refuse_against_periods(
@@ -184,6 +198,7 @@ async def add_compensation_rate(
     effective_from: date,
     rate_model: str | None,
     rate: Rate | None,
+    first_session_dates: FirstSessionDates,
 ) -> uuid.UUID:
     """A new rate version; ``409 compensation_rate_exists`` on a taken date
     for this class kind, then ``422 effective_from_under_finalized_line``
@@ -204,22 +219,56 @@ async def add_compensation_rate(
         if RATE_KEY in str(exc.orig):
             raise CompensationRateExistsError() from None
         raise
-    latest = await latest_finalized_priced_date(
-        session,
-        tutor_user_id,
-        class_kind=class_kind,
-        effective_from=effective_from,
-        until=(
-            None
-            if class_kind == COURSE
-            else await _next_rate_date(
-                session, tutor_user_id, class_kind, effective_from
-            )
-        ),
+    until = await _next_rate_date(session, tutor_user_id, class_kind, effective_from)
+    latest = (
+        await _latest_repriced_course_date(
+            session, tutor_user_id, effective_from, until, first_session_dates
+        )
+        if class_kind == COURSE
+        else await latest_finalized_priced_date(
+            session,
+            tutor_user_id,
+            class_kind=class_kind,
+            effective_from=effective_from,
+            until=until,
+        )
     )
     if latest is not None:
         raise EffectiveFromUnderFinalizedLineError(latest)
     return version.id
+
+
+async def _latest_repriced_course_date(
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID,
+    effective_from: date,
+    until: date | None,
+    first_session_dates: FirstSessionDates,
+) -> date | None:
+    """The newest date on which this version would price a finalized ``course``
+    line, or ``None``. A session with no cohort is its own first date."""
+    lines = await finalized_course_kind_lines(session, tutor_user_id)
+    if not lines:
+        return None
+    first = await first_session_dates([line.class_session_id for line in lines])
+    return max(
+        (
+            day
+            for line in lines
+            if (
+                day := repriced_on(
+                    line,
+                    first_session_date=first.get(
+                        line.class_session_id, line.service_date
+                    ),
+                    effective_from=effective_from,
+                    until=until,
+                )
+            )
+            is not None
+        ),
+        default=None,
+    )
 
 
 async def _next_rate_date(

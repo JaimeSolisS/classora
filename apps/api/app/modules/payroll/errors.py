@@ -182,14 +182,14 @@ class PayItemInUseError(AppError):
 
 
 class EffectiveFromUnderFinalizedLineError(AppError):
-    """The new version would take over a date holding a finalized priced line of
-    this tutor and class kind (#110 E5). ``details.latest_finalized_on`` is the
-    newest such date: correct with a version after it, and a ``manual``
-    adjustment (#111) for what was paid."""
+    """The new version would re-price a finalized line of this tutor and class
+    kind (#110 E5). ``details.latest_finalized_on`` is the newest date it would
+    take over, the cohort's first date for a per-course line: correct with a
+    version after it, and a ``manual`` adjustment (#111) for what was paid."""
 
     status = 422
     code = "effective_from_under_finalized_line"
-    detail = "A finalized payroll line was priced from this date on."
+    detail = "This rate would change a finalized payroll line."
 
     def __init__(self, latest_finalized_on: date) -> None:
         super().__init__(

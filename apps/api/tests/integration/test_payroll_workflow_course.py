@@ -22,8 +22,9 @@ from app.modules.payroll import service as payroll
 from app.workflows import payroll_calculation, payroll_workflow
 from tests.conftest import frozen_clock
 from tests.integration.auth_support import auth_client
+from tests.integration.catalog_support import get, post
 from tests.integration.change_request_support import Scene, make_scene
-from tests.integration.conftest import short_lived_engine
+from tests.integration.conftest import run_sql, short_lived_engine
 from tests.integration.lifecycle_support import code_of
 from tests.integration.payroll_calculation_support import (
     add_period_row,
@@ -34,6 +35,7 @@ from tests.integration.payroll_calculation_support import (
     closed_out,
     lines,
 )
+from tests.integration.payroll_period_support import set_floor
 from tests.integration.payroll_workflow_support import (
     OK,
     OUT_OF_ORDER,
@@ -66,6 +68,7 @@ from tests.integration.test_payroll_pay_events import (
 from tests.integration.test_payroll_per_course import (
     amounts,
     cents,
+    day,
     grow,
     make_cohort,
     period_of,
@@ -122,6 +125,29 @@ def prepare_all(ctx: Ctx, who: Team, *periods: Any) -> None:
 def final(ctx: Ctx, who: Team, period: Any) -> Any:
     with frozen_clock(later(ctx)):
         return finalize(ctx.client, ctx.url, who.owner, period)
+
+
+def unresolved(ctx: Ctx, who: Team) -> list[Any]:
+    with frozen_clock(later(ctx)):
+        found: list[Any] = get(
+            ctx.client,
+            who.finance.cookie,
+            "/api/v1/payroll/unresolved-work",
+            tutor_user_id=str(ctx.tutor.id),
+        ).json()["items"]
+    return found
+
+
+def stable_rates(ctx: Ctx) -> list[Any]:
+    return [
+        (row.effective_from, row.rate)
+        for row in run_sql(
+            ctx.url,
+            "SELECT effective_from, rate FROM compensation_rates"
+            " WHERE tutor_user_id = :u ORDER BY effective_from",
+            {"u": ctx.tutor.id},
+        )
+    ]
 
 
 def total(ctx: Ctx, *periods: Any) -> Decimal:
@@ -488,6 +514,192 @@ def test_h9_a_run_overlapping_a_real_finalize_counts_each_session_once(
     assert amounts(url, two) == cents("333.33")
     lock_at(ctx.client, url, who, later(ctx), two)
     assert total(ctx, one, two) == Decimal("1000.00")
+
+
+# --- E5, QA D1: a course version is refused only if it re-prices a line -----
+
+
+def add_version(
+    ctx: Ctx,
+    who: Team,
+    on: str,
+    rate: str | None = "700",
+    *,
+    model: str | None = "per_course",
+) -> Any:
+    with frozen_clock(later(ctx)):
+        return post(
+            ctx.client,
+            who.owner.cookie,
+            f"/api/v1/payroll/tutors/{ctx.tutor.id}/rates",
+            {
+                "class_kind": "course",
+                "effective_from": on,
+                "rate_model": None if rate is None else model,
+                "rate": rate,
+            },
+        )
+
+
+def cohort_at(ctx: Ctx, offset: int, sessions: int = 2) -> Any:
+    """Mondays and Wednesdays from ``offset`` days after the first Monday."""
+    return make_cohort(
+        ctx, sessions, starts_on=ctx.tl.monday + timedelta(days=offset), weekdays=[1, 3]
+    )
+
+
+def finalized_cohort_b(ctx: Ctx, who: Team) -> None:
+    """QA D1's scene. The only version starts on day 14, cohort B on day 21. Period
+    one, days 0 to 13, is finalized empty, and period two pays B."""
+    set_floor(ctx.url, ctx.tl.monday.isoformat())
+    add_terms(ctx.url, ctx.tutor.id)
+    add_rate(
+        ctx.url, ctx.tutor.id, day(ctx, 14), "1000", kind="course", model="per_course"
+    )
+    one = period_of(ctx, ctx.tutor, 0, 14)
+    two = period_of(ctx, ctx.tutor, 14, 14)
+    cohort = cohort_at(ctx, 21)
+    teach(ctx, cohort, 0, 1)
+    lock_at(ctx.client, ctx.url, who, later(ctx), one, two)
+    assert amounts(ctx.url, two) == cents("500.00", "500.00")
+
+
+@pytest.fixture
+def no_floor_after(module_seeded_url: str) -> Iterator[None]:
+    yield
+    set_floor(module_seeded_url, None)
+
+
+def test_d1_a_no_rate_course_item_gets_its_rate_and_the_tutor_goes_on(
+    ctx, no_floor_after
+):
+    """The exit, through real routes: work approved late in a finalized period, no
+    version on its first date, a back-dated version, and the next period
+    finalizes."""
+    who = team(ctx)
+    finalized_cohort_b(ctx, who)
+    three = period_of(ctx, ctx.tutor, 28, 30)
+    late = cohort_at(ctx, 0)
+    teach(ctx, late, 0, 1)
+    assert len(unresolved(ctx, who)) == 2
+
+    with frozen_clock(later(ctx)):
+        refused = prepare(ctx.client, who.finance, three)
+    assert code(refused) == (409, "payroll_unresolved_work")
+    assert refused.json()["details"]["count"] == 2
+
+    created = add_version(ctx, who, day(ctx, 0))
+
+    assert created.status_code == 201, created.text
+    assert unresolved(ctx, who) == []
+    lock_at(ctx.client, ctx.url, who, later(ctx), three)
+    assert status_of(ctx.url, three) == "finalized"
+
+
+@pytest.mark.parametrize("rate", ["300", "9000", None])
+def test_d1_a_version_that_would_reprice_a_finalized_cohort_is_refused(
+    ctx, no_floor_after, rate
+):
+    """Between the day-14 version and B's first date, lower, higher or a stop."""
+    who = team(ctx)
+    finalized_cohort_b(ctx, who)
+    before = stable_rates(ctx)
+
+    response = add_version(ctx, who, day(ctx, 16), rate)
+
+    assert code(response) == (422, "effective_from_under_finalized_line")
+    assert response.json()["details"] == {"latest_finalized_on": day(ctx, 21)}
+    assert stable_rates(ctx) == before
+
+
+def test_d1_the_first_date_itself_is_taken_and_the_day_after_isnt(ctx, no_floor_after):
+    """QA ``s7``: B's lines run to day 23, and from day 22 a version can't re-price
+    B, so a new cohort can get its rate from a true date."""
+    who = team(ctx)
+    finalized_cohort_b(ctx, who)
+
+    assert code(add_version(ctx, who, day(ctx, 21))) == (
+        422,
+        "effective_from_under_finalized_line",
+    )
+    created = add_version(ctx, who, day(ctx, 22))
+    assert created.status_code == 201, created.text
+
+
+def test_d1_a_first_date_on_the_next_versions_date_isnt_taken_over(ctx, no_floor_after):
+    """B's first date resolves to the version of that very date."""
+    who = team(ctx)
+    set_floor(ctx.url, ctx.tl.monday.isoformat())
+    add_terms(ctx.url, ctx.tutor.id)
+    add_rate(
+        ctx.url, ctx.tutor.id, day(ctx, 21), "1000", kind="course", model="per_course"
+    )
+    period = period_of(ctx, ctx.tutor, 0, 28)
+    cohort = cohort_at(ctx, 21)
+    teach(ctx, cohort, 0, 1)
+    lock_at(ctx.client, ctx.url, who, later(ctx), period)
+
+    created = add_version(ctx, who, day(ctx, 14))
+
+    assert created.status_code == 201, created.text
+
+
+def test_d1_the_window_is_on_the_first_date_not_on_the_lines_own_date(
+    ctx, no_floor_after
+):
+    """Kills "E5 course bounded". The cohort starts Monday and the next version
+    is on Tuesday, so the only finalized line, Wednesday's, is past the window by
+    its own date, and still priced on Monday, by the version being taken over."""
+    who = team(ctx)
+    add_terms(ctx.url, ctx.tutor.id)
+    add_rate(ctx.url, ctx.tutor.id, rate="1000", kind="course", model="per_course")
+    add_rate(
+        ctx.url, ctx.tutor.id, day(ctx, 1), "5000", kind="course", model="per_course"
+    )
+    cohort = make_cohort(ctx, 2)  # Monday and Wednesday; N = 2
+    period = period_of(ctx, ctx.tutor, 2, 7, first=True)
+    teach(ctx, cohort, 1)
+    lock_at(ctx.client, ctx.url, who, later(ctx), period)
+    [line] = lines(ctx.url, period)
+    assert line.service_date.isoformat() == day(ctx, 2)
+    assert line.rate == Decimal("1000.0000")
+
+    response = add_version(ctx, who, day(ctx, 0))
+
+    assert code(response) == (422, "effective_from_under_finalized_line")
+    assert response.json()["details"] == {"latest_finalized_on": day(ctx, 0)}
+
+
+def test_l3_an_hourly_course_line_refuses_a_per_course_version(ctx):
+    """#442 D6: a per-course version on the first date would re-price every line
+    of the cohort, though a later version covers the line's own date."""
+    who = team(ctx)
+    cohort = make_cohort(ctx, 2)
+    add_terms(ctx.url, ctx.tutor.id)
+    add_rate(ctx.url, ctx.tutor.id, rate="100", kind="course", model="per_hour")
+    period = period_of(ctx, ctx.tutor, 0, 7)
+    teach(ctx, cohort, 0, 1)
+    lock_at(ctx.client, ctx.url, who, later(ctx), period)
+
+    assert code(add_version(ctx, who, day(ctx, 0))) == (
+        422,
+        "effective_from_under_finalized_line",
+    )
+
+
+def test_l3_an_hourly_course_line_is_taken_over_on_its_own_date_too(ctx):
+    who = team(ctx)
+    cohort = make_cohort(ctx, 2)
+    add_terms(ctx.url, ctx.tutor.id)
+    add_rate(ctx.url, ctx.tutor.id, rate="100", kind="course", model="per_hour")
+    period = period_of(ctx, ctx.tutor, 0, 7)
+    teach(ctx, cohort, 0, 1)
+    lock_at(ctx.client, ctx.url, who, later(ctx), period)
+
+    response = add_version(ctx, who, day(ctx, 1), "150", model="per_hour")
+
+    assert code(response) == (422, "effective_from_under_finalized_line")
+    assert response.json()["details"] == {"latest_finalized_on": day(ctx, 2)}
 
 
 # --- J8: no false alarm, the event kinds -----

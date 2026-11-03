@@ -283,7 +283,7 @@ async def recalculate(
     return result
 
 
-async def _first_session_dates(
+async def first_session_dates(
     session: AsyncSession, class_session_ids: Collection[uuid.UUID], zone: str
 ) -> dict[uuid.UUID, date]:
     """Each of these sessions' cohort's first date, from the rows
@@ -333,7 +333,7 @@ async def _unresolved_candidates(
             ).where(payroll.has_no_session_line(cancellations.c.class_session_id))
         )
     ).all()
-    first_dates = await _first_session_dates(
+    first_dates = await first_session_dates(
         session,
         [row.class_session_id for row in approved if row.session_kind == COURSE],
         zone,

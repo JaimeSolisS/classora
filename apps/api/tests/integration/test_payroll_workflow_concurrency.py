@@ -780,6 +780,10 @@ def test_f5_the_period_reads_send_no_for_clause(module_seeded_url, owner, tutor)
 # --- L5: a rate insert can't race a finalize -----
 
 
+async def no_cohorts(_ids: Any) -> dict[uuid.UUID, date]:
+    return {}
+
+
 def adding_rate(tutor: CreatedUser) -> Step:
     def call(session: AsyncSession) -> Awaitable[Any]:
         return payroll.add_compensation_rate(
@@ -789,6 +793,7 @@ def adding_rate(tutor: CreatedUser) -> Step:
             effective_from=date(2026, 11, 1),
             rate_model="per_hour",
             rate=Rate("150"),
+            first_session_dates=no_cohorts,
         )
 
     return call

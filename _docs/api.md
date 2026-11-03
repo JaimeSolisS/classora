@@ -316,7 +316,7 @@ Codes in use today:
 | `payroll_period_out_of_order` | 409 | An earlier period of the tutor isn't finalized. `details.earliest_period_id` and `details.status` name the oldest. |
 | `payroll_period_stale` | 409 | The facts no longer give the prepared lines. `details.added`, `removed` and `changed` are counts. Return the period and prepare it again. |
 | `payroll_review_route_required` | 409 | The inbox's generic decision routes can't decide a payroll period. `details.review_path` is its page. |
-| `effective_from_under_finalized_line` | 422 | A new rate version would take over a date holding a finalized priced line of that tutor and class kind. `details.latest_finalized_on` is the newest such date. |
+| `effective_from_under_finalized_line` | 422 | A new rate version would re-price a finalized line of that tutor and class kind: for `course`, compared on the cohort's first date. `details.latest_finalized_on` is the newest date taken over. |
 | `payroll_amount_out_of_range` | 409 | A payroll line, or the period's total, is beyond the money range: nothing is written. `GET …/lines` answers it too when the stored lines sum beyond the range. `details.class_session_id` names the line's session; no amount is in the body. |
 | `pay_rule_values_mismatch` / `percent_out_of_range` | 422 | Field codes of a session pay rule body: a `percent` or `amount` that doesn't match `mode`, a `percent` outside 0 to 1000 (see Session pay rules). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
@@ -7141,15 +7141,18 @@ are in `app/workflows/payroll_compensation_router.py` and
 - **Target:** `{tutor_user_id}` is a user holding the `tutor` role now, in any
   account state, so a leaver who is archived can still get a stop row. Anything
   else is `404 not_found`. The rows of a user who lost the role stay stored.
-- **A rate under a finalized line (#110 E5, narrowing #105 E4):** `POST …/rates`
-  answers `422 effective_from_under_finalized_line`, with
-  `details.latest_finalized_on`, when the new version, in any direction, would take
-  over a date holding a finalized priced line of that tutor and class kind. The
-  window runs from `effective_from` to the next version of that kind; for `course`
-  it has no upper end, because a per-course line is priced on its cohort's first
-  date. Correcting: a new version after that date, and a `manual` adjustment (#111)
-  for what was paid. `no_rate` work has no line and a "covered by salary" line no
-  rate snapshot, so a back-dated rate stays the exit of unresolved work. The insert
+- **A rate under a finalized line (#110 E5, narrowing #105 E4, QA D1):** `POST
+  …/rates` answers `422 effective_from_under_finalized_line` when the new version,
+  in any direction, would re-price a finalized line of that tutor and class kind.
+  The window runs from `effective_from` to the next version of that kind. For
+  `individual` and `group` it is compared with the line's `service_date`. For
+  `course` it is compared with the **cohort's first date**, where a course line
+  looks up its version, and an ordinary (`per_hour`, `per_session`) course line
+  also with its own date. A later `service_date` alone never refuses a per-course
+  line. `details.latest_finalized_on` is the newest date taken over. Correcting: a
+  new version after that date, and a `manual` adjustment (#111) for what was paid.
+  `no_rate` work has no line and a "covered by salary" line no rate snapshot, so a
+  back-dated rate stays the exit of unresolved work, for courses too. The insert
   first locks the tutor's not-finalized periods, so it can't race a finalize. A
   late stop or a back-dated salary isn't refused.
 - **Versions:** any `effective_from` is accepted, past or future, also between

@@ -1,7 +1,8 @@
 """A back-dated rate under a finalized line (#110 E5, L; #442 QA round 3, D6).
 Lines are finalized by the real route. L6: ``test_payroll_per_course.py`` adds
 versions under lines finalized by SQL through ``add_rate``, which writes by SQL,
-so it doesn't reach the refusal and needs no change."""
+so it doesn't reach the refusal and needs no change. The ``course`` window, which
+compares cohort first dates, is in ``test_payroll_workflow_course.py``."""
 
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -192,6 +193,29 @@ def test_l1_the_window_ends_at_the_next_version_of_the_kind(
     # 2026-09-01 runs until 10-01, and the line is on 11-03.
     assert add_version(client, owner, tutor, "2026-09-01").status_code == 201
     assert code(add_version(client, owner, tutor, "2026-10-15")) == REFUSED
+
+
+def test_l1_a_line_on_the_next_versions_date_isnt_taken_over(
+    module_seeded_url, client, owner, finance, tutor
+):
+    """QA O1: the line on 11-03 is priced by the version of 11-03, so a version
+    running up to that date doesn't touch it."""
+    url = module_seeded_url
+    add_terms(url, tutor.id)
+    add_rate(url, tutor.id, "2000-01-01", "100")
+    add_rate(url, tutor.id, "2026-11-03", "120")
+    period = add_period_row(url, tutor.id, "11-02", "11-08")
+    approved_lesson(
+        client,
+        lesson(url, starts_at=datetime(2026, 11, 3, 6, 0, tzinfo=UTC), tutor=tutor),
+        owner.user,
+    )
+    locked(client, url, finance, owner, period)
+    assert lines(url, period)[0].service_date.isoformat() == "2026-11-03"
+
+    created = add_version(client, owner, tutor, "2026-11-01")
+
+    assert created.status_code == 201, created.text
 
 
 def test_l1_another_kind_and_another_tutor_dont_count(

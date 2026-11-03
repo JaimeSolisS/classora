@@ -161,8 +161,8 @@ async def add_pay_terms(
             " field, an unknown class kind or rate model, the rate"
             " (rate_invalid, rate_precision, rate_out_of_range, rate_negative),"
             " only one of rate model and rate (rate_model_rate_mismatch) or"
-            " per_course on another kind (rate_model_not_allowed). Or a finalized"
-            " priced line sits from this date on"
+            " per_course on another kind (rate_model_not_allowed). Or the version"
+            " would re-price a finalized line"
             " (effective_from_under_finalized_line, with"
             " details.latest_finalized_on)."
         ),
@@ -174,8 +174,8 @@ async def add_compensation_rate(
     body: CompensationRateCreate,
     uow: UnitOfWorkDep,
 ) -> CompensationRateItem:
-    """Add a rate version from any date, unless it would take over a finalized
-    priced line of this class kind. A null rate model and rate mean no rate for
+    """Add a rate version from any date, unless it would re-price a finalized
+    line. A null rate model and rate mean no rate for
     this class kind from that date."""
     return await payroll_compensation.add_compensation_rate(
         uow.session, principal, tutor_user_id, body

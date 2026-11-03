@@ -17,6 +17,7 @@ Statements: the list page is six, whatever its size (the zone, the three of
 """
 
 import uuid
+from collections.abc import Collection
 from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +35,7 @@ from app.modules.payroll.schemas import (
     PayTermsCreate,
     PayTermsItem,
 )
+from app.workflows import payroll_calculation
 from app.workflows.payroll_compensation_schemas import (
     CompensationTutor,
     PayrollTutorItem,
@@ -162,6 +164,11 @@ async def add_compensation_rate(
 ) -> CompensationRateItem:
     """``POST /api/v1/payroll/tutors/{id}/rates`` (G5)."""
     await _write_target(session, principal, tutor_user_id)
+
+    async def first_dates(ids: Collection[uuid.UUID]) -> dict[uuid.UUID, date]:
+        zone = await administration.get_center_time_zone(session)
+        return await payroll_calculation.first_session_dates(session, ids, zone)
+
     rate_id = await payroll.add_compensation_rate(
         session,
         tutor_user_id,
@@ -169,6 +176,7 @@ async def add_compensation_rate(
         effective_from=body.effective_from,
         rate_model=body.rate_model,
         rate=body.rate,
+        first_session_dates=first_dates,
     )
     today = await administration.center_today(session)
     return await _rate_item(session, tutor_user_id, rate_id, today)

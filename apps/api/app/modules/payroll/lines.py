@@ -32,12 +32,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import RecordNotFoundError
 from app.core.money import Money, MoneyRangeError
-from app.modules.payroll.calculation import FinalizedCourseLine, LineDraft
+from app.modules.payroll.calculation import (
+    FinalizedCourseLine,
+    FinalizedPricedLine,
+    LineDraft,
+)
 from app.modules.payroll.errors import (
     PayrollAmountOutOfRangeError,
     PayrollPeriodNotOpenError,
 )
 from app.modules.payroll.models import (
+    COURSE,
     PAY_ITEM,
     SALARY,
     SESSION_LINE_KINDS,
@@ -299,6 +304,31 @@ async def latest_finalized_priced_date(
     if until is not None:
         query = query.where(PayrollLine.service_date < until)
     return await session.scalar(query)
+
+
+async def finalized_course_kind_lines(
+    session: AsyncSession, tutor_user_id: uuid.UUID
+) -> list[FinalizedPricedLine]:
+    """This tutor's lines of ``course`` sessions in ``finalized`` periods with a
+    rate snapshot (#110 E5). One statement, no lock."""
+    rows = await session.execute(
+        select(
+            PayrollLine.class_session_id,
+            PayrollLine.service_date,
+            PayrollLine.rate_model,
+        )
+        .join(PayrollPeriod, PayrollPeriod.id == PayrollLine.payroll_period_id)
+        .where(
+            PayrollPeriod.status == FINALIZED,
+            PayrollLine.tutor_user_id == tutor_user_id,
+            PayrollLine.class_kind == COURSE,
+            PayrollLine.compensation_rate_id.is_not(None),
+        )
+    )
+    return [
+        FinalizedPricedLine(row.class_session_id, row.service_date, row.rate_model)
+        for row in rows
+    ]
 
 
 async def lock_open_periods_of_tutor(

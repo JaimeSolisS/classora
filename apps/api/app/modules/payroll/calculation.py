@@ -209,6 +209,41 @@ class LineDraft:
 
 
 @dataclass(frozen=True)
+class FinalizedPricedLine:
+    """What the rate refusal needs of a finalized ``course`` line (#110 E5)."""
+
+    class_session_id: uuid.UUID
+    service_date: date
+    rate_model: str
+
+
+def repriced_on(
+    line: FinalizedPricedLine,
+    *,
+    first_session_date: date,
+    effective_from: date,
+    until: date | None,
+) -> date | None:
+    """The date on which a new ``course`` version, in force from
+    ``effective_from`` to ``until``, would price this finalized line, or ``None``
+    (#110 E5, the QA D1 ruling).
+
+    Every ``course`` line looks up its version on the cohort's first date. A
+    ``per_course`` line stops there. An ordinary line is priced on its own date,
+    and only because the first date's version isn't ``per_course``, so a version
+    taking over either date changes it."""
+
+    def taken(day: date) -> bool:
+        return effective_from <= day and (until is None or day < until)
+
+    if taken(first_session_date):
+        return first_session_date
+    if line.rate_model != PER_COURSE and taken(line.service_date):
+        return line.service_date
+    return None
+
+
+@dataclass(frozen=True)
 class LineDrift:
     """How many lines differ between a prepared period and its facts (#110 D3)."""
 
