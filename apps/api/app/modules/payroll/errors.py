@@ -1,6 +1,6 @@
-"""Payroll errors (#105 G, #106 B, F, #441 C, #107 G, H6, #109, #110). Each
-``AppError`` renders as Problem Details (``app.core.errors``) and carries no
-amount."""
+"""Payroll errors (#105 G, #106 B, F, #441 C, #107 G, H6, #109, #110,
+M7-08c). Each ``AppError`` renders as Problem Details (``app.core.errors``) and
+carries no amount."""
 
 import uuid
 from collections.abc import Sequence
@@ -266,6 +266,59 @@ class PayrollNegativeTotalError(AppError):
     status = 409
     code = "payroll_negative_total"
     detail = "This payroll period's total is below zero."
+
+
+class PayrollLineNotFinalizedError(AppError):
+    """A ``manual`` adjustment names a line of an ``open`` or ``prepared``
+    period: such a line is rebuilt, so it is corrected by a run (M7-08c A3)."""
+
+    status = 409
+    code = "payroll_line_not_finalized"
+    detail = "This payroll line isn't in a finalized period."
+
+
+class PayrollWorkNotUnresolvedError(AppError):
+    """A ``manual`` adjustment names a session that isn't one of the tutor's
+    unresolved items now (M7-08c A4)."""
+
+    status = 409
+    code = "payroll_work_not_unresolved"
+    detail = "This work isn't waiting to be paid."
+
+
+class PayrollWorkBeforeFirstPeriodError(AppError):
+    """Work before the tutor's first period is paid with a one-time item
+    (#109 E4), never by a ``manual`` adjustment (M7-08c E2)."""
+
+    status = 409
+    code = "payroll_work_before_first_period"
+    detail = "Work before this tutor's first payroll period is paid with a bonus."
+
+
+class PayrollWorkSettledError(AppError):
+    """An adjustment already pays this session (#111 E7, M7-08c A4)."""
+
+    status = 409
+    code = "payroll_work_settled"
+    detail = "This work has already been paid by an adjustment."
+
+
+class PayrollTotalNotNegativeError(AppError):
+    """Only a negative total is carried forward (M7-08c C1). The amount is never
+    in the body."""
+
+    status = 409
+    code = "payroll_total_not_negative"
+    detail = "This payroll period's total isn't below zero."
+
+
+class PayrollNoPeriodError(AppError):
+    """The tutor has no payroll period at all, so an adjustment has nowhere to
+    land: pay terms open the first one (M7-08c D2)."""
+
+    status = 409
+    code = "payroll_no_period"
+    detail = "This tutor has no payroll period yet."
 
 
 class PayrollSelfFinalizeError(AppError):

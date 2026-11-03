@@ -49,6 +49,7 @@ from pydantic import (
     Field,
     ValidationInfo,
     field_validator,
+    model_validator,
 )
 from pydantic_core import PydanticCustomError
 
@@ -72,6 +73,7 @@ PERCENT_MAX: Final = Rate(1000)
 PAY_ITEM_TYPE_NAME_MAX: Final = 100
 PAY_ITEM_DESCRIPTION_MAX: Final = 500
 RETURN_REASON_MAX: Final = 1000
+ADJUSTMENT_REASON_MAX: Final = 1000
 
 
 def _in_range(value: date) -> date:
@@ -601,6 +603,77 @@ class PayrollPeriodReturn(BaseModel):
     @classmethod
     def _reason(cls, value: str) -> str:
         return _trimmed(value, RETURN_REASON_MAX)
+
+
+class PayrollAdjustmentCreate(BaseModel):
+    """``POST /api/v1/payroll/tutors/{id}/adjustments`` (M7-08c A1, E1, E7): a
+    ``manual`` adjustment on a finalized line (``origin_line_id``), on unresolved
+    work (``class_session_id``), or free (neither). ``amount`` is signed, never
+    ``0.00`` (``amount_zero``; ``money_*``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    amount: Money = Field(description="Signed: negative takes pay back. Never 0.00.")
+    reason: str = Field(
+        description=(
+            "Up to 1000 characters. The tutor reads it on the payslip once the"
+            " period is finalized."
+        )
+    )
+    origin_line_id: uuid.UUID | None = Field(
+        default=None,
+        description="A line of this tutor in a finalized period, to correct it.",
+    )
+    class_session_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "Unresolved work of this tutor to pay by hand: it is then settled,"
+            " and nothing pays it again."
+        ),
+    )
+
+    @field_validator("amount")
+    @classmethod
+    def _amount(cls, value: Money) -> Money:
+        if value.is_zero():
+            raise PydanticCustomError("amount_zero", "The amount can't be zero.")
+        return value
+
+    @field_validator("reason")
+    @classmethod
+    def _reason(cls, value: str) -> str:
+        return _trimmed(value, ADJUSTMENT_REASON_MAX)
+
+    @model_validator(mode="after")
+    def _one_reference(self) -> PayrollAdjustmentCreate:
+        if self.origin_line_id is not None and self.class_session_id is not None:
+            raise PydanticCustomError(
+                "adjustment_references_both",
+                "Name a line or a session, not both.",
+            )
+        return self
+
+
+class PayrollAdjustmentPosted(BaseModel):
+    """What ``POST …/adjustments`` answers (M7-08c A5, E6): no amount and no
+    reason, because the stored idempotent response holds it in clear. The page
+    refetches the target period's lines."""
+
+    id: uuid.UUID
+    kind: Literal["manual"]
+    tutor_user_id: uuid.UUID
+    target_period_id: uuid.UUID
+    created_at: datetime
+
+
+class PayrollCarryForward(BaseModel):
+    """What ``POST /api/v1/payroll/periods/{id}/carry-forward`` answers (M7-08c
+    C1, E6): the two periods and the two adjustments, ``+X`` here first. No
+    amount."""
+
+    period_id: uuid.UUID
+    target_period_id: uuid.UUID
+    adjustment_ids: list[uuid.UUID]
 
 
 class PayrollPeriodFinalize(BaseModel):

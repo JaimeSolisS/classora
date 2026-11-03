@@ -311,6 +311,12 @@ Codes in use today:
 | `payroll_period_not_prepared` | 409 | Returning or finalizing a period that isn't `prepared`. `details.status` is its status. |
 | `payroll_unresolved_work` | 409 | Work with no basis stops `prepare` or `finalize`. `details.count`, and `details.items`, at most 20, newest first: `class_session_id`, `service_date`, `reason`. No amount. |
 | `payroll_negative_total` | 409 | Preparing or finalizing a period whose lines total below `0.00` (#111 E8 for `finalize`). No amount in the body. |
+| `payroll_line_not_finalized` | 409 | A `manual` adjustment names a line of an `open` or `prepared` period (M7-08c). |
+| `payroll_work_not_unresolved` | 409 | A `manual` adjustment names a session that isn't one of the tutor's unresolved items now (M7-08c). |
+| `payroll_work_before_first_period` | 409 | A `manual` adjustment names `before_first_period` work: a one-time item pays it (M7-08c). |
+| `payroll_work_settled` | 409 | A `manual` adjustment names work an adjustment already pays (M7-08c). |
+| `payroll_total_not_negative` | 409 | Carrying forward a period whose total after the recalculation isn't below `0.00` (M7-08c). No amount. |
+| `payroll_no_period` | 409 | A `manual` adjustment for a tutor with no payroll period at all: pay terms open the first (M7-08c D2). |
 | `payroll_self_finalize` | 403 | The preparer can't finalize, and nobody finalizes their own pay; an Owner is excepted. `details.reason` is `preparer` or `own_pay`. |
 | `payroll_review_outdated` | 409 | The `prepared_at` sent isn't the period's: it was prepared again after the page was read. |
 | `payroll_period_out_of_order` | 409 | An earlier period of the tutor isn't finalized. `details.earliest_period_id` and `details.status` name the oldest. |
@@ -7337,9 +7343,12 @@ closeout, a cancellation or a reschedule.
   adjustment names is settled: never listed again, even if its basis later
   goes (#111 E7). On a date a finalized salary line paid, work is judged as it
   stood at that finalize: a later rate is ignored and the salary covers the rest,
-  so such work is neither listed nor paid (#111 E4). Nothing else marks an item
-  resolved, so `before_first_period` work paid by a one-time item stays listed;
-  resolving an item by hand is M7-08c. See `_docs/data-model.md` §13.2. #110 refuses `prepare`, after its
+  so such work is neither listed nor paid (#111 E4). A blocking item
+  (`no_pay_terms`, `no_rate`) is **paid by hand** with a `manual` adjustment naming
+  its session (M7-08c E2, see Manual adjustments and carry-forward): it is then
+  settled, gets no line from a run, and the job never posts for it.
+  `before_first_period` work is paid by a one-time item instead and stays listed,
+  since nothing links the two. See `_docs/data-model.md` §13.2. #110 refuses `prepare`, after its
   recalculation, and `finalize` on blocking items dated on or before the
   period's end.
 
@@ -7443,8 +7452,8 @@ M7-08c, per-course corrections M7-08d, the pages M7-08b.
   E3:** `422 effective_from_inside_generated_period` unless the frequency is
   `null` or the same.
 - **A negative correction** can make an open period's total negative: `prepare`
-  then refuses it (`409 payroll_negative_total`), and later finalizes wait. M7-08c's
-  carry-forward is the way out.
+  then refuses it (`409 payroll_negative_total`), and later finalizes wait. The
+  carry-forward is the way out (below).
 - **A rate a posted adjustment priced on** can't be deleted (`409
   compensation_rate_in_use`).
 - **No pay in side channels:** the events `payroll.period_prepared`, `_returned` and
@@ -7453,6 +7462,77 @@ M7-08c, per-course corrections M7-08d, the pages M7-08b.
   response.
 - **Readers take no lock:** the list, `GET …/lines` and `blocking_work` have no `FOR`
   clause. A write that commits after the check is a later change, for drift or #111.
+
+### Manual adjustments and carry-forward
+
+Implemented by M7-08c (#463; spec §3, §7, W3.5; ADR-0017 E9 as amended, E11, E12
+and its M7-08c notes, orchestrator-recommended, pending owner review) in
+`app/workflows/payroll_manual_adjustments.py` and its router. Table:
+`_docs/data-model.md` §11.9. Each shows as an `adjustment` line through `GET
+…/lines`, with its kind, and the reason on a `manual` one. The pages are M7-08b.
+
+| Route | Access | Notes |
+|---|---|---|
+| `POST /api/v1/payroll/tutors/{tutor_user_id}/adjustments` | `require("payroll.manage")`, `require_recent_auth("finance.correction")`, `Idempotency-Key` | Body `{amount, reason, origin_line_id?, class_session_id?}`. `201` with `PayrollAdjustmentPosted`. |
+| `POST /api/v1/payroll/periods/{period_id}/carry-forward` | `require("payroll.prepare")`, `Idempotency-Key` | No body, no reauthentication. `201` with `PayrollCarryForward`. |
+
+- **Who:** Owners and Finance Staff. A delegated Administrator (`payroll.finalize`
+  only), Academic Coordinators, Tutors and families get `403`. A `manual`
+  adjustment of your own pay is `403 payroll_own_compensation`, an Owner excepted;
+  carrying your own period forward is allowed, like `prepare`. The target
+  period's `finalize` is the second person for both.
+- **The body of a `manual` one:** `amount` signed, never `0.00` (`amount_zero`),
+  within the money range (`money_*`); `reason` trimmed, 1 to 1000 characters
+  (`text_empty`, `text_too_long`, `text_invalid`), read by the tutor on the
+  payslip once finalized; at most one of `origin_line_id` and `class_session_id`
+  (`adjustment_references_both`); no other field.
+- **Three shapes:** **on a line** (`origin_line_id`): a line of this tutor in a
+  `finalized` period, any kind, for a wrong rate (after the new version,
+  #110 E5), a late stop or back-dated salary, or a `late_approval`'s own line;
+  another tutor's line and no line are the same `404`, a line of an `open` or
+  `prepared` period `409 payroll_line_not_finalized`. **On unresolved work**
+  (`class_session_id`): a current item of the tutor with a blocking reason,
+  classified again under the locks; already named by an adjustment `409
+  payroll_work_settled`, `before_first_period` `409
+  payroll_work_before_first_period`, anything else `409
+  payroll_work_not_unresolved`. Once written the work is settled: off the
+  Unresolved list and `blocking_work`, no line from a run (a rate added later
+  can't pay it again; in a per-course walk it still counts), and the job never
+  posts for it, a later revision included (another `manual` corrects it). A race
+  with the job's `late_approval` pays once: the loser is `409
+  payroll_work_settled`. **Free** (neither): for anything else.
+- **A leaver's stranded one-time item** (`placed_period: null`): delete the item,
+  then post a free `manual` with its reason. Both would pay twice once an
+  adjustment opens a period and a `recalculate` places the item there.
+- **`manual`, in order:** `401` → `403 csrf_failed` → `403 permission_denied` →
+  `403 reauth_required` → `422 text_invalid` for a lone surrogate → `400` key →
+  replay / `422 idempotency_key_reused` → `422` (the body) → `403
+  payroll_own_compensation` → `404` (the tutor) → the terms-and-periods advisory
+  lock → the tutor's not-finalized periods `FOR UPDATE`, oldest first → the
+  reference checks → the target: the tutor's earliest `open` period, opened as
+  #111 opens one if there is none (`409 payroll_no_period` for a tutor with no
+  period at all) → the row and its line. A refused reauthentication or body
+  claims no key.
+- **Carry-forward, in order:** `401` → `403` → `400` key → replay → the advisory
+  lock → `404` → the tutor's not-finalized periods `FOR UPDATE` → `409
+  payroll_period_not_open` (`details.status`) → `409 payroll_period_not_ended`
+  (`details.ends_on`; it must end before the center's today) → `recalculate`
+  (`409 payroll_amount_out_of_range`) → `409 payroll_total_not_negative` → the
+  target: the tutor's earliest `open` period starting after this one, opened if
+  there is none, a `prepared` one skipped (it still can't finalize before this
+  one) → `+X` here and `−X` there, `X` the negated total. The period's total is
+  then exactly `0.00`, and both still need `prepare` and `finalize`. Repeat it when
+  the next period is short too. Blocking work doesn't stop a carry; `prepare`
+  still refuses on it. **A leaver's** last period stays negative: record the
+  repayment or the write-off with a `manual` `+X` and its reason.
+- **`PayrollAdjustmentPosted`:** `id`, `kind` (`manual`), `tutor_user_id`,
+  `target_period_id`, `created_at`. **`PayrollCarryForward`:** `period_id`,
+  `target_period_id`, `adjustment_ids` (`+X` first). No amount and no reason,
+  because a stored idempotent response holds it in clear: the page refetches the
+  lines.
+- **Audit:** the rows are audited with `amount`, `rate` and `reason` masked and
+  the caller as actor. No named event, log line or notification carries an amount
+  or a reason.
 
 ### Bonuses and deductions
 

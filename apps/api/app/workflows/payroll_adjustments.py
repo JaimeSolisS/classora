@@ -415,20 +415,31 @@ async def select_candidates(
 
 
 async def lock_target(
-    session: AsyncSession, tutor_user_id: uuid.UUID, *, today: date
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID,
+    *,
+    today: date,
+    after: date | None = None,
 ) -> PayrollPeriodFacts:
-    """The tutor's earliest ``open`` period ``FOR UPDATE``, re-read (#111 E6).
-    A tutor with none gets one first, under the advisory lock (D3, D4)."""
+    """The tutor's earliest ``open`` period ``FOR UPDATE``, re-read (#111 E6),
+    starting after ``after`` if given (a carry-forward's target, M7-08c E3). A
+    tutor with none gets one first, under the advisory lock (D3, D4). A tutor
+    with no period at all has nowhere to open one: ``409 payroll_no_period``
+    (M7-08c D2; the job never selects such a tutor)."""
     for _ in range(TARGET_TRIES):
-        period_id = await payroll.earliest_open_period(session, tutor_user_id)
+        period_id = await payroll.earliest_open_period(
+            session, tutor_user_id, after=after
+        )
         if period_id is None:
             await payroll.lock_payroll_periods(session)
             await payroll.open_period_for_adjustment(
-                session, tutor_user_id, today=today
+                session, tutor_user_id, today=today, after=after
             )
-            period_id = await payroll.earliest_open_period(session, tutor_user_id)
-            if period_id is None:  # pragma: no cover - the opening always opens
-                raise RuntimeError("no period could be opened for an adjustment")
+            period_id = await payroll.earliest_open_period(
+                session, tutor_user_id, after=after
+            )
+            if period_id is None:
+                raise payroll.PayrollNoPeriodError()
         period = await payroll.lock_period(session, period_id)
         if period.status == OPEN:
             return period

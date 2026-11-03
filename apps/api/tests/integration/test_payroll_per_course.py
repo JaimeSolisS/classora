@@ -1012,7 +1012,8 @@ def test_f1_a_run_costs_the_same_whatever_the_sessions_and_cohorts(ctx):
     )
 
     assert (first.line_count, second.line_count) == (3, 30)
-    assert few == most == 17  # eighteen with the audit insert at commit
+    assert few == most == 18  # nineteen with the audit insert at commit
+    # (M7-08c B4: one more, the settled read, whatever the lines)
 
 
 def test_f1_a_salary_adds_two_statements_to_a_course_run(ctx):
@@ -1029,7 +1030,7 @@ def test_f1_a_salary_adds_two_statements_to_a_course_run(ctx):
     )
 
     assert result.line_count > 3
-    assert count == 19  # twenty with the audit insert at commit
+    assert count == 20  # twenty-one with the audit insert (M7-08c B4: +1)
 
 
 # --- Routes -----

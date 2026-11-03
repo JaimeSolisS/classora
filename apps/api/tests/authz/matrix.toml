@@ -2152,6 +2152,17 @@ deny = ["administrator", "academic_coordinator", "tutor", "student", "guardian"]
 
 [[route]]
 method = "POST"
+path = "/api/v1/payroll/periods/{period_id}/carry-forward"
+access = "permission"
+permission = "payroll.prepare"
+allow = ["owner", "finance_staff"]
+idempotency = true
+# M7-08c C1, E4: no body and no reauthentication. Without a key the allowed
+# roles get 400; a delegated Administrator gets 403 (payroll.prepare isn't
+# delegable). Rules, replays and races: tests/integration/test_payroll_carry_forward.py.
+
+[[route]]
+method = "POST"
 path = "/api/v1/payroll/periods/{period_id}/finalize"
 access = "permission"
 permission = "payroll.finalize"
@@ -2221,6 +2232,19 @@ access = "permission"
 permission = "payroll.view"
 allow = ["owner", "finance_staff"]
 # #105 E3, ADR-0017 E12: Administrators see no pay, so neither this list.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/adjustments"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+idempotency = true
+reauth = "finance.correction"
+json = { amount = "10.00", reason = "Ajuste" }
+# M7-08c A, E4: reauthentication, then the key: without one the reauthenticated
+# allowed roles get 400. Rules, replays and races:
+# tests/integration/test_payroll_manual_adjustments*.py.
 
 [[route]]
 method = "GET"

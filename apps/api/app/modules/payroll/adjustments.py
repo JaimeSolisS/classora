@@ -21,13 +21,21 @@ savepoint and then its one ``adjustment`` line, under the caller's lock of the
 target period. A ``source_key`` or first-payment conflict rolls the savepoint
 back and answers ``None``: someone else paid it.
 
+**A person's adjustments (M7-08c):** :func:`post_manual_adjustment` writes a
+``manual`` one the same way (a first-payment conflict answers ``None``), and
+:func:`post_carry_forward` the two rows of a carry, ``+X`` in the negative
+period and ``-X`` in the next open one, the second naming the first
+(``paired_adjustment_id``). :func:`settled_session_ids` is what keeps a settled
+session out of a run (M7-08c B1), :func:`settled_by_tutor` and
+:func:`line_period_status` are the reference checks of a ``manual`` one.
+
 Every function runs in the caller's Unit of Work and never commits.
 """
 
 import uuid
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Final
 
 from sqlalchemy import ColumnElement, and_, exists, insert, literal, or_, select
@@ -42,7 +50,9 @@ from app.modules.payroll.models import (
     ADJUSTMENT_FIRST_PAYMENT,
     ADJUSTMENT_SOURCE_KEY,
     AUTOMATIC_ADJUSTMENT_KINDS,
+    CARRY_FORWARD,
     LATE_APPROVAL,
+    MANUAL,
     SALARY,
     SESSION_LINE_KINDS,
     PayrollAdjustment,
@@ -306,19 +316,18 @@ async def paid_so_far(
 
 
 async def earliest_open_period(
-    session: AsyncSession, tutor_user_id: uuid.UUID
+    session: AsyncSession, tutor_user_id: uuid.UUID, *, after: date | None = None
 ) -> uuid.UUID | None:
-    """The tutor's earliest ``open`` period, read with no lock: the caller locks
-    and re-reads it (#111 E6). One statement."""
-    return await session.scalar(
-        select(PayrollPeriod.id)
-        .where(
-            PayrollPeriod.tutor_user_id == tutor_user_id,
-            PayrollPeriod.status == OPEN,
-        )
-        .order_by(PayrollPeriod.starts_on)
-        .limit(1)
+    """The tutor's earliest ``open`` period, starting after ``after`` if given
+    (M7-08c E3), read with no lock: the caller locks and re-reads it (#111 E6).
+    One statement."""
+    query = select(PayrollPeriod.id).where(
+        PayrollPeriod.tutor_user_id == tutor_user_id,
+        PayrollPeriod.status == OPEN,
     )
+    if after is not None:
+        query = query.where(PayrollPeriod.starts_on > after)
+    return await session.scalar(query.order_by(PayrollPeriod.starts_on).limit(1))
 
 
 # --- Writing -------------------------------------------------------------------------
@@ -386,3 +395,160 @@ async def post_adjustment(
         )
     )
     return adjustment.id
+
+
+# --- A person's adjustments (M7-08c) -------------------------------------------------
+
+
+async def settled_session_ids(
+    session: AsyncSession, class_session_ids: Collection[uuid.UUID]
+) -> set[uuid.UUID]:
+    """The sessions among these that an adjustment names, of any kind: settled
+    (#111 E7), so a run drafts no line for them (M7-08c B1), as the unresolved
+    reads leave them out (:func:`has_no_adjustment`). One statement, none for no
+    ids, no lock."""
+    if not class_session_ids:
+        return set()
+    return set(
+        await session.scalars(
+            select(PayrollAdjustment.class_session_id)
+            .where(PayrollAdjustment.class_session_id.in_(set(class_session_ids)))
+            .distinct()
+        )
+    )
+
+
+async def settled_by_tutor(
+    session: AsyncSession, tutor_user_id: uuid.UUID, class_session_id: uuid.UUID
+) -> bool:
+    """Whether an adjustment of this tutor already names this session. One
+    statement."""
+    found = await session.scalar(
+        select(PayrollAdjustment.id)
+        .where(
+            PayrollAdjustment.tutor_user_id == tutor_user_id,
+            PayrollAdjustment.class_session_id == class_session_id,
+        )
+        .limit(1)
+    )
+    return found is not None
+
+
+async def line_period_status(
+    session: AsyncSession, line_id: uuid.UUID, tutor_user_id: uuid.UUID
+) -> str | None:
+    """The status of the period holding this tutor's line, or ``None`` for no
+    such line of this tutor. One statement; the caller holds the tutor's
+    not-finalized periods ``FOR UPDATE``, so the answer can't change."""
+    status: str | None = await session.scalar(
+        select(PayrollPeriod.status)
+        .join(PayrollLine, PayrollLine.payroll_period_id == PayrollPeriod.id)
+        .where(PayrollLine.id == line_id, PayrollLine.tutor_user_id == tutor_user_id)
+    )
+    return status
+
+
+@dataclass(frozen=True)
+class PostedAdjustment:
+    """A written adjustment: no amount, no reason (M7-08c E6)."""
+
+    id: uuid.UUID
+    target_period_id: uuid.UUID
+    created_at: datetime
+
+
+async def _written(
+    session: AsyncSession, adjustment: PayrollAdjustment
+) -> PostedAdjustment | None:
+    """The adjustment in a savepoint, then its line. ``None`` on a first-payment
+    conflict. The audit row comes with the Unit of Work's actor."""
+    try:
+        async with session.begin_nested():
+            session.add(adjustment)
+    except IntegrityError as exc:
+        if ADJUSTMENT_FIRST_PAYMENT in str(exc.orig):
+            return None
+        raise
+    await session.execute(
+        insert(PayrollLine).values(
+            payroll_period_id=adjustment.target_period_id,
+            tutor_user_id=adjustment.tutor_user_id,
+            kind=ADJUSTMENT,
+            amount=adjustment.amount,
+            payroll_adjustment_id=adjustment.id,
+        )
+    )
+    return PostedAdjustment(
+        adjustment.id, adjustment.target_period_id, adjustment.created_at
+    )
+
+
+@dataclass(frozen=True)
+class ManualDraft:
+    """A ``manual`` adjustment before it is written (M7-08c E1): on a line, on
+    unresolved work, or free."""
+
+    tutor_user_id: uuid.UUID
+    amount: Money
+    reason: str
+    created_by_user_id: uuid.UUID
+    origin_line_id: uuid.UUID | None = None
+    class_session_id: uuid.UUID | None = None
+
+
+async def post_manual_adjustment(
+    session: AsyncSession, draft: ManualDraft, target_period_id: uuid.UUID
+) -> PostedAdjustment | None:
+    """The ``manual`` adjustment and its line in the locked target period.
+    ``None`` when the session already has its first payment (the index,
+    #111 A3). Two statements and the audit row, more with a savepoint."""
+    return await _written(
+        session,
+        PayrollAdjustment(
+            id=uuid.uuid7(),
+            kind=MANUAL,
+            tutor_user_id=draft.tutor_user_id,
+            target_period_id=target_period_id,
+            amount=draft.amount,
+            reason=draft.reason,
+            origin_line_id=draft.origin_line_id,
+            class_session_id=draft.class_session_id,
+            created_by_user_id=draft.created_by_user_id,
+        ),
+    )
+
+
+async def post_carry_forward(
+    session: AsyncSession,
+    *,
+    tutor_user_id: uuid.UUID,
+    period_id: uuid.UUID,
+    target_period_id: uuid.UUID,
+    amount: Money,
+    created_by_user_id: uuid.UUID,
+) -> tuple[PostedAdjustment, PostedAdjustment]:
+    """``+amount`` in ``period_id`` and ``-amount`` in ``target_period_id``,
+    both with ``origin_period_id`` = ``period_id``, the second naming the first
+    (M7-08c E3). The caller holds both periods ``FOR UPDATE``. Four statements
+    and two audit rows, more with the savepoints."""
+    rows = []
+    paired: uuid.UUID | None = None
+    for target, signed in ((period_id, amount), (target_period_id, -amount)):
+        written = await _written(
+            session,
+            PayrollAdjustment(
+                id=uuid.uuid7(),
+                kind=CARRY_FORWARD,
+                tutor_user_id=tutor_user_id,
+                target_period_id=target,
+                amount=signed,
+                origin_period_id=period_id,
+                paired_adjustment_id=paired,
+                created_by_user_id=created_by_user_id,
+            ),
+        )
+        if written is None:  # pragma: no cover - a carry names no session
+            raise RuntimeError("a carry-forward can't conflict")
+        paired = written.id
+        rows.append(written)
+    return rows[0], rows[1]

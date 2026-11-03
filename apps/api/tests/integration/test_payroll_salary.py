@@ -215,7 +215,7 @@ def test_c4_statements_with_and_without_a_salary(module_seeded_url, owner):
     many, many_result = count(many_period)
 
     assert (one_result.line_count, many_result.line_count) == (4, 11)
-    assert (none, one, many) == (12, 14, 14)
+    assert (none, one, many) == (13, 15, 15)  # M7-08c B4: +1, the settled read
 
 
 def test_a_version_with_a_frequency_and_no_salary_adds_no_line(
