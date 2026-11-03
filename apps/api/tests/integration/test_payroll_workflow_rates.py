@@ -155,6 +155,28 @@ def test_l2_lower_higher_and_a_stop_refuse_alike(
     assert [line.amount for line in lines(url, period)] == [Decimal("110.00")]
 
 
+@pytest.mark.parametrize(
+    ("rate", "model", "status"),
+    [
+        ("120", "per_hour", 201),
+        ("120.0000", "per_hour", 201),
+        ("120.0001", "per_hour", 422),
+        ("120", "per_session", 422),
+    ],
+)
+def test_d4_the_lines_own_model_and_rate_dont_refuse(
+    module_seeded_url, client, owner, finance, tutor, rate, model, status
+):
+    """QA D4, ruling (a), on an hourly kind: the 110.00 line at 120 an hour."""
+    url = module_seeded_url
+    period = finalized_line(url, client, owner, finance, tutor)
+
+    response = add_version(client, owner, tutor, "2026-11-01", rate, model=model)
+
+    assert response.status_code == status, response.text
+    assert [line.amount for line in lines(url, period)] == [Decimal("110.00")]
+
+
 def test_l1_the_exact_line_date_refuses_and_the_next_day_passes(
     module_seeded_url, client, owner, finance, tutor
 ):

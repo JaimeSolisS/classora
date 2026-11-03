@@ -215,6 +215,16 @@ class FinalizedPricedLine:
     class_session_id: uuid.UUID
     service_date: date
     rate_model: str
+    rate: Rate
+
+
+def same_price(
+    line_model: str, line_rate: Rate, model: str | None, rate: Rate | None
+) -> bool:
+    """A version of the line's own model and rate can't change its price (#110 QA
+    D4, ruling (a)). ``Rate`` compares its exact value; money is MXN only, so
+    there is no currency to compare (ADR-0004)."""
+    return model == line_model and rate is not None and rate == line_rate
 
 
 def repriced_on(
@@ -222,6 +232,7 @@ def repriced_on(
     *,
     first_session_date: date,
     new_model: str | None,
+    new_rate: Rate | None,
     effective_from: date,
     until: date | None,
 ) -> date | None:
@@ -236,7 +247,12 @@ def repriced_on(
       that date over changes it. It reads the first date for one thing, that the
       version there isn't ``per_course``, so only a ``per_course`` version can
       change it from there. Any other model, a stop included, leaves it as it is,
-      and that is the way out for a ``no_rate`` first session."""
+      and that is the way out for a ``no_rate`` first session.
+    - A version of the line's own model and rate refuses neither (QA D4): it
+      changes the version the line names, never its price."""
+
+    if same_price(line.rate_model, line.rate, new_model, new_rate):
+        return None
 
     def taken(day: date) -> bool:
         return effective_from <= day and (until is None or day < until)

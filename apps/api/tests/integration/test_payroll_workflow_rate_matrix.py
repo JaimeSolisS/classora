@@ -9,7 +9,8 @@ hand from the rule "refused only if it would change a finalized line's price":
 
 - a ``per_course`` line: refused when the window holds ``F``, any model;
 - an ordinary line: refused when it holds ``D``, any model; when it holds ``F``
-  only, refused only by a ``per_course`` version.
+  only, refused only by a ``per_course`` version;
+- either line: never by a version of its own model and rate (QA D4, ruling (a)).
 
 The same matrix runs against the pricing itself in
 ``tests/unit/test_payroll_rate_refusal.py``.
@@ -17,6 +18,7 @@ The same matrix runs against the pricing itself in
 
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -25,6 +27,7 @@ from fastapi.testclient import TestClient
 
 from tests.conftest import frozen_clock
 from tests.integration.auth_support import auth_client
+from tests.integration.conftest import run_sql
 from tests.integration.guardian_support import delete
 from tests.integration.payroll_calculation_support import (
     add_rate,
@@ -72,6 +75,12 @@ def client(module_seeded_url: str) -> Iterator[TestClient]:
 def clean(module_seeded_url: str) -> Iterator[None]:
     yield
     clear(module_seeded_url)
+    set_floor(module_seeded_url, None)
+
+
+@pytest.fixture
+def no_floor(module_seeded_url: str) -> Iterator[None]:
+    yield
     set_floor(module_seeded_url, None)
 
 
@@ -195,13 +204,25 @@ def test_the_matrix(ctx, line_model, name):
     before = [dict(line._mapping) for line in lines(ctx.url, period)]
     wrong: list[str] = []
 
+    [line] = lines(ctx.url, period)
+    same = ("same", str(line.rate))
     for cell in layout.cells:
-        for model in NEW_MODELS:
+        for model in (*NEW_MODELS, *same[:1]):
             label = f"{line_model}/{name}/{cell.name}/{model}"
-            refused, latest = expected(line_model, model, cell)
-            response = add_version(
-                ctx, who, day(ctx, cell.starts), "777" if model else None, model=model
-            )
+            if model == "same":
+                refused, latest = False, 0
+                response = add_version(
+                    ctx, who, day(ctx, cell.starts), same[1], model=line_model
+                )
+            else:
+                refused, latest = expected(line_model, model, cell)
+                response = add_version(
+                    ctx,
+                    who,
+                    day(ctx, cell.starts),
+                    "777" if model else None,
+                    model=model,
+                )
             if refused:
                 date_shown = day(ctx, layout.own_day if latest == "own" else latest)
                 if code(response) != REFUSED or response.json()["details"] != {
@@ -353,3 +374,67 @@ def test_d3_the_date_shown_is_the_newest_and_a_day_after_it_clears(ctx):
         assert response.json()["details"] == {"latest_finalized_on": day(ctx, 2)}
 
     assert add_version(ctx, who, day(ctx, 3), "90", model="per_hour").status_code == 201
+
+
+def test_d4_a_same_rate_version_cuts_the_window_and_the_tutor_goes_on(ctx, no_floor):
+    """QA's ``residual``, through routes only. Cohort A is hourly, cohort B
+    per-course from day 10, and A's day-14 session is approved late, after B's
+    first period is finalized: it is ``no_rate``, and any version on day 14 runs
+    past B's first date. The same per-course rate on B's first date cuts the
+    window without changing B, and then the hourly version on day 14 passes."""
+    who = team(ctx)
+    set_floor(ctx.url, ctx.tl.monday.isoformat())
+    add_terms(ctx.url, ctx.tutor.id)
+    for on, rate, model in ((-30, "100", "per_hour"), (10, "1000", "per_course")):
+        made = add_version(ctx, who, day(ctx, on), rate, model=model)
+        assert made.status_code == 201, made.text
+    cohort_a = make_cohort(ctx, 3, weekdays=[1])  # days 0, 7, 14
+    cohort_b = make_cohort(
+        ctx, 2, weekdays=[3], starts_on=ctx.tl.monday + timedelta(days=16)
+    )  # days 16, 23
+    one = period_of(ctx, ctx.tutor, 0, 7)
+    two = period_of(ctx, ctx.tutor, 7, 14)
+    three = period_of(ctx, ctx.tutor, 21, 60)
+    teach(ctx, cohort_a, 0)
+    lock_at(ctx.client, ctx.url, who, later(ctx), one)
+    teach(ctx, cohort_a, 1)
+    teach(ctx, cohort_b, 0)
+    lock_at(ctx.client, ctx.url, who, later(ctx), two)
+    paid = [dict(line._mapping) for line in lines(ctx.url, two)]
+    assert sorted(line["amount"] for line in paid) == [
+        Decimal("100.00"),
+        Decimal("500.00"),
+    ]
+    teach(ctx, cohort_a, 2)
+    assert [item["reason"] for item in unresolved(ctx, who)] == ["no_rate"]
+    with frozen_clock(later(ctx)):
+        assert code(prepare(ctx.client, who.finance, three)) == (
+            409,
+            "payroll_unresolved_work",
+        )
+    hourly = add_version(ctx, who, day(ctx, 14), "100", model="per_hour")
+    assert code(hourly) == REFUSED
+    assert hourly.json()["details"] == {"latest_finalized_on": day(ctx, 16)}
+
+    # Another rate, or another model, on B's first date still re-prices B.
+    for rate, model in (("999.9999", "per_course"), ("1000", "per_hour")):
+        other = add_version(ctx, who, day(ctx, 16), rate, model=model)
+        assert code(other) == REFUSED, (rate, model, other.text)
+
+    same = add_version(ctx, who, day(ctx, 16), "1000.0000", model="per_course")
+    assert same.status_code == 201, same.text
+    hourly = add_version(ctx, who, day(ctx, 14), "100", model="per_hour")
+    assert hourly.status_code == 201, hourly.text
+
+    assert unresolved(ctx, who) == []
+    teach(ctx, cohort_b, 1)
+    lock_at(ctx.client, ctx.url, who, later(ctx), three)
+    assert [dict(line._mapping) for line in lines(ctx.url, two)] == paid
+    b_lines = run_sql(
+        ctx.url,
+        "SELECT l.amount FROM payroll_lines AS l"
+        " JOIN class_sessions AS s ON s.id = l.class_session_id"
+        " WHERE l.tutor_user_id = :u AND s.cohort_id = :c",
+        {"u": ctx.tutor.id, "c": cohort_b.id},
+    )
+    assert sum(row.amount for row in b_lines) == Decimal("1000.00")

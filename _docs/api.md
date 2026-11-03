@@ -7150,7 +7150,10 @@ are in `app/workflows/payroll_compensation_router.py` and
   a `per_course` line is refused when the window holds its **cohort's first date**,
   any model. A `per_hour` or `per_session` course line is refused when the window
   holds its own date, any model, and when it holds the first date only for a
-  `per_course` version, which would turn the cohort per-course. `details.latest_finalized_on`
+  `per_course` version, which would turn the cohort per-course. For any kind, a
+  version of a line's own model and the exact same rate never refuses that line: it
+  can't change its price (#110 QA D4). So the same per-course rate on a finalized
+  cohort's first date cuts a window that would run past it. `details.latest_finalized_on`
   is the newest date taken over, so a version after it passes, unless that day is
   already the next version's. Correcting: a new version after that date, and a
   `manual` adjustment (#111) for what was paid. `no_rate` work has no line and a

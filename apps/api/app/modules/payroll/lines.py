@@ -27,11 +27,20 @@ from collections.abc import Collection, Sequence
 from datetime import date
 from typing import Any, Final
 
-from sqlalchemy import ColumnElement, Row, delete, exists, func, insert, select
+from sqlalchemy import (
+    ColumnElement,
+    Row,
+    and_,
+    delete,
+    exists,
+    func,
+    insert,
+    select,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import RecordNotFoundError
-from app.core.money import Money, MoneyRangeError
+from app.core.money import Money, MoneyRangeError, Rate
 from app.modules.payroll.calculation import (
     FinalizedCourseLine,
     FinalizedPricedLine,
@@ -285,11 +294,14 @@ async def latest_finalized_priced_date(
     class_kind: str,
     effective_from: date,
     until: date | None,
+    rate_model: str | None,
+    rate: Rate | None,
 ) -> date | None:
     """The newest date from ``effective_from``, and before ``until`` if given,
     holding a line of a ``finalized`` period of this tutor and class kind with a
     rate snapshot (#110 E5): a ``no_rate`` date has no line, and a "covered by
-    salary" line has no rate. One statement."""
+    salary" line has no rate. A line of the version's own model and rate doesn't
+    count: its price can't change (QA D4). One statement."""
     query = (
         select(func.max(PayrollLine.service_date))
         .join(PayrollPeriod, PayrollPeriod.id == PayrollLine.payroll_period_id)
@@ -303,6 +315,10 @@ async def latest_finalized_priced_date(
     )
     if until is not None:
         query = query.where(PayrollLine.service_date < until)
+    if rate_model is not None and rate is not None:
+        query = query.where(
+            ~and_(PayrollLine.rate_model == rate_model, PayrollLine.rate == rate)
+        )
     return await session.scalar(query)
 
 
@@ -316,6 +332,7 @@ async def finalized_course_kind_lines(
             PayrollLine.class_session_id,
             PayrollLine.service_date,
             PayrollLine.rate_model,
+            PayrollLine.rate,
         )
         .join(PayrollPeriod, PayrollPeriod.id == PayrollLine.payroll_period_id)
         .where(
@@ -326,7 +343,9 @@ async def finalized_course_kind_lines(
         )
     )
     return [
-        FinalizedPricedLine(row.class_session_id, row.service_date, row.rate_model)
+        FinalizedPricedLine(
+            row.class_session_id, row.service_date, row.rate_model, row.rate
+        )
         for row in rows
     ]
 
