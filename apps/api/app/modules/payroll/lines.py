@@ -4,8 +4,8 @@
 so a run that waited sees a status that changed meanwhile, and
 :func:`lock_open_period` refuses anything but ``open`` (``409
 payroll_period_not_open``). :func:`replace_lines`
-deletes only :data:`REBUILT_KINDS` and inserts the drafts, so #111's
-``adjustment`` lines survive (#107 E7). What it reports is all the period's
+deletes only :data:`REBUILT_KINDS` and inserts the drafts, so
+``adjustment`` lines survive (#107 E7, #111 A4). What it reports is all the period's
 lines, survivors included (#109 E2): one period has one total, the one ``GET``
 shows and #110 stores. Line ids change on every run, which is why nothing may
 reference a line of an open period.
@@ -31,6 +31,7 @@ from sqlalchemy import (
     ColumnElement,
     Row,
     and_,
+    case,
     delete,
     exists,
     func,
@@ -52,11 +53,13 @@ from app.modules.payroll.errors import (
 )
 from app.modules.payroll.models import (
     COURSE,
+    MANUAL,
     PAY_ITEM,
     SALARY,
     SESSION_LINE_KINDS,
     PayItem,
     PayItemType,
+    PayrollAdjustment,
     PayrollLine,
     PayrollPeriod,
 )
@@ -69,7 +72,9 @@ from app.modules.payroll.schemas import (
 )
 
 REBUILT_KINDS: Final = (*SESSION_LINE_KINDS, SALARY, PAY_ITEM)
-"""The kinds ``recalculate`` replaces (#107 E7, #108, #109)."""
+"""The kinds ``recalculate`` replaces (#107 E7, #108, #109). ``adjustment`` is
+not one (#111 A4): an adjustment line is written once, with its adjustment, and
+never rebuilt, so its id is stable and a later correction may name it."""
 
 OPEN: Final = "open"
 FINALIZED: Final = "finalized"
@@ -173,9 +178,12 @@ async def replace_lines(
 async def period_lines(
     session: AsyncSession, period_id: uuid.UUID
 ) -> PayrollPeriodLines:
-    """A period's lines by service date, then session, then piece, then item:
-    salary after the session lines, items last (never by ``id``, which changes
-    on every run). With their total (``404`` for an unknown id). A delete can
+    """A period's lines by service date, then session, then piece, then item,
+    then adjustment: salary after the session lines, then items, adjustments last
+    (never by ``id``, which changes on every run). An adjustment line carries its
+    adjustment's kind and references, from the same statement, and the reason
+    only on ``manual`` (#111 G1). With their total (``404`` for an unknown id).
+    A delete can
     lift lines already written beyond the money range, because signed lines can
     offset each other: that is ``409 payroll_amount_out_of_range``, as a run says,
     and the item routes are the way out (#109 QA D1). Two statements, no lock."""
@@ -188,15 +196,30 @@ async def period_lines(
                 PayrollLine.__table__,
                 PayItemType.name.label("pay_item_type_name"),
                 PayItem.description.label("pay_item_description"),
+                PayrollAdjustment.kind.label("adjustment_kind"),
+                case(
+                    (PayrollAdjustment.kind == MANUAL, PayrollAdjustment.reason),
+                    else_=None,
+                ).label("adjustment_reason"),
+                PayrollAdjustment.class_session_id.label("adjustment_class_session_id"),
+                PayrollAdjustment.service_date.label("adjustment_service_date"),
+                PayrollAdjustment.class_kind.label("adjustment_class_kind"),
+                PayrollAdjustment.origin_line_id.label("adjustment_origin_line_id"),
+                PayrollAdjustment.origin_period_id.label("adjustment_origin_period_id"),
             )
             .outerjoin(PayItem, PayItem.id == PayrollLine.pay_item_id)
             .outerjoin(PayItemType, PayItemType.id == PayItem.pay_item_type_id)
+            .outerjoin(
+                PayrollAdjustment,
+                PayrollAdjustment.id == PayrollLine.payroll_adjustment_id,
+            )
             .where(PayrollLine.payroll_period_id == period_id)
             .order_by(
                 PayrollLine.service_date.asc().nulls_last(),
                 PayrollLine.class_session_id,
                 PayrollLine.salary_starts_on,
                 PayrollLine.pay_item_id,
+                PayrollLine.payroll_adjustment_id,
             )
         )
     ).all()
@@ -264,8 +287,10 @@ async def finalized_course_lines(
 
 def has_no_session_line(class_session_id: ColumnElement[Any]) -> ColumnElement[bool]:
     """``NOT EXISTS`` a session-sourced line of this session, **not executed**
-    (#443 C4), on the partial unique index of those lines, in a period of any
-    status. Only session kinds: an adjustment doesn't pay the session itself."""
+        (#443 C4), on the partial unique index of those lines, in a period of any
+        status. Only session kinds: an ``adjustment`` line names no session. Whether an
+    adjustment settled the session is :func:`~app.modules.payroll.adjustments.
+    has_no_adjustment` (#111 E7)."""
     return ~exists().where(
         PayrollLine.class_session_id == class_session_id,
         PayrollLine.kind.in_(SESSION_LINE_KINDS),

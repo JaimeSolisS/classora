@@ -540,8 +540,8 @@ def test_a_closed_period_refuses_and_keeps_its_lines(
 
 
 def test_the_run_replaces_only_the_rebuilt_kinds():
-    """#107 E7: #111's lines survive. A kind outside it surviving a run is
-    ``test_payroll_salary.py``."""
+    """#107 E7, #111 A4: ``adjustment`` isn't one. A real adjustment line
+    surviving runs and ``prepare`` is ``test_payroll_adjustments.py`` (F1)."""
     assert payroll.REBUILT_KINDS == (
         "session",
         "late_cancellation",

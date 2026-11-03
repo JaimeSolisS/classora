@@ -72,8 +72,11 @@ export function isNegativeAmount(amount: string): boolean {
 
 // -------------------------------------------------------------- lines
 
-/** The line kinds this page knows; #111 adds `adjustment` (C9). */
-export const KNOWN_LINE_KINDS: readonly LineKind[] = [
+/** The line kinds this page labels. The API sends `adjustment` since #111;
+ * M7-08b labels it, so until then it reads as `unknown` (C9). */
+type LabelledLineKind = Exclude<LineKind, 'adjustment'>;
+
+export const KNOWN_LINE_KINDS: readonly LabelledLineKind[] = [
   'session',
   'late_cancellation',
   'no_show',
@@ -82,7 +85,7 @@ export const KNOWN_LINE_KINDS: readonly LineKind[] = [
   'pay_item',
 ];
 
-export type LineKindKey = LineKind | 'unknown';
+export type LineKindKey = LabelledLineKind | 'unknown';
 
 /** The label key of a line's kind; an unknown kind is `unknown`. */
 export function lineKindKey(kind: string): LineKindKey {

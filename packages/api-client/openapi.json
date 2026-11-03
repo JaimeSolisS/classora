@@ -22904,7 +22904,7 @@
             }
           },
           "409": {
-            "description": "The period isn't prepared (payroll_period_not_prepared, with details.status); it was prepared again after this review (payroll_review_outdated); an earlier period isn't finalized (payroll_period_out_of_order, with details.earliest_period_id and details.status); the facts changed (payroll_period_stale, with details.added, removed and changed); work with no basis stops it (payroll_unresolved_work, with details.count and at most 20 details.items); or the total is beyond the money range (payroll_amount_out_of_range).",
+            "description": "The period isn't prepared (payroll_period_not_prepared, with details.status); it was prepared again after this review (payroll_review_outdated); an earlier period isn't finalized (payroll_period_out_of_order, with details.earliest_period_id and details.status); the facts changed (payroll_period_stale, with details.added, removed and changed); work with no basis stops it (payroll_unresolved_work, with details.count and at most 20 details.items); the total is beyond the money range (payroll_amount_out_of_range); or it is below zero (payroll_negative_total). A refusal changes nothing.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -29018,7 +29018,7 @@
             "title": "Id"
           },
           "kind": {
-            "$ref": "#/components/schemas/AdjustmentKind"
+            "$ref": "#/components/schemas/app__modules__billing__schemas__AdjustmentKind"
           },
           "amount": {
             "type": "string",
@@ -29069,18 +29069,6 @@
         ],
         "title": "AdjustmentItem",
         "description": "One adjustment of a charge: a credit is negative, a debit positive.\n``reason`` (staff text) and ``posted_by_user_id`` are ``null`` for a\ncaller without billing.view; ``posted_by_user_id`` is also ``null`` for\na job's adjustment."
-      },
-      "AdjustmentKind": {
-        "type": "string",
-        "enum": [
-          "duration_change",
-          "cancellation_credit",
-          "closure_credit",
-          "enrollment_removal",
-          "withdrawal",
-          "manual",
-          "package_cancellation"
-        ]
       },
       "AffectedSessionItem": {
         "properties": {
@@ -46128,7 +46116,8 @@
           "no_show",
           "makeup",
           "salary",
-          "pay_item"
+          "pay_item",
+          "adjustment"
         ]
       },
       "LoginRequest": {
@@ -50319,6 +50308,97 @@
               }
             ],
             "title": "Pay Item Description"
+          },
+          "payroll_adjustment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payroll Adjustment Id"
+          },
+          "adjustment_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/app__modules__payroll__schemas__AdjustmentKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "adjustment_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Reason"
+          },
+          "adjustment_class_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Class Session Id"
+          },
+          "adjustment_service_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Service Date"
+          },
+          "adjustment_class_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "adjustment_origin_line_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Origin Line Id"
+          },
+          "adjustment_origin_period_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Origin Period Id"
           }
         },
         "type": "object",
@@ -50346,10 +50426,18 @@
           "proration_basis",
           "pay_item_id",
           "pay_item_type_name",
-          "pay_item_description"
+          "pay_item_description",
+          "payroll_adjustment_id",
+          "adjustment_kind",
+          "adjustment_reason",
+          "adjustment_class_session_id",
+          "adjustment_service_date",
+          "adjustment_class_kind",
+          "adjustment_origin_line_id",
+          "adjustment_origin_period_id"
         ],
         "title": "PayrollLineItem",
-        "description": "One line (#107 H3): ``rate`` is text, and a \"covered by salary\" line has\nno rate snapshot. A ``salary`` line has no session, and says how its amount\nwas reached: ``salary_amount`` × ``proration_numerator`` /\n``proration_denominator`` for the piece ``salary_starts_on`` to\n``salary_ends_on`` (#108 H1). A ``pay_item`` line is a fixed amount, negative\nfor a deduction, with the type's current name and the item's description\n(#109 G1). No student data."
+        "description": "One line (#107 H3): ``rate`` is text, and a \"covered by salary\" line has\nno rate snapshot. A ``salary`` line has no session, and says how its amount\nwas reached: ``salary_amount`` × ``proration_numerator`` /\n``proration_denominator`` for the piece ``salary_starts_on`` to\n``salary_ends_on`` (#108 H1). A ``pay_item`` line is a fixed amount, negative\nfor a deduction, with the type's current name and the item's description\n(#109 G1). An ``adjustment`` line has only its amount and\n``payroll_adjustment_id``; the ``adjustment_*`` fields come from the\nadjustment: the session, date and class kind it corrects, the line or the\nfinalized period it references, and the reason, on ``manual`` only (#111\nG1). No student data."
       },
       "PayrollPeriodDetail": {
         "properties": {
@@ -61259,6 +61347,27 @@
         "type": "object",
         "title": "WithdrawalSubjectBody",
         "description": "Exactly one subject (``withdrawal_subject_invalid`` otherwise)."
+      },
+      "app__modules__billing__schemas__AdjustmentKind": {
+        "type": "string",
+        "enum": [
+          "duration_change",
+          "cancellation_credit",
+          "closure_credit",
+          "enrollment_removal",
+          "withdrawal",
+          "manual",
+          "package_cancellation"
+        ]
+      },
+      "app__modules__payroll__schemas__AdjustmentKind": {
+        "type": "string",
+        "enum": [
+          "late_approval",
+          "hours_correction",
+          "manual",
+          "carry_forward"
+        ]
       },
       "app__modules__scheduling__schedule_schemas__ScheduleSubject": {
         "properties": {

@@ -19,6 +19,7 @@ from tests.integration.invitation_support import sign_in
 from tests.integration.lifecycle_support import code_of, in_uow
 from tests.integration.payroll_period_support import (
     add_period_row,
+    clear_adjustments,
     clear_pay_items,
     d,
 )
@@ -156,8 +157,9 @@ def add_item(
 
 
 def clear(url: str) -> None:
-    """No lines, items, types or periods, and only the seeded rules. Rates
-    stay, each of its own tutor."""
+    """No adjustments, lines, items, types or periods, and only the seeded
+    rules. Rates stay, each of its own tutor."""
+    clear_adjustments(url)
     triggers = (
         ("payroll_lines", "payroll_lines_no_finalized_change"),
         ("payroll_periods", "payroll_periods_no_finalized_change"),

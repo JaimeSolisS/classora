@@ -30,9 +30,7 @@ from app.modules.identity.permissions import (
     STUDENT,
     TUTOR,
 )
-from app.modules.payroll import lines as payroll_lines
 from app.modules.payroll import service as payroll
-from app.modules.payroll.models import SESSION_LINE_KINDS
 from app.modules.payroll.schemas import PayrollPeriodSummary
 from app.workflows import payroll_calculation
 from tests.conftest import FrozenClock, frozen_clock
@@ -60,7 +58,6 @@ from tests.integration.payroll_calculation_support import (
     lines,
     paid_tutor,
     run,
-    salary_lines,
     stable,
 )
 from tests.integration.payroll_period_support import finalize, set_floor
@@ -329,41 +326,6 @@ def test_a_deduction_brings_a_large_total_back_in_range(module_seeded_url, tutor
     add_item(url, tutor.id, add_pay_type(url, direction="deduction"), MONEY_LIMIT)
 
     assert str(run(url, period).total) == MONEY_LIMIT
-
-
-def test_l7_recalculate_and_get_agree_with_a_surviving_line(
-    module_seeded_url, client, staff, tutor, monkeypatch
-):
-    """#109 E2. ``salary`` stands in for #111's ``adjustment``: the tuple is
-    narrowed, and the terms end the salary first, or the narrowed run would
-    insert over the row that stays (#108 D1)."""
-    url = module_seeded_url
-    add_terms(url, tutor.id, "10-01", salary="1000.00")
-    period = add_period_row(url, tutor.id, "11-02", "11-08")
-    run(url, period)
-    add_terms(url, tutor.id, "11-02", salary=None)
-    add_item(url, tutor.id, add_pay_type(url, direction="deduction"), "300.00")
-    monkeypatch.setattr(
-        payroll_lines, "REBUILT_KINDS", (*SESSION_LINE_KINDS, "pay_item")
-    )
-
-    result = run(url, period)
-
-    assert len(salary_lines(url, period)) == 1
-    body = read_lines(client, staff, period)
-    assert (result.line_count, str(result.total)) == (
-        len(body["lines"]),
-        body["total"],
-    )
-    assert result.line_count == 2
-    assert str(result.total) == "700.00"
-    events = run_sql(
-        url,
-        "SELECT details FROM audit_events WHERE action = :a AND record_id = :p"
-        " ORDER BY occurred_at DESC, id DESC LIMIT 1",
-        {"a": "payroll.period_recalculated", "p": period},
-    )
-    assert events[0].details["line_count"] == 2
 
 
 def statements(url: str, period: uuid.UUID) -> tuple[int, Any]:

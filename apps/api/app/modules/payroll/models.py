@@ -32,11 +32,15 @@ moves. Its ``amount`` and ``description`` are masked in the audit log (#109 E7):
 free text can state an amount or a personal reason.
 
 ``payroll_lines`` holds one line per source: the four session kinds, one
-``salary`` line per piece (#108) and one ``pay_item`` line per item and period
-(#109), and #111 widens it. Lines are working data until the period is finalized,
-so the table isn't ``Audited``, and a trigger refuses every write to a line of a
-finalized period (migration ``0076``). Only ``recalculate`` and the deletion of a
-rate, rule, terms version or item write them.
+``salary`` line per piece (#108), one ``pay_item`` line per item and period
+(#109) and one ``adjustment`` line per adjustment (#111). Lines are working data
+until the period is finalized, so the table isn't ``Audited``, and a trigger
+refuses every write to a line of a finalized period (migration ``0076``). Only
+``recalculate``, the deletion of a rate, rule, terms version or item, and the
+adjustment job write them.
+
+``payroll_adjustments`` is the append-only, audited record of corrections after
+lock (#111, migration ``0080``): :class:`PayrollAdjustment`.
 """
 
 import uuid
@@ -80,7 +84,16 @@ LINE_EVENT_KINDS: Final = PAY_RULE_EVENTS
 SESSION_LINE_KINDS: Final = ("session", *LINE_EVENT_KINDS)
 SALARY: Final = "salary"
 PAY_ITEM: Final = "pay_item"
-LINE_KINDS: Final = (*SESSION_LINE_KINDS, SALARY, PAY_ITEM)
+ADJUSTMENT: Final = "adjustment"
+LINE_KINDS: Final = (*SESSION_LINE_KINDS, SALARY, PAY_ITEM, ADJUSTMENT)
+LATE_APPROVAL: Final = "late_approval"
+HOURS_CORRECTION: Final = "hours_correction"
+MANUAL: Final = "manual"
+CARRY_FORWARD: Final = "carry_forward"
+ADJUSTMENT_KINDS: Final = (LATE_APPROVAL, HOURS_CORRECTION, MANUAL, CARRY_FORWARD)
+AUTOMATIC_ADJUSTMENT_KINDS: Final = (LATE_APPROVAL, HOURS_CORRECTION)
+"""The kinds ``payroll:post_adjustments`` writes, and what "paid so far" adds up
+(#111 E2)."""
 PAY_ITEM_DIRECTIONS: Final = ("bonus", "deduction")
 PAY_ITEM_RECURRENCES: Final = ("one_time", "recurring")
 
@@ -97,6 +110,8 @@ PAY_ITEM_DIRECTION_MAX: Final = 10
 PAY_ITEM_RECURRENCE_MAX: Final = 10
 PAY_ITEM_DESCRIPTION_MAX: Final = 500
 RETURN_REASON_MAX: Final = 1000
+ADJUSTMENT_KIND_MAX: Final = 20
+ADJUSTMENT_REASON_MAX: Final = 1000
 
 TERMS_KEY: Final = "uq_tutor_pay_terms_tutor_user_id_effective_from"
 RATE_KEY: Final = "uq_compensation_rates_tutor_user_id_class_kind_effective_from"
@@ -113,6 +128,23 @@ LINE_SALARY_PIECE: Final = "uq_payroll_lines_salary_piece"
 LINE_PAY_ITEM_PERIOD: Final = "uq_payroll_lines_pay_item_period"
 PAY_ITEM_TYPE_NAME_KEY: Final = "uq_pay_item_types_lower_name"
 PAY_ITEM_TARGET_KEY: Final = "uq_pay_items_id_tutor_user_id"
+LINE_ADJUSTMENT_UNIQUE: Final = "uq_payroll_lines_adjustment"
+ADJUSTMENT_SOURCE_KEY: Final = "uq_payroll_adjustments_source_key"
+ADJUSTMENT_FIRST_PAYMENT: Final = "uq_payroll_adjustments_first_payment"
+ADJUSTMENT_TARGET_KEY: Final = "uq_payroll_adjustments_id_target"
+ADJUSTMENT_SNAPSHOT_COLUMNS: Final = (
+    "line_kind",
+    "service_date",
+    "class_kind",
+    "minutes",
+    "rate_model",
+    "rate",
+    "compensation_rate_id",
+    "session_pay_rule_id",
+    "cumulative_sessions",
+    "cohort_sessions",
+)
+"""The pricing snapshot of an adjustment (#111 A1): what it was priced on."""
 
 
 def _one_of(column: str, values: tuple[str, ...]) -> str:
@@ -419,12 +451,15 @@ class PayItem(Audited, VersionedMixin, Model):
 
 class PayrollLine(Model):
     """One line of a period (data-model §11.6): a session-sourced line of the
-    tutor, a piece of salary or a pay item. ``approval_id`` is the revision
-    used, ``NULL`` on a line that comes from a cancellation. A line "covered by
+    tutor, a piece of salary, a pay item or an adjustment. ``approval_id`` is the
+    revision used, ``NULL`` on a line that comes from a cancellation. A line "covered by
     salary" has kind ``session``, ``0.00`` and no rate snapshot. A ``salary`` line
     has no session, and its seven columns say how the amount was reached (#108
     E1). A ``pay_item`` line has only ``pay_item_id``, and is the one signed kind:
-    a deduction is negative (#109)."""
+    a deduction is negative (#109). An ``adjustment`` line shows one
+    :class:`PayrollAdjustment` in its target period, and has nothing else: its
+    references are on the adjustment (#111 A4). The composite foreign key puts it
+    in that period, and of that tutor, by construction."""
 
     __tablename__ = "payroll_lines"
     __table_args__ = (
@@ -438,7 +473,9 @@ class PayrollLine(Model):
             " OR (kind = 'salary' AND class_session_id IS NULL"
             " AND approval_id IS NULL)"
             " OR (kind = 'pay_item' AND class_session_id IS NULL"
-            " AND approval_id IS NULL)",
+            " AND approval_id IS NULL)"
+            " OR (kind = 'adjustment' AND class_session_id IS NULL"
+            " AND approval_id IS NULL AND rate_model IS NULL)",
             name="source_per_kind",
         ),
         CheckConstraint(
@@ -451,8 +488,8 @@ class PayrollLine(Model):
         CheckConstraint(_one_of("class_kind", CLASS_KINDS), name="class_kind_valid"),
         CheckConstraint(_one_of("rate_model", RATE_MODELS), name="rate_model_valid"),
         CheckConstraint(
-            "(kind = 'pay_item' AND amount <> 0)"
-            " OR (kind <> 'pay_item' AND amount >= 0)",
+            "(kind IN ('pay_item', 'adjustment') AND amount <> 0)"
+            " OR (kind NOT IN ('pay_item', 'adjustment') AND amount >= 0)",
             name="amount_sign",
         ),
         CheckConstraint("minutes >= 0", name="minutes_non_negative"),
@@ -497,6 +534,10 @@ class PayrollLine(Model):
         CheckConstraint(
             "kind <> 'pay_item' OR rate_model IS NULL", name="pay_item_no_rate"
         ),
+        CheckConstraint(
+            "(payroll_adjustment_id IS NOT NULL) = (kind = 'adjustment')",
+            name="adjustment_fields",
+        ),
         ForeignKeyConstraint(
             ["payroll_period_id", "tutor_user_id"],
             ["payroll_periods.id", "payroll_periods.tutor_user_id"],
@@ -507,6 +548,16 @@ class PayrollLine(Model):
             ["pay_item_id", "tutor_user_id"],
             ["pay_items.id", "pay_items.tutor_user_id"],
             name="fk_payroll_lines_pay_item_tutor",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["payroll_adjustment_id", "payroll_period_id", "tutor_user_id"],
+            [
+                "payroll_adjustments.id",
+                "payroll_adjustments.target_period_id",
+                "payroll_adjustments.tutor_user_id",
+            ],
+            name="fk_payroll_lines_adjustment",
             ondelete="RESTRICT",
         ),
         UniqueConstraint("id", "tutor_user_id", name=LINE_TUTOR_KEY),
@@ -529,6 +580,12 @@ class PayrollLine(Model):
             "payroll_period_id",
             unique=True,
             postgresql_where=text("kind = 'pay_item'"),
+        ),
+        Index(
+            LINE_ADJUSTMENT_UNIQUE,
+            "payroll_adjustment_id",
+            unique=True,
+            postgresql_where=text("kind = 'adjustment'"),
         ),
         Index("ix_payroll_lines_payroll_period_id", "payroll_period_id"),
         Index(
@@ -611,3 +668,213 @@ class PayrollLine(Model):
     pay_item_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
+    payroll_adjustment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+
+
+def _none_of(*columns: str) -> str:
+    return f"num_nonnulls({', '.join(columns)}) = 0"
+
+
+def _all_of(*columns: str) -> str:
+    return f"num_nonnulls({', '.join(columns)}) = {len(columns)}"
+
+
+SESSION_SNAPSHOT: Final = ("line_kind", "service_date", "class_kind", "minutes")
+ADJUSTMENT_KIND_CHECKS: Final = {
+    "late_approval_fields": (
+        f"kind <> '{LATE_APPROVAL}' OR ("
+        + _all_of(
+            "class_session_id", "origin_period_id", "source_key", *SESSION_SNAPSHOT
+        )
+        + " AND "
+        + _none_of(
+            "origin_line_id", "reason", "created_by_user_id", "paired_adjustment_id"
+        )
+        + " AND (approval_id IS NOT NULL) = (source_key LIKE 'approval:%'))"
+    ),
+    "hours_correction_fields": (
+        f"kind <> '{HOURS_CORRECTION}' OR ("
+        + _all_of(
+            "origin_line_id",
+            "class_session_id",
+            "approval_id",
+            "source_key",
+            *SESSION_SNAPSHOT,
+        )
+        + " AND "
+        + _none_of("origin_period_id", "reason", "paired_adjustment_id")
+        + ")"
+    ),
+    "manual_fields": (
+        f"kind <> '{MANUAL}' OR ("
+        + _all_of("reason", "created_by_user_id")
+        + " AND "
+        + _none_of(
+            "source_key",
+            *ADJUSTMENT_SNAPSHOT_COLUMNS,
+            "paired_adjustment_id",
+            "approval_id",
+            "origin_period_id",
+        )
+        + " AND num_nonnulls(origin_line_id, class_session_id) <= 1)"
+    ),
+    "carry_forward_fields": (
+        f"kind <> '{CARRY_FORWARD}' OR ("
+        + _all_of("origin_period_id", "created_by_user_id")
+        + " AND "
+        + _none_of(
+            "source_key",
+            *ADJUSTMENT_SNAPSHOT_COLUMNS,
+            "origin_line_id",
+            "class_session_id",
+            "approval_id",
+        )
+        + ")"
+    ),
+}
+"""One CHECK per kind (#111 A2): what it names and what it leaves ``NULL``."""
+
+
+class PayrollAdjustment(Audited, Model):
+    """A correction to finalized work, posted into an open period (data-model
+    §11.9; ADR-0017 E11 and its #111 notes). Append-only: a trigger refuses
+    ``UPDATE``, ``DELETE`` and ``TRUNCATE`` (migration ``0080``). Exactly one
+    ``adjustment`` line shows it in ``target_period_id``.
+
+    ``late_approval`` and ``hours_correction`` are the job's, keyed by
+    ``source_key`` (``approval:<approval_id>`` or
+    ``cancellation:<class_session_id>``), with ``created_by_user_id`` ``NULL``.
+    ``manual`` and ``carry_forward`` are M7-08c's routes. The snapshot columns are
+    what an automatic adjustment was priced on, so the next correction of the same
+    session can be priced on them (#111 E2). ``amount``, ``rate`` and ``reason``
+    are masked in the audit log (#111 E9)."""
+
+    __tablename__ = "payroll_adjustments"
+    __audit_mask__: ClassVar[frozenset[str]] = frozenset({"amount", "rate", "reason"})
+    __table_args__ = (
+        CheckConstraint(_one_of("kind", ADJUSTMENT_KINDS), name="kind_valid"),
+        CheckConstraint("amount <> 0", name="amount_non_zero"),
+        CheckConstraint(
+            f"char_length(reason) BETWEEN 1 AND {ADJUSTMENT_REASON_MAX}"
+            " AND reason = btrim(reason)",
+            name="reason_trimmed",
+        ),
+        CheckConstraint(
+            _one_of("line_kind", SESSION_LINE_KINDS), name="line_kind_valid"
+        ),
+        CheckConstraint(_one_of("class_kind", CLASS_KINDS), name="class_kind_valid"),
+        CheckConstraint(_one_of("rate_model", RATE_MODELS), name="rate_model_valid"),
+        CheckConstraint("minutes >= 0", name="minutes_non_negative"),
+        CheckConstraint(
+            "(rate_model IS NULL) = (rate IS NULL)"
+            " AND (rate IS NULL) = (compensation_rate_id IS NULL)",
+            name="rate_snapshot",
+        ),
+        CheckConstraint(
+            "(session_pay_rule_id IS NOT NULL)"
+            f" = COALESCE({_one_of('line_kind', LINE_EVENT_KINDS)}, false)",
+            name="pay_rule_with_event",
+        ),
+        CheckConstraint(
+            "(cumulative_sessions IS NOT NULL) = (cohort_sessions IS NOT NULL)"
+            " AND (cumulative_sessions IS NOT NULL)"
+            " = COALESCE(rate_model = 'per_course', false)",
+            name="course_share",
+        ),
+        *(
+            CheckConstraint(condition, name=name)
+            for name, condition in ADJUSTMENT_KIND_CHECKS.items()
+        ),
+        ForeignKeyConstraint(
+            ["target_period_id", "tutor_user_id"],
+            ["payroll_periods.id", "payroll_periods.tutor_user_id"],
+            name="fk_payroll_adjustments_target_period",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["origin_line_id", "tutor_user_id"],
+            ["payroll_lines.id", "payroll_lines.tutor_user_id"],
+            name="fk_payroll_adjustments_origin_line",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        UniqueConstraint("source_key", name=ADJUSTMENT_SOURCE_KEY),
+        UniqueConstraint(
+            "id", "target_period_id", "tutor_user_id", name=ADJUSTMENT_TARGET_KEY
+        ),
+        Index(
+            ADJUSTMENT_FIRST_PAYMENT,
+            "class_session_id",
+            unique=True,
+            postgresql_where=text(
+                f"kind = '{LATE_APPROVAL}'"
+                f" OR (kind = '{MANUAL}' AND class_session_id IS NOT NULL)"
+            ),
+        ),
+        Index("ix_payroll_adjustments_target_period_id", "target_period_id"),
+        Index("ix_payroll_adjustments_origin_line_id", "origin_line_id"),
+        Index(
+            "ix_payroll_adjustments_class_session_id",
+            "class_session_id",
+            postgresql_where=text("class_session_id IS NOT NULL"),
+        ),
+    )
+
+    kind: Mapped[str] = mapped_column(String(ADJUSTMENT_KIND_MAX))
+    tutor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    target_period_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    amount: Mapped[Money] = mapped_column(MoneyType())
+    origin_line_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    origin_period_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("payroll_periods.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    class_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("class_sessions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    approval_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("session_closeout_approvals.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    paired_adjustment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("payroll_adjustments.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    line_kind: Mapped[str | None] = mapped_column(String(LINE_KIND_MAX), nullable=True)
+    service_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    class_kind: Mapped[str | None] = mapped_column(
+        String(CLASS_KIND_MAX), nullable=True
+    )
+    minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rate_model: Mapped[str | None] = mapped_column(
+        String(RATE_MODEL_MAX), nullable=True
+    )
+    rate: Mapped[Rate | None] = mapped_column(RateType(), nullable=True)
+    compensation_rate_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("compensation_rates.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    session_pay_rule_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("session_pay_rules.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    cumulative_sessions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cohort_sessions: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -41,6 +41,15 @@ the ``app.workflows.payroll_pay_items`` workflow calls, and for a run
 :func:`first_period_starts`, :func:`rate_versions_of_tutors` and
 :func:`terms_basis_versions_of_tutors`.
 
+**Work after lock** (#111; :mod:`~app.modules.payroll.adjustments`): the
+unexecuted predicates :func:`has_no_adjustment`, :func:`has_no_adjustment_keyed`,
+:func:`paid_after_lock` and :func:`revision_unpaid`, the lock-free reads
+:func:`finalized_spans_of_tutors`, :func:`salary_covers_of_tutors`,
+:func:`paid_so_far` and :func:`earliest_open_period`, the write
+:func:`post_adjustment`, :func:`open_period_for_adjustment` for a tutor with no
+open period, and the pure :func:`late_approval_draft`, :func:`correction_draft`
+and :func:`owed`.
+
 **The period's review** (#110; :mod:`~app.modules.payroll.period_review`): the
 lock-free reads, the status moves, and the pure :func:`line_drift`, for
 ``app.workflows.payroll_workflow``.
@@ -51,7 +60,28 @@ lock-free reads, the status moves, and the pure :func:`line_drift`, for
 :func:`finalize_refusal`.
 """
 
+from app.modules.payroll.adjustments import (
+    APPROVAL_KEY,
+    CANCELLATION_KEY,
+    AdjustmentDraft,
+    FinalizedSpan,
+    PaidSession,
+    approval_key,
+    cancellation_key,
+    earliest_open_period,
+    finalized_span_of,
+    finalized_spans_of_tutors,
+    has_no_adjustment,
+    has_no_adjustment_keyed,
+    keyed,
+    paid_after_lock,
+    paid_so_far,
+    post_adjustment,
+    revision_unpaid,
+    salary_covers_of_tutors,
+)
 from app.modules.payroll.calculation import (
+    PER_COURSE,
     ApprovedSession,
     CohortStep,
     CohortWalk,
@@ -59,14 +89,20 @@ from app.modules.payroll.calculation import (
     FinalizedCourseLine,
     LineDraft,
     LineDrift,
+    OriginSnapshot,
     PayableCancellation,
     PayBasis,
+    SalaryCover,
     TermsBasisVersion,
     UnresolvedCandidate,
     UnresolvedItem,
     classify_unresolved,
+    correction_draft,
+    course_rate,
     draft_lines,
+    late_approval_draft,
     line_drift,
+    owed,
     planned_sessions,
 )
 from app.modules.payroll.errors import (
@@ -93,6 +129,7 @@ from app.modules.payroll.lines import (
     period_lines,
     replace_lines,
 )
+from app.modules.payroll.models import HOURS_CORRECTION, LATE_APPROVAL
 from app.modules.payroll.pay_item_lines import (
     RECURRING,
     PayItemFact,
@@ -136,6 +173,7 @@ from app.modules.payroll.period_review import (
 from app.modules.payroll.period_rows import (
     lock_payroll_periods,
     open_due_periods,
+    open_period_for_adjustment,
     tutors_with_terms,
 )
 from app.modules.payroll.periods import natural_bounds
@@ -171,17 +209,26 @@ from app.modules.payroll.settings import (
 )
 
 __all__ = [
+    "APPROVAL_KEY",
+    "CANCELLATION_KEY",
+    "HOURS_CORRECTION",
+    "LATE_APPROVAL",
+    "PER_COURSE",
     "REBUILT_KINDS",
     "RECURRING",
     "REVIEWABLE_STATUSES",
+    "AdjustmentDraft",
     "ApprovedSession",
     "CohortStep",
     "CohortWalk",
     "CourseWalkError",
     "EarlierPeriod",
     "FinalizedCourseLine",
+    "FinalizedSpan",
     "LineDraft",
     "LineDrift",
+    "OriginSnapshot",
+    "PaidSession",
     "PayBasis",
     "PayItemFact",
     "PayableCancellation",
@@ -197,6 +244,7 @@ __all__ = [
     "PayrollSelfFinalizeError",
     "PayrollUnresolvedWorkError",
     "PeriodDates",
+    "SalaryCover",
     "TermsBasisVersion",
     "UnresolvedCandidate",
     "UnresolvedItem",
@@ -204,31 +252,42 @@ __all__ = [
     "add_pay_item",
     "add_pay_item_type",
     "add_pay_terms",
+    "approval_key",
     "biweekly_anchor",
     "can_list_periods",
     "can_read_period",
     "can_return_period",
     "can_view_compensation",
     "can_write_compensation",
+    "cancellation_key",
     "change_pay_item_type",
     "classify_unresolved",
     "compensation_summaries",
+    "correction_draft",
+    "course_rate",
     "create_session_pay_rule",
     "delete_compensation_rate",
     "delete_pay_item",
     "delete_pay_terms",
     "delete_session_pay_rule",
     "draft_lines",
+    "earliest_open_period",
     "earliest_unfinalized_before",
     "end_pay_item",
     "finalize_refusal",
     "finalized_course_lines",
     "finalized_pay_item_ids",
     "finalized_period_dates",
+    "finalized_span_of",
+    "finalized_spans_of_tutors",
     "first_period_starts",
     "get_pay_item",
     "get_session_pay_rule_overview",
+    "has_no_adjustment",
+    "has_no_adjustment_keyed",
     "has_no_session_line",
+    "keyed",
+    "late_approval_draft",
     "line_drift",
     "lines_total",
     "list_compensation_rates",
@@ -244,6 +303,10 @@ __all__ = [
     "mark_returned",
     "natural_bounds",
     "open_due_periods",
+    "open_period_for_adjustment",
+    "owed",
+    "paid_after_lock",
+    "paid_so_far",
     "pay_item_drafts",
     "pay_item_facts",
     "payroll_starts_on",
@@ -252,11 +315,14 @@ __all__ = [
     "period_rows",
     "placed_period",
     "planned_sessions",
+    "post_adjustment",
     "rate_in_effect",
     "rate_versions",
     "rate_versions_of_tutors",
     "rebuilt_only",
     "replace_lines",
+    "revision_unpaid",
+    "salary_covers_of_tutors",
     "salary_drafts",
     "salary_proration_basis",
     "session_pay_rule_in_effect",

@@ -23,7 +23,10 @@ and neither side waits for the other (§15).
 
 A revision or an approval that arrives later shows on the next run of an open
 period. A prepared period waits for ``return`` or the drift check of
-:mod:`app.workflows.payroll_workflow`, and a finalized one for #111.
+:mod:`app.workflows.payroll_workflow`. Work and revisions dated in a finalized
+period are the ``payroll:post_adjustments`` job's
+(:mod:`app.workflows.payroll_adjustments`, #111): they become adjustments in the
+tutor's earliest open period, whose lines a run never rebuilds.
 
 **Per-course pay (#442; ADR-0017 E3):** :func:`_cohort_walks` adds, for the
 cohorts of the period's course sessions, every session of those cohorts in any
@@ -32,12 +35,15 @@ fix. The period bounds pick which lines are written, not which sessions count,
 so periods may run in any order.
 
 **Unresolved work (#443; ADR-0017 E2, #106 E4, #107 E12, E13).** Work that was
-approved, or a paying family cancellation, with no session-sourced line, since
-the floor. :func:`_unresolved_items` composes the anti-join here, from the
+approved, or a paying family cancellation, with no session-sourced line and no
+adjustment naming it (settled, #111 E7), since the floor.
+:func:`_unresolved_items` composes the anti-join here, from the
 unexecuted ``SELECT`` s of ``academics`` and ``scheduling`` (ADR-0002), reads the
 tutors' versions in one statement each, and classifies in Python
 (:func:`~app.modules.payroll.calculation.classify_unresolved`): the same rules
-as a line. :func:`unresolved_work` is one tutor's list, :func:`blocking_work`
+as a line. A date a finalized salary line paid is judged as it stood at that
+finalize (#111 E4, :func:`salary_covers`), as the job judges it.
+:func:`unresolved_work` is one tutor's list, :func:`blocking_work`
 what ``prepare`` and ``finalize`` refuse on (#110), and
 :func:`list_unresolved_work` the staff route. It reads the whole of "approved, no
 line, since the floor" into memory. That is small for one center: a run empties
@@ -63,13 +69,14 @@ two, whatever the number of pieces: fifteen and twenty. A one-time item adds two
 whatever the number of items.
 
 The unresolved reads cost eight statements, ten with a course session among the
-candidates, and the route one more for the names, whatever the number of items.
+candidates, one more with a salaried tutor among them (#111 E4), and the route
+one more for the names, whatever the number of items.
 
 Log lines and the event carry ids and counts, never an amount.
 """
 
 import uuid
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from datetime import date, timedelta
 from itertools import groupby
 from operator import attrgetter
@@ -319,7 +326,10 @@ async def _unresolved_candidates(
                 closeouts.c.tutor_user_id,
                 closeouts.c.session_kind,
                 closeouts.c.session_starts_at,
-            ).where(payroll.has_no_session_line(closeouts.c.class_session_id))
+            ).where(
+                payroll.has_no_session_line(closeouts.c.class_session_id),
+                payroll.has_no_adjustment(closeouts.c.class_session_id),
+            )
         )
     ).all()
     cancelled = (
@@ -330,7 +340,10 @@ async def _unresolved_candidates(
                 cancellations.c.kind,
                 cancellations.c.starts_at,
                 cancellations.c.classification,
-            ).where(payroll.has_no_session_line(cancellations.c.class_session_id))
+            ).where(
+                payroll.has_no_session_line(cancellations.c.class_session_id),
+                payroll.has_no_adjustment(cancellations.c.class_session_id),
+            )
         )
     ).all()
     first_dates = await first_session_dates(
@@ -380,6 +393,7 @@ async def _unresolved_items(
         by_tutor.setdefault(candidate.tutor_user_id, []).append(candidate)
     terms = await payroll.terms_basis_versions_of_tutors(session, by_tutor)
     rates = await payroll.rate_versions_of_tutors(session, by_tutor)
+    covers = await salary_covers(session, terms)
     first_periods = await payroll.first_period_starts(session, by_tutor)
     rules = await payroll.session_pay_rule_versions(session, lock=False)
     return [
@@ -390,11 +404,29 @@ async def _unresolved_items(
                 terms=terms.get(tutor, []),
                 rates=rates.get(tutor, []),
                 rules=rules,
+                salary_covers=covers.get(tutor, []),
             ),
             work,
             first_periods.get(tutor),
         )
     ]
+
+
+async def salary_covers(
+    session: AsyncSession,
+    terms: Mapping[uuid.UUID, Sequence[payroll.TermsBasisVersion]],
+) -> dict[uuid.UUID, list[payroll.SalaryCover]]:
+    """The finalized salary dates (#111 E4) of the tutors with a salary on some
+    terms version: nobody else has a salary line. One statement, none without a
+    salaried tutor."""
+    return await payroll.salary_covers_of_tutors(
+        session,
+        {
+            tutor
+            for tutor, versions in terms.items()
+            if any(version.salary is not None for version in versions)
+        },
+    )
 
 
 def _newest_first(item: payroll.UnresolvedItem) -> tuple[int, uuid.UUID]:

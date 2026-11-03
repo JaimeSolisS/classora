@@ -28,6 +28,13 @@ A generated period is never re-dated (#106 E2): the stub exists only if the
 stop or the change is recorded when the period is generated. Otherwise the
 period keeps its natural end, and the days after a stop carry no terms.
 
+**A leaver's adjustment** (:func:`adjustment_period`, #111 D4; ADR-0017 E6,
+E11): a tutor with no period left to open gets one for the adjustment, from the
+day after the last one, with the last non-``NULL`` frequency of the terms in
+force by then (the last period's when there is none), to that calendar's natural
+end, or the day before a later version with another frequency (a return).
+Returning terms inside it follow #106 E3 like any generated period.
+
 **The refusals** (:func:`terms_refusal`), on the terms as they would be after
 a write, are the rules that keep the chain above true:
 
@@ -149,6 +156,30 @@ def next_period(
             end = min(end, version.effective_from - timedelta(days=1))
             break
     return PeriodSpan(start, end, frequency, is_first)
+
+
+def adjustment_period(
+    *,
+    last_ends_on: date,
+    last_frequency: str,
+    terms: Iterable[TermsVersion],
+    anchor: date,
+) -> PeriodSpan:
+    """The period a leaver's adjustment opens (see the module docstring)."""
+    ordered = _ordered(terms)
+    start = last_ends_on + timedelta(days=1)
+    paid_before = [
+        v.pay_frequency
+        for v in ordered
+        if v.effective_from <= start and v.pay_frequency is not None
+    ]
+    frequency = paid_before[-1] if paid_before else last_frequency
+    end = natural_bounds(frequency, start, anchor)[1]
+    for version in ordered:
+        if version.effective_from > start and version.pay_frequency != frequency:
+            end = max(start, min(end, version.effective_from - timedelta(days=1)))
+            break
+    return PeriodSpan(start, end, frequency)
 
 
 def terms_refusal(

@@ -1,6 +1,7 @@
 """``blocking_work`` in both orders (#110 I), drift (J, ADR-0017 E10) and P11's
 guard (H10). Each change goes through its real route unless it says otherwise."""
 
+import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -10,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.modules.identity.permissions import FINANCE_STAFF, OWNER, TUTOR
+from app.workflows import payroll_adjustments
 from tests.conftest import FrozenClock, frozen_clock
 from tests.integration.auth_support import (
     CreatedUser,
@@ -19,7 +21,7 @@ from tests.integration.auth_support import (
 )
 from tests.integration.catalog_support import get as get_as
 from tests.integration.catalog_support import patch, post
-from tests.integration.conftest import run_sql
+from tests.integration.conftest import run_sql, settings_for
 from tests.integration.corrections_support import Staff, staff
 from tests.integration.guardian_support import delete
 from tests.integration.payroll_calculation_support import (
@@ -549,37 +551,21 @@ def test_j9_the_counts_add_up(module_seeded_url, client, owner, finance, tutor):
 def test_d3_d4_a_surviving_line_is_outside_drift_and_inside_the_total(
     module_seeded_url, client, owner, finance, tutor
 ):
-    """#111's ``adjustment`` kind doesn't exist yet: the CHECKs refuse it, so they
-    are dropped for this test and restored. The row is what #111 will write."""
+    """#111 F3, on a real row: the job's ``late_approval`` line is in the period,
+    ``prepare`` and ``finalize`` see no drift, and the total counts it."""
     url = module_seeded_url
-    period = worked(url, client, owner, tutor)
-    assert code(prepare(client, finance, period)) == OK
-    checks = run_sql(
-        url,
-        "SELECT conname, pg_get_constraintdef(oid) AS body FROM pg_constraint"
-        " WHERE conrelid = 'payroll_lines'::regclass AND contype = 'c'",
-    )
-    try:
-        for check in checks:
-            run_sql(url, f'ALTER TABLE payroll_lines DROP CONSTRAINT "{check.conname}"')
-        run_sql(
-            url,
-            "INSERT INTO payroll_lines (payroll_period_id, tutor_user_id, kind,"
-            " amount) VALUES (:p, :t, 'adjustment', 10)",
-            {"p": period, "t": tutor.id},
-        )
+    first = paid_tutor(url, tutor.id)
+    second = add_period_row(url, tutor.id, "11-09", "11-15", first=False)
+    made = lesson(url, starts_at=STARTS, tutor=tutor)
+    locked(client, url, finance, owner, first)
+    approved_lesson(client, made, owner.user)
+    asyncio.run(payroll_adjustments.run_post_adjustments(settings_for(url)))
+    assert [line.kind for line in lines(url, second)] == ["adjustment"]
+    assert code(prepare(client, finance, second)) == OK
 
-        assert code(finalize(client, url, owner, period)) == OK
+    assert code(finalize(client, url, owner, second)) == OK
 
-        assert row_of(url, period).total_amount == Decimal("120.00")
-    finally:
-        clear(url)
-        for check in checks:
-            run_sql(
-                url,
-                f'ALTER TABLE payroll_lines ADD CONSTRAINT "{check.conname}"'
-                f" {check.body}",
-            )
+    assert row_of(url, second).total_amount == Decimal("110.00")
 
 
 # --- H10: P11's guard -----

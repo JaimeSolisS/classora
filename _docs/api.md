@@ -310,7 +310,7 @@ Codes in use today:
 | `payroll_period_not_ended` | 409 | Preparing a period before the center's today has passed its last day. `details.ends_on`. |
 | `payroll_period_not_prepared` | 409 | Returning or finalizing a period that isn't `prepared`. `details.status` is its status. |
 | `payroll_unresolved_work` | 409 | Work with no basis stops `prepare` or `finalize`. `details.count`, and `details.items`, at most 20, newest first: `class_session_id`, `service_date`, `reason`. No amount. |
-| `payroll_negative_total` | 409 | Preparing a period whose lines total below `0.00`. No amount in the body. |
+| `payroll_negative_total` | 409 | Preparing or finalizing a period whose lines total below `0.00` (#111 E8 for `finalize`). No amount in the body. |
 | `payroll_self_finalize` | 403 | The preparer can't finalize, and nobody finalizes their own pay; an Owner is excepted. `details.reason` is `preparer` or `own_pay`. |
 | `payroll_review_outdated` | 409 | The `prepared_at` sent isn't the period's: it was prepared again after the page was read. |
 | `payroll_period_out_of_order` | 409 | An earlier period of the tutor isn't finalized. `details.earliest_period_id` and `details.status` name the oldest. |
@@ -7256,7 +7256,7 @@ closeout, a cancellation or a reschedule.
 | Route | Access | Notes |
 |---|---|---|
 | `POST /api/v1/payroll/periods/{period_id}/recalculate` | `require("payroll.prepare")` | `200` with `PayrollRecalculation`: `line_count` and `total` of **all** the period's lines after the run, as `GET …/lines` shows them (#109 E2). The total may be negative. No body. Repeatable. |
-| `GET /api/v1/payroll/periods/{period_id}/lines` | `authenticated()` + record policy (see Payroll workflow) | `PayrollPeriodReview`: `period` (`id`, `tutor_user_id`, `starts_on`, `ends_on`, `pay_frequency`, `status`, and the fields under Payroll workflow), `lines[]` by `service_date`, then `class_session_id`, then `salary_starts_on`, then `pay_item_id`: session lines, then salary, then items. And `total`, the sum of the rounded lines. Not paginated: one period. `409 payroll_amount_out_of_range` when the lines sum beyond the money range. |
+| `GET /api/v1/payroll/periods/{period_id}/lines` | `authenticated()` + record policy (see Payroll workflow) | `PayrollPeriodReview`: `period` (`id`, `tutor_user_id`, `starts_on`, `ends_on`, `pay_frequency`, `status`, and the fields under Payroll workflow), `lines[]` by `service_date`, then `class_session_id`, then `salary_starts_on`, then `pay_item_id`, then `payroll_adjustment_id`: session lines, then salary, then items, then adjustments. And `total`, the sum of the rounded lines. Not paginated: one period. `409 payroll_amount_out_of_range` when the lines sum beyond the money range. |
 | `GET /api/v1/payroll/unresolved-work` | `require("payroll.view")` | `CursorPage[UnresolvedWorkItem]`, newest `service_date` first, then `class_session_id`. Query `tutor_user_id?`, `reason?`, `limit?`, `cursor?`. An unknown `reason` or a malformed id is `422 validation_error`, a bad cursor `400 invalid_cursor`, an unknown tutor an empty page. |
 
 - **Access:** Owners and Finance Staff hold both. A Finance tutor may run their
@@ -7278,8 +7278,9 @@ closeout, a cancellation or a reschedule.
   picks the period, the rate and the rule.
 - **Later changes:** an approval or a revision shows on the next run of an open
   period. A prepared period waits for its return or `finalize`'s drift check,
-  which also calls `blocking_work` again; a finalized one keeps its lines, and #111
-  posts the difference.
+  which also calls `blocking_work` again; a finalized one keeps its lines, and the
+  job `payroll:post_adjustments` posts the difference into the tutor's earliest
+  open period (see Corrections after lock).
 - **Line:** `id`, `kind`, `amount`, `class_session_id`, `approval_id` (`null` on
   a cancellation), `service_date`, `class_kind`, `minutes`, `rate_model`, `rate`
   (text, four places), `compensation_rate_id`, `session_pay_rule_id`,
@@ -7288,8 +7289,15 @@ closeout, a cancellation or a reschedule.
   `proration_numerator`, `proration_denominator`, `proration_basis`, `null` on
   every other kind, and the item fields `pay_item_id`, `pay_item_type_name` and
   `pay_item_description`, likewise. "Covered by salary" is a `0.00` `session` line
-  with no rate. `amount` is negative on a deduction, the only negative kind. No
-  student data.
+  with no rate. `amount` is negative on a deduction or an adjustment, the only
+  signed kinds. An `adjustment` line (#111) has only its amount and
+  `payroll_adjustment_id`, and from its adjustment, in the same read:
+  `adjustment_kind` (`late_approval`, `hours_correction`, `manual`,
+  `carry_forward`), `adjustment_class_session_id`, `adjustment_service_date` and
+  `adjustment_class_kind` (the work it corrects), `adjustment_origin_line_id`
+  (an `hours_correction`'s origin), `adjustment_origin_period_id` (the finalized
+  period of a `late_approval`) and `adjustment_reason`, set on a `manual` one
+  only. The eight are `null` on every other kind. No student data.
 - **Salary (#108):** a tutor with a salary on the terms in effect gets one
   `salary` line per piece: a terms version's days in the period, split at the
   natural weeks, biweekly blocks or months of its frequency. A line pays
@@ -7321,13 +7329,17 @@ closeout, a cancellation or a reschedule.
   `before_first_period` (not blocking; Finance pays it with a one-time item),
   `no_pay_terms`, `no_rate`. A tutor with no periods is never
   `before_first_period`. The period's status plays no part: an item in a
-  finalized period stays until it has a basis, and #111 pays it then (still to
-  build): a closeout by `late_approval` under its approval, a cancellation by
-  `late_approval` under `source_key` `cancellation:<class_session_id>`, with no
-  `approval_id`. An item
-  leaves the list when its basis exists, before any `recalculate`. Nothing marks
-  an item resolved, so `before_first_period` work paid by a one-time item stays
-  listed. See `_docs/data-model.md` §13.2. #110 refuses `prepare`, after its
+  finalized period stays until it has a basis, and `payroll:post_adjustments`
+  then pays it within 15 minutes: a closeout by `late_approval` under its
+  approval, a cancellation by `late_approval` under `source_key`
+  `cancellation:<class_session_id>`, with no `approval_id`. An item
+  leaves the list when its basis exists, before any `recalculate`. Work an
+  adjustment names is settled: never listed again, even if its basis later
+  goes (#111 E7). On a date a finalized salary line paid, work is judged as it
+  stood at that finalize: a later rate is ignored and the salary covers the rest,
+  so such work is neither listed nor paid (#111 E4). Nothing else marks an item
+  resolved, so `before_first_period` work paid by a one-time item stays listed;
+  resolving an item by hand is M7-08c. See `_docs/data-model.md` §13.2. #110 refuses `prepare`, after its
   recalculation, and `finalize` on blocking items dated on or before the
   period's end.
 
@@ -7374,15 +7386,17 @@ pages are M7-07b.
 - **`finalize`, under the period lock:** `404` → `409 payroll_period_not_prepared` →
   `403 payroll_self_finalize` → `409 payroll_review_outdated` → `409
   payroll_period_out_of_order` → `409 payroll_period_stale` → `409
-  payroll_unresolved_work` → the total (`409 payroll_amount_out_of_range`) → the
-  writes, the inbox item and the tutor's notification.
+  payroll_unresolved_work` → the total (`409 payroll_amount_out_of_range`, `409
+  payroll_negative_total` below `0.00`, #111 E8) → the writes, the inbox item and
+  the tutor's notification. A negative total reaches `finalize` only if a prepared
+  period gained a line no route writes; the database CHECK stays the backstop.
 - **Oldest first:** a tutor's periods finalize in order, empty ones included: each
   takes a `prepare` and a `finalize`, at `0.00`. A stuck period stops the tutor's
   later ones, on purpose.
 - **Drift:** the lines are computed again and compared with the prepared ones as
   multisets of drafts, never by id. `finalize` then calls `blocking_work` again:
   work approved after `prepare` with no basis has no draft and no line, so the
-  comparison can't see it. Lines that survive a run (#111's `adjustment`) are outside
+  comparison can't see it. Lines that survive a run (`adjustment`, #111) are outside
   the comparison and inside the total, the same figure as `GET …/lines`.
 - **The review:** `prepared_at` identifies the lines, because they can't change
   while a period is `prepared`. Another value means the period was returned and
@@ -7398,6 +7412,41 @@ pages are M7-07b.
   route answers `409 payroll_review_route_required`, whatever the status.
 - **Notification:** `payroll.period_finalized` to the tutor, also one who has left:
   `{payroll_period_id, starts_on, ends_on}`.
+
+### Corrections after lock
+
+Implemented by M7-08 (#111; spec §3, §7, W3.5; ADR-0017 E11 and its #111 notes,
+orchestrator-recommended, pending owner review) in
+`app/workflows/payroll_adjustments.py` and `app/modules/payroll/adjustments.py`.
+Table: `_docs/data-model.md` §11.9. No new route: the adjustments show as
+`adjustment` lines through `GET …/lines`. The `manual` and carry-forward routes are
+M7-08c, per-course corrections M7-08d, the pages M7-08b.
+
+- **The job `payroll:post_adjustments`**, every 15 minutes, one queued at a time.
+  Nothing else enqueues it, so a late correction shows within 15 minutes. While
+  `payroll_starts_on` is `null` it reads no tutor. It logs `candidates`, `posted`,
+  `skipped_course` and `failed`, never an amount.
+- **What it posts:** a closeout approved, or a paying family cancellation, dated in
+  a **finalized** period of its tutor with no line (`late_approval`, the amount a
+  line would have had on the service date's basis); and a later revision of work
+  paid that way (`hours_correction`, the revision priced on the snapshot that paid
+  it first, minus what was paid so far, so lines plus adjustments equal the current
+  revision). Never `0.00`: a zero difference writes nothing. Never work before the
+  tutor's first period (a one-time item pays it), before `payroll_starts_on`, in an
+  `open` or `prepared` period, or of a cohort priced `per_course` (until M7-08d).
+- **Where:** the tutor's earliest `open` period, never a `prepared` one; a later
+  open period may then hold it while an earlier one waits, and that later period
+  still finalizes only after the earlier (`409 payroll_period_out_of_order`). A
+  tutor with none gets one: the next by the normal rule, and for a leaver one
+  period for the adjustment, from the day after the last one, with the last
+  frequency, to its natural end. **Returning terms inside that period follow #106
+  E3:** `422 effective_from_inside_generated_period` unless the frequency is
+  `null` or the same.
+- **A negative correction** can make an open period's total negative: `prepare`
+  then refuses it (`409 payroll_negative_total`), and later finalizes wait. M7-08c's
+  carry-forward is the way out.
+- **A rate a posted adjustment priced on** can't be deleted (`409
+  compensation_rate_in_use`).
 - **No pay in side channels:** the events `payroll.period_prepared`, `_returned` and
   `_finalized` carry ids, `status` and `line_count`. No amount or return reason is in
   an event, a log, a notification, an inbox subject, an error body or a stored
