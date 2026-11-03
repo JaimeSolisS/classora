@@ -36,7 +36,9 @@ from app.modules.payroll.calculation import LineDraft
 from app.modules.payroll.errors import PayrollAmountOutOfRangeError
 from app.modules.payroll.lines import FINALIZED, OPEN, REBUILT_KINDS
 from app.modules.payroll.models import PayrollLine, PayrollPeriod
-from app.modules.payroll.schemas import PayrollPeriodFacts, PayrollPeriodRow
+from app.modules.payroll.payments import PAID, PARTIALLY_PAID, paid_state
+from app.modules.payroll.payments import paid_sum as paid_sum_of
+from app.modules.payroll.schemas import PaidState, PayrollPeriodFacts, PayrollPeriodRow
 
 PREPARED: Final = "prepared"
 
@@ -199,6 +201,36 @@ def _row_total(value: Decimal | None) -> Money | None:
         return None
 
 
+def _paid_state_condition(state: PaidState, paid: Any) -> Any:
+    """The list filter of #112 D2, the SQL twin of :func:`paid_state`: only a
+    ``finalized`` period has a paid state."""
+    total = PayrollPeriod.total_amount
+    finalized = PayrollPeriod.status == FINALIZED
+    if state == PAID:
+        return finalized & (paid >= total)
+    if state == PARTIALLY_PAID:
+        return finalized & (paid > 0) & (paid < total)
+    return finalized & (paid == 0) & (total > Money.zero())
+
+
+def _row(row: Any) -> PayrollPeriodRow:
+    """A list row; ``paid_total`` and ``paid_state`` are ``None`` unless
+    ``finalized``."""
+    period: PayrollPeriod = row.PayrollPeriod
+    paid_total: Money | None = None
+    state: PaidState | None = None
+    if period.status == FINALIZED and period.total_amount is not None:
+        paid_total = Money(row.paid)
+        state = paid_state(period.total_amount, paid_total)
+    return PayrollPeriodRow(
+        **_facts(period).model_dump(),
+        line_count=row.line_count,
+        total=_row_total(row.total),
+        paid_total=paid_total,
+        paid_state=state,
+    )
+
+
 async def list_periods(
     session: AsyncSession,
     *,
@@ -206,11 +238,16 @@ async def list_periods(
     visible: Collection[str] | None,
     status: str | None,
     tutor_user_id: uuid.UUID | None,
+    paid: PaidState | None = None,
 ) -> OffsetPage[PayrollPeriodRow]:
-    """Periods, newest ``ends_on`` first, then ``id``, with their line count and
-    total. ``visible`` narrows the statuses a caller reads (#110 E8). Two
-    statements, whatever the page size, no lock."""
+    """Periods, newest ``ends_on`` first, then ``id``, with their line count,
+    total and, when finalized, what was paid (#112 D2). ``visible`` narrows the
+    statuses a caller reads (#110 E8); ``paid`` keeps the finalized periods in
+    that paid state. Two statements, whatever the page size, no lock."""
+    paid_sum = paid_sum_of(PayrollPeriod.id)
     conditions: list[Any] = []
+    if paid is not None:
+        conditions.append(_paid_state_condition(paid, paid_sum))
     if visible is not None:
         conditions.append(PayrollPeriod.status.in_(visible))
     if status is not None:
@@ -225,6 +262,7 @@ async def list_periods(
             PayrollPeriod,
             func.count(PayrollLine.id).label("line_count"),
             func.sum(cast(PayrollLine.amount, Numeric)).label("total"),
+            paid_sum.label("paid"),
         )
         .outerjoin(PayrollLine, PayrollLine.payroll_period_id == PayrollPeriod.id)
         .where(*conditions)
@@ -235,14 +273,7 @@ async def list_periods(
         .execution_options(populate_existing=True)
     )
     return OffsetPage[PayrollPeriodRow](
-        items=[
-            PayrollPeriodRow(
-                **_facts(row.PayrollPeriod).model_dump(),
-                line_count=row.line_count,
-                total=_row_total(row.total),
-            )
-            for row in rows
-        ],
+        items=[_row(row) for row in rows],
         total=count or 0,
         limit=page.limit,
         offset=page.offset,

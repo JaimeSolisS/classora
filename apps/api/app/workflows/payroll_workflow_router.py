@@ -4,6 +4,7 @@ E10, E12).
 - ``GET /api/v1/payroll/periods``: ``authenticated()`` and a check for
   ``payroll.view`` or ``payroll.finalize``, offset pagination. A delegated
   Administrator lists ``prepared`` and ``finalized`` periods only (#110 E8).
+  Filters ``status``, ``tutor_user_id`` and ``paid_state`` (#112 D2).
 - ``POST …/{period_id}/prepare``: ``require("payroll.prepare")``, no body. No key
   and no reauthentication: the status check refuses a second one.
 - ``POST …/{period_id}/return``: ``authenticated()`` and a check for
@@ -42,6 +43,7 @@ from app.core.pagination import OffsetPage, OffsetPagination
 from app.core.reauth import REAUTH_RESPONSES, require_recent_auth
 from app.core.uow import UnitOfWorkDep
 from app.modules.payroll.schemas import (
+    PaidState,
     PayrollPeriodFinalize,
     PayrollPeriodReturn,
     PayrollPeriodTransition,
@@ -87,12 +89,20 @@ async def list_payroll_periods(
     page: OffsetPagination,
     status: PeriodStatus | None = None,
     tutor_user_id: uuid.UUID | None = None,
+    paid_state: PaidState | None = None,
 ) -> OffsetPage[PayrollPeriodItem]:
     """Payroll periods, newest end date first. A reviewer with `payroll.finalize`
     alone sees prepared and finalized periods. `total` is null on a period whose
-    lines sum beyond the money range."""
+    lines sum beyond the money range. A finalized period carries what was paid
+    (`paid_total`, `paid_state`), and `paid_state` keeps the finalized periods in
+    that state."""
     return await payroll_workflow.list_periods(
-        uow.session, principal, page=page, status=status, tutor_user_id=tutor_user_id
+        uow.session,
+        principal,
+        page=page,
+        status=status,
+        tutor_user_id=tutor_user_id,
+        paid_state=paid_state,
     )
 
 

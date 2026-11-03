@@ -186,6 +186,9 @@ from app.workflows.payroll_pay_items_router import (
 from app.workflows.payroll_pay_rules_router import (
     router as payroll_pay_rules_router,
 )
+from app.workflows.payroll_payments_router import (
+    router as payroll_payments_router,
+)
 from app.workflows.payroll_workflow_router import (
     router as payroll_workflow_router,
 )
@@ -356,6 +359,7 @@ def build_app(
     app.include_router(payroll_calculation_router)
     app.include_router(payroll_workflow_router)
     app.include_router(payroll_manual_adjustments_router)
+    app.include_router(payroll_payments_router)
     app.include_router(payroll_compensation_router)
     app.include_router(payroll_pay_items_router)
     app.include_router(payroll_pay_rules_router)

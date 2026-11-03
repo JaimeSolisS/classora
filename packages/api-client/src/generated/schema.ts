@@ -4582,7 +4582,9 @@ export interface paths {
          * List Payroll Periods
          * @description Payroll periods, newest end date first. A reviewer with `payroll.finalize`
          *     alone sees prepared and finalized periods. `total` is null on a period whose
-         *     lines sum beyond the money range.
+         *     lines sum beyond the money range. A finalized period carries what was paid
+         *     (`paid_total`, `paid_state`), and `paid_state` keeps the finalized periods in
+         *     that state.
          */
         get: operations["list_payroll_periods_api_v1_payroll_periods_get"];
         put?: never;
@@ -4702,6 +4704,59 @@ export interface paths {
          *     carry and the same one to retry it.
          */
         post: operations["carry_payroll_period_forward_api_v1_payroll_periods__period_id__carry_forward_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payroll/periods/{period_id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Payroll Payments
+         * @description The period's payments, reversed ones included, newest payment date
+         *     first. A reviewer with `payroll.finalize` alone reads those of prepared and
+         *     finalized periods.
+         */
+        get: operations["list_payroll_payments_api_v1_payroll_periods__period_id__payments_get"];
+        put?: never;
+        /**
+         * Record Payroll Payment
+         * @description Log a payment made to the tutor outside the platform against a finalized
+         *     period: the date, the amount, the method, the reference (the transfer number
+         *     or receipt) and an optional note. Partial payments are allowed, up to the
+         *     period's total. A mistake is reversed, never edited. Send a new
+         *     `Idempotency-Key` per payment and the same one to retry it.
+         */
+        post: operations["record_payroll_payment_api_v1_payroll_periods__period_id__payments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payroll/payments/{payment_id}/reversal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reverse Payroll Payment
+         * @description Reverse a payment logged by mistake, with a reason. The payment stays
+         *     listed, marked reversed, and no longer counts toward what was paid, so the
+         *     right one can be logged again, with the same reference too. Needs a password
+         *     reauthentication in the last 5 minutes.
+         */
+        post: operations["reverse_payroll_payment_api_v1_payroll_payments__payment_id__reversal_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -15095,6 +15150,8 @@ export interface components {
         PackageTransactionKind: "grant" | "consume" | "expire" | "reversal" | "refund";
         /** @enum {string} */
         PackageUnit: "sessions" | "minutes";
+        /** @enum {string} */
+        PaidState: "unpaid" | "partially_paid" | "paid";
         /**
          * PasswordChange
          * @description The signed-in user's current and new password (``POST /auth/password``).
@@ -15857,6 +15914,144 @@ export interface components {
             adjustment_origin_period_id: string | null;
         };
         /**
+         * PayrollPaymentCreate
+         * @description ``POST /api/v1/payroll/periods/{id}/payments`` (#112 B2): a payment made
+         *     outside the platform. ``amount`` above zero (``amount_not_positive``;
+         *     ``money_*``); ``reference`` trimmed, 1 to 100 characters, and ``note``
+         *     trimmed, up to 1000, blank → ``null`` (``text_empty``, ``text_too_long``,
+         *     ``text_invalid``). ``paid_on`` and ``method_code`` are checked against the
+         *     period and the payment methods by the workflow (``paid_on_in_future``,
+         *     ``paid_on_before_period``, ``payment_method_unavailable``).
+         */
+        PayrollPaymentCreate: {
+            /**
+             * Paid On
+             * Format: date
+             * @description From the period's first day to the center's today.
+             */
+            paid_on: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @description Above zero. Partial payments are allowed.
+             * @example 1250.00
+             */
+            amount: string;
+            /**
+             * Method Code
+             * @description An active payment method's code.
+             */
+            method_code: string;
+            /**
+             * Reference
+             * @description Up to 100 characters: the transfer number or receipt. With the method, it identifies the payment: the same pair twice on a period is refused.
+             */
+            reference: string;
+            /**
+             * Note
+             * @description Up to 1000 characters.
+             */
+            note?: string | null;
+        };
+        /**
+         * PayrollPaymentItem
+         * @description One payment of ``GET /api/v1/payroll/periods/{id}/payments`` (#112 D1).
+         *     A reversed payment stays listed with its ``reversal``, and counts for
+         *     nothing.
+         */
+        PayrollPaymentItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Paid On
+             * Format: date
+             */
+            paid_on: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            /** Method Code */
+            method_code: string;
+            /** Reference */
+            reference: string;
+            /** Note */
+            note: string | null;
+            recorded_by: components["schemas"]["AccountName"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            reversal: components["schemas"]["PayrollPaymentReversalItem"] | null;
+        };
+        /**
+         * PayrollPaymentRecorded
+         * @description What ``POST …/payments`` answers (#112 B7, E6): no amount, reference or
+         *     note, because the stored idempotent response holds it in clear. The page
+         *     refetches the payments.
+         */
+        PayrollPaymentRecorded: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Payroll Period Id
+             * Format: uuid
+             */
+            payroll_period_id: string;
+            paid_state: components["schemas"]["PaidState"];
+        };
+        /**
+         * PayrollPaymentReversalCreate
+         * @description ``POST /api/v1/payroll/payments/{id}/reversal`` (#112 C3).
+         */
+        PayrollPaymentReversalCreate: {
+            /**
+             * Reason
+             * @description Up to 1000 characters.
+             */
+            reason: string;
+        };
+        /**
+         * PayrollPaymentReversalItem
+         * @description A payment's reversal (#112 D1).
+         */
+        PayrollPaymentReversalItem: {
+            /** Reason */
+            reason: string;
+            reversed_by: components["schemas"]["AccountName"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * PayrollPaymentReversed
+         * @description What ``POST …/reversal`` answers (#112 C3, E6): no reason.
+         */
+        PayrollPaymentReversed: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Payroll Payment Id
+             * Format: uuid
+             */
+            payroll_payment_id: string;
+            paid_state: components["schemas"]["PaidState"];
+        };
+        /**
          * PayrollPeriodDetail
          * @description The head of a period's review (#110 F3).
          */
@@ -15909,6 +16104,13 @@ export interface components {
              * @description The tutor's sessions starting in the period with no approved closeout, cancelled or skipped ones aside. A warning, never a block.
              */
             pending_closeouts: number;
+            /**
+             * Paid Total
+             * @description The payments without a reversal (#112). Null unless the period is finalized.
+             */
+            paid_total: string | null;
+            /** @description unpaid, partially_paid or paid; a 0.00 total is paid. Null unless the period is finalized. */
+            paid_state: components["schemas"]["PaidState"] | null;
         };
         /**
          * PayrollPeriodFinalize
@@ -15963,6 +16165,13 @@ export interface components {
             prepared_at: string | null;
             /** Finalized At */
             finalized_at: string | null;
+            /**
+             * Paid Total
+             * @description The payments without a reversal (#112). Null unless the period is finalized.
+             */
+            paid_total: string | null;
+            /** @description unpaid, partially_paid or paid; a 0.00 total is paid. Null unless the period is finalized. */
+            paid_state: components["schemas"]["PaidState"] | null;
         };
         /**
          * PayrollPeriodReturn
@@ -16144,7 +16353,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "billing.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payment.record" | "payroll.finalize" | "payroll.manage" | "payroll.prepare" | "payroll.view" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "billing.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payment.record" | "payroll.finalize" | "payroll.manage" | "payroll.payment.record" | "payroll.prepare" | "payroll.view" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /** @enum {string} */
         PlanAction: "activate" | "complete" | "discontinue";
         /** @enum {string} */
@@ -36558,6 +36767,7 @@ export interface operations {
             query?: {
                 status?: components["schemas"]["PeriodStatus"] | null;
                 tutor_user_id?: string | null;
+                paid_state?: components["schemas"]["PaidState"] | null;
                 limit?: number;
                 offset?: number;
             };
@@ -36969,6 +37179,230 @@ export interface operations {
                 };
             };
             /** @description The period isn't open (payroll_period_not_open, with details.status); it hasn't ended (payroll_period_not_ended, with details.ends_on); a line or the total is beyond the money range (payroll_amount_out_of_range); or its total after a recalculation isn't below zero (payroll_total_not_negative). A refusal changes nothing. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_payroll_payments_api_v1_payroll_periods__period_id__payments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollPaymentItem"][];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such period (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    record_payroll_payment_api_v1_payroll_periods__period_id__payments_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID(). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                period_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollPaymentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollPaymentRecorded"];
+                };
+            };
+            /** @description The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not allowed (permission_denied), or the period is the caller's own pay (payroll_own_compensation; only an Owner may). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such period (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The period isn't finalized (payroll_period_not_finalized, with details.status); a payment without a reversal has the same method and reference (payroll_payment_duplicate, with details.payment_id); or the payments would add up to more than the period's total (payroll_payment_exceeds_balance, with details.remaining). A refusal changes nothing. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    reverse_payroll_payment_api_v1_payroll_payments__payment_id__reversal_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID(). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                payment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollPaymentReversalCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollPaymentReversed"];
+                };
+            };
+            /** @description The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not allowed (permission_denied), the session wasn't reauthenticated (reauth_required), or the period is the caller's own pay (payroll_own_compensation; only an Owner may). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such payment (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The payment was already reversed (payroll_payment_already_reversed). */
             409: {
                 headers: {
                     [name: string]: unknown;

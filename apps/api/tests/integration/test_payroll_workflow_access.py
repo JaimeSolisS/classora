@@ -298,6 +298,8 @@ def test_f1_the_list_filters_orders_and_names_the_tutor(
         "total": "110.00",
         "prepared_at": NOW.isoformat().replace("+00:00", "Z"),
         "finalized_at": None,
+        "paid_total": None,
+        "paid_state": None,
     }
     [archived] = get(client, owner.cookie, ROOT, tutor_user_id=str(other.id)).json()[
         "items"

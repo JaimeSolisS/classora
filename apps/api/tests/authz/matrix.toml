@@ -2142,6 +2142,19 @@ allow = ["owner", "finance_staff"]
 # #441 D3: the placeholder id is no version: 404 for the allowed roles.
 
 [[route]]
+method = "POST"
+path = "/api/v1/payroll/payments/{payment_id}/reversal"
+access = "permission"
+permission = "finance.refund.approve"
+allow = ["owner"]
+idempotency = true
+reauth = "finance.refund_or_reversal"
+json = { reason = "Monto equivocado" }
+# #112 C1, ADR-0017 E12: reauthentication, then the key: without one the
+# reauthenticated Owner (and a delegated Administrator) get 400. Finance Staff
+# can't. Rules, replays and races: tests/integration/test_payroll_payments*.py.
+
+[[route]]
 method = "GET"
 path = "/api/v1/payroll/periods"
 access = "authenticated"
@@ -2180,6 +2193,26 @@ access = "authenticated"
 deny = ["administrator", "academic_coordinator", "tutor", "student", "guardian"]
 # #107 H3, H4, #110 F3: the placeholder id is no period: 404 for the rest. A
 # delegated Administrator reads prepared and finalized periods.
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/periods/{period_id}/payments"
+access = "authenticated"
+deny = ["administrator", "academic_coordinator", "tutor", "student", "guardian"]
+# #112 D1, E7: the period reads' check, then their record policy: the
+# placeholder id is no period: 404 for the rest. A delegated Administrator reads
+# those of prepared and finalized periods.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/periods/{period_id}/payments"
+access = "permission"
+permission = "payroll.payment.record"
+allow = ["owner", "finance_staff"]
+idempotency = true
+# #112 B1, ADR-0017 E12: no reauthentication. Without a key the allowed roles
+# get 400; a delegated Administrator gets 403 (not delegable). Rules, replays
+# and races: tests/integration/test_payroll_payments*.py.
 
 [[route]]
 method = "POST"

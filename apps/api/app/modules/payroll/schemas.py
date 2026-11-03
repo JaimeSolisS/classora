@@ -74,6 +74,10 @@ PAY_ITEM_TYPE_NAME_MAX: Final = 100
 PAY_ITEM_DESCRIPTION_MAX: Final = 500
 RETURN_REASON_MAX: Final = 1000
 ADJUSTMENT_REASON_MAX: Final = 1000
+PAYMENT_REFERENCE_MAX: Final = 100
+PAYMENT_NOTE_MAX: Final = 1000
+PAYMENT_REVERSAL_REASON_MAX: Final = 1000
+PAYMENT_METHOD_CODE_MAX: Final = 32
 
 
 def _in_range(value: date) -> date:
@@ -545,6 +549,7 @@ type AdjustmentKind = Literal[
     "late_approval", "hours_correction", "manual", "carry_forward"
 ]
 type PeriodStatus = Literal["open", "prepared", "finalized"]
+type PaidState = Literal["unpaid", "partially_paid", "paid"]
 type UnresolvedReason = Literal["before_first_period", "no_pay_terms", "no_rate"]
 type UnresolvedSource = Literal["closeout", "cancellation"]
 
@@ -576,10 +581,13 @@ class PayrollPeriodFacts(PayrollPeriodSummary):
 
 class PayrollPeriodRow(PayrollPeriodFacts):
     """One row of the period list (#110 F1): ``total`` is ``None`` when the
-    lines sum beyond the money range (F2)."""
+    lines sum beyond the money range (F2). ``paid_total`` and ``paid_state`` are
+    ``None`` unless the period is ``finalized`` (#112 D2)."""
 
     line_count: int
     total: Money | None
+    paid_total: Money | None
+    paid_state: PaidState | None
 
 
 class PayrollPeriodTransition(BaseModel):
@@ -766,3 +774,84 @@ class UnresolvedWorkItem(BaseModel):
     source: UnresolvedSource
     reason: UnresolvedReason
     blocking: bool
+
+
+class PayrollPaymentCreate(BaseModel):
+    """``POST /api/v1/payroll/periods/{id}/payments`` (#112 B2): a payment made
+    outside the platform. ``amount`` above zero (``amount_not_positive``;
+    ``money_*``); ``reference`` trimmed, 1 to 100 characters, and ``note``
+    trimmed, up to 1000, blank → ``null`` (``text_empty``, ``text_too_long``,
+    ``text_invalid``). ``paid_on`` and ``method_code`` are checked against the
+    period and the payment methods by the workflow (``paid_on_in_future``,
+    ``paid_on_before_period``, ``payment_method_unavailable``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    paid_on: date = Field(
+        description="From the period's first day to the center's today."
+    )
+    amount: Money = Field(description="Above zero. Partial payments are allowed.")
+    method_code: str = Field(
+        min_length=1,
+        max_length=PAYMENT_METHOD_CODE_MAX,
+        description="An active payment method's code.",
+    )
+    reference: str = Field(
+        description=(
+            "Up to 100 characters: the transfer number or receipt. With the method,"
+            " it identifies the payment: the same pair twice on a period is refused."
+        )
+    )
+    note: str | None = Field(default=None, description="Up to 1000 characters.")
+
+    @field_validator("amount")
+    @classmethod
+    def _amount(cls, value: Money) -> Money:
+        if not value.is_positive():
+            raise PydanticCustomError(
+                "amount_not_positive", "The amount must be above zero."
+            )
+        return value
+
+    @field_validator("reference")
+    @classmethod
+    def _reference(cls, value: str) -> str:
+        return _trimmed(value, PAYMENT_REFERENCE_MAX)
+
+    @field_validator("note")
+    @classmethod
+    def _note(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        return _trimmed(value, PAYMENT_NOTE_MAX)
+
+
+class PayrollPaymentRecorded(BaseModel):
+    """What ``POST …/payments`` answers (#112 B7, E6): no amount, reference or
+    note, because the stored idempotent response holds it in clear. The page
+    refetches the payments."""
+
+    id: uuid.UUID
+    payroll_period_id: uuid.UUID
+    paid_state: PaidState
+
+
+class PayrollPaymentReversalCreate(BaseModel):
+    """``POST /api/v1/payroll/payments/{id}/reversal`` (#112 C3)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(description="Up to 1000 characters.")
+
+    @field_validator("reason")
+    @classmethod
+    def _reason(cls, value: str) -> str:
+        return _trimmed(value, PAYMENT_REVERSAL_REASON_MAX)
+
+
+class PayrollPaymentReversed(BaseModel):
+    """What ``POST …/reversal`` answers (#112 C3, E6): no reason."""
+
+    id: uuid.UUID
+    payroll_payment_id: uuid.UUID
+    paid_state: PaidState

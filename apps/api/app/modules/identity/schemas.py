@@ -53,6 +53,7 @@ type PermissionCode = Literal[
     "payment.record",
     "payroll.finalize",
     "payroll.manage",
+    "payroll.payment.record",
     "payroll.prepare",
     "payroll.view",
     "progress_report.review",

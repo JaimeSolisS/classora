@@ -59,6 +59,13 @@ checks :func:`settled_by_tutor` and :func:`line_period_status`,
 lock-free reads, the status moves, and the pure :func:`line_drift`, for
 ``app.workflows.payroll_workflow``.
 
+**Payments** (#112; :mod:`~app.modules.payroll.payments`): the reads
+:func:`paid_total`, :func:`duplicate_of`, :func:`payment_period_id`,
+:func:`is_reversed` and :func:`list_payments`, the writes
+:func:`record_payment` and :func:`reverse_payment`, and the pure
+:func:`paid_state`, for ``app.workflows.payroll_payments``. The period list
+carries the paid state (:func:`list_periods`).
+
 **Record policies** (:mod:`~app.modules.payroll.permissions`):
 :func:`can_view_compensation`, :func:`can_write_compensation`, and for a period
 :func:`can_list_periods`, :func:`can_read_period`, :func:`can_return_period` and
@@ -121,11 +128,17 @@ from app.modules.payroll.calculation import (
     planned_sessions,
 )
 from app.modules.payroll.errors import (
+    PaidOnBeforePeriodError,
+    PaidOnInFutureError,
     PayrollLineNotFinalizedError,
     PayrollNegativeTotalError,
     PayrollNoPeriodError,
     PayrollOwnCompensationError,
+    PayrollPaymentAlreadyReversedError,
+    PayrollPaymentDuplicateError,
+    PayrollPaymentExceedsBalanceError,
     PayrollPeriodNotEndedError,
+    PayrollPeriodNotFinalizedError,
     PayrollPeriodNotOpenError,
     PayrollPeriodNotPreparedError,
     PayrollPeriodOutOfOrderError,
@@ -178,6 +191,18 @@ from app.modules.payroll.pay_rules import (
     get_session_pay_rule_overview,
     session_pay_rule_in_effect,
     session_pay_rule_versions,
+)
+from app.modules.payroll.payments import (
+    PaymentDraft,
+    PaymentRow,
+    duplicate_of,
+    is_reversed,
+    list_payments,
+    paid_state,
+    paid_total,
+    payment_period_id,
+    record_payment,
+    reverse_payment,
 )
 from app.modules.payroll.period_review import (
     EarlierPeriod,
@@ -253,15 +278,23 @@ __all__ = [
     "LineDrift",
     "ManualDraft",
     "OriginSnapshot",
+    "PaidOnBeforePeriodError",
+    "PaidOnInFutureError",
     "PaidSession",
     "PayBasis",
     "PayItemFact",
     "PayableCancellation",
+    "PaymentDraft",
+    "PaymentRow",
     "PayrollLineNotFinalizedError",
     "PayrollNegativeTotalError",
     "PayrollNoPeriodError",
     "PayrollOwnCompensationError",
+    "PayrollPaymentAlreadyReversedError",
+    "PayrollPaymentDuplicateError",
+    "PayrollPaymentExceedsBalanceError",
     "PayrollPeriodNotEndedError",
+    "PayrollPeriodNotFinalizedError",
     "PayrollPeriodNotOpenError",
     "PayrollPeriodNotPreparedError",
     "PayrollPeriodOutOfOrderError",
@@ -305,6 +338,7 @@ __all__ = [
     "delete_pay_terms",
     "delete_session_pay_rule",
     "draft_lines",
+    "duplicate_of",
     "earliest_open_period",
     "earliest_unfinalized_before",
     "end_pay_item",
@@ -321,6 +355,7 @@ __all__ = [
     "has_no_adjustment_keyed",
     "has_no_session_line",
     "in_walk_order",
+    "is_reversed",
     "keyed",
     "late_approval_draft",
     "line_drift",
@@ -330,6 +365,7 @@ __all__ = [
     "list_pay_item_types",
     "list_pay_items",
     "list_pay_terms",
+    "list_payments",
     "list_periods",
     "lock_open_period",
     "lock_payroll_periods",
@@ -344,8 +380,11 @@ __all__ = [
     "owed",
     "paid_after_lock",
     "paid_so_far",
+    "paid_state",
+    "paid_total",
     "pay_item_drafts",
     "pay_item_facts",
+    "payment_period_id",
     "payroll_starts_on",
     "period_lines",
     "period_row",
@@ -359,7 +398,9 @@ __all__ = [
     "rate_versions",
     "rate_versions_of_tutors",
     "rebuilt_only",
+    "record_payment",
     "replace_lines",
+    "reverse_payment",
     "revision_unpaid",
     "salary_covers_of_tutors",
     "salary_drafts",

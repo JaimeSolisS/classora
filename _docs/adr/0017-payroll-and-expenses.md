@@ -337,6 +337,7 @@ Permissions, not roles; each seeded by its first user; only `payroll.finalize` i
 - A finalized period only. **Partial payments are allowed**: Σ valid payments ≤ `total_amount`, checked under the period lock. Paid state is derived: `unpaid`, `partially_paid`, `paid`.
 - `Idempotency-Key` is required, and the same method and reference on the same period under a **different** key is `409 payroll_payment_duplicate`.
 - A mistaken payment gets one `payroll_payment_reversals` row (E12), never an edit.
+- **Implementation notes (#112, orchestrator-recommended, pending owner review):** a reversed payment frees the pair: only payments without a reversal count for `409 payroll_payment_duplicate`, the cap and the paid state (#112 E2). The reference is compared trimmed and case-insensitively, the method by code (E3). `paid_on` runs from the period's `starts_on` to the center's today (E4). Recording or reversing your own pay is `403 payroll_own_compensation`, an Owner excepted (E5). Responses carry ids and the paid state only (E6). Reads follow #110 E8 (E7). A finalized `0.00` period is `paid` and refuses any payment (E8). The period row `FOR UPDATE` is the only lock.
 
 ### Payslips (E14 (a), spec §1, §7, ISSUE-F5, #113, ADR-0015, product for the non-fiscal wording)
 

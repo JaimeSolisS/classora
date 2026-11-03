@@ -1,5 +1,5 @@
 """Payroll errors (#105 G, #106 B, F, #441 C, #107 G, H6, #109, #110,
-M7-08c). Each ``AppError`` renders as Problem Details (``app.core.errors``) and
+M7-08c, #112). Each ``AppError`` renders as Problem Details (``app.core.errors``) and
 carries no amount."""
 
 import uuid
@@ -8,6 +8,7 @@ from datetime import date
 from typing import Final, Literal, Protocol
 
 from app.core.errors import AppError
+from app.core.money import Money
 
 UNRESOLVED_ITEMS_SHOWN: Final = 20
 """The most ``payroll_unresolved_work`` lists (#110 B4); ``count`` says how many
@@ -429,3 +430,84 @@ class BiweeklyAnchorLockedError(AppError):
     status = 409
     code = "biweekly_anchor_locked"
     detail = "Biweekly payroll periods exist, so the anchor date can't change."
+
+
+# --- Payments (#112) -----------------------------------------------------------------
+
+
+class PayrollPeriodNotFinalizedError(AppError):
+    """A payment is logged against a ``finalized`` period only (P7; #112 B4).
+    ``details.status`` is the period's status."""
+
+    status = 409
+    code = "payroll_period_not_finalized"
+    detail = "This payroll period isn't finalized."
+
+    def __init__(self, status: str) -> None:
+        super().__init__(details={"status": status})
+
+
+class PayrollPaymentDuplicateError(AppError):
+    """A payment without a reversal on this period has the same method and
+    reference, trimmed and ignoring case (#112 B5, E2, E3).
+    ``details.payment_id`` names it."""
+
+    status = 409
+    code = "payroll_payment_duplicate"
+    detail = "This payment was already logged: same method and reference."
+
+    def __init__(self, payment_id: uuid.UUID) -> None:
+        super().__init__(details={"payment_id": str(payment_id)})
+
+
+class PayrollPaymentExceedsBalanceError(AppError):
+    """The payments without a reversal would add up to more than the period's
+    ``total_amount`` (P7; #112 B6, E8). ``details.remaining`` is what is left to
+    pay: the caller may log payments, so it reads the total anyway."""
+
+    status = 409
+    code = "payroll_payment_exceeds_balance"
+    detail = "This payment is more than what is left to pay for this period."
+
+    def __init__(self, remaining: Money) -> None:
+        super().__init__(details={"remaining": str(remaining)})
+
+
+class PayrollPaymentAlreadyReversedError(AppError):
+    """A payment has one reversal at most (#112 C2; the UNIQUE is the
+    backstop)."""
+
+    status = 409
+    code = "payroll_payment_already_reversed"
+    detail = "This payment was already reversed."
+
+
+class _PaidOnError(AppError):
+    """A ``422`` whose code is also the one field error at ``paid_on``."""
+
+    status = 422
+
+    def __init__(self) -> None:
+        super().__init__(
+            errors=[
+                {
+                    "path": ["body", "paid_on"],
+                    "code": self.code,
+                    "message": self.detail or "",
+                }
+            ]
+        )
+
+
+class PaidOnInFutureError(_PaidOnError):
+    """The payment is dated after the center's local today (#112 E4)."""
+
+    code = "paid_on_in_future"
+    detail = "The payment date can't be after today."
+
+
+class PaidOnBeforePeriodError(_PaidOnError):
+    """The payment is dated before the period starts (#112 E4)."""
+
+    code = "paid_on_before_period"
+    detail = "The payment date can't be before the payroll period starts."
