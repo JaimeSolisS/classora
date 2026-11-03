@@ -80,7 +80,7 @@ PAYROLL_FINALIZE = "payroll.finalize"
 PAYROLL_VIEW = "payroll.view"
 PAYROLL_MANAGE = "payroll.manage"
 # The payroll calculation (#107 E10): who runs it (Owner, Finance Staff; not
-# delegable). #110 adds prepare and return under the same code.
+# delegable). #110 is prepare, and return with payroll.finalize.
 PAYROLL_PREPARE = "payroll.prepare"
 SCHEDULE_OVERRIDE = "schedule.override"
 FINANCE_REFUND_APPROVE = "finance.refund.approve"

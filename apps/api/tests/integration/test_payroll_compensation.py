@@ -861,6 +861,10 @@ def _race(url: str, call: Callable[[AsyncSession], Awaitable[uuid.UUID]]) -> lis
     return asyncio.run(_run())
 
 
+async def no_cohorts(_ids: Any) -> dict[uuid.UUID, Any]:
+    return {}
+
+
 def test_two_identical_rate_inserts_give_one_row(tutor, module_seeded_url):
     made, refused = _race(
         module_seeded_url,
@@ -871,6 +875,7 @@ def test_two_identical_rate_inserts_give_one_row(tutor, module_seeded_url):
             effective_from=TODAY,
             rate_model="per_hour",
             rate=Rate(1),
+            first_session_dates=no_cohorts,
         ),
     )
 

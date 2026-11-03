@@ -41,8 +41,14 @@ the ``app.workflows.payroll_pay_items`` workflow calls, and for a run
 :func:`first_period_starts`, :func:`rate_versions_of_tutors` and
 :func:`terms_basis_versions_of_tutors`.
 
+**The period's review** (#110; :mod:`~app.modules.payroll.period_review`): the
+lock-free reads, the status moves, and the pure :func:`line_drift`, for
+``app.workflows.payroll_workflow``.
+
 **Record policies** (:mod:`~app.modules.payroll.permissions`):
-:func:`can_view_compensation`, :func:`can_write_compensation`.
+:func:`can_view_compensation`, :func:`can_write_compensation`, and for a period
+:func:`can_list_periods`, :func:`can_read_period`, :func:`can_return_period` and
+:func:`finalize_refusal`.
 """
 
 from app.modules.payroll.calculation import (
@@ -52,6 +58,7 @@ from app.modules.payroll.calculation import (
     CourseWalkError,
     FinalizedCourseLine,
     LineDraft,
+    LineDrift,
     PayableCancellation,
     PayBasis,
     TermsBasisVersion,
@@ -59,9 +66,22 @@ from app.modules.payroll.calculation import (
     UnresolvedItem,
     classify_unresolved,
     draft_lines,
+    line_drift,
     planned_sessions,
 )
-from app.modules.payroll.errors import PayrollOwnCompensationError
+from app.modules.payroll.errors import (
+    PayrollNegativeTotalError,
+    PayrollOwnCompensationError,
+    PayrollPeriodNotEndedError,
+    PayrollPeriodNotOpenError,
+    PayrollPeriodNotPreparedError,
+    PayrollPeriodOutOfOrderError,
+    PayrollPeriodStaleError,
+    PayrollReviewOutdatedError,
+    PayrollReviewRouteRequiredError,
+    PayrollSelfFinalizeError,
+    PayrollUnresolvedWorkError,
+)
 from app.modules.payroll.lines import (
     REBUILT_KINDS,
     finalized_course_lines,
@@ -69,6 +89,7 @@ from app.modules.payroll.lines import (
     first_period_starts,
     has_no_session_line,
     lock_open_period,
+    lock_period,
     period_lines,
     replace_lines,
 )
@@ -99,6 +120,19 @@ from app.modules.payroll.pay_rules import (
     session_pay_rule_in_effect,
     session_pay_rule_versions,
 )
+from app.modules.payroll.period_review import (
+    EarlierPeriod,
+    earliest_unfinalized_before,
+    lines_total,
+    list_periods,
+    mark_finalized,
+    mark_prepared,
+    mark_returned,
+    period_row,
+    period_rows,
+    rebuilt_only,
+    stored_lines,
+)
 from app.modules.payroll.period_rows import (
     lock_payroll_periods,
     open_due_periods,
@@ -106,8 +140,13 @@ from app.modules.payroll.period_rows import (
 )
 from app.modules.payroll.periods import natural_bounds
 from app.modules.payroll.permissions import (
+    REVIEWABLE_STATUSES,
+    can_list_periods,
+    can_read_period,
+    can_return_period,
     can_view_compensation,
     can_write_compensation,
+    finalize_refusal,
 )
 from app.modules.payroll.rates import (
     add_compensation_rate,
@@ -134,16 +173,29 @@ from app.modules.payroll.settings import (
 __all__ = [
     "REBUILT_KINDS",
     "RECURRING",
+    "REVIEWABLE_STATUSES",
     "ApprovedSession",
     "CohortStep",
     "CohortWalk",
     "CourseWalkError",
+    "EarlierPeriod",
     "FinalizedCourseLine",
     "LineDraft",
+    "LineDrift",
     "PayBasis",
     "PayItemFact",
     "PayableCancellation",
+    "PayrollNegativeTotalError",
     "PayrollOwnCompensationError",
+    "PayrollPeriodNotEndedError",
+    "PayrollPeriodNotOpenError",
+    "PayrollPeriodNotPreparedError",
+    "PayrollPeriodOutOfOrderError",
+    "PayrollPeriodStaleError",
+    "PayrollReviewOutdatedError",
+    "PayrollReviewRouteRequiredError",
+    "PayrollSelfFinalizeError",
+    "PayrollUnresolvedWorkError",
     "PeriodDates",
     "TermsBasisVersion",
     "UnresolvedCandidate",
@@ -153,6 +205,9 @@ __all__ = [
     "add_pay_item_type",
     "add_pay_terms",
     "biweekly_anchor",
+    "can_list_periods",
+    "can_read_period",
+    "can_return_period",
     "can_view_compensation",
     "can_write_compensation",
     "change_pay_item_type",
@@ -164,7 +219,9 @@ __all__ = [
     "delete_pay_terms",
     "delete_session_pay_rule",
     "draft_lines",
+    "earliest_unfinalized_before",
     "end_pay_item",
+    "finalize_refusal",
     "finalized_course_lines",
     "finalized_pay_item_ids",
     "finalized_period_dates",
@@ -172,28 +229,39 @@ __all__ = [
     "get_pay_item",
     "get_session_pay_rule_overview",
     "has_no_session_line",
+    "line_drift",
+    "lines_total",
     "list_compensation_rates",
     "list_pay_item_types",
     "list_pay_items",
     "list_pay_terms",
+    "list_periods",
     "lock_open_period",
     "lock_payroll_periods",
+    "lock_period",
+    "mark_finalized",
+    "mark_prepared",
+    "mark_returned",
     "natural_bounds",
     "open_due_periods",
     "pay_item_drafts",
     "pay_item_facts",
     "payroll_starts_on",
     "period_lines",
+    "period_row",
+    "period_rows",
     "placed_period",
     "planned_sessions",
     "rate_in_effect",
     "rate_versions",
     "rate_versions_of_tutors",
+    "rebuilt_only",
     "replace_lines",
     "salary_drafts",
     "salary_proration_basis",
     "session_pay_rule_in_effect",
     "session_pay_rule_versions",
+    "stored_lines",
     "terms_basis_versions",
     "terms_basis_versions_of_tutors",
     "terms_in_effect",

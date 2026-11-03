@@ -213,12 +213,14 @@ def test_real_app_cases_cover_every_entry_and_actor():
     entries = load_matrix()
 
     # #100: the reversal and refund routes require the delegable
-    # finance.refund.approve, so each also gets a delegated Administrator.
+    # finance.refund.approve, so each also gets a delegated Administrator, and
+    # #110's finalize requires the delegable payroll.finalize.
     assert len(REAL_CASES) == sum(len(actors_for(entry)) for entry in entries)
     assert {c.actor for c in REAL_CASES} == {
         ANONYMOUS,
         *map(Actor, ROLE_CODES),
         Actor(ADMINISTRATOR, delegation="finance.refund.approve"),
+        Actor(ADMINISTRATOR, delegation=PAYROLL_FINALIZE),
     }
 
 

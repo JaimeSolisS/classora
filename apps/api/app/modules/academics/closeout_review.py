@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, cast
 
-from sqlalchemy import Row, Select, exists, select
+from sqlalchemy import ColumnElement, Row, Select, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
@@ -232,6 +232,17 @@ def current_approval_columns(
     if tutor_user_id is not None:
         query = query.where(SessionCloseoutApproval.tutor_user_id == tutor_user_id)
     return query
+
+
+def has_no_current_approval(
+    class_session_id: ColumnElement[Any],
+) -> ColumnElement[bool]:
+    """``NOT EXISTS`` a current revision of this session, **not executed** (#110
+    F4): what a payroll review warns about, and never blocks on."""
+    return ~exists().where(
+        SessionCloseout.class_session_id == class_session_id,
+        SessionCloseout.current_approval_id.is_not(None),
+    )
 
 
 def _current_approval(row: Row[Any]) -> CurrentApproval:

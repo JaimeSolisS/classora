@@ -51,9 +51,15 @@ basis, and #111 pays it then.
 Nothing here touches a ``Decimal`` or an ``.amount``, on a ``Rate`` or a
 ``Money``: ``tests/unit/test_payroll_calculation_pure.py`` reads this file's syntax
 tree, and the workflow's.
+
+**Drift (#110 D3).** :func:`line_drift` compares stored lines with fresh drafts,
+as multisets and never by id, so their order can neither raise a false alarm nor
+hide a change. A difference on the same source (session, salary piece or item) is
+``changed``.
 """
 
 import uuid
+from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -200,6 +206,97 @@ class LineDraft:
     proration_denominator: int | None = None
     proration_basis: str | None = None
     pay_item_id: uuid.UUID | None = None
+
+
+@dataclass(frozen=True)
+class FinalizedPricedLine:
+    """What the rate refusal needs of a finalized ``course`` line (#110 E5)."""
+
+    class_session_id: uuid.UUID
+    service_date: date
+    rate_model: str
+    rate: Rate
+
+
+def same_price(
+    line_model: str, line_rate: Rate, model: str | None, rate: Rate | None
+) -> bool:
+    """A version of the line's own model and rate can't change its price (#110 QA
+    D4, ruling (a)). ``Rate`` compares its exact value; money is MXN only, so
+    there is no currency to compare (ADR-0004)."""
+    return model == line_model and rate is not None and rate == line_rate
+
+
+def repriced_on(
+    line: FinalizedPricedLine,
+    *,
+    first_session_date: date,
+    new_model: str | None,
+    new_rate: Rate | None,
+    effective_from: date,
+    until: date | None,
+) -> date | None:
+    """The newest date on which a new ``course`` version of ``new_model``, in
+    force from ``effective_from`` to ``until``, would change this finalized line's
+    price, or ``None`` (#110 E5, QA D1, D2, D3). A date after the answer clears the
+    refusal: the window shrinks, so it can't take a new date.
+
+    - A ``per_course`` line is priced by the version on the cohort's first date,
+      and only there: whatever takes that date over changes it.
+    - An ordinary line is priced by the version on its own date, so whatever takes
+      that date over changes it. It reads the first date for one thing, that the
+      version there isn't ``per_course``, so only a ``per_course`` version can
+      change it from there. Any other model, a stop included, leaves it as it is,
+      and that is the way out for a ``no_rate`` first session.
+    - A version of the line's own model and rate refuses neither (QA D4): it
+      changes the version the line names, never its price."""
+
+    if same_price(line.rate_model, line.rate, new_model, new_rate):
+        return None
+
+    def taken(day: date) -> bool:
+        return effective_from <= day and (until is None or day < until)
+
+    if line.rate_model == PER_COURSE:
+        return first_session_date if taken(first_session_date) else None
+    if taken(line.service_date):
+        return line.service_date
+    if new_model == PER_COURSE and taken(first_session_date):
+        return first_session_date
+    return None
+
+
+@dataclass(frozen=True)
+class LineDrift:
+    """How many lines differ between a prepared period and its facts (#110 D3)."""
+
+    added: int
+    removed: int
+    changed: int
+
+    @property
+    def is_clean(self) -> bool:
+        return self.added == self.removed == self.changed == 0
+
+
+def _line_source(
+    line: LineDraft,
+) -> tuple[uuid.UUID | None, date | None, uuid.UUID | None]:
+    """What one line is the line of, whatever its figures or its kind."""
+    return line.class_session_id, line.salary_starts_on, line.pay_item_id
+
+
+def line_drift(stored: Iterable[LineDraft], fresh: Iterable[LineDraft]) -> LineDrift:
+    """The difference between two sets of lines, in any order (module
+    docstring)."""
+    kept, computed = Counter(stored), Counter(fresh)
+    gone = Counter(_line_source(line) for line in (kept - computed).elements())
+    new = Counter(_line_source(line) for line in (computed - kept).elements())
+    return LineDrift(
+        added=(new - gone).total(),
+        removed=(gone - new).total(),
+        changed=(new & gone).total(),
+    )
 
 
 @dataclass(frozen=True)

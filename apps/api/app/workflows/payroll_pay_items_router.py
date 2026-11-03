@@ -22,15 +22,14 @@ tutor reads finalized lines through #113. No reauthentication (#109 E6).
 import uuid
 from typing import Annotated, Final
 
-from fastapi import APIRouter, Depends, Request, Response
-from fastapi.exceptions import RequestValidationError
+from fastapi import APIRouter, Depends, Response
 
 from app.core.authz import PERMISSION_RESPONSES, Principal, require
 from app.core.errors import problem_response_doc
 from app.core.idempotency import (
     IDEMPOTENCY_RESPONSES,
     IdempotentRequest,
-    canonical_body,
+    hashable_body,
     idempotent,
 )
 from app.core.pagination import OffsetPage, OffsetPagination
@@ -65,24 +64,6 @@ _WRITE_RESPONSES: Final = {
         " (payroll_own_compensation; only an Owner may write their own)."
     ),
 }
-
-
-async def _hashable_body(request: Request) -> None:
-    """``422 text_invalid`` for a body with a lone surrogate. The key's hash needs
-    UTF-8 and runs before the body's own validators, so the check comes first
-    (#109 QA D2). Such a body gets this ``422`` ahead of a missing key's ``400``."""
-    try:
-        canonical_body(await request.body())
-    except UnicodeEncodeError:
-        raise RequestValidationError(
-            [
-                {
-                    "type": "text_invalid",
-                    "loc": ("body",),
-                    "msg": "This has an invalid character.",
-                }
-            ]
-        ) from None
 
 
 @router.get(_TYPES, responses=PERMISSION_RESPONSES)
@@ -185,7 +166,7 @@ async def list_pay_items(
 )
 async def create_pay_item(
     principal: Annotated[Principal, require(PAYROLL_MANAGE)],
-    _: Annotated[None, Depends(_hashable_body)],
+    _: Annotated[None, Depends(hashable_body)],
     idem: Annotated[IdempotentRequest, idempotent()],
     tutor_user_id: uuid.UUID,
     body: PayItemCreate,

@@ -390,7 +390,10 @@ export function classifyRefusal(
     return {
       kind: 'incomplete',
       positions: list
-        .filter((item) => /^\d{1,2}$/.test(item))
+        .filter(
+          (item): item is string =>
+            typeof item === 'string' && /^\d{1,2}$/.test(item),
+        )
         .map((item) => Number(item)),
     };
   }

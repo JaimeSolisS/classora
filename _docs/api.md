@@ -306,7 +306,17 @@ Codes in use today:
 | `pay_item_end_before_start` | 422 | A pay item's new end is before its start. |
 | `pay_item_end_before_paid_period` | 422 | A pay item's new end is before the start of the latest finalized period holding its line. |
 | `pay_item_in_use` | 409 | Deleting a pay item a prepared or finalized period uses. |
-| `payroll_period_not_open` | 409 | Recalculating a payroll period that isn't `open`. `details.status` is its status. |
+| `payroll_period_not_open` | 409 | Recalculating or preparing a payroll period that isn't `open`. `details.status` is its status. |
+| `payroll_period_not_ended` | 409 | Preparing a period before the center's today has passed its last day. `details.ends_on`. |
+| `payroll_period_not_prepared` | 409 | Returning or finalizing a period that isn't `prepared`. `details.status` is its status. |
+| `payroll_unresolved_work` | 409 | Work with no basis stops `prepare` or `finalize`. `details.count`, and `details.items`, at most 20, newest first: `class_session_id`, `service_date`, `reason`. No amount. |
+| `payroll_negative_total` | 409 | Preparing a period whose lines total below `0.00`. No amount in the body. |
+| `payroll_self_finalize` | 403 | The preparer can't finalize, and nobody finalizes their own pay; an Owner is excepted. `details.reason` is `preparer` or `own_pay`. |
+| `payroll_review_outdated` | 409 | The `prepared_at` sent isn't the period's: it was prepared again after the page was read. |
+| `payroll_period_out_of_order` | 409 | An earlier period of the tutor isn't finalized. `details.earliest_period_id` and `details.status` name the oldest. |
+| `payroll_period_stale` | 409 | The facts no longer give the prepared lines. `details.added`, `removed` and `changed` are counts. Return the period and prepare it again. |
+| `payroll_review_route_required` | 409 | The inbox's generic decision routes can't decide a payroll period. `details.review_path` is its page. |
+| `effective_from_under_finalized_line` | 422 | A new rate version would re-price a finalized line of that tutor and class kind: for `course`, compared on the cohort's first date. `details.latest_finalized_on` is the newest date taken over. |
 | `payroll_amount_out_of_range` | 409 | A payroll line, or the period's total, is beyond the money range: nothing is written. `GET …/lines` answers it too when the stored lines sum beyond the range. `details.class_session_id` names the line's session; no amount is in the body. |
 | `pay_rule_values_mismatch` / `percent_out_of_range` | 422 | Field codes of a session pay rule body: a `percent` or `amount` that doesn't match `mode`, a `percent` outside 0 to 1000 (see Session pay rules). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
@@ -7131,6 +7141,26 @@ are in `app/workflows/payroll_compensation_router.py` and
 - **Target:** `{tutor_user_id}` is a user holding the `tutor` role now, in any
   account state, so a leaver who is archived can still get a stop row. Anything
   else is `404 not_found`. The rows of a user who lost the role stay stored.
+- **A rate under a finalized line (#110 E5, narrowing #105 E4, QA D1, D2):** `POST
+  …/rates` answers `422 effective_from_under_finalized_line` when the new version
+  would change the price of a finalized line of that tutor and class kind, whichever
+  way it moves it, and for no other reason. The window runs from `effective_from` to
+  the next version of that kind. `individual` and `group` compare it with the line's
+  `service_date`. For `course` it goes by the line's model and the version's:
+  a `per_course` line is refused when the window holds its **cohort's first date**,
+  any model. A `per_hour` or `per_session` course line is refused when the window
+  holds its own date, any model, and when it holds the first date only for a
+  `per_course` version, which would turn the cohort per-course. For any kind, a
+  version of a line's own model and the exact same rate never refuses that line: it
+  can't change its price (#110 QA D4). So the same per-course rate on a finalized
+  cohort's first date cuts a window that would run past it. `details.latest_finalized_on`
+  is the newest date taken over, so a version after it passes, unless that day is
+  already the next version's. Correcting: a new version after that date, and a
+  `manual` adjustment (#111) for what was paid. `no_rate` work has no line and a
+  "covered by salary" line no rate snapshot, so a back-dated rate stays the exit of
+  unresolved work, for courses too. The insert first locks the tutor's not-finalized
+  periods, so it can't race a finalize. A late stop or a back-dated salary isn't
+  refused.
 - **Versions:** any `effective_from` is accepted, past or future, also between
   two versions. There is no `PATCH` or `PUT`: a correction is a delete and a
   new version. `status` is `current` (the version in effect on the center's
@@ -7226,14 +7256,16 @@ closeout, a cancellation or a reschedule.
 | Route | Access | Notes |
 |---|---|---|
 | `POST /api/v1/payroll/periods/{period_id}/recalculate` | `require("payroll.prepare")` | `200` with `PayrollRecalculation`: `line_count` and `total` of **all** the period's lines after the run, as `GET …/lines` shows them (#109 E2). The total may be negative. No body. Repeatable. |
-| `GET /api/v1/payroll/periods/{period_id}/lines` | `require("payroll.view")` | `PayrollPeriodLines`: `period` (`id`, `tutor_user_id`, `starts_on`, `ends_on`, `pay_frequency`, `status`), `lines[]` by `service_date`, then `class_session_id`, then `salary_starts_on`, then `pay_item_id`: session lines, then salary, then items. And `total`, the sum of the rounded lines. Not paginated: one period. `409 payroll_amount_out_of_range` when the lines sum beyond the money range. |
+| `GET /api/v1/payroll/periods/{period_id}/lines` | `authenticated()` + record policy (see Payroll workflow) | `PayrollPeriodReview`: `period` (`id`, `tutor_user_id`, `starts_on`, `ends_on`, `pay_frequency`, `status`, and the fields under Payroll workflow), `lines[]` by `service_date`, then `class_session_id`, then `salary_starts_on`, then `pay_item_id`: session lines, then salary, then items. And `total`, the sum of the rounded lines. Not paginated: one period. `409 payroll_amount_out_of_range` when the lines sum beyond the money range. |
 | `GET /api/v1/payroll/unresolved-work` | `require("payroll.view")` | `CursorPage[UnresolvedWorkItem]`, newest `service_date` first, then `class_session_id`. Query `tutor_user_id?`, `reason?`, `limit?`, `cursor?`. An unknown `reason` or a malformed id is `422 validation_error`, a bad cursor `400 invalid_cursor`, an unknown tutor an empty page. |
 
 - **Access:** Owners and Finance Staff hold both. A Finance tutor may run their
   own period: it applies no judgment. Administrators get `403
-  permission_denied`, also with `payroll.finalize` delegated, as do Academic
-  Coordinators, Tutors (their own period too), Students and Guardians. No
-  `Idempotency-Key` and no reauthentication.
+  permission_denied`, as do Academic Coordinators, Tutors (their own period too),
+  Students and Guardians. With `payroll.finalize` delegated, an Administrator
+  reads `prepared` and `finalized` periods through `GET …/lines` (#110 E8), and
+  `recalculate` and the unresolved list stay `403`. No `Idempotency-Key` and no
+  reauthentication.
 - **A run:** the period `FOR UPDATE`, re-read → `404` → `409
   payroll_period_not_open` with `details.status` → the lines are computed →
   the `session`, `late_cancellation`, `no_show`, `makeup`, `salary` and
@@ -7245,8 +7277,9 @@ closeout, a cancellation or a reschedule.
   rule. Everything dates by the center-local date of the session's start, which
   picks the period, the rate and the rule.
 - **Later changes:** an approval or a revision shows on the next run of an open
-  period. A prepared period waits for its return or #110's drift check; a
-  finalized one keeps its lines, and #111 posts the difference.
+  period. A prepared period waits for its return or `finalize`'s drift check,
+  which also calls `blocking_work` again; a finalized one keeps its lines, and #111
+  posts the difference.
 - **Line:** `id`, `kind`, `amount`, `class_session_id`, `approval_id` (`null` on
   a cancellation), `service_date`, `class_kind`, `minutes`, `rate_model`, `rate`
   (text, four places), `compensation_rate_id`, `session_pay_rule_id`,
@@ -7298,6 +7331,80 @@ closeout, a cancellation or a reschedule.
   recalculation, and `finalize` on blocking items dated on or before the
   period's end.
 
+### Payroll workflow
+
+Implemented by M7-07 (#110; spec W3.3-W3.5; ADR-0017 E9, E10, E12, its #110 notes,
+orchestrator-recommended, pending owner review) in
+`app/workflows/payroll_workflow.py`. Tables: `_docs/data-model.md` §11.4. The web
+pages are M7-07b.
+
+| Route | Access | Notes |
+|---|---|---|
+| `GET /api/v1/payroll/periods` | `authenticated()` + `payroll.view` or `payroll.finalize` | Offset pagination, newest `ends_on` first, then `id`. Query `status?`, `tutor_user_id?`. `PayrollPeriodItem`: `id`, `tutor_user_id`, `tutor_display_name`, `tutor_state`, `starts_on`, `ends_on`, `pay_frequency`, `status`, `line_count`, `total`, `prepared_at`, `finalized_at`. `total` is `null` on a period whose lines sum beyond the money range, so one bad period can't take the list down. |
+| `POST /api/v1/payroll/periods/{period_id}/prepare` | `require("payroll.prepare")` | No body, no key, no reauthentication. `200` with `PayrollPeriodTransition`. |
+| `POST /api/v1/payroll/periods/{period_id}/return` | `authenticated()` + `payroll.prepare` or `payroll.finalize` | Body `{reason}`, trimmed, 1 to 1000 characters. No key, no reauthentication: it changes no money, and a second click gets `409`. `200` with `PayrollPeriodTransition`. |
+| `POST /api/v1/payroll/periods/{period_id}/finalize` | `require("payroll.finalize")`, `require_recent_auth("payroll.finalize")`, `Idempotency-Key` | Body `{prepared_at}`, the value the review read. `200` with `PayrollPeriodTransition`. |
+
+- **`PayrollPeriodTransition`:** `id`, `status`, `prepared_at`, `finalized_at`. No
+  amount, because a stored idempotent response holds it in clear: the page refetches.
+- **The read (`GET …/lines`):** `period` also has `tutor_display_name`,
+  `tutor_state`, `prepared_at`, `prepared_by`, `finalized_at`, `finalized_by`,
+  `total_amount`, `returned_at`, `returned_by`, `return_reason`,
+  `earlier_unfinalized_period_id` and `pending_closeouts`. Each `…_by` is `{id,
+  display_name}`. `pending_closeouts` counts the tutor's sessions starting in the
+  period with no approved closeout, cancelled and skipped ones aside: a warning,
+  never a block.
+- **Who:** an Owner does everything, and Finance Staff all but `finalize`. A
+  delegated Administrator reads `prepared` and `finalized` periods (an `open` one is
+  the same `404` as a missing id), returns and finalizes, and gets `403` on
+  `recalculate` and `prepare`. Everyone else gets `403`, a tutor asking for their
+  own period too (#113 is their read).
+- **`prepare`, one transaction:** `404` → `409 payroll_period_not_open` → `409
+  payroll_period_not_ended` (`ends_on` must be before the center's today) → the
+  recalculation (`409 payroll_amount_out_of_range`) → `409 payroll_unresolved_work`
+  → `409 payroll_negative_total` → `prepared`, the event, and the inbox item.
+  Periods may be prepared in any order. **A refusal changes nothing**, the
+  recalculation included, so the page then runs `recalculate`, which commits, and
+  the Unresolved list agrees with the `409`. A Finance tutor may prepare their own
+  period.
+- **`return`:** `404` → `409 payroll_period_not_prepared`. Then `open`, the `prepared_*`
+  fields cleared, `returned_*` set, the lines kept and the inbox item cancelled. The
+  next `prepare` clears `returned_*` and reopens the same item. Either preparer or
+  reviewer may return, a preparer their own too.
+- **`finalize`, under the period lock:** `404` → `409 payroll_period_not_prepared` →
+  `403 payroll_self_finalize` → `409 payroll_review_outdated` → `409
+  payroll_period_out_of_order` → `409 payroll_period_stale` → `409
+  payroll_unresolved_work` → the total (`409 payroll_amount_out_of_range`) → the
+  writes, the inbox item and the tutor's notification.
+- **Oldest first:** a tutor's periods finalize in order, empty ones included: each
+  takes a `prepare` and a `finalize`, at `0.00`. A stuck period stops the tutor's
+  later ones, on purpose.
+- **Drift:** the lines are computed again and compared with the prepared ones as
+  multisets of drafts, never by id. `finalize` then calls `blocking_work` again:
+  work approved after `prepare` with no basis has no draft and no line, so the
+  comparison can't see it. Lines that survive a run (#111's `adjustment`) are outside
+  the comparison and inside the total, the same figure as `GET …/lines`.
+- **The review:** `prepared_at` identifies the lines, because they can't change
+  while a period is `prepared`. Another value means the period was returned and
+  prepared again after the page was read.
+- **Duty:** the check reads the latest preparer. An Owner is excepted from both
+  rules, so a sole Owner can prepare and finalize alone, and then the audit trail is
+  the only control.
+- **Idempotency:** a replay re-runs the access checks, so a revoked delegation gets
+  `403`. A refused `finalize` keeps no key, and a retry after the fix runs.
+- **Inbox:** type `payroll.period`, `payroll.finalize` holders. The subject is
+  `{period_id, tutor {id, display_name}, starts_on, ends_on, prepared_by
+  {display_name}, prepared_at}`. It lists no decisions, and every generic decision
+  route answers `409 payroll_review_route_required`, whatever the status.
+- **Notification:** `payroll.period_finalized` to the tutor, also one who has left:
+  `{payroll_period_id, starts_on, ends_on}`.
+- **No pay in side channels:** the events `payroll.period_prepared`, `_returned` and
+  `_finalized` carry ids, `status` and `line_count`. No amount or return reason is in
+  an event, a log, a notification, an inbox subject, an error body or a stored
+  response.
+- **Readers take no lock:** the list, `GET …/lines` and `blocking_work` have no `FOR`
+  clause. A write that commits after the check is a later change, for drift or #111.
+
 ### Bonuses and deductions
 
 Implemented by M7-06 (#109; spec §7; ADR-0017 E8, E12, its #109 notes). Routes in
@@ -7345,7 +7452,7 @@ amounts only: no percentages, tax or social security.
   lands in the tutor's earliest not-finalized period with `ends_on` on or after
   `effective_from`, and is done once a finalized line holds it. With no such
   period it waits, with `placed_period: null`. A `prepared` period holding no line
-  for a new item goes stale at finalize (#110), and nothing moves to a later month
+  for a new item goes stale at finalize, and nothing moves to a later month
   by itself. See `_docs/data-model.md` §11.8.
 - **No hook:** a run applies items, the one `prepare` runs too. Between runs, a
   change simply isn't shown yet.
@@ -7405,7 +7512,7 @@ orchestrator-recommended, pending owner review). The routes are in
   `payroll-open-periods`, `app/workflows/payroll_period_tasks.py`): for every
   tutor with terms, whatever their role or state, opens each period due, up to
   the one containing the center's today. While `payroll_starts_on` is `null` it
-  opens nothing. There is no period route yet: #110 owns the list and review.
+  opens nothing. The list and the review are under Payroll workflow.
 
 ### Response headers
 

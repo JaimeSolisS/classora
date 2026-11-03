@@ -4,33 +4,42 @@ ADR-0017 E9, E12; #107 E10).
 - ``POST /api/v1/payroll/periods/{period_id}/recalculate``:
   ``require("payroll.prepare")``. Repeatable by nature, so no
   ``Idempotency-Key``, and no reauthentication: it applies no judgment.
-- ``GET /api/v1/payroll/periods/{period_id}/lines``:
-  ``require("payroll.view")``. Not paginated: one period.
+- ``GET /api/v1/payroll/periods/{period_id}/lines``: ``authenticated()`` and the
+  record policy of ``app.workflows.payroll_workflow`` (#110 E8): a
+  ``payroll.finalize`` holder without ``payroll.view`` reads ``prepared`` and
+  ``finalized`` periods, and any other is the same ``404``. Not paginated: one
+  period.
 - ``GET /api/v1/payroll/unresolved-work``: ``require("payroll.view")``, cursor
   pagination (#443). Approved work that can't be paid, and why: no amount,
   minutes or student data.
 
-Both permissions are held by Owners and Finance Staff. Administrators get
-``403`` here, also with ``payroll.finalize`` delegated, as do Coordinators,
-Tutors (their own period too: #113 is their read), Students and Guardians.
+Owners and Finance Staff hold both permissions. Administrators without the
+delegation get ``403``, as do Coordinators, Tutors (their own period too: #113 is
+their read), Students and Guardians. Unresolved work and ``recalculate`` stay
+``403`` with ``payroll.finalize`` delegated.
 """
 
 import uuid
 from typing import Annotated, Final
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from app.core.authz import PERMISSION_RESPONSES, Principal, require
+from app.core.authz import (
+    PERMISSION_RESPONSES,
+    Principal,
+    authenticated,
+    require,
+)
 from app.core.errors import problem_response_doc
 from app.core.pagination import CursorPage, CursorPagination
 from app.core.uow import UnitOfWorkDep
 from app.modules.payroll.schemas import (
-    PayrollPeriodLines,
     PayrollRecalculation,
     UnresolvedReason,
     UnresolvedWorkItem,
 )
-from app.workflows import payroll_calculation
+from app.workflows import payroll_calculation, payroll_workflow
+from app.workflows.payroll_workflow_schemas import PayrollPeriodReview
 
 PAYROLL_VIEW: Final = "payroll.view"
 PAYROLL_PREPARE: Final = "payroll.prepare"
@@ -38,6 +47,15 @@ PAYROLL_PREPARE: Final = "payroll.prepare"
 router = APIRouter(prefix="/api/v1/payroll", tags=["payroll"])
 
 _NOT_FOUND = problem_response_doc("No such period (not_found).")
+
+
+async def period_reader(
+    principal: Annotated[Principal, authenticated()],
+) -> Principal:
+    """``403`` unless the caller may read periods at all, before the body and
+    the record policy (#110 F1)."""
+    payroll_workflow.ensure_can_list(principal)
+    return principal
 
 
 @router.post(
@@ -80,12 +98,13 @@ async def recalculate_period(
 )
 async def get_period_lines(
     period_id: uuid.UUID,
-    principal: Annotated[Principal, require(PAYROLL_VIEW)],
+    principal: Annotated[Principal, Depends(period_reader)],
     uow: UnitOfWorkDep,
-) -> PayrollPeriodLines:
+) -> PayrollPeriodReview:
     """The period and its lines, by service date, then session, then salary
-    piece, then pay item, with their total."""
-    return await payroll_calculation.read_lines(uow.session, period_id)
+    piece, then pay item, with their total. A reviewer with `payroll.finalize`
+    alone reads prepared and finalized periods; any other is 404."""
+    return await payroll_workflow.read_period(uow.session, principal, period_id)
 
 
 @router.get(

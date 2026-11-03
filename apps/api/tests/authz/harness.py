@@ -139,6 +139,7 @@ ENTRY_FIELDS = frozenset(
         "notice_exempt",
         "stream",
         "idempotency",
+        "deny",
     }
 )
 HTTP_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
@@ -176,6 +177,7 @@ class MatrixEntry:
     notice_exempt: Any = None
     stream: Any = None
     idempotency: Any = None
+    deny: Any = None
     unknown_fields: tuple[str, ...] = ()
 
     @property
@@ -189,6 +191,10 @@ class MatrixEntry:
     @property
     def allowed_roles(self) -> frozenset[str]:
         return frozenset(self.allow or ())
+
+    @property
+    def denied_roles(self) -> frozenset[str]:
+        return frozenset(self.deny or ())
 
     @property
     def is_notice_exempt(self) -> bool:
@@ -277,6 +283,17 @@ def entry_problems(
             problems.append("permission is only for access = 'permission'")
         if entry.allow is not None:
             problems.append("allow is only for access = 'permission'")
+    if entry.deny is not None:
+        if entry.access != "authenticated":
+            problems.append("deny is only for access = 'authenticated'")
+        if not isinstance(entry.deny, list):
+            problems.append("deny must be a list of role codes")
+        else:
+            problems.extend(
+                f"unknown role {role!r}"
+                for role in entry.deny
+                if role not in role_codes
+            )
     if entry.access == "public":
         if not isinstance(entry.reason, str) or not entry.reason.strip():
             problems.append("a public entry needs a non-empty reason")
@@ -782,7 +799,7 @@ class Case:
         if actor.role is None:
             return "unauthenticated"
         if entry.access == "authenticated":
-            return "allowed"
+            return "denied" if actor.role in entry.denied_roles else "allowed"
         if actor.role in entry.allowed_roles or (
             actor.delegation is not None and actor.delegation == entry.permission
         ):

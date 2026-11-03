@@ -28,7 +28,9 @@ notification types and the scheduling ``completed`` attendance unlock,
 ``academics.progress_report`` approval type,
 ``app.workflows.progress_report_approval``, and its three notification
 types; #316: ``academics.progress_report_due``; #97:
-``billing.payment_reminder``) are wired
+``billing.payment_reminder``; #110: the ``payroll.period`` approval type,
+``app.workflows.payroll_period_approval``, and
+``payroll.period_finalized``) are wired
 here, by the API app factory
 (``app.main.build_app``), ``app.cli`` and ``app.worker``.
 """
@@ -53,6 +55,8 @@ from app.workflows.charge_reminders import register_reminder_notifications
 from app.workflows.closeout_on_behalf import register_on_behalf_notifications
 from app.workflows.evaluations import register_evaluation_notifications
 from app.workflows.learning_plans import register_learning_plan_notifications
+from app.workflows.payroll_period_approval import PAYROLL_PERIOD_HANDLER
+from app.workflows.payroll_workflow import register_payroll_notifications
 from app.workflows.progress_report_approval import PROGRESS_REPORT_HANDLER
 from app.workflows.progress_report_schedules import register_schedule_notifications
 from app.workflows.progress_reports import register_progress_report_notifications
@@ -94,6 +98,8 @@ def register_approval_wiring() -> None:
     register_progress_report_notifications()
     register_schedule_notifications()
     register_reminder_notifications()
+    administration_service.register_approval_handler(PAYROLL_PERIOD_HANDLER)
+    register_payroll_notifications()
     scheduling_service.register_completed_attendance_unlock(
         academics_service.closeout_awaits_tutor
     )

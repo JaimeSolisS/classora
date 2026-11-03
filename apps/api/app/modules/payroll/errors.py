@@ -1,9 +1,26 @@
-"""Payroll errors (#105 G, #106 B, F, #441 C, #107 G, H6, #109). Each ``AppError``
-renders as Problem Details (``app.core.errors``) and carries no amount."""
+"""Payroll errors (#105 G, #106 B, F, #441 C, #107 G, H6, #109, #110). Each
+``AppError`` renders as Problem Details (``app.core.errors``) and carries no
+amount."""
 
 import uuid
+from collections.abc import Sequence
+from datetime import date
+from typing import Final, Literal, Protocol
 
 from app.core.errors import AppError
+
+UNRESOLVED_ITEMS_SHOWN: Final = 20
+"""The most ``payroll_unresolved_work`` lists (#110 B4); ``count`` says how many
+there are."""
+
+
+class _Unresolved(Protocol):
+    @property
+    def class_session_id(self) -> uuid.UUID: ...
+    @property
+    def service_date(self) -> date: ...
+    @property
+    def reason(self) -> str: ...
 
 
 class PayTermsExistsError(AppError):
@@ -29,7 +46,7 @@ class PayTermsInUseError(AppError):
 
     status = 409
     code = "pay_terms_in_use"
-    detail = "A finalized payroll period uses these pay terms."
+    detail = "A payroll period uses these pay terms."
 
 
 class CompensationRateInUseError(AppError):
@@ -164,16 +181,151 @@ class PayItemInUseError(AppError):
     detail = "A prepared or finalized payroll period uses this pay item."
 
 
+class EffectiveFromUnderFinalizedLineError(AppError):
+    """The new version would re-price a finalized line of this tutor and class
+    kind (#110 E5). ``details.latest_finalized_on`` is the newest date it would
+    take over, the cohort's first date for a per-course line, so a version after
+    it passes: correct with one, and a ``manual`` adjustment (#111) for what was
+    paid."""
+
+    status = 422
+    code = "effective_from_under_finalized_line"
+    detail = "This rate would change a finalized payroll line."
+
+    def __init__(self, latest_finalized_on: date) -> None:
+        super().__init__(
+            details={"latest_finalized_on": latest_finalized_on.isoformat()}
+        )
+
+
 class PayrollPeriodNotOpenError(AppError):
-    """Only an ``open`` period is calculated (#107 E7). ``details.status`` is
-    the period's status."""
+    """Only an ``open`` period is calculated or prepared (#107 E7, #110 B8).
+    ``details.status`` is the period's status."""
 
     status = 409
     code = "payroll_period_not_open"
-    detail = "Only an open payroll period can be recalculated."
+    detail = "This payroll period isn't open."
 
     def __init__(self, status: str) -> None:
         super().__init__(details={"status": status})
+
+
+class PayrollPeriodNotPreparedError(AppError):
+    """Only a ``prepared`` period is returned or finalized (#110 C2, D2).
+    ``details.status`` is the period's status."""
+
+    status = 409
+    code = "payroll_period_not_prepared"
+    detail = "This payroll period isn't prepared."
+
+    def __init__(self, status: str) -> None:
+        super().__init__(details={"status": status})
+
+
+class PayrollPeriodNotEndedError(AppError):
+    """A period is prepared only after its last day, in the center's zone
+    (#110 B3)."""
+
+    status = 409
+    code = "payroll_period_not_ended"
+    detail = "This payroll period hasn't ended yet."
+
+    def __init__(self, ends_on: date) -> None:
+        super().__init__(details={"ends_on": ends_on.isoformat()})
+
+
+class PayrollUnresolvedWorkError(AppError):
+    """Work that can't be paid stops the period (#107 E12, #110 B4, D2):
+    ``details.count``, and ``details.items`` newest first, at most
+    :data:`UNRESOLVED_ITEMS_SHOWN`."""
+
+    status = 409
+    code = "payroll_unresolved_work"
+    detail = "Some approved work of this tutor can't be paid yet."
+
+    def __init__(self, items: Sequence[_Unresolved]) -> None:
+        super().__init__(
+            details={
+                "count": len(items),
+                "items": [
+                    {
+                        "class_session_id": str(item.class_session_id),
+                        "service_date": item.service_date.isoformat(),
+                        "reason": item.reason,
+                    }
+                    for item in items[:UNRESOLVED_ITEMS_SHOWN]
+                ],
+            }
+        )
+
+
+class PayrollNegativeTotalError(AppError):
+    """The period's lines add up to less than ``0.00`` (#109 E2, #110 B5). The
+    amount is never in the body."""
+
+    status = 409
+    code = "payroll_negative_total"
+    detail = "This payroll period's total is below zero."
+
+
+class PayrollSelfFinalizeError(AppError):
+    """The preparer can't finalize, and nobody finalizes their own pay, but an
+    Owner (ADR-0017 E10). ``details.reason`` is ``preparer`` or ``own_pay``."""
+
+    status = 403
+    code = "payroll_self_finalize"
+    detail = "Someone else has to finalize this payroll period."
+
+    def __init__(self, reason: Literal["preparer", "own_pay"]) -> None:
+        super().__init__(details={"reason": reason})
+
+
+class PayrollReviewOutdatedError(AppError):
+    """The period was prepared again after the page was read (#110 E4)."""
+
+    status = 409
+    code = "payroll_review_outdated"
+    detail = "This payroll period changed after you opened it."
+
+
+class PayrollPeriodOutOfOrderError(AppError):
+    """An earlier period of the tutor isn't finalized (#110 E2).
+    ``details.earliest_period_id`` and ``details.status`` name it."""
+
+    status = 409
+    code = "payroll_period_out_of_order"
+    detail = "An earlier payroll period of this tutor has to be finalized first."
+
+    def __init__(self, earliest_period_id: uuid.UUID, status: str) -> None:
+        super().__init__(
+            details={"earliest_period_id": str(earliest_period_id), "status": status}
+        )
+
+
+class PayrollPeriodStaleError(AppError):
+    """The facts no longer give the prepared lines (ADR-0017 E10). Counts only:
+    return the period and prepare it again."""
+
+    status = 409
+    code = "payroll_period_stale"
+    detail = "The lines of this payroll period no longer match its facts."
+
+    def __init__(self, *, added: int, removed: int, changed: int) -> None:
+        super().__init__(
+            details={"added": added, "removed": removed, "changed": changed}
+        )
+
+
+class PayrollReviewRouteRequiredError(AppError):
+    """``409 payroll_review_route_required`` (#110 G2): the inbox's generic routes
+    can't decide a period; ``details.review_path`` is its review page."""
+
+    status = 409
+    code = "payroll_review_route_required"
+    detail = "Review this payroll period on its own page."
+
+    def __init__(self, review_path: str) -> None:
+        super().__init__(details={"review_path": review_path})
 
 
 class PayrollAmountOutOfRangeError(AppError):

@@ -1,8 +1,9 @@
 """Reading and writing ``payroll_lines`` (#107 F, G; data-model §11.6, §15).
 
-**Replacing.** :func:`lock_open_period` takes the period row ``FOR UPDATE``,
-re-read, so a run that waited sees a status that changed meanwhile, and refuses
-anything but ``open`` (``409 payroll_period_not_open``). :func:`replace_lines`
+**Replacing.** :func:`lock_period` takes the period row ``FOR UPDATE``, re-read,
+so a run that waited sees a status that changed meanwhile, and
+:func:`lock_open_period` refuses anything but ``open`` (``409
+payroll_period_not_open``). :func:`replace_lines`
 deletes only :data:`REBUILT_KINDS` and inserts the drafts, so #111's
 ``adjustment`` lines survive (#107 E7). What it reports is all the period's
 lines, survivors included (#109 E2): one period has one total, the one ``GET``
@@ -26,17 +27,31 @@ from collections.abc import Collection, Sequence
 from datetime import date
 from typing import Any, Final
 
-from sqlalchemy import ColumnElement, Row, delete, exists, func, insert, select
+from sqlalchemy import (
+    ColumnElement,
+    Row,
+    and_,
+    delete,
+    exists,
+    func,
+    insert,
+    select,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import RecordNotFoundError
-from app.core.money import Money, MoneyRangeError
-from app.modules.payroll.calculation import FinalizedCourseLine, LineDraft
+from app.core.money import Money, MoneyRangeError, Rate
+from app.modules.payroll.calculation import (
+    FinalizedCourseLine,
+    FinalizedPricedLine,
+    LineDraft,
+)
 from app.modules.payroll.errors import (
     PayrollAmountOutOfRangeError,
     PayrollPeriodNotOpenError,
 )
 from app.modules.payroll.models import (
+    COURSE,
     PAY_ITEM,
     SALARY,
     SESSION_LINE_KINDS,
@@ -47,6 +62,7 @@ from app.modules.payroll.models import (
 )
 from app.modules.payroll.schemas import (
     PayrollLineItem,
+    PayrollPeriodFacts,
     PayrollPeriodLines,
     PayrollPeriodSummary,
     PayrollRecalculation,
@@ -66,11 +82,10 @@ def _summary(period: PayrollPeriod) -> PayrollPeriodSummary:
     return PayrollPeriodSummary.model_validate(period, from_attributes=True)
 
 
-async def lock_open_period(
+async def lock_period(
     session: AsyncSession, period_id: uuid.UUID
-) -> PayrollPeriodSummary:
-    """The period ``FOR UPDATE``, re-read: ``404`` → ``409
-    payroll_period_not_open`` with ``details.status``."""
+) -> PayrollPeriodFacts:
+    """The period ``FOR UPDATE``, re-read, or ``404``."""
     period = await session.scalar(
         select(PayrollPeriod)
         .where(PayrollPeriod.id == period_id)
@@ -79,9 +94,18 @@ async def lock_open_period(
     )
     if period is None:
         raise RecordNotFoundError()
+    return PayrollPeriodFacts.model_validate(period, from_attributes=True)
+
+
+async def lock_open_period(
+    session: AsyncSession, period_id: uuid.UUID
+) -> PayrollPeriodFacts:
+    """:func:`lock_period`, then ``409 payroll_period_not_open`` with
+    ``details.status``."""
+    period = await lock_period(session, period_id)
     if period.status != OPEN:
         raise PayrollPeriodNotOpenError(period.status)
-    return _summary(period)
+    return period
 
 
 async def replace_lines(
@@ -261,6 +285,69 @@ async def first_period_starts(
         .group_by(PayrollPeriod.tutor_user_id)
     )
     return {row[0]: row[1] for row in rows}
+
+
+async def latest_finalized_priced_date(
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID,
+    *,
+    class_kind: str,
+    effective_from: date,
+    until: date | None,
+    rate_model: str | None,
+    rate: Rate | None,
+) -> date | None:
+    """The newest date from ``effective_from``, and before ``until`` if given,
+    holding a line of a ``finalized`` period of this tutor and class kind with a
+    rate snapshot (#110 E5): a ``no_rate`` date has no line, and a "covered by
+    salary" line has no rate. A line of the version's own model and rate doesn't
+    count: its price can't change (QA D4). One statement."""
+    query = (
+        select(func.max(PayrollLine.service_date))
+        .join(PayrollPeriod, PayrollPeriod.id == PayrollLine.payroll_period_id)
+        .where(
+            PayrollPeriod.status == FINALIZED,
+            PayrollLine.tutor_user_id == tutor_user_id,
+            PayrollLine.class_kind == class_kind,
+            PayrollLine.compensation_rate_id.is_not(None),
+            PayrollLine.service_date >= effective_from,
+        )
+    )
+    if until is not None:
+        query = query.where(PayrollLine.service_date < until)
+    if rate_model is not None and rate is not None:
+        query = query.where(
+            ~and_(PayrollLine.rate_model == rate_model, PayrollLine.rate == rate)
+        )
+    return await session.scalar(query)
+
+
+async def finalized_course_kind_lines(
+    session: AsyncSession, tutor_user_id: uuid.UUID
+) -> list[FinalizedPricedLine]:
+    """This tutor's lines of ``course`` sessions in ``finalized`` periods with a
+    rate snapshot (#110 E5). One statement, no lock."""
+    rows = await session.execute(
+        select(
+            PayrollLine.class_session_id,
+            PayrollLine.service_date,
+            PayrollLine.rate_model,
+            PayrollLine.rate,
+        )
+        .join(PayrollPeriod, PayrollPeriod.id == PayrollLine.payroll_period_id)
+        .where(
+            PayrollPeriod.status == FINALIZED,
+            PayrollLine.tutor_user_id == tutor_user_id,
+            PayrollLine.class_kind == COURSE,
+            PayrollLine.compensation_rate_id.is_not(None),
+        )
+    )
+    return [
+        FinalizedPricedLine(
+            row.class_session_id, row.service_date, row.rate_model, row.rate
+        )
+        for row in rows
+    ]
 
 
 async def lock_open_periods_of_tutor(

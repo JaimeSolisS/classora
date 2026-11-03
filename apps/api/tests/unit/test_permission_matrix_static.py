@@ -38,7 +38,11 @@ from app.core.reauth import (
 from app.main import build_app
 from tests.authz.harness import (
     MATRIX_PATH,
+    Actor,
+    Case,
+    MatrixEntry,
     check_matrix,
+    entry_problems,
     failure_message,
     load_matrix,
     order_problems,
@@ -1070,7 +1074,7 @@ def test_the_sample_app_has_an_idempotent_route():
 def test_the_real_matrix_lists_the_idempotent_routes():
     # #94 adds the first one (the package purchase); #96 the payment and the
     # credit allocation; #100 the five corrections; #101 the two withdrawal
-    # confirms; #109 the pay item; later issues add theirs.
+    # confirms; #109 the pay item; #110 the finalize; later issues add theirs.
     assert [e.label for e in load_matrix() if e.is_idempotent] == [
         "POST /api/v1/billing/packages",
         "POST /api/v1/billing/packages/{package_id}/cancellation",
@@ -1085,5 +1089,29 @@ def test_the_real_matrix_lists_the_idempotent_routes():
         "/refunds",
         "POST /api/v1/families/{family_id}/billing-account/payments/{payment_id}"
         "/reversal",
+        "POST /api/v1/payroll/periods/{period_id}/finalize",
         "POST /api/v1/payroll/tutors/{tutor_user_id}/pay-items",
     ]
+
+
+def test_deny_is_only_for_an_authenticated_entry_and_names_real_roles():
+    """#110: a route open to either of two permissions denies by its own check."""
+    denied = MatrixEntry("GET", "/x", "authenticated", deny=["tutor"])
+    assert entry_problems(denied) == []
+    assert entry_problems(
+        MatrixEntry("GET", "/x", "authenticated", deny=["nobody"])
+    ) == ["unknown role 'nobody'"]
+    assert entry_problems(
+        MatrixEntry("GET", "/x", "public", reason="ok", deny=["tutor"])
+    ) == ["deny is only for access = 'authenticated'"]
+    assert entry_problems(MatrixEntry("GET", "/x", "authenticated", deny="tutor")) == [
+        "deny must be a list of role codes"
+    ]
+
+
+def test_a_denied_role_expects_403_and_anyone_else_access():
+    entry = MatrixEntry("GET", "/x", "authenticated", deny=["tutor"])
+
+    assert Case(entry, Actor("tutor")).expected == "denied"
+    assert Case(entry, Actor("owner")).expected == "allowed"
+    assert Case(entry, Actor()).expected == "unauthenticated"

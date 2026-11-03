@@ -22308,7 +22308,7 @@
           "payroll"
         ],
         "summary": "Get Period Lines",
-        "description": "The period and its lines, by service date, then session, then salary\npiece, then pay item, with their total.",
+        "description": "The period and its lines, by service date, then session, then salary\npiece, then pay item, with their total. A reviewer with `payroll.finalize`\nalone reads prepared and finalized periods; any other is 404.",
         "operationId": "get_period_lines_api_v1_payroll_periods__period_id__lines_get",
         "parameters": [
           {
@@ -22328,7 +22328,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PayrollPeriodLines"
+                  "$ref": "#/components/schemas/PayrollPeriodReview"
                 }
               }
             }
@@ -22500,6 +22500,411 @@
           },
           "422": {
             "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/periods": {
+      "get": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "List Payroll Periods",
+        "description": "Payroll periods, newest end date first. A reviewer with `payroll.finalize`\nalone sees prepared and finalized periods. `total` is null on a period whose\nlines sum beyond the money range.",
+        "operationId": "list_payroll_periods_api_v1_payroll_periods_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PeriodStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "tutor_user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tutor User Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_PayrollPeriodItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/periods/{period_id}/prepare": {
+      "post": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Prepare Payroll Period",
+        "description": "Recalculate an open period that has ended, and send it for review. It\nopens an item in the approval inbox. Periods may be prepared in any order.",
+        "operationId": "prepare_payroll_period_api_v1_payroll_periods__period_id__prepare_post",
+        "parameters": [
+          {
+            "name": "period_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Period Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollPeriodTransition"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such period (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The period isn't open (payroll_period_not_open, with details.status); it hasn't ended (payroll_period_not_ended, with details.ends_on); a line or the total is beyond the money range (payroll_amount_out_of_range); work with no basis stops it (payroll_unresolved_work, with details.count and at most 20 details.items); or the total is below zero (payroll_negative_total). A refusal changes nothing.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/periods/{period_id}/return": {
+      "post": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Return Payroll Period",
+        "description": "Send a prepared period back to open, with a reason. Its lines stay until\nthe next recalculation, and its review item is cancelled.",
+        "operationId": "return_payroll_period_api_v1_payroll_periods__period_id__return_post",
+        "parameters": [
+          {
+            "name": "period_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Period Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayrollPeriodReturn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollPeriodTransition"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such period (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The period isn't prepared (payroll_period_not_prepared, with details.status).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/periods/{period_id}/finalize": {
+      "post": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Finalize Payroll Period",
+        "description": "Lock a prepared period: from here on it never changes. Send the\n`prepared_at` of the review you read, a new `Idempotency-Key` per decision and\nthe same one to retry it. A tutor's periods finalize oldest first, and the\ntutor is notified.",
+        "operationId": "finalize_payroll_period_api_v1_payroll_periods__period_id__finalize_post",
+        "parameters": [
+          {
+            "name": "period_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Period Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayrollPeriodFinalize"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollPeriodTransition"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed (permission_denied), the session wasn't reauthenticated (reauth_required), or a second person has to do it (payroll_self_finalize, with details.reason preparer or own_pay; an Owner is excepted).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such period (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The period isn't prepared (payroll_period_not_prepared, with details.status); it was prepared again after this review (payroll_review_outdated); an earlier period isn't finalized (payroll_period_out_of_order, with details.earliest_period_id and details.status); the facts changed (payroll_period_stale, with details.added, removed and changed); work with no basis stops it (payroll_unresolved_work, with details.count and at most 20 details.items); or the total is beyond the money range (payroll_amount_out_of_range).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -22799,7 +23204,7 @@
           "payroll"
         ],
         "summary": "Add Compensation Rate",
-        "description": "Add a rate version from any date. A null rate model and rate mean no\nrate for this class kind from that date.",
+        "description": "Add a rate version from any date, unless it would re-price a finalized\nline. A null rate model and rate mean no rate for\nthis class kind from that date.",
         "operationId": "add_compensation_rate_api_v1_payroll_tutors__tutor_user_id__rates_post",
         "parameters": [
           {
@@ -22893,7 +23298,7 @@
           "payroll"
         ],
         "summary": "Delete Pay Terms",
-        "description": "Delete a terms version, whatever its date, until a finalized period\nuses it.",
+        "description": "Delete a terms version, whatever its date, until a prepared or finalized\nperiod uses it.",
         "operationId": "delete_pay_terms_api_v1_payroll_tutors__tutor_user_id__pay_terms__terms_id__delete",
         "parameters": [
           {
@@ -22952,7 +23357,7 @@
             }
           },
           "409": {
-            "description": "A finalized payroll period uses this version (pay_terms_in_use).",
+            "description": "A prepared or finalized payroll period uses this version (pay_terms_in_use).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -22980,7 +23385,7 @@
           "payroll"
         ],
         "summary": "Delete Compensation Rate",
-        "description": "Delete a rate version, whatever its date, until a finalized period\nuses it.",
+        "description": "Delete a rate version, whatever its date, until a prepared or finalized\nperiod uses it.",
         "operationId": "delete_compensation_rate_api_v1_payroll_tutors__tutor_user_id__rates__rate_id__delete",
         "parameters": [
           {
@@ -23039,7 +23444,7 @@
             }
           },
           "409": {
-            "description": "A finalized payroll period uses this version (compensation_rate_in_use).",
+            "description": "A prepared or finalized payroll period uses this version (compensation_rate_in_use).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -46961,6 +47366,37 @@
         ],
         "title": "OffsetPage[PaymentItem]"
       },
+      "OffsetPage_PayrollPeriodItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PayrollPeriodItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[PayrollPeriodItem]"
+      },
       "OffsetPage_PayrollTutorItem_": {
         "properties": {
           "items": {
@@ -49915,38 +50351,7 @@
         "title": "PayrollLineItem",
         "description": "One line (#107 H3): ``rate`` is text, and a \"covered by salary\" line has\nno rate snapshot. A ``salary`` line has no session, and says how its amount\nwas reached: ``salary_amount`` × ``proration_numerator`` /\n``proration_denominator`` for the piece ``salary_starts_on`` to\n``salary_ends_on`` (#108 H1). A ``pay_item`` line is a fixed amount, negative\nfor a deduction, with the type's current name and the item's description\n(#109 G1). No student data."
       },
-      "PayrollPeriodLines": {
-        "properties": {
-          "period": {
-            "$ref": "#/components/schemas/PayrollPeriodSummary"
-          },
-          "lines": {
-            "items": {
-              "$ref": "#/components/schemas/PayrollLineItem"
-            },
-            "type": "array",
-            "title": "Lines"
-          },
-          "total": {
-            "type": "string",
-            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
-            "format": "decimal",
-            "title": "Total",
-            "examples": [
-              "1250.00"
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "period",
-          "lines",
-          "total"
-        ],
-        "title": "PayrollPeriodLines",
-        "description": "``GET /api/v1/payroll/periods/{id}/lines`` (#107 H3). ``total`` is the\nsum of the rounded lines, and may be negative."
-      },
-      "PayrollPeriodSummary": {
+      "PayrollPeriodDetail": {
         "properties": {
           "id": {
             "type": "string",
@@ -49973,6 +50378,124 @@
           },
           "status": {
             "$ref": "#/components/schemas/PeriodStatus"
+          },
+          "tutor_display_name": {
+            "type": "string",
+            "title": "Tutor Display Name"
+          },
+          "tutor_state": {
+            "$ref": "#/components/schemas/UserState"
+          },
+          "prepared_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prepared At"
+          },
+          "prepared_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountName"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "finalized_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finalized At"
+          },
+          "finalized_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountName"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Amount"
+          },
+          "returned_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returned At"
+          },
+          "returned_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountName"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "return_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Reason"
+          },
+          "earlier_unfinalized_period_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Earlier Unfinalized Period Id",
+            "description": "The tutor's oldest earlier period that isn't finalized."
+          },
+          "pending_closeouts": {
+            "type": "integer",
+            "title": "Pending Closeouts",
+            "description": "The tutor's sessions starting in the period with no approved closeout, cancelled or skipped ones aside. A warning, never a block."
           }
         },
         "type": "object",
@@ -49982,10 +50505,230 @@
           "starts_on",
           "ends_on",
           "pay_frequency",
-          "status"
+          "status",
+          "tutor_display_name",
+          "tutor_state",
+          "prepared_at",
+          "prepared_by",
+          "finalized_at",
+          "finalized_by",
+          "total_amount",
+          "returned_at",
+          "returned_by",
+          "return_reason",
+          "earlier_unfinalized_period_id",
+          "pending_closeouts"
         ],
-        "title": "PayrollPeriodSummary",
-        "description": "The head of a period's lines (#107 H3)."
+        "title": "PayrollPeriodDetail",
+        "description": "The head of a period's review (#110 F3)."
+      },
+      "PayrollPeriodFinalize": {
+        "properties": {
+          "prepared_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Prepared At",
+            "description": "The prepared_at of the review the caller read. Lines can't change while a period is prepared, so this identifies them."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prepared_at"
+        ],
+        "title": "PayrollPeriodFinalize",
+        "description": "``POST /api/v1/payroll/periods/{id}/finalize`` (#110 E4)."
+      },
+      "PayrollPeriodItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tutor_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tutor User Id"
+          },
+          "tutor_display_name": {
+            "type": "string",
+            "title": "Tutor Display Name"
+          },
+          "tutor_state": {
+            "$ref": "#/components/schemas/UserState"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Ends On"
+          },
+          "pay_frequency": {
+            "$ref": "#/components/schemas/PayFrequency"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PeriodStatus"
+          },
+          "line_count": {
+            "type": "integer",
+            "title": "Line Count"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total",
+            "description": "All the period's lines. Null when they sum beyond the money range: the period's own read says what to do."
+          },
+          "prepared_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prepared At"
+          },
+          "finalized_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finalized At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tutor_user_id",
+          "tutor_display_name",
+          "tutor_state",
+          "starts_on",
+          "ends_on",
+          "pay_frequency",
+          "status",
+          "line_count",
+          "total",
+          "prepared_at",
+          "finalized_at"
+        ],
+        "title": "PayrollPeriodItem",
+        "description": "One row of the period list (#110 F1)."
+      },
+      "PayrollPeriodReturn": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Up to 1000 characters."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "PayrollPeriodReturn",
+        "description": "``POST /api/v1/payroll/periods/{id}/return`` (#110 C1)."
+      },
+      "PayrollPeriodReview": {
+        "properties": {
+          "period": {
+            "$ref": "#/components/schemas/PayrollPeriodDetail"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/PayrollLineItem"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Total",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "period",
+          "lines",
+          "total"
+        ],
+        "title": "PayrollPeriodReview",
+        "description": "``GET /api/v1/payroll/periods/{id}/lines``. ``total`` is the sum of the\nrounded lines, and may be negative while the period is open."
+      },
+      "PayrollPeriodTransition": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PeriodStatus"
+          },
+          "prepared_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prepared At"
+          },
+          "finalized_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finalized At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "prepared_at",
+          "finalized_at"
+        ],
+        "title": "PayrollPeriodTransition",
+        "description": "What ``prepare``, ``return`` and ``finalize`` answer (#110 E10). No amount:\na stored idempotent response holds it in clear, so the page refetches."
       },
       "PayrollRecalculation": {
         "properties": {
@@ -50786,9 +51529,10 @@
                   "type": "string"
                 },
                 {
-                  "items": {
-                    "type": "string"
-                  },
+                  "type": "integer"
+                },
+                {
+                  "items": {},
                   "type": "array"
                 },
                 {

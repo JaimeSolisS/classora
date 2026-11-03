@@ -161,7 +161,10 @@ async def add_pay_terms(
             " field, an unknown class kind or rate model, the rate"
             " (rate_invalid, rate_precision, rate_out_of_range, rate_negative),"
             " only one of rate model and rate (rate_model_rate_mismatch) or"
-            " per_course on another kind (rate_model_not_allowed)."
+            " per_course on another kind (rate_model_not_allowed). Or the version"
+            " would re-price a finalized line"
+            " (effective_from_under_finalized_line, with"
+            " details.latest_finalized_on)."
         ),
     },
 )
@@ -171,8 +174,9 @@ async def add_compensation_rate(
     body: CompensationRateCreate,
     uow: UnitOfWorkDep,
 ) -> CompensationRateItem:
-    """Add a rate version from any date. A null rate model and rate mean no
-    rate for this class kind from that date."""
+    """Add a rate version from any date, unless it would re-price a finalized
+    line. A null rate model and rate mean no rate for
+    this class kind from that date."""
     return await payroll_compensation.add_compensation_rate(
         uow.session, principal, tutor_user_id, body
     )
@@ -185,7 +189,8 @@ async def add_compensation_rate(
         **_WRITE_RESPONSES,
         404: _VERSION_NOT_FOUND,
         409: problem_response_doc(
-            "A finalized payroll period uses this version (pay_terms_in_use)."
+            "A prepared or finalized payroll period uses this version"
+            " (pay_terms_in_use)."
         ),
         422: problem_response_doc(
             "Without this version, a generated period would hold another"
@@ -201,8 +206,8 @@ async def delete_pay_terms(
     terms_id: uuid.UUID,
     uow: UnitOfWorkDep,
 ) -> Response:
-    """Delete a terms version, whatever its date, until a finalized period
-    uses it."""
+    """Delete a terms version, whatever its date, until a prepared or finalized
+    period uses it."""
     await payroll_compensation.delete_pay_terms(
         uow.session, principal, tutor_user_id, terms_id
     )
@@ -216,7 +221,8 @@ async def delete_pay_terms(
         **_WRITE_RESPONSES,
         404: _VERSION_NOT_FOUND,
         409: problem_response_doc(
-            "A finalized payroll period uses this version (compensation_rate_in_use)."
+            "A prepared or finalized payroll period uses this version"
+            " (compensation_rate_in_use)."
         ),
     },
 )
@@ -226,8 +232,8 @@ async def delete_compensation_rate(
     rate_id: uuid.UUID,
     uow: UnitOfWorkDep,
 ) -> Response:
-    """Delete a rate version, whatever its date, until a finalized period
-    uses it."""
+    """Delete a rate version, whatever its date, until a prepared or finalized
+    period uses it."""
     await payroll_compensation.delete_compensation_rate(
         uow.session, principal, tutor_user_id, rate_id
     )
