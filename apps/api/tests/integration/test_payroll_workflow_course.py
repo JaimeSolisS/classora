@@ -6,6 +6,7 @@ Each period here is prepared by Finance Staff and finalized by an Owner, by rout
 by hand from ``rate x k / N``; the clock of the routes is a year after the cohort.
 """
 
+import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -14,9 +15,15 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.db import create_sessionmaker
+from app.core.uow import UnitOfWork
+from app.modules.identity.permissions import OWNER
+from app.modules.payroll import service as payroll
+from app.workflows import payroll_calculation, payroll_workflow
 from tests.conftest import frozen_clock
 from tests.integration.auth_support import auth_client
 from tests.integration.change_request_support import Scene, make_scene
+from tests.integration.conftest import short_lived_engine
 from tests.integration.lifecycle_support import code_of
 from tests.integration.payroll_calculation_support import (
     add_period_row,
@@ -37,6 +44,7 @@ from tests.integration.payroll_workflow_support import (
     lock_at,
     locked,
     prepare,
+    prepared_at,
     recalculate,
     return_period,
     row_of,
@@ -45,6 +53,7 @@ from tests.integration.payroll_workflow_support import (
 )
 from tests.integration.series_edit_support import Ctx, make_ctx
 from tests.integration.test_assignment_offers import new_tutor_user
+from tests.integration.test_attendance import principal_of
 from tests.integration.test_class_session_makeups import book, booked
 from tests.integration.test_payroll_pay_events import (
     cancelled_by_family,
@@ -66,6 +75,8 @@ from tests.integration.test_payroll_per_course import (
     two_periods,
 )
 from tests.integration.test_session_cancellation import cancel
+
+WAIT_LIMIT = 15.0
 
 
 @pytest.fixture(scope="module")
@@ -416,6 +427,67 @@ def test_j7_n_changing_before_the_first_finalize_is_stale_on_it_too(ctx):
     grow(ctx, cohort, 3)
 
     assert code(final(ctx, who, first)) == STALE
+
+
+# --- H9: a run overlapping a real finalize -----
+
+
+def test_h9_a_run_overlapping_a_real_finalize_counts_each_session_once(
+    ctx, monkeypatch
+):
+    """P2's run has read the finalized periods, and P1 is still ``prepared`` then.
+    P1's finalize commits on its own connection before the run reads the finalized
+    lines. This is the real thing the #442 "between the reads" test simulated."""
+    who = team(ctx)
+    url = ctx.url
+    cohort = make_cohort(ctx, 3)  # Monday, Wednesday, Friday: N = 3
+    add_terms(url, ctx.tutor.id)
+    add_rate(url, ctx.tutor.id, rate="1000", kind="course", model="per_course")
+    one = period_of(ctx, ctx.tutor, 0, 3)
+    two = period_of(ctx, ctx.tutor, 3, 60)
+    teach(ctx, cohort, 0, 1, 2)
+    prepare_all(ctx, who, one)
+    review = datetime.fromisoformat(prepared_at(url, one) or "")
+    principal = principal_of(who.owner.user.id, OWNER)
+    real = payroll.finalized_course_lines
+
+    async def _overlap() -> None:
+        engine = short_lived_engine(url)
+        sessions = create_sessionmaker(engine)
+        reached, resume = asyncio.Event(), asyncio.Event()
+
+        async def paused(*args: Any, **kwargs: Any) -> Any:
+            if not reached.is_set():
+                reached.set()
+                await asyncio.wait_for(resume.wait(), WAIT_LIMIT)
+            return await real(*args, **kwargs)
+
+        monkeypatch.setattr(payroll, "finalized_course_lines", paused)
+
+        async def run_second() -> None:
+            async with UnitOfWork(sessions) as uow:
+                await payroll_calculation.recalculate(uow.session, two)
+
+        try:
+            running = asyncio.create_task(run_second())
+            await asyncio.wait_for(reached.wait(), WAIT_LIMIT)
+            async with UnitOfWork(sessions) as uow:
+                await payroll_workflow.finalize(uow.session, principal, one, review)
+            resume.set()
+            await asyncio.wait_for(running, WAIT_LIMIT)
+        finally:
+            resume.set()
+            await engine.dispose()
+
+    with frozen_clock(later(ctx)):
+        asyncio.run(_overlap())
+    monkeypatch.setattr(payroll, "finalized_course_lines", real)
+
+    assert status_of(url, one) == "finalized"
+    assert shares(url, two) == [(3, 3)]
+    assert amounts(url, two) == cents("333.33")
+    lock_at(ctx.client, url, who, later(ctx), two)
+    assert total(ctx, one, two) == Decimal("1000.00")
 
 
 # --- J8: no false alarm, the event kinds -----
