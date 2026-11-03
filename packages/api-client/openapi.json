@@ -22517,7 +22517,7 @@
           "payroll"
         ],
         "summary": "List Payroll Periods",
-        "description": "Payroll periods, newest end date first. A reviewer with `payroll.finalize`\nalone sees prepared and finalized periods. `total` is null on a period whose\nlines sum beyond the money range.",
+        "description": "Payroll periods, newest end date first. A reviewer with `payroll.finalize`\nalone sees prepared and finalized periods. `total` is null on a period whose\nlines sum beyond the money range. A finalized period carries what was paid\n(`paid_total`, `paid_state`), and `paid_state` keeps the finalized periods in\nthat state.",
         "operationId": "list_payroll_periods_api_v1_payroll_periods_get",
         "parameters": [
           {
@@ -22551,6 +22551,22 @@
                 }
               ],
               "title": "Tutor User Id"
+            }
+          },
+          {
+            "name": "paid_state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PaidState"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paid State"
             }
           },
           {
@@ -23129,6 +23145,316 @@
           },
           "409": {
             "description": "The period isn't open (payroll_period_not_open, with details.status); it hasn't ended (payroll_period_not_ended, with details.ends_on); a line or the total is beyond the money range (payroll_amount_out_of_range); or its total after a recalculation isn't below zero (payroll_total_not_negative). A refusal changes nothing.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/periods/{period_id}/payments": {
+      "post": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Record Payroll Payment",
+        "description": "Log a payment made to the tutor outside the platform against a finalized\nperiod: the date, the amount, the method, the reference (the transfer number\nor receipt) and an optional note. Partial payments are allowed, up to the\nperiod's total. A mistake is reversed, never edited. Send a new\n`Idempotency-Key` per payment and the same one to retry it.",
+        "operationId": "record_payroll_payment_api_v1_payroll_periods__period_id__payments_post",
+        "parameters": [
+          {
+            "name": "period_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Period Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayrollPaymentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollPaymentRecorded"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed (permission_denied), or the period is the caller's own pay (payroll_own_compensation; only an Owner may).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such period (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The period isn't finalized (payroll_period_not_finalized, with details.status); a payment without a reversal has the same method and reference (payroll_payment_duplicate, with details.payment_id); or the payments would add up to more than the period's total (payroll_payment_exceeds_balance, with details.remaining). A refusal changes nothing.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "List Payroll Payments",
+        "description": "The period's payments, reversed ones included, newest payment date\nfirst. A reviewer with `payroll.finalize` alone reads those of prepared and\nfinalized periods.",
+        "operationId": "list_payroll_payments_api_v1_payroll_periods__period_id__payments_get",
+        "parameters": [
+          {
+            "name": "period_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Period Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PayrollPaymentItem"
+                  },
+                  "title": "Response List Payroll Payments Api V1 Payroll Periods  Period Id  Payments Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such period (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/payments/{payment_id}/reversal": {
+      "post": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Reverse Payroll Payment",
+        "description": "Reverse a payment logged by mistake, with a reason. The payment stays\nlisted, marked reversed, and no longer counts toward what was paid, so the\nright one can be logged again, with the same reference too. Needs a password\nreauthentication in the last 5 minutes.",
+        "operationId": "reverse_payroll_payment_api_v1_payroll_payments__payment_id__reversal_post",
+        "parameters": [
+          {
+            "name": "payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Payment Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayrollPaymentReversalCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollPaymentReversed"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed (permission_denied), the session wasn't reauthenticated (reauth_required), or the period is the caller's own pay (payroll_own_compensation; only an Owner may).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such payment (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The payment was already reversed (payroll_payment_already_reversed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -49013,6 +49339,14 @@
           "minutes"
         ]
       },
+      "PaidState": {
+        "type": "string",
+        "enum": [
+          "unpaid",
+          "partially_paid",
+          "paid"
+        ]
+      },
       "PasswordChange": {
         "properties": {
           "current_password": {
@@ -50785,6 +51119,224 @@
         "title": "PayrollLineItem",
         "description": "One line (#107 H3): ``rate`` is text, and a \"covered by salary\" line has\nno rate snapshot. A ``salary`` line has no session, and says how its amount\nwas reached: ``salary_amount`` × ``proration_numerator`` /\n``proration_denominator`` for the piece ``salary_starts_on`` to\n``salary_ends_on`` (#108 H1). A ``pay_item`` line is a fixed amount, negative\nfor a deduction, with the type's current name and the item's description\n(#109 G1). An ``adjustment`` line has only its amount and\n``payroll_adjustment_id``; the ``adjustment_*`` fields come from the\nadjustment: the session, date and class kind it corrects, the line or the\nfinalized period it references, and the reason, on ``manual`` only (#111\nG1). No student data."
       },
+      "PayrollPaymentCreate": {
+        "properties": {
+          "paid_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Paid On",
+            "description": "From the period's first day to the center's today."
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "description": "Above zero. Partial payments are allowed.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "method_code": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Method Code",
+            "description": "An active payment method's code."
+          },
+          "reference": {
+            "type": "string",
+            "title": "Reference",
+            "description": "Up to 100 characters: the transfer number or receipt. With the method, it identifies the payment: the same pair twice on a period is refused."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "Up to 1000 characters."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "paid_on",
+          "amount",
+          "method_code",
+          "reference"
+        ],
+        "title": "PayrollPaymentCreate",
+        "description": "``POST /api/v1/payroll/periods/{id}/payments`` (#112 B2): a payment made\noutside the platform. ``amount`` above zero (``amount_not_positive``;\n``money_*``); ``reference`` trimmed, 1 to 100 characters, and ``note``\ntrimmed, up to 1000, blank → ``null`` (``text_empty``, ``text_too_long``,\n``text_invalid``). ``paid_on`` and ``method_code`` are checked against the\nperiod and the payment methods by the workflow (``paid_on_in_future``,\n``paid_on_before_period``, ``payment_method_unavailable``)."
+      },
+      "PayrollPaymentItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "paid_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Paid On"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "method_code": {
+            "type": "string",
+            "title": "Method Code"
+          },
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "recorded_by": {
+            "$ref": "#/components/schemas/AccountName"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "reversal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayrollPaymentReversalItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "paid_on",
+          "amount",
+          "method_code",
+          "reference",
+          "note",
+          "recorded_by",
+          "created_at",
+          "reversal"
+        ],
+        "title": "PayrollPaymentItem",
+        "description": "One payment of ``GET /api/v1/payroll/periods/{id}/payments`` (#112 D1).\nA reversed payment stays listed with its ``reversal``, and counts for\nnothing."
+      },
+      "PayrollPaymentRecorded": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "payroll_period_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Payroll Period Id"
+          },
+          "paid_state": {
+            "$ref": "#/components/schemas/PaidState"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "payroll_period_id",
+          "paid_state"
+        ],
+        "title": "PayrollPaymentRecorded",
+        "description": "What ``POST …/payments`` answers (#112 B7, E6): no amount, reference or\nnote, because the stored idempotent response holds it in clear. The page\nrefetches the payments."
+      },
+      "PayrollPaymentReversalCreate": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Up to 1000 characters."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "PayrollPaymentReversalCreate",
+        "description": "``POST /api/v1/payroll/payments/{id}/reversal`` (#112 C3)."
+      },
+      "PayrollPaymentReversalItem": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "reversed_by": {
+            "$ref": "#/components/schemas/AccountName"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason",
+          "reversed_by",
+          "created_at"
+        ],
+        "title": "PayrollPaymentReversalItem",
+        "description": "A payment's reversal (#112 D1)."
+      },
+      "PayrollPaymentReversed": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "payroll_payment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Payroll Payment Id"
+          },
+          "paid_state": {
+            "$ref": "#/components/schemas/PaidState"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "payroll_payment_id",
+          "paid_state"
+        ],
+        "title": "PayrollPaymentReversed",
+        "description": "What ``POST …/reversal`` answers (#112 C3, E6): no reason."
+      },
       "PayrollPeriodDetail": {
         "properties": {
           "id": {
@@ -50930,6 +51482,34 @@
             "type": "integer",
             "title": "Pending Closeouts",
             "description": "The tutor's sessions starting in the period with no approved closeout, cancelled or skipped ones aside. A warning, never a block."
+          },
+          "paid_total": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid Total",
+            "description": "The payments without a reversal (#112). Null unless the period is finalized."
+          },
+          "paid_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaidState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "unpaid, partially_paid or paid; a 0.00 total is paid. Null unless the period is finalized."
           }
         },
         "type": "object",
@@ -50951,7 +51531,9 @@
           "returned_by",
           "return_reason",
           "earlier_unfinalized_period_id",
-          "pending_closeouts"
+          "pending_closeouts",
+          "paid_total",
+          "paid_state"
         ],
         "title": "PayrollPeriodDetail",
         "description": "The head of a period's review (#110 F3)."
@@ -51052,6 +51634,34 @@
               }
             ],
             "title": "Finalized At"
+          },
+          "paid_total": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid Total",
+            "description": "The payments without a reversal (#112). Null unless the period is finalized."
+          },
+          "paid_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaidState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "unpaid, partially_paid or paid; a 0.00 total is paid. Null unless the period is finalized."
           }
         },
         "type": "object",
@@ -51067,7 +51677,9 @@
           "line_count",
           "total",
           "prepared_at",
-          "finalized_at"
+          "finalized_at",
+          "paid_total",
+          "paid_state"
         ],
         "title": "PayrollPeriodItem",
         "description": "One row of the period list (#110 F1)."
@@ -51449,6 +52061,7 @@
           "payment.record",
           "payroll.finalize",
           "payroll.manage",
+          "payroll.payment.record",
           "payroll.prepare",
           "payroll.view",
           "progress_report.review",

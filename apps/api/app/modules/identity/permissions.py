@@ -82,6 +82,10 @@ PAYROLL_MANAGE = "payroll.manage"
 # The payroll calculation (#107 E10): who runs it (Owner, Finance Staff; not
 # delegable). #110 is prepare, and return with payroll.finalize.
 PAYROLL_PREPARE = "payroll.prepare"
+# Logging payments made to a tutor outside the platform (#112; ADR-0017 E12,
+# E13): Owner, Finance Staff; not delegable. Reversals use
+# finance.refund.approve.
+PAYROLL_PAYMENT_RECORD = "payroll.payment.record"
 SCHEDULE_OVERRIDE = "schedule.override"
 FINANCE_REFUND_APPROVE = "finance.refund.approve"
 # Tutor profiles (#43, owner decision E1 (a)): the record policy limits a
@@ -212,6 +216,7 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(PAYROLL_VIEW),
     PermissionDef(PAYROLL_MANAGE),
     PermissionDef(PAYROLL_PREPARE),
+    PermissionDef(PAYROLL_PAYMENT_RECORD),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
 )
@@ -294,6 +299,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 PAYROLL_VIEW,
                 PAYROLL_MANAGE,
                 PAYROLL_PREPARE,
+                PAYROLL_PAYMENT_RECORD,
             }
         ),
         # Record policies limit these to assigned students, self and linked

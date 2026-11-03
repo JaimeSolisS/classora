@@ -66,6 +66,7 @@ from app.core.authz import (
     Principal,
     RecordNotFoundError,
 )
+from app.core.money import Money
 from app.core.pagination import OffsetPage, OffsetParams
 from app.modules.academics import service as academics
 from app.modules.administration import service as administration
@@ -74,6 +75,7 @@ from app.modules.identity import service as identity
 from app.modules.identity.schemas import AccountReference
 from app.modules.payroll import service as payroll
 from app.modules.payroll.schemas import (
+    PaidState,
     PayrollPeriodFacts,
     PayrollPeriodSummary,
     PayrollPeriodTransition,
@@ -96,6 +98,7 @@ FINALIZED_EVENT: Final = "payroll.period_finalized"
 FINALIZED_NOTIFICATION: Final = "payroll.period_finalized"
 OPEN: Final = "open"
 PREPARED: Final = "prepared"
+FINALIZED: Final = "finalized"
 
 
 class PeriodFinalizedParams(BaseModel):
@@ -288,9 +291,10 @@ async def list_periods(
     page: OffsetParams,
     status: PeriodStatus | None,
     tutor_user_id: uuid.UUID | None,
+    paid_state: PaidState | None = None,
 ) -> OffsetPage[PayrollPeriodItem]:
     """``GET /api/v1/payroll/periods``. Three statements, whatever the page
-    size."""
+    size: the paid total is read in the rows' statement (#112 D2)."""
     rows = await payroll.list_periods(
         session,
         page=page,
@@ -301,6 +305,7 @@ async def list_periods(
         ),
         status=status,
         tutor_user_id=tutor_user_id,
+        paid=paid_state,
     )
     accounts = await identity.get_account_references(
         session, {row.tutor_user_id for row in rows.items}
@@ -320,6 +325,8 @@ async def list_periods(
                 total=row.total,
                 prepared_at=row.prepared_at,
                 finalized_at=row.finalized_at,
+                paid_total=row.paid_total,
+                paid_state=row.paid_state,
             )
             for row in rows.items
         ],
@@ -379,6 +386,11 @@ async def read_period(
     )
     earlier = await payroll.earliest_unfinalized_before(session, period)
     tutor = accounts[period.tutor_user_id]
+    paid_total: Money | None = None
+    paid_state: PaidState | None = None
+    if period.status == FINALIZED and period.total_amount is not None:
+        paid_total = await payroll.paid_total(session, period_id)
+        paid_state = payroll.paid_state(period.total_amount, paid_total)
     return PayrollPeriodReview(
         period=PayrollPeriodDetail(
             id=period.id,
@@ -399,6 +411,8 @@ async def read_period(
             return_reason=period.return_reason,
             earlier_unfinalized_period_id=None if earlier is None else earlier.id,
             pending_closeouts=await _pending_closeouts(session, period),
+            paid_total=paid_total,
+            paid_state=paid_state,
         ),
         lines=read.lines,
         total=read.total,

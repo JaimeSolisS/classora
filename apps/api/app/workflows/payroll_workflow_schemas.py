@@ -11,6 +11,7 @@ from app.core.money import Money
 from app.modules.administration.schemas import AccountName
 from app.modules.identity.schemas import UserState
 from app.modules.payroll.schemas import (
+    PaidState,
     PayFrequency,
     PayrollLineItem,
     PayrollPeriodSummary,
@@ -38,6 +39,18 @@ class PayrollPeriodItem(BaseModel):
     )
     prepared_at: datetime | None
     finalized_at: datetime | None
+    paid_total: Money | None = Field(
+        description=(
+            "The payments without a reversal (#112). Null unless the period is"
+            " finalized."
+        )
+    )
+    paid_state: PaidState | None = Field(
+        description=(
+            "unpaid, partially_paid or paid; a 0.00 total is paid. Null unless the"
+            " period is finalized."
+        )
+    )
 
 
 class PayrollPeriodDetail(PayrollPeriodSummary):
@@ -62,6 +75,18 @@ class PayrollPeriodDetail(PayrollPeriodSummary):
             " closeout, cancelled or skipped ones aside. A warning, never a block."
         )
     )
+    paid_total: Money | None = Field(
+        description=(
+            "The payments without a reversal (#112). Null unless the period is"
+            " finalized."
+        )
+    )
+    paid_state: PaidState | None = Field(
+        description=(
+            "unpaid, partially_paid or paid; a 0.00 total is paid. Null unless the"
+            " period is finalized."
+        )
+    )
 
 
 class PayrollPeriodReview(BaseModel):
@@ -71,3 +96,27 @@ class PayrollPeriodReview(BaseModel):
     period: PayrollPeriodDetail
     lines: list[PayrollLineItem]
     total: Money
+
+
+class PayrollPaymentReversalItem(BaseModel):
+    """A payment's reversal (#112 D1)."""
+
+    reason: str
+    reversed_by: AccountName
+    created_at: datetime
+
+
+class PayrollPaymentItem(BaseModel):
+    """One payment of ``GET /api/v1/payroll/periods/{id}/payments`` (#112 D1).
+    A reversed payment stays listed with its ``reversal``, and counts for
+    nothing."""
+
+    id: uuid.UUID
+    paid_on: date
+    amount: Money
+    method_code: str
+    reference: str
+    note: str | None
+    recorded_by: AccountName
+    created_at: datetime
+    reversal: PayrollPaymentReversalItem | None

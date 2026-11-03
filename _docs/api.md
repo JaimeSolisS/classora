@@ -7374,7 +7374,7 @@ pages are M7-07b.
 
 | Route | Access | Notes |
 |---|---|---|
-| `GET /api/v1/payroll/periods` | `authenticated()` + `payroll.view` or `payroll.finalize` | Offset pagination, newest `ends_on` first, then `id`. Query `status?`, `tutor_user_id?`. `PayrollPeriodItem`: `id`, `tutor_user_id`, `tutor_display_name`, `tutor_state`, `starts_on`, `ends_on`, `pay_frequency`, `status`, `line_count`, `total`, `prepared_at`, `finalized_at`. `total` is `null` on a period whose lines sum beyond the money range, so one bad period can't take the list down. |
+| `GET /api/v1/payroll/periods` | `authenticated()` + `payroll.view` or `payroll.finalize` | Offset pagination, newest `ends_on` first, then `id`. Query `status?`, `tutor_user_id?`, `paid_state?` (#112). `PayrollPeriodItem`: `id`, `tutor_user_id`, `tutor_display_name`, `tutor_state`, `starts_on`, `ends_on`, `pay_frequency`, `status`, `line_count`, `total`, `prepared_at`, `finalized_at`, `paid_total`, `paid_state`. `total` is `null` on a period whose lines sum beyond the money range, so one bad period can't take the list down. `paid_total` and `paid_state` are `null` unless `finalized` (Payroll payments, below). |
 | `POST /api/v1/payroll/periods/{period_id}/prepare` | `require("payroll.prepare")` | No body, no key, no reauthentication. `200` with `PayrollPeriodTransition`. |
 | `POST /api/v1/payroll/periods/{period_id}/return` | `authenticated()` + `payroll.prepare` or `payroll.finalize` | Body `{reason}`, trimmed, 1 to 1000 characters. No key, no reauthentication: it changes no money, and a second click gets `409`. `200` with `PayrollPeriodTransition`. |
 | `POST /api/v1/payroll/periods/{period_id}/finalize` | `require("payroll.finalize")`, `require_recent_auth("payroll.finalize")`, `Idempotency-Key` | Body `{prepared_at}`, the value the review read. `200` with `PayrollPeriodTransition`. |
@@ -7384,7 +7384,8 @@ pages are M7-07b.
 - **The read (`GET …/lines`):** `period` also has `tutor_display_name`,
   `tutor_state`, `prepared_at`, `prepared_by`, `finalized_at`, `finalized_by`,
   `total_amount`, `returned_at`, `returned_by`, `return_reason`,
-  `earlier_unfinalized_period_id` and `pending_closeouts`. Each `…_by` is `{id,
+  `earlier_unfinalized_period_id`, `pending_closeouts`, `paid_total` and
+  `paid_state` (#112, `null` unless `finalized`). Each `…_by` is `{id,
   display_name}`. `pending_closeouts` counts the tutor's sessions starting in the
   period with no approved closeout, cancelled and skipped ones aside: a warning,
   never a block.
@@ -7557,6 +7558,76 @@ and its M7-08c notes, orchestrator-recommended, pending owner review) in
 - **Audit:** the rows are audited with `amount`, `rate` and `reason` masked and
   the caller as actor. No named event, log line or notification carries an amount
   or a reason.
+
+### Payroll payments
+
+Implemented by M7-09 (#112; spec §7; ADR-0017 E12, E13 and its #112 notes,
+orchestrator-recommended, pending owner review) in
+`app/workflows/payroll_payments.py` and its router, with the rows in
+`app/modules/payroll/payments.py`. Tables: `_docs/data-model.md` §11.10, §11.11.
+The pages are M7-09b.
+
+| Route | Access | Notes |
+|---|---|---|
+| `POST /api/v1/payroll/periods/{period_id}/payments` | `require("payroll.payment.record")`, `Idempotency-Key` | Body `{paid_on, amount, method_code, reference, note?}`. No reauthentication. `201` with `PayrollPaymentRecorded`. |
+| `POST /api/v1/payroll/payments/{payment_id}/reversal` | `require("finance.refund.approve")`, `require_recent_auth("finance.refund_or_reversal")`, `Idempotency-Key` | Body `{reason}`. `201` with `PayrollPaymentReversed`. |
+| `GET /api/v1/payroll/periods/{period_id}/payments` | `authenticated()` + `payroll.view` or `payroll.finalize`, then the period's record policy | Not paginated. A list of `PayrollPaymentItem`, newest `paid_on` first, then newest `created_at`, `id`. |
+
+- **What it is:** money paid to a tutor outside the platform (a transfer, cash),
+  logged against a **finalized** period. The reference and the note are the
+  proof: no file. Partial payments are allowed; a mistake is reversed, never
+  edited.
+- **Who:** Owners and Finance Staff record. Only an Owner reverses, or an
+  Administrator delegated `finance.refund.approve`: Finance Staff can't reverse
+  its own mistakes. Recording or reversing a payment of your own pay is `403
+  payroll_own_compensation`, an Owner excepted. A `payroll.view` holder reads every
+  period's payments, a delegated Administrator (`payroll.finalize`) those of
+  `prepared` and `finalized` periods, and an `open` one is the same `404` as a
+  missing id. Coordinators, Tutors (#113 is their read) and families get `403`.
+- **The body of a payment:** `amount` above zero (`amount_not_positive`),
+  within the money range (`money_*`); `reference` trimmed, 1 to 100 characters;
+  `note` trimmed, up to 1000, blank is `null` (`text_empty`, `text_too_long`,
+  `text_invalid`); `method_code` an active payment method (the billing list,
+  `GET /api/v1/billing/payment-methods`, which Owners and Finance Staff read);
+  `paid_on` from the period's `starts_on` to the center's today; no other field.
+- **Recording, in order:** `401` → `403 csrf_failed` → `403 permission_denied` →
+  `422 text_invalid` for a lone surrogate → `400` key → replay / `422
+  idempotency_key_reused` → `422` (the body) → the period `FOR UPDATE` (`404`) →
+  `403 payroll_own_compensation` → `422 payment_method_unavailable` → `422
+  paid_on_in_future` → `422 paid_on_before_period` → `409
+  payroll_period_not_finalized` (`details.status`) → `409
+  payroll_payment_duplicate` (`details.payment_id`) → `409
+  payroll_payment_exceeds_balance` (`details.remaining`) → the row. The tutor is
+  known only from the period, so its `404` comes before the own-pay check.
+- **Reversing, in order:** `401` → `403 csrf_failed` → `403 permission_denied` →
+  `403 reauth_required` → `422 text_invalid` → `400` key → replay / `422
+  idempotency_key_reused` → `422` (the reason: trimmed, 1 to 1000 characters) →
+  `404` (no payment) → the payment's period `FOR UPDATE` → `409
+  payroll_payment_already_reversed` → `403 payroll_own_compensation` → the row.
+  A reversed payment stays listed with its `reversal`.
+- **What counts:** payments without a reversal. **Duplicates:** the same
+  `method_code` and the same reference, trimmed and ignoring case, on the same
+  period, under a different key; a reversed payment frees the pair, so a wrong
+  amount is reversed and re-entered with the same transfer number. **The cap:**
+  the paid total plus the amount may not pass `total_amount` (adjustment lines
+  included); exactly the remainder is accepted. A finalized `0.00` period (a
+  carry-forward, an empty week) is `paid` with no payment and refuses any.
+- **Paid state:** `unpaid` (nothing paid), `partially_paid`, `paid` (the paid
+  total equals `total_amount`); only on a `finalized` period. The list filters by
+  it (`paid_state`, `422` on another value).
+- **The lock:** the key is claimed first, then the period row is the only lock.
+  Two payments, or a payment and a reversal, of one period run one after the
+  other; the second reads what the first committed.
+- **`PayrollPaymentRecorded`:** `id`, `payroll_period_id`, `paid_state`.
+  **`PayrollPaymentReversed`:** `id`, `payroll_payment_id`, `paid_state`. No
+  amount, reference, note or reason, because a stored idempotent response holds
+  it in clear: the page refetches the payments.
+- **`PayrollPaymentItem`:** `id`, `paid_on`, `amount`, `method_code`, `reference`,
+  `note`, `recorded_by {id, display_name}`, `created_at`, `reversal {reason,
+  reversed_by {id, display_name}, created_at} | null`.
+- **Audit:** both rows are audited with the caller as actor, `amount`,
+  `reference`, `note` and `reason` masked. No named event, log line or
+  notification carries any of them.
 
 ### Bonuses and deductions
 

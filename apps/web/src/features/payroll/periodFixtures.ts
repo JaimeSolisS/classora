@@ -225,6 +225,8 @@ const detail: PayrollPeriodDetail = {
   return_reason: null,
   earlier_unfinalized_period_id: null,
   pending_closeouts: 0,
+  paid_total: null,
+  paid_state: null,
 };
 
 export const PERIOD_OPEN: PayrollPeriodDetail = detail;
@@ -249,6 +251,8 @@ export const PERIOD_FINALIZED: PayrollPeriodDetail = {
   finalized_at: '2026-10-18T17:00:00Z',
   finalized_by: { id: OWNER_ID, display_name: 'Demo Owner' },
   total_amount: '4116.67',
+  paid_total: '0.00',
+  paid_state: 'unpaid',
 };
 
 export const PERIOD_NOT_ENDED: PayrollPeriodDetail = {
@@ -280,6 +284,8 @@ export const listRow = (
   total: '1250.00',
   prepared_at: null,
   finalized_at: null,
+  paid_total: null,
+  paid_state: null,
   ...overrides,
 });
 
@@ -303,6 +309,8 @@ export const PERIODS_PAGE: PayrollPeriodPage = {
       line_count: 12,
       pay_frequency: 'weekly',
       finalized_at: '2026-10-03T15:00:00Z',
+      paid_total: '0.00',
+      paid_state: 'unpaid',
     }),
   ],
   total: 3,

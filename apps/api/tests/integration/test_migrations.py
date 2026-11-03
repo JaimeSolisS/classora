@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0080"
+HEAD = "0081"
 PAY_RULES = "session_pay_rules"
 LINES = "payroll_lines"
 SALARY_LINE_COLUMNS = frozenset(
@@ -214,6 +214,7 @@ COMPENSATION_TABLES = ["tutor_pay_terms", "compensation_rates"]
 PAYROLL_PERIOD_TABLES = ["payroll_settings", "payroll_periods"]
 RETURN_COLUMNS = ("returned_at", "returned_by_user_id", "return_reason")
 ADJUSTMENTS = "payroll_adjustments"
+PAYROLL_PAYMENT_TABLES = ["payroll_payments", "payroll_payment_reversals"]
 """The tables revision 0072 adds (#105 B1, B2)."""
 APPEND_ONLY_LEDGER_TABLES = [
     "charges",
@@ -466,6 +467,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             LINES,
             *PAY_ITEM_TABLES,
             ADJUSTMENTS,
+            *PAYROLL_PAYMENT_TABLES,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4841,9 +4843,22 @@ def _of_0080(diff: Any) -> bool:
     )
 
 
+def _of_0081(diff: Any) -> bool:
+    """A metadata difference that revision 0081 adds: the two payment tables and
+    their indexes (#112 A1). CHECKs are not compared."""
+    if diff[0] == "add_table":
+        return bool(diff[1].name in PAYROLL_PAYMENT_TABLES)
+    return diff[0] == "add_index" and diff[1].table.name in PAYROLL_PAYMENT_TABLES
+
+
+def _of_0080_on(diff: Any) -> bool:
+    """A metadata difference that revision 0080 or a later one adds."""
+    return _of_0080(diff) or _of_0081(diff)
+
+
 def _of_0079_on(diff: Any) -> bool:
     """A metadata difference that revision 0079 or a later one adds."""
-    return _of_0079(diff) or _of_0080(diff)
+    return _of_0079(diff) or _of_0080_on(diff)
 
 
 def _of_0078_on(diff: Any) -> bool:
@@ -14892,7 +14907,7 @@ def test_0079_adds_the_columns_and_downgrade_restores_0078(fresh_database_url):
     command.upgrade(config, "0079")
 
     assert version_nums(dsn) == ["0079"]
-    assert [d for d in metadata_diff(dsn) if not _of_0080(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0080_on(d)] == []
     columns = {
         r.column_name: (r.is_nullable, r.data_type, r.character_maximum_length)
         for r in run_sql(
@@ -15073,7 +15088,7 @@ def test_0080_adds_the_table_and_downgrade_restores_0079(fresh_database_url):
     command.upgrade(config, "0080")
 
     assert version_nums(dsn) == ["0080"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0081(d)] == []
     assert public_tables(dsn) - tables == {ADJUSTMENTS}
     constraints = _constraints(dsn, ADJUSTMENTS)
     assert set(constraints) == ADJUSTMENT_CONSTRAINTS_0080
@@ -15126,7 +15141,7 @@ def test_0080_adds_the_table_and_downgrade_restores_0079(fresh_database_url):
         )[0].n
         == 0
     )
-    assert [d for d in metadata_diff(dsn) if not _of_0080(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0080_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -15535,3 +15550,220 @@ def test_0080_downgrade_refuses_while_an_adjustment_exists(fresh_database_url):
     assert getattr(caught.value.orig, "sqlstate", None) == "55000"
     assert version_nums(dsn) == [HEAD]
     assert run_sql(dsn, "SELECT count(*) AS n FROM payroll_adjustments")[0].n == 1
+
+
+# --- 0081: payroll payments (#112 A1) -----
+
+PAYMENT_CONSTRAINTS_0081 = {
+    "payroll_payments": {
+        "pk_payroll_payments",
+        "fk_payroll_payments_payroll_period_id_payroll_periods",
+        "fk_payroll_payments_method_code_payment_methods",
+        "fk_payroll_payments_recorded_by_user_id_users",
+        "ck_payroll_payments_amount_positive",
+        "ck_payroll_payments_reference_trimmed",
+        "ck_payroll_payments_note_trimmed",
+    },
+    "payroll_payment_reversals": {
+        "pk_payroll_payment_reversals",
+        "fk_payroll_payment_reversals_payment",
+        "fk_payroll_payment_reversals_reversed_by_user_id_users",
+        "uq_payroll_payment_reversals_payroll_payment_id",
+        "ck_payroll_payment_reversals_reason_trimmed",
+    },
+}
+PAYMENT_INDEXES_0081 = {
+    "payroll_payments": {
+        "pk_payroll_payments",
+        "ix_payroll_payments_payroll_period_id",
+        "ix_payroll_payments_paid_on",
+    },
+    "payroll_payment_reversals": {
+        "pk_payroll_payment_reversals",
+        "uq_payroll_payment_reversals_payroll_payment_id",
+    },
+}
+
+
+def test_0081_adds_the_tables_and_downgrade_restores_0080(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0080")
+    tables = public_tables(dsn)
+
+    command.upgrade(config, "0081")
+
+    assert version_nums(dsn) == ["0081"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == set(PAYROLL_PAYMENT_TABLES)
+    for table in PAYROLL_PAYMENT_TABLES:
+        constraints = _constraints(dsn, table)
+        assert set(constraints) == PAYMENT_CONSTRAINTS_0081[table], table
+        for name, definition in constraints.items():
+            if name.startswith("fk_"):
+                assert definition.endswith("ON DELETE RESTRICT"), name
+        assert set(_indexes(dsn, table)) == PAYMENT_INDEXES_0081[table], table
+        assert _triggers(dsn, table) == {
+            f"{table}_no_update_delete",
+            f"{table}_no_truncate",
+        }
+    assert (
+        "REFERENCES payment_methods(code)"
+        in (
+            _constraints(dsn, "payroll_payments")[
+                "fk_payroll_payments_method_code_payment_methods"
+            ]
+        )
+    )
+
+    command.downgrade(config, "0080")
+
+    assert version_nums(dsn) == ["0080"]
+    assert public_tables(dsn) == tables
+    assert (
+        run_sql(
+            dsn,
+            "SELECT count(*) AS n FROM pg_proc WHERE proname = ANY(:n)",
+            {"n": [f"{table}_append_only" for table in PAYROLL_PAYMENT_TABLES]},
+        )[0].n
+        == 0
+    )
+    assert [d for d in metadata_diff(dsn) if not _of_0081(d)] == []
+
+    command.upgrade(config, "head")
+
+    assert metadata_diff(dsn) == []
+
+
+def _payment_row_0081(world: dict[str, Any], **change: Any) -> dict[str, Any]:
+    """A valid payment on the finalized period of :func:`_adjustment_world`."""
+    return {
+        "payroll_period_id": world["origin"],
+        "paid_on": date(2031, 1, 13),
+        "amount": Decimal("40.00"),
+        "method_code": "transfer",
+        "reference": "SPEI 123",
+        "note": None,
+        "recorded_by_user_id": world["tutor"],
+        **change,
+    }
+
+
+def _insert_payment_0081(dsn: str, row: dict[str, Any]) -> Any:
+    columns = ", ".join(row)
+    binds = ", ".join(f":{name}" for name in row)
+    return run_sql(
+        dsn,
+        f"INSERT INTO payroll_payments ({columns}) VALUES ({binds})"  # noqa: S608
+        " RETURNING id",
+        row,
+    )[0].id
+
+
+def _reverse_0081(dsn: str, payment: Any, by: Any, reason: str = "Error") -> Any:
+    return run_sql(
+        dsn,
+        "INSERT INTO payroll_payment_reversals (payroll_payment_id, reason,"
+        " reversed_by_user_id) VALUES (:p, :r, :u) RETURNING id",
+        {"p": payment, "r": reason, "u": by},
+    )[0].id
+
+
+@pytest.mark.parametrize(
+    ("change", "constraint"),
+    [
+        ({"amount": Decimal("0.00")}, "ck_payroll_payments_amount_positive"),
+        ({"amount": Decimal("-1.00")}, "ck_payroll_payments_amount_positive"),
+        ({"reference": ""}, "ck_payroll_payments_reference_trimmed"),
+        ({"reference": " SPEI"}, "ck_payroll_payments_reference_trimmed"),
+        ({"reference": "x" * 101}, "ck_payroll_payments_reference_trimmed"),
+        ({"note": ""}, "ck_payroll_payments_note_trimmed"),
+        ({"note": "Nota "}, "ck_payroll_payments_note_trimmed"),
+        ({"note": "x" * 1001}, "ck_payroll_payments_note_trimmed"),
+        ({"method_code": "cheque"}, "fk_payroll_payments_method_code_payment_methods"),
+    ],
+)
+def test_0081_a_payment_row_is_checked(fresh_database_url, change, constraint):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+
+    with pytest.raises(IntegrityError) as caught:
+        _insert_payment_0081(dsn, _payment_row_0081(world, **change))
+
+    assert constraint in str(caught.value.orig)
+
+
+@pytest.mark.parametrize("reason", ["", " Error", "x" * 1001])
+def test_0081_a_reversal_reason_is_trimmed_and_bounded(fresh_database_url, reason):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+    payment = _insert_payment_0081(dsn, _payment_row_0081(world))
+
+    with pytest.raises(IntegrityError) as caught:
+        _reverse_0081(dsn, payment, world["tutor"], reason)
+
+    assert "ck_payroll_payment_reversals_reason_trimmed" in str(caught.value.orig)
+
+
+def test_0081_a_payment_has_one_reversal_and_both_are_append_only(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+    payment = _insert_payment_0081(
+        dsn, _payment_row_0081(world, note="Pago en dos partes")
+    )
+    reversal = _reverse_0081(dsn, payment, world["tutor"])
+
+    with pytest.raises(IntegrityError) as caught:
+        _reverse_0081(dsn, payment, world["tutor"])
+    assert "uq_payroll_payment_reversals_payroll_payment_id" in str(caught.value.orig)
+    for statement, row in (
+        ("UPDATE payroll_payments SET amount = 1 WHERE id = :id", payment),
+        ("DELETE FROM payroll_payments WHERE id = :id", payment),
+        ("UPDATE payroll_payment_reversals SET reason = 'x' WHERE id = :id", reversal),
+        ("DELETE FROM payroll_payment_reversals WHERE id = :id", reversal),
+        # payroll_payment_reversals references it: alone, the TRUNCATE is 0A000.
+        ("TRUNCATE payroll_payments, payroll_payment_reversals", payment),
+        ("TRUNCATE payroll_payments CASCADE", payment),
+        ("TRUNCATE payroll_payment_reversals", reversal),
+    ):
+        assert _sqlstate_0076(dsn, statement, {"id": row}) == "42501", statement
+    # The finalized period, the method and the users can't go while referenced.
+    for statement in (
+        "DELETE FROM payment_methods WHERE code = 'transfer'",
+        "DELETE FROM users WHERE id = :u",
+    ):
+        assert _sqlstate_0076(dsn, statement, {"u": world["tutor"]}) in {
+            "23001",
+            "23503",
+            "42501",
+        }, statement
+
+
+def test_0081_a_payment_locks_the_finalized_period(fresh_database_url):
+    """A payment takes the finalized row ``FOR UPDATE`` (#112 B3); the guard of
+    0073 allows it, and the foreign key's check too."""
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+
+    assert run_sql(
+        dsn,
+        "SELECT id FROM payroll_periods WHERE id = :id FOR UPDATE",
+        {"id": world["origin"]},
+    )
+    _insert_payment_0081(dsn, _payment_row_0081(world))
+
+
+def test_0081_downgrade_refuses_while_a_payment_exists(fresh_database_url):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+    _insert_payment_0081(dsn, _payment_row_0081(world))
+    config = alembic_config(dsn)
+
+    with pytest.raises(DBAPIError) as caught:
+        command.downgrade(config, "0080")
+
+    assert getattr(caught.value.orig, "sqlstate", None) == "55000"
+    assert version_nums(dsn) == [HEAD]
+    assert run_sql(dsn, "SELECT count(*) AS n FROM payroll_payments")[0].n == 1

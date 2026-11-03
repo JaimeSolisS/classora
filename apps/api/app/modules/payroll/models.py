@@ -41,6 +41,12 @@ adjustment job write them.
 
 ``payroll_adjustments`` is the append-only, audited record of corrections after
 lock (#111, migration ``0080``): :class:`PayrollAdjustment`.
+
+``payroll_payments`` and ``payroll_payment_reversals`` log money paid to a tutor
+outside the platform against a finalized period, and its reversal (#112,
+migration ``0081``): :class:`PayrollPayment`, :class:`PayrollPaymentReversal`.
+Both are append-only and audited, with ``amount``, ``reference``, ``note`` and
+``reason`` masked.
 """
 
 import uuid
@@ -112,6 +118,12 @@ PAY_ITEM_DESCRIPTION_MAX: Final = 500
 RETURN_REASON_MAX: Final = 1000
 ADJUSTMENT_KIND_MAX: Final = 20
 ADJUSTMENT_REASON_MAX: Final = 1000
+PAYMENT_REFERENCE_MAX: Final = 100
+PAYMENT_NOTE_MAX: Final = 1000
+PAYMENT_REVERSAL_REASON_MAX: Final = 1000
+PAYMENT_METHOD_CODE_MAX: Final = 32
+"""``payment_methods.code`` (billing's ``String(32)``), repeated here because a
+module imports no other module's models (ADR-0002)."""
 
 TERMS_KEY: Final = "uq_tutor_pay_terms_tutor_user_id_effective_from"
 RATE_KEY: Final = "uq_compensation_rates_tutor_user_id_class_kind_effective_from"
@@ -132,6 +144,9 @@ LINE_ADJUSTMENT_UNIQUE: Final = "uq_payroll_lines_adjustment"
 ADJUSTMENT_SOURCE_KEY: Final = "uq_payroll_adjustments_source_key"
 ADJUSTMENT_FIRST_PAYMENT: Final = "uq_payroll_adjustments_first_payment"
 ADJUSTMENT_TARGET_KEY: Final = "uq_payroll_adjustments_id_target"
+PAYMENT_REVERSAL_KEY: Final = "uq_payroll_payment_reversals_payroll_payment_id"
+PAYMENT_REVERSAL_FK: Final = "fk_payroll_payment_reversals_payment"
+"""Named: the convention's name is beyond PostgreSQL's 63 characters."""
 ADJUSTMENT_SNAPSHOT_COLUMNS: Final = (
     "line_kind",
     "service_date",
@@ -878,3 +893,76 @@ class PayrollAdjustment(Audited, Model):
     )
     cumulative_sessions: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cohort_sessions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+def _trimmed_text(column: str, maximum: int) -> str:
+    return (
+        f"char_length({column}) BETWEEN 1 AND {maximum} AND {column} = btrim({column})"
+    )
+
+
+class PayrollPayment(Audited, Model):
+    """A payment made to a tutor outside the platform, against a finalized
+    period (data-model §11.10; ADR-0017 E13; #112). Append-only: a trigger
+    refuses ``UPDATE``, ``DELETE`` and ``TRUNCATE`` (migration ``0081``). A
+    mistake is reversed (:class:`PayrollPaymentReversal`), never edited.
+
+    ``reference`` and ``note`` are the proof (no file, owner decision
+    2026-10-21). ``amount``, ``reference`` and ``note`` are masked in the audit
+    log (#112 A2): Administrators hold ``audit.view`` and see no pay."""
+
+    __tablename__ = "payroll_payments"
+    __audit_mask__: ClassVar[frozenset[str]] = frozenset(
+        {"amount", "reference", "note"}
+    )
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="amount_positive"),
+        CheckConstraint(
+            _trimmed_text("reference", PAYMENT_REFERENCE_MAX), name="reference_trimmed"
+        ),
+        CheckConstraint(_trimmed_text("note", PAYMENT_NOTE_MAX), name="note_trimmed"),
+        Index("ix_payroll_payments_payroll_period_id", "payroll_period_id"),
+        Index("ix_payroll_payments_paid_on", "paid_on"),
+    )
+
+    payroll_period_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("payroll_periods.id", ondelete="RESTRICT")
+    )
+    paid_on: Mapped[date] = mapped_column(Date)
+    amount: Mapped[Money] = mapped_column(MoneyType())
+    method_code: Mapped[str] = mapped_column(
+        String(PAYMENT_METHOD_CODE_MAX),
+        ForeignKey("payment_methods.code", ondelete="RESTRICT"),
+    )
+    reference: Mapped[str] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recorded_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+
+
+class PayrollPaymentReversal(Audited, Model):
+    """The reversal of a mistaken payroll payment (data-model §11.11; ADR-0017
+    E12; #112). At most one per payment (the UNIQUE). Append-only (migration
+    ``0081``). ``reason`` is masked in the audit log."""
+
+    __tablename__ = "payroll_payment_reversals"
+    __audit_mask__: ClassVar[frozenset[str]] = frozenset({"reason"})
+    __table_args__ = (
+        CheckConstraint(
+            _trimmed_text("reason", PAYMENT_REVERSAL_REASON_MAX),
+            name="reason_trimmed",
+        ),
+        UniqueConstraint("payroll_payment_id", name=PAYMENT_REVERSAL_KEY),
+    )
+
+    payroll_payment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "payroll_payments.id", ondelete="RESTRICT", name=PAYMENT_REVERSAL_FK
+        ),
+    )
+    reason: Mapped[str] = mapped_column(Text)
+    reversed_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )

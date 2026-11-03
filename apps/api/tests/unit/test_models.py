@@ -177,6 +177,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "pay_item_types",
         "pay_items",
         "payroll_adjustments",
+        "payroll_payments",
+        "payroll_payment_reversals",
         "number_series",
         "account_tokens",
         "registration_requests",
