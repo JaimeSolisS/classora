@@ -51,9 +51,15 @@ basis, and #111 pays it then.
 Nothing here touches a ``Decimal`` or an ``.amount``, on a ``Rate`` or a
 ``Money``: ``tests/unit/test_payroll_calculation_pure.py`` reads this file's syntax
 tree, and the workflow's.
+
+**Drift (#110 D3).** :func:`line_drift` compares stored lines with fresh drafts,
+as multisets and never by id, so their order can neither raise a false alarm nor
+hide a change. A difference on the same source (session, salary piece or item) is
+``changed``.
 """
 
 import uuid
+from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -200,6 +206,39 @@ class LineDraft:
     proration_denominator: int | None = None
     proration_basis: str | None = None
     pay_item_id: uuid.UUID | None = None
+
+
+@dataclass(frozen=True)
+class LineDrift:
+    """How many lines differ between a prepared period and its facts (#110 D3)."""
+
+    added: int
+    removed: int
+    changed: int
+
+    @property
+    def is_clean(self) -> bool:
+        return self.added == self.removed == self.changed == 0
+
+
+def _line_source(
+    line: LineDraft,
+) -> tuple[uuid.UUID | None, date | None, uuid.UUID | None]:
+    """What one line is the line of, whatever its figures or its kind."""
+    return line.class_session_id, line.salary_starts_on, line.pay_item_id
+
+
+def line_drift(stored: Iterable[LineDraft], fresh: Iterable[LineDraft]) -> LineDrift:
+    """The difference between two sets of lines, in any order (module
+    docstring)."""
+    kept, computed = Counter(stored), Counter(fresh)
+    gone = Counter(_line_source(line) for line in (kept - computed).elements())
+    new = Counter(_line_source(line) for line in (computed - kept).elements())
+    return LineDrift(
+        added=(new - gone).total(),
+        removed=(gone - new).total(),
+        changed=(new & gone).total(),
+    )
 
 
 @dataclass(frozen=True)

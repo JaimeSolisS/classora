@@ -747,14 +747,17 @@ def test_the_routes(module_seeded_url, client, owner, finance, tutor):
     shown = get(client, staff, f"{ROOT}/{period}/lines")
     assert code_of(shown) == OK
     body = shown.json()
-    assert body["period"] == {
-        "id": str(period),
-        "tutor_user_id": str(tutor.id),
-        "starts_on": "2026-11-02",
-        "ends_on": "2026-11-08",
-        "pay_frequency": "weekly",
-        "status": "open",
-    }
+    assert (
+        body["period"].items()
+        >= {
+            "id": str(period),
+            "tutor_user_id": str(tutor.id),
+            "starts_on": "2026-11-02",
+            "ends_on": "2026-11-08",
+            "pay_frequency": "weekly",
+            "status": "open",
+        }.items()
+    )
     assert body["total"] == "180.00"
     assert [line["class_session_id"] for line in body["lines"]] == [
         first.id,
@@ -833,6 +836,9 @@ def denied(client: TestClient, module_seeded_url: str) -> dict[str, SetCookie]:
     }
 
 
+HIDDEN = (404, "not_found")
+
+
 @pytest.mark.parametrize(
     "role",
     ["administrator", "delegated", "coordinator", "tutor", "student", "guardian"],
@@ -842,7 +848,11 @@ def test_everyone_else_is_refused(module_seeded_url, client, denied, tutor, role
     cookie = denied[role]
 
     assert code_of(post(client, cookie, f"{ROOT}/{period}/recalculate", None)) == DENIED
-    assert code_of(get(client, cookie, f"{ROOT}/{period}/lines")) == DENIED
+    # #110 E8: a delegated Administrator reaches the read, and an open period is
+    # the same 404 as a missing one.
+    assert code_of(get(client, cookie, f"{ROOT}/{period}/lines")) == (
+        HIDDEN if role == "delegated" else DENIED
+    )
 
 
 def test_a_tutor_is_refused_on_their_own_period(

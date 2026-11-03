@@ -21,6 +21,9 @@
 #   Optional: `path_params` (values for the path template; default: a fixed
 #   UUID, or 1 for an int parameter), `query` (query parameters, #67) and
 #   `json` (a request body).
+#   `deny` (#110), only with access = "authenticated": role codes that get 403
+#   permission_denied from a check the route makes itself, for a route open to
+#   either of two permissions (require() takes one).
 #
 # Reauthentication (#26, ADR-0007 D10; actions and bound permissions in
 # apps/api/app/core/reauth.py):
@@ -2140,11 +2143,40 @@ allow = ["owner", "finance_staff"]
 
 [[route]]
 method = "GET"
-path = "/api/v1/payroll/periods/{period_id}/lines"
+path = "/api/v1/payroll/periods"
+access = "authenticated"
+deny = ["administrator", "academic_coordinator", "tutor", "student", "guardian"]
+# #110 F1: payroll.view, or payroll.finalize for a delegated Administrator, who
+# lists prepared and finalized periods only. Delegated cases:
+# tests/integration/test_payroll_workflow_access.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/periods/{period_id}/finalize"
 access = "permission"
-permission = "payroll.view"
+permission = "payroll.finalize"
+allow = ["owner"]
+idempotency = true
+reauth = "payroll.finalize"
+json = { prepared_at = "2026-11-02T12:00:00Z" }
+# #110 D1: without a key the reauthenticated allowed roles get 400. Rules,
+# replays and races: tests/integration/test_payroll_workflow*.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/periods/{period_id}/lines"
+access = "authenticated"
+deny = ["administrator", "academic_coordinator", "tutor", "student", "guardian"]
+# #107 H3, H4, #110 F3: the placeholder id is no period: 404 for the rest. A
+# delegated Administrator reads prepared and finalized periods.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/periods/{period_id}/prepare"
+access = "permission"
+permission = "payroll.prepare"
 allow = ["owner", "finance_staff"]
-# #107 H3, H4: the placeholder id is no period: 404 for the allowed roles.
+# #110 B1: no key and no reauthentication. The placeholder id is no period: 404.
 
 [[route]]
 method = "POST"
@@ -2154,6 +2186,15 @@ permission = "payroll.prepare"
 allow = ["owner", "finance_staff"]
 # #107 H2, E10: no Idempotency-Key and no reauthentication. The placeholder
 # id is no period: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/periods/{period_id}/return"
+access = "authenticated"
+deny = ["administrator", "academic_coordinator", "tutor", "student", "guardian"]
+json = { reason = "Falta una sesión" }
+# #110 C1, E7: payroll.prepare or payroll.finalize, no key and no
+# reauthentication. A delegated Administrator returns too (the access tests).
 
 [[route]]
 method = "GET"

@@ -18,7 +18,8 @@ Closeout review (#78, :mod:`~app.modules.academics.closeout_review`): the
 closeout lock :func:`lock_closeout`, the immutable approval revisions
 (:func:`add_approval`, :func:`current_approval`, :func:`current_approvals`,
 :func:`current_approvals_for_sessions`,
-payroll's batch read (#107 C1), the unexecuted :func:`current_approval_columns`
+payroll's batch read (#107 C1), the unexecuted :func:`has_no_current_approval`
+(#110 F4) and :func:`current_approval_columns`
 (#443), :func:`closeout_history`),
 the staff corrections (:func:`add_correction`), the E6 attendance unlock
 predicate :func:`closeout_awaits_tutor` (registered by ``app.wiring``) and
@@ -213,6 +214,9 @@ from app.modules.academics.closeout_review import (
 )
 from app.modules.academics.closeout_review import (
     current_approvals_for_sessions as current_approvals_for_sessions,
+)
+from app.modules.academics.closeout_review import (
+    has_no_current_approval as has_no_current_approval,
 )
 from app.modules.academics.closeout_review import lock_closeout as lock_closeout
 from app.modules.academics.closeout_rules import (

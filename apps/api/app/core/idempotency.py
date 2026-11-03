@@ -103,6 +103,7 @@ from datetime import timedelta
 from typing import Annotated, Any, Final, Literal
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from fastapi.routing import APIRoute, RouteContext, iter_route_contexts
 from pydantic import BaseModel
@@ -228,6 +229,25 @@ def canonical_body(body: bytes) -> bytes:
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode()
+
+
+async def hashable_body(request: Request) -> None:
+    """``422 text_invalid`` for a body with a lone surrogate. The key's hash needs
+    UTF-8 and runs before the body's own validators, so a route with free text in
+    its body depends on this first (#109 QA D2). Such a body gets this ``422``
+    ahead of a missing key's ``400``."""
+    try:
+        canonical_body(await request.body())
+    except UnicodeEncodeError:
+        raise RequestValidationError(
+            [
+                {
+                    "type": "text_invalid",
+                    "loc": ("body",),
+                    "msg": "This has an invalid character.",
+                }
+            ]
+        ) from None
 
 
 def request_hash(method: str, path: str, body: bytes) -> bytes:

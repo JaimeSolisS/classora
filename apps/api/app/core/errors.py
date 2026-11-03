@@ -79,7 +79,7 @@ class ProblemDetails(TypedDict):
     detail: NotRequired[str]
     errors: NotRequired[list[FieldError]]
     conflicts: NotRequired[list[SchedulingConflict]]
-    details: NotRequired[dict[str, str | list[str] | dict[str, Any]]]
+    details: NotRequired[dict[str, str | int | list[Any] | dict[str, Any]]]
 
 
 class AppError(Exception):
@@ -97,7 +97,7 @@ class AppError(Exception):
         *,
         errors: Sequence[FieldError] | None = None,
         conflicts: Sequence[SchedulingConflict] | None = None,
-        details: Mapping[str, str | list[str] | dict[str, Any]] | None = None,
+        details: Mapping[str, str | int | list[Any] | dict[str, Any]] | None = None,
     ) -> None:
         if detail is not None:
             self.detail = detail
@@ -140,7 +140,7 @@ def problem_response(
     *,
     errors: Sequence[FieldError] | None = None,
     conflicts: Sequence[SchedulingConflict] | None = None,
-    details: Mapping[str, str | list[str] | dict[str, Any]] | None = None,
+    details: Mapping[str, str | int | list[Any] | dict[str, Any]] | None = None,
     headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     """The single renderer for Problem Details responses."""

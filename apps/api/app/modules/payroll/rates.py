@@ -9,8 +9,9 @@ commits.
 **Writes.** A version is inserted or deleted, never updated (#105 E4): a
 correction is a delete and a new insert. :func:`add_pay_terms` and
 :func:`add_compensation_rate` accept any date, past or future, also between
-two versions. They insert in a savepoint and map the unique key by name, so a
-concurrent identical insert is the same ``409``. :func:`delete_pay_terms` and
+two versions, but for a rate that would take over a finalized priced line. They
+insert in a savepoint and map the unique key by name, so a concurrent identical
+insert is the same ``409``. :func:`delete_pay_terms` and
 :func:`delete_compensation_rate` map the guard's 42501 (a finalized line uses
 the row) to ``409 …_in_use``.
 
@@ -30,6 +31,15 @@ effective_from_inside_generated_period`` and ``422
 effective_from_before_first_period``, before ``409 pay_terms_exists`` and
 ``409 pay_terms_in_use``. A tutor with no periods has neither. Rate versions
 aren't affected.
+
+**A rate under a finalized line (#110 E5, narrowing #105 E4).**
+:func:`add_compensation_rate` first locks the tutor's not-finalized periods, so it
+can't race a finalize, and refuses a version that would take over a date holding
+a finalized priced line of that class kind: ``422
+effective_from_under_finalized_line``. The window runs to the next version of the
+kind. For ``course`` it has no upper end, because a per-course line is priced on
+its cohort's first date. ``no_rate`` work has no line and "covered by salary" no
+rate snapshot, so a back-dated rate stays the way out of #443 D7's blocking item.
 
 **Lookups.** :func:`rate_in_effect` and :func:`terms_in_effect` return the
 version with the greatest ``effective_from <= on`` (W3.4), or ``None`` when
@@ -52,7 +62,7 @@ from collections.abc import Collection, Hashable, Sequence
 from datetime import date
 from typing import Any, Final, cast
 
-from sqlalchemy import Row, Select, select
+from sqlalchemy import Row, Select, func, select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,6 +75,7 @@ from app.modules.payroll.errors import (
     CompensationRateInUseError,
     EffectiveFromBeforeFirstPeriodError,
     EffectiveFromInsideGeneratedPeriodError,
+    EffectiveFromUnderFinalizedLineError,
     PayTermsExistsError,
     PayTermsInUseError,
 )
@@ -72,10 +83,13 @@ from app.modules.payroll.lines import (
     FOREIGN_KEY_REFUSALS,
     delete_lines_of_rate,
     delete_lines_of_terms,
+    latest_finalized_priced_date,
     lock_open_periods_of_tutor,
+    lock_unfinalized_periods_of_tutor,
 )
 from app.modules.payroll.models import (
     CLASS_KINDS,
+    COURSE,
     RATE_KEY,
     TERMS_KEY,
     CompensationRate,
@@ -172,7 +186,9 @@ async def add_compensation_rate(
     rate: Rate | None,
 ) -> uuid.UUID:
     """A new rate version; ``409 compensation_rate_exists`` on a taken date
-    for this class kind."""
+    for this class kind, then ``422 effective_from_under_finalized_line``
+    (#110 E5, module docstring)."""
+    await lock_unfinalized_periods_of_tutor(session, tutor_user_id)
     version = CompensationRate(
         tutor_user_id=tutor_user_id,
         class_kind=class_kind,
@@ -188,7 +204,38 @@ async def add_compensation_rate(
         if RATE_KEY in str(exc.orig):
             raise CompensationRateExistsError() from None
         raise
+    latest = await latest_finalized_priced_date(
+        session,
+        tutor_user_id,
+        class_kind=class_kind,
+        effective_from=effective_from,
+        until=(
+            None
+            if class_kind == COURSE
+            else await _next_rate_date(
+                session, tutor_user_id, class_kind, effective_from
+            )
+        ),
+    )
+    if latest is not None:
+        raise EffectiveFromUnderFinalizedLineError(latest)
     return version.id
+
+
+async def _next_rate_date(
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID,
+    class_kind: str,
+    effective_from: date,
+) -> date | None:
+    """When the version after ``effective_from`` starts. One statement."""
+    return await session.scalar(
+        select(func.min(CompensationRate.effective_from)).where(
+            CompensationRate.tutor_user_id == tutor_user_id,
+            CompensationRate.class_kind == class_kind,
+            CompensationRate.effective_from > effective_from,
+        )
+    )
 
 
 async def delete_pay_terms(

@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0078"
+HEAD = "0079"
 PAY_RULES = "session_pay_rules"
 LINES = "payroll_lines"
 SALARY_LINE_COLUMNS = frozenset(
@@ -212,6 +212,7 @@ WITHDRAWAL_TABLES = ["withdrawals"]
 """The table revision 0071 adds (#101 A2)."""
 COMPENSATION_TABLES = ["tutor_pay_terms", "compensation_rates"]
 PAYROLL_PERIOD_TABLES = ["payroll_settings", "payroll_periods"]
+RETURN_COLUMNS = ("returned_at", "returned_by_user_id", "return_reason")
 """The tables revision 0072 adds (#105 B1, B2)."""
 APPEND_ONLY_LEDGER_TABLES = [
     "charges",
@@ -4812,9 +4813,24 @@ def _of_0078(diff: Any) -> bool:
     )
 
 
+def _of_0079(diff: Any) -> bool:
+    """A metadata difference that revision 0079 adds: the three columns of the
+    periods and their foreign key (#110 A). CHECKs are not compared."""
+    if diff[0] == "add_column":
+        return bool(diff[2] == "payroll_periods" and diff[3].name in RETURN_COLUMNS)
+    return diff[0] == "add_fk" and bool(
+        diff[1].name == "fk_payroll_periods_returned_by_user_id_users"
+    )
+
+
+def _of_0078_on(diff: Any) -> bool:
+    """A metadata difference that revision 0078 or a later one adds."""
+    return _of_0078(diff) or _of_0079(diff)
+
+
 def _of_0077_on(diff: Any) -> bool:
     """A metadata difference that revision 0077 or a later one adds."""
-    return _of_0077(diff) or _of_0078(diff)
+    return _of_0077(diff) or _of_0078_on(diff)
 
 
 def _of_0076_on(diff: Any) -> bool:
@@ -14293,7 +14309,7 @@ def test_0077_adds_the_columns_and_downgrade_restores_0076(fresh_database_url):
     command.upgrade(config, "0077")
 
     assert version_nums(dsn) == ["0077"]
-    assert [d for d in metadata_diff(dsn) if not _of_0078(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0078_on(d)] == []
     assert "EXISTS" in run_sql(dsn, TERMS_BODY)[0].prosrc
 
     command.downgrade(config, "0076")
@@ -14511,7 +14527,7 @@ def test_0078_adds_the_tables_and_downgrade_restores_0077(fresh_database_url):
     command.upgrade(config, "0078")
 
     assert version_nums(dsn) == ["0078"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0079(d)] == []
     assert public_tables(dsn) - tables == PAY_ITEM_TABLES
     assert "EXISTS" in run_sql(dsn, PAY_ITEM_BODY)[0].prosrc
 
@@ -14523,7 +14539,7 @@ def test_0078_adds_the_tables_and_downgrade_restores_0077(fresh_database_url):
     assert PAY_ITEM_LINE_INDEXES.isdisjoint(_indexes(dsn, LINES))
     assert "pay_item_id" not in _columns(dsn, LINES)
     assert _constraints(dsn, LINES) == constraints
-    assert [d for d in metadata_diff(dsn) if not _of_0078(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0078_on(d)] == []
     guards = "SELECT count(*) AS n FROM pg_proc WHERE proname LIKE 'pay_item%'"
     assert run_sql(dsn, guards)[0].n == 0
 
@@ -14831,4 +14847,140 @@ def test_0078_downgrade_removes_item_rows_also_of_a_finalized_period(
             dsn, "DELETE FROM payroll_lines WHERE id = :id", {"id": session_line}
         )
         == "42501"
+    )
+
+
+# --- 0079: a returned period keeps its reason (#110 A) -----
+
+
+def test_0079_adds_the_columns_and_downgrade_restores_0078(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0078")
+    constraints = _constraints(dsn, "payroll_periods")
+
+    command.upgrade(config, "0079")
+
+    assert version_nums(dsn) == ["0079"]
+    assert metadata_diff(dsn) == []
+    columns = {
+        r.column_name: (r.is_nullable, r.data_type, r.character_maximum_length)
+        for r in run_sql(
+            dsn,
+            "SELECT column_name, is_nullable, data_type, character_maximum_length"
+            " FROM information_schema.columns WHERE table_name = 'payroll_periods'",
+        )
+    }
+    assert columns["returned_at"] == ("YES", "timestamp with time zone", None)
+    assert columns["returned_by_user_id"] == ("YES", "uuid", None)
+    assert columns["return_reason"] == ("YES", "character varying", 1000)
+    added = {
+        name: definition
+        for name, definition in _constraints(dsn, "payroll_periods").items()
+        if name not in constraints
+    }
+    assert set(added) == {
+        "ck_payroll_periods_returned_fields",
+        "fk_payroll_periods_returned_by_user_id_users",
+    }
+    assert "ON DELETE RESTRICT" in added["fk_payroll_periods_returned_by_user_id_users"]
+
+    command.downgrade(config, "0078")
+
+    assert version_nums(dsn) == ["0078"]
+    assert _constraints(dsn, "payroll_periods") == constraints
+    assert set(RETURN_COLUMNS).isdisjoint(_columns(dsn, "payroll_periods"))
+    assert [d for d in metadata_diff(dsn) if not _of_0079(d)] == []
+
+    command.upgrade(config, "head")
+
+    assert metadata_diff(dsn) == []
+
+
+_RETURNED_0079 = (
+    "UPDATE payroll_periods SET returned_at = :at, returned_by_user_id = :by,"
+    " return_reason = :reason WHERE id = :id"
+)
+
+
+@pytest.mark.parametrize(
+    ("at", "by", "reason"),
+    [
+        (True, False, False),
+        (False, True, False),
+        (False, False, True),
+        (True, True, False),
+        (True, False, True),
+        (False, True, True),
+    ],
+)
+def test_0079_the_three_fields_go_together(fresh_database_url, at, by, reason):
+    dsn = fresh_database_url
+    world = _salary_world(dsn)
+    with pytest.raises(IntegrityError) as caught:
+        run_sql(
+            dsn,
+            _RETURNED_0079,
+            {
+                "id": world["period"],
+                "at": datetime(2031, 1, 20, tzinfo=UTC) if at else None,
+                "by": world["tutor"] if by else None,
+                "reason": "Falta" if reason else None,
+            },
+        )
+    assert "ck_payroll_periods_returned_fields" in str(caught.value.orig)
+
+
+def test_0079_the_fields_are_set_only_while_open(fresh_database_url):
+    dsn = fresh_database_url
+    world = _salary_world(dsn)
+    params = {
+        "id": world["period"],
+        "at": datetime(2031, 1, 20, tzinfo=UTC),
+        "by": world["tutor"],
+        "reason": "Falta",
+    }
+
+    run_sql(dsn, _RETURNED_0079, params)
+
+    with pytest.raises(IntegrityError) as caught:
+        run_sql(
+            dsn,
+            "UPDATE payroll_periods SET status = 'prepared', prepared_at = now(),"
+            " prepared_by_user_id = :u WHERE id = :id",
+            {"id": world["period"], "u": world["tutor"]},
+        )
+    assert "ck_payroll_periods_returned_fields" in str(caught.value.orig)
+
+    run_sql(
+        dsn,
+        "UPDATE payroll_periods SET status = 'prepared', prepared_at = now(),"
+        " prepared_by_user_id = :u, returned_at = NULL, returned_by_user_id = NULL,"
+        " return_reason = NULL WHERE id = :id",
+        {"id": world["period"], "u": world["tutor"]},
+    )
+
+
+def test_0079_a_returning_user_cannot_be_deleted(fresh_database_url):
+    dsn = fresh_database_url
+    world = _salary_world(dsn)
+    [user] = run_sql(
+        dsn,
+        "INSERT INTO users (username, display_name, password_hash)"
+        " VALUES ('quien', 'Quien', 'x') RETURNING id",
+    )
+    run_sql(
+        dsn,
+        _RETURNED_0079,
+        {
+            "id": world["period"],
+            "at": datetime(2031, 1, 20, tzinfo=UTC),
+            "by": user.id,
+            "reason": "Falta",
+        },
+    )
+
+    assert (
+        _sqlstate_0076(dsn, "DELETE FROM users WHERE id = :id", {"id": user.id})
+        == "23001"
     )

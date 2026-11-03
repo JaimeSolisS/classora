@@ -351,6 +351,9 @@ from app.modules.scheduling.billing_context import (
     cohort_sessions as cohort_sessions,
 )
 from app.modules.scheduling.billing_context import (
+    held_session_columns as held_session_columns,
+)
+from app.modules.scheduling.billing_context import (
     lock_session_for_billing as lock_session_for_billing,
 )
 from app.modules.scheduling.billing_context import (

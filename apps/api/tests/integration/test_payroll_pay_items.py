@@ -492,9 +492,7 @@ def test_g3_the_lines_read_is_two_statements_whatever_the_items(
         add_item(url, tutor.id, pay_type)
     run(url, period)
 
-    count, result = count_statements(
-        url, lambda s: payroll_calculation.read_lines(s, period)
-    )
+    count, result = count_statements(url, lambda s: payroll.period_lines(s, period))
 
     assert count == 2
     assert len(result.lines) == 4

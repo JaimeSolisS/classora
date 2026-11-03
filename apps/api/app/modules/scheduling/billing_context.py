@@ -280,6 +280,22 @@ class PayableCancellationFacts:
     classification: str
 
 
+def held_session_columns(
+    *, tutor_user_id: uuid.UUID, starts_from: datetime, starts_before: datetime
+) -> Select[Any]:
+    """``SELECT class_session_id``, **not executed** (#110 F4): the tutor's
+    sessions starting in ``[starts_from, starts_before)``, not ``cancelled`` or
+    ``skipped_closure``."""
+    return select(ClassSession.id.label("class_session_id")).where(
+        ClassSession.tutor_user_id == tutor_user_id,
+        ClassSession.starts_at >= starts_from,
+        ClassSession.starts_at < starts_before,
+        ClassSession.state.not_in(
+            (SessionState.CANCELLED, SessionState.SKIPPED_CLOSURE)
+        ),
+    )
+
+
 def payable_cancellation_columns(
     *,
     starts_from: datetime,

@@ -158,6 +158,7 @@ REGISTERED_TYPES = {
     "staff.availability_change",
     "academics.session_closeout",
     "academics.progress_report",
+    "payroll.period",
 }
 
 
@@ -393,8 +394,12 @@ def test_only_the_page_decided_academic_handlers_define_the_hook():
         for request_type, handler in approvals._handlers.items()
         if request_type in REGISTERED_TYPES and hasattr(handler, "inbox_route_error")
     }
-    # #312 (closeouts) and #83 B4 (progress reports).
-    assert hooked == {"academics.session_closeout", "academics.progress_report"}
+    # #312 (closeouts), #83 B4 (progress reports) and #110 G (payroll periods).
+    assert hooked == {
+        "academics.session_closeout",
+        "academics.progress_report",
+        "payroll.period",
+    }
     assert approvals._inbox_route_error(PROGRESS_REPORT_HANDLER) is not None
     assert list(
         inspect.signature(PROGRESS_REPORT_HANDLER.inbox_route_error).parameters

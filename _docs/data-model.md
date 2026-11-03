@@ -1049,7 +1049,9 @@ One row per tutor per period (E6). Not `Audited`: the job opens them and the sta
 | `prepared_at`, `prepared_by_user_id` | TIMESTAMPTZ, UUID | yes | set iff `prepared` or `finalized`; cleared by a return |
 | `total_amount` | NUMERIC(14,2) | yes | set iff `finalized`; `>= 0` (P5) |
 | `finalized_at`, `finalized_by_user_id` | TIMESTAMPTZ, UUID | yes | set iff `finalized` |
+| `returned_at`, `returned_by_user_id`, `return_reason` | TIMESTAMPTZ, UUID, VARCHAR(1000) | yes | #110: all set or all `NULL`, set only while `open` (`ck_payroll_periods_returned_fields`); the next `prepare` clears them |
 
+- **The return reason (#110 E7):** on the period, because `approval_requests.reason` is written only by a decision that needs `payroll.finalize`, which Finance doesn't hold, and free text can state an amount, so it stays out of the audit log.
 - **No overlaps (P2):** `EXCLUDE USING gist (tutor_user_id WITH =, daterange(starts_on, ends_on, '[]') WITH &&)`. `btree_gist` is already enabled (#38).
 - **No gaps (P3):** composite FK `(tutor_user_id, previous_ends_on)` → `UNIQUE (tutor_user_id, ends_on)`, plus a partial unique index on `(tutor_user_id) WHERE is_first_period`. #106 proves it in its migration test. If PostgreSQL refuses the generated foreign key column, #106 uses a plain column with a `CHECK`, and the guarantee stays database-enforced (E6).
 - **Natural key:** `UNIQUE (tutor_user_id, starts_on)`, used by `payroll:open_periods`.
@@ -1380,14 +1382,14 @@ A generated expense has `incurred_on = period_start` and `due_on = period_start 
 | P1 | Rate and terms versions are unique per key | DB (`UNIQUE`) | #105 |
 | P2 | Periods don't overlap per tutor | DB (`EXCLUDE`) | #106 |
 | P3 | Periods have no gaps per tutor | DB (composite FK, first-period partial unique) | #106 |
-| P4 | A finalized period's lines and row never change | DB (triggers, §14.3) | #110, #111 |
-| P5 | `total_amount` = Σ lines, and it is ≥ `0.00` | App (under the period lock) for the sum and the refusal; DB (`CHECK`) for ≥ `0.00` | #110 |
+| P4 | A finalized period's lines and row never change | DB (triggers, §14.3); proved on periods finalized by the route, and under random sequences (#110 K1, K4) | #110, #111 |
+| P5 | `total_amount` = Σ lines, and it is ≥ `0.00` | App (under the period lock) for the sum of **all** the lines and the refusal at `prepare`; DB (`CHECK`) for ≥ `0.00`, the backstop | #110 |
 | P6 | A line's tutor is its period's tutor; its `service_date` is inside the period, except `adjustment` lines (which, with `salary` and `pay_item` lines, have none); a `salary` line's piece is inside the period | DB (composite FK) for the tutor; App (under the period lock) for the dates | #107, #108 |
 | P7 | Σ valid payments ≤ `total_amount`; payments only on finalized periods | App (under the period lock) | #112 |
 | P8 | Every adjustment has `origin_line_id`, except `late_approval`, which has `class_session_id` and `origin_period_id` | DB (`CHECK`) | #111 |
 | P9 | An adjustment's target was open at insert; adjustment amounts aren't 0; `source_key` is unique | App (under the period lock) for the target; DB (`CHECK`, `UNIQUE`) for the others | #111 |
 | P10 | Payslip numbers are gap-free per series and year; one payslip per period | DB (`payslips.number` and `payroll_period_id` UNIQUE) + App (`number_series` row lock) | #113 |
-| P11 | A one-time item reaches at most one finalized period | App (#109 E3's placement, under the period lock, and #110's oldest-first finalize) | #109, #110 |
+| P11 | A one-time item reaches at most one finalized period | App (#109 E3's placement, under the period lock, and #110's oldest-first finalize). Placement reaches a later period only once the earlier is finalized, so a line in a later period can't come from a route: `prepare` drops it, and a prepared period holding one goes stale (#110 H10) | #109, #110 |
 | P12 | A pay item's line is its tutor's | DB (composite FK) | #109 |
 | X1 | Expense `net ≥ 0`, `open ≥ 0` | App (under the expense lock) | #115 |
 | X2 | One expense per `(expense_template_id, period_start)` | DB (partial UNIQUE) | #116 |
@@ -1410,6 +1412,7 @@ Nothing below is stored.
   3. **`no_rate`:** terms, but no rate model and no salary. A `per_course` version outside its cohort's first date is `no_rate` too (#442 B3). A cohort paid `per_course` needs terms on the date and nothing else.
   - **Which items block `prepare` (#107 E12):** every item but `before_first_period` dated on or before that period's `ends_on`, in whatever status its own period is. A later-dated item doesn't. An item in a finalized period stays listed and blocking until it has a basis; #111's `late_approval` then pays it.
   - **Paying finalized work (#443 D8, #111 to build):** a closeout's `late_approval` has `source_key` `approval:<approval_id>`. A cancellation has no approval, so its `late_approval` has `source_key` `cancellation:<class_session_id>` and `approval_id` `NULL`. Either kind leaves the list when it has a basis, and #111's job pays it from then on. P8 is unchanged: both have `class_session_id` and `origin_period_id`.
+  - **A refused `prepare` (#110 E3):** one transaction, so a refusal rolls its recalculation back, and the `409` lists work the Unresolved page may not show yet. `details.items` names it, and the page then runs `recalculate`, which commits.
   - **The order in #110 (#443 D9):** `prepare` runs `recalculate` first, then `blocking_work`, so a line a recalculation drops has become an item before the check. `finalize` calls `blocking_work` again, because work approved after `prepare` with no basis has no draft and no line, so the drift comparison can't see it.
   - Work paid by a line whose basis later goes isn't listed: the line pays it until a `recalculate` drops it.
 - **Expense `net`** = `amount + Σ expense_adjustments.amount`.
@@ -1434,7 +1437,7 @@ Nothing below is stored.
 
 - **`payroll_periods`:** `payroll_periods_guard()` (`BEFORE UPDATE OR DELETE FOR EACH ROW`) raises 42501 when `OLD.status = 'finalized'`; `payroll_periods_no_truncate` refuses `TRUNCATE`. The move into `finalized` passes, because `OLD.status` is still `prepared`. `SELECT … FOR UPDATE` on a finalized row writes nothing, so payments can still lock it.
 - **`payroll_lines`:** `payroll_lines_guard()` (`BEFORE INSERT OR UPDATE OR DELETE FOR EACH ROW`) reads the period's status with `SELECT status … FOR SHARE` and raises 42501 when it is `finalized`; an `UPDATE` checks both the old and the new period. The `FOR SHARE` read makes a line write wait for a concurrent finalize and then see its result, so a write can't slip past it. `payroll_lines_no_truncate` refuses `TRUNCATE`.
-- **Created with their tables** (§17): #106 for `payroll_periods`, #107 for `payroll_lines`. #110 is the first issue that can finalize a period, so its tests prove them (P4).
+- **Created with their tables** (§17): #106 for `payroll_periods`, #107 for `payroll_lines`. #110 is the first issue that can finalize a period, so its tests prove them (P4), the guard's `FOR SHARE` included: a line write that waited for a real finalize fails with 42501.
 
 Line writes are serialized by the period row lock (§15); the trigger is the backstop.
 
@@ -1448,6 +1451,9 @@ Line writes are serialized by the period row lock (§15); the trigger is the bac
 
   The App invariants of §13.1 are checked after step 3.
 - **Terms and periods (#106 E10):** one `pg_advisory_xact_lock` key (`b"clsPyPrd"`, `payroll.period_rows`), taken first by each per-tutor unit of `payroll:open_periods` and by the terms insert and delete. The refusal reads periods, the job reads terms, and a first write has no period row to lock, so a row lock can't serialize them. Then the job reads `payroll_settings FOR SHARE`, the terms and the last period; a terms delete takes the tutor's open periods and then its row `FOR UPDATE` (#108 F). A settings `PATCH` takes the settings row `FOR UPDATE` and reads the locks after it, so it and the job wait for each other. Every writer of terms takes this lock (#111 too). No scheduling or academics write takes any of these locks.
+- **After the period lock (#110):** `recalculate` and `finalize` read the versions and items `FOR KEY SHARE`, and `prepare` and `finalize` then take the `approval_requests` row, always after the period, so the order is the key → the period → versions and items → the request. Scheduling and academics are read with no lock.
+- **Oldest first (#110 E2):** `finalize` reads the earlier periods with no lock. A period never leaves `finalized`, so a stale read can only refuse, and an uncommitted earlier finalize reads as `prepared`.
+- **Rate inserts (#110 L5):** the tutor's not-finalized periods `FOR UPDATE`, oldest first, then the insert, then the refusal (`422 effective_from_under_finalized_line`, #110 E5), so a rate waiting for a finalize sees its lines, and a finalize waiting for a rate goes stale.
 - **Lock order, expense mutations:** the `idempotency_keys` row, on the routes that take a key → `expenses` row `FOR UPDATE`, the **last business lock** of finance. Payments, reversals and adjustments of one expense serialize on it.
 - **`recalculate`:** reads committed scheduling and academics state with **no lock on them** and no advisory lock, under the period row lock. No scheduling or academics write ever takes a period lock, so there is no cycle, and a payroll failure can't roll back a closeout or a cancellation (E9). The period row is re-read after the lock, so a run that waited sees a status that changed.
 - **Versions in a run (#107 C4, #108 C3, #109 C2):** `tutor_pay_terms`, `compensation_rates`, `session_pay_rules` and `pay_items` are read `FOR KEY SHARE`, after the period lock, so a concurrent delete waits for the run and then fails on the new line, instead of an insert failing with `23503`.
@@ -1534,7 +1540,7 @@ Each M7 issue, the ADR-0017 decision items it relies on, and the tables it creat
 | #443 M7-04e Unresolved work | E2 (`no_pay_terms`, `no_rate`, the staff list), #106 E4 (`before_first_period`), #107 E12 (what blocks `prepare`), E13 (cancellations) | none: derived from `payroll_lines`, `session_closeout_approvals`, `class_sessions` |
 | #108 M7-05 Salary and proration | E1 (salary plus extras), E7 (configurable basis, `Money.prorate`, review through line display) | `payroll_lines` (`salary`), `payroll_settings` (`salary_proration_basis`) |
 | #109 M7-06 Bonuses and deductions | E8 (recurring per period on `(pay_item_id, payroll_period_id)`, one line per item, fixed amounts) | `pay_item_types`, `pay_items`, `payroll_lines` (`pay_item`) |
-| #110 M7-07 Workflow and lock | E9 (negative total, named events), E10 (states, return, drift check, duty separation, inbox, triggers, notifications), E12 (`payroll.prepare`, `payroll.finalize`, reauthentication), ADR-0006 E6 (key); P4, P5 | `payroll_periods`, `payroll_lines` |
+| #110 M7-07 Workflow and lock | E9 (negative total, named events), E10 (states, return, drift check, duty separation, inbox, triggers, notifications), E12 (`payroll.prepare`, `payroll.finalize`, reauthentication), ADR-0006 E6 (key); P4, P5, P11 proved | `payroll_periods` (migration `0079`: the return columns), `payroll_lines` |
 | #111 M7-08 Corrections after lock | E11 (kinds, earliest open target, origin line reference and the `late_approval` exception, `source_key`, `payroll:post_adjustments`), E12 (`finance.correction`); P8, P9 | `payroll_adjustments`, `payroll_lines` (`adjustment`) |
 | #112 M7-09 Payroll payments | E12 (`payroll.payment.record`, reversals), E13 (finalized only, partial, reference and note with no file, key, duplicate rejected); P7 | `payroll_payments`, `payroll_payment_reversals` |
 | #113 M7-10 Earnings portal, payslips | E12 (tutors by record policy, same `404`), E14 (`P-YYYY-NNNNNN`, tutor's language, finalized-only earnings, non-fiscal statement); P10 | `payslips`, `number_series` |

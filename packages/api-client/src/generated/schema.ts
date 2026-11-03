@@ -4536,7 +4536,8 @@ export interface paths {
         /**
          * Get Period Lines
          * @description The period and its lines, by service date, then session, then salary
-         *     piece, then pay item, with their total.
+         *     piece, then pay item, with their total. A reviewer with `payroll.finalize`
+         *     alone reads prepared and finalized periods; any other is 404.
          */
         get: operations["get_period_lines_api_v1_payroll_periods__period_id__lines_get"];
         put?: never;
@@ -4564,6 +4565,93 @@ export interface paths {
         get: operations["list_unresolved_work_api_v1_payroll_unresolved_work_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payroll/periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Payroll Periods
+         * @description Payroll periods, newest end date first. A reviewer with `payroll.finalize`
+         *     alone sees prepared and finalized periods. `total` is null on a period whose
+         *     lines sum beyond the money range.
+         */
+        get: operations["list_payroll_periods_api_v1_payroll_periods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payroll/periods/{period_id}/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare Payroll Period
+         * @description Recalculate an open period that has ended, and send it for review. It
+         *     opens an item in the approval inbox. Periods may be prepared in any order.
+         */
+        post: operations["prepare_payroll_period_api_v1_payroll_periods__period_id__prepare_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payroll/periods/{period_id}/return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Return Payroll Period
+         * @description Send a prepared period back to open, with a reason. Its lines stay until
+         *     the next recalculation, and its review item is cancelled.
+         */
+        post: operations["return_payroll_period_api_v1_payroll_periods__period_id__return_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payroll/periods/{period_id}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finalize Payroll Period
+         * @description Lock a prepared period: from here on it never changes. Send the
+         *     `prepared_at` of the review you read, a new `Idempotency-Key` per decision and
+         *     the same one to retry it. A tutor's periods finalize oldest first, and the
+         *     tutor is notified.
+         */
+        post: operations["finalize_payroll_period_api_v1_payroll_periods__period_id__finalize_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4645,8 +4733,9 @@ export interface paths {
         put?: never;
         /**
          * Add Compensation Rate
-         * @description Add a rate version from any date. A null rate model and rate mean no
-         *     rate for this class kind from that date.
+         * @description Add a rate version from any date, unless it would take over a finalized
+         *     priced line of this class kind. A null rate model and rate mean no rate for
+         *     this class kind from that date.
          */
         post: operations["add_compensation_rate_api_v1_payroll_tutors__tutor_user_id__rates_post"];
         delete?: never;
@@ -4667,8 +4756,8 @@ export interface paths {
         post?: never;
         /**
          * Delete Pay Terms
-         * @description Delete a terms version, whatever its date, until a finalized period
-         *     uses it.
+         * @description Delete a terms version, whatever its date, until a prepared or finalized
+         *     period uses it.
          */
         delete: operations["delete_pay_terms_api_v1_payroll_tutors__tutor_user_id__pay_terms__terms_id__delete"];
         options?: never;
@@ -4688,8 +4777,8 @@ export interface paths {
         post?: never;
         /**
          * Delete Compensation Rate
-         * @description Delete a rate version, whatever its date, until a finalized period
-         *     uses it.
+         * @description Delete a rate version, whatever its date, until a prepared or finalized
+         *     period uses it.
          */
         delete: operations["delete_compensation_rate_api_v1_payroll_tutors__tutor_user_id__rates__rate_id__delete"];
         options?: never;
@@ -14315,6 +14404,17 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** OffsetPage[PayrollPeriodItem] */
+        OffsetPage_PayrollPeriodItem_: {
+            /** Items */
+            items: components["schemas"]["PayrollPeriodItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /** OffsetPage[PayrollTutorItem] */
         OffsetPage_PayrollTutorItem_: {
             /** Items */
@@ -15606,26 +15706,10 @@ export interface components {
             pay_item_description: string | null;
         };
         /**
-         * PayrollPeriodLines
-         * @description ``GET /api/v1/payroll/periods/{id}/lines`` (#107 H3). ``total`` is the
-         *     sum of the rounded lines, and may be negative.
+         * PayrollPeriodDetail
+         * @description The head of a period's review (#110 F3).
          */
-        PayrollPeriodLines: {
-            period: components["schemas"]["PayrollPeriodSummary"];
-            /** Lines */
-            lines: components["schemas"]["PayrollLineItem"][];
-            /**
-             * Total
-             * Format: decimal
-             * @example 1250.00
-             */
-            total: string;
-        };
-        /**
-         * PayrollPeriodSummary
-         * @description The head of a period's lines (#107 H3).
-         */
-        PayrollPeriodSummary: {
+        PayrollPeriodDetail: {
             /**
              * Id
              * Format: uuid
@@ -15648,6 +15732,130 @@ export interface components {
             ends_on: string;
             pay_frequency: components["schemas"]["PayFrequency"];
             status: components["schemas"]["PeriodStatus"];
+            /** Tutor Display Name */
+            tutor_display_name: string;
+            tutor_state: components["schemas"]["UserState"];
+            /** Prepared At */
+            prepared_at: string | null;
+            prepared_by: components["schemas"]["AccountName"] | null;
+            /** Finalized At */
+            finalized_at: string | null;
+            finalized_by: components["schemas"]["AccountName"] | null;
+            /** Total Amount */
+            total_amount: string | null;
+            /** Returned At */
+            returned_at: string | null;
+            returned_by: components["schemas"]["AccountName"] | null;
+            /** Return Reason */
+            return_reason: string | null;
+            /**
+             * Earlier Unfinalized Period Id
+             * @description The tutor's oldest earlier period that isn't finalized.
+             */
+            earlier_unfinalized_period_id: string | null;
+            /**
+             * Pending Closeouts
+             * @description The tutor's sessions starting in the period with no approved closeout, cancelled or skipped ones aside. A warning, never a block.
+             */
+            pending_closeouts: number;
+        };
+        /**
+         * PayrollPeriodFinalize
+         * @description ``POST /api/v1/payroll/periods/{id}/finalize`` (#110 E4).
+         */
+        PayrollPeriodFinalize: {
+            /**
+             * Prepared At
+             * Format: date-time
+             * @description The prepared_at of the review the caller read. Lines can't change while a period is prepared, so this identifies them.
+             */
+            prepared_at: string;
+        };
+        /**
+         * PayrollPeriodItem
+         * @description One row of the period list (#110 F1).
+         */
+        PayrollPeriodItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tutor User Id
+             * Format: uuid
+             */
+            tutor_user_id: string;
+            /** Tutor Display Name */
+            tutor_display_name: string;
+            tutor_state: components["schemas"]["UserState"];
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+            pay_frequency: components["schemas"]["PayFrequency"];
+            status: components["schemas"]["PeriodStatus"];
+            /** Line Count */
+            line_count: number;
+            /**
+             * Total
+             * @description All the period's lines. Null when they sum beyond the money range: the period's own read says what to do.
+             */
+            total: string | null;
+            /** Prepared At */
+            prepared_at: string | null;
+            /** Finalized At */
+            finalized_at: string | null;
+        };
+        /**
+         * PayrollPeriodReturn
+         * @description ``POST /api/v1/payroll/periods/{id}/return`` (#110 C1).
+         */
+        PayrollPeriodReturn: {
+            /**
+             * Reason
+             * @description Up to 1000 characters.
+             */
+            reason: string;
+        };
+        /**
+         * PayrollPeriodReview
+         * @description ``GET /api/v1/payroll/periods/{id}/lines``. ``total`` is the sum of the
+         *     rounded lines, and may be negative while the period is open.
+         */
+        PayrollPeriodReview: {
+            period: components["schemas"]["PayrollPeriodDetail"];
+            /** Lines */
+            lines: components["schemas"]["PayrollLineItem"][];
+            /**
+             * Total
+             * Format: decimal
+             * @example 1250.00
+             */
+            total: string;
+        };
+        /**
+         * PayrollPeriodTransition
+         * @description What ``prepare``, ``return`` and ``finalize`` answer (#110 E10). No amount:
+         *     a stored idempotent response holds it in clear, so the page refetches.
+         */
+        PayrollPeriodTransition: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            status: components["schemas"]["PeriodStatus"];
+            /** Prepared At */
+            prepared_at: string | null;
+            /** Finalized At */
+            finalized_at: string | null;
         };
         /**
          * PayrollRecalculation
@@ -16065,7 +16273,7 @@ export interface components {
             conflicts?: components["schemas"]["SchedulingConflict"][];
             /** Details */
             details?: {
-                [key: string]: string | string[] | {
+                [key: string]: string | number | unknown[] | {
                     [key: string]: unknown;
                 };
             };
@@ -36079,7 +36287,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PayrollPeriodLines"];
+                    "application/json": components["schemas"]["PayrollPeriodReview"];
                 };
             };
             /** @description Authentication required. */
@@ -36172,6 +36380,279 @@ export interface operations {
             };
             /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_payroll_periods_api_v1_payroll_periods_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["PeriodStatus"] | null;
+                tutor_user_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_PayrollPeriodItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    prepare_payroll_period_api_v1_payroll_periods__period_id__prepare_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollPeriodTransition"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such period (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The period isn't open (payroll_period_not_open, with details.status); it hasn't ended (payroll_period_not_ended, with details.ends_on); a line or the total is beyond the money range (payroll_amount_out_of_range); work with no basis stops it (payroll_unresolved_work, with details.count and at most 20 details.items); or the total is below zero (payroll_negative_total). A refusal changes nothing. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    return_payroll_period_api_v1_payroll_periods__period_id__return_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollPeriodReturn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollPeriodTransition"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such period (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The period isn't prepared (payroll_period_not_prepared, with details.status). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    finalize_payroll_period_api_v1_payroll_periods__period_id__finalize_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID(). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                period_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollPeriodFinalize"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollPeriodTransition"];
+                };
+            };
+            /** @description The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not allowed (permission_denied), the session wasn't reauthenticated (reauth_required), or a second person has to do it (payroll_self_finalize, with details.reason preparer or own_pay; an Owner is excepted). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such period (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The period isn't prepared (payroll_period_not_prepared, with details.status); it was prepared again after this review (payroll_review_outdated); an earlier period isn't finalized (payroll_period_out_of_order, with details.earliest_period_id and details.status); the facts changed (payroll_period_stale, with details.added, removed and changed); work with no basis stops it (payroll_unresolved_work, with details.count and at most 20 details.items); or the total is beyond the money range (payroll_amount_out_of_range). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36490,7 +36971,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description A finalized payroll period uses this version (pay_terms_in_use). */
+            /** @description A prepared or finalized payroll period uses this version (pay_terms_in_use). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -36556,7 +37037,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description A finalized payroll period uses this version (compensation_rate_in_use). */
+            /** @description A prepared or finalized payroll period uses this version (compensation_rate_in_use). */
             409: {
                 headers: {
                     [name: string]: unknown;

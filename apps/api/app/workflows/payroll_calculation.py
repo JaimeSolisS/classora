@@ -10,10 +10,10 @@ and neither side waits for the other (§15).
 
 - :func:`compute_lines` only reads and returns frozen drafts: the session lines
   by service date, then session, then the salary lines by their first day
-  (#108 C2), then the item lines by item (#109 C1). #110's drift check compares
-  them, with no write. It reads the period's work in center-local dates:
-  ``floor_instant(starts_on)`` to ``floor_instant(ends_on + 1)``, half-open, and a
-  service date is the local date of the start. It takes the versions and the
+  (#108 C2), then the item lines by item (#109 C1). ``finalize``'s drift check
+  (#110 D3) compares them with the stored lines, with no write. It reads the
+  period's work in center-local dates: ``floor_instant(starts_on)`` to
+  ``floor_instant(ends_on + 1)``, half-open, and a service date is the local date of the start. It takes the versions and the
   items of the tutor ``FOR KEY SHARE``, so a concurrent delete waits for the run.
 - :func:`recalculate`: the period ``FOR UPDATE``, re-read → ``404`` → ``409
   payroll_period_not_open`` → :func:`compute_lines` → replace the rebuilt kinds
@@ -21,8 +21,8 @@ and neither side waits for the other (§15).
   ``created_at``. Two runs at once take turns on the period row.
 
 A revision or an approval that arrives later shows on the next run of an open
-period. A prepared period waits for ``return`` or #110's drift check, and a
-finalized one for #111.
+period. A prepared period waits for ``return`` or the drift check of
+:mod:`app.workflows.payroll_workflow`, and a finalized one for #111.
 
 **Per-course pay (#442; ADR-0017 E3):** :func:`_cohort_walks` adds, for the
 cohorts of the period's course sessions, every session of those cohorts in any
@@ -37,10 +37,10 @@ unexecuted ``SELECT`` s of ``academics`` and ``scheduling`` (ADR-0002), reads th
 tutors' versions in one statement each, and classifies in Python
 (:func:`~app.modules.payroll.calculation.classify_unresolved`): the same rules
 as a line. :func:`unresolved_work` is one tutor's list, :func:`blocking_work`
-what #110 refuses ``prepare`` on, and :func:`list_unresolved_work` the staff
-route. It reads the whole of "approved, no line, since the floor" into memory.
-That is small for one center: a run empties most of it, and what is left is what
-Finance has to fix. It takes no lock, so it can't delay a run.
+what ``prepare`` and ``finalize`` refuse on (#110), and
+:func:`list_unresolved_work` the staff route. It reads the whole of "approved, no
+line, since the floor" into memory. That is small for one center: a run empties
+most of it, and what is left is what Finance has to fix. It takes no lock, so it can't delay a run.
 
 **Salary (#108; ADR-0017 E1, E7).** :func:`_salary_lines` reads the basis and
 the anchor only for a tutor with a salary on some terms version, and
@@ -90,7 +90,6 @@ from app.modules.identity import service as identity
 from app.modules.payroll import service as payroll
 from app.modules.payroll.schemas import (
     ClassKind,
-    PayrollPeriodLines,
     PayrollPeriodSummary,
     PayrollRecalculation,
     UnresolvedReason,
@@ -282,11 +281,6 @@ async def recalculate(
     return result
 
 
-async def read_lines(session: AsyncSession, period_id: uuid.UUID) -> PayrollPeriodLines:
-    """``GET /api/v1/payroll/periods/{id}/lines``."""
-    return await payroll.period_lines(session, period_id)
-
-
 async def _first_session_dates(
     session: AsyncSession, class_session_ids: Collection[uuid.UUID], zone: str
 ) -> dict[uuid.UUID, date]:
@@ -421,16 +415,20 @@ async def unresolved_work(
 async def blocking_work(
     session: AsyncSession, period: PayrollPeriodSummary
 ) -> list[payroll.UnresolvedItem]:
-    """What stops ``prepare`` of this period (#107 E12, #443 B2): the tutor's
-    items with a blocking reason dated on or before ``ends_on``. Earlier items
-    count, in whatever status their own period is. #110 turns a result into
-    ``409 payroll_unresolved_work``.
+    """What stops ``prepare`` and ``finalize`` of this period (#107 E12, #443
+    B2): the tutor's items with a blocking reason dated on or before
+    ``ends_on``. Earlier items count, in whatever status their own period is.
+    :mod:`app.workflows.payroll_workflow` turns a result into ``409
+    payroll_unresolved_work``.
 
-    **The contract with #110 (#443 D9):** ``prepare`` runs :func:`recalculate`
+    **The contract (#443 D9, #110 B2, D2):** ``prepare`` runs :func:`recalculate`
     first, then this. An existing line keeps work off the list, so a line that a
     recalculation would drop isn't an item until it has run. ``finalize`` calls
     this again: work approved after ``prepare`` with no basis has no draft and no
-    line, so the drift comparison can't see it."""
+    line, so the drift comparison can't see it.
+
+    **No lock (#443 D3):** a rate delete or a stop that commits after this check
+    is a later change, for drift or #111."""
     items = await unresolved_work(session, period.tutor_user_id, period.ends_on)
     return [item for item in items if item.blocking]
 

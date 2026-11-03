@@ -703,9 +703,11 @@ def test_f10_statements_dont_grow_with_items_or_tutors(
 
 
 def test_the_readers_take_no_lock(module_seeded_url, owner, tutor):
+    """The list, ``blocking_work`` (#110 F5) and the period read too. The period's
+    own reads are in ``test_payroll_workflow_concurrency.py``."""
     url = module_seeded_url
     stored(url, owner, tutor, local("11-03"))
-    add_period_row(url, tutor.id, "11-02", "11-08")
+    period = add_period_row(url, tutor.id, "11-02", "11-08")
     seen: list[str] = []
 
     def record(conn, cursor, statement, *_: Any) -> None:  # type: ignore[no-untyped-def]
@@ -713,7 +715,10 @@ def test_the_readers_take_no_lock(module_seeded_url, owner, tutor):
 
     async def read(session: AsyncSession) -> Any:
         page = payroll_calculation.CursorParams(25, None)
-        return await payroll_calculation.list_unresolved_work(session, page=page)
+        found = await payroll_calculation.list_unresolved_work(session, page=page)
+        summary = await payroll.period_row(session, period)
+        await payroll_calculation.blocking_work(session, summary)
+        return found
 
     event.listen(Engine, "before_cursor_execute", record)
     try:

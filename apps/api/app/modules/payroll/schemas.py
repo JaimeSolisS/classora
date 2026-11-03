@@ -42,7 +42,14 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+)
 from pydantic_core import PydanticCustomError
 
 from app.core.money import Money, Rate
@@ -64,6 +71,7 @@ MONDAY: Final = 0
 PERCENT_MAX: Final = Rate(1000)
 PAY_ITEM_TYPE_NAME_MAX: Final = 100
 PAY_ITEM_DESCRIPTION_MAX: Final = 500
+RETURN_REASON_MAX: Final = 1000
 
 
 def _in_range(value: date) -> date:
@@ -539,6 +547,64 @@ class PayrollPeriodSummary(BaseModel):
     ends_on: date
     pay_frequency: PayFrequency
     status: PeriodStatus
+
+
+class PayrollPeriodFacts(PayrollPeriodSummary):
+    """A period's row (#110), for the workflow. Not a response: it holds ids the
+    routes turn into names."""
+
+    prepared_at: datetime | None
+    prepared_by_user_id: uuid.UUID | None
+    total_amount: Money | None
+    finalized_at: datetime | None
+    finalized_by_user_id: uuid.UUID | None
+    returned_at: datetime | None
+    returned_by_user_id: uuid.UUID | None
+    return_reason: str | None
+
+
+class PayrollPeriodRow(PayrollPeriodFacts):
+    """One row of the period list (#110 F1): ``total`` is ``None`` when the
+    lines sum beyond the money range (F2)."""
+
+    line_count: int
+    total: Money | None
+
+
+class PayrollPeriodTransition(BaseModel):
+    """What ``prepare``, ``return`` and ``finalize`` answer (#110 E10). No amount:
+    a stored idempotent response holds it in clear, so the page refetches."""
+
+    id: uuid.UUID
+    status: PeriodStatus
+    prepared_at: datetime | None
+    finalized_at: datetime | None
+
+
+class PayrollPeriodReturn(BaseModel):
+    """``POST /api/v1/payroll/periods/{id}/return`` (#110 C1)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(description="Up to 1000 characters.")
+
+    @field_validator("reason")
+    @classmethod
+    def _reason(cls, value: str) -> str:
+        return _trimmed(value, RETURN_REASON_MAX)
+
+
+class PayrollPeriodFinalize(BaseModel):
+    """``POST /api/v1/payroll/periods/{id}/finalize`` (#110 E4)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    prepared_at: AwareDatetime = Field(
+        description=(
+            "The prepared_at of the review the caller read. Lines can't change"
+            " while a period is prepared, so this identifies them."
+        )
+    )
 
 
 class PayrollLineItem(BaseModel):

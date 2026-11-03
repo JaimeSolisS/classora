@@ -17,7 +17,8 @@ pattern). ``payroll_periods`` is a tutor's chain of periods: the database
 refuses an overlap (the ``EXCLUDE``, invariant P2) and a gap (the composite
 foreign key onto ``(tutor_user_id, ends_on)``, invariant P3), and a trigger
 keeps a finalized row (migration ``0073``). It is not ``Audited``: the job
-opens the rows and the status moves carry named events (#110).
+opens the rows and the status moves carry named events (#110). A returned
+period keeps who returned it and why while it is ``open`` (migration ``0079``).
 
 ``session_pay_rules`` is the center-wide list of late-cancellation, no-show and
 makeup rule versions, guarded by time (migration ``0075``): nothing changes,
@@ -95,6 +96,7 @@ PAY_ITEM_TYPE_NAME_MAX: Final = 100
 PAY_ITEM_DIRECTION_MAX: Final = 10
 PAY_ITEM_RECURRENCE_MAX: Final = 10
 PAY_ITEM_DESCRIPTION_MAX: Final = 500
+RETURN_REASON_MAX: Final = 1000
 
 TERMS_KEY: Final = "uq_tutor_pay_terms_tutor_user_id_effective_from"
 RATE_KEY: Final = "uq_compensation_rates_tutor_user_id_class_kind_effective_from"
@@ -276,6 +278,13 @@ class PayrollPeriod(Model):
             name="finalized_fields",
         ),
         CheckConstraint("total_amount >= 0", name="total_not_negative"),
+        CheckConstraint(
+            "(returned_at IS NULL AND returned_by_user_id IS NULL"
+            " AND return_reason IS NULL)"
+            " OR (status = 'open' AND returned_at IS NOT NULL"
+            " AND returned_by_user_id IS NOT NULL AND return_reason IS NOT NULL)",
+            name="returned_fields",
+        ),
         ExcludeConstraint(
             (text("tutor_user_id"), "="),
             (text(PERIOD_RANGE_SQL), "&&"),
@@ -329,6 +338,15 @@ class PayrollPeriod(Model):
     )
     finalized_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    returned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    returned_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    return_reason: Mapped[str | None] = mapped_column(
+        String(RETURN_REASON_MAX), nullable=True
     )
 
 

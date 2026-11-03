@@ -227,11 +227,29 @@ Recommended options taken while grooming and building #109. They are orchestrato
 - **States** are `open → prepared → finalized`, plus a return `prepared → open` with a reason, so the approver can send a period back. #110's forward states are unchanged.
 - **"Coordinators verify hours" is the closeout approval** (`teaching_hours.approve`, #78). There is no second verification step (spec reading).
 - **`prepare`** (`payroll.prepare`): only after `ends_on` is before the center's today; recalculates, then is refused with unresolved work (E2, #443 D9) or a negative total (E9). Closeouts still unapproved are shown as a warning, not a block; they arrive later as `late_approval` adjustments (E11).
-- **`finalize`** (`payroll.finalize`, reauthentication, `Idempotency-Key`): recomputes the lines and compares them with the prepared ones. Any drift is `409 payroll_period_stale`, and the period must be returned and prepared again. Then it stores `total_amount`, `finalized_at` and `finalized_by_user_id`.
+- **`finalize`** (`payroll.finalize`, reauthentication, `Idempotency-Key`): recomputes the lines and compares them with the prepared ones. Any drift is `409 payroll_period_stale`, and the period must be returned and prepared again. It then calls `blocking_work` again (`409 payroll_unresolved_work`): work approved after `prepare` with no basis has no draft, so drift can't see it. Then it stores `total_amount`, `finalized_at` and `finalized_by_user_id`.
 - **Duty separation:** the preparer can't finalize, and nobody can finalize their own pay (`403 payroll_self_finalize`), unless they hold the Owner role (the `closeout_self_review` precedent). A delegated Administrator needs no `payroll.view` to review: holding `payroll.finalize` reads the period.
 - **Inbox:** a prepared period creates an approval request of type `payroll.period`, decided only on its page (`409 payroll_review_route_required` from the generic route, the #60 and #62 precedent).
 - **Lock:** a database trigger on `payroll_lines` raises 42501 on any `INSERT`, `UPDATE` or `DELETE` whose period is `finalized`, and refuses `TRUNCATE`; `payroll_periods` refuses any change to a finalized row. Line writes are serialized by the period row lock.
 - **Notifications:** in-app only, `payroll.period_finalized` and `payroll.payment_recorded` to the tutor, with no amounts in `params`.
+
+#### Implementation notes (#110)
+
+Recommended options E1 to E11 taken while grooming and building #110. They are orchestrator-recommended and pending owner review, not owner sign-off.
+
+- **Split (#110 E1):** #110 is the API, and M7-07b the pages.
+- **Oldest first (#110 E2):** `finalize` refuses while an earlier period of the tutor isn't finalized (`409 payroll_period_out_of_order`). `prepare` stays free, so a backlog can be prepared in any order. Every period counts, an empty one too: it is prepared and finalized at `0.00`. No auto-finalize, so a weekly tutor's empty weeks each take two people.
+- **A refused `prepare` (#110 E3, a spec reading of #443 D9):** one transaction, so a refusal changes no line. `409 payroll_unresolved_work` carries `details.count` and at most 20 `details.items`, and the page then runs `recalculate`, which commits.
+- **The figures reviewed (#110 E4):** `finalize` takes `prepared_at` from the page; a mismatch is `409 payroll_review_outdated`. Lines can't change while a period is `prepared`, so this one value identifies them. Drift can't see a return and a new `prepare` under a stale page.
+- **A back-dated rate (#110 E5) narrows #105 E4's "any `effective_from`":** `422 effective_from_under_finalized_line`, in any direction, when the version would take over a date holding a finalized priced line of that tutor and class kind. The window runs to the next version of the kind, with no upper end for `course`. A correction is a later version plus a `manual` adjustment (#111). `no_rate` work and "covered by salary" lines have no priced line, so #443 D7's exit stays open. A late stop or back-dated salary isn't refused.
+- **Audit (#110 E6) corrects E9's "carry the totals":** the events carry ids, `line_count` and status, no amount and no reason. Administrators hold `audit.view` and see no pay (#105 E2).
+- **Return (#110 E7) reads E12's table:** either permission, no reauthentication and no key: it changes no money, and it is undone by preparing again. The reason lives on the period (migration `0079`), because `approval_requests.reason` can only be written through a decision Finance can't make.
+- **A delegated read (#110 E8):** `prepared` and `finalized` periods only, through the list and `GET …/lines`. An `open` period is the same `404` as a missing one, and nothing else opens to them. `POST …/return` and `…/finalize` on an `open` period answer `409 payroll_period_not_prepared`, by #110's order, which says only that it exists and isn't prepared.
+- **Invariant test (#110 E9):** one seeded random test in the normal shards, with no harness copy and no CI job.
+- **No pay in the idempotency store (#110 E10):** the transitions answer ids, status and timestamps.
+- **Preparing your own pay (#110 E11):** allowed, the `recalculate` precedent. Only `finalize` refuses own pay.
+- **A sole Owner:** E10's exception covers both duty rules, so an Owner can prepare and finalize their own pay alone, and the audit trail is the only control. As decided, and worth the owner's review.
+- **`details` (#110 B4):** a Problem Details `details` map now also holds numbers and lists of objects, for `payroll_unresolved_work` and `payroll_period_stale`.
 
 ### Corrections after lock (E11 (a), spec §3, §7, W3.5, #111, spec reading)
 

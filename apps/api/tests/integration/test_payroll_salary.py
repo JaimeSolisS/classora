@@ -600,7 +600,8 @@ def test_h2_everyone_else_is_refused_a_salary_line(
 
     response = get(client, denied[role], f"{ROOT}/{period}/lines")
 
-    assert code_of(response) == DENIED
+    # #110 E8: an open period is a 404 to a delegated Administrator.
+    assert code_of(response) == ((404, "not_found") if role == "delegated" else DENIED)
     assert SALARY_CANARY not in response.text
 
 
