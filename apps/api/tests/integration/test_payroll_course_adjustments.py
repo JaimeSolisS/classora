@@ -602,11 +602,14 @@ def test_qa_d1_two_late_sessions_then_n_shrinks_still_reach_the_rate(
     assert sum(cohort_amounts(ctx, cohort), Decimal("0.00")) == RATE
 
 
-def test_qa_d2_a_session_paid_by_hand_isnt_paid_again_by_an_anchor(ctx):
+@pytest.mark.parametrize("terms_back", [False, True])
+def test_qa_d2_a_session_paid_by_hand_isnt_paid_again_by_an_anchor(ctx, terms_back):
     """QA's ``q3`` (D7): 900 over 3 (days 0, 7, 14). Session 1 has no paying
     terms, is approved late and paid 300.00 by hand (settled). Session 2 is
     approved late and anchored: it doesn't count session 1, so 1 of 3, 300.00, and
-    session 3 is 2 of 3, 300.00: 900.00 with the manual, not 1200.00."""
+    session 3 is 2 of 3, 300.00: 900.00 with the manual, not 1200.00. With
+    ``terms_back`` the stop goes after the hand payment (by SQL, as M7-08c B2), so
+    only the settlement keeps session 1 out."""
     who = team(ctx)
     set_floor(ctx.url, ctx.tl.monday.isoformat())
     add_terms(ctx.url, ctx.tutor.id)
@@ -614,7 +617,7 @@ def test_qa_d2_a_session_paid_by_hand_isnt_paid_again_by_an_anchor(ctx):
         ctx.url, ctx.tutor.id, "2000-01-01", "900", model="per_course", kind="course"
     )
     cohort = make_cohort(ctx, 3, weekdays=[1])  # days 0, 7, 14
-    add_terms(ctx.url, ctx.tutor.id, day(ctx, 0), frequency=None)
+    stop = add_terms(ctx.url, ctx.tutor.id, day(ctx, 0), frequency=None)
     add_terms(ctx.url, ctx.tutor.id, day(ctx, 1))
     one = period_of(ctx, ctx.tutor, 0, 10)
     rest = period_of(ctx, ctx.tutor, 10, 70)
@@ -632,6 +635,8 @@ def test_qa_d2_a_session_paid_by_hand_isnt_paid_again_by_an_anchor(ctx):
             class_session_id=cohort.id_of(0),
         )
     assert code(paid) == CREATED, paid.text
+    if terms_back:
+        run_sql(ctx.url, "DELETE FROM tutor_pay_terms WHERE id = :id", {"id": stop})
     teach(ctx, cohort, 1)
     assert run_job(ctx.url) == PostAdjustmentsRunResult(candidates=1, posted=1)
     anchor = anchor_of(ctx, cohort.id_of(1))
