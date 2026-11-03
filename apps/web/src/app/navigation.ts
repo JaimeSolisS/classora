@@ -8,7 +8,7 @@ import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/acces
 import { MY_COURSES_ACCESS } from '@/features/courses/cohorts/access';
 import { GROUPS_ACCESS } from '@/features/groups/access';
 import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
-import { MY_PAY_ACCESS, PAYROLL_ACCESS } from '@/features/payroll/access';
+import { MY_PAY_ACCESS, PAYROLL_ANY_ACCESS } from '@/features/payroll/access';
 import { MY_HISTORY_ACCESS } from '@/features/academics/history/access';
 import { MY_LEARNING_PLANS_ACCESS } from '@/features/learning-plans/access';
 import { MY_PROGRESS_ACCESS } from '@/features/progress/access';
@@ -64,8 +64,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
   // /billing opens the first section of the Billing tabs they may open.
   { to: '/billing', labelKey: 'nav.billing', ...BILLING_ACCESS },
   // Payroll (#425 A2): payroll.view or payroll.manage holders, next to
-  // Billing. /payroll opens the tutor list.
-  { to: '/payroll', labelKey: 'nav.payroll', ...PAYROLL_ACCESS },
+  // Billing. /payroll opens the tutor list. #110b A2: a delegated
+  // Administrator (payroll.finalize) too, for whom it opens the periods.
+  { to: '/payroll', labelKey: 'nav.payroll', ...PAYROLL_ANY_ACCESS },
   // Every role holds student.view; the API filters the list (#33 I1).
   { to: '/students', labelKey: 'nav.students', permission: 'student.view' },
   // Guardians see their own profile only (#34 I1).

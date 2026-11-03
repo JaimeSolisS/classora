@@ -405,6 +405,10 @@ unless a bullet says otherwise.
 - Finance staff and owners define bonus and deduction types (Payroll → Bonus
   and deduction types) and add one-time or recurring items on each tutor's pay
   page, which shows where each one lands.
+- Finance staff review and prepare each tutor's pay period, line by line
+  (Payroll → Periods). The owner or a delegated administrator finalizes it
+  with their password or sends it back with a reason, and a finalized period
+  can't change.
 
 **Notifications**
 
@@ -436,7 +440,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** the rest of billing, the rest of payroll (pay calculation, payment and payslips), expenses, reporting and analytics, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
+**Not built yet:** the rest of billing, the rest of payroll (payment and payslips), expenses, reporting and analytics, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 
 **Not in this version:** file uploads and documents (attachments, the shared

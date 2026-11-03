@@ -56,7 +56,13 @@ import { CHANGE_REQUESTS_ACCESS } from '@/features/change-requests/access';
 import { FAMILY_BILLING_ACCESS } from '@/features/family-portal/billing/access';
 import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/access';
 import { MY_SCHEDULE_ACCESS } from '@/features/my-schedule/access';
-import { MY_PAY_ACCESS, PAYROLL_ACCESS } from '@/features/payroll/access';
+import {
+  MY_PAY_ACCESS,
+  PAYROLL_ACCESS,
+  PAYROLL_ANY_ACCESS,
+  PAYROLL_REVIEW_ACCESS,
+} from '@/features/payroll/access';
+import { PayrollIndex } from '@/features/payroll/PayrollIndex';
 import { MY_HISTORY_ACCESS } from '@/features/academics/history/access';
 import {
   ASSIGNMENT_FORM_ACCESS,
@@ -969,10 +975,12 @@ export const routes: RouteObject[] = [
           },
           // #425 A3: payroll (code-split), payroll.view or payroll.manage
           // holders; each page checks payroll.manage for its controls.
+          // #110b A3: /payroll also opens for a delegated Administrator, who
+          // goes to the periods.
           {
             path: 'payroll',
-            element: <Navigate to="/payroll/tutors" replace />,
-            handle: PAYROLL_ACCESS,
+            element: <PayrollIndex />,
+            handle: PAYROLL_ANY_ACCESS,
           },
           {
             path: 'payroll/tutors',
@@ -1024,6 +1032,24 @@ export const routes: RouteObject[] = [
                 .PayItemTypesPage,
             }),
             handle: PAYROLL_ACCESS,
+          },
+          // #110b A1: the periods and a period's review, for payroll.view,
+          // payroll.prepare or payroll.finalize holders (code-split).
+          {
+            path: 'payroll/periods',
+            lazy: async () => ({
+              Component: (await import('@/features/payroll/PeriodsPage'))
+                .PeriodsPage,
+            }),
+            handle: PAYROLL_REVIEW_ACCESS,
+          },
+          {
+            path: 'payroll/periods/:periodId',
+            lazy: async () => ({
+              Component: (await import('@/features/payroll/PeriodReviewPage'))
+                .PeriodReviewPage,
+            }),
+            handle: PAYROLL_REVIEW_ACCESS,
           },
           // #425 F: a tutor's own pay (code-split).
           {

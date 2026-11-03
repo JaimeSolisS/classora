@@ -59,7 +59,21 @@ type Common = {
     termsDialog: { title: string; submit: string };
     rateDialog: { title: string; submit: string };
     deleteDialog: { confirm: string };
-    tabs: { payRules: string; payItemTypes: string };
+    tabs: {
+      label: string;
+      payRules: string;
+      payItemTypes: string;
+      periods: string;
+    };
+    // #110b H3: the payroll periods.
+    periods: {
+      title: string;
+      payrollOff: string;
+      payrollOffLink: string;
+      empty: string;
+      emptyFiltered: string;
+      filters: { status: string };
+    };
     // #454 F3: bonuses and deductions.
     payItems: {
       title: string;

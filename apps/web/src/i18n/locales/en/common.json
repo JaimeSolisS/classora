@@ -314,7 +314,8 @@
       "scheduling_change_request": "Change request",
       "staff_availability_change": "Availability change",
       "academics_session_closeout": "Session closeout",
-      "academics_progress_report": "Progress report"
+      "academics_progress_report": "Progress report",
+      "payroll_period": "Payroll period"
     },
     "summary": {
       "registration": "{{name}} ({{username}}) · {{role}}",
@@ -336,7 +337,8 @@
       "sessionCloseout_one": "{{subject}} · {{when}} · {{tutor}} · {{actual}} of {{scheduled}} min · {{count}} student",
       "sessionCloseout_other": "{{subject}} · {{when}} · {{tutor}} · {{actual}} of {{scheduled}} min · {{count}} students",
       "progressReport": "{{student}} · {{start}} – {{end}} · {{subject}} · {{author}}",
-      "progressReportNoSubject": "{{student}} · {{start}} – {{end}} · {{author}}"
+      "progressReportNoSubject": "{{student}} · {{start}} – {{end}} · {{author}}",
+      "payrollPeriod": "{{tutor}} · {{start}} – {{end}} · prepared by {{preparer}}"
     },
     "list": {
       "title": "Requests",
@@ -1521,7 +1523,8 @@
       "billing_payment_reminder_overdue_one": "{{count}} charge of {{open_total}} has been overdue since {{due_on}}.",
       "billing_payment_reminder_overdue_other": "{{count}} charges totalling {{open_total}} are overdue, the first since {{due_on}}.",
       "billing_payment_reminder_overdue_followup_one": "Reminder: {{count}} charge of {{open_total}} is still unpaid since {{due_on}}.",
-      "billing_payment_reminder_overdue_followup_other": "Reminder: {{count}} charges totalling {{open_total}} are still unpaid, the first since {{due_on}}."
+      "billing_payment_reminder_overdue_followup_other": "Reminder: {{count}} charges totalling {{open_total}} are still unpaid, the first since {{due_on}}.",
+      "payroll_period_finalized": "Your pay for {{starts_on}} – {{ends_on}} is finalized."
     }
   },
   "scheduling": {
@@ -6185,7 +6188,8 @@
       "payRules": "Pay rules",
       "payItemTypes": "Bonus and deduction types",
       "unresolved": "Unresolved work",
-      "settings": "Settings"
+      "settings": "Settings",
+      "periods": "Periods"
     },
     "frequencies": {
       "weekly": "Weekly",
@@ -6283,7 +6287,9 @@
       "dateHelp": "A past date affects open periods only.",
       "noRate": "No rate from this date",
       "rateHelp": "Up to four decimals, such as 250.125.",
-      "submit": "Save rate"
+      "submit": "Save rate",
+      "finalizedHelp": "A finalized period never changes: to correct a rate it paid, start the new version after its last finalized date and pay the difference with an adjustment.",
+      "underFinalized": "A finalized payroll line uses the current rate up to {{date}}. Choose a later date, and pay the difference with an adjustment."
     },
     "validation": {
       "dateRequired": "Choose a date.",
@@ -6570,6 +6576,170 @@
         "reactivateTitle": "Reactivate type",
         "reactivateBody": "{{name}} can be used on new items again."
       }
+    },
+    "periods": {
+      "title": "Payroll periods",
+      "intro": "Finance reviews and prepares each period. The Owner or a delegated Administrator finalizes it with their password, or sends it back. A finalized period can't change.",
+      "caption": "Payroll periods",
+      "columns": {
+        "tutor": "Tutor",
+        "dates": "Dates",
+        "frequency": "Frequency",
+        "status": "Status",
+        "lines": "Lines",
+        "total": "Total"
+      },
+      "statuses": {
+        "open": "Open",
+        "prepared": "Prepared",
+        "finalized": "Finalized"
+      },
+      "dates": "{{start}} – {{end}}",
+      "openFor": "Open the period: {{name}}, {{dates}}",
+      "tooLarge": "Too large to show",
+      "empty": "There are no periods yet.",
+      "emptyFiltered": "Nothing matches these filters.",
+      "emptyReviewer": "Nothing is waiting for your review.",
+      "payrollOff": "Payroll isn't on yet, so there are no periods.",
+      "payrollOffLink": "Go to Settings",
+      "filters": {
+        "label": "Filters",
+        "status": "Status",
+        "allStatuses": "All statuses",
+        "tutor": "Tutor",
+        "tutorHelp": "Search by name or username.",
+        "chip": "Tutor: {{name}}",
+        "remove": "Remove filter: Tutor {{name}}",
+        "selected": "Selected tutor",
+        "clear": "Clear filters"
+      }
+    },
+    "period": {
+      "back": "Back to periods",
+      "title": "{{name}}: {{dates}}",
+      "fallbackTitle": "Payroll period",
+      "head": {
+        "label": "Period",
+        "tutor": "Tutor",
+        "dates": "Dates",
+        "frequency": "Frequency",
+        "status": "Status",
+        "preparedBy": "Prepared by",
+        "finalizedBy": "Finalized by",
+        "returnedBy": "Sent back by",
+        "returnReason": "Reason it was sent back",
+        "total": "Total",
+        "byAt": "{{name}}, {{when}}"
+      },
+      "returned": "This period was sent back to Finance.",
+      "pendingCloseouts_one": "{{count}} session in this period is waiting for its closeout approval. It isn't in these lines: it arrives later, as an adjustment.",
+      "pendingCloseouts_other": "{{count}} sessions in this period are waiting for their closeout approval. They aren't in these lines: they arrive later, as adjustments.",
+      "negativeTotal": "The total is below zero, so the period can't be prepared. End or delete a deduction, or add a bonus, then recalculate.",
+      "locked": "This period is finalized and locked: it never changes. Corrections go to a later period.",
+      "lines": {
+        "title": "Lines",
+        "caption": "The period's lines",
+        "empty": "No lines",
+        "columns": {
+          "date": "Date",
+          "line": "Line",
+          "details": "Details",
+          "amount": "Amount"
+        },
+        "kinds": {
+          "session": "Session",
+          "late_cancellation": "Late cancellation",
+          "no_show": "No-show",
+          "makeup": "Makeup",
+          "salary": "Salary",
+          "pay_item": "Bonus or deduction",
+          "unknown": "Other line"
+        },
+        "noDate": "—",
+        "coveredBySalary": "Covered by the salary",
+        "minutes": "{{count}} min",
+        "rate": "{{model}}, {{rate}}",
+        "courseShare": "Session {{k}} of {{n}}",
+        "openSession": "Open session",
+        "openSessionFor": "Open session: {{date}}",
+        "salaryPiece": "{{start}} – {{end}}",
+        "salaryOf": "{{fraction}} of {{amount}}",
+        "salaryBasis": "Counted in {{basis}}",
+        "paidNoDays": "Paid for no days",
+        "bases": {
+          "calendar_days": "calendar days",
+          "weekdays": "weekdays"
+        },
+        "directions": {
+          "bonus": "Bonus",
+          "deduction": "Deduction"
+        }
+      },
+      "actions": {
+        "label": "Actions",
+        "recalculate": "Recalculate",
+        "recalculatePreview": "Recalculate (preview)",
+        "previewHelp": "The period hasn't ended, so its lines are a preview.",
+        "prepare": "Prepare",
+        "notEnded": "It can be prepared after {{date}}, when the period has ended.",
+        "return": "Send back",
+        "finalize": "Finalize",
+        "working": "Working…"
+      },
+      "blocks": {
+        "preparer": "You prepared this period, so someone else must finalize it.",
+        "ownPay": "This is your own pay, so someone else must finalize it.",
+        "earlier": "An earlier period of this tutor must be finalized first.",
+        "earlierLink": "Open the earlier period"
+      },
+      "done": {
+        "recalculated": "Lines recalculated.",
+        "prepared": "Period prepared. It's waiting for review.",
+        "returned": "Period sent back to Finance.",
+        "finalized": "Period finalized."
+      },
+      "refused": {
+        "statusChanged": "This period's status changed, so the page was reloaded.",
+        "outdated": "This period changed since you opened it, so the page was reloaded. Review it again.",
+        "stale": "Something changed since this period was prepared, so it can't be finalized. Send it back to Finance to prepare it again.",
+        "selfPreparer": "You prepared this period, so someone else must finalize it.",
+        "selfOwnPay": "This is your own pay, so someone else must finalize it."
+      },
+      "unresolved_one": "{{count}} item of approved work has no pay basis and stops this period:",
+      "unresolved_other": "{{count}} items of approved work have no pay basis and stop this period:",
+      "unresolvedItem": "{{date}}: {{reason}}",
+      "unresolvedLink": "See this tutor's unresolved work",
+      "outOfRange": {
+        "help": "Fix it one item at a time: end or delete one of the tutor's bonuses or deductions, then recalculate.",
+        "items": "See the tutor's bonuses and deductions",
+        "tutors": "Go to the tutors",
+        "session": "Open the session that caused it"
+      },
+      "outdatedNotice": "This page may be out of date: it couldn't be reloaded. Reload it before you act.",
+      "reload": "Reload",
+      "unknownResult": "There was no answer, so this may have happened. The page is being reloaded.",
+      "notFound": "This period doesn't exist, or you can't open it."
+    },
+    "finalizeDialog": {
+      "title": "Finalize this period?",
+      "total": "Total: {{amount}}",
+      "warning": "Once finalized, this period can't change. Any correction goes to a later period.",
+      "password": "You may be asked for your password.",
+      "submit": "Finalize",
+      "submitting": "Finalizing…",
+      "cancel": "Cancel",
+      "unknown": "There was no answer, so the period may already be finalized. Finalizing again from this dialog is safe: it won't finalize twice. The page is being reloaded."
+    },
+    "returnDialog": {
+      "title": "Send this period back?",
+      "help": "It goes back to Finance as open, with your reason. Its lines stay until they're recalculated.",
+      "reason": "Reason",
+      "reasonHelp": "Up to 1,000 characters. Finance reads it.",
+      "required": "Write a reason.",
+      "tooLong": "Use 1,000 characters or fewer.",
+      "submit": "Send back",
+      "submitting": "Sending back…",
+      "cancel": "Cancel"
     }
   },
   "familyBilling": {

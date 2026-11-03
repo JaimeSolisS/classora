@@ -320,3 +320,127 @@ export async function deletePayItem(
     }),
   );
 }
+
+// ------------------------------------------------- payroll periods (#110b)
+
+export type PayrollPeriod = components['schemas']['PayrollPeriodItem'];
+export type PayrollPeriodPage =
+  components['schemas']['OffsetPage_PayrollPeriodItem_'];
+export type PayrollPeriodReview = components['schemas']['PayrollPeriodReview'];
+export type PayrollPeriodDetail = components['schemas']['PayrollPeriodDetail'];
+export type PayrollLine = components['schemas']['PayrollLineItem'];
+export type PeriodStatus = components['schemas']['PeriodStatus'];
+export type LineKind = components['schemas']['LineKind'];
+export type PayrollPeriodTransition =
+  components['schemas']['PayrollPeriodTransition'];
+export type PayrollRecalculation =
+  components['schemas']['PayrollRecalculation'];
+
+/** Rows per page of the period list (the API default). */
+export const PAYROLL_PERIODS_PAGE_SIZE = 25;
+
+/** Every cached period query: the list pages and each review (#110b D15). */
+export const PAYROLL_PERIODS_KEY = ['payroll', 'periods'] as const;
+
+export interface PayrollPeriodListParams {
+  status: PeriodStatus | null;
+  /** A tutor's user id. */
+  tutor: string | null;
+  /** 1-based page number. */
+  page: number;
+}
+
+export function periodsListKey(params: PayrollPeriodListParams) {
+  return [...PAYROLL_PERIODS_KEY, 'list', params] as const;
+}
+
+export function periodReviewKey(periodId: string) {
+  return [...PAYROLL_PERIODS_KEY, 'review', periodId] as const;
+}
+
+export function fetchPayrollPeriods(
+  { status, tutor, page }: PayrollPeriodListParams,
+  signal: AbortSignal,
+): Promise<PayrollPeriodPage> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/payroll/periods', {
+        params: {
+          query: {
+            ...(status ? { status } : {}),
+            ...(tutor ? { tutor_user_id: tutor } : {}),
+            limit: PAYROLL_PERIODS_PAGE_SIZE,
+            offset: (page - 1) * PAYROLL_PERIODS_PAGE_SIZE,
+          },
+        },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+export function fetchPeriodReview(
+  periodId: string,
+  signal: AbortSignal,
+): Promise<PayrollPeriodReview> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/payroll/periods/{period_id}/lines', {
+        params: { path: { period_id: periodId } },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+export function recalculatePeriod(
+  periodId: string,
+): Promise<PayrollRecalculation> {
+  return apiCall(() =>
+    api.POST('/api/v1/payroll/periods/{period_id}/recalculate', {
+      params: { path: { period_id: periodId } },
+    }),
+  );
+}
+
+export function preparePeriod(
+  periodId: string,
+): Promise<PayrollPeriodTransition> {
+  return apiCall(() =>
+    api.POST('/api/v1/payroll/periods/{period_id}/prepare', {
+      params: { path: { period_id: periodId } },
+    }),
+  );
+}
+
+export function returnPeriod(
+  periodId: string,
+  reason: string,
+): Promise<PayrollPeriodTransition> {
+  return apiCall(() =>
+    api.POST('/api/v1/payroll/periods/{period_id}/return', {
+      params: { path: { period_id: periodId } },
+      body: { reason },
+    }),
+  );
+}
+
+/**
+ * Finalizes a prepared period (#110 E4, #110b D7-D9). `preparedAt` is the
+ * `prepared_at` of the review the dialog showed. `idempotencyKey` is computed
+ * before this call, so apiCall's retry after the password dialog and a retry
+ * after a lost response resend it.
+ */
+export function finalizePeriod(
+  periodId: string,
+  preparedAt: string,
+  idempotencyKey: string,
+): Promise<PayrollPeriodTransition> {
+  const headers = idempotencyHeaders(idempotencyKey);
+  return apiCall(() =>
+    api.POST('/api/v1/payroll/periods/{period_id}/finalize', {
+      params: { path: { period_id: periodId }, header: headers },
+      body: { prepared_at: preparedAt },
+    }),
+  );
+}

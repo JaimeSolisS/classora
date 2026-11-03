@@ -314,7 +314,8 @@
       "scheduling_change_request": "Solicitud de cambio",
       "staff_availability_change": "Cambio de disponibilidad",
       "academics_session_closeout": "Cierre de clase",
-      "academics_progress_report": "Informe de progreso"
+      "academics_progress_report": "Informe de progreso",
+      "payroll_period": "Periodo de nómina"
     },
     "summary": {
       "registration": "{{name}} ({{username}}) · {{role}}",
@@ -340,7 +341,8 @@
       "sessionCloseout_many": "{{subject}} · {{when}} · {{tutor}} · {{actual}} de {{scheduled}} min · {{count}} estudiantes",
       "sessionCloseout_other": "{{subject}} · {{when}} · {{tutor}} · {{actual}} de {{scheduled}} min · {{count}} estudiantes",
       "progressReport": "{{student}} · {{start}} – {{end}} · {{subject}} · {{author}}",
-      "progressReportNoSubject": "{{student}} · {{start}} – {{end}} · {{author}}"
+      "progressReportNoSubject": "{{student}} · {{start}} – {{end}} · {{author}}",
+      "payrollPeriod": "{{tutor}} · {{start}} – {{end}} · preparó {{preparer}}"
     },
     "list": {
       "title": "Solicitudes",
@@ -1533,7 +1535,8 @@
       "billing_payment_reminder_overdue_other": "Tienes {{count}} cargos por {{open_total}} vencidos; el primero desde el {{due_on}}.",
       "billing_payment_reminder_overdue_followup_one": "Recordatorio: {{count}} cargo por {{open_total}} sigue pendiente desde el {{due_on}}.",
       "billing_payment_reminder_overdue_followup_many": "Recordatorio: {{count}} cargos por {{open_total}} siguen pendientes; el primero desde el {{due_on}}.",
-      "billing_payment_reminder_overdue_followup_other": "Recordatorio: {{count}} cargos por {{open_total}} siguen pendientes; el primero desde el {{due_on}}."
+      "billing_payment_reminder_overdue_followup_other": "Recordatorio: {{count}} cargos por {{open_total}} siguen pendientes; el primero desde el {{due_on}}.",
+      "payroll_period_finalized": "Tu pago del {{starts_on}} al {{ends_on}} quedó finalizado."
     }
   },
   "scheduling": {
@@ -6305,7 +6308,8 @@
       "payRules": "Reglas de pago",
       "payItemTypes": "Tipos de bonos y deducciones",
       "unresolved": "Trabajo sin resolver",
-      "settings": "Configuración"
+      "settings": "Configuración",
+      "periods": "Periodos"
     },
     "frequencies": {
       "weekly": "Semanal",
@@ -6403,7 +6407,9 @@
       "dateHelp": "Una fecha pasada solo afecta periodos abiertos.",
       "noRate": "Sin tarifa desde esta fecha",
       "rateHelp": "Hasta cuatro decimales, por ejemplo 250.125.",
-      "submit": "Guardar tarifa"
+      "submit": "Guardar tarifa",
+      "finalizedHelp": "Un periodo finalizado nunca cambia: para corregir una tarifa que pagó, inicia la nueva versión después de su última fecha finalizada y paga la diferencia con un ajuste.",
+      "underFinalized": "Una línea de nómina finalizada usa la tarifa actual hasta el {{date}}. Elige una fecha posterior y paga la diferencia con un ajuste."
     },
     "validation": {
       "dateRequired": "Elige una fecha.",
@@ -6691,6 +6697,172 @@
         "reactivateTitle": "Reactivar tipo",
         "reactivateBody": "{{name}} se podrá volver a usar en conceptos nuevos."
       }
+    },
+    "periods": {
+      "title": "Periodos de nómina",
+      "intro": "Finanzas revisa y prepara cada periodo. El Propietario o un Administrador con permiso delegado lo finaliza con su contraseña, o lo regresa. Un periodo finalizado no puede cambiar.",
+      "caption": "Periodos de nómina",
+      "columns": {
+        "tutor": "Tutor",
+        "dates": "Fechas",
+        "frequency": "Frecuencia",
+        "status": "Estado",
+        "lines": "Líneas",
+        "total": "Total"
+      },
+      "statuses": {
+        "open": "Abierto",
+        "prepared": "Preparado",
+        "finalized": "Finalizado"
+      },
+      "dates": "{{start}} – {{end}}",
+      "openFor": "Abrir el periodo: {{name}}, {{dates}}",
+      "tooLarge": "Demasiado grande para mostrarse",
+      "empty": "Aún no hay periodos.",
+      "emptyFiltered": "Nada coincide con estos filtros.",
+      "emptyReviewer": "No hay nada pendiente de tu revisión.",
+      "payrollOff": "La nómina aún no está activa, así que no hay periodos.",
+      "payrollOffLink": "Ir a Configuración",
+      "filters": {
+        "label": "Filtros",
+        "status": "Estado",
+        "allStatuses": "Todos los estados",
+        "tutor": "Tutor",
+        "tutorHelp": "Busca por nombre o usuario.",
+        "chip": "Tutor: {{name}}",
+        "remove": "Quitar filtro: Tutor {{name}}",
+        "selected": "Tutor seleccionado",
+        "clear": "Quitar filtros"
+      }
+    },
+    "period": {
+      "back": "Volver a periodos",
+      "title": "{{name}}: {{dates}}",
+      "fallbackTitle": "Periodo de nómina",
+      "head": {
+        "label": "Periodo",
+        "tutor": "Tutor",
+        "dates": "Fechas",
+        "frequency": "Frecuencia",
+        "status": "Estado",
+        "preparedBy": "Preparado por",
+        "finalizedBy": "Finalizado por",
+        "returnedBy": "Regresado por",
+        "returnReason": "Motivo del regreso",
+        "total": "Total",
+        "byAt": "{{name}}, {{when}}"
+      },
+      "returned": "Este periodo se regresó a Finanzas.",
+      "pendingCloseouts_one": "{{count}} sesión de este periodo espera la aprobación de su cierre. No está en estas líneas: llega después, como ajuste.",
+      "pendingCloseouts_many": "{{count}} sesiones de este periodo esperan la aprobación de su cierre. No están en estas líneas: llegan después, como ajustes.",
+      "pendingCloseouts_other": "{{count}} sesiones de este periodo esperan la aprobación de su cierre. No están en estas líneas: llegan después, como ajustes.",
+      "negativeTotal": "El total es menor que cero, así que el periodo no se puede preparar. Termina o elimina una deducción, o agrega un bono, y vuelve a calcular.",
+      "locked": "Este periodo está finalizado y bloqueado: nunca cambia. Las correcciones van a un periodo posterior.",
+      "lines": {
+        "title": "Líneas",
+        "caption": "Las líneas del periodo",
+        "empty": "Sin líneas",
+        "columns": {
+          "date": "Fecha",
+          "line": "Línea",
+          "details": "Detalle",
+          "amount": "Importe"
+        },
+        "kinds": {
+          "session": "Sesión",
+          "late_cancellation": "Cancelación tardía",
+          "no_show": "Inasistencia",
+          "makeup": "Reposición",
+          "salary": "Salario",
+          "pay_item": "Bono o deducción",
+          "unknown": "Otra línea"
+        },
+        "noDate": "—",
+        "coveredBySalary": "Cubierta por el salario",
+        "minutes": "{{count}} min",
+        "rate": "{{model}}, {{rate}}",
+        "courseShare": "Sesión {{k}} de {{n}}",
+        "openSession": "Abrir sesión",
+        "openSessionFor": "Abrir sesión: {{date}}",
+        "salaryPiece": "{{start}} – {{end}}",
+        "salaryOf": "{{fraction}} de {{amount}}",
+        "salaryBasis": "Contado en {{basis}}",
+        "paidNoDays": "Sin días pagados",
+        "bases": {
+          "calendar_days": "días naturales",
+          "weekdays": "días entre semana"
+        },
+        "directions": {
+          "bonus": "Bono",
+          "deduction": "Deducción"
+        }
+      },
+      "actions": {
+        "label": "Acciones",
+        "recalculate": "Volver a calcular",
+        "recalculatePreview": "Volver a calcular (vista previa)",
+        "previewHelp": "El periodo no ha terminado, así que sus líneas son una vista previa.",
+        "prepare": "Preparar",
+        "notEnded": "Se podrá preparar después del {{date}}, cuando el periodo haya terminado.",
+        "return": "Regresar",
+        "finalize": "Finalizar",
+        "working": "Procesando…"
+      },
+      "blocks": {
+        "preparer": "Tú preparaste este periodo, así que otra persona debe finalizarlo.",
+        "ownPay": "Es tu propio pago, así que otra persona debe finalizarlo.",
+        "earlier": "Primero se debe finalizar un periodo anterior de este tutor.",
+        "earlierLink": "Abrir el periodo anterior"
+      },
+      "done": {
+        "recalculated": "Líneas recalculadas.",
+        "prepared": "Periodo preparado. Espera revisión.",
+        "returned": "Periodo regresado a Finanzas.",
+        "finalized": "Periodo finalizado."
+      },
+      "refused": {
+        "statusChanged": "El estado de este periodo cambió, así que la página se volvió a cargar.",
+        "outdated": "Este periodo cambió desde que lo abriste, así que la página se volvió a cargar. Revísalo de nuevo.",
+        "stale": "Algo cambió desde que se preparó este periodo, así que no se puede finalizar. Regrésalo a Finanzas para que lo prepare de nuevo.",
+        "selfPreparer": "Tú preparaste este periodo, así que otra persona debe finalizarlo.",
+        "selfOwnPay": "Es tu propio pago, así que otra persona debe finalizarlo."
+      },
+      "unresolved_one": "{{count}} trabajo aprobado no tiene base de pago y detiene este periodo:",
+      "unresolved_many": "{{count}} trabajos aprobados no tienen base de pago y detienen este periodo:",
+      "unresolved_other": "{{count}} trabajos aprobados no tienen base de pago y detienen este periodo:",
+      "unresolvedItem": "{{date}}: {{reason}}",
+      "unresolvedLink": "Ver el trabajo sin resolver de este tutor",
+      "outOfRange": {
+        "help": "Corrígelo de uno en uno: termina o elimina uno de los bonos o deducciones del tutor y vuelve a calcular.",
+        "items": "Ver los bonos y deducciones del tutor",
+        "tutors": "Ir a los tutores",
+        "session": "Abrir la sesión que lo causó"
+      },
+      "outdatedNotice": "Esta página puede estar desactualizada: no se pudo volver a cargar. Vuelve a cargarla antes de actuar.",
+      "reload": "Volver a cargar",
+      "unknownResult": "No hubo respuesta, así que esto pudo haber ocurrido. La página se está volviendo a cargar.",
+      "notFound": "Este periodo no existe o no puedes abrirlo."
+    },
+    "finalizeDialog": {
+      "title": "¿Finalizar este periodo?",
+      "total": "Total: {{amount}}",
+      "warning": "Una vez finalizado, este periodo no puede cambiar. Cualquier corrección va a un periodo posterior.",
+      "password": "Es posible que se te pida tu contraseña.",
+      "submit": "Finalizar",
+      "submitting": "Finalizando…",
+      "cancel": "Cancelar",
+      "unknown": "No hubo respuesta, así que el periodo pudo haberse finalizado. Volver a finalizar desde este diálogo es seguro: no se finaliza dos veces. La página se está volviendo a cargar."
+    },
+    "returnDialog": {
+      "title": "¿Regresar este periodo?",
+      "help": "Vuelve a Finanzas como abierto, con tu motivo. Sus líneas se quedan hasta que se vuelvan a calcular.",
+      "reason": "Motivo",
+      "reasonHelp": "Hasta 1,000 caracteres. Finanzas lo lee.",
+      "required": "Escribe un motivo.",
+      "tooLong": "Usa 1,000 caracteres o menos.",
+      "submit": "Regresar",
+      "submitting": "Regresando…",
+      "cancel": "Cancelar"
     }
   },
   "familyBilling": {

@@ -462,6 +462,7 @@ describe('pages and states (C4, edge cases)', () => {
     await openWithRows();
     const nav = main().querySelector('nav')!;
     expect(links(nav)).toEqual([
+      '/payroll/periods',
       '/payroll/tutors',
       '/payroll/pay-rules',
       '/payroll/pay-item-types',

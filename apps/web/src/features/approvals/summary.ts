@@ -298,10 +298,62 @@ export function changeRequestReviewLink(
   return changeRequestReviewPath(subject.change_request_id);
 }
 
-/** The review page of a pending item decided on its own page (#60, #62),
- * or null. */
+interface PayrollPeriodSubject {
+  period_id: string;
+  tutor: { id: string; display_name: string };
+  starts_on: string;
+  ends_on: string;
+  prepared_by: { display_name: string } | null;
+}
+
+function isPayrollPeriod(subject: unknown): subject is PayrollPeriodSubject {
+  if (typeof subject !== 'object' || subject === null) {
+    return false;
+  }
+  const value = subject as Record<string, unknown>;
+  const tutor = value.tutor as Record<string, unknown> | null | undefined;
+  const preparer = value.prepared_by as
+    Record<string, unknown> | null | undefined;
+  return (
+    typeof value.period_id === 'string' &&
+    typeof tutor === 'object' &&
+    tutor !== null &&
+    typeof tutor.display_name === 'string' &&
+    typeof value.starts_on === 'string' &&
+    typeof value.ends_on === 'string' &&
+    (preparer === null ||
+      preparer === undefined ||
+      typeof preparer.display_name === 'string')
+  );
+}
+
+/** The payroll period subject of `item` (#110b F1), or null. It holds no
+ * amount: the API sends none. */
+export function payrollPeriodSubject(
+  item: ApprovalRequestItem,
+): PayrollPeriodSubject | null {
+  return item.request_type === 'payroll.period' && isPayrollPeriod(item.subject)
+    ? item.subject
+    : null;
+}
+
+/** #110b F2: a pending payroll period is decided on its own page. */
+function payrollPeriodReviewLink(item: ApprovalRequestItem): string | null {
+  const subject = payrollPeriodSubject(item);
+  if (!subject || item.status !== 'pending') {
+    return null;
+  }
+  return `/payroll/periods/${encodeURIComponent(subject.period_id)}`;
+}
+
+/** The review page of a pending item decided on its own page (#60, #62,
+ * #110b F2), or null. */
 export function itemReviewLink(item: ApprovalRequestItem): string | null {
-  return sessionRequestReviewLink(item) ?? changeRequestReviewLink(item);
+  return (
+    sessionRequestReviewLink(item) ??
+    changeRequestReviewLink(item) ??
+    payrollPeriodReviewLink(item)
+  );
 }
 
 const REVIEW_ROUTE_CODES: Readonly<Record<string, string>> = {
@@ -309,6 +361,8 @@ const REVIEW_ROUTE_CODES: Readonly<Record<string, string>> = {
   change_request_review_route_required: '/schedule/change-requests/',
   // #315 A5: a stale inbox decision on a progress report.
   progress_report_review_route_required: '/progress-reports/',
+  // #110b F2: a generic decision on a payroll period.
+  payroll_review_route_required: '/payroll/periods/',
 };
 
 /** The review page named by `409 session_request_review_route_required`
@@ -621,6 +675,8 @@ export function registrationSubject(
  * <actual> of <scheduled> min · <n> students";
  * for a progress report (#83) "<student> · <start> – <end> · <subject> ·
  * <author>" (no subject part for a whole-student report);
+ * for a payroll period (#110b F1) "<tutor> · <start> – <end> · prepared by
+ * <name>", with no amount;
  * for an unknown type the type code.
  */
 export function approvalSummary(
@@ -750,6 +806,15 @@ export function approvalSummary(
           subject: report.subject.name,
         })
       : t('approvals.summary.progressReportNoSubject', shared);
+  }
+  const period = payrollPeriodSubject(item);
+  if (period) {
+    return t('approvals.summary.payrollPeriod', {
+      tutor: period.tutor.display_name,
+      start: formatDate(period.starts_on),
+      end: formatDate(period.ends_on),
+      preparer: period.prepared_by?.display_name ?? '',
+    });
   }
   const occurrence = occurrenceConflictSubject(item);
   if (occurrence) {

@@ -35,6 +35,9 @@ export const APPROVAL_REVIEW_PERMISSIONS: readonly PermissionCode[] = [
   'teaching_hours.approve',
   // #83 progress reports (Owner, Administrator, Academic Coordinator).
   'progress_report.review',
+  // #110 payroll periods, decided on their page (#110b F1): the Owner and a
+  // delegated Administrator.
+  'payroll.finalize',
 ];
 
 /** The approval types the page knows, with their label key. */
@@ -52,6 +55,7 @@ export const APPROVAL_TYPE_LABELS: Readonly<
   'staff.availability_change': 'approvals.types.staff_availability_change',
   'academics.session_closeout': 'approvals.types.academics_session_closeout',
   'academics.progress_report': 'approvals.types.academics_progress_report',
+  'payroll.period': 'approvals.types.payroll_period',
 };
 
 export const APPROVAL_TYPES: readonly string[] =

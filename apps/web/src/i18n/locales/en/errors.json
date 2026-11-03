@@ -394,8 +394,8 @@
   "credit_override_duplicate": "Each line can be adjusted only once.",
   "pay_terms_exists": "This tutor already has pay terms from this date. Choose another date.",
   "compensation_rate_exists": "This tutor already has a rate for this class type from this date. Choose another date.",
-  "pay_terms_in_use": "These pay terms have been paid in a payroll period and must stay.",
-  "compensation_rate_in_use": "This rate has been paid in a payroll period and must stay.",
+  "pay_terms_in_use": "A payroll period uses these pay terms.",
+  "compensation_rate_in_use": "A payroll period uses this rate.",
   "payroll_own_compensation": "Someone else must change your pay.",
   "salary_not_positive": "A salary must be above zero. Leave it empty when there is no salary.",
   "salary_without_frequency": "A salary needs a pay frequency.",
@@ -434,5 +434,16 @@
   "text_invalid": "This text has an invalid character. Enter it again.",
   "effective_to_not_allowed": "Only a recurring item has an end date.",
   "effective_to_before_from": "The end can't be before the start.",
-  "payroll_amount_out_of_range": "This period's lines or total are beyond the maximum amount. End or delete one of the tutor's bonuses, then recalculate."
+  "payroll_amount_out_of_range": "This period's lines or total are beyond the maximum amount. End or delete one of the tutor's bonuses, then recalculate.",
+  "payroll_period_not_open": "This period isn't open any more.",
+  "payroll_period_not_ended": "This period hasn't ended yet, so it can't be prepared.",
+  "payroll_unresolved_work": "Some approved work has no pay basis, so this period can't go on. Fix it from the Unresolved work tab.",
+  "payroll_negative_total": "This period's total is below zero, so it can't be prepared.",
+  "payroll_period_not_prepared": "This period isn't prepared any more.",
+  "payroll_self_finalize": "Someone else must finalize this period: you prepared it, or it's your own pay.",
+  "payroll_review_outdated": "This period was prepared again after you opened it. Review it again.",
+  "payroll_period_out_of_order": "An earlier period of this tutor must be finalized first.",
+  "payroll_period_stale": "Something changed since this period was prepared. Send it back to Finance to prepare it again.",
+  "payroll_review_route_required": "This period is decided on its own page.",
+  "effective_from_under_finalized_line": "A finalized payroll line uses the current rate on this date. Choose a later date, and pay the difference with an adjustment."
 }

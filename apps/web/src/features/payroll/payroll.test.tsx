@@ -156,7 +156,8 @@ describe('access (A)', () => {
     ['Finance', FINANCE, true, false],
     ['a view-only holder', VIEWER, true, false],
     ['the Owner', OWNER, true, false],
-    ['an Administrator with payroll.finalize', ADMIN, false, false],
+    // #110b A2: a delegated Administrator opens the periods.
+    ['an Administrator with payroll.finalize', ADMIN, true, false],
     ['a Coordinator', COORDINATOR, false, false],
     ['a guardian', GUARDIAN, false, false],
     ['a student', STUDENT, false, false],
@@ -183,8 +184,9 @@ describe('access (A)', () => {
   ] as const)(
     '%s is forbidden on /payroll/* with no request',
     async (_w, as) => {
+      // #110b A3: /payroll opens the periods for a delegated Administrator.
       for (const path of [
-        '/payroll',
+        ...(as === ADMIN ? [] : ['/payroll']),
         '/payroll/tutors',
         `/payroll/tutors/${TUTOR_ID}`,
         '/payroll/settings',
@@ -226,6 +228,7 @@ describe('access (A)', () => {
       ),
     ].map((a) => [a.textContent, a.getAttribute('aria-current')]);
     expect(tabs).toEqual([
+      ['Periods', null],
       ['Tutors', 'page'],
       ['Pay rules', null],
       ['Bonus and deduction types', null],
@@ -782,6 +785,44 @@ describe('tutor pay page (C)', () => {
     });
   });
 
+  it('G3: a version under a finalized line is refused on the date, with the date', async () => {
+    stub({
+      [RATE_POST]: () =>
+        problemWith(422, 'effective_from_under_finalized_line', {
+          details: { latest_finalized_on: '2026-10-15' },
+        }),
+    });
+    await open(`/payroll/tutors/${TUTOR_ID}`);
+    await settleUntil(() => hasButton('Add rate'));
+
+    await click(buttonNamed(main(), 'Add rate'));
+    const date = labelled<HTMLInputElement>(dialog(), 'Start date');
+    expect(
+      date
+        .getAttribute('aria-describedby')!
+        .split(' ')
+        .map((id) => document.getElementById(id)?.textContent)
+        .join(' '),
+    ).toContain('pay the difference with an adjustment');
+    setFieldValue(
+      labelled<HTMLSelectElement>(dialog(), 'Class type'),
+      'individual',
+    );
+    setFieldValue(labelled<HTMLSelectElement>(dialog(), 'Model'), 'per_hour');
+    setFieldValue(labelled<HTMLInputElement>(dialog(), 'Rate'), '300');
+    await click(buttonNamed(dialog(), 'Save rate'));
+    await settleUntil(() => date.getAttribute('aria-invalid') === 'true');
+
+    const said = date
+      .getAttribute('aria-describedby')!
+      .split(' ')
+      .map((id) => document.getElementById(id)?.textContent ?? '');
+    expect(said).toContain(
+      'A finalized payroll line uses the current rate up to Oct 15, 2026. Choose a later date, and pay the difference with an adjustment.',
+    );
+    expect(alerts(dialog())).toEqual([]);
+  });
+
   it('deletes a version after a confirmation naming it', async () => {
     const api = stub({ [rateDelete(RATE_UPCOMING.id)]: noContent });
     await open(`/payroll/tutors/${TUTOR_ID}`);
@@ -810,7 +851,7 @@ describe('tutor pay page (C)', () => {
     await settleUntil(() => alerts(dialog()).length > 0);
 
     expect(alerts(dialog()).join()).toContain(
-      'This rate has been paid in a payroll period and must stay.',
+      'A payroll period uses this rate.',
     );
     expect(version(RATE_CURRENT.id)).not.toBeNull();
   });
