@@ -432,6 +432,34 @@ def test_m4_an_item_delete_that_waited_for_a_finalize_is_refused(
     assert row_of(url, period).total_amount == Decimal("150.00")
 
 
+def test_m4_an_item_write_starting_before_finalize_reads_items_doesnt_deadlock(
+    module_seeded_url, client, owner, finance, tutor, monkeypatch
+):
+    """The finalize holds the period and hasn't read the items yet. A write that
+    took the item before the periods would hold what the finalize needs while
+    waiting for what the finalize has: PostgreSQL would abort one with 40P01."""
+    url = module_seeded_url
+    period = worked(url, client, owner, tutor)
+    item = add_item(url, tutor.id, add_pay_type(url), "40.00")
+    assert code(prepare(client, finance, period)) == OK
+
+    def delete(session: AsyncSession) -> Awaitable[None]:
+        return payroll.delete_pay_item(session, tutor.id, item)
+
+    done, refused = overlap(
+        url,
+        monkeypatch,
+        payroll,
+        "lock_period",
+        finalizing(url, owner, period),
+        delete,
+    )
+
+    assert not isinstance(done, Exception), done
+    assert done.status == "finalized"
+    assert isinstance(refused, PayItemInUseError)
+
+
 def test_m4_a_patch_that_waited_for_a_finalize_is_refused(
     module_seeded_url, client, owner, finance, tutor, monkeypatch
 ):

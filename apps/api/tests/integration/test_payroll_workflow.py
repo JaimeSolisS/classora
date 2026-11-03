@@ -15,12 +15,15 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import DBAPIError
 
+from app.modules.administration import service as administration
 from app.modules.identity.permissions import (
     ADMINISTRATOR,
     FINANCE_STAFF,
     OWNER,
     TUTOR,
 )
+from app.modules.payroll.errors import PayrollReviewRouteRequiredError
+from app.workflows.payroll_period_approval import PAYROLL_PERIOD_HANDLER
 from tests.conftest import FrozenClock, frozen_clock
 from tests.integration.auth_support import (
     CreatedUser,
@@ -32,6 +35,7 @@ from tests.integration.catalog_support import get as get_as
 from tests.integration.conftest import run_sql
 from tests.integration.corrections_support import Staff, staff
 from tests.integration.guardian_support import delete as delete_as
+from tests.integration.lifecycle_support import in_uow
 from tests.integration.payroll_calculation_support import (
     add_item,
     add_pay_type,
@@ -69,7 +73,7 @@ from tests.integration.payroll_workflow_support import (
     row_of,
     status_of,
 )
-from tests.integration.test_attendance import lesson
+from tests.integration.test_attendance import lesson, principal_of
 from tests.integration.test_payroll_calculation import _store_closeout
 
 NOW = datetime(2026, 12, 7, 18, 0, tzinfo=UTC)
@@ -638,6 +642,41 @@ def test_g2_every_generic_route_sends_to_the_page(
     assert code(response) == (409, "payroll_review_route_required")
     assert response.json()["details"] == {"review_path": f"/payroll/periods/{period}"}
     assert request_of(url, period).status == state
+
+
+def test_g2_the_handler_approves_only_a_finalized_period(
+    module_seeded_url, client, owner, finance, tutor
+):
+    """No route gets here on a period that isn't finalized: the handler is the
+    backstop behind ``finalize`` and the inbox hook, so it is called directly."""
+    url = module_seeded_url
+    period = paid_tutor(url, tutor.id)
+    assert code(prepare(client, finance, period)) == OK
+    request = request_of(url, period)
+    view = administration.ApprovalRequestView(
+        id=request.id,
+        request_type=request.request_type,
+        subject_id=period,
+        requester_user_id=finance.user.id,
+        status="pending",
+    )
+    who = principal_of(owner.user.id, OWNER)
+
+    def approving(session: Any) -> Any:
+        return PAYROLL_PERIOD_HANDLER.approve(session, view, who)
+
+    with pytest.raises(PayrollReviewRouteRequiredError):
+        in_uow(url, approving)
+    with pytest.raises(PayrollReviewRouteRequiredError):
+        in_uow(url, lambda s: PAYROLL_PERIOD_HANDLER.reject(s, view, who, "No"))
+    with pytest.raises(PayrollReviewRouteRequiredError):
+        in_uow(
+            url, lambda s: PAYROLL_PERIOD_HANDLER.request_changes(s, view, who, "No")
+        )
+
+    assert code(finalize(client, url, owner, period)) == OK
+
+    in_uow(url, approving)
 
 
 def test_g4_a_tutor_who_left_still_gets_the_notification(
