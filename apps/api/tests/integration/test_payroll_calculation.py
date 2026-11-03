@@ -791,6 +791,14 @@ def test_the_routes(module_seeded_url, client, owner, finance, tutor):
         "pay_item_id",
         "pay_item_type_name",
         "pay_item_description",
+        "payroll_adjustment_id",
+        "adjustment_kind",
+        "adjustment_reason",
+        "adjustment_class_session_id",
+        "adjustment_service_date",
+        "adjustment_class_kind",
+        "adjustment_origin_line_id",
+        "adjustment_origin_period_id",
     }
 
 

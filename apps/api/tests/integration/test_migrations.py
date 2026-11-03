@@ -465,6 +465,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             PAY_RULES,
             LINES,
             *PAY_ITEM_TABLES,
+            ADJUSTMENTS,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
