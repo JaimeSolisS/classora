@@ -33,6 +33,7 @@ import {
   exceededChargeId,
   fillOldestFirst,
   hasErrors,
+  isLostAnswer,
   NOTE_MAX,
   PAYER_NAME_MAX,
   RECEIVED_ON_MIN,
@@ -42,6 +43,8 @@ import {
   recordServerErrors,
   REFERENCE_MAX,
   validateRecordForm,
+  worseFailure,
+  type AttemptFailure,
   type RecordErrors,
   type RecordField,
   type RecordFormValues,
@@ -62,8 +65,18 @@ import {
 // (#96 AC 4): the button shows the pending state and the dialog stays open
 // until the 201. A 422 goes on its field (line errors on their row); a 409
 // allocation_exceeds_open is an alert, marks the row and reloads the open
-// charges; anything else (403, idempotency_key_reused, network) is an
-// alert. Nothing typed is lost.
+// charges; anything else (403, idempotency_key_reused) is an alert. Nothing
+// typed is lost.
+//
+// A lost answer (no response, or a 5xx; #458 E1) may have stored the payment,
+// and family payments have no server duplicate rule: a second body with a new
+// key would be a second payment. So the dialog then locks every field, says
+// so, and offers only "Resend the same payment", which posts the exact body
+// of the lost attempt with its key, never one rebuilt from the form or from
+// open charges that reloaded since. A settled answer ends that: a 201 as
+// usual, a refusal unlocks the fields. To change anything, close: `onClose`
+// gets the worst failure of this opening's attempts, so the page refetches
+// the account before another payment can start (#458 B3).
 
 export interface RecordPaymentDialogProps {
   open: boolean;
@@ -80,23 +93,28 @@ export interface RecordPaymentDialogProps {
   onReloadCharges?: () => void;
   /** Records the payment with the key; rejects with the error to show. */
   onSubmit: (body: PaymentCreate, idempotencyKey: string) => Promise<void>;
-  onClose: () => void;
+  /** Closed without a 201; `failed`: how this opening's attempts failed. */
+  onClose: (failed: AttemptFailure) => void;
   /** Stories: the values to start from. */
   initialValues?: Partial<RecordFormValues>;
 }
 
 export function RecordPaymentDialog(props: RecordPaymentDialogProps) {
   const busy = useRef(false);
+  const failed = useRef<AttemptFailure>('none');
   return (
     <Dialog
       open={props.open}
       onOpenChange={(next) => {
         if (!next && !busy.current) {
-          props.onClose();
+          props.onClose(failed.current);
+          failed.current = 'none';
         }
       }}
     >
-      {props.open ? <DialogBody {...props} busyRef={busy} /> : null}
+      {props.open ? (
+        <DialogBody {...props} busyRef={busy} failedRef={failed} />
+      ) : null}
     </Dialog>
   );
 }
@@ -113,7 +131,11 @@ function DialogBody({
   onClose,
   initialValues,
   busyRef,
-}: RecordPaymentDialogProps & { busyRef: { current: boolean } }) {
+  failedRef,
+}: RecordPaymentDialogProps & {
+  busyRef: { current: boolean };
+  failedRef: { current: AttemptFailure };
+}) {
   const { t } = useTranslation();
   const message = useFieldMessage();
   const labels = useAccountLabels();
@@ -127,6 +149,12 @@ function DialogBody({
   const [errors, setErrors] = useState<RecordErrors>({});
   const [failure, setFailure] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
+  // The lost attempt: only its body, with its key, may go again (E1).
+  const [lost, setLost] = useState<{
+    body: PaymentCreate;
+    key: string;
+  } | null>(null);
+  const locked = submitting || lost !== null;
 
   const fieldId = (field: RecordField) => `${id}-${field}`;
   const errorId = (field: RecordField) => `${id}-${field}-error`;
@@ -183,23 +211,39 @@ function DialogBody({
   }
 
   async function submit() {
-    setFailure(null);
-    const found = validateRecordForm(values, today, openCharges);
-    setErrors(found);
-    if (hasErrors(found)) {
-      focusFirst(found);
-      return;
+    let body: PaymentCreate;
+    let key: string;
+    if (lost) {
+      // The stored body and key, as they went (E1): nothing rebuilt.
+      ({ body, key } = lost);
+    } else {
+      const found = validateRecordForm(values, today, openCharges);
+      setErrors(found);
+      if (hasErrors(found)) {
+        setFailure(null);
+        focusFirst(found);
+        return;
+      }
+      body = recordBody(values, openCharges);
+      // Outside the call (#88): a retry of the same body resends this key.
+      key = submission.keyFor(body);
     }
-    const body = recordBody(values, openCharges);
     const sent = body.allocation.lines ?? [];
-    // Outside the call (#88): a retry of the same body resends this key.
-    const key = submission.keyFor(body);
+    setFailure(null);
     busyRef.current = true;
     setSubmitting(true);
     try {
       await onSubmit(body, key);
       submission.succeeded();
+      failedRef.current = 'none';
     } catch (caught) {
+      failedRef.current = worseFailure(failedRef.current, caught);
+      if (isLostAnswer(caught)) {
+        setLost({ body, key });
+        setFailure(caught);
+        return;
+      }
+      setLost(null);
       const fromServer = recordServerErrors(caught, sent);
       if (fromServer) {
         setErrors(fromServer);
@@ -255,7 +299,7 @@ function DialogBody({
         available={amount}
         remainderKey="billing.accounts.editor.remainderCredit"
         idPrefix={id}
-        disabled={submitting}
+        disabled={locked}
       />
     );
   } else if (openCharges.length === 0) {
@@ -324,6 +368,7 @@ function DialogBody({
               aria-invalid={errors.amount ? true : undefined}
               aria-describedby={describedBy('amount', true)}
               onChange={(event) => change('amount', event.target.value)}
+              disabled={locked}
             />
             <p id={helpId('amount')} className="text-sm text-muted-foreground">
               {t('billing.prices.hints.amount')}
@@ -349,6 +394,7 @@ function DialogBody({
               aria-invalid={errors.receivedOn ? true : undefined}
               aria-describedby={describedBy('receivedOn', true)}
               onChange={(event) => change('receivedOn', event.target.value)}
+              disabled={locked}
             />
             <p
               id={helpId('receivedOn')}
@@ -372,6 +418,7 @@ function DialogBody({
               aria-invalid={errors.method ? true : undefined}
               aria-describedby={describedBy('method')}
               onChange={(event) => change('method', event.target.value)}
+              disabled={locked}
             >
               <option value="">{t('billing.prices.choose')}</option>
               {active.map((method) => (
@@ -403,6 +450,7 @@ function DialogBody({
               aria-invalid={errors.reference ? true : undefined}
               aria-describedby={describedBy('reference')}
               onChange={(event) => change('reference', event.target.value)}
+              disabled={locked}
             />
             <FieldError
               id={errorId('reference')}
@@ -425,6 +473,7 @@ function DialogBody({
               aria-invalid={errors.payerName ? true : undefined}
               aria-describedby={describedBy('payerName')}
               onChange={(event) => change('payerName', event.target.value)}
+              disabled={locked}
             />
             <FieldError
               id={errorId('payerName')}
@@ -445,6 +494,7 @@ function DialogBody({
             aria-invalid={errors.note ? true : undefined}
             aria-describedby={describedBy('note', true)}
             onChange={(event) => change('note', event.target.value)}
+            disabled={locked}
           />
           <p id={helpId('note')} className="text-sm text-muted-foreground">
             {t('billing.accounts.record.hints.note')}
@@ -473,6 +523,7 @@ function DialogBody({
                   value={mode}
                   className="size-4 accent-primary"
                   checked={values.mode === mode}
+                  disabled={locked}
                   onChange={() => change('mode', mode)}
                 />
                 {t(`billing.accounts.record.modes.${mode}`)}
@@ -490,13 +541,18 @@ function DialogBody({
             type="button"
             variant="outline"
             disabled={submitting}
-            onClick={onClose}
+            onClick={() => {
+              onClose(failedRef.current);
+              failedRef.current = 'none';
+            }}
           >
             {t('billing.prices.cancel')}
           </Button>
           <Button type="submit" disabled={submitting}>
             {submitting ? (
               <Spinner label={t('billing.accounts.record.saving')} showLabel />
+            ) : lost ? (
+              t('billing.accounts.record.resend')
             ) : (
               t('billing.accounts.record.submit')
             )}
@@ -519,7 +575,16 @@ function DialogBody({
           {t('billing.accounts.record.help')}
         </DialogDescription>
       </DialogHeader>
-      {failure ? <ErrorAlert error={failure} /> : null}
+      {failure ? (
+        <ErrorAlert
+          error={failure}
+          message={
+            isLostAnswer(failure)
+              ? t('billing.accounts.record.lost')
+              : undefined
+          }
+        />
+      ) : null}
       {content}
     </DialogContent>
   );

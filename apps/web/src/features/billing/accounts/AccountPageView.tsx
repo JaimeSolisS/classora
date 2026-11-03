@@ -78,6 +78,13 @@ export interface AccountPageViewProps {
   payments: PageState<PaymentPage>;
   /** payment.record: "Record payment" and "Apply account credit". */
   canRecord: boolean;
+  /** #458: "Record payment" waits for a refetch, or the account may be out
+   * of date. */
+  recordBlocked?: boolean;
+  /** #458 B4: a refetch failed; the rows shown may be out of date. */
+  staleError?: unknown;
+  /** Reloads the account after `staleError`. */
+  onReload?: () => void;
   onRecord: () => void;
   onApplyCredit: () => void;
   onOpenPayment: (paymentId: string) => void;
@@ -117,6 +124,9 @@ export function AccountPageView({
   ledger,
   payments,
   canRecord,
+  recordBlocked = false,
+  staleError = null,
+  onReload,
   onRecord,
   onApplyCredit,
   onOpenPayment,
@@ -475,7 +485,7 @@ export function AccountPageView({
                   {t('billing.accounts.credit.action')}
                 </Button>
               ) : null}
-              <Button type="button" onClick={onRecord}>
+              <Button type="button" disabled={recordBlocked} onClick={onRecord}>
                 {t('billing.accounts.record.action')}
               </Button>
             </div>
@@ -505,6 +515,14 @@ export function AccountPageView({
         <p role="status" className="text-sm font-medium">
           {announcement}
         </p>
+        {staleError ? (
+          <ErrorAlert
+            error={staleError}
+            message={t('billing.accounts.page.stale')}
+            onRetry={onReload}
+            retryLabel={t('billing.accounts.page.reload')}
+          />
+        ) : null}
         {recordedReceipt !== null ? (
           <p className="text-sm">
             {t('billing.accounts.receipt.recorded')}{' '}

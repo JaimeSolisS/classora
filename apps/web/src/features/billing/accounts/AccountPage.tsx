@@ -77,7 +77,12 @@ import {
 import { RecordPaymentDialog } from './RecordPaymentDialog';
 import { RefundDialog } from './RefundDialog';
 import { ReversePaymentDialog } from './ReversePaymentDialog';
-import { accountView, accountViewParams, oldestFirst } from './rules';
+import {
+  accountView,
+  accountViewParams,
+  oldestFirst,
+  type AttemptFailure,
+} from './rules';
 import {
   familyWithdrawalsKey,
   fetchFamilyWithdrawals,
@@ -121,6 +126,14 @@ import {
 // and a withdrawal's drawer (also opened by `?withdrawal=<id>`, the link of
 // the panel's "already settled" state); "View charge" in the drawer opens
 // that charge's detail.
+// #458 B3/B4: closing "Record payment" after a failed attempt (a lost answer
+// may have stored the payment) refetches the whole account, and "Record
+// payment" stays disabled until the summary and the payments land. A lost
+// answer also says the payment may have been recorded. If that refetch fails,
+// the page says the account may be out of date, keeps the old rows and keeps
+// the button disabled until a reload succeeds; it never claims a reload that
+// didn't happen. A failed refetch of a summary already shown is that same
+// out-of-date state, not the error page.
 
 function NotFoundOrError({
   error,
@@ -175,6 +188,10 @@ export function AccountPage() {
     searchParams.get('withdrawal'),
   );
   const [recording, setRecording] = useState(false);
+  // After a failed attempt: refetching, or the refetch failed (its error).
+  const [recordBlock, setRecordBlock] = useState<
+    { kind: 'refreshing' } | { kind: 'stale'; error: unknown } | null
+  >(null);
   const [crediting, setCrediting] = useState(false);
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [editingOffset, setEditingOffset] = useState(false);
@@ -318,7 +335,7 @@ export function AccountPage() {
         : t('billing.accounts.page.fallbackTitle'),
   );
 
-  if (summary.isError) {
+  if (summary.isError && summary.data === undefined) {
     return (
       <NotFoundOrError
         error={summary.error}
@@ -338,6 +355,50 @@ export function AccountPage() {
   function refresh() {
     void queryClient.invalidateQueries({ queryKey: accountKey(familyId) });
   }
+
+  /**
+   * Refetches the whole account and waits for the summary and the payments
+   * (#458 B3): "Record payment" waits for them, and a failure of either is
+   * the out-of-date state (B4). Invalidating never rejects, so the queries'
+   * own state says whether they reloaded.
+   */
+  async function reloadAccount() {
+    setRecordBlock({ kind: 'refreshing' });
+    const waited = (key: readonly unknown[]) =>
+      key[3] === 'summary' || key[3] === 'payments';
+    const queryKey = accountKey(familyId);
+    void queryClient.invalidateQueries({
+      queryKey,
+      predicate: (query) => !waited(query.queryKey),
+    });
+    await queryClient.invalidateQueries({
+      queryKey,
+      predicate: (query) => waited(query.queryKey),
+    });
+    const failed = [
+      summaryKey(familyId),
+      paymentsKey(familyId, view.paymentsPage),
+    ]
+      .map((key) => queryClient.getQueryState(key))
+      .find((state) => state?.status === 'error');
+    setRecordBlock(failed ? { kind: 'stale', error: failed.error } : null);
+  }
+
+  function closedRecording(failed: AttemptFailure) {
+    setRecording(false);
+    if (failed === 'none') return;
+    if (failed === 'lost') {
+      setAnnouncement(t('billing.accounts.record.closedLost'));
+    }
+    void reloadAccount();
+  }
+
+  const staleError =
+    recordBlock?.kind === 'stale'
+      ? recordBlock.error
+      : summary.isError
+        ? summary.error
+        : null;
 
   function pageState<T>(query: {
     data: T | undefined;
@@ -449,6 +510,9 @@ export function AccountPage() {
         ledger={ledgerState}
         payments={pageState<PaymentPage>(payments)}
         canRecord={canRecord}
+        recordBlocked={recordBlock !== null || staleError !== null}
+        staleError={staleError}
+        onReload={() => void reloadAccount()}
         onRecord={() => {
           setAnnouncement('');
           setRecording(true);
@@ -622,7 +686,7 @@ export function AccountPage() {
               );
               refresh();
             }}
-            onClose={() => setRecording(false)}
+            onClose={closedRecording}
           />
           <AllocateCreditDialog
             open={crediting}

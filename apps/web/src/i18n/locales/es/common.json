@@ -5686,7 +5686,9 @@
         "title": "Cuenta de cobro: {{name}}",
         "fallbackTitle": "Cuenta de cobro",
         "notFound": "No se encontró la cuenta de cobro",
-        "notFoundHelp": "Esta familia no existe o no puedes verla."
+        "notFoundHelp": "Esta familia no existe o no puedes verla.",
+        "stale": "No se pudo actualizar la cuenta y puede estar desactualizada. Vuelve a cargarla antes de registrar un pago.",
+        "reload": "Volver a cargar la cuenta"
       },
       "summary": {
         "title": "Saldo",
@@ -5833,6 +5835,9 @@
         "help": "El pago se aplica a los cargos de la familia como elijas abajo. Lo que no se aplique queda como saldo a favor.",
         "submit": "Registrar pago",
         "saving": "Registrando…",
+        "resend": "Volver a enviar el mismo pago",
+        "lost": "No sabemos si el pago se registró. Volver a enviarlo desde aquí es seguro; para cambiar algo, cierra y revisa la cuenta primero.",
+        "closedLost": "Puede que el pago se haya registrado. Revisa los pagos de la cuenta antes de registrarlo otra vez.",
         "done": "Pago de {{amount}} registrado: {{allocated}} aplicado a cargos. El saldo a favor ahora es {{credit}}.",
         "noneHelp": "Todo el pago queda como saldo a favor. Puedes aplicarlo después.",
         "noOpenCharges": "Esta familia no tiene cargos por pagar: todo el pago queda como saldo a favor.",
@@ -6691,9 +6696,13 @@
       "deactivated": "Tipo desactivado.",
       "reactivated": "Tipo reactivado.",
       "gone": "Ese tipo ya no existe. La lista se volvió a cargar.",
+      "goneNotReloaded": "Ese tipo ya no existe. No se pudo volver a cargar la lista.",
       "conflictRefreshed": "Alguien más cambió este tipo. La lista se volvió a cargar: revísalo e inténtalo de nuevo.",
+      "conflictNotReloaded": "Alguien más cambió este tipo. No se pudo volver a cargar la lista: vuelve a cargarla e inténtalo de nuevo.",
       "conflictReloaded": "Alguien más cambió este tipo. Se volvió a cargar: revísalo e inténtalo de nuevo.",
       "reload": "Volver a cargar",
+      "stale": "No se pudo actualizar la lista y puede estar desactualizada. Vuelve a cargarla antes de cambiar un tipo.",
+      "reloadList": "Volver a cargar la lista",
       "dialog": {
         "addTitle": "Agregar tipo",
         "editTitle": "Editar tipo",

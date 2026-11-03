@@ -1,3 +1,5 @@
+import { focusManager } from '@tanstack/react-query';
+import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionUserBody } from '@/features/auth/session';
 import { problemWith } from '@/features/academics/testing';
@@ -9,11 +11,19 @@ import {
   type ApiStub,
   type Responder,
 } from '@/test/api-stub';
-import { alerts, click, labelled, openDialog, setFieldValue } from '@/test/dom';
+import {
+  alerts,
+  click,
+  labelled,
+  openDialog,
+  pressEscape,
+  setFieldValue,
+} from '@/test/dom';
 import {
   buttonNamed,
   jsonResponse,
   renderApp,
+  settle,
   settleUntil,
   type RenderedApp,
 } from '@/test/render-app';
@@ -133,6 +143,13 @@ function fillPayment(amount = '2000') {
 async function submitRecord() {
   await click(buttonNamed(dialog(), 'Record payment'));
 }
+
+const RESEND = 'Resend the same payment';
+const LOST = "We don't know whether the payment was recorded.";
+const CLOSED_LOST =
+  "The payment may have been recorded. Check the account's payments before recording it again.";
+const recordAction = () => buttonNamed(main(), 'Record payment');
+const lostAnswer = () => Promise.reject(new TypeError('Failed to fetch'));
 
 beforeEach(() => {
   applyLanguage('en');
@@ -369,9 +386,9 @@ describe('idempotent submission (D3)', () => {
     fillPayment();
     await submitRecord();
     await settleUntil(() => alerts(dialog()).length > 0);
-    expect(alerts(dialog()).join()).toContain("Can't reach the server");
+    expect(alerts(dialog()).join()).toContain(LOST);
 
-    await submitRecord();
+    await click(buttonNamed(dialog(), RESEND));
     await settleUntil(() => openDialog() === null);
     const [first, second] = api.calls(RECORD);
     expect(keyOf(second!)).toBe(keyOf(first!));
@@ -384,8 +401,8 @@ describe('idempotent submission (D3)', () => {
     expect(keyOf(api.calls(RECORD)[2]!)).not.toBe(keyOf(first!));
   });
 
-  it('uses a new key when the form changes after an error', async () => {
-    const api = stub({ [RECORD]: () => problemWith(500, 'internal_error') });
+  it('uses a new key when the form changes after a refusal', async () => {
+    const api = stub({ [RECORD]: () => problemWith(403, 'permission_denied') });
     await renderAccount();
     await openRecord();
     fillPayment('2000');
@@ -574,3 +591,267 @@ describe('the apply-credit dialog (E)', () => {
     );
   });
 });
+
+describe('a lost answer (#458)', () => {
+  /** The summary answers at once, or waits for `release()` while held. */
+  function heldSummary() {
+    const gate = { hold: false, fail: false, release: () => {} };
+    const responder: Responder = () => {
+      if (gate.fail) return problemWith(503, 'database_unavailable');
+      if (!gate.hold) return jsonResponse(200, SUMMARY);
+      return new Promise<Response>((resolve) => {
+        gate.release = () => resolve(jsonResponse(200, SUMMARY));
+      });
+    };
+    return { gate, responder };
+  }
+
+  async function loseOne(api: ApiStub) {
+    await renderAccount();
+    await openRecord();
+    fillPayment();
+    await submitRecord();
+    await settleUntil(() => alerts(dialog()).join().includes(LOST));
+    return {
+      summaries: api.calls(SUMMARY_ROUTE).length,
+      payments: api.calls(PAYMENTS).length,
+    };
+  }
+
+  it('A1/B6: after a lost answer and Cancel, the account refetches before another payment can start', async () => {
+    const { gate, responder } = heldSummary();
+    const api = stub({ [RECORD]: lostAnswer, [SUMMARY_ROUTE]: responder });
+    const before = await loseOne(api);
+
+    gate.hold = true;
+    await click(buttonNamed(dialog(), 'Cancel'));
+    await settleUntil(() => openDialog() === null);
+    await settleUntil(() => api.calls(SUMMARY_ROUTE).length > before.summaries);
+    expect(status()).toBe(CLOSED_LOST);
+    expect(recordAction().disabled).toBe(true);
+    await settle();
+    expect(recordAction().disabled).toBe(true);
+
+    gate.hold = false;
+    gate.release();
+    await settleUntil(() => !recordAction().disabled);
+    expect(api.calls(PAYMENTS).length).toBeGreaterThan(before.payments);
+    expect(alerts(main())).toEqual([]);
+
+    // A new opening: empty, enabled fields and a new key (B5).
+    await openRecord();
+    expect(input('Amount').value).toBe('');
+    expect(input('Amount').disabled).toBe(false);
+    fillPayment();
+    await submitRecord();
+    await settleUntil(() => api.calls(RECORD).length === 2);
+    const [first, second] = api.calls(RECORD);
+    expect(keyOf(second!)).not.toBe(keyOf(first!));
+  });
+
+  it('locks every field and offers only the same payment again (B1, B2)', async () => {
+    const api = stub({
+      [RECORD]: [lostAnswer, () => jsonResponse(201, RECORDED)],
+    });
+    await loseOne(api);
+
+    expect(alerts(dialog()).join()).toContain(
+      'Resending it from here is safe; to change anything, close and check the account first.',
+    );
+    for (const field of [
+      input('Amount'),
+      input('Received on'),
+      select('Method'),
+      input('Reference (optional)'),
+      input('Paid by (optional)'),
+      labelled<HTMLTextAreaElement>(dialog(), 'Note (optional)'),
+      choice(dialog(), 'Oldest first'),
+      choice(dialog(), 'Choose charges'),
+      choice(dialog(), 'Keep as credit'),
+    ]) {
+      expect(field.disabled).toBe(true);
+    }
+    expect(() => buttonNamed(dialog(), 'Record payment')).toThrow();
+
+    await click(buttonNamed(dialog(), RESEND));
+    await settleUntil(() => openDialog() === null);
+    const [first, second] = api.calls(RECORD);
+    expect(second!.body).toEqual(first!.body);
+    expect(keyOf(second!)).toBe(keyOf(first!));
+    expect(status()).toContain('Payment of $2,000.00 recorded');
+  });
+
+  it('resends the stored body even after the open charges reload (B2)', async () => {
+    let reloaded = false;
+    const api = stub({
+      [RECORD]: () => {
+        reloaded = true;
+        return lostAnswer();
+      },
+      [CHARGES]: (request) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get('limit') !== '100') {
+          return jsonResponse(200, CHARGES_PAGE);
+        }
+        openScans += 1;
+        // After the lost attempt, the pending charge is no longer open.
+        const items = reloaded
+          ? OPEN_CHARGES.filter((charge) => charge.id !== CHARGE_PENDING.id)
+          : OPEN_CHARGES;
+        return jsonResponse(200, {
+          items,
+          total: items.length,
+          limit: 100,
+          offset: 0,
+        });
+      },
+    });
+    await renderAccount();
+    await openRecord();
+    fillPayment('2500');
+    await click(choice(dialog(), 'Choose charges'));
+    await settleUntil(() => dialog().querySelector('[data-allocation-line]'));
+    setFieldValue(line(CHARGE_OVERDUE.id), '1500');
+    setFieldValue(line(CHARGE_PENDING.id), '450');
+    await submitRecord();
+    await settleUntil(() => alerts(dialog()).join().includes(LOST));
+    expect(line(CHARGE_OVERDUE.id).disabled).toBe(true);
+
+    const scans = openScans;
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    await settleUntil(() => openScans > scans);
+    await settleUntil(() => !lineIds().includes(CHARGE_PENDING.id));
+    focusManager.setFocused(undefined);
+
+    await click(buttonNamed(dialog(), RESEND));
+    await settleUntil(() => api.calls(RECORD).length === 2);
+    const [first, second] = api.calls(RECORD);
+    expect(
+      (first!.body as { allocation: { lines: unknown[] } }).allocation.lines,
+    ).toHaveLength(2);
+    expect(second!.body).toEqual(first!.body);
+    expect(keyOf(second!)).toBe(keyOf(first!));
+  });
+
+  it('stays locked after a second lost answer (B2)', async () => {
+    const api = stub({
+      [RECORD]: [lostAnswer, () => problemWith(502, 'internal_error')],
+    });
+    await loseOne(api);
+    await click(buttonNamed(dialog(), RESEND));
+    await settleUntil(() => api.calls(RECORD).length === 2);
+    await settleUntil(() => alerts(dialog()).join().includes(LOST));
+    expect(input('Amount').disabled).toBe(true);
+    expect(buttonNamed(dialog(), RESEND)).toBeDefined();
+    const [first, second] = api.calls(RECORD);
+    expect(keyOf(second!)).toBe(keyOf(first!));
+  });
+
+  it('a settled refusal after it unlocks the fields (B2)', async () => {
+    const api = stub({
+      [RECORD]: [lostAnswer, () => problemWith(403, 'permission_denied')],
+    });
+    await loseOne(api);
+    await click(buttonNamed(dialog(), RESEND));
+    await settleUntil(() => api.calls(RECORD).length === 2);
+    await settleUntil(() => !input('Amount').disabled);
+    expect(alerts(dialog()).join()).not.toContain(LOST);
+    expect(buttonNamed(dialog(), 'Record payment')).toBeDefined();
+    expect(choice(dialog(), 'Choose charges').disabled).toBe(false);
+  });
+
+  it.each([
+    ['Cancel', () => click(buttonNamed(dialog(), 'Cancel'))],
+    ['Escape', () => pressEscape()],
+    ['the close button', () => click(buttonNamed(dialog(), 'Close'))],
+  ] as const)(
+    '%s after a lost answer refetches, says so and waits (B3)',
+    async (_how, close) => {
+      const { gate, responder } = heldSummary();
+      const api = stub({ [RECORD]: lostAnswer, [SUMMARY_ROUTE]: responder });
+      const before = await loseOne(api);
+
+      gate.hold = true;
+      await close();
+      await settleUntil(() => openDialog() === null);
+      await settleUntil(
+        () => api.calls(SUMMARY_ROUTE).length > before.summaries,
+      );
+      expect(status()).toBe(CLOSED_LOST);
+      expect(recordAction().disabled).toBe(true);
+
+      gate.hold = false;
+      gate.release();
+      await settleUntil(() => !recordAction().disabled);
+      expect(api.calls(PAYMENTS).length).toBeGreaterThan(before.payments);
+    },
+  );
+
+  it('a close after a settled refusal refetches, with no announcement (B3)', async () => {
+    const api = stub({ [RECORD]: () => problemWith(403, 'permission_denied') });
+    await renderAccount();
+    await openRecord();
+    fillPayment();
+    await submitRecord();
+    await settleUntil(() => alerts(dialog()).length > 0);
+    expect(input('Amount').disabled).toBe(false);
+    const summaries = api.calls(SUMMARY_ROUTE).length;
+
+    await click(buttonNamed(dialog(), 'Cancel'));
+    await settleUntil(() => api.calls(SUMMARY_ROUTE).length > summaries);
+    await settleUntil(() => !recordAction().disabled);
+    expect(status()).toBe('');
+  });
+
+  it('a close with no attempt makes no request (B3)', async () => {
+    const api = stub();
+    await renderAccount();
+    await openRecord();
+    const before = api.requests.length;
+    await click(buttonNamed(dialog(), 'Cancel'));
+    await settleUntil(() => openDialog() === null);
+    await settle();
+    expect(api.requests).toHaveLength(before);
+    expect(recordAction().disabled).toBe(false);
+    expect(status()).toBe('');
+  });
+
+  it('a failed refetch says the account may be out of date until a reload works (B4)', async () => {
+    const { gate, responder } = heldSummary();
+    const api = stub({ [RECORD]: lostAnswer, [SUMMARY_ROUTE]: responder });
+    const before = await loseOne(api);
+
+    gate.fail = true;
+    await click(buttonNamed(dialog(), 'Cancel'));
+    await settleUntil(() => named('Reload the account'));
+    expect(api.calls(SUMMARY_ROUTE).length).toBeGreaterThan(before.summaries);
+    expect(alerts(main()).join()).toContain(
+      "The account couldn't be refreshed and may be out of date.",
+    );
+    expect(main().querySelector('[data-charge-id]')).not.toBeNull();
+    expect(recordAction().disabled).toBe(true);
+    expect(main().textContent).not.toContain('reloaded');
+
+    // A reload that fails too keeps it.
+    const reads = api.calls(SUMMARY_ROUTE).length;
+    await click(named('Reload the account')!);
+    await settleUntil(() => api.calls(SUMMARY_ROUTE).length > reads);
+    await settle();
+    expect(named('Reload the account')).toBeDefined();
+    expect(recordAction().disabled).toBe(true);
+
+    gate.fail = false;
+    await click(named('Reload the account')!);
+    await settleUntil(() => !named('Reload the account'));
+    expect(alerts(main())).toEqual([]);
+    expect(recordAction().disabled).toBe(false);
+  });
+});
+
+const named = (name: string) =>
+  [...main().querySelectorAll('button')].find(
+    (button) => button.textContent === name,
+  );

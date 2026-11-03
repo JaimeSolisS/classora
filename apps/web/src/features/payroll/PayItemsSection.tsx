@@ -108,7 +108,11 @@ export function PayItemsSection({
         items,
         hasMore: list.hasNextPage,
         loadingMore: list.isFetchingNextPage,
-        moreError: list.isFetchNextPageError ? list.error : null,
+        // Not while "Load more" runs again: its retry is pending (#458 D1).
+        moreError:
+          list.isFetchNextPageError && !list.isFetchingNextPage
+            ? list.error
+            : null,
         // A running refetch must finish, not be cancelled by this.
         onMore: () => void list.fetchNextPage({ cancelRefetch: false }),
         refreshError: staleError,

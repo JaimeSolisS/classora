@@ -5577,7 +5577,9 @@
         "title": "Billing account: {{name}}",
         "fallbackTitle": "Billing account",
         "notFound": "Billing account not found",
-        "notFoundHelp": "This family doesn't exist, or you can't see it."
+        "notFoundHelp": "This family doesn't exist, or you can't see it.",
+        "stale": "The account couldn't be refreshed and may be out of date. Reload it before recording a payment.",
+        "reload": "Reload the account"
       },
       "summary": {
         "title": "Balance",
@@ -5724,6 +5726,9 @@
         "help": "The payment is applied to the family's charges as chosen below. Whatever isn't applied stays as account credit.",
         "submit": "Record payment",
         "saving": "Recording…",
+        "resend": "Resend the same payment",
+        "lost": "We don't know whether the payment was recorded. Resending it from here is safe; to change anything, close and check the account first.",
+        "closedLost": "The payment may have been recorded. Check the account's payments before recording it again.",
         "done": "Payment of {{amount}} recorded: {{allocated}} applied to charges. Account credit is now {{credit}}.",
         "noneHelp": "The whole payment stays as account credit. You can apply it later.",
         "noOpenCharges": "This family has no open charges: the whole payment stays as account credit.",
@@ -6570,9 +6575,13 @@
       "deactivated": "Type deactivated.",
       "reactivated": "Type reactivated.",
       "gone": "That type no longer exists. The list was reloaded.",
+      "goneNotReloaded": "That type no longer exists. The list couldn't be reloaded.",
       "conflictRefreshed": "Someone else changed this type. The list was reloaded: check it and try again.",
+      "conflictNotReloaded": "Someone else changed this type. The list couldn't be reloaded: reload it and try again.",
       "conflictReloaded": "Someone else changed this type. It was reloaded: check it and try again.",
       "reload": "Reload",
+      "stale": "The list couldn't be refreshed and may be out of date. Reload it before changing a type.",
+      "reloadList": "Reload the list",
       "dialog": {
         "addTitle": "Add type",
         "editTitle": "Edit type",
