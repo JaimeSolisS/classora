@@ -541,6 +541,67 @@ describe('record a payment (B)', () => {
     },
   );
 
+  describe('QA D1: the refetch after a lost response lowers what is left', () => {
+    // The lost attempt landed: the period now reads all paid.
+    function landed(second: Responder) {
+      let posted = 0;
+      return stub({
+        [PAY]: [
+          () => {
+            posted += 1;
+            return lost();
+          },
+          second,
+        ],
+        [LINES]: () =>
+          jsonResponse(
+            200,
+            finalized(posted > 0 ? PERIOD_PAID : PERIOD_PARTIAL),
+          ),
+      });
+    }
+
+    async function loseTheDefaultAmount() {
+      await openPay();
+      // The default amount: everything left (3116.67).
+      fill(payDialog()!);
+      await submitPay();
+      await settleUntil(() =>
+        payDialog()
+          ?.querySelector('[data-payment-remaining]')
+          ?.textContent?.includes('$0.00'),
+      );
+    }
+
+    it('the unchanged resend skips the client cap and goes with the same key', async () => {
+      const api = landed(() => recorded('paid'));
+      await loseTheDefaultAmount();
+      await submitPay();
+      await settleUntil(() => !payDialog());
+      const [first, second] = api.calls(PAY);
+      expect(second!.headers.get('Idempotency-Key')).toBe(
+        first!.headers.get('Idempotency-Key'),
+      );
+      expect(second!.body).toEqual(first!.body);
+      expect(said()).toBe('Payment recorded.');
+    });
+
+    it('an edited body is still capped by what is left', async () => {
+      const api = landed(() => recorded('paid'));
+      await loseTheDefaultAmount();
+      setFieldValue(labelled(payDialog()!, 'Amount'), '3116.66');
+      await submitPay();
+      expect(payDialog()!.textContent).toContain(
+        "The amount can't be more than what's left to pay.",
+      );
+      // Editing back to the lost body is a resend again.
+      setFieldValue(labelled(payDialog()!, 'Amount'), '3116.67');
+      await submitPay();
+      await settleUntil(() => api.calls(PAY).length === 2);
+      expect(keys(api, PAY)[1]).toBe(keys(api, PAY)[0]);
+    });
+  });
+
   it('closing without any attempt refetches nothing', async () => {
     const api = stub();
     await openPay();

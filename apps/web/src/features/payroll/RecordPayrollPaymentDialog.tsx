@@ -142,6 +142,8 @@ function Body({
   const [errors, setErrors] = useState<PaymentErrors>({});
   const [failure, setFailure] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
+  // The body of the last attempt whose answer was lost, if that was the last.
+  const lostBody = useRef<string | null>(null);
   const D = 'payroll.paymentDialog';
 
   const fieldId = (field: PaymentField) => `${id}-${field}`;
@@ -170,7 +172,18 @@ function Body({
   }
 
   async function submit() {
-    const found = validatePaymentForm(values, { startsOn, today, remaining });
+    // The unchanged resend of a lost attempt goes as it was, with its key:
+    // the refetch may already count that payment in what's left, so the
+    // client cap would block the one safe retry (QA #474 D1). The server
+    // replays it or applies its own cap. An edited body is capped.
+    const resend =
+      lostBody.current !== null &&
+      lostBody.current === JSON.stringify(paymentCreateBody(values));
+    const found = validatePaymentForm(values, {
+      startsOn,
+      today,
+      remaining: resend ? null : remaining,
+    });
     setErrors(found);
     if (Object.keys(found).length > 0) {
       focusFirst(found);
@@ -179,6 +192,7 @@ function Body({
     const body = paymentCreateBody(values);
     // Outside the call (#88): a resend of this body resends this key.
     const key = submission.keyFor(body);
+    lostBody.current = null;
     setFailure(null);
     busyRef.current = true;
     setSubmitting(true);
@@ -191,6 +205,7 @@ function Body({
       return;
     } catch (caught) {
       failedRef.current = worse(failedRef.current, caught);
+      if (isUnknownResult(caught)) lostBody.current = JSON.stringify(body);
       const fromServer = isUnknownResult(caught)
         ? null
         : paymentServerErrors(caught);

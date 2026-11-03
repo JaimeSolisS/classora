@@ -76,7 +76,14 @@ export function emptyPaymentForm(
 
 export function validatePaymentForm(
   values: PaymentFormValues,
-  limits: { startsOn: string; today: LocalDate; remaining: string },
+  limits: {
+    startsOn: string;
+    today: LocalDate;
+    /** What's left; null skips the cap (the resend of a lost attempt,
+     * QA #474 D1: the refetch already counts the payment it may have
+     * stored, and the server replays the same key). */
+    remaining: string | null;
+  },
 ): PaymentErrors {
   const errors: PaymentErrors = {};
   if (!isRealDay(values.paidOn)) {
@@ -94,7 +101,7 @@ export function validatePaymentForm(
     errors.amount = `${V}.amountInvalid`;
   } else if (cents <= 0) {
     errors.amount = `${V}.amountPositive`;
-  } else if (cents > apiCents(limits.remaining)) {
+  } else if (limits.remaining !== null && cents > apiCents(limits.remaining)) {
     errors.amount = `${V}.amountAboveRemaining`;
   }
   if (values.methodCode === '') {
