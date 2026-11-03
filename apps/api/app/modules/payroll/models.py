@@ -809,8 +809,8 @@ class PayrollAdjustment(Audited, Model):
             "class_session_id",
             unique=True,
             postgresql_where=text(
-                f"kind = '{LATE_APPROVAL}'"
-                f" OR (kind = '{MANUAL}' AND class_session_id IS NOT NULL)"
+                "kind = 'late_approval'"
+                " OR (kind = 'manual' AND class_session_id IS NOT NULL)"
             ),
         ),
         Index("ix_payroll_adjustments_target_period_id", "target_period_id"),
