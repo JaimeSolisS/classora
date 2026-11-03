@@ -1,8 +1,10 @@
-"""The rate refusal for ``course`` (#110 E5, QA D1, D2, D3), against the pricing
-itself. The oracle asks the real lookups which version prices a line, with and
-without the new version, over every small layout: the rule must refuse exactly
-when that answer changes. The matrix through real routes is in
-``tests/integration/test_payroll_workflow_rate_matrix.py``."""
+"""The rate refusal for ``course`` (#110 E5, QA D1, D2, D3), and for a delete
+(M7-08d E3), against the pricing itself. The oracle asks the real lookups which
+version prices a line, with and without the new (or the deleted) version, over
+every small layout: the rule must refuse exactly when that answer changes. The
+matrix through real routes is in
+``tests/integration/test_payroll_workflow_rate_matrix.py``, and for deletes in
+``tests/integration/test_payroll_rate_delete_refusal.py``."""
 
 import itertools
 import uuid
@@ -20,6 +22,7 @@ from app.modules.payroll.calculation import (
     RateVersion,
     _rate_in_effect,
     course_rate,
+    repriced_by_delete,
     repriced_on,
 )
 
@@ -187,3 +190,125 @@ def test_only_the_lines_own_model_and_exact_rate_pass(model, rate, refused):
     )
 
     assert (answer is not None) is refused
+
+
+# --- M7-08d E3: a delete runs the add's refusal -----
+
+DELETE_KINDS = [
+    ("per_course", Rate(100)),
+    ("per_course", Rate(200)),
+    ("per_hour", Rate(100)),
+    ("per_hour", Rate(200)),
+    ("per_session", Rate(100)),
+    (None, None),
+]
+
+
+def delete_layouts() -> list[tuple[int, int, list[RateVersion]]]:
+    """Up to three versions, so a deleted one can have a previous and a next."""
+    found = []
+    for first, own in itertools.combinations_with_replacement(DAYS, 2):
+        for count in (1, 2, 3):
+            for days in itertools.combinations(DAYS, count):
+                for kinds in itertools.product(DELETE_KINDS, repeat=count):
+                    found.append(
+                        (
+                            first,
+                            own,
+                            [
+                                version(d, m, r)
+                                for d, (m, r) in zip(days, kinds, strict=True)
+                            ],
+                        )
+                    )
+    return found
+
+
+def pricing_version(
+    rates: list[RateVersion], first: date, own: date, model: str
+) -> RateVersion | None:
+    """The version a line names: the first date's for a per-course line, its
+    own date's for an ordinary one."""
+    on_day = first if model == PER_COURSE else own
+    earlier = [v for v in rates if v.effective_from <= on_day]
+    return max(earlier, key=lambda v: v.effective_from, default=None)
+
+
+def test_a_delete_refuses_exactly_what_changes_the_price():
+    """Every deleted version of every small layout: refused exactly when the
+    line's price without it differs. A version the line names is ``409
+    compensation_rate_in_use`` first (its foreign key), so those cells are left
+    out, as the route leaves them out of the check."""
+    cells = refused = 0
+    for first, own, rates in delete_layouts():
+        before = priced_by(rates, on(first), on(own))
+        if before is None:
+            continue
+        line = FinalizedPricedLine(SESSION, on(own), before[0], before[1])
+        named = pricing_version(rates, on(first), on(own), before[0])
+        ordered = sorted(rates, key=lambda v: v.effective_from)
+        for index, deleted in enumerate(ordered):
+            if deleted is named:
+                continue
+            rest = [v for v in ordered if v is not deleted]
+            after = priced_by(rest, on(first), on(own))
+            answer = repriced_by_delete(
+                line,
+                first_session_date=on(first),
+                previous=ordered[index - 1] if index else None,
+                deleted_from=deleted.effective_from,
+                until=(
+                    ordered[index + 1].effective_from
+                    if index + 1 < len(ordered)
+                    else None
+                ),
+            )
+            cells += 1
+            refused += answer is not None
+            assert (answer is not None) == (after != before), (
+                first,
+                own,
+                [(v.effective_from, v.rate_model, v.rate) for v in ordered],
+                index,
+            )
+    assert cells > 100_000
+    assert refused > 1000  # a version the line names is in_use, so most pass
+
+
+def test_a_same_rate_previous_version_lets_the_delete_through():
+    """#110 D4 for a delete: the window goes to a version of the line's own
+    model and rate, so nothing changes."""
+    line = FinalizedPricedLine(SESSION, OWN, "per_course", Rate(1000))
+    previous = version(-10, "per_course", Rate("1000.0000"))
+
+    assert (
+        repriced_by_delete(
+            line,
+            first_session_date=FIRST,
+            previous=previous,
+            deleted_from=FIRST - timedelta(days=1),
+            until=None,
+        )
+        is None
+    )
+    assert repriced_by_delete(
+        line,
+        first_session_date=FIRST,
+        previous=version(-10, "per_course", Rate("1000.0001")),
+        deleted_from=FIRST - timedelta(days=1),
+        until=None,
+    ) == (FIRST)
+
+
+def test_deleting_the_first_version_gives_the_window_to_nothing():
+    line = FinalizedPricedLine(SESSION, OWN, "per_hour", Rate(100))
+    assert (
+        repriced_by_delete(
+            line,
+            first_session_date=FIRST,
+            previous=None,
+            deleted_from=FIRST,
+            until=None,
+        )
+        == OWN
+    )

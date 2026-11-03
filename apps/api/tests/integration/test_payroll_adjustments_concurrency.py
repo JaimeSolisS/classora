@@ -37,6 +37,7 @@ from tests.integration.payroll_calculation_support import (
     approved_lesson,
     clear,
     lines,
+    no_cohorts,
     paid_tutor,
 )
 from tests.integration.payroll_period_support import set_floor
@@ -299,7 +300,9 @@ def rate_of(url: str, tutor: CreatedUser) -> uuid.UUID:
 
 def deleting(tutor: CreatedUser, rate: uuid.UUID) -> Any:
     def call(session: AsyncSession) -> Awaitable[Any]:
-        return rate_rows.delete_compensation_rate(session, tutor.id, rate)
+        return rate_rows.delete_compensation_rate(
+            session, tutor.id, rate, first_session_dates=no_cohorts
+        )
 
     return call
 

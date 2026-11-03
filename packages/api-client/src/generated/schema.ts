@@ -4828,7 +4828,8 @@ export interface paths {
         /**
          * Delete Compensation Rate
          * @description Delete a rate version, whatever its date, until a prepared or finalized
-         *     period uses it.
+         *     period uses it. Its dates go to the previous version, or to none, so a delete
+         *     that would change a finalized price is refused, as an add would be.
          */
         delete: operations["delete_compensation_rate_api_v1_payroll_tutors__tutor_user_id__rates__rate_id__delete"];
         options?: never;
@@ -37353,7 +37354,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description A prepared or finalized payroll period uses this version (compensation_rate_in_use). */
+            /** @description A prepared or finalized payroll period uses this version (compensation_rate_in_use), or without it a finalized payroll line or a posted adjustment would get another price (compensation_rate_delete_under_finalized_line, with details.latest_finalized_on). */
             409: {
                 headers: {
                     [name: string]: unknown;

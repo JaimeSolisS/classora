@@ -52,6 +52,7 @@ from tests.integration.payroll_calculation_support import (
     clear,
     line_of,
     lines,
+    no_cohorts,
     paid_tutor,
     run,
     stable,
@@ -254,7 +255,9 @@ def test_a_delete_after_a_run_removes_its_lines(
     approved_lesson(client, lesson(url, starts_at=STARTS, tutor=tutor), owner)
 
     def delete_rate(session: AsyncSession) -> Awaitable[None]:
-        return payroll.delete_compensation_rate(session, tutor.id, rate)
+        return payroll.delete_compensation_rate(
+            session, tutor.id, rate, first_session_dates=no_cohorts
+        )
 
     result, deleted = in_turns(url, recalculating(period), delete_rate)
 
@@ -274,7 +277,9 @@ def test_a_run_after_a_delete_picks_the_older_version(
     approved_lesson(client, lesson(url, starts_at=STARTS, tutor=tutor), owner)
 
     def delete_rate(session: AsyncSession) -> Awaitable[None]:
-        return payroll.delete_compensation_rate(session, tutor.id, wrong)
+        return payroll.delete_compensation_rate(
+            session, tutor.id, wrong, first_session_dates=no_cohorts
+        )
 
     deleted, result = in_turns(url, delete_rate, recalculating(period))
 
@@ -293,7 +298,9 @@ def test_a_run_after_a_delete_may_have_no_basis(
     approved_lesson(client, lesson(url, starts_at=STARTS, tutor=tutor), owner)
 
     def delete_rate(session: AsyncSession) -> Awaitable[None]:
-        return payroll.delete_compensation_rate(session, tutor.id, only)
+        return payroll.delete_compensation_rate(
+            session, tutor.id, only, first_session_dates=no_cohorts
+        )
 
     _, result = in_turns(url, delete_rate, recalculating(period))
 
@@ -370,7 +377,9 @@ def test_a_rate_delete_takes_the_period_before_the_version(
     approved_lesson(client, lesson(url, starts_at=STARTS, tutor=tutor), owner)
 
     def delete_rate(session: AsyncSession) -> Awaitable[None]:
-        return payroll.delete_compensation_rate(session, tutor.id, rate)
+        return payroll.delete_compensation_rate(
+            session, tutor.id, rate, first_session_dates=no_cohorts
+        )
 
     result, deleted = paused_run(
         url, monkeypatch, payroll_calculation, "compute_lines", period, delete_rate

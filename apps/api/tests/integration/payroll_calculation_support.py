@@ -40,6 +40,11 @@ EMPTY_SUMMARY = {
 SEED = "2000-01-01"
 
 
+async def no_cohorts(_ids: Any) -> dict[uuid.UUID, Any]:
+    """A rate write's first dates when no session has a cohort (M7-08d E3)."""
+    return {}
+
+
 def add_terms(
     url: str,
     tutor: uuid.UUID,

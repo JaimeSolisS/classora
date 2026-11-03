@@ -60,6 +60,7 @@ from tests.integration.test_payroll_workflow_course import (
 )
 
 REFUSED = (422, "effective_from_under_finalized_line")
+DELETE_REFUSED = (409, "compensation_rate_delete_under_finalized_line")
 LINE_MODELS = ("per_course", "per_hour", "per_session")
 NEW_MODELS = ("per_course", "per_hour", "per_session", None)
 BASE = {"per_course": "1000", "per_hour": "120", "per_session": "120"}
@@ -246,9 +247,13 @@ def test_the_matrix(ctx, line_model, name):
 
 
 def mixed_cohort(ctx: Ctx, who: Team) -> tuple[Any, Any]:
-    """Reachable only through a delete (QA O2): an ordinary line finalized, then a
-    ``per_course`` version under an unused first version, which is deleted, so the
-    next line of the cohort is per-course."""
+    """QA O2's state: an ordinary line finalized, then a ``per_course`` version
+    under an unused first version, which is deleted, so the next line of the
+    cohort is per-course. Since M7-08d E3 the route refuses that delete (the first
+    date would go to ``per_course`` and re-price the ordinary line), so no route
+    reaches this state any more. Rows written before it may hold it, so the
+    unused version goes by SQL here, and each line must still answer for
+    itself."""
     add_terms(ctx.url, ctx.tutor.id)
     cohort = make_cohort(ctx, 3)  # days 0, 2, 4
     unused = base_rate(ctx, "per_hour", day(ctx, -2))
@@ -260,12 +265,14 @@ def mixed_cohort(ctx: Ctx, who: Team) -> tuple[Any, Any]:
     created = add_version(ctx, who, day(ctx, -5), "1000")
     assert created.status_code == 201, created.text
     with frozen_clock(later(ctx)):
-        gone = delete(
+        refused = delete(
             ctx.client,
             who.owner.cookie,
             f"/api/v1/payroll/tutors/{ctx.tutor.id}/rates/{unused}",
         )
-    assert gone.status_code == 204, gone.text
+    assert code(refused) == DELETE_REFUSED, refused.text
+    assert refused.json()["details"] == {"latest_finalized_on": day(ctx, 0)}
+    run_sql(ctx.url, "DELETE FROM compensation_rates WHERE id = :id", {"id": unused})
     teach(ctx, cohort, 2)
     lock_at(ctx.client, ctx.url, who, later(ctx), two)
     assert lines(ctx.url, one)[0].rate_model == "per_hour"

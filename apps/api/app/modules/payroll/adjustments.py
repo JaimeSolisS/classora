@@ -12,7 +12,8 @@ E7), :func:`has_no_adjustment_keyed`, :func:`paid_after_lock` and
 
 **Paid so far (#111 E2):** :func:`paid_so_far` reads, for each session, its
 origin (the finalized session line, or the ``adjustment`` line of its
-``late_approval``), with the snapshot it was priced on, and every automatic
+``late_approval``), with the snapshot it was priced on (and, for a per-course
+origin, its kind, amount, ``k``, ``N`` and rule, M7-08d E2), and every automatic
 adjustment of the session. ``manual`` ones are left out: a person's correction is
 never undone by the job.
 
@@ -239,6 +240,10 @@ async def paid_so_far(
                 PayrollLine.rate_model,
                 PayrollLine.rate,
                 PayrollLine.compensation_rate_id,
+                PayrollLine.kind,
+                PayrollLine.cumulative_sessions,
+                PayrollLine.cohort_sessions,
+                PayrollLine.session_pay_rule_id,
             )
             .join(PayrollPeriod, PayrollPeriod.id == PayrollLine.payroll_period_id)
             .where(
@@ -259,6 +264,10 @@ async def paid_so_far(
                 PayrollAdjustment.rate_model,
                 PayrollAdjustment.rate,
                 PayrollAdjustment.compensation_rate_id,
+                PayrollAdjustment.line_kind,
+                PayrollAdjustment.cumulative_sessions,
+                PayrollAdjustment.cohort_sessions,
+                PayrollAdjustment.session_pay_rule_id,
                 PayrollLine.id.label("line_id"),
             )
             .join(
@@ -282,7 +291,14 @@ async def paid_so_far(
             tutor_user_id=line.tutor_user_id,
             origin_line_id=line.id,
             origin=OriginSnapshot(
-                line.rate_model, line.rate, line.compensation_rate_id
+                line.rate_model,
+                line.rate,
+                line.compensation_rate_id,
+                kind=line.kind,
+                line_amount=line.amount,
+                cumulative_sessions=line.cumulative_sessions,
+                cohort_sessions=line.cohort_sessions,
+                session_pay_rule_id=line.session_pay_rule_id,
             ),
             paid=(line.amount,),
             approval_ids=frozenset(
@@ -299,7 +315,14 @@ async def paid_so_far(
                 tutor_user_id=row.tutor_user_id,
                 origin_line_id=row.line_id,
                 origin=OriginSnapshot(
-                    row.rate_model, row.rate, row.compensation_rate_id
+                    row.rate_model,
+                    row.rate,
+                    row.compensation_rate_id,
+                    kind=row.line_kind,
+                    line_amount=row.amount,
+                    cumulative_sessions=row.cumulative_sessions,
+                    cohort_sessions=row.cohort_sessions,
+                    session_pay_rule_id=row.session_pay_rule_id,
                 ),
                 paid=(),
             )

@@ -21,7 +21,15 @@ ADR-0002):
 - ``hours_correction`` (#111 E2): a session paid in a finalized way (a finalized
   session line, or a ``late_approval``) whose current revision neither names. It
   is the current revision priced on the origin's snapshot, minus what was paid so
-  far, keyed ``approval:<approval_id>``.
+  far, keyed ``approval:<approval_id>``. A ``per_course`` origin keeps its ``k``
+  and ``N`` and corrects only a change of kind (M7-08d E2,
+  :func:`~app.modules.payroll.calculation.course_correction_draft`).
+- **A late session of a cohort paid ``per_course`` (M7-08d E1)** is a
+  ``late_approval`` that is an anchor of the walk: it stores ``k = K + 1``, ``N``
+  and the cohort's rate, and pays ``rate x k / N`` minus the highest share
+  already fixed (:func:`~app.modules.payroll.calculation.course_anchor_draft`).
+  The walks of later lines read it as a fixed step, so the cohort still sums to
+  its rate.
 
 Amounts come from the same pure functions as a line (pm-107), a
 ``late_approval`` on the service date's basis with #111 E4's salaried dates, an
@@ -31,9 +39,7 @@ result writes nothing, and is worked out again on the next run.
 **Never paid here:** work before the tutor's first period (it is in no finalized
 period, so nothing selects it; #109 pays it with a one-time item), work before
 ``payroll_starts_on`` or while it is ``NULL``, work in an ``open`` or
-``prepared`` period (``recalculate`` and drift own it), and a cohort priced
-``per_course`` or an ``hours_correction`` of a ``per_course`` origin (M7-08d):
-those are counted in ``skipped_course``.
+``prepared`` period (``recalculate`` and drift own it).
 
 **One Unit of Work per adjustment** (:func:`post_one`, ``actor_id=None``, in the
 lock order of data-model §15): the advisory lock, only when a period must be
@@ -43,13 +49,19 @@ target period ``FOR UPDATE``, re-read, the next open one if its status changed
 SHARE`` → the facts re-read and **the amount computed after the lock** → the
 adjustment in a savepoint (a key or first-payment conflict counts as done) → its
 line. A failure rolls back that adjustment only, is logged with ids and the
-error class, and the run goes on.
+error class, and the run goes on. **An anchor** (M7-08d A9) first takes the
+advisory lock and the tutor's not-finalized periods ``FOR UPDATE``, oldest first,
+as a person's adjustment does (M7-08c): its ``K`` reads the finalized lines, so a
+``finalize`` of an earlier ``prepared`` period either commits first and is read,
+or waits and then sees the anchor in its drift check. Its amount is worked out
+only under those locks; the selection counts it without reading the walk. The
+run posts anchors oldest first (:func:`posting_order`, QA round 1 D1).
 
 Log lines carry ids and counts, never an amount, a rate or a reason (#111 E9).
 
 **Statements:** :func:`select_candidates` costs a fixed number whatever the
 number of finalized periods, sessions or tutors (#111 B7), and :func:`post_one`
-one fixed number per adjustment.
+one fixed number per adjustment, an anchor's walk included.
 
 **Run by hand** (:func:`run_post_adjustments` builds its own direct engine and
 disposes it)::
@@ -63,7 +75,7 @@ import logging
 import uuid
 from collections import Counter
 from collections.abc import Collection, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Final, Literal
 
@@ -82,6 +94,7 @@ from app.modules.scheduling import service as scheduling
 from app.workflows.charge_pricing import floor_instant, local_date
 from app.workflows.payroll_calculation import (
     COURSE,
+    cohort_walks,
     first_session_dates,
     salary_covers,
 )
@@ -95,7 +108,7 @@ one; each skip is a period that was prepared meanwhile, so this is a cap, never
 reached."""
 
 type Source = Literal["closeout", "cancellation", "correction"]
-type Outcome = Literal["posted", "nothing", "already", "skipped_course"]
+type Outcome = Literal["posted", "nothing", "already"]
 
 
 @dataclass(frozen=True)
@@ -105,6 +118,29 @@ class Candidate:
     source: Source
     class_session_id: uuid.UUID
     tutor_user_id: uuid.UUID
+    course: bool = field(default=False, compare=False)
+    """A late session of a cohort paid ``per_course``: an anchor, posted under
+    the tutor's period locks (module docstring)."""
+    service_date: date | None = field(default=None, compare=False)
+    """An anchor's service date, for :func:`posting_order`."""
+
+
+def posting_order(candidates: Sequence[Candidate]) -> list[Candidate]:
+    """The run's order (M7-08d QA D1): the other candidates as selected, then the
+    anchors oldest first, by service date and then session, so an anchor's ``k``
+    never depends on the order a query returned. A later session of a cohort
+    counts an earlier one only when that one floored at ``0.00`` in this run."""
+    anchors = [candidate for candidate in candidates if candidate.course]
+    return [
+        *(candidate for candidate in candidates if not candidate.course),
+        *sorted(
+            anchors,
+            key=lambda candidate: (
+                candidate.service_date or date.min,
+                candidate.class_session_id,
+            ),
+        ),
+    ]
 
 
 @dataclass(frozen=True)
@@ -113,17 +149,16 @@ class Selection:
 
     candidates: int
     """Late work that owes something (with a basis, under a paying rule, not
-    covered), per-course work skipped, and every unpaid revision, a zero
-    difference included (#111 B6)."""
+    covered), every late session of a per-course cohort (its amount is worked out
+    under the lock, M7-08d), and every unpaid revision, a zero difference
+    included (#111 B6)."""
     to_post: list[Candidate]
-    skipped_course: int
 
 
 @dataclass(frozen=True)
 class _Found:
     candidate: Candidate
     draft: payroll.AdjustmentDraft | None
-    skipped_course: bool = False
 
 
 # --- The facts -----------------------------------------------------------------------
@@ -291,13 +326,29 @@ async def _found(
     )
     found: list[_Found] = []
     for row, span in late_closeouts:
-        candidate = Candidate("closeout", row.class_session_id, row.tutor_user_id)
         basis = bases.of(row.tutor_user_id)
         first = first_dates.get(row.class_session_id)
-        if first is not None and payroll.course_rate(basis, first) is not None:
-            found.append(_Found(candidate, None, skipped_course=True))
-            continue
+        paid_per_course = None if first is None else payroll.course_rate(basis, first)
+        candidate = Candidate(
+            "closeout",
+            row.class_session_id,
+            row.tutor_user_id,
+            course=paid_per_course is not None,
+            service_date=local_date(row.session_starts_at, zone),
+        )
         work = _approved(row, zone, makeups)
+        if paid_per_course is not None:
+            found.append(
+                _Found(
+                    candidate,
+                    None
+                    if only is None
+                    else await _anchor(
+                        session, basis, paid_per_course, work, row, span, zone
+                    ),
+                )
+            )
+            continue
         found.append(
             _Found(
                 candidate,
@@ -324,9 +375,6 @@ async def _found(
         if origin is None:  # pragma: no cover - paid_after_lock selected it
             continue
         candidate = Candidate("correction", row.class_session_id, origin.tutor_user_id)
-        if origin.origin.rate_model == payroll.PER_COURSE:
-            found.append(_Found(candidate, None, skipped_course=True))
-            continue
         found.append(
             _Found(
                 candidate,
@@ -338,6 +386,38 @@ async def _found(
             )
         )
     return found
+
+
+async def _anchor(
+    session: AsyncSession,
+    basis: payroll.PayBasis,
+    paid: Any,
+    work: payroll.ApprovedSession,
+    row: Any,
+    span: payroll.FinalizedSpan,
+    zone: str,
+) -> payroll.AdjustmentDraft | None:
+    """The anchor of a late per-course session (M7-08d E1), from its cohort's walk
+    as it stands under the lock. Five statements."""
+    walks = await cohort_walks(
+        session, row.tutor_user_id, zone, [work.class_session_id], ()
+    )
+    priced = payroll.course_anchor_draft(basis, paid, walks[0], work) if walks else None
+    if priced is None:
+        return None
+    amount = payroll.owed(priced.amount, ())
+    if amount is None:
+        return None
+    return payroll.AdjustmentDraft(
+        kind=payroll.LATE_APPROVAL,
+        tutor_user_id=row.tutor_user_id,
+        amount=amount,
+        source_key=payroll.approval_key(row.id),
+        class_session_id=work.class_session_id,
+        priced_on=priced,
+        approval_id=row.id,
+        origin_period_id=span.id,
+    )
 
 
 def _late(
@@ -375,7 +455,11 @@ def _correction(
     origin: payroll.PaidSession,
     work: payroll.ApprovedSession,
 ) -> payroll.AdjustmentDraft | None:
-    priced = payroll.correction_draft(basis, origin.origin, work)
+    priced = (
+        payroll.course_correction_draft
+        if origin.origin.rate_model == payroll.PER_COURSE
+        else payroll.correction_draft
+    )(basis, origin.origin, work)
     if priced is None:
         return None
     amount = payroll.owed(priced.amount, origin.paid)
@@ -403,11 +487,16 @@ async def select_candidates(
             1
             for item in found
             if item.draft is not None
-            or item.skipped_course
+            or item.candidate.course
             or item.candidate.source == "correction"
         ),
-        to_post=[item.candidate for item in found if item.draft is not None],
-        skipped_course=sum(1 for item in found if item.skipped_course),
+        to_post=posting_order(
+            [
+                item.candidate
+                for item in found
+                if item.draft is not None or item.candidate.course
+            ]
+        ),
     )
 
 
@@ -456,6 +545,11 @@ async def post_one(
 ) -> Outcome:
     """One adjustment in the caller's Unit of Work, in the order of the module
     docstring."""
+    if candidate.course:
+        await payroll.lock_payroll_periods(session)
+        await payroll.lock_unfinalized_periods_of_tutor(
+            session, candidate.tutor_user_id
+        )
     target = await lock_target(session, candidate.tutor_user_id, today=today)
     found = [
         item
@@ -465,8 +559,6 @@ async def post_one(
     if not found:
         return "nothing"
     [item] = found
-    if item.skipped_course:
-        return "skipped_course"
     if item.draft is None:
         return "nothing"
     posted = await payroll.post_adjustment(session, item.draft, target.id)
@@ -482,7 +574,6 @@ class PostAdjustmentsRunResult:
 
     candidates: int = 0
     posted: int = 0
-    skipped_course: int = 0
     failed: int = 0
 
 
@@ -492,7 +583,7 @@ async def run_post_adjustments(settings: Settings) -> PostAdjustmentsRunResult:
     engine = create_worker_engine(settings)
     outcomes: Counter[str] = Counter()
     failed = 0
-    selection = Selection(candidates=0, to_post=[], skipped_course=0)
+    selection = Selection(candidates=0, to_post=[])
     try:
         sessionmaker = create_sessionmaker(engine)
         async with UnitOfWork(sessionmaker) as uow:
@@ -527,7 +618,6 @@ async def run_post_adjustments(settings: Settings) -> PostAdjustmentsRunResult:
     result = PostAdjustmentsRunResult(
         candidates=selection.candidates,
         posted=outcomes["posted"],
-        skipped_course=selection.skipped_course,
         failed=failed,
     )
     logger.info(
