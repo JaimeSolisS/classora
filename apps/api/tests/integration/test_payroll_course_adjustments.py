@@ -47,6 +47,7 @@ from tests.integration.payroll_calculation_support import (
     closed_out,
     lines,
 )
+from tests.integration.payroll_manual_support import CREATED, manual
 from tests.integration.payroll_period_support import set_floor
 from tests.integration.payroll_workflow_support import (
     OK,
@@ -69,13 +70,14 @@ from tests.integration.test_closeout_review import correct_closeout
 from tests.integration.test_payroll_calculation_concurrency import in_turns
 from tests.integration.test_payroll_per_course import (
     Cohort,
+    day,
     grow,
     make_cohort,
     period_of,
     rows_of,
     teach,
 )
-from tests.integration.test_payroll_workflow_course import later, team
+from tests.integration.test_payroll_workflow_course import later, team, unresolved
 from tests.integration.test_session_cancellation import cancel
 
 WAIT_LIMIT = 15.0
@@ -510,13 +512,39 @@ def test_a7_work_before_the_first_period_is_walked_and_never_anchored(ctx):
 # --- A8: two late sessions in one run or in two -----
 
 
+def selection_order(monkeypatch: Any, session_ids: list[str]) -> None:
+    """Make the job's selection read its candidates in this order (the query has
+    none), so a test sees each order the heap can return (QA round 1 D1)."""
+    real = payroll_adjustments._found
+
+    async def found(*args: Any, **kwargs: Any) -> Any:
+        items = await real(*args, **kwargs)
+        rank = {session_id: index for index, session_id in enumerate(session_ids)}
+        return sorted(
+            items,
+            key=lambda item: rank.get(str(item.candidate.class_session_id), len(rank)),
+        )
+
+    monkeypatch.setattr(payroll_adjustments, "_found", found)
+
+
+ORDERS_READ = ("earlier_first", "later_first")
+
+
+@pytest.mark.parametrize("read", ORDERS_READ)
 @pytest.mark.parametrize("runs", [1, 2])
-def test_a8_two_late_sessions_give_the_same_totals_in_one_run_or_two(ctx, runs):
+def test_a8_two_late_sessions_give_the_same_anchors_in_one_run_or_two(
+    ctx, monkeypatch, runs, read
+):
+    """Whatever order the selection reads them in, the job anchors a cohort oldest
+    first: session 1 at 1 of 4, session 2 at 2 of 4 (QA round 1 D1, O2)."""
     who = team(ctx)
     on_course_payroll(ctx)
     cohort = make_cohort(ctx, 4)
     one = period_of(ctx, ctx.tutor, 0, 4)  # sessions 1 and 2
     rest = period_of(ctx, ctx.tutor, 4, 70)
+    ids = [cohort.id_of(0), cohort.id_of(1)]
+    selection_order(monkeypatch, ids if read == "earlier_first" else ids[::-1])
     lock_at(ctx.client, ctx.url, who, later(ctx), one)
     teach(ctx, cohort, 0)
     if runs == 2:
@@ -525,8 +553,10 @@ def test_a8_two_late_sessions_give_the_same_totals_in_one_run_or_two(ctx, runs):
     result = run_job(ctx.url)
 
     assert result.posted == (2 if runs == 1 else 1)
-    assert sorted(k_n(row) for row in adjustments(ctx)) == [(1, 4), (2, 4)]
-    assert [row.amount for row in adjustments(ctx)] == [Decimal("250.00")] * 2
+    assert [(k_n(anchor_of(ctx, i)), anchor_of(ctx, i).amount) for i in ids] == [
+        ((1, 4), Decimal("250.00")),
+        ((2, 4), Decimal("250.00")),
+    ]
     assert run_job(ctx.url) == PostAdjustmentsRunResult()
     teach(ctx, cohort, 2, 3)
     lock_at(ctx.client, ctx.url, who, later(ctx), rest)
@@ -536,6 +566,121 @@ def test_a8_two_late_sessions_give_the_same_totals_in_one_run_or_two(ctx, runs):
     ]
     assert sum(cohort_amounts(ctx, cohort), Decimal("0.00")) == RATE
     assert len(adjustments(ctx)) == 2
+
+
+# --- QA round 1: two late sessions and a shrink (D1); a settled session (D2) -----
+
+
+@pytest.mark.parametrize("read", ORDERS_READ)
+def test_qa_d1_two_late_sessions_then_n_shrinks_still_reach_the_rate(
+    ctx, monkeypatch, read
+):
+    """QA's ``q1``: a cohort of 4 (days 0, 2, 7, 9); period one (days 0-3)
+    finalized empty; sessions 1 and 2 approved late, one run; session 4 (not
+    taught) cancelled, so N = 3; session 3 taught. 250.00 + 250.00 + 500.00 in
+    either read order, never 750.00."""
+    who = team(ctx)
+    on_course_payroll(ctx)
+    cohort = make_cohort(ctx, 4)
+    one = period_of(ctx, ctx.tutor, 0, 4)
+    rest = period_of(ctx, ctx.tutor, 4, 70)
+    ids = [cohort.id_of(0), cohort.id_of(1)]
+    selection_order(monkeypatch, ids if read == "earlier_first" else ids[::-1])
+    lock_at(ctx.client, ctx.url, who, later(ctx), one)
+    teach(ctx, cohort, *((1, 0) if read == "later_first" else (0, 1)))
+    assert run_job(ctx.url) == PostAdjustmentsRunResult(candidates=2, posted=2)
+    shrink(ctx, cohort, 3)
+    teach(ctx, cohort, 2)
+    lock_at(ctx.client, ctx.url, who, later(ctx), rest)
+    run_job(ctx.url)
+
+    assert [k_n(anchor_of(ctx, i)) for i in ids] == [(1, 4), (2, 4)]
+    session_lines = [row for row in lines(ctx.url, rest) if row.kind != "adjustment"]
+    assert [(k_n(row), row.amount) for row in session_lines] == [
+        ((3, 3), Decimal("500.00"))
+    ]
+    assert sum(cohort_amounts(ctx, cohort), Decimal("0.00")) == RATE
+
+
+def test_qa_d2_a_session_paid_by_hand_isnt_paid_again_by_an_anchor(ctx):
+    """QA's ``q3`` (D7): 900 over 3 (days 0, 7, 14). Session 1 has no paying
+    terms, is approved late and paid 300.00 by hand (settled). Session 2 is
+    approved late and anchored: it doesn't count session 1, so 1 of 3, 300.00, and
+    session 3 is 2 of 3, 300.00: 900.00 with the manual, not 1200.00."""
+    who = team(ctx)
+    set_floor(ctx.url, ctx.tl.monday.isoformat())
+    add_terms(ctx.url, ctx.tutor.id)
+    add_rate(
+        ctx.url, ctx.tutor.id, "2000-01-01", "900", model="per_course", kind="course"
+    )
+    cohort = make_cohort(ctx, 3, weekdays=[1])  # days 0, 7, 14
+    add_terms(ctx.url, ctx.tutor.id, day(ctx, 0), frequency=None)
+    add_terms(ctx.url, ctx.tutor.id, day(ctx, 1))
+    one = period_of(ctx, ctx.tutor, 0, 10)
+    rest = period_of(ctx, ctx.tutor, 10, 70)
+    lock_at(ctx.client, ctx.url, who, later(ctx), one)
+    teach(ctx, cohort, 0)
+    assert [(i["class_session_id"], i["reason"]) for i in unresolved(ctx, who)] == [
+        (cohort.id_of(0), "no_pay_terms")
+    ]
+    with frozen_clock(later(ctx)):
+        paid = manual(
+            ctx.client,
+            who.owner,
+            ctx.tutor.id,
+            "300.00",
+            class_session_id=cohort.id_of(0),
+        )
+    assert code(paid) == CREATED, paid.text
+    teach(ctx, cohort, 1)
+    assert run_job(ctx.url) == PostAdjustmentsRunResult(candidates=1, posted=1)
+    anchor = anchor_of(ctx, cohort.id_of(1))
+    assert (anchor.kind, k_n(anchor), anchor.amount) == (
+        "late_approval",
+        (1, 3),
+        Decimal("300.00"),
+    )
+
+    teach(ctx, cohort, 2)
+    lock_at(ctx.client, ctx.url, who, later(ctx), rest)
+
+    [last] = [row for row in lines(ctx.url, rest) if row.kind != "adjustment"]
+    assert (k_n(last), last.amount) == ((2, 3), Decimal("300.00"))
+    assert sum(cohort_amounts(ctx, cohort), Decimal("0.00")) == Decimal("900.00")
+
+
+def test_qa_d2_a_session_paid_by_hand_before_two_late_ones(ctx):
+    """D7 with two late sessions after the settled one, oldest first: 1 of 3 and
+    2 of 3; the cohort's ``k`` stays one short, so lines and anchors pay 600.00 and
+    the manual the third share."""
+    who = team(ctx)
+    set_floor(ctx.url, ctx.tl.monday.isoformat())
+    add_terms(ctx.url, ctx.tutor.id)
+    add_rate(
+        ctx.url, ctx.tutor.id, "2000-01-01", "900", model="per_course", kind="course"
+    )
+    cohort = make_cohort(ctx, 3, weekdays=[1])  # days 0, 7, 14
+    add_terms(ctx.url, ctx.tutor.id, day(ctx, 0), frequency=None)
+    add_terms(ctx.url, ctx.tutor.id, day(ctx, 1))
+    one = period_of(ctx, ctx.tutor, 0, 21)
+    period_of(ctx, ctx.tutor, 21, 70)
+    lock_at(ctx.client, ctx.url, who, later(ctx), one)
+    teach(ctx, cohort, 0)
+    with frozen_clock(later(ctx)):
+        paid = manual(
+            ctx.client,
+            who.owner,
+            ctx.tutor.id,
+            "300.00",
+            class_session_id=cohort.id_of(0),
+        )
+    assert code(paid) == CREATED, paid.text
+    teach(ctx, cohort, 2, 1)
+
+    assert run_job(ctx.url) == PostAdjustmentsRunResult(candidates=2, posted=2)
+
+    assert [k_n(anchor_of(ctx, cohort.id_of(i))) for i in (1, 2)] == [(1, 3), (2, 3)]
+    assert sum(cohort_amounts(ctx, cohort), Decimal("0.00")) == Decimal("900.00")
 
 
 # --- A9: concurrency -----

@@ -37,6 +37,7 @@ from sqlalchemy import (
     exists,
     func,
     insert,
+    literal,
     select,
     union_all,
 )
@@ -272,6 +273,7 @@ async def finalized_course_lines(
             PayrollLine.cumulative_sessions,
             PayrollLine.cohort_sessions,
             PayrollLine.rate,
+            literal(False).label("anchor"),
         )
         .join(PayrollPeriod, PayrollPeriod.id == PayrollLine.payroll_period_id)
         .where(
@@ -286,6 +288,7 @@ async def finalized_course_lines(
         PayrollAdjustment.cumulative_sessions,
         PayrollAdjustment.cohort_sessions,
         PayrollAdjustment.rate,
+        literal(True).label("anchor"),
     ).where(
         PayrollAdjustment.kind == LATE_APPROVAL,
         PayrollAdjustment.tutor_user_id == tutor_user_id,
@@ -299,6 +302,7 @@ async def finalized_course_lines(
             cumulative_sessions=row.cumulative_sessions,
             cohort_sessions=row.cohort_sessions,
             rate=row.rate,
+            anchor=row.anchor,
         )
         for row in rows
     ]

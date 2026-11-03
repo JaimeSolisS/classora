@@ -45,6 +45,7 @@ from app.modules.payroll.errors import (
     CompensationRateDeleteUnderFinalizedLineError,
 )
 from app.modules.payroll.schemas import RateInEffect, SessionPayRuleVersion
+from app.workflows.payroll_adjustments import Candidate, posting_order
 from tests.unit.test_payroll_calculation_pure import (
     LONG_AGO,
     basis,
@@ -90,7 +91,9 @@ def lines_of(pay: PayBasis, n: int, *steps: CohortStep) -> list[LineDraft]:
     )
 
 
-def as_fixed(draft: LineDraft, rate: str = "1000") -> FinalizedCourseLine:
+def as_fixed(
+    draft: LineDraft, rate: str = "1000", *, anchor: bool = True
+) -> FinalizedCourseLine:
     assert draft.class_session_id is not None
     assert draft.cumulative_sessions is not None and draft.cohort_sessions is not None
     return FinalizedCourseLine(
@@ -98,6 +101,7 @@ def as_fixed(draft: LineDraft, rate: str = "1000") -> FinalizedCourseLine:
         draft.cumulative_sessions,
         draft.cohort_sessions,
         Rate(rate),
+        anchor=anchor,
     )
 
 
@@ -188,8 +192,8 @@ def test_a_floored_anchor_is_zero_and_the_job_writes_nothing():
 
 def test_earlier_late_sessions_count_and_the_anchor_catches_their_shares_up():
     """All the remaining sessions are late. Session 2 alone floors at 0.00 (2 of 4
-    is 500.00, already paid), so it writes nothing; session 3 counts it, pays 3 of
-    4 minus the peak, and session 2 then takes the last ``k``."""
+    is 500.00, already paid), so it writes nothing; session 3 counts it and pays 3
+    of 4 minus the peak; session 2 is then consumed, and session 4 takes 4 of 4."""
     pay = basis(rates=[per_course()])
     s2, s3 = course(on(2)), course(on(6))
     paid_first = fixed(1, 2)  # 500.00, then N grew to 4
@@ -211,8 +215,17 @@ def test_earlier_late_sessions_count_and_the_anchor_catches_their_shares_up():
         CohortWalk(FIRST, 4, [paid_first, as_fixed(third)], late=[s2]),
         s2,
     )
-    assert second is not None
-    assert (second.cumulative_sessions, second.amount) == (4, Money("250.00"))
+    # Session 3's anchor jumped from 1 to 3: it counted session 2, whose share
+    # (0.00) it covered, so session 2 is never counted or anchored again (QA D1).
+    assert second is None
+    last = course_anchor_draft(
+        pay,
+        paid(),
+        CohortWalk(FIRST, 4, [paid_first, as_fixed(third)], late=[s2, course(on(9))]),
+        course(on(9)),
+    )
+    assert last is not None
+    assert (last.cumulative_sessions, last.amount) == (4, Money("250.00"))
 
 
 def test_k_is_stored_capped_at_n():
@@ -270,11 +283,66 @@ def test_the_rate_snapshot_is_the_first_dates_version():
 # --- Edge case: a fixed step beyond N -----
 
 
-def test_after_a_fixed_step_k_beyond_n_is_floored_and_nothing_is_paid_back():
-    # Anchored at 4 of 4 (1000.00); N is 3 now. The next step pays 0.00.
+def test_after_a_fixed_step_k_beyond_n_counts_as_n_and_never_passes_the_rate():
+    # Anchored at 4 of 4 (1000.00); N is 3 now. The next step pays 0.00 at 3 of 3.
     following = course(on(20))
     [line] = lines_of(basis(rates=[per_course()]), 3, fixed(4, 4), following)
-    assert (line.cumulative_sessions, line.amount) == (5, Money("0.00"))
+    assert (line.cumulative_sessions, line.amount) == (3, Money("0.00"))
+
+
+def test_qa_d1_after_a_shrink_k_beyond_n_catches_up_to_the_rate():
+    """QA round 1 D1's pure scene, later session first: anchors at 2 of 4 and 3
+    of 4 (750.00), then N = 3 and the day-7 session walks at 4: it counts as 3 of
+    3 and pays 250.00, not 0.00."""
+    following = course(on(7))
+    [line] = lines_of(
+        basis(rates=[per_course()]), 3, fixed(2, 4), fixed(3, 4), following
+    )
+    assert (line.cumulative_sessions, line.amount) == (3, Money("250.00"))
+
+
+def test_qa_d1_the_two_late_sessions_oldest_first_give_250_each():
+    pay = basis(rates=[per_course()])
+    s0, s2 = course(on(0)), course(on(2))
+    first = course_anchor_draft(
+        pay, paid(), CohortWalk(FIRST, 4, [], late=[s0, s2]), s0
+    )
+    assert first is not None
+    second = course_anchor_draft(
+        pay, paid(), CohortWalk(FIRST, 4, [as_fixed(first)], late=[s2]), s2
+    )
+    assert second is not None
+    assert [(d.cumulative_sessions, d.amount) for d in (first, second)] == [
+        (1, Money("250.00")),
+        (2, Money("250.00")),
+    ]
+
+
+def test_qa_d2_a_late_session_settled_by_hand_doesnt_wait():
+    """QA round 1 D2: 900 over 3, session 1 settled by a ``manual``, session 2
+    late: session 1 doesn't wait, so session 2 is 1 of 3, 300.00, not 600.00,
+    and the cohort's ``k`` stays one short."""
+    pay = basis(rates=[per_course("900")])
+    s0, s7 = course(on(0)), course(on(7))
+    walk = CohortWalk(
+        FIRST, 3, [], late=[s0, s7], settled=frozenset({s0.class_session_id})
+    )
+    draft = course_anchor_draft(pay, paid("900"), walk, s7)
+    assert draft is not None
+    assert (draft.cumulative_sessions, draft.amount) == (1, Money("300.00"))
+
+
+def test_a_late_session_with_no_paying_terms_doesnt_wait():
+    """An unresolved item, never anchored: like a settled one it doesn't wait, so
+    the next anchor doesn't catch it up."""
+    terms = [terms_row(), terms_row(on=on(0), frequency=None), terms_row(on=on(1))]
+    pay = basis(terms=terms, rates=[per_course()])
+    s0, s2 = course(on(0)), course(on(2))
+    draft = course_anchor_draft(
+        pay, paid(), CohortWalk(FIRST, 4, [], late=[s0, s2]), s2
+    )
+    assert draft is not None
+    assert (draft.cumulative_sessions, draft.amount) == (1, Money("250.00"))
 
 
 def test_with_no_fixed_step_k_beyond_n_stays_a_bug():
@@ -400,10 +468,11 @@ def test_the_delete_refusal_names_the_date():
     assert error.details == {"latest_finalized_on": on(3).isoformat()}
 
 
-# --- The oracle: random cohorts sum to their rate (A3) -----
+# --- The oracle: random cohorts sum to their rate (A3, QA round 1) -----
 
 PERIOD_DAYS = 4
 SESSION_DAYS = 2
+TUTOR = uuid.UUID(int=7)
 
 
 @dataclass
@@ -413,12 +482,15 @@ class Session:
     cancelled: bool = False
     approved: bool = False
     absent: bool = False
+    settled: bool = False
 
 
 @dataclass
 class Cohort:
     """One tutor's cohort, its periods (``PERIOD_DAYS`` each from day 0) and what
-    they fixed. Sessions before day 0 are before the first period."""
+    they fixed. Sessions before day 0 are before the first period. A settled
+    session is paid by hand (M7-08c): an adjustment names it, so it is never
+    anchored."""
 
     rate: Rate
     sessions: list[Session]
@@ -431,6 +503,7 @@ class Cohort:
         default_factory=dict
     )
     n_at_first_fixed: int | None = None
+    n_seen: set[int] = field(default_factory=set)
 
     def pay(self) -> tuple[PayBasis, RateInEffect]:
         version = per_course(str(self.rate))
@@ -442,6 +515,10 @@ class Cohort:
         assert found is not None
         return pay, found
 
+    @property
+    def n(self) -> int:
+        return sum(1 for s in self.sessions if not s.cancelled)
+
     def finalized(self, day: int) -> bool:
         return 0 <= day and day // PERIOD_DAYS <= self.finalized_through
 
@@ -451,6 +528,7 @@ class Cohort:
         )
 
     def walk(self) -> CohortWalk:
+        """As ``cohort_walks`` builds it."""
         steps: list[CohortStep] = []
         for session in sorted(self.sessions, key=lambda s: (s.day, s.id)):
             if session.id in self.lines:
@@ -459,17 +537,21 @@ class Cohort:
                 steps.append(self.anchors[session.id][0])
             elif session.approved and not self.finalized(session.day):
                 steps.append(self.work(session))
+        late = sorted(self.waiting(), key=lambda s: s.day)
         return CohortWalk(
             FIRST,
-            sum(1 for s in self.sessions if not s.cancelled),
+            self.n,
             in_walk_order(steps),
-            late=[self.work(s) for s in sorted(self.late(), key=lambda s: s.day)],
+            late=[self.work(s) for s in late],
+            settled=frozenset(s.id for s in late if s.settled),
         )
 
-    def fix(self, draft: LineDraft) -> tuple[FinalizedCourseLine, Money]:
+    def fix(
+        self, draft: LineDraft, *, anchor: bool
+    ) -> tuple[FinalizedCourseLine, Money]:
         if self.n_at_first_fixed is None:
             self.n_at_first_fixed = draft.cohort_sessions
-        return as_fixed(draft, str(self.rate)), draft.amount
+        return as_fixed(draft, str(self.rate), anchor=anchor), draft.amount
 
     def finalize_next(self) -> None:
         index = self.finalized_through + 1
@@ -482,10 +564,14 @@ class Cohort:
             ends_on=on(index * PERIOD_DAYS + PERIOD_DAYS - 1),
         ):
             assert draft.class_session_id is not None
-            self.lines[draft.class_session_id] = self.fix(draft)
+            assert not any(
+                s.settled for s in self.sessions if s.id == draft.class_session_id
+            )
+            self.lines[draft.class_session_id] = self.fix(draft, anchor=False)
         self.finalized_through = index
 
-    def late(self) -> list[Session]:
+    def waiting(self) -> list[Session]:
+        """Approved, dated in a finalized period, neither a line nor an anchor."""
         return [
             s
             for s in self.sessions
@@ -495,12 +581,26 @@ class Cohort:
             and s.id not in self.anchors
         ]
 
+    def job(self, rng: random.Random) -> None:
+        """One run: the candidates arrive in any order (the query has none), and
+        the real ``posting_order`` sorts them."""
+        candidates = [
+            Candidate("closeout", s.id, TUTOR, course=True, service_date=on(s.day))
+            for s in self.waiting()
+            if not s.settled
+        ]
+        rng.shuffle(candidates)
+        by_id = {s.id: s for s in self.sessions}
+        for candidate in posting_order(candidates):
+            self.post(by_id[candidate.class_session_id])
+
     def post(self, session: Session) -> bool:
         pay, version = self.pay()
         draft = course_anchor_draft(pay, version, self.walk(), self.work(session))
         if draft is None or draft.amount.is_zero():
             return False  # a floored 0.00 writes nothing and is read again
-        self.anchors[session.id] = self.fix(draft)
+        assert not draft.amount.is_negative()
+        self.anchors[session.id] = self.fix(draft, anchor=True)
         return True
 
     def total(self) -> Money:
@@ -509,62 +609,83 @@ class Cohort:
         )
 
 
-RATES = ("1000", "999.99", "1234.5678", "100.0050", "0.0100", "7")
+RATES = ("1000", "999.99", "1234.5678", "100.0050", "0.0100", "7", "333.33")
 
 
-def random_cohort(rng: random.Random, before_first: int) -> Cohort:
-    count = rng.randint(1, 7)
+def random_cohort(rng: random.Random, before_first: int, rates=RATES) -> Cohort:
+    count = rng.randint(1, 8)
     sessions = [
         Session(uuid.uuid4(), day=(index - before_first) * SESSION_DAYS)
         for index in range(count + before_first)
     ]
-    return Cohort(Rate(rng.choice(RATES)), sessions)
+    return Cohort(Rate(rng.choice(rates)), sessions)
 
 
-def run(rng: random.Random, cohort: Cohort) -> None:
-    """Random moves, then everything approved, anchored and finalized."""
+def run(rng: random.Random, cohort: Cohort, *, settle: bool = False) -> None:
+    """Random moves, then everything approved, anchored and finalized. With
+    ``settle``, late sessions may be paid by hand; ``N`` then stops moving."""
     for session in cohort.sessions:
         if session.day < 0:
             session.approved = True  # taught and approved before payroll began
-    for _ in range(rng.randint(0, 14)):
+    settled_any = False
+    for _ in range(rng.randint(0, 18)):
         move = rng.random()
+        # With sessions paid by hand, N stops once one is, or once the cohort is
+        # paid its rate (a session added then is floored, #442 N1, and a hand
+        # payment for it is extra by definition).
+        frozen = settle and (settled_any or cohort.total() == cohort.rate.to_money())
+        cohort.n_seen.add(cohort.n)
         unapproved = [s for s in cohort.sessions if not (s.approved or s.cancelled)]
-        if move < 0.35 and unapproved:
+        if move < 0.3 and unapproved:
             chosen = rng.choice(unapproved)
             chosen.approved, chosen.absent = True, rng.random() < 0.2
-        elif move < 0.55:
+        elif move < 0.5:
             cohort.finalize_next()
-        elif move < 0.7 and cohort.late():
-            cohort.post(rng.choice(cohort.late()))
-        elif move < 0.85:  # N up
+        elif move < 0.65:
+            cohort.job(rng)
+        elif move < 0.72 and settle:
+            # Late work with no basis is an unresolved item, never a candidate,
+            # and Finance pays it by hand (M7-08c): it is settled from the start.
+            # Never the cohort's last session: a shrink needs a later line to
+            # catch it up (#442 H3), and a session paid by hand has none.
+            last = max(s.day for s in cohort.sessions if not s.cancelled)
+            late = [s for s in unapproved if cohort.finalized(s.day) and s.day < last]
+            if late:
+                chosen = rng.choice(late)
+                chosen.approved = chosen.settled = settled_any = True
+        elif move < 0.86 and not frozen:  # N up
             last = max(s.day for s in cohort.sessions)
             cohort.sessions.append(Session(uuid.uuid4(), day=last + SESSION_DAYS))
-        else:  # N down: a session not yet taught, outside the finalized periods
+        elif not frozen:  # N down: a session not taught, with a later one
             last = max(s.day for s in cohort.sessions if not s.cancelled)
             future = [
                 s for s in unapproved if not cohort.finalized(s.day) and s.day < last
             ]
             if future:
                 rng.choice(future).cancelled = True
+        assert cohort.total() <= cohort.rate.to_money()
     for session in cohort.sessions:
         if not session.cancelled:
             session.approved = True
     last_period = max(s.day for s in cohort.sessions) // PERIOD_DAYS
     while cohort.finalized_through < last_period:
-        if cohort.late() and rng.random() < 0.5:
-            cohort.post(rng.choice(cohort.late()))
-        else:
-            cohort.finalize_next()
+        if rng.random() < 0.5:
+            cohort.job(rng)
+        cohort.finalize_next()
     for _ in range(len(cohort.sessions)):
-        if not any([cohort.post(s) for s in cohort.late()]):
+        before = len(cohort.anchors)
+        cohort.job(rng)
+        if len(cohort.anchors) == before:
             break
+    cohort.n_seen.add(cohort.n)
 
 
-def test_random_cohorts_sum_to_their_rate_exactly():
+def test_random_cohorts_sum_to_their_rate_exactly_in_any_job_order():
+    """30,000 cohorts, ``N`` up and down, the job's candidates shuffled."""
     rng = random.Random(464)  # noqa: S311 - a fixed seed, not a secret
     mismatches = []
     anchored = 0
-    for case in range(4000):
+    for case in range(30_000):
         cohort = random_cohort(rng, before_first=0)
         run(rng, cohort)
         anchored += len(cohort.anchors)
@@ -572,7 +693,39 @@ def test_random_cohorts_sum_to_their_rate_exactly():
         if cohort.total() != (cohort.rate.to_money() if taught else Money(0)):
             mismatches.append((case, str(cohort.rate), str(cohort.total())))
     assert mismatches == []
-    assert anchored > 1000
+    assert anchored > 10_000
+
+
+def shares(rate: Rate, n: int) -> list[Money]:
+    return [rate.to_money(k, n) - rate.to_money(k - 1, n) for k in range(1, n + 1)]
+
+
+def test_random_cohorts_with_sessions_paid_by_hand_never_pay_them_again():
+    """QA round 1 D2. A settled session is late work with no basis, paid by hand
+    (M7-08c), never a candidate. Each one consumes exactly one share of the
+    cohort (whichever position, so within a centavo per session): lines and
+    anchors leave out ``s`` shares, never fewer (a second payment) and never more
+    (a lost one). ``N`` moves only before the first settlement, and only while the
+    cohort is below its rate, so a share has one size."""
+    rng = random.Random(4642)  # noqa: S311 - a fixed seed, not a secret
+    mismatches = []
+    settled = 0
+    for case in range(8_000):
+        cohort = random_cohort(
+            rng, before_first=0, rates=("1000", "999.99", "900", "7")
+        )
+        run(rng, cohort, settle=True)
+        count = sum(1 for s in cohort.sessions if s.settled)
+        settled += count
+        n = cohort.n
+        size = shares(cohort.rate, n)
+        left = cohort.rate.to_money() - cohort.total()
+        low = Money.total(sorted(size)[:count])
+        high = Money.total(sorted(size)[-count:]) if count else Money(0)
+        if not low <= left <= high:
+            mismatches.append((case, str(cohort.rate), n, count, str(left)))
+    assert mismatches == []
+    assert settled > 1000
 
 
 def test_random_cohorts_with_work_before_the_first_period_leave_the_item_exact():
@@ -580,7 +733,7 @@ def test_random_cohorts_with_work_before_the_first_period_leave_the_item_exact()
     fixed step, which a one-time item pays (never an anchor, A7)."""
     rng = random.Random(109)  # noqa: S311 - a fixed seed, not a secret
     mismatches = []
-    for case in range(2000):
+    for case in range(4_000):
         cohort = random_cohort(rng, before_first=rng.randint(1, 2))
         run(rng, cohort)
         before = [s for s in cohort.sessions if s.day < 0]

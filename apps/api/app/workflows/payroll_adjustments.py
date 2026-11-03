@@ -54,7 +54,8 @@ advisory lock and the tutor's not-finalized periods ``FOR UPDATE``, oldest first
 as a person's adjustment does (M7-08c): its ``K`` reads the finalized lines, so a
 ``finalize`` of an earlier ``prepared`` period either commits first and is read,
 or waits and then sees the anchor in its drift check. Its amount is worked out
-only under those locks; the selection counts it without reading the walk.
+only under those locks; the selection counts it without reading the walk. The
+run posts anchors oldest first (:func:`posting_order`, QA round 1 D1).
 
 Log lines carry ids and counts, never an amount, a rate or a reason (#111 E9).
 
@@ -120,6 +121,26 @@ class Candidate:
     course: bool = field(default=False, compare=False)
     """A late session of a cohort paid ``per_course``: an anchor, posted under
     the tutor's period locks (module docstring)."""
+    service_date: date | None = field(default=None, compare=False)
+    """An anchor's service date, for :func:`posting_order`."""
+
+
+def posting_order(candidates: Sequence[Candidate]) -> list[Candidate]:
+    """The run's order (M7-08d QA D1): the other candidates as selected, then the
+    anchors oldest first, by service date and then session, so an anchor's ``k``
+    never depends on the order a query returned. A later session of a cohort
+    counts an earlier one only when that one floored at ``0.00`` in this run."""
+    anchors = [candidate for candidate in candidates if candidate.course]
+    return [
+        *(candidate for candidate in candidates if not candidate.course),
+        *sorted(
+            anchors,
+            key=lambda candidate: (
+                candidate.service_date or date.min,
+                candidate.class_session_id,
+            ),
+        ),
+    ]
 
 
 @dataclass(frozen=True)
@@ -313,6 +334,7 @@ async def _found(
             row.class_session_id,
             row.tutor_user_id,
             course=paid_per_course is not None,
+            service_date=local_date(row.session_starts_at, zone),
         )
         work = _approved(row, zone, makeups)
         if paid_per_course is not None:
@@ -468,11 +490,13 @@ async def select_candidates(
             or item.candidate.course
             or item.candidate.source == "correction"
         ),
-        to_post=[
-            item.candidate
-            for item in found
-            if item.draft is not None or item.candidate.course
-        ],
+        to_post=posting_order(
+            [
+                item.candidate
+                for item in found
+                if item.draft is not None or item.candidate.course
+            ]
+        ),
     )
 
 

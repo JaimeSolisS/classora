@@ -167,6 +167,9 @@ class FinalizedCourseLine:
     cumulative_sessions: int
     cohort_sessions: int
     rate: Rate
+    anchor: bool = False
+    """A posted anchor, not a line: its jump in ``k`` over the fixed step before
+    it is the number of waiting sessions it counted (:func:`course_anchor_draft`)."""
 
 
 type CohortStep = ApprovedSession | FinalizedCourseLine
@@ -186,6 +189,9 @@ class CohortWalk:
     """Approved sessions dated in a finalized period with neither a line nor an
     anchor, by date: never walked by :func:`walk_cohort`, only read by
     :func:`course_anchor_draft` (M7-08d E1)."""
+    settled: frozenset[uuid.UUID] = frozenset()
+    """The sessions among ``late`` an adjustment names: paid by hand (M7-08c),
+    so they never wait for an anchor (M7-08d QA D2)."""
 
 
 @dataclass(frozen=True)
@@ -683,10 +689,11 @@ def walk_cohort(
     in any period, and a session with no terms on its date too: it earns no line,
     and the next line doesn't catch it up.
 
-    **A fixed step beyond ``N``** (M7-08d edge case): an anchor stores the ``N``
-    it was posted at, and a step after a fixed one may find ``k > N`` now. It is
-    floored at ``0.00``, like a line under the peak, and nothing is paid back (a
-    ``manual`` does). With no fixed step before it, ``k > N`` stays a bug."""
+    **A fixed step beyond ``N``** (M7-08d edge case, QA round 1 D1): a fixed
+    step stores the ``N`` it was priced at, and a step after it can find ``k >
+    N`` once a session not yet taught is cancelled. Its ``k`` counts as ``N``: it
+    catches the cohort up to the rate, never past it, and stores ``N``. With no
+    fixed step before it, ``k > N`` stays a bug."""
     n = cohort.planned_sessions
     k = 0
     cum = ZERO
@@ -706,10 +713,11 @@ def walk_cohort(
         if k > n and not fixed_seen:
             raise CourseWalkError(str(step.class_session_id))
         try:
-            reached = cum if k > n else max(cum, paid.rate.to_money(k, n))
+            at = min(k, n)
+            reached = max(cum, paid.rate.to_money(at, n))
             in_period = starts_on <= step.service_date <= ends_on
             if in_period and _paying_terms(basis, step.service_date) is not None:
-                drafts.append(_course_draft(basis, paid, step, reached - cum, k, n))
+                drafts.append(_course_draft(basis, paid, step, reached - cum, at, n))
         except MoneyRangeError:
             raise PayrollAmountOutOfRangeError(step.class_session_id) from None
         cum = reached
@@ -936,14 +944,23 @@ def course_anchor_draft(
     open steps, later in time, aren't walked. ``None``: no terms on its date, so
     no line would have been paid either.
 
-    **The other late sessions dated before it** (``cohort.late``) count in ``k``
-    too, but raise nothing. An anchor floored at ``0.00`` is never written (P9),
-    so without them a cohort whose remaining sessions are all late would compute
-    ``K + 1`` again and again and never reach its rate. The anchor pays their
-    shares with its own, and one of them anchored later pays only what the peak
-    hasn't reached. ``k`` is stored capped at ``N``. So a cohort always pays the
-    highest ``rate x k / N`` among its fixed steps: never more than the rate, and
-    the rate itself once its last session is fixed (the oracle in
+    **The other late sessions dated before it** (``cohort.late``), and after the
+    cohort's latest fixed step, count in ``k`` too. The job anchors a cohort oldest
+    first (M7-08d QA D1, :func:`~app.workflows.payroll_adjustments.posting_order`),
+    so one still waiting floored at ``0.00`` in this run: it raises nothing, and
+    this anchor pays its share with its own. One dated before a fixed step isn't
+    counted again: an anchor after it already counted it, and a line after it never
+    walked it, so it takes its own ``k`` when it is anchored. An anchor floored at
+    ``0.00`` is never written (P9), so without that a cohort whose remaining
+    sessions are all late would compute ``K + 1`` again and again and never reach
+    its rate. A late session settled by hand (``cohort.settled``, M7-08c) or with no
+    paying terms on its date never waits: it will never be anchored, and like the
+    walk, which leaves every finalized-period session with neither a line nor an
+    anchor out of ``k``, the cohort's ``k`` stays one short, so its share is
+    consumed once and nothing pays it again (QA D2). ``k`` is stored capped at
+    ``N``. So a cohort pays the highest ``rate x k / N`` among its fixed steps:
+    never more than its rate, the rate itself once its last session is fixed, less
+    one share for each session paid by hand (the oracle in
     ``tests/unit/test_payroll_course_anchors.py``)."""
     if _paying_terms(basis, work.service_date) is None:
         return None
@@ -960,10 +977,24 @@ def course_anchor_draft(
             elif step.service_date < work.service_date:
                 k += 1  # work before the first period, as the walk counts it
                 cum = max(cum, paid.rate.to_money(min(k, n), n))
+        eligible = sorted(
+            (
+                item
+                for item in (*cohort.late, work)
+                if item.class_session_id not in cohort.settled
+                and _paying_terms(basis, item.service_date) is not None
+            ),
+            key=lambda item: (item.service_date, item.class_session_id),
+        )
+        consumed = {
+            item.class_session_id for item in eligible[: _counted_waiting(cohort)]
+        }
+        if work.class_session_id in consumed:
+            return None  # an earlier anchor counted it and paid its share
         k += 1 + sum(
             1
-            for item in cohort.late
-            if item.class_session_id != work.class_session_id
+            for item in eligible
+            if item.class_session_id not in consumed
             and (item.service_date, item.class_session_id)
             < (work.service_date, work.class_session_id)
         )
@@ -972,6 +1003,22 @@ def course_anchor_draft(
         return _course_draft(basis, paid, work, share, stored, n)
     except MoneyRangeError:
         raise PayrollAmountOutOfRangeError(work.class_session_id) from None
+
+
+def _counted_waiting(cohort: CohortWalk) -> int:
+    """How many waiting sessions the cohort's anchors have counted: each anchor's
+    jump in ``k`` over the step before it, in walk order (M7-08d QA D1). The
+    work before the first period, walked first, counts as steps."""
+    previous = 0
+    counted = 0
+    for step in cohort.steps:
+        if isinstance(step, FinalizedCourseLine):
+            if step.anchor:
+                counted += max(0, step.cumulative_sessions - previous - 1)
+            previous = step.cumulative_sessions
+        else:
+            previous += 1
+    return counted
 
 
 def _whole_share(basis: PayBasis, origin: OriginSnapshot) -> bool:

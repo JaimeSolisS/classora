@@ -170,7 +170,8 @@ async def cohort_walks(
     same statement, and the fixed steps walk by their stored ``k``
     (:func:`~app.modules.payroll.calculation.in_walk_order`). An approval dated in
     a finalized period with neither isn't walked: the job anchors it, and the
-    walk carries it as ``late`` for the anchors of its cohort."""
+    walk carries it as ``late`` for the anchors of its cohort, with the ones an
+    adjustment settled (one more statement, none with no such session)."""
     cohort_ids = await scheduling.cohort_ids_of_sessions(session, course_session_ids)
     sessions = await scheduling.cohort_sessions(session, cohort_ids)
     session_ids = [row.class_session_id for row in sessions]
@@ -200,16 +201,23 @@ async def cohort_walks(
         work = approved.get(session_id)
         return None if work is None or in_finalized(work) else work
 
-    walks = []
+    grouped = []
     for _, group in groupby(sessions, key=attrgetter("cohort_id")):
         rows = list(group)
-        steps = (step(row.class_session_id) for row in rows)
-        late = (
+        late = [
             approved[row.class_session_id]
             for row in rows
             if row.class_session_id not in finalized
             and row.class_session_id in approved
-        )
+            and in_finalized(approved[row.class_session_id])
+        ]
+        grouped.append((rows, late))
+    settled = await payroll.settled_session_ids(
+        session, {work.class_session_id for _, late in grouped for work in late}
+    )
+    walks = []
+    for rows, late in grouped:
+        steps = (step(row.class_session_id) for row in rows)
         walks.append(
             payroll.CohortWalk(
                 first_session_date=local_date(rows[0].starts_at, zone),
@@ -217,7 +225,12 @@ async def cohort_walks(
                 steps=payroll.in_walk_order(
                     [item for item in steps if item is not None]
                 ),
-                late=[work for work in late if in_finalized(work)],
+                late=late,
+                settled=frozenset(
+                    work.class_session_id
+                    for work in late
+                    if work.class_session_id in settled
+                ),
             )
         )
     return walks

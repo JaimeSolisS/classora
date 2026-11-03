@@ -7462,7 +7462,9 @@ M7-08c, the pages M7-08b. Per-course work after lock is M7-08d's (#464), below.
   `cohort_sessions` (`N` now) and the first date's rate, paying `rate x k / N`
   minus the highest share already fixed, or its event's amount. Later lines walk
   after it, so the cohort's lines and adjustments still sum to its rate when `N`
-  grows or shrinks. A floored `0.00` writes nothing and is tried again. A later
+  grows or shrinks. A floored `0.00` writes nothing and is tried again. The job
+  posts a cohort's anchors oldest first, so the figures don't depend on the order
+  it reads them in, and a session paid by hand is never paid again by an anchor. A later
   revision of a per-course session (a line or an anchor) keeps its `k` and `N` and
   corrects only a change of kind: a minutes-only revision posts nothing.
 - **Where:** the tutor's earliest `open` period, never a `prepared` one; a later
