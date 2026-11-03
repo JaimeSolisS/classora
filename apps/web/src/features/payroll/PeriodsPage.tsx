@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router';
+import { useLocation, useSearchParams } from 'react-router';
 import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { canAccess } from '@/features/auth/access';
 import { useSession } from '@/features/auth/useSession';
@@ -41,6 +41,15 @@ export function PeriodsPage() {
     canView || canAccess(user, { permission: 'payroll.prepare' });
   const canOpenSettings = canAccess(user, PAYROLL_ACCESS);
   const [searchParams, setSearchParams] = useSearchParams();
+  // A send-back that took the period out of a reviewer's sight (QA #459 D1).
+  const locationState: unknown = useLocation().state;
+  const notice =
+    typeof locationState === 'object' &&
+    locationState !== null &&
+    'periodsNotice' in locationState &&
+    typeof locationState.periodsNotice === 'string'
+      ? locationState.periodsNotice
+      : '';
   const urlSearch = searchParams.toString();
   const filters = useMemo(
     () => parsePeriodFilters(new URLSearchParams(urlSearch)),
@@ -133,6 +142,9 @@ export function PeriodsPage() {
   return (
     <div className="flex min-w-0 flex-col gap-8">
       <PayrollTabs />
+      <p role="status" className="text-sm font-medium" data-periods-notice>
+        {notice}
+      </p>
       <PeriodsView
         state={state}
         payroll={payroll}

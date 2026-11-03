@@ -6841,7 +6841,10 @@
       "outdatedNotice": "Esta página puede estar desactualizada: no se pudo volver a cargar. Vuelve a cargarla antes de actuar.",
       "reload": "Volver a cargar",
       "unknownResult": "No hubo respuesta, así que esto pudo haber ocurrido. La página se está volviendo a cargar.",
-      "notFound": "Este periodo no existe o no puedes abrirlo."
+      "notFound": "Este periodo no existe o no puedes abrirlo.",
+      "gone": "El estado de este periodo cambió y ya no está en tu revisión.",
+      "goneReturned": "Periodo regresado a Finanzas. Ya no está en tu revisión.",
+      "goneLink": "Ir a los periodos"
     },
     "finalizeDialog": {
       "title": "¿Finalizar este periodo?",

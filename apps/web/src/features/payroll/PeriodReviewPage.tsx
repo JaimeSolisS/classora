@@ -5,7 +5,7 @@ import {
 } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { ApiError } from '@/app/api';
 import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
@@ -64,8 +64,20 @@ import { ReturnPeriodDialog } from './ReturnPeriodDialog';
 //   response keeps it open and refreshes; a settled refusal closes it and
 //   shows here. When the refresh shows the period is no longer prepared, the
 //   dialog closes.
+// - A period that was open on this page and then reads 404 (#110 E8: a
+//   delegated Administrator can't read an `open` period) left the user's
+//   review: after their own send-back the page goes to the list with a
+//   confirmation; after someone else's change it says the status changed,
+//   never "page not found" (QA #459 D1). Only a first load's 404 is not found.
+// - A lost finalize answer locks every action until its refresh lands, also
+//   after the dialog is cancelled (QA #459 D2).
 // - A period that fails to load with `payroll_amount_out_of_range` shows the
 //   way out, and Recalculate for a payroll.prepare holder (C8).
+
+/** Where the list reads a send-back confirmation (QA #459 D1). */
+export interface PeriodsNotice {
+  periodsNotice: string;
+}
 
 /** The tutor of a period in a cached list page, if any (C8's link). */
 function cachedTutorId(
@@ -104,6 +116,7 @@ export function PeriodReviewPage() {
   const { t } = useTranslation();
   const { periodId = '' } = useParams();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const session = useSession();
   const user = session.status === 'signedIn' ? session.user : null;
   const timeZone = useCenterTimeZone();
@@ -130,8 +143,16 @@ export function PeriodReviewPage() {
   const [dialog, setDialog] = useState<OpenDialog | null>(null);
   // A finalize whose answer was lost: the refresh says what happened.
   const [finalizeUnknown, setFinalizeUnknown] = useState(false);
+  // The refresh after a lost finalize answer hasn't landed (QA #459 D2).
+  const [unknownRefresh, setUnknownRefresh] = useState(false);
 
-  const data = review.data;
+  // The period was shown here, then a refresh read 404: it left the user's
+  // review (QA #459 D1).
+  const gone =
+    review.data !== undefined &&
+    review.error instanceof ApiError &&
+    review.error.status === 404;
+  const data = gone ? undefined : review.data;
   const period = data?.period;
   const title = period
     ? t('payroll.period.title', {
@@ -146,19 +167,23 @@ export function PeriodReviewPage() {
 
   // The refresh shows the period isn't prepared any more: the finalize
   // dialog has nothing left to confirm (D9). Adjusting state while rendering.
+  // After a lost answer, the landed refresh says what happened, whether the
+  // dialog is still open or not.
   const status = period?.status;
-  if (
-    dialog?.kind === 'finalize' &&
-    status !== undefined &&
-    status !== 'prepared'
-  ) {
-    setDialog(null);
+  const settled =
+    !unknownRefresh && status !== undefined && status !== 'prepared';
+  if (settled && (dialog?.kind === 'finalize' || finalizeUnknown)) {
+    if (dialog?.kind === 'finalize') setDialog(null);
     setAnnouncement(
       finalizeUnknown && status === 'finalized'
         ? t('payroll.period.done.finalized')
         : t('payroll.period.refused.statusChanged'),
     );
     setFinalizeUnknown(false);
+    setFailure(null);
+  }
+  if (gone && dialog !== null) {
+    setDialog(null);
   }
 
   /** D15: the period, the list and the unresolved work. Never rejects. */
@@ -227,6 +252,15 @@ export function PeriodReviewPage() {
     setDialog(null);
     begin('return');
     await refresh();
+    const after = queryClient.getQueryState(periodReviewKey(periodId));
+    if (after?.error instanceof ApiError && after.error.status === 404) {
+      // A delegated Administrator can't read the open period any more.
+      const state: PeriodsNotice = {
+        periodsNotice: t('payroll.period.goneReturned'),
+      };
+      void navigate('/payroll/periods', { state });
+      return;
+    }
     setAnnouncement(t('payroll.period.done.returned'));
     setRunning(null);
   }
@@ -238,7 +272,9 @@ export function PeriodReviewPage() {
       if (isCode(caught, 'reauth_required')) throw caught;
       if (isUnknownResult(caught)) {
         setFinalizeUnknown(true);
-        void refresh();
+        setUnknownRefresh(true);
+        setFailure(caught);
+        void refresh().finally(() => setUnknownRefresh(false));
         throw caught;
       }
       setDialog(null);
@@ -258,20 +294,36 @@ export function PeriodReviewPage() {
 
   if (
     !valid ||
-    (review.error instanceof ApiError && review.error.status === 404)
+    (!gone && review.error instanceof ApiError && review.error.status === 404)
   ) {
     return <NotFoundPage />;
   }
 
   let content;
-  if (data) {
+  if (gone) {
+    content = (
+      <div
+        role="status"
+        className="flex min-w-0 flex-col items-start gap-2 rounded-md border border-border p-4"
+        data-period-gone
+      >
+        <p className="font-medium">{t('payroll.period.gone')}</p>
+        <Link
+          to="/payroll/periods"
+          className="inline-flex min-h-11 items-center font-medium underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring md:min-h-6"
+        >
+          {t('payroll.period.goneLink')}
+        </Link>
+      </div>
+    );
+  } else if (data) {
     content = (
       <PeriodReviewView
         review={data}
         today={todayInZone(timeZone)}
         user={{ id: user?.id ?? '', roles: user?.roles ?? [] }}
         can={can}
-        running={running}
+        running={running ?? (unknownRefresh ? 'finalize' : null)}
         refreshError={review.isError ? review.error : null}
         onReload={() => void review.refetch()}
         announcement={announcement}
@@ -284,7 +336,6 @@ export function PeriodReviewPage() {
         }}
         onFinalize={() => {
           setAnnouncement('');
-          setFinalizeUnknown(false);
           setDialog({ kind: 'finalize', snapshot: data });
         }}
       />

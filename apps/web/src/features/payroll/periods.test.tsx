@@ -833,6 +833,74 @@ describe('actions (D)', () => {
     });
   });
 
+  describe("QA D1: a period that leaves a reviewer's sight", () => {
+    it('their own send-back confirms it on the periods list', async () => {
+      stub(
+        {
+          [LINES]: [
+            () => jsonResponse(200, review(PERIOD_PREPARED)),
+            () => problem(404, 'not_found'),
+          ],
+          [RETURN]: () => transition('open'),
+          [LIST]: () => jsonResponse(200, EMPTY_PERIODS),
+        },
+        ADMIN,
+      );
+      await openReview();
+      await click(button('Send back')!);
+      setFieldValue(returnDialog()!.querySelector('textarea')!, 'Revisar');
+      await click(buttonNamed(returnDialog()!, 'Send back'));
+      await settleUntil(
+        () => app!.router.state.location.pathname === '/payroll/periods',
+      );
+      await settleUntil(() => h1() === 'Payroll periods');
+      expect(main().querySelector('[data-periods-notice]')?.textContent).toBe(
+        "Period sent back to Finance. It's no longer in your review.",
+      );
+      expect(text()).not.toContain('Page not found');
+    });
+
+    it.each([
+      ['an action refused as not prepared', true],
+      ['a background refresh', false],
+    ])(
+      "someone else's change, found by %s, says the status changed",
+      async (_how, act) => {
+        stub(
+          {
+            [LINES]: [
+              () => jsonResponse(200, review(PERIOD_PREPARED)),
+              () => problem(404, 'not_found'),
+            ],
+            [FINALIZE]: () => problem(409, 'payroll_period_not_prepared'),
+          },
+          ADMIN,
+        );
+        await openReview();
+        if (act) {
+          await click(button('Finalize')!);
+          await settleUntil(() => finalizeDialog());
+          await click(buttonNamed(finalizeDialog()!, 'Finalize'));
+        } else {
+          await app!.queryClient.invalidateQueries({
+            queryKey: PAYROLL_PERIODS_KEY,
+          });
+        }
+        await settleUntil(() => main().querySelector('[data-period-gone]'));
+        const gone = main().querySelector('[data-period-gone]')!;
+        expect(gone.textContent).toContain(
+          "This period's status changed, and it's no longer in your review.",
+        );
+        expect(gone.querySelector('a')?.getAttribute('href')).toBe(
+          '/payroll/periods',
+        );
+        expect(h1()).not.toBe('Page not found');
+        expect(main().querySelector('[data-period-actions]')).toBeNull();
+        expect(finalizeDialog()).toBeUndefined();
+      },
+    );
+  });
+
   describe('finalize (D6-D13)', () => {
     async function openFinalize() {
       await openReview();
@@ -1141,6 +1209,48 @@ describe('actions (D)', () => {
       expect(
         main().querySelector('[data-unresolved-help] a')?.getAttribute('href'),
       ).toBe(`/payroll/unresolved?tutor=${TUTOR_ID}`);
+    });
+
+    it('QA D2: after a lost answer and Cancel, nothing looks current until the refresh lands', async () => {
+      let release: () => void = () => {};
+      const api = stub(
+        {
+          [LINES]: [
+            () => jsonResponse(200, review(PERIOD_PREPARED)),
+            () =>
+              new Promise<Response>((resolve) => {
+                release = () =>
+                  resolve(jsonResponse(200, review(PERIOD_FINALIZED)));
+              }),
+          ],
+          [FINALIZE]: () => {
+            throw new TypeError('Failed to fetch');
+          },
+        },
+        ADMIN,
+      );
+      await openFinalize();
+      await confirm();
+      await settleUntil(() =>
+        finalizeDialog()?.querySelector('[data-finalize-unknown]'),
+      );
+      await click(buttonNamed(finalizeDialog()!, 'Cancel'));
+      await settleUntil(() => !finalizeDialog());
+
+      const actions = [
+        ...main().querySelectorAll<HTMLButtonElement>(
+          '[data-period-actions] button',
+        ),
+      ];
+      expect(actions.length).toBeGreaterThan(0);
+      expect(actions.every((b) => b.disabled)).toBe(true);
+      expect(alerts(main()).join()).toContain('this may have happened');
+
+      release();
+      await settleUntil(() => status() === 'Period finalized.');
+      expect(alerts(main())).toEqual([]);
+      expect(main().querySelector('[data-period-actions]')).toBeNull();
+      expect(api.calls(FINALIZE)).toHaveLength(1);
     });
 
     it('a failed refresh disables every action until a reload works', async () => {

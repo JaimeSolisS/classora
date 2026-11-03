@@ -6718,7 +6718,10 @@
       "outdatedNotice": "This page may be out of date: it couldn't be reloaded. Reload it before you act.",
       "reload": "Reload",
       "unknownResult": "There was no answer, so this may have happened. The page is being reloaded.",
-      "notFound": "This period doesn't exist, or you can't open it."
+      "notFound": "This period doesn't exist, or you can't open it.",
+      "gone": "This period's status changed, and it's no longer in your review.",
+      "goneReturned": "Period sent back to Finance. It's no longer in your review.",
+      "goneLink": "Go to the periods"
     },
     "finalizeDialog": {
       "title": "Finalize this period?",
