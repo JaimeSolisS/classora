@@ -20,7 +20,7 @@ const ready = (page = PERIODS_PAGE) =>
 const args: PeriodsViewProps = {
   state: ready(),
   payroll: { status: 'ready', off: false },
-  filters: { status: null, tutor: null, page: 1 },
+  filters: { status: null, tutor: null, paid: null, page: 1 },
   onFilters: fn(),
   onPage: fn(),
   searchTutors: () => Promise.resolve([]),
@@ -86,7 +86,7 @@ export const Table: Story = {
 export const Narrow: Story = {
   globals: { viewport: { value: 'narrow320' } },
   args: {
-    filters: { status: 'open', tutor: TUTOR_ID, page: 1 },
+    filters: { status: 'open', tutor: TUTOR_ID, paid: null, page: 1 },
     tutorName: 'Ana Tutora',
   },
   play: async ({ canvasElement }) => {
@@ -123,7 +123,7 @@ export const Empty: Story = {
 export const EmptyFiltered: Story = {
   args: {
     state: ready(EMPTY_PERIODS),
-    filters: { status: 'prepared', tutor: null, page: 1 },
+    filters: { status: 'prepared', tutor: null, paid: null, page: 1 },
   },
 };
 

@@ -335,6 +335,7 @@ export type PayrollPeriodTransition =
   components['schemas']['PayrollPeriodTransition'];
 export type PayrollRecalculation =
   components['schemas']['PayrollRecalculation'];
+export type PaidState = components['schemas']['PaidState'];
 
 /** Rows per page of the period list (the API default). */
 export const PAYROLL_PERIODS_PAGE_SIZE = 25;
@@ -346,6 +347,8 @@ export interface PayrollPeriodListParams {
   status: PeriodStatus | null;
   /** A tutor's user id. */
   tutor: string | null;
+  /** Finalized periods by what's paid (M7-09b D2). */
+  paid: PaidState | null;
   /** 1-based page number. */
   page: number;
 }
@@ -359,7 +362,7 @@ export function periodReviewKey(periodId: string) {
 }
 
 export function fetchPayrollPeriods(
-  { status, tutor, page }: PayrollPeriodListParams,
+  { status, tutor, paid, page }: PayrollPeriodListParams,
   signal: AbortSignal,
 ): Promise<PayrollPeriodPage> {
   return apiCall(
@@ -369,6 +372,7 @@ export function fetchPayrollPeriods(
           query: {
             ...(status ? { status } : {}),
             ...(tutor ? { tutor_user_id: tutor } : {}),
+            ...(paid ? { paid_state: paid } : {}),
             limit: PAYROLL_PERIODS_PAGE_SIZE,
             offset: (page - 1) * PAYROLL_PERIODS_PAGE_SIZE,
           },
@@ -483,6 +487,76 @@ export function carryPeriodForward(
   return apiCall(() =>
     api.POST('/api/v1/payroll/periods/{period_id}/carry-forward', {
       params: { path: { period_id: periodId }, header: headers },
+    }),
+  );
+}
+
+// ------------------------------------------------ payroll payments (M7-09b)
+
+export type PayrollPayment = components['schemas']['PayrollPaymentItem'];
+export type PayrollPaymentCreate =
+  components['schemas']['PayrollPaymentCreate'];
+export type PayrollPaymentRecorded =
+  components['schemas']['PayrollPaymentRecorded'];
+export type PayrollPaymentReversalCreate =
+  components['schemas']['PayrollPaymentReversalCreate'];
+export type PayrollPaymentReversed =
+  components['schemas']['PayrollPaymentReversed'];
+
+/** A period's payments. Under the periods key, so every refresh of the
+ * periods (an action on the page, a payment) refetches them too. */
+export function periodPaymentsKey(periodId: string) {
+  return [...PAYROLL_PERIODS_KEY, 'payments', periodId] as const;
+}
+
+export function fetchPeriodPayments(
+  periodId: string,
+  signal: AbortSignal,
+): Promise<PayrollPayment[]> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/payroll/periods/{period_id}/payments', {
+        params: { path: { period_id: periodId } },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+/**
+ * Logs a payment on a finalized period (#112 B). `idempotencyKey` comes from
+ * the dialog's `keyFor(body)`, computed before this call, so a retry after a
+ * lost response resends it (M7-09b E2).
+ */
+export function recordPayrollPayment(
+  periodId: string,
+  body: PayrollPaymentCreate,
+  idempotencyKey: string,
+): Promise<PayrollPaymentRecorded> {
+  const headers = idempotencyHeaders(idempotencyKey);
+  return apiCall(() =>
+    api.POST('/api/v1/payroll/periods/{period_id}/payments', {
+      params: { path: { period_id: periodId }, header: headers },
+      body,
+    }),
+  );
+}
+
+/**
+ * Reverses a payment (#112 C). The key is computed before this call, so
+ * apiCall's retry after the password dialog (`finance.refund_or_reversal`)
+ * resends it, and so does a retry after a lost response.
+ */
+export function reversePayrollPayment(
+  paymentId: string,
+  body: PayrollPaymentReversalCreate,
+  idempotencyKey: string,
+): Promise<PayrollPaymentReversed> {
+  const headers = idempotencyHeaders(idempotencyKey);
+  return apiCall(() =>
+    api.POST('/api/v1/payroll/payments/{payment_id}/reversal', {
+      params: { path: { payment_id: paymentId }, header: headers },
+      body,
     }),
   );
 }

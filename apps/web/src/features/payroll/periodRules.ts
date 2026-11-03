@@ -2,6 +2,7 @@ import { ApiError, CLIENT_ERROR_CODES } from '@/app/api';
 import type { LocalDate } from '@/lib/time';
 import type {
   LineKind,
+  PaidState,
   PayrollAdjustmentKind,
   PayrollLine,
   PayrollPeriodDetail,
@@ -27,6 +28,13 @@ export const REVIEWER_STATUSES: readonly PeriodStatus[] = [
   'finalized',
 ];
 
+/** What's paid of a finalized period (#112 E8; M7-09b D). */
+export const PAID_STATES: readonly PaidState[] = [
+  'unpaid',
+  'partially_paid',
+  'paid',
+];
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Whether `value` is a UUID, as the API's path and query ids are. */
@@ -42,10 +50,12 @@ export function parsePeriodFilters(
 ): PayrollPeriodListParams {
   const status = params.get('status');
   const tutor = params.get('tutor');
+  const paid = params.get('paid');
   const page = Number.parseInt(params.get('page') ?? '', 10);
   return {
     status: PERIOD_STATUSES.find((item) => item === status) ?? null,
     tutor: tutor !== null && isUuid(tutor) ? tutor.toLowerCase() : null,
+    paid: PAID_STATES.find((item) => item === paid) ?? null,
     page: Number.isInteger(page) && page >= 1 ? page : 1,
   };
 }
@@ -53,11 +63,13 @@ export function parsePeriodFilters(
 export function periodSearchParams({
   status,
   tutor,
+  paid,
   page,
 }: PayrollPeriodListParams): URLSearchParams {
   const params = new URLSearchParams();
   if (status) params.set('status', status);
   if (tutor) params.set('tutor', tutor);
+  if (paid) params.set('paid', paid);
   if (page > 1) params.set('page', String(page));
   return params;
 }
@@ -234,7 +246,7 @@ function details(error: unknown): Record<string, unknown> {
     : {};
 }
 
-function detailString(error: unknown, name: string): string | null {
+export function detailString(error: unknown, name: string): string | null {
   const value = details(error)[name];
   return typeof value === 'string' && value !== '' ? value : null;
 }

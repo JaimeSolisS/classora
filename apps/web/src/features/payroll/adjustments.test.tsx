@@ -79,6 +79,8 @@ const ADJUST = `POST /api/v1/payroll/tutors/${TUTOR_ID}/adjustments`;
 const UNRESOLVED = 'GET /api/v1/payroll/unresolved-work';
 const COMPENSATION = `GET /api/v1/payroll/tutors/${TUTOR_ID}/compensation`;
 const REAUTH = 'POST /api/v1/auth/reauthenticate';
+// A finalized period shows its payments (M7-09b): every refresh refetches them.
+const PAYMENTS = `GET /api/v1/payroll/periods/${PERIOD_ID}/payments`;
 
 const user = (
   roles: SessionUserBody['roles'],
@@ -143,6 +145,7 @@ function stub(
       jsonResponse(200, { items: [], total: 0, limit: 25, offset: 0 }),
     [LINES]: () => jsonResponse(200, FINALIZED),
     [TARGET_LINES]: () => jsonResponse(200, review(PERIOD_NOT_ENDED, [])),
+    [PAYMENTS]: () => jsonResponse(200, []),
     [REAUTH]: () =>
       jsonResponse(200, { reauthenticated_until: '2026-10-19T18:05:00Z' }),
     ...routes,

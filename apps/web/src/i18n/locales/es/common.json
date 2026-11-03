@@ -6435,7 +6435,13 @@
       "amountPositive": "El monto debe ser mayor que cero.",
       "adjustmentDirectionRequired": "Elige pagar más o descontar.",
       "reasonRequired": "Escribe el motivo.",
-      "reasonTooLong": "Usa como máximo 1000 caracteres."
+      "reasonTooLong": "Usa como máximo 1000 caracteres.",
+      "paidOnFuture": "La fecha del pago no puede ser posterior a hoy.",
+      "paidOnBeforePeriod": "La fecha del pago no puede ser anterior al inicio del periodo.",
+      "amountAboveRemaining": "El monto no puede ser mayor que lo que queda por pagar.",
+      "methodRequired": "Elige el método de pago.",
+      "referenceRequired": "Escribe la referencia.",
+      "referenceTooLong": "Usa como máximo 100 caracteres."
     },
     "settings": {
       "title": "Configuración de nómina",
@@ -6740,7 +6746,15 @@
         "chip": "Tutor: {{name}}",
         "remove": "Quitar filtro: Tutor {{name}}",
         "selected": "Tutor seleccionado",
-        "clear": "Quitar filtros"
+        "clear": "Quitar filtros",
+        "paid": "Pago",
+        "allPaid": "Cualquier pago",
+        "paidHelp": "Solo periodos finalizados."
+      },
+      "paidStates": {
+        "unpaid": "Sin pagar",
+        "partially_paid": "Pago parcial",
+        "paid": "Pagado"
       }
     },
     "period": {
@@ -6938,6 +6952,71 @@
       "notForgiven": "El saldo se mueve, no se perdona: este periodo queda en 0.00 y el siguiente lo descuenta. Los dos se preparan y finalizan como siempre.",
       "submit": "Pasar el saldo",
       "unknown": "No sabemos si el saldo se pasó. La página se está volviendo a cargar; confirmar otra vez desde aquí es seguro."
+    },
+    "payments": {
+      "title": "Pagos",
+      "intro": "Pagos hechos al tutor fuera de la plataforma, como una transferencia o efectivo. Un pago equivocado se revierte; nunca se edita.",
+      "totals": {
+        "total": "Total",
+        "paid": "Pagado",
+        "remaining": "Por pagar",
+        "state": "Pago"
+      },
+      "record": "Registrar pago",
+      "reverse": "Revertir",
+      "reverseFor": "Revertir el pago: {{payment}}",
+      "caption": "Pagos del periodo",
+      "columns": {
+        "date": "Fecha",
+        "amount": "Monto",
+        "method": "Método",
+        "reference": "Referencia",
+        "note": "Nota",
+        "recordedBy": "Registrado por",
+        "reversal": "Reversión",
+        "actions": "Acciones"
+      },
+      "notReversed": "—",
+      "reversedBy": "Revertido por {{name}}, {{when}}",
+      "reversedReason": "Motivo: {{reason}}",
+      "summary": "{{date}}, {{amount}}, {{method}} {{reference}}",
+      "empty": "Aún no hay pagos registrados.",
+      "nothingToPay": "El total de este periodo es cero: no hay nada que pagar.",
+      "outdated": "Los pagos pueden estar desactualizados: no se pudieron volver a cargar. Vuelve a cargarlos antes de registrar o revertir un pago.",
+      "saved": "Pago registrado.",
+      "reversed": "Pago revertido.",
+      "closedUnknown": "Puede que el pago se haya registrado. Revisa la lista de pagos antes de registrarlo otra vez.",
+      "closedUnknownReversal": "Puede que el pago se haya revertido. Revisa la lista de pagos antes de intentarlo otra vez."
+    },
+    "paymentDialog": {
+      "title": "Registrar un pago a {{name}}",
+      "help": "Un pago hecho fuera de la plataforma para el periodo del {{start}} al {{end}}. La referencia es el comprobante: no se sube ningún archivo.",
+      "remaining": "Por pagar: {{amount}}",
+      "paidOn": "Fecha del pago",
+      "paidOnHelp": "Del {{start}} a hoy.",
+      "amount": "Monto",
+      "amountHelp": "Puede ser un pago parcial. No puede ser mayor que lo que queda por pagar.",
+      "method": "Método",
+      "choose": "Elige…",
+      "reference": "Referencia",
+      "referenceHelp": "El número de transferencia o de recibo. El mismo método y referencia nunca se registran dos veces en un periodo. {{n}} de {{max}} caracteres.",
+      "note": "Nota (opcional)",
+      "noteHelp": "{{n}} de {{max}} caracteres.",
+      "submit": "Registrar pago",
+      "unknown": "No sabemos si el pago se registró. Volver a enviarlo sin cambios desde aquí es seguro: no se registra dos veces. Al cerrar este diálogo, revisa la lista de pagos.",
+      "exceeds": "Este pago es mayor que lo que queda por pagar: {{remaining}}.",
+      "duplicateOf": "Este pago ya está registrado: {{payment}}. Revisa la lista de pagos."
+    },
+    "reversalDialog": {
+      "title": "¿Revertir este pago?",
+      "help": "El pago queda en la lista, tachado, y deja de contar como pagado. No se puede deshacer.",
+      "payment": "Pago: {{payment}}",
+      "reason": "Motivo",
+      "reasonHelp": "Se guarda con la reversión y se muestra en esta página.",
+      "counter": "{{n}} de {{max}} caracteres",
+      "password": "Si no confirmaste tu contraseña en los últimos 5 minutos, se te pedirá.",
+      "submit": "Revertir pago",
+      "unknown": "No sabemos si el pago se revirtió. Volver a enviarlo sin cambios desde aquí es seguro. Al cerrar este diálogo, revisa la lista de pagos."
     }
   },
   "familyBilling": {

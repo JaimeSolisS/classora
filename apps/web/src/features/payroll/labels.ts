@@ -1,10 +1,12 @@
 import { useTranslation } from 'react-i18next';
 import { useFormatters } from '@/lib/formatters';
+import { useAccountLabels } from '@/features/billing/accounts/labels';
 import { formatRate } from '@/lib/money';
 import type {
   ClassKind,
   CompensationRate,
   PayFrequency,
+  PayrollPayment,
   PayTerms,
   RateModel,
 } from './api';
@@ -52,4 +54,18 @@ export function usePayLabels() {
             rate: formatRate(item.rate),
           }),
   };
+}
+
+/** A payment in words: date, amount, method and reference. */
+export function usePaymentSummary() {
+  const { t } = useTranslation();
+  const { formatLocalDate, formatMoney } = useFormatters();
+  const labels = useAccountLabels();
+  return (payment: PayrollPayment) =>
+    t('payroll.payments.summary', {
+      date: formatLocalDate(payment.paid_on),
+      amount: formatMoney(payment.amount),
+      method: labels.method(payment.method_code),
+      reference: payment.reference,
+    });
 }

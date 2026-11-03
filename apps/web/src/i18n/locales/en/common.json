@@ -6315,7 +6315,13 @@
       "amountPositive": "The amount must be above zero.",
       "adjustmentDirectionRequired": "Choose pay more or take back.",
       "reasonRequired": "Enter the reason.",
-      "reasonTooLong": "Use at most 1000 characters."
+      "reasonTooLong": "Use at most 1000 characters.",
+      "paidOnFuture": "The payment date can't be after today.",
+      "paidOnBeforePeriod": "The payment date can't be before the period starts.",
+      "amountAboveRemaining": "The amount can't be more than what's left to pay.",
+      "methodRequired": "Choose the payment method.",
+      "referenceRequired": "Enter the reference.",
+      "referenceTooLong": "Use at most 100 characters."
     },
     "settings": {
       "title": "Payroll settings",
@@ -6619,7 +6625,15 @@
         "chip": "Tutor: {{name}}",
         "remove": "Remove filter: Tutor {{name}}",
         "selected": "Selected tutor",
-        "clear": "Clear filters"
+        "clear": "Clear filters",
+        "paid": "Payment",
+        "allPaid": "Any payment",
+        "paidHelp": "Finalized periods only."
+      },
+      "paidStates": {
+        "unpaid": "Unpaid",
+        "partially_paid": "Partly paid",
+        "paid": "Paid"
       }
     },
     "period": {
@@ -6815,6 +6829,71 @@
       "notForgiven": "The balance moves, it isn't forgiven: this period goes to 0.00 and the next one takes it back. Both are prepared and finalized as usual.",
       "submit": "Carry the balance",
       "unknown": "We don't know whether the balance moved. The page is reloading; confirming again from here is safe."
+    },
+    "payments": {
+      "title": "Payments",
+      "intro": "Payments made to the tutor outside the platform, such as a transfer or cash. A mistaken payment is reversed, never edited.",
+      "totals": {
+        "total": "Total",
+        "paid": "Paid",
+        "remaining": "Left to pay",
+        "state": "Payment"
+      },
+      "record": "Record payment",
+      "reverse": "Reverse",
+      "reverseFor": "Reverse the payment: {{payment}}",
+      "caption": "The period's payments",
+      "columns": {
+        "date": "Date",
+        "amount": "Amount",
+        "method": "Method",
+        "reference": "Reference",
+        "note": "Note",
+        "recordedBy": "Recorded by",
+        "reversal": "Reversal",
+        "actions": "Actions"
+      },
+      "notReversed": "—",
+      "reversedBy": "Reversed by {{name}}, {{when}}",
+      "reversedReason": "Reason: {{reason}}",
+      "summary": "{{date}}, {{amount}}, {{method}} {{reference}}",
+      "empty": "No payments have been recorded yet.",
+      "nothingToPay": "This period's total is zero: there is nothing to pay.",
+      "outdated": "The payments may be out of date: they couldn't be reloaded. Reload them before you record or reverse a payment.",
+      "saved": "Payment recorded.",
+      "reversed": "Payment reversed.",
+      "closedUnknown": "The payment may have been recorded. Check the list of payments before you record it again.",
+      "closedUnknownReversal": "The payment may have been reversed. Check the list of payments before you try again."
+    },
+    "paymentDialog": {
+      "title": "Record a payment to {{name}}",
+      "help": "A payment made outside the platform for the period from {{start}} to {{end}}. The reference is the proof: no file is uploaded.",
+      "remaining": "Left to pay: {{amount}}",
+      "paidOn": "Payment date",
+      "paidOnHelp": "From {{start}} to today.",
+      "amount": "Amount",
+      "amountHelp": "A partial payment is fine. It may not be more than what is left to pay.",
+      "method": "Method",
+      "choose": "Choose…",
+      "reference": "Reference",
+      "referenceHelp": "The transfer or receipt number. The same method and reference are never recorded twice on a period. {{n}} of {{max}} characters.",
+      "note": "Note (optional)",
+      "noteHelp": "{{n}} of {{max}} characters.",
+      "submit": "Record payment",
+      "unknown": "We don't know whether the payment was recorded. Sending it again from here unchanged is safe: it won't be recorded twice. When you close this dialog, check the list of payments.",
+      "exceeds": "This payment is more than what is left to pay: {{remaining}}.",
+      "duplicateOf": "This payment is already recorded: {{payment}}. Check the list of payments."
+    },
+    "reversalDialog": {
+      "title": "Reverse this payment?",
+      "help": "The payment stays in the list, struck through, and no longer counts as paid. This can't be undone.",
+      "payment": "Payment: {{payment}}",
+      "reason": "Reason",
+      "reasonHelp": "Saved with the reversal and shown on this page.",
+      "counter": "{{n}} of {{max}} characters",
+      "password": "If you haven't confirmed your password in the last 5 minutes, you'll be asked for it.",
+      "submit": "Reverse payment",
+      "unknown": "We don't know whether the payment was reversed. Sending it again from here unchanged is safe. When you close this dialog, check the list of payments."
     }
   },
   "familyBilling": {
