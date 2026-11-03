@@ -409,6 +409,10 @@ unless a bullet says otherwise.
   (Payroll → Periods). The owner or a delegated administrator finalizes it
   with their password or sends it back with a reason, and a finalized period
   can't change.
+- Corrections after lock land in a later period as labelled adjustments.
+  Finance staff and owners can post a manual adjustment with their password
+  (on a finalized line, on unresolved work paid by hand, or free), and move a
+  negative period's balance to the next period.
 
 **Notifications**
 

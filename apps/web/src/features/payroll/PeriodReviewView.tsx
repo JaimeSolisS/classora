@@ -8,10 +8,15 @@ import { Button } from '@/components/ui/button';
 import { StateBadge } from '@/features/users/admin/StateBadge';
 import { useFormatters } from '@/lib/formatters';
 import type { LocalDate } from '@/lib/time';
-import { PAY_ITEMS_ANCHOR, type PayrollPeriodReview } from './api';
+import {
+  PAY_ITEMS_ANCHOR,
+  type PayrollLine,
+  type PayrollPeriodReview,
+} from './api';
 import { usePayLabels } from './labels';
 import { PeriodLines } from './PeriodLines';
 import {
+  canCarryForward,
   earliestPeriodId,
   finalizeBlocks,
   hasEnded,
@@ -36,7 +41,8 @@ import { UNRESOLVED_REASONS } from './unresolvedUrl';
 // action or the refresh after it runs, or while the page may be out of date,
 // no action can start (#454 D2's lesson).
 
-export type PeriodAction = 'recalculate' | 'prepare' | 'return' | 'finalize';
+export type PeriodAction =
+  'recalculate' | 'prepare' | 'return' | 'finalize' | 'carry' | 'adjust';
 
 export interface PeriodCapabilities {
   /** payroll.prepare: recalculate, prepare, return. */
@@ -47,6 +53,9 @@ export interface PeriodCapabilities {
   openSession: boolean;
   /** The Payroll pages (payroll.view or payroll.manage): items, unresolved. */
   openPayPages: boolean;
+  /** payroll.manage on this tutor (own pay only for an Owner): "Correct
+   * line" on a finalized period (M7-08b E1). */
+  correct?: boolean;
 }
 
 export interface PeriodReviewViewProps {
@@ -68,6 +77,10 @@ export interface PeriodReviewViewProps {
   onPrepare: () => void;
   onReturn: () => void;
   onFinalize: () => void;
+  /** "Correct line" on a finalized period's line (M7-08b E1). */
+  onCorrect?: (line: PayrollLine) => void;
+  /** Carry the negative total forward (M7-08b E2). */
+  onCarry?: () => void;
 }
 
 const LINK_CLASS =
@@ -194,6 +207,7 @@ export function PeriodRefusal({
   tutorId,
   can,
   onReturn,
+  onCarry,
 }: {
   error: unknown;
   /** Null when the period's tutor isn't known (it failed to load). */
@@ -201,6 +215,8 @@ export function PeriodRefusal({
   can: PeriodCapabilities;
   /** Offered after `payroll_period_stale` (D12), when Return shows. */
   onReturn?: () => void;
+  /** Offered after `payroll_negative_total` to payroll.prepare (M7-08b C3). */
+  onCarry?: () => void;
 }) {
   const { t } = useTranslation();
   if (isUnknownResult(error)) {
@@ -286,6 +302,35 @@ export function PeriodRefusal({
       <ErrorAlert
         error={error}
         detail={<OutOfRangeHelp error={error} tutorId={tutorId} can={can} />}
+      />
+    );
+  }
+  if (isCode(error, 'payroll_negative_total')) {
+    return (
+      <ErrorAlert
+        error={error}
+        detail={
+          <span
+            className="flex flex-col items-start gap-2"
+            data-negative-refusal
+          >
+            <span>{t('payroll.period.carry.waiting')}</span>
+            {can.prepare && onCarry ? (
+              <>
+                <span>{t('payroll.period.carry.help')}</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={BUTTON_CLASS}
+                  onClick={onCarry}
+                >
+                  {t('payroll.period.carry.action')}
+                </Button>
+              </>
+            ) : null}
+          </span>
+        }
       />
     );
   }
@@ -391,6 +436,8 @@ export function PeriodReviewView({
   onPrepare,
   onReturn,
   onFinalize,
+  onCorrect,
+  onCarry,
 }: PeriodReviewViewProps) {
   const { t } = useTranslation();
   const { formatLocalDate } = useFormatters();
@@ -401,6 +448,17 @@ export function PeriodReviewView({
   const blocks = actions.finalize ? finalizeBlocks(period, user) : [];
   const negative = isNegativeAmount(review.total);
   const locked = running !== null || refreshError !== null;
+  const carry =
+    can.prepare &&
+    onCarry !== undefined &&
+    canCarryForward(period, review.total, today);
+  const hasAdjustments = review.lines.some(
+    (line) => line.kind === 'adjustment',
+  );
+  const correcting =
+    period.status === 'finalized' && can.correct === true && onCorrect
+      ? onCorrect
+      : undefined;
   const ids = {
     lines: `${id}-lines`,
     notEnded: `${id}-not-ended`,
@@ -465,7 +523,21 @@ export function PeriodReviewView({
           </span>
         </Notice>
       ) : null}
-      {period.status === 'open' && negative ? (
+      {carry ? (
+        <Notice data-carry-banner>
+          <span>{t('payroll.period.carry.banner')}</span>
+          <span>{t('payroll.period.carry.waiting')}</span>
+          <Button
+            type="button"
+            variant="outline"
+            className={BUTTON_CLASS}
+            disabled={locked}
+            onClick={onCarry}
+          >
+            {spinning('carry', t('payroll.period.carry.action'))}
+          </Button>
+        </Notice>
+      ) : period.status === 'open' && negative ? (
         <Notice data-negative-total>
           <span>{t('payroll.period.negativeTotal')}</span>
         </Notice>
@@ -476,6 +548,7 @@ export function PeriodReviewView({
           tutorId={period.tutor_user_id}
           can={can}
           onReturn={actions.return && !locked ? onReturn : undefined}
+          onCarry={carry && !locked ? onCarry : undefined}
         />
       ) : null}
       {anyAction ? (
@@ -572,7 +645,19 @@ export function PeriodReviewView({
         <h2 id={ids.lines} className="text-lg font-semibold">
           {t('payroll.period.lines.title')}
         </h2>
-        <PeriodLines lines={review.lines} canOpenSession={can.openSession} />
+        {hasAdjustments ? (
+          <p className="text-sm text-muted-foreground" data-adjustments-note>
+            {t('payroll.period.adjustmentsNote')}
+          </p>
+        ) : null}
+        <PeriodLines
+          lines={review.lines}
+          canOpenSession={can.openSession}
+          periodId={period.id}
+          tutorId={period.tutor_user_id}
+          onCorrect={correcting}
+          correctDisabled={locked}
+        />
       </section>
     </div>
   );

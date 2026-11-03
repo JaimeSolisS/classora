@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { useDocumentTitle } from '@/app/useDocumentTitle';
-import { useCan } from '@/features/auth/useSession';
+import { useCan, useSession } from '@/features/auth/useSession';
 import {
   fetchPayrollSettings,
   fetchUnresolved,
@@ -11,8 +11,11 @@ import {
   searchPayrollTutors,
   unresolvedKey,
   type UnresolvedFilters,
+  type UnresolvedItem,
 } from './api';
+import { ManualAdjustmentDialog } from './ManualAdjustmentDialog';
 import { PayrollTabs } from './PayrollTabs';
+import { useManualAdjustment } from './useManualAdjustment';
 import {
   parseUnresolvedFilters,
   unresolvedSearchParams,
@@ -37,6 +40,12 @@ export function UnresolvedWorkPage() {
   const { t } = useTranslation();
   useDocumentTitle(t('payroll.unresolved.title'));
   const canOpenSession = useCan('schedule.view');
+  const canManage = useCan('payroll.manage');
+  const session = useSession();
+  const user = session.status === 'signedIn' ? session.user : null;
+  const postAdjustment = useManualAdjustment();
+  const [paying, setPaying] = useState<UnresolvedItem | null>(null);
+  const [announcement, setAnnouncement] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
   const urlSearch = searchParams.toString();
   const filters = useMemo(
@@ -94,6 +103,9 @@ export function UnresolvedWorkPage() {
         loadingMore: list.isFetchingNextPage,
         moreError: list.isFetchNextPageError ? list.error : null,
         onMore: () => void list.fetchNextPage(),
+        // A failed refetch keeps the rows: they may be out of date (M7-08b).
+        refreshError: list.isRefetchError ? list.error : null,
+        onReload: () => void list.refetch(),
       }
     : list.isError
       ? {
@@ -134,7 +146,43 @@ export function UnresolvedWorkPage() {
           setNames((current) => ({ ...current, [id]: name }))
         }
         canOpenSession={canOpenSession}
+        // A non-Owner's own pay never (#105 E5; the API's 403 is handled).
+        canPayByHand={(item) =>
+          canManage &&
+          (item.tutor_user_id !== user?.id || user.roles.includes('owner'))
+        }
+        onPayByHand={(item) => {
+          setAnnouncement('');
+          setPaying(item);
+        }}
+        busy={list.isFetching && !list.isFetchingNextPage}
       />
+      <p role="status" className="text-sm" data-unresolved-announcement>
+        {announcement}
+      </p>
+      {paying ? (
+        <ManualAdjustmentDialog
+          open
+          tutorName={paying.tutor_display_name}
+          reference={{
+            kind: 'session',
+            sessionId: paying.class_session_id,
+            serviceDate: paying.service_date,
+            reason: paying.reason,
+          }}
+          onSubmit={async (body, key) => {
+            setAnnouncement(
+              await postAdjustment(paying.tutor_user_id, body, key),
+            );
+          }}
+          onClose={(outcome) => {
+            setPaying(null);
+            if (outcome === 'unknown') {
+              setAnnouncement(t('payroll.adjustmentDialog.closedUnknown'));
+            }
+          }}
+        />
+      ) : null}
     </div>
   );
 }

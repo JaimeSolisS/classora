@@ -445,5 +445,13 @@
   "payroll_period_out_of_order": "An earlier period of this tutor must be finalized first.",
   "payroll_period_stale": "Something changed since this period was prepared. Send it back to Finance to prepare it again.",
   "payroll_review_route_required": "This period is decided on its own page.",
-  "effective_from_under_finalized_line": "A finalized payroll line uses the current rate on this date. Choose a later date, and pay the difference with an adjustment."
+  "effective_from_under_finalized_line": "A finalized payroll line uses the current rate on this date. Choose a later date, and pay the difference with an adjustment.",
+  "payroll_no_period": "This tutor has no payroll period yet. Add their pay terms and try again.",
+  "payroll_line_not_finalized": "That line isn't in a finalized period any more. The page was reloaded.",
+  "payroll_work_not_unresolved": "That work isn't unresolved any more: it has pay now, or it changed. The list was reloaded.",
+  "payroll_work_before_first_period": "That work is from before the tutor's first period: pay it with a one-time item.",
+  "payroll_work_settled": "An adjustment already pays that work. The list was reloaded.",
+  "payroll_total_not_negative": "This period's total isn't below zero any more, so there's no balance to carry. The page was reloaded.",
+  "compensation_rate_delete_under_finalized_line": "Without this version, a finalized payroll line would get another price, so it can't be deleted.",
+  "adjustment_references_both": "An adjustment corrects a line or pays work, not both."
 }

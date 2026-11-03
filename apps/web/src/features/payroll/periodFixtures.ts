@@ -150,11 +150,46 @@ export const LINE_DEDUCTION = line(10, {
   pay_item_type_name: 'Préstamo',
   pay_item_description: 'Abono al préstamo',
 });
-/** #111's kind (C9); M7-08b renders its adjustment fields. */
+/** #111's late approval (M7-08b A1): the work it pays and where from. */
 export const LINE_ADJUSTMENT = line(11, {
   kind: 'adjustment',
   amount: '50.00',
-  service_date: '2026-10-12',
+  payroll_adjustment_id: '94000000-0000-4000-8000-000000000001',
+  adjustment_kind: 'late_approval',
+  adjustment_class_session_id: SESSION_ID,
+  adjustment_service_date: '2026-09-28',
+  adjustment_class_kind: 'individual',
+  adjustment_origin_period_id: EARLIER_PERIOD_ID,
+});
+/** A manual one taking pay back, with its reason (M7-08b A1). */
+export const LINE_ADJ_MANUAL = line(12, {
+  kind: 'adjustment',
+  amount: '-120.00',
+  payroll_adjustment_id: '94000000-0000-4000-8000-000000000002',
+  adjustment_kind: 'manual',
+  adjustment_reason: 'Tarifa equivocada en septiembre',
+});
+/** The two halves of a carry-forward: `+X` where it left, `−X` where it went;
+ * both name the period it left. */
+export const LINE_CARRY_IN = line(13, {
+  kind: 'adjustment',
+  amount: '-300.00',
+  payroll_adjustment_id: '94000000-0000-4000-8000-000000000003',
+  adjustment_kind: 'carry_forward',
+  adjustment_origin_period_id: EARLIER_PERIOD_ID,
+});
+export const LINE_CARRY_OUT = line(14, {
+  kind: 'adjustment',
+  amount: '300.00',
+  payroll_adjustment_id: '94000000-0000-4000-8000-000000000004',
+  adjustment_kind: 'carry_forward',
+  adjustment_origin_period_id: PERIOD_ID,
+});
+/** A kind this page doesn't know yet (C9's fallback). */
+export const LINE_ADJ_FUTURE = line(15, {
+  kind: 'adjustment',
+  amount: '10.00',
+  adjustment_kind: 'something_new' as PayrollLine['adjustment_kind'],
 });
 
 export const ALL_LINES: PayrollLine[] = [

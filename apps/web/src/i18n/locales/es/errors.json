@@ -445,5 +445,13 @@
   "payroll_period_out_of_order": "Primero se debe finalizar un periodo anterior de este tutor.",
   "payroll_period_stale": "Algo cambió desde que se preparó este periodo. Regrésalo a Finanzas para que lo prepare de nuevo.",
   "payroll_review_route_required": "Este periodo se decide en su propia página.",
-  "effective_from_under_finalized_line": "Una línea de nómina finalizada usa la tarifa actual en esta fecha. Elige una fecha posterior y paga la diferencia con un ajuste."
+  "effective_from_under_finalized_line": "Una línea de nómina finalizada usa la tarifa actual en esta fecha. Elige una fecha posterior y paga la diferencia con un ajuste.",
+  "payroll_no_period": "Este tutor aún no tiene periodos de nómina. Agrega sus condiciones de pago y vuelve a intentarlo.",
+  "payroll_line_not_finalized": "Esa línea ya no está en un periodo finalizado. Se volvió a cargar la página.",
+  "payroll_work_not_unresolved": "Ese trabajo ya no está sin resolver: ya tiene pago o cambió. Se volvió a cargar la lista.",
+  "payroll_work_before_first_period": "Ese trabajo es de antes del primer periodo del tutor: págalo con un concepto único.",
+  "payroll_work_settled": "Un ajuste ya paga ese trabajo. Se volvió a cargar la lista.",
+  "payroll_total_not_negative": "El total de este periodo ya no es menor que cero, así que no hay saldo que pasar. Se volvió a cargar la página.",
+  "compensation_rate_delete_under_finalized_line": "Sin esta versión, una línea de nómina finalizada cambiaría de precio, así que no se puede eliminar.",
+  "adjustment_references_both": "Un ajuste corrige una línea o paga un trabajo, no las dos cosas."
 }

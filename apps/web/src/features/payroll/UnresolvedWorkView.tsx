@@ -34,6 +34,9 @@ import { UNRESOLVED_REASONS } from './unresolvedUrl';
 // filters, and each item's reason in plain words with the way to fix it. It
 // shows no amount, and the API sends none (C5). "Everything has pay" is only
 // said when it's true: not under a filter, and not while payroll is off.
+// "Pay by hand" (M7-08b D2, E1) shows on a blocking item for whoever the page
+// allows; while the list may be out of date (its refetch failed) it says so
+// and the action waits for a reload.
 
 export type UnresolvedState =
   | { status: 'loading' }
@@ -46,6 +49,9 @@ export type UnresolvedState =
       /** The next page failed; the rows above stay. */
       moreError: unknown;
       onMore: () => void;
+      /** A refetch failed: the rows may be out of date (M7-08b). */
+      refreshError?: unknown;
+      onReload?: () => void;
     };
 
 /** Whether payroll is on, from the settings (a list read shows nothing). */
@@ -66,6 +72,17 @@ export interface UnresolvedWorkViewProps {
   onTutorName: (id: string, name: string) => void;
   /** schedule.view: links each item to its session (C3). */
   canOpenSession: boolean;
+  /** Whether "Pay by hand" shows on this blocking item (M7-08b E1). */
+  canPayByHand?: (item: UnresolvedItem) => boolean;
+  onPayByHand?: (item: UnresolvedItem) => void;
+  /** An adjustment or the refresh after it runs. */
+  busy?: boolean;
+}
+
+interface PayByHand {
+  can: (item: UnresolvedItem) => boolean;
+  onPay: (item: UnresolvedItem) => void;
+  disabled: boolean;
 }
 
 const LINK_CLASS =
@@ -76,8 +93,15 @@ function fixedOnPayPage(reason: UnresolvedReason): boolean {
   return reason === 'no_pay_terms' || reason === 'no_rate';
 }
 
-function Reason({ item }: { item: UnresolvedItem }) {
+function Reason({
+  item,
+  pay,
+}: {
+  item: UnresolvedItem;
+  pay: PayByHand | null;
+}) {
   const { t } = useTranslation();
+  const { formatLocalDate } = useFormatters();
   return (
     <div className="flex min-w-0 flex-col items-start gap-1">
       <span className="break-words">
@@ -109,6 +133,26 @@ function Reason({ item }: { item: UnresolvedItem }) {
             {t('payroll.unresolved.payWithItem')}
           </Link>
         </>
+      ) : null}
+      {pay &&
+      item.blocking &&
+      item.reason !== 'before_first_period' &&
+      pay.can(item) ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="min-h-11 md:min-h-8"
+          disabled={pay.disabled}
+          aria-label={t('payroll.adjustmentDialog.payByHandFor', {
+            name: item.tutor_display_name,
+            date: formatLocalDate(item.service_date),
+          })}
+          data-pay-by-hand={item.class_session_id}
+          onClick={() => pay.onPay(item)}
+        >
+          {t('payroll.adjustmentDialog.payByHand')}
+        </Button>
       ) : null}
     </div>
   );
@@ -148,9 +192,11 @@ function useItemText() {
 function Items({
   items,
   canOpenSession,
+  pay,
 }: {
   items: readonly UnresolvedItem[];
   canOpenSession: boolean;
+  pay: PayByHand | null;
 }) {
   const { t } = useTranslation();
   const text = useItemText();
@@ -205,7 +251,7 @@ function Items({
                     {row.source}
                   </TableCell>
                   <TableCell className="whitespace-normal">
-                    <Reason item={item} />
+                    <Reason item={item} pay={pay} />
                   </TableCell>
                   <TableCell className="whitespace-normal">
                     {row.blocking}
@@ -252,7 +298,7 @@ function Items({
                     {t('payroll.unresolved.columns.reason')}
                   </dt>
                   <dd>
-                    <Reason item={item} />
+                    <Reason item={item} pay={pay} />
                   </dd>
                 </div>
               </dl>
@@ -274,6 +320,9 @@ export function UnresolvedWorkView({
   tutorName,
   onTutorName,
   canOpenSession,
+  canPayByHand,
+  onPayByHand,
+  busy = false,
 }: UnresolvedWorkViewProps) {
   const { t } = useTranslation();
   const id = useId();
@@ -320,9 +369,26 @@ export function UnresolvedWorkView({
       );
     }
   } else {
+    const outdated = state.refreshError ? state.refreshError : null;
+    const pay: PayByHand | null =
+      canPayByHand && onPayByHand
+        ? {
+            can: canPayByHand,
+            onPay: onPayByHand,
+            disabled: busy || outdated !== null,
+          }
+        : null;
     content = (
       <div className="flex min-w-0 flex-col gap-4">
-        <Items items={state.items} canOpenSession={canOpenSession} />
+        {outdated ? (
+          <ErrorAlert
+            error={outdated}
+            message={t('payroll.unresolved.outdated')}
+            onRetry={state.onReload}
+            retryLabel={t('payroll.unresolved.reload')}
+          />
+        ) : null}
+        <Items items={state.items} canOpenSession={canOpenSession} pay={pay} />
         {state.moreError ? (
           <ErrorAlert error={state.moreError} onRetry={state.onMore} />
         ) : state.hasMore ? (

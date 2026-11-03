@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -14,10 +15,12 @@ import { formatRate } from '@/lib/money';
 import type { PayrollLine } from './api';
 import { usePayLabels } from './labels';
 import {
+  adjustmentKindKey,
   isCoveredBySalary,
   isNegativeAmount,
   isSessionLine,
   lineKindKey,
+  periodPath,
 } from './periodRules';
 
 // A period's lines (#110b C3-C6, C9), in the API's order, without any query:
@@ -29,11 +32,26 @@ import {
 // days", not an error. A pay item says its type, description and direction,
 // a deduction with its minus sign. A kind this page doesn't know shows its
 // amount under a generic label.
+//
+// An adjustment (M7-08b A1) says its kind, the work it corrects (date and
+// class kind), the period it comes from as a link, and a manual one's reason;
+// a negative one reads as a deduction does. A carry-forward's line in the
+// period it left names this period as its origin, so it links to the tutor's
+// periods instead (D1). `onCorrect` adds "Correct line" to every line of a
+// finalized period (E1); the page decides who sees it.
 
 export interface PeriodLinesProps {
   lines: readonly PayrollLine[];
   /** schedule.view: a session line links to its session (C4). */
   canOpenSession: boolean;
+  /** The period shown: an origin naming it isn't linked to itself. */
+  periodId?: string;
+  /** The period's tutor, for the carry-forward's link to their periods. */
+  tutorId?: string;
+  /** "Correct line" on each line (a finalized period, payroll.manage). */
+  onCorrect?: (line: PayrollLine) => void;
+  /** An action or a refresh runs, or the page may be out of date. */
+  correctDisabled?: boolean;
 }
 
 const LINK_CLASS =
@@ -44,6 +62,8 @@ interface LineText {
   label: string;
   details: string[];
   amount: string;
+  /** A manual adjustment's reason, as written. */
+  reason: string | null;
 }
 
 function useLineText() {
@@ -54,9 +74,13 @@ function useLineText() {
 
   return (line: PayrollLine): LineText => {
     const kind = lineKindKey(line.kind);
-    const date = line.service_date ?? line.salary_starts_on;
+    const date =
+      line.service_date ??
+      line.adjustment_service_date ??
+      line.salary_starts_on;
     const details: string[] = [];
     let label = t(`${L}.kinds.${kind}`);
+    let reason: string | null = null;
 
     if (isSessionLine(line)) {
       if (line.class_kind) details.push(labels.kind(line.class_kind));
@@ -122,6 +146,22 @@ function useLineText() {
         ? `${line.pay_item_type_name} (${t(`${L}.directions.${direction}`)})`
         : t(`${L}.directions.${direction}`);
       if (line.pay_item_description) details.push(line.pay_item_description);
+    } else if (kind === 'adjustment') {
+      const adjustment = adjustmentKindKey(line.adjustment_kind);
+      label = adjustment
+        ? t(`${L}.adjustmentKinds.${adjustment}`)
+        : t(`${L}.kinds.adjustment`);
+      if (line.adjustment_service_date) {
+        details.push(
+          t(`${L}.adjustmentWork`, {
+            date: formatLocalDate(line.adjustment_service_date),
+          }),
+        );
+      }
+      if (line.adjustment_class_kind) {
+        details.push(labels.kind(line.adjustment_class_kind));
+      }
+      reason = line.adjustment_reason;
     }
 
     return {
@@ -129,6 +169,7 @@ function useLineText() {
       label,
       details,
       amount: formatMoney(line.amount),
+      reason,
     };
   };
 }
@@ -147,15 +188,54 @@ function SessionLink({ line, date }: { line: PayrollLine; date: string }) {
   );
 }
 
+function OriginLink({
+  line,
+  periodId,
+  tutorId,
+}: {
+  line: PayrollLine;
+  periodId?: string;
+  tutorId?: string;
+}) {
+  const { t } = useTranslation();
+  const origin = line.adjustment_origin_period_id;
+  if (line.kind !== 'adjustment' || !origin) return null;
+  if (origin !== periodId) {
+    return (
+      <Link to={periodPath(origin)} className={LINK_CLASS} data-origin-link>
+        {t('payroll.period.lines.originPeriod')}
+      </Link>
+    );
+  }
+  // A carry-forward's line where it left: it names this period (D1).
+  if (line.adjustment_kind === 'carry_forward' && tutorId) {
+    return (
+      <Link
+        to={`/payroll/periods?tutor=${encodeURIComponent(tutorId)}`}
+        className={LINK_CLASS}
+        data-carry-link
+      >
+        {t('payroll.period.lines.carriedTo')}
+      </Link>
+    );
+  }
+  return null;
+}
+
 function Details({
   line,
   text,
   canOpenSession,
+  periodId,
+  tutorId,
 }: {
   line: PayrollLine;
   text: LineText;
   canOpenSession: boolean;
+  periodId?: string;
+  tutorId?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex min-w-0 flex-col items-start gap-1">
       {text.details.map((detail, index) => (
@@ -163,14 +243,58 @@ function Details({
           {detail}
         </span>
       ))}
+      {text.reason !== null ? (
+        <span className="break-words whitespace-pre-line" data-line-reason>
+          {t('payroll.period.lines.reason', { reason: text.reason })}
+        </span>
+      ) : null}
       {canOpenSession && isSessionLine(line) ? (
         <SessionLink line={line} date={text.date} />
       ) : null}
+      <OriginLink line={line} periodId={periodId} tutorId={tutorId} />
     </div>
   );
 }
 
-export function PeriodLines({ lines, canOpenSession }: PeriodLinesProps) {
+function CorrectButton({
+  line,
+  text,
+  onCorrect,
+  disabled,
+}: {
+  line: PayrollLine;
+  text: LineText;
+  onCorrect: (line: PayrollLine) => void;
+  disabled: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="min-h-11 md:min-h-8"
+      disabled={disabled}
+      aria-label={t('payroll.period.lines.correctFor', {
+        line: text.label,
+        date: text.date,
+      })}
+      data-correct-line={line.id}
+      onClick={() => onCorrect(line)}
+    >
+      {t('payroll.period.lines.correct')}
+    </Button>
+  );
+}
+
+export function PeriodLines({
+  lines,
+  canOpenSession,
+  periodId,
+  tutorId,
+  onCorrect,
+  correctDisabled = false,
+}: PeriodLinesProps) {
   const { t } = useTranslation();
   const text = useLineText();
   const L = 'payroll.period.lines';
@@ -196,6 +320,11 @@ export function PeriodLines({ lines, canOpenSession }: PeriodLinesProps) {
               <TableHead scope="col" className="text-right">
                 {t(`${L}.columns.amount`)}
               </TableHead>
+              {onCorrect ? (
+                <TableHead scope="col">
+                  <span className="sr-only">{t(`${L}.columns.actions`)}</span>
+                </TableHead>
+              ) : null}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -213,6 +342,8 @@ export function PeriodLines({ lines, canOpenSession }: PeriodLinesProps) {
                     line={line}
                     text={row}
                     canOpenSession={canOpenSession}
+                    periodId={periodId}
+                    tutorId={tutorId}
                   />
                 </TableCell>
                 <TableCell
@@ -221,6 +352,16 @@ export function PeriodLines({ lines, canOpenSession }: PeriodLinesProps) {
                 >
                   {row.amount}
                 </TableCell>
+                {onCorrect ? (
+                  <TableCell>
+                    <CorrectButton
+                      line={line}
+                      text={row}
+                      onCorrect={onCorrect}
+                      disabled={correctDisabled}
+                    />
+                  </TableCell>
+                ) : null}
               </TableRow>
             ))}
           </TableBody>
@@ -241,8 +382,24 @@ export function PeriodLines({ lines, canOpenSession }: PeriodLinesProps) {
             </div>
             <p className="text-sm">{row.date}</p>
             <div className="text-sm">
-              <Details line={line} text={row} canOpenSession={canOpenSession} />
+              <Details
+                line={line}
+                text={row}
+                canOpenSession={canOpenSession}
+                periodId={periodId}
+                tutorId={tutorId}
+              />
             </div>
+            {onCorrect ? (
+              <div>
+                <CorrectButton
+                  line={line}
+                  text={row}
+                  onCorrect={onCorrect}
+                  disabled={correctDisabled}
+                />
+              </div>
+            ) : null}
           </li>
         ))}
       </ul>

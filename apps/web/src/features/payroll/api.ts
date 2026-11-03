@@ -444,3 +444,45 @@ export function finalizePeriod(
     }),
   );
 }
+
+// ------------------------------------- corrections after lock (M7-08b)
+
+export type PayrollAdjustmentCreate =
+  components['schemas']['PayrollAdjustmentCreate'];
+export type PayrollAdjustmentPosted =
+  components['schemas']['PayrollAdjustmentPosted'];
+export type PayrollCarryForward = components['schemas']['PayrollCarryForward'];
+export type PayrollAdjustmentKind =
+  components['schemas']['app__modules__payroll__schemas__AdjustmentKind'];
+
+/**
+ * Posts a `manual` adjustment (M7-08c). `idempotencyKey` is computed before
+ * this call, so apiCall's retry after the password dialog
+ * (`finance.correction`) and a retry after a lost response resend it.
+ */
+export function postPayrollAdjustment(
+  tutorUserId: string,
+  body: PayrollAdjustmentCreate,
+  idempotencyKey: string,
+): Promise<PayrollAdjustmentPosted> {
+  const headers = idempotencyHeaders(idempotencyKey);
+  return apiCall(() =>
+    api.POST('/api/v1/payroll/tutors/{tutor_user_id}/adjustments', {
+      params: { path: { tutor_user_id: tutorUserId }, header: headers },
+      body,
+    }),
+  );
+}
+
+/** Moves an ended open period's negative total forward (M7-08c E3). */
+export function carryPeriodForward(
+  periodId: string,
+  idempotencyKey: string,
+): Promise<PayrollCarryForward> {
+  const headers = idempotencyHeaders(idempotencyKey);
+  return apiCall(() =>
+    api.POST('/api/v1/payroll/periods/{period_id}/carry-forward', {
+      params: { path: { period_id: periodId }, header: headers },
+    }),
+  );
+}

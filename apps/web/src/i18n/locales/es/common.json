@@ -6385,13 +6385,16 @@
       "ownPay": "Otra persona debe cambiar tu pago.",
       "saved": "Cambio guardado.",
       "deleted": "Versión eliminada.",
-      "gone": "Esa versión ya no existe. La página se volvió a cargar."
+      "gone": "Esa versión ya no existe. La página se volvió a cargar.",
+      "adjustmentHelp": "Para pagar o descontar algo que no tiene otra vía: queda en el periodo abierto más antiguo del tutor."
     },
     "deleteDialog": {
       "title": "Eliminar versión",
       "terms": "Se eliminarán las condiciones del {{date}}: {{value}}.",
       "rate": "Se eliminará la tarifa {{kind}} del {{date}}: {{value}}.",
-      "confirm": "Eliminar"
+      "confirm": "Eliminar",
+      "underFinalized": "Sin esta versión, una línea de nómina finalizada hasta el {{date}} cambiaría de precio, así que no se puede eliminar. Agrega una versión nueva que empiece después del {{date}} y paga la diferencia con un ajuste manual.",
+      "underFinalizedNoDate": "Sin esta versión, una línea de nómina finalizada cambiaría de precio, así que no se puede eliminar. Agrega una versión nueva posterior y paga la diferencia con un ajuste manual."
     },
     "termsDialog": {
       "title": "Agregar condiciones",
@@ -6429,7 +6432,10 @@
       "descriptionTooLong": "Usa como máximo 500 caracteres.",
       "amountRequired": "Escribe el monto.",
       "amountInvalid": "Escribe un monto válido, por ejemplo 500 o 500.50.",
-      "amountPositive": "El monto debe ser mayor que cero."
+      "amountPositive": "El monto debe ser mayor que cero.",
+      "adjustmentDirectionRequired": "Elige pagar más o descontar.",
+      "reasonRequired": "Escribe el motivo.",
+      "reasonTooLong": "Usa como máximo 1000 caracteres."
     },
     "settings": {
       "title": "Configuración de nómina",
@@ -6566,7 +6572,9 @@
       },
       "payWithItem": "Pagar con un concepto único",
       "payWithItemFor": "Pagar con un concepto único: {{name}}",
-      "payWithItemHelp": "Agrega un concepto único por lo que la línea habría pagado. El trabajo seguirá en esta lista."
+      "payWithItemHelp": "Agrega un concepto único por lo que la línea habría pagado. El trabajo seguirá en esta lista.",
+      "outdated": "No se pudo volver a cargar la lista, así que puede estar desactualizada. Vuelve a cargarla antes de pagar a mano.",
+      "reload": "Volver a cargar"
     },
     "payItems": {
       "title": "Bonos y deducciones",
@@ -6766,7 +6774,8 @@
           "date": "Fecha",
           "line": "Línea",
           "details": "Detalle",
-          "amount": "Importe"
+          "amount": "Importe",
+          "actions": "Acciones"
         },
         "kinds": {
           "session": "Sesión",
@@ -6775,7 +6784,8 @@
           "makeup": "Reposición",
           "salary": "Salario",
           "pay_item": "Bono o deducción",
-          "unknown": "Otra línea"
+          "unknown": "Otra línea",
+          "adjustment": "Ajuste"
         },
         "noDate": "—",
         "coveredBySalary": "Cubierta por el salario",
@@ -6795,7 +6805,19 @@
         "directions": {
           "bonus": "Bono",
           "deduction": "Deducción"
-        }
+        },
+        "adjustmentKinds": {
+          "late_approval": "Aprobación tardía",
+          "hours_correction": "Corrección de horas",
+          "manual": "Ajuste manual",
+          "carry_forward": "Saldo trasladado"
+        },
+        "adjustmentWork": "Trabajo del {{date}}",
+        "reason": "Motivo: {{reason}}",
+        "originPeriod": "Abrir el periodo de origen",
+        "carriedTo": "Ver los periodos del tutor",
+        "correct": "Corregir línea",
+        "correctFor": "Corregir línea: {{line}}, {{date}}"
       },
       "actions": {
         "label": "Acciones",
@@ -6844,7 +6866,16 @@
       "notFound": "Este periodo no existe o no puedes abrirlo.",
       "gone": "El estado de este periodo cambió y ya no está en tu revisión.",
       "goneReturned": "Periodo regresado a Finanzas. Ya no está en tu revisión.",
-      "goneLink": "Ir a los periodos"
+      "goneLink": "Ir a los periodos",
+      "adjustmentsNote": "Los ajustes corrigen periodos ya finalizados. No entran en la revisión de cambios al finalizar.",
+      "carry": {
+        "banner": "El total es menor que cero, así que este periodo no se puede preparar. Puedes corregir un bono o una deducción y volver a calcular, o pasar el saldo al siguiente periodo.",
+        "waiting": "Los periodos posteriores de este tutor esperan: no se pueden finalizar hasta que este se finalice.",
+        "help": "Puedes pasar el saldo al siguiente periodo: se descuenta allí, no se perdona.",
+        "action": "Pasar el saldo al siguiente periodo",
+        "done": "Saldo pasado al siguiente periodo. Este periodo ya se puede preparar.",
+        "settled": "Este periodo ya no tiene saldo negativo, así que la página se volvió a cargar."
+      }
     },
     "finalizeDialog": {
       "title": "¿Finalizar este periodo?",
@@ -6866,6 +6897,47 @@
       "submit": "Regresar",
       "submitting": "Regresando…",
       "cancel": "Cancelar"
+    },
+    "adjustmentDialog": {
+      "title": {
+        "line": "Corregir línea de {{name}}",
+        "session": "Pagar a mano a {{name}}",
+        "free": "Ajuste manual para {{name}}"
+      },
+      "help": "Un ajuste manual paga más o descuenta una cantidad en el periodo abierto más antiguo del tutor.",
+      "reference": "Referencia",
+      "referenceLine": "Línea de un periodo finalizado: {{line}}",
+      "referenceSession": "Trabajo sin resolver del {{date}}: {{reason}}. Después de este ajuste nada más lo paga.",
+      "referenceNone": "Sin referencia",
+      "direction": "Tipo de ajuste",
+      "directions": {
+        "pay_more": "Pagar más",
+        "take_back": "Descontar"
+      },
+      "amount": "Monto",
+      "reason": "Motivo",
+      "reasonHelp": "El tutor verá este motivo en su recibo de nómina cuando el periodo se finalice. También se guarda con el ajuste y se muestra en esta página. No escribas datos personales.",
+      "counter": "{{n}} de {{max}} caracteres",
+      "strandedTitle": "Un concepto único pendiente se pagaría dos veces",
+      "stranded": "Si este ajuste paga un concepto único que quedó sin periodo (por ejemplo, de un tutor que se fue), primero elimina ese concepto pendiente en Bonos y deducciones. Si no lo eliminas, el tutor cobrará dos veces: este ajuste y el concepto.",
+      "target": "Se aplica en el periodo abierto más antiguo del tutor; si no hay, se abre uno.",
+      "password": "Si no confirmaste tu contraseña en los últimos 5 minutos, se te pedirá.",
+      "submit": "Guardar ajuste",
+      "resend": "Volver a enviar el mismo ajuste",
+      "unknown": "No sabemos si el ajuste se guardó. Volver a enviarlo desde aquí es seguro: no se paga dos veces. No cambies los datos ni empieces otro ajuste.",
+      "saved": "Ajuste guardado. Se aplicará en el periodo del {{start}} al {{end}}.",
+      "savedNoDates": "Ajuste guardado. Se aplicará en el periodo abierto más antiguo del tutor.",
+      "closedUnknown": "Puede que el ajuste se haya guardado. Revisa las líneas del periodo abierto del tutor antes de agregar otro.",
+      "open": "Ajuste manual",
+      "payByHand": "Pagar a mano",
+      "payByHandFor": "Pagar a mano: {{name}}, {{date}}"
+    },
+    "carryDialog": {
+      "title": "Pasar el saldo al siguiente periodo",
+      "body": "{{amount}} de {{name}} ({{dates}}) pasa al siguiente periodo abierto del tutor; si no hay, se abre uno.",
+      "notForgiven": "El saldo se mueve, no se perdona: este periodo queda en 0.00 y el siguiente lo descuenta. Los dos se preparan y finalizan como siempre.",
+      "submit": "Pasar el saldo",
+      "unknown": "No sabemos si el saldo se pasó. La página se está volviendo a cargar; confirmar otra vez desde aquí es seguro."
     }
   },
   "familyBilling": {

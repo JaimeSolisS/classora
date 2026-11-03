@@ -489,11 +489,11 @@ describe('review page (C)', () => {
       'Abono al préstamo',
       '-$150.00',
     ]);
-    // C9: #111's adjustment isn't known yet.
+    // M7-08b A1: #111's adjustment, labelled.
     expect(cells(ALL_LINES[10]!.id)).toEqual([
-      'Oct 12, 2026',
-      'Other line',
-      '',
+      'Sep 28, 2026',
+      'Late approval',
+      'Work on Sep 28, 2026IndividualOpen the origin period',
       '$50.00',
     ]);
     expect(line(LINE_HOURLY.id).querySelector('a')?.getAttribute('href')).toBe(
@@ -504,7 +504,9 @@ describe('review page (C)', () => {
   it('has no session link without schedule.view', async () => {
     stub({}, user(['finance_staff'], ['payroll.view', 'payroll.prepare']));
     await openReview();
-    expect(main().querySelector('[data-period-lines-table] a')).toBeNull();
+    expect(
+      main().querySelector('[data-period-lines-table] a[href^="/schedule"]'),
+    ).toBeNull();
   });
 
   it('an empty period says "No lines" and $0.00, and still prepares', async () => {
@@ -524,9 +526,10 @@ describe('review page (C)', () => {
     });
     await openReview();
     expect(head().Total).toBe('-$150.00');
-    expect(
-      main().querySelector('[data-negative-total]')?.textContent,
-    ).toContain("can't be prepared");
+    // M7-08b E2: an ended one offers carry-forward to payroll.prepare.
+    expect(main().querySelector('[data-carry-banner]')?.textContent).toContain(
+      "can't be prepared",
+    );
   });
 
   describe('payroll_amount_out_of_range (C8)', () => {
@@ -1374,7 +1377,8 @@ describe('pure rules', () => {
 
   it('knows the line kinds, and calls any other unknown', () => {
     expect(lineKindKey('pay_item')).toBe('pay_item');
-    expect(lineKindKey('adjustment')).toBe('unknown');
+    expect(lineKindKey('adjustment')).toBe('adjustment');
+    expect(lineKindKey('bonus')).toBe('unknown');
   });
 
   it('shows the actions per status and permission', () => {
