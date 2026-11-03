@@ -339,6 +339,32 @@ export const Types: Story = {
   ),
 };
 
+/** #458 C2: a refetch failed; the rows may be out of date. */
+export const TypesRefreshFailed: Story = {
+  render: () => (
+    <Shell>
+      <PayItemTypesView
+        {...typesViewArgs}
+        state={{
+          ...typesReady,
+          refreshError: refused('database_unavailable', 400),
+          onRefresh: fn(),
+        }}
+      />
+    </Shell>
+  ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('alert')).toHaveTextContent(
+      i18n.t('payroll.payItemTypes.stale'),
+    );
+    await expect(
+      canvas.getByRole('button', {
+        name: i18n.t('payroll.payItemTypes.reloadList'),
+      }),
+    ).toBeVisible();
+  },
+};
+
 export const TypesReadOnly: Story = {
   render: () => (
     <Shell>

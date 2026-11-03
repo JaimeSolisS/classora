@@ -1,4 +1,4 @@
-import { ApiError } from '@/app/api';
+import { ApiError, CLIENT_ERROR_CODES } from '@/app/api';
 import { codeMessageKey } from '@/app/errors';
 import { isMoneyInput, normalizeMoneyInput } from '@/lib/money';
 import type { LocalDate } from '@/lib/time';
@@ -402,6 +402,31 @@ export function exceededChargeId(error: unknown): string | null {
     return null;
   const id: unknown = error.problem?.details?.charge_id;
   return typeof id === 'string' ? id : null;
+}
+
+/**
+ * A lost answer (#458 B1): no response, or a 5xx. The payment may be stored,
+ * so only the same body with the same key may go again.
+ */
+export function isLostAnswer(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return true;
+  return (
+    error.status === undefined ||
+    error.status >= 500 ||
+    error.code === CLIENT_ERROR_CODES.network ||
+    error.code === CLIENT_ERROR_CODES.unexpectedResponse
+  );
+}
+
+/** The worst failure of a dialog's attempts (#458 B3): `lost` after a lost
+ * answer (the payment may be stored), `refused` after a settled refusal. */
+export type AttemptFailure = 'none' | 'refused' | 'lost';
+
+export function worseFailure(
+  current: AttemptFailure,
+  caught: unknown,
+): AttemptFailure {
+  return current === 'lost' || isLostAnswer(caught) ? 'lost' : 'refused';
 }
 
 // ------------------------------------------- allocate account credit

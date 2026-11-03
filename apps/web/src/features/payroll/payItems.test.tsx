@@ -1413,6 +1413,234 @@ describe('the list may be out of date (D5, D6)', () => {
   });
 });
 
+describe('types page: lost answers and failed reloads (#458 C)', () => {
+  const NOT_RELOADED = "couldn't be reloaded";
+
+  it.each([
+    ['gone', 404, 'not_found', 'That type no longer exists.'],
+    ['changed', 409, 'version_conflict', 'Someone else changed this type.'],
+  ] as const)(
+    'a %s type says the list reloaded only once it did (C1, C2)',
+    async (_what, status, code, opening) => {
+      let down = false;
+      stub({
+        [TYPES]: () =>
+          down
+            ? problem(400, 'database_unavailable')
+            : jsonResponse(200, PAY_ITEM_TYPES),
+        [typePatch(TYPE_BONUS.id)]: () => {
+          down = true;
+          return problem(status, code);
+        },
+      });
+      await openTypes();
+      await click(named(typeRow(TYPE_BONUS), `Deactivate ${TYPE_BONUS.name}`)!);
+      await settleUntil(() => openDialog());
+      await click(buttonNamed(dialog(), 'Deactivate'));
+      await settleUntil(() => statusText().includes(NOT_RELOADED));
+
+      expect(statusText()).toContain(opening);
+      expect(statusText()).not.toContain('was reloaded');
+      // The old rows stay, under the out-of-date alert (C2).
+      expect(typeRow(TYPE_BONUS)).not.toBeNull();
+      expect(alerts(main()).join(' ')).toContain('may be out of date');
+
+      down = false;
+      await click(named(main(), 'Reload the list')!);
+      await settleUntil(() => !named(main(), 'Reload the list'));
+      expect(alerts(main())).toEqual([]);
+      expect(statusText()).toContain(opening);
+      expect(statusText()).toContain('The list was reloaded');
+      expect(statusText()).not.toContain(NOT_RELOADED);
+    },
+  );
+
+  it('says it reloaded when the reload works (C1)', async () => {
+    stub({ [typePatch(TYPE_BONUS.id)]: () => problem(404, 'not_found') });
+    await openTypes();
+    await click(named(typeRow(TYPE_BONUS), `Deactivate ${TYPE_BONUS.name}`)!);
+    await settleUntil(() => openDialog());
+    await click(buttonNamed(dialog(), 'Deactivate'));
+    await settleUntil(() => statusText().includes('The list was reloaded'));
+    expect(alerts(main())).toEqual([]);
+  });
+
+  it('a failed reload keeps the alert (C2)', async () => {
+    let down = false;
+    const api = stub({
+      [TYPES]: () =>
+        down
+          ? problem(400, 'database_unavailable')
+          : jsonResponse(200, PAY_ITEM_TYPES),
+      [typePatch(TYPE_BONUS.id)]: () => {
+        down = true;
+        return problem(409, 'version_conflict');
+      },
+    });
+    await openTypes();
+    await click(named(typeRow(TYPE_BONUS), `Deactivate ${TYPE_BONUS.name}`)!);
+    await settleUntil(() => openDialog());
+    await click(buttonNamed(dialog(), 'Deactivate'));
+    await settleUntil(() => named(main(), 'Reload the list'));
+    const reads = posted(api, TYPES).length;
+    await click(named(main(), 'Reload the list')!);
+    await settleUntil(() => posted(api, TYPES).length > reads);
+    await settle();
+    expect(named(main(), 'Reload the list')).toBeDefined();
+    expect(statusText()).toContain(NOT_RELOADED);
+  });
+
+  const STORED: PayItemType = {
+    ...TYPE_BONUS,
+    id: '79000000-0000-4000-8000-000000000001',
+    name: 'Bono nuevo',
+  };
+
+  it.each([
+    ['Cancel', () => click(buttonNamed(dialog(), 'Cancel'))],
+    ['Escape', () => pressEscape()],
+    ['the close button', () => click(buttonNamed(dialog(), 'Close'))],
+  ] as const)(
+    'after a lost create, %s refreshes and shows the stored type (C3)',
+    async (_how, close) => {
+      const api = stub({
+        [TYPES]: [
+          () => jsonResponse(200, PAY_ITEM_TYPES),
+          () => jsonResponse(200, [STORED, ...PAY_ITEM_TYPES]),
+        ],
+        [TYPE_POST]: () => Promise.reject(new TypeError('Failed to fetch')),
+      });
+      await openTypes();
+      await click(named(main(), 'Add type')!);
+      await settleUntil(() => openDialog());
+      setFieldValue(labelled(dialog(), 'Name'), STORED.name);
+      setFieldValue(labelled(dialog(), 'Direction'), 'bonus');
+      await click(buttonNamed(dialog(), 'Save'));
+      await settleUntil(() => alerts(dialog()).length > 0);
+      expect(posted(api, TYPES)).toHaveLength(1);
+
+      await close();
+      await settleUntil(() => !openDialog());
+      await settleUntil(() => typeRow(STORED));
+      expect(posted(api, TYPES)).toHaveLength(2);
+    },
+  );
+
+  it('after a refused rename, closing refreshes too (C3)', async () => {
+    const api = stub({
+      [typePatch(TYPE_BONUS.id)]: () => problem(502, 'internal_error'),
+    });
+    await openTypes();
+    await click(named(typeRow(TYPE_BONUS), `Edit ${TYPE_BONUS.name}`)!);
+    await settleUntil(() => openDialog());
+    setFieldValue(labelled(dialog(), 'Name'), 'Otro');
+    await click(buttonNamed(dialog(), 'Save'));
+    await settleUntil(() => alerts(dialog()).length > 0);
+    const reads = posted(api, TYPES).length;
+    await click(buttonNamed(dialog(), 'Cancel'));
+    await settleUntil(() => posted(api, TYPES).length > reads);
+  });
+
+  it('a plain close refreshes nothing (C3)', async () => {
+    const api = stub();
+    await openTypes();
+    await click(named(main(), 'Add type')!);
+    await settleUntil(() => openDialog());
+    await click(buttonNamed(dialog(), 'Cancel'));
+    await settleUntil(() => !openDialog());
+    await settle();
+    expect(posted(api, TYPES)).toHaveLength(1);
+  });
+});
+
+describe('"Load more" leftovers (#454; #458 D)', () => {
+  const older = (n: number): PayItem => ({
+    ...ITEM_PLACED,
+    id: `78000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
+    description: `Lote ${n}`,
+  });
+  const STORED = Array.from({ length: 28 }, (_, n) => older(n));
+  const offsetOf = (request: Request) =>
+    Number(new URL(request.url).searchParams.get('offset'));
+  const pageAt = (offset: number) =>
+    jsonResponse(
+      200,
+      payItemPage(STORED.slice(offset, offset + 25), STORED.length, offset),
+    );
+  const rows = () =>
+    section().querySelectorAll('[data-pay-items-table] tbody tr').length;
+
+  it('shows no generic alert while a failed "Load more" retries (D1)', async () => {
+    let more = 0;
+    let answer: (response: Response) => void = () => undefined;
+    stub({
+      [ITEMS]: (request) => {
+        const offset = offsetOf(request);
+        if (offset === 0) return pageAt(0);
+        more += 1;
+        if (more === 1) return problem(400, 'database_unavailable');
+        return new Promise<Response>((resolve) => {
+          answer = resolve;
+        });
+      },
+    });
+    await openPage();
+    await settleUntil(() => rows() === 25);
+    await click(named(section(), 'Load more')!);
+    await settleUntil(() => alerts(section()).length === 1);
+
+    await click(named(section(), 'Load more')!);
+    await settleUntil(() => more === 2);
+    expect(alerts(section())).toEqual([]);
+
+    answer(pageAt(25));
+    await settleUntil(() => rows() === 28);
+    expect(alerts(section())).toEqual([]);
+  });
+
+  it('"Load more" during a reload lets the reload finish (D2, #454 D18)', async () => {
+    const world = { down: false, hold: false };
+    const held: Request[] = [];
+    let release: () => void = () => undefined;
+    stub({
+      [ITEMS]: (request) => {
+        const offset = offsetOf(request);
+        if (world.down) return problem(400, 'database_unavailable');
+        if (offset === 0 && world.hold) {
+          held.push(request);
+          return new Promise<Response>((resolve) => {
+            release = () => resolve(pageAt(0));
+          });
+        }
+        return pageAt(offset);
+      },
+      [ITEM_POST]: () => {
+        world.down = true;
+        return Promise.reject(new TypeError('Failed to fetch'));
+      },
+    });
+    await openAdd();
+    fillOneTime();
+    await click(buttonNamed(dialog(), 'Add'));
+    await settleUntil(() => alerts(dialog()).length > 0);
+    await click(buttonNamed(dialog(), 'Cancel'));
+    await settleUntil(() => named(section(), 'Reload the list'));
+
+    world.down = false;
+    world.hold = true;
+    await click(named(section(), 'Reload the list')!);
+    await settleUntil(() => held.length === 1);
+    await click(named(section(), 'Load more')!);
+    world.hold = false;
+    release();
+
+    await settleUntil(() => !named(section(), 'Reload the list'));
+    expect(held).toHaveLength(1);
+    expect(held[0]!.signal.aborted).toBe(false);
+    expect(alerts(section())).toEqual([]);
+  });
+});
+
 describe('language and display (D)', () => {
   it('reads in Spanish, with Bono and Deducción', async () => {
     applyLanguage('es');

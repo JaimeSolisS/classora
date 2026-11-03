@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, within } from 'storybook/test';
+import { ApiError, CLIENT_ERROR_CODES } from '@/app/api';
 import { i18n } from '@/i18n';
 import type { LocalDate } from '@/lib/time';
 import { StoryRouter } from '@/test/StoryRouter';
@@ -16,7 +17,7 @@ import { oldestFirst } from './rules';
 
 // "Record payment" (#379 G2): oldest first with the estimate, chosen
 // charges (filled rows), keep as credit, and the checks shown after an
-// empty submit. No request: every call is a stub. The dialog is portalled
+// empty submit, and the locked state after a lost answer (#458). No request: every call is a stub. The dialog is portalled
 // to <body>. axe runs on each story in both themes.
 
 const meta = {
@@ -127,5 +128,37 @@ export const ChooseChargesPhone: Story = {
     await expect(dialog.getBoundingClientRect().right).toBeLessThanOrEqual(
       view.innerWidth,
     );
+  },
+};
+
+/** #458 B1: the answer was lost. Every field is locked and the only action
+ * resends the same payment. */
+export const LostAnswer: Story = {
+  args: {
+    initialValues: { amount: '2000', method: 'cash' },
+    onSubmit: fn(() =>
+      Promise.reject(new ApiError({ code: CLIENT_ERROR_CODES.network })),
+    ),
+  },
+  play: async (context) => {
+    const dialog = await findDialog(context);
+    await context.userEvent.click(
+      within(dialog).getByRole('button', {
+        name: i18n.t('billing.accounts.record.submit'),
+      }),
+    );
+    await expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      i18n.t('billing.accounts.record.lost'),
+    );
+    await expect(
+      within(dialog).getByLabelText(
+        i18n.t('billing.accounts.record.fields.amount'),
+      ),
+    ).toBeDisabled();
+    await expect(
+      within(dialog).getByRole('button', {
+        name: i18n.t('billing.accounts.record.resend'),
+      }),
+    ).toBeEnabled();
   },
 };

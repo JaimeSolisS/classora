@@ -25,7 +25,13 @@ import { PayrollTabs } from './PayrollTabs';
 export type PayItemTypesState =
   | { status: 'loading' }
   | { status: 'error'; error: unknown; onRetry: () => void }
-  | { status: 'ready'; types: readonly PayItemType[] };
+  | {
+      status: 'ready';
+      types: readonly PayItemType[];
+      /** A refetch failed: the rows may be out of date (#458 C2). */
+      refreshError?: unknown;
+      onRefresh?: () => void;
+    };
 
 export interface PayItemTypesViewProps {
   state: PayItemTypesState;
@@ -146,6 +152,14 @@ export function PayItemTypesView({
         {state.status === 'loading' ? <LoadingState /> : null}
         {state.status === 'error' ? (
           <ErrorAlert error={state.error} onRetry={state.onRetry} />
+        ) : null}
+        {state.status === 'ready' && state.refreshError ? (
+          <ErrorAlert
+            error={state.refreshError}
+            message={t('payroll.payItemTypes.stale')}
+            onRetry={state.onRefresh}
+            retryLabel={t('payroll.payItemTypes.reloadList')}
+          />
         ) : null}
         {state.status === 'ready' && state.types.length === 0 ? (
           <p data-pay-types-empty>
