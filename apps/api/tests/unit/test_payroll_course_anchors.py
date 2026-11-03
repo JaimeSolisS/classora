@@ -360,6 +360,32 @@ def test_a_no_show_origin_at_100_is_a_whole_share():
     assert draft.amount == Money("0.00")
 
 
+def test_a_floored_session_origin_revised_to_a_no_show_keeps_its_zero_share():
+    """A ``session`` origin is a whole share even at 0.00 (2 of 6 under the
+    peak): the no-show pays 0.00, not 50 % of a recomputed 166.67."""
+    draft = course_correction_draft(
+        basis(rules=half_rules()),
+        origin(amount="0.00", n=6),
+        course(on(0), all_absent=True),
+    )
+    assert draft is not None
+    assert (draft.kind, draft.amount) == ("no_show", Money("0.00"))
+
+
+def test_a_minutes_only_revision_of_a_floored_no_show_keeps_its_amount():
+    """Same kind: the origin's amount, never the rule recomputed on the formula
+    share (which would be 125.00 here)."""
+    rules = half_rules()
+    draft = course_correction_draft(
+        basis(rules=rules),
+        origin(kind="no_show", amount="0.00", rule_id=rules[0].id),
+        course(on(0), all_absent=True),
+    )
+    assert draft is not None
+    assert (draft.kind, draft.amount) == ("no_show", Money("0.00"))
+    assert draft.session_pay_rule_id == rules[0].id
+
+
 def test_an_hourly_origin_isnt_corrected_here():
     snapshot = OriginSnapshot("per_hour", Rate("120"), uuid.uuid7())
     assert course_correction_draft(basis(), snapshot, course(on(0))) is None
