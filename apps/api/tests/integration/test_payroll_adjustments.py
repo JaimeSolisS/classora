@@ -347,6 +347,25 @@ def test_c4_work_before_the_first_period_is_never_paid_here(
     )
 
 
+def test_c4_work_before_the_first_period_with_a_basis_is_never_paid_here(
+    module_seeded_url, client, owner, finance, tutor
+):
+    """By SQL, on purpose: terms reaching back before the first period, which the
+    route refuses (#106 E4). The work then has a basis, and is still in no
+    finalized period, so the job never pays it (a one-time item does, #109)."""
+    url = module_seeded_url
+    add_terms(url, tutor.id)
+    add_rate(url, tutor.id)
+    first = add_period_row(url, tutor.id, "11-09", "11-15")
+    add_period_row(url, tutor.id, "11-16", "11-22", first=False)
+    made = lesson(url, starts_at=STARTS, tutor=tutor)
+    approved_lesson(client, made, owner.user)
+    locked(client, url, finance, owner, first)
+
+    assert run_job(url) == PostAdjustmentsRunResult()
+    assert adjustments(url, tutor) == []
+
+
 # --- C5, C6, C7: revisions after lock -----
 
 

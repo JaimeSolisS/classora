@@ -268,8 +268,10 @@ def test_h2_a_run_and_a_re_approval_sum_to_the_newest_revision(
         assert again.status_code == 200, again.text
 
     async def newer(session: AsyncSession) -> Any:
-        # The re-approval commits while the first run holds its lock; this run
-        # then waits for it, and prices the newer revision on what it paid.
+        # The re-approval waits for the first run (the adjustment's foreign keys
+        # hold its session and revision rows FOR KEY SHARE, and the correction
+        # takes the session FOR UPDATE), then commits; this run then prices the
+        # newer revision on what the first one paid.
         await asyncio.to_thread(reapprove)
         return await step(session)
 
