@@ -977,7 +977,8 @@ def test_a_run_costs_the_same_statements_whatever_the_sessions(
     )
 
     assert (first.line_count, second.line_count) == (3, 30)
-    assert few == many == 12  # thirteen with the audit insert at commit
+    assert few == many == 13  # fourteen with the audit insert at commit
+    # (M7-08c B4: one more, the settled read, whatever the lines)
 
 
 def test_compute_lines_writes_nothing(module_seeded_url, client, owner, tutor):

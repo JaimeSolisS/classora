@@ -142,23 +142,28 @@ async def _last_ends_on(session: AsyncSession, tutor_user_id: uuid.UUID) -> date
 
 
 async def open_period_for_adjustment(
-    session: AsyncSession, tutor_user_id: uuid.UUID, *, today: date
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID,
+    *,
+    today: date,
+    after: date | None = None,
 ) -> None:
     """A tutor with no ``open`` period gets one (#111 E6, D3, D4), under the
     advisory lock: first by the normal rule, as the daily job would, and if that
     opens nothing (a leaver), one period for the adjustment, from the day after
     the last one, with the last frequency, to that calendar's natural end
     (:func:`~app.modules.payroll.periods.adjustment_period`). The caller locks
-    and re-reads whichever is now the earliest open period."""
+    and re-reads whichever is now the earliest open period. With ``after``, the
+    same for an ``open`` period starting after that day (a carry-forward's
+    target, M7-08c E3)."""
     await open_due_periods(session, tutor_user_id, today=today)
-    has_open = await session.scalar(
-        select(PayrollPeriod.id)
-        .where(
-            PayrollPeriod.tutor_user_id == tutor_user_id,
-            PayrollPeriod.status == "open",
-        )
-        .limit(1)
+    query = select(PayrollPeriod.id).where(
+        PayrollPeriod.tutor_user_id == tutor_user_id,
+        PayrollPeriod.status == "open",
     )
+    if after is not None:
+        query = query.where(PayrollPeriod.starts_on > after)
+    has_open = await session.scalar(query.limit(1))
     if has_open is not None:
         return
     last = (

@@ -335,8 +335,9 @@ def statements(url: str, period: uuid.UUID) -> tuple[int, Any]:
 def test_c8_items_cost_the_same_statements_whatever_their_number(
     module_seeded_url, owner, tutor
 ):
-    """Twelve with no item (``test_c4_statements_with_and_without_a_salary``),
-    twelve with recurring items, fourteen with any one-time item."""
+    """Thirteen with no item (``test_c4_statements_with_and_without_a_salary``),
+    thirteen with recurring items, fifteen with any one-time item (the session
+    lines add the settled read, M7-08c B4)."""
     url = module_seeded_url
     recurring_tutor = create_user(url, roles=(TUTOR,))
     recurring_period = paid_tutor(url, recurring_tutor.id)
@@ -348,16 +349,16 @@ def test_c8_items_cost_the_same_statements_whatever_their_number(
     stored_approvals(url, recurring_tutor, owner, 2)
     stored_approvals(url, one_time_tutor, owner, 2)
 
-    assert statements(url, recurring_period)[0] == 12
-    assert statements(url, one_time_period)[0] == 14
+    assert statements(url, recurring_period)[0] == 13
+    assert statements(url, one_time_period)[0] == 15
 
     for _ in range(5):
         add_item(url, recurring_tutor.id, pay_type, on="10-01", recurrence="recurring")
         add_item(url, one_time_tutor.id, pay_type)
 
-    assert statements(url, recurring_period)[0] == 12
+    assert statements(url, recurring_period)[0] == 13
     count, result = statements(url, one_time_period)
-    assert count == 14
+    assert count == 15
     assert result.line_count == 8
 
 

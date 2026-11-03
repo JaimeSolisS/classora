@@ -48,7 +48,10 @@ unexecuted predicates :func:`has_no_adjustment`, :func:`has_no_adjustment_keyed`
 :func:`paid_so_far` and :func:`earliest_open_period`, the write
 :func:`post_adjustment`, :func:`open_period_for_adjustment` for a tutor with no
 open period, and the pure :func:`late_approval_draft`, :func:`correction_draft`
-and :func:`owed`.
+and :func:`owed`. M7-08c adds a person's writes :func:`post_manual_adjustment`
+and :func:`post_carry_forward`, their checks :func:`settled_by_tutor` and
+:func:`line_period_status`, :func:`settled_session_ids` for a run, and
+:func:`lock_unfinalized_periods_of_tutor`.
 
 **The period's review** (#110; :mod:`~app.modules.payroll.period_review`): the
 lock-free reads, the status moves, and the pure :func:`line_drift`, for
@@ -65,7 +68,9 @@ from app.modules.payroll.adjustments import (
     CANCELLATION_KEY,
     AdjustmentDraft,
     FinalizedSpan,
+    ManualDraft,
     PaidSession,
+    PostedAdjustment,
     approval_key,
     cancellation_key,
     earliest_open_period,
@@ -74,11 +79,16 @@ from app.modules.payroll.adjustments import (
     has_no_adjustment,
     has_no_adjustment_keyed,
     keyed,
+    line_period_status,
     paid_after_lock,
     paid_so_far,
     post_adjustment,
+    post_carry_forward,
+    post_manual_adjustment,
     revision_unpaid,
     salary_covers_of_tutors,
+    settled_by_tutor,
+    settled_session_ids,
 )
 from app.modules.payroll.calculation import (
     PER_COURSE,
@@ -106,7 +116,9 @@ from app.modules.payroll.calculation import (
     planned_sessions,
 )
 from app.modules.payroll.errors import (
+    PayrollLineNotFinalizedError,
     PayrollNegativeTotalError,
+    PayrollNoPeriodError,
     PayrollOwnCompensationError,
     PayrollPeriodNotEndedError,
     PayrollPeriodNotOpenError,
@@ -116,7 +128,11 @@ from app.modules.payroll.errors import (
     PayrollReviewOutdatedError,
     PayrollReviewRouteRequiredError,
     PayrollSelfFinalizeError,
+    PayrollTotalNotNegativeError,
     PayrollUnresolvedWorkError,
+    PayrollWorkBeforeFirstPeriodError,
+    PayrollWorkNotUnresolvedError,
+    PayrollWorkSettledError,
 )
 from app.modules.payroll.lines import (
     REBUILT_KINDS,
@@ -126,6 +142,7 @@ from app.modules.payroll.lines import (
     has_no_session_line,
     lock_open_period,
     lock_period,
+    lock_unfinalized_periods_of_tutor,
     period_lines,
     replace_lines,
 )
@@ -227,12 +244,15 @@ __all__ = [
     "FinalizedSpan",
     "LineDraft",
     "LineDrift",
+    "ManualDraft",
     "OriginSnapshot",
     "PaidSession",
     "PayBasis",
     "PayItemFact",
     "PayableCancellation",
+    "PayrollLineNotFinalizedError",
     "PayrollNegativeTotalError",
+    "PayrollNoPeriodError",
     "PayrollOwnCompensationError",
     "PayrollPeriodNotEndedError",
     "PayrollPeriodNotOpenError",
@@ -242,8 +262,13 @@ __all__ = [
     "PayrollReviewOutdatedError",
     "PayrollReviewRouteRequiredError",
     "PayrollSelfFinalizeError",
+    "PayrollTotalNotNegativeError",
     "PayrollUnresolvedWorkError",
+    "PayrollWorkBeforeFirstPeriodError",
+    "PayrollWorkNotUnresolvedError",
+    "PayrollWorkSettledError",
     "PeriodDates",
+    "PostedAdjustment",
     "SalaryCover",
     "TermsBasisVersion",
     "UnresolvedCandidate",
@@ -289,6 +314,7 @@ __all__ = [
     "keyed",
     "late_approval_draft",
     "line_drift",
+    "line_period_status",
     "lines_total",
     "list_compensation_rates",
     "list_pay_item_types",
@@ -298,6 +324,7 @@ __all__ = [
     "lock_open_period",
     "lock_payroll_periods",
     "lock_period",
+    "lock_unfinalized_periods_of_tutor",
     "mark_finalized",
     "mark_prepared",
     "mark_returned",
@@ -316,6 +343,8 @@ __all__ = [
     "placed_period",
     "planned_sessions",
     "post_adjustment",
+    "post_carry_forward",
+    "post_manual_adjustment",
     "rate_in_effect",
     "rate_versions",
     "rate_versions_of_tutors",
@@ -327,6 +356,8 @@ __all__ = [
     "salary_proration_basis",
     "session_pay_rule_in_effect",
     "session_pay_rule_versions",
+    "settled_by_tutor",
+    "settled_session_ids",
     "stored_lines",
     "terms_basis_versions",
     "terms_basis_versions_of_tutors",

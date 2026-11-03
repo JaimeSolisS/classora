@@ -10,7 +10,11 @@ and neither side waits for the other (§15).
 
 - :func:`compute_lines` only reads and returns frozen drafts: the session lines
   by service date, then session, then the salary lines by their first day
-  (#108 C2), then the item lines by item (#109 C1). ``finalize``'s drift check
+  (#108 C2), then the item lines by item (#109 C1). A session an adjustment
+  names is settled (#111 E7) and gets no line, in a period of any status, so a
+  rate added later can't pay it again (M7-08c B1). In a per-course walk it still
+  counts in ``k`` (B2): the line is dropped after the walk, as a session with no
+  terms on its date earns none. ``finalize``'s drift check
   (#110 D3) compares them with the stored lines, with no write. It reads the
   period's work in center-local dates: ``floor_instant(starts_on)`` to
   ``floor_instant(ends_on + 1)``, half-open, and a service date is the local date
@@ -66,7 +70,8 @@ item line keeps no work off the unresolved list.
 zone not yet read, the event included; eighteen with a course session in the
 period, whatever the number of sessions or cohorts. A salary on the terms adds
 two, whatever the number of pieces: fifteen and twenty. A one-time item adds two,
-whatever the number of items.
+whatever the number of items. A session line to draft adds one, whatever the
+number of lines: the settled read (M7-08c B4).
 
 The unresolved reads cost eight statements, ten with a course session among the
 candidates, one more with a salaried tutor among them (#111 E4), and the route
@@ -261,8 +266,12 @@ async def compute_lines(
         ],
         cohorts=await _cohort_walks(session, tutor, zone, approvals, makeups),
     )
+    settled = await payroll.settled_session_ids(
+        session,
+        {line.class_session_id for line in session_lines if line.class_session_id},
+    )
     return [
-        *session_lines,
+        *(line for line in session_lines if line.class_session_id not in settled),
         *await _salary_lines(session, period, basis.terms),
         *await _item_lines(session, period),
     ]

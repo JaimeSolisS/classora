@@ -299,11 +299,13 @@ def test_c2_a_center_cancellation_is_never_a_candidate(scene):
 
 
 def salaried_week(
-    scene: Scene, *, rate_before: bool
+    scene: Scene, *, rate_before: bool, client: TestClient | None = None
 ) -> tuple[uuid.UUID, uuid.UUID, Any]:
     """A salaried tutor with no rate for the kind: a family late cancellation
     and a closeout in the same week, the week recalculated (the salary line) and
-    finalized, then the closeout approved."""
+    finalized, then the closeout approved. With ``client``, the week is prepared
+    and finalized by route, so its ``finalized_at`` is the app's frozen clock and
+    its ``updated_at`` the database's (M7-08c, #111 QA O1)."""
     url, ctx = scene.url, scene.ctx
     add_rule(url, "late_cancellation", from_scene_start(scene), "percent", percent="50")
     add_terms(url, ctx.tutor.id, salary="3000.00")
@@ -314,8 +316,12 @@ def salaried_week(
     set_floor(url, ctx.tl.week(2).isoformat())
     late = one_off(ctx, accept=True, starts_at=ctx.tl.at(ctx.tl.week(2, 3), "10:00"))
     cancelled_by_family(scene)
-    run(url, first)
-    finalize(url, first, ctx.owner.id)
+    if client is None:
+        run(url, first)
+        finalize(url, first, ctx.owner.id)
+    else:
+        when = after(scene, 2)
+        lock_at(client, url, team_at(url, client, when), when, first)
     closed_out(ctx, late, minutes=60)
     return first, second, late
 
@@ -337,6 +343,28 @@ def test_c3_covered_work_is_neither_paid_nor_listed(scene):
     assert items(url, ctx.tutor) == []
     assert blocking(url, second) == []
     assert run_job(url) == PostAdjustmentsRunResult()
+    assert adjustments(url, ctx.tutor) == []
+    assert frozen_state(url, first) == before
+
+
+def test_c3_covered_work_stays_unpaid_after_a_route_finalize(scene, client):
+    """#111 QA O1, in M7-08c: the period is finalized by route, under the app's
+    clock, which runs years ahead of the database's here. A cover that read
+    ``finalized_at`` instead of ``updated_at`` would count a rate created after
+    the finalize as existing at it, and pay the late work on top of the salary."""
+    url, ctx = scene.url, scene.ctx
+    first, second, _ = salaried_week(scene, rate_before=False, client=client)
+    period = row_of(url, first)
+    assert period.status == "finalized"
+    assert period.finalized_at > period.updated_at  # the two clocks differ
+    assert [line.kind for line in lines(url, first)] == ["salary"]
+    before = frozen_state(url, first)
+
+    assert code_of(rate_route(scene, from_scene_start(scene))) == CREATED
+
+    assert run_job(url) == PostAdjustmentsRunResult()
+    assert items(url, ctx.tutor) == []
+    assert blocking(url, second) == []
     assert adjustments(url, ctx.tutor) == []
     assert frozen_state(url, first) == before
 

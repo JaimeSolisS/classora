@@ -22916,6 +22916,230 @@
         }
       }
     },
+    "/api/v1/payroll/tutors/{tutor_user_id}/adjustments": {
+      "post": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Post Payroll Adjustment",
+        "description": "Add a manual adjustment, positive or negative, with a reason the tutor\nreads on the payslip. Name a line of a finalized period to correct it, or an\nunresolved session to pay it by hand (it is then settled: nothing pays it\nagain), or neither. It lands in the tutor's earliest open period and shows\non its lines at once. Needs a password reauthentication in the last 5\nminutes. Send a new `Idempotency-Key` per adjustment and the same one to\nretry it.",
+        "operationId": "post_payroll_adjustment_api_v1_payroll_tutors__tutor_user_id__adjustments_post",
+        "parameters": [
+          {
+            "name": "tutor_user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tutor User Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayrollAdjustmentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollAdjustmentPosted"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed (permission_denied), the session wasn't reauthenticated (reauth_required), or the caller's own pay (payroll_own_compensation; only an Owner may write their own).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tutor, or origin_line_id is no line of this tutor (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The line isn't in a finalized period (payroll_line_not_finalized); the session isn't unresolved work of this tutor (payroll_work_not_unresolved); it is work before the tutor's first period, paid with a bonus (payroll_work_before_first_period); an adjustment already pays it (payroll_work_settled); or the tutor has no payroll period yet (payroll_no_period). A refusal changes nothing.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/periods/{period_id}/carry-forward": {
+      "post": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Carry Payroll Period Forward",
+        "description": "Move an ended open period's negative total to the tutor's next open\nperiod (opened if there is none): the period is recalculated, then gets the\namount that brings it to 0.00, and the next one the same amount taken back.\nBoth still need prepare and finalize. Send a new `Idempotency-Key` per\ncarry and the same one to retry it.",
+        "operationId": "carry_payroll_period_forward_api_v1_payroll_periods__period_id__carry_forward_post",
+        "parameters": [
+          {
+            "name": "period_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Period Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollCarryForward"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such period (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The period isn't open (payroll_period_not_open, with details.status); it hasn't ended (payroll_period_not_ended, with details.ends_on); a line or the total is beyond the money range (payroll_amount_out_of_range); or its total after a recalculation isn't below zero (payroll_total_not_negative). A refusal changes nothing.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/payroll/tutors": {
       "get": {
         "tags": [
@@ -50042,6 +50266,128 @@
         ],
         "title": "PaymentReversed",
         "description": "``201`` of a payment reversal (#100 C3): the reversal, the payment\nafterwards, the allocations released and the account credit afterwards\n(the payment's remainder no longer counts)."
+      },
+      "PayrollAdjustmentCreate": {
+        "properties": {
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "description": "Signed: negative takes pay back. Never 0.00.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Up to 1000 characters. The tutor reads it on the payslip once the period is finalized."
+          },
+          "origin_line_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin Line Id",
+            "description": "A line of this tutor in a finalized period, to correct it."
+          },
+          "class_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Class Session Id",
+            "description": "Unresolved work of this tutor to pay by hand: it is then settled, and nothing pays it again."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount",
+          "reason"
+        ],
+        "title": "PayrollAdjustmentCreate",
+        "description": "``POST /api/v1/payroll/tutors/{id}/adjustments`` (M7-08c A1, E1, E7): a\n``manual`` adjustment on a finalized line (``origin_line_id``), on unresolved\nwork (``class_session_id``), or free (neither). ``amount`` is signed, never\n``0.00`` (``amount_zero``; ``money_*``)."
+      },
+      "PayrollAdjustmentPosted": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "const": "manual",
+            "title": "Kind"
+          },
+          "tutor_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tutor User Id"
+          },
+          "target_period_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Target Period Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "tutor_user_id",
+          "target_period_id",
+          "created_at"
+        ],
+        "title": "PayrollAdjustmentPosted",
+        "description": "What ``POST …/adjustments`` answers (M7-08c A5, E6): no amount and no\nreason, because the stored idempotent response holds it in clear. The page\nrefetches the target period's lines."
+      },
+      "PayrollCarryForward": {
+        "properties": {
+          "period_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Period Id"
+          },
+          "target_period_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Target Period Id"
+          },
+          "adjustment_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Adjustment Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "period_id",
+          "target_period_id",
+          "adjustment_ids"
+        ],
+        "title": "PayrollCarryForward",
+        "description": "What ``POST /api/v1/payroll/periods/{id}/carry-forward`` answers (M7-08c\nC1, E6): the two periods and the two adjustments, ``+X`` here first. No\namount."
       },
       "PayrollLineItem": {
         "properties": {
