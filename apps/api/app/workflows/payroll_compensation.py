@@ -156,6 +156,17 @@ async def add_pay_terms(
     return await _terms_item(session, tutor_user_id, terms_id, today)
 
 
+def _first_dates(session: AsyncSession) -> payroll.FirstSessionDates:
+    """Each session's cohort's first date, from ``scheduling`` (ADR-0002), for
+    the rate refusals."""
+
+    async def first_dates(ids: Collection[uuid.UUID]) -> dict[uuid.UUID, date]:
+        zone = await administration.get_center_time_zone(session)
+        return await payroll_calculation.first_session_dates(session, ids, zone)
+
+    return first_dates
+
+
 async def add_compensation_rate(
     session: AsyncSession,
     principal: Principal,
@@ -164,11 +175,6 @@ async def add_compensation_rate(
 ) -> CompensationRateItem:
     """``POST /api/v1/payroll/tutors/{id}/rates`` (G5)."""
     await _write_target(session, principal, tutor_user_id)
-
-    async def first_dates(ids: Collection[uuid.UUID]) -> dict[uuid.UUID, date]:
-        zone = await administration.get_center_time_zone(session)
-        return await payroll_calculation.first_session_dates(session, ids, zone)
-
     rate_id = await payroll.add_compensation_rate(
         session,
         tutor_user_id,
@@ -176,7 +182,7 @@ async def add_compensation_rate(
         effective_from=body.effective_from,
         rate_model=body.rate_model,
         rate=body.rate,
-        first_session_dates=first_dates,
+        first_session_dates=_first_dates(session),
     )
     today = await administration.center_today(session)
     return await _rate_item(session, tutor_user_id, rate_id, today)
@@ -199,6 +205,9 @@ async def delete_compensation_rate(
     tutor_user_id: uuid.UUID,
     rate_id: uuid.UUID,
 ) -> None:
-    """``DELETE /api/v1/payroll/tutors/{id}/rates/{rate_id}`` (G6)."""
+    """``DELETE /api/v1/payroll/tutors/{id}/rates/{rate_id}`` (G6), with the
+    add's refusal (M7-08d E3)."""
     await _write_target(session, principal, tutor_user_id)
-    await payroll.delete_compensation_rate(session, tutor_user_id, rate_id)
+    await payroll.delete_compensation_rate(
+        session, tutor_user_id, rate_id, first_session_dates=_first_dates(session)
+    )

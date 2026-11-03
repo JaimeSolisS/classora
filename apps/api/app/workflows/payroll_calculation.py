@@ -35,8 +35,8 @@ tutor's earliest open period, whose lines a run never rebuilds.
 **Per-course pay (#442; ADR-0017 E3):** :func:`_cohort_walks` adds, for the
 cohorts of the period's course sessions, every session of those cohorts in any
 state, the tutor's approvals of them, and what the tutor's finalized periods
-fix. The period bounds pick which lines are written, not which sessions count,
-so periods may run in any order.
+and per-course anchors fix (M7-08d E1). The period bounds pick which lines are
+written, not which sessions count, so periods may run in any order.
 
 **Unresolved work (#443; ADR-0017 E2, #106 E4, #107 E12, E13).** Work that was
 approved, or a paying family cancellation, with no session-sourced line and no
@@ -140,17 +140,38 @@ async def _cohort_walks(
     approvals: Sequence[academics.CurrentApproval],
     makeups: Collection[uuid.UUID],
 ) -> list[payroll.CohortWalk]:
-    """The cohorts of the period's course sessions (#442 A, C). Five statements,
-    none with no course session.
+    """The cohorts of the period's course sessions (#442 A, C), by
+    :func:`cohort_walks`."""
+    return await cohort_walks(
+        session,
+        tutor,
+        zone,
+        [a.class_session_id for a in approvals if a.session_kind == COURSE],
+        makeups,
+    )
+
+
+async def cohort_walks(
+    session: AsyncSession,
+    tutor: uuid.UUID,
+    zone: str,
+    course_session_ids: Collection[uuid.UUID],
+    makeups: Collection[uuid.UUID],
+) -> list[payroll.CohortWalk]:
+    """The tutor's walks of the cohorts of these course sessions (#442 A, C), for
+    a run and for an anchor (M7-08d E1). Five statements, none with no course
+    session.
 
     A cohort's sessions come oldest first, and a started session can't move, so
     that is the order of ``(session_starts_at, class_session_id)``. The finalized
     periods are read before their lines, and a finalized line wins over an
-    approval, so a period finalized between the two reads counts once."""
-    cohort_ids = await scheduling.cohort_ids_of_sessions(
-        session,
-        [a.class_session_id for a in approvals if a.session_kind == COURSE],
-    )
+    approval, so a period finalized between the two reads counts once. A
+    session's anchor (M7-08d E1) is a fixed step like a finalized line, from the
+    same statement, and the fixed steps walk by their stored ``k``
+    (:func:`~app.modules.payroll.calculation.in_walk_order`). An approval dated in
+    a finalized period with neither isn't walked: the job anchors it, and the
+    walk carries it as ``late`` for the anchors of its cohort."""
+    cohort_ids = await scheduling.cohort_ids_of_sessions(session, course_session_ids)
     sessions = await scheduling.cohort_sessions(session, cohort_ids)
     session_ids = [row.class_session_id for row in sessions]
     approved = {
@@ -167,26 +188,36 @@ async def _cohort_walks(
         for line in await payroll.finalized_course_lines(session, tutor, session_ids)
     }
 
+    def in_finalized(work: payroll.ApprovedSession) -> bool:
+        return any(
+            starts_on <= work.service_date <= ends_on
+            for starts_on, ends_on in finalized_dates
+        )
+
     def step(session_id: uuid.UUID) -> payroll.CohortStep | None:
         if session_id in finalized:
             return finalized[session_id]
         work = approved.get(session_id)
-        if work is None or any(
-            starts_on <= work.service_date <= ends_on
-            for starts_on, ends_on in finalized_dates
-        ):
-            return None
-        return work
+        return None if work is None or in_finalized(work) else work
 
     walks = []
     for _, group in groupby(sessions, key=attrgetter("cohort_id")):
         rows = list(group)
         steps = (step(row.class_session_id) for row in rows)
+        late = (
+            approved[row.class_session_id]
+            for row in rows
+            if row.class_session_id not in finalized
+            and row.class_session_id in approved
+        )
         walks.append(
             payroll.CohortWalk(
                 first_session_date=local_date(rows[0].starts_at, zone),
                 planned_sessions=payroll.planned_sessions(r.state for r in rows),
-                steps=[item for item in steps if item is not None],
+                steps=payroll.in_walk_order(
+                    [item for item in steps if item is not None]
+                ),
+                late=[work for work in late if in_finalized(work)],
             )
         )
     return walks

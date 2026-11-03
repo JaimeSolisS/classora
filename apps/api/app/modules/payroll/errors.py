@@ -198,6 +198,23 @@ class EffectiveFromUnderFinalizedLineError(AppError):
         )
 
 
+class CompensationRateDeleteUnderFinalizedLineError(AppError):
+    """Deleting this version would change the price of a finalized line or of a
+    posted adjustment of this tutor and class kind (M7-08d E3, E4): its window
+    would go to the previous version, or to nothing, by the same rule as an add
+    (#110 E5). ``details.latest_finalized_on`` is the newest such date, the
+    cohort's first date for a per-course price."""
+
+    status = 409
+    code = "compensation_rate_delete_under_finalized_line"
+    detail = "Deleting this rate would change a finalized payroll line."
+
+    def __init__(self, latest_finalized_on: date) -> None:
+        super().__init__(
+            details={"latest_finalized_on": latest_finalized_on.isoformat()}
+        )
+
+
 class PayrollPeriodNotOpenError(AppError):
     """Only an ``open`` period is calculated or prepared (#107 E7, #110 B8).
     ``details.status`` is the period's status."""

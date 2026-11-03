@@ -30,6 +30,7 @@ from typing import Any, Final
 from sqlalchemy import (
     ColumnElement,
     Row,
+    Select,
     and_,
     case,
     delete,
@@ -37,6 +38,7 @@ from sqlalchemy import (
     func,
     insert,
     select,
+    union_all,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,7 +54,9 @@ from app.modules.payroll.errors import (
     PayrollPeriodNotOpenError,
 )
 from app.modules.payroll.models import (
+    AUTOMATIC_ADJUSTMENT_KINDS,
     COURSE,
+    LATE_APPROVAL,
     MANUAL,
     PAY_ITEM,
     SALARY,
@@ -255,11 +259,14 @@ async def finalized_course_lines(
     tutor_user_id: uuid.UUID,
     class_session_ids: Collection[uuid.UUID],
 ) -> list[FinalizedCourseLine]:
-    """The tutor's per-course lines of ``finalized`` periods on these sessions
-    (#442 A3). One statement, none for no ids, no lock."""
+    """The tutor's fixed per-course steps on these sessions: the lines of
+    ``finalized`` periods (#442 A3) and the posted per-course ``late_approval``
+    adjustments, the anchors (M7-08d E1), in a period of any status. One
+    statement, none for no ids, no lock."""
     if not class_session_ids:
         return []
-    rows = await session.execute(
+    ids = set(class_session_ids)
+    finalized_lines = (
         select(
             PayrollLine.class_session_id,
             PayrollLine.cumulative_sessions,
@@ -270,10 +277,22 @@ async def finalized_course_lines(
         .where(
             PayrollPeriod.status == FINALIZED,
             PayrollLine.tutor_user_id == tutor_user_id,
-            PayrollLine.class_session_id.in_(set(class_session_ids)),
+            PayrollLine.class_session_id.in_(ids),
             PayrollLine.cumulative_sessions.is_not(None),
         )
     )
+    anchors = select(
+        PayrollAdjustment.class_session_id,
+        PayrollAdjustment.cumulative_sessions,
+        PayrollAdjustment.cohort_sessions,
+        PayrollAdjustment.rate,
+    ).where(
+        PayrollAdjustment.kind == LATE_APPROVAL,
+        PayrollAdjustment.tutor_user_id == tutor_user_id,
+        PayrollAdjustment.class_session_id.in_(ids),
+        PayrollAdjustment.cumulative_sessions.is_not(None),
+    )
+    rows = await session.execute(union_all(finalized_lines, anchors))
     return [
         FinalizedCourseLine(
             class_session_id=row.class_session_id,
@@ -326,33 +345,50 @@ async def latest_finalized_priced_date(
     holding a line of a ``finalized`` period of this tutor and class kind with a
     rate snapshot (#110 E5): a ``no_rate`` date has no line, and a "covered by
     salary" line has no rate. A line of the version's own model and rate doesn't
-    count: its price can't change (QA D4). One statement."""
-    query = (
-        select(func.max(PayrollLine.service_date))
-        .join(PayrollPeriod, PayrollPeriod.id == PayrollLine.payroll_period_id)
-        .where(
-            PayrollPeriod.status == FINALIZED,
-            PayrollLine.tutor_user_id == tutor_user_id,
-            PayrollLine.class_kind == class_kind,
-            PayrollLine.compensation_rate_id.is_not(None),
-            PayrollLine.service_date >= effective_from,
+    count: its price can't change (QA D4). A posted ``late_approval`` or
+    ``hours_correction`` with a rate snapshot counts as such a line on its
+    service date (M7-08d E4): its price is as fixed. One statement."""
+
+    def priced(table: Any, *where: ColumnElement[bool]) -> Select[Any]:
+        query = select(table.service_date.label("service_date")).where(
+            table.tutor_user_id == tutor_user_id,
+            table.class_kind == class_kind,
+            table.compensation_rate_id.is_not(None),
+            table.service_date >= effective_from,
+            *where,
         )
+        if until is not None:
+            query = query.where(table.service_date < until)
+        if rate_model is not None and rate is not None:
+            query = query.where(
+                ~and_(table.rate_model == rate_model, table.rate == rate)
+            )
+        return query
+
+    lines = priced(
+        PayrollLine,
+        PayrollLine.payroll_period_id.in_(
+            select(PayrollPeriod.id).where(PayrollPeriod.status == FINALIZED)
+        ),
     )
-    if until is not None:
-        query = query.where(PayrollLine.service_date < until)
-    if rate_model is not None and rate is not None:
-        query = query.where(
-            ~and_(PayrollLine.rate_model == rate_model, PayrollLine.rate == rate)
-        )
-    return await session.scalar(query)
+    adjustments = priced(
+        PayrollAdjustment, PayrollAdjustment.kind.in_(AUTOMATIC_ADJUSTMENT_KINDS)
+    )
+    both = union_all(lines, adjustments).subquery()
+    latest: date | None = await session.scalar(select(func.max(both.c.service_date)))
+    return latest
 
 
 async def finalized_course_kind_lines(
     session: AsyncSession, tutor_user_id: uuid.UUID
 ) -> list[FinalizedPricedLine]:
     """This tutor's lines of ``course`` sessions in ``finalized`` periods with a
-    rate snapshot (#110 E5). One statement, no lock."""
-    rows = await session.execute(
+    rate snapshot (#110 E5), and the posted ``late_approval`` and
+    ``hours_correction`` adjustments of ``course`` sessions with one (M7-08d E4):
+    an ordinary one is priced on its service date, a per-course one (an anchor,
+    or a correction of a per-course origin) on its cohort's first date, as a line
+    is. One statement, no lock."""
+    lines = (
         select(
             PayrollLine.class_session_id,
             PayrollLine.service_date,
@@ -367,6 +403,18 @@ async def finalized_course_kind_lines(
             PayrollLine.compensation_rate_id.is_not(None),
         )
     )
+    adjustments = select(
+        PayrollAdjustment.class_session_id,
+        PayrollAdjustment.service_date,
+        PayrollAdjustment.rate_model,
+        PayrollAdjustment.rate,
+    ).where(
+        PayrollAdjustment.kind.in_(AUTOMATIC_ADJUSTMENT_KINDS),
+        PayrollAdjustment.tutor_user_id == tutor_user_id,
+        PayrollAdjustment.class_kind == COURSE,
+        PayrollAdjustment.compensation_rate_id.is_not(None),
+    )
+    rows = await session.execute(union_all(lines, adjustments))
     return [
         FinalizedPricedLine(
             row.class_session_id, row.service_date, row.rate_model, row.rate

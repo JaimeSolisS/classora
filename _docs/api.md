@@ -7129,7 +7129,7 @@ are in `app/workflows/payroll_compensation_router.py` and
 | `POST /api/v1/payroll/tutors/{tutor_user_id}/pay-terms` | `require("payroll.manage")` | Body `PayTermsCreate`: `effective_from`, `pay_frequency`, `salary_amount` (all required, `null` written out). `201` with `PayTermsItem`. |
 | `POST /api/v1/payroll/tutors/{tutor_user_id}/rates` | `require("payroll.manage")` | Body `CompensationRateCreate`: `class_kind`, `effective_from`, `rate_model`, `rate` (all required, `null` written out). `201` with `CompensationRateItem`. |
 | `DELETE /api/v1/payroll/tutors/{tutor_user_id}/pay-terms/{terms_id}` | `require("payroll.manage")` | `204`, and the version's salary lines in `open` periods go with it. `409 pay_terms_in_use` once a prepared or finalized period uses the version. |
-| `DELETE /api/v1/payroll/tutors/{tutor_user_id}/rates/{rate_id}` | `require("payroll.manage")` | `204`, removing the version's lines in the tutor's open periods until the next recalculation. `409 compensation_rate_in_use` once a prepared or finalized period uses the version (#107 E8). |
+| `DELETE /api/v1/payroll/tutors/{tutor_user_id}/rates/{rate_id}` | `require("payroll.manage")` | `204`, removing the version's lines in the tutor's open periods until the next recalculation. `409 compensation_rate_in_use` once a prepared or finalized period, or an adjustment, uses the version (#107 E8). `409 compensation_rate_delete_under_finalized_line` with `details.latest_finalized_on` when its dates, going to the previous version, would change a finalized price (M7-08d E3, below). |
 
 - **Access:** `payroll.view` and `payroll.manage` are held by Owners and
   Finance Staff; not delegable; seeded by `make seed`. The compensation read
@@ -7166,7 +7166,19 @@ are in `app/workflows/payroll_compensation_router.py` and
   "covered by salary" line no rate snapshot, so a back-dated rate stays the exit of
   unresolved work, for courses too. The insert first locks the tutor's not-finalized
   periods, so it can't race a finalize. A late stop or a back-dated salary isn't
-  refused.
+  refused. A posted `late_approval` or `hours_correction` with a rate snapshot is a
+  finalized price too (M7-08d E4): an ordinary one on its service date, a
+  per-course one on its cohort's first date.
+- **A delete runs the same refusal (M7-08d E3):** `DELETE …/rates/{rate_id}` gives
+  the version's window, from its `effective_from` to the next version of the kind,
+  to the previous version, or to nothing if it is the first. When that would change
+  a finalized price by the rule above (a previous version of the line's own model
+  and exact rate never does), the answer is `409
+  compensation_rate_delete_under_finalized_line` with `details.latest_finalized_on`,
+  the newest such date, and nothing is deleted. The order is `404` → `409
+  compensation_rate_in_use` (a line or an adjustment names the version) → `409
+  compensation_rate_delete_under_finalized_line` → `204`. The delete first locks the
+  tutor's not-finalized periods, so it can't race a finalize either.
 - **Versions:** any `effective_from` is accepted, past or future, also between
   two versions. There is no `PATCH` or `PUT`: a correction is a delete and a
   new version. `status` is `current` (the version in effect on the center's
@@ -7319,8 +7331,9 @@ closeout, a cancellation or a reschedule.
   cohort: `cumulative_sessions` of `cohort_sessions` at the rate in effect on
   the cohort's first session, minus what earlier sessions earned. The two
   fields are `null` on every other line. A later cancellation changes
-  `cohort_sessions`, so open lines can change on the next run. See
-  `_docs/data-model.md` §11.6.
+  `cohort_sessions`, so open lines can change on the next run. A session paid
+  after lock is an anchor (M7-08d, below): a later line counts it, so the cohort
+  still sums to its rate. See `_docs/data-model.md` §11.6.
 - **Audit:** the named event `payroll.period_recalculated` `{payroll_period_id,
   tutor_user_id, line_count}`, with no amount, because Administrators read the
   audit log. Lines aren't audited.
@@ -7429,20 +7442,29 @@ orchestrator-recommended, pending owner review) in
 `app/workflows/payroll_adjustments.py` and `app/modules/payroll/adjustments.py`.
 Table: `_docs/data-model.md` §11.9. No new route: the adjustments show as
 `adjustment` lines through `GET …/lines`. The `manual` and carry-forward routes are
-M7-08c, per-course corrections M7-08d, the pages M7-08b.
+M7-08c, the pages M7-08b. Per-course work after lock is M7-08d's (#464), below.
 
 - **The job `payroll:post_adjustments`**, every 15 minutes, one queued at a time.
   Nothing else enqueues it, so a late correction shows within 15 minutes. While
-  `payroll_starts_on` is `null` it reads no tutor. It logs `candidates`, `posted`,
-  `skipped_course` and `failed`, never an amount.
+  `payroll_starts_on` is `null` it reads no tutor. It logs `candidates`, `posted`
+  and `failed`, never an amount.
 - **What it posts:** a closeout approved, or a paying family cancellation, dated in
   a **finalized** period of its tutor with no line (`late_approval`, the amount a
   line would have had on the service date's basis); and a later revision of work
   paid that way (`hours_correction`, the revision priced on the snapshot that paid
   it first, minus what was paid so far, so lines plus adjustments equal the current
   revision). Never `0.00`: a zero difference writes nothing. Never work before the
-  tutor's first period (a one-time item pays it), before `payroll_starts_on`, in an
-  `open` or `prepared` period, or of a cohort priced `per_course` (until M7-08d).
+  tutor's first period (a one-time item pays it), before `payroll_starts_on`, or in
+  an `open` or `prepared` period.
+- **Per-course (M7-08d E1, E2):** a late session of a cohort priced `per_course` is
+  an anchor of the walk: a `late_approval` storing `cumulative_sessions` (`k`, one
+  after the cohort's finalized lines and earlier anchors, capped at `N`),
+  `cohort_sessions` (`N` now) and the first date's rate, paying `rate x k / N`
+  minus the highest share already fixed, or its event's amount. Later lines walk
+  after it, so the cohort's lines and adjustments still sum to its rate when `N`
+  grows or shrinks. A floored `0.00` writes nothing and is tried again. A later
+  revision of a per-course session (a line or an anchor) keeps its `k` and `N` and
+  corrects only a change of kind: a minutes-only revision posts nothing.
 - **Where:** the tutor's earliest `open` period, never a `prepared` one; a later
   open period may then hold it while an earlier one waits, and that later period
   still finalizes only after the earlier (`409 payroll_period_out_of_order`). A

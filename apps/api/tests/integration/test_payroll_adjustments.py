@@ -34,6 +34,7 @@ from tests.integration.catalog_support import count_statements
 from tests.integration.catalog_support import post as post_as
 from tests.integration.conftest import run_sql, settings_for
 from tests.integration.corrections_support import Staff, staff
+from tests.integration.guardian_support import delete
 from tests.integration.lifecycle_support import code_of, in_uow
 from tests.integration.payroll_calculation_support import (
     add_item,
@@ -233,7 +234,6 @@ def test_b6_the_log_line_has_counts_and_no_amount(
     assert fields == {
         "candidates_count": 1,
         "posted_count": 1,
-        "skipped_course_count": 0,
         "failed_count": 0,
     }
     assert "90.53" not in str(vars(record)) and "98.76" not in str(vars(record))
@@ -941,3 +941,59 @@ def test_b7_one_adjustment_costs_the_same_statements(module_seeded_url, owner):
         counts.append(post_cost(url, tutor))
 
     assert counts[0] == counts[1]
+
+
+# --- M7-08d C1, C3: a posted adjustment is a fixed price in the rate refusals -----
+
+
+def test_m7_08d_c1_c3_a_late_approval_is_a_fixed_price_for_adds_and_deletes(
+    module_seeded_url, client, owner, finance, tutor
+):
+    """The late session's week is finalized with no line, so only the
+    ``late_approval`` (per hour 120 on 2026-11-03) can refuse."""
+    url = module_seeded_url
+    made, first, _, _ = late_closeout(url, client, owner, finance, tutor)
+    assert run_job(url) == PostAdjustmentsRunResult(candidates=1, posted=1)
+    assert lines(url, first) == []
+    rates = f"/api/v1/payroll/tutors/{tutor.id}/rates"
+    [original] = run_sql(
+        url,
+        "SELECT id FROM compensation_rates WHERE tutor_user_id = :t",
+        {"t": tutor.id},
+    )
+
+    def version(on: str, rate: str | None, model: str | None = "per_hour") -> Any:
+        return post_as(
+            client,
+            owner.cookie,
+            rates,
+            {
+                "class_kind": "individual",
+                "effective_from": on,
+                "rate_model": model,
+                "rate": rate,
+            },
+        )
+
+    def gone(rate_id: Any) -> Any:
+        return delete(client, owner.cookie, f"{rates}/{rate_id}")
+
+    # C1: a version back-dated over the date is refused; the same rate passes.
+    for rate, model in (("130", "per_hour"), ("120", "per_session"), (None, None)):
+        refused = version("2026-11-01", rate, model)
+        assert code_of(refused) == (422, "effective_from_under_finalized_line")
+        assert refused.json()["details"] == {"latest_finalized_on": "2026-11-03"}
+    same = version("2026-11-01", "120.0000")
+    assert code_of(same) == (201, None), same.text
+    assert code_of(version("2026-11-04", "130")) == (201, None)
+
+    # C3: deleting the same-rate cut would give its date to 777.
+    previous = version("2026-10-31", "777")
+    assert code_of(previous) == (201, None), previous.text
+    refused = gone(same.json()["id"])
+    assert code_of(refused) == (409, "compensation_rate_delete_under_finalized_line")
+    assert refused.json()["details"] == {"latest_finalized_on": "2026-11-03"}
+    assert code_of(gone(original.id)) == (409, "compensation_rate_in_use")
+    assert code_of(gone(previous.json()["id"])) == (204, None)
+    assert code_of(gone(same.json()["id"])) == (204, None)
+    assert session_total(url, made.id) == Decimal("110.00")

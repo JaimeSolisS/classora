@@ -48,9 +48,11 @@ unexecuted predicates :func:`has_no_adjustment`, :func:`has_no_adjustment_keyed`
 :func:`paid_so_far` and :func:`earliest_open_period`, the write
 :func:`post_adjustment`, :func:`open_period_for_adjustment` for a tutor with no
 open period, and the pure :func:`late_approval_draft`, :func:`correction_draft`
-and :func:`owed`. M7-08c adds a person's writes :func:`post_manual_adjustment`
-and :func:`post_carry_forward`, their checks :func:`settled_by_tutor` and
-:func:`line_period_status`, :func:`settled_session_ids` for a run, and
+and :func:`owed`; M7-08d adds the per-course :func:`course_anchor_draft`,
+:func:`course_correction_draft` and :func:`in_walk_order`. M7-08c adds a person's
+writes :func:`post_manual_adjustment` and :func:`post_carry_forward`, their
+checks :func:`settled_by_tutor` and :func:`line_period_status`,
+:func:`settled_session_ids` for a run, and
 :func:`lock_unfinalized_periods_of_tutor`.
 
 **The period's review** (#110; :mod:`~app.modules.payroll.period_review`): the
@@ -108,8 +110,11 @@ from app.modules.payroll.calculation import (
     UnresolvedItem,
     classify_unresolved,
     correction_draft,
+    course_anchor_draft,
+    course_correction_draft,
     course_rate,
     draft_lines,
+    in_walk_order,
     late_approval_draft,
     line_drift,
     owed,
@@ -204,6 +209,7 @@ from app.modules.payroll.permissions import (
     finalize_refusal,
 )
 from app.modules.payroll.rates import (
+    FirstSessionDates,
     add_compensation_rate,
     add_pay_terms,
     compensation_summaries,
@@ -242,6 +248,7 @@ __all__ = [
     "EarlierPeriod",
     "FinalizedCourseLine",
     "FinalizedSpan",
+    "FirstSessionDates",
     "LineDraft",
     "LineDrift",
     "ManualDraft",
@@ -289,6 +296,8 @@ __all__ = [
     "classify_unresolved",
     "compensation_summaries",
     "correction_draft",
+    "course_anchor_draft",
+    "course_correction_draft",
     "course_rate",
     "create_session_pay_rule",
     "delete_compensation_rate",
@@ -311,6 +320,7 @@ __all__ = [
     "has_no_adjustment",
     "has_no_adjustment_keyed",
     "has_no_session_line",
+    "in_walk_order",
     "keyed",
     "late_approval_draft",
     "line_drift",

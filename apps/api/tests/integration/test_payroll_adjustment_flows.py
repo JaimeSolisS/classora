@@ -1,5 +1,5 @@
 """Work after lock through real cancellations, salaried dates and cohorts (#111
-C2, C3, C8, C9; #443 D8, A5; ADR-0017 E11 and its #111 notes).
+C2, C3, C8, C9; #443 D8, A5; M7-08d A1; ADR-0017 E11 and its #111 notes).
 
 Each test takes its own decade. Terms, rates, rules and periods are set by SQL,
 as in every payroll test. **The ``finalized`` status is set by SQL here, on
@@ -386,7 +386,8 @@ def test_c3_a_rate_that_existed_at_finalize_still_pays(scene):
     assert adjustment.target_period_id == second
 
 
-# --- C8: per-course is skipped (M7-08d) -----
+# --- C8: per-course is anchored (M7-08d A1; the walk is tested in
+# test_payroll_course_adjustments.py) -----
 
 
 def course_week(ctx: Ctx, model: str, rate: str) -> tuple[Any, uuid.UUID]:
@@ -400,11 +401,15 @@ def course_week(ctx: Ctx, model: str, rate: str) -> tuple[Any, uuid.UUID]:
     return cohort, second
 
 
-def test_c8_a_late_session_of_a_per_course_cohort_is_skipped(ctx):
-    cohort, _ = course_week(ctx, "per_course", "1000")
+def test_c8_a_late_session_of_a_per_course_cohort_is_anchored(ctx):
+    cohort, second = course_week(ctx, "per_course", "1000")
 
-    assert run_job(ctx.url) == PostAdjustmentsRunResult(candidates=1, skipped_course=1)
-    assert adjustments(ctx.url, ctx.tutor) == []
+    assert run_job(ctx.url) == PostAdjustmentsRunResult(candidates=1, posted=1)
+    [anchor] = adjustments(ctx.url, ctx.tutor)
+    assert str(anchor.class_session_id) == cohort.id_of(0)
+    assert (anchor.cumulative_sessions, anchor.cohort_sessions) == (1, 3)
+    assert (anchor.rate_model, anchor.amount) == ("per_course", Decimal("333.33"))
+    assert anchor.target_period_id == second
 
 
 def test_c8_an_ordinary_course_session_is_paid(ctx):

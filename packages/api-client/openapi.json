@@ -23609,7 +23609,7 @@
           "payroll"
         ],
         "summary": "Delete Compensation Rate",
-        "description": "Delete a rate version, whatever its date, until a prepared or finalized\nperiod uses it.",
+        "description": "Delete a rate version, whatever its date, until a prepared or finalized\nperiod uses it. Its dates go to the previous version, or to none, so a delete\nthat would change a finalized price is refused, as an add would be.",
         "operationId": "delete_compensation_rate_api_v1_payroll_tutors__tutor_user_id__rates__rate_id__delete",
         "parameters": [
           {
@@ -23668,7 +23668,7 @@
             }
           },
           "409": {
-            "description": "A prepared or finalized payroll period uses this version (compensation_rate_in_use).",
+            "description": "A prepared or finalized payroll period uses this version (compensation_rate_in_use), or without it a finalized payroll line or a posted adjustment would get another price (compensation_rate_delete_under_finalized_line, with details.latest_finalized_on).",
             "content": {
               "application/problem+json": {
                 "schema": {

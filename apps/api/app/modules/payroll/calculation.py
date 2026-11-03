@@ -61,7 +61,7 @@ hide a change. A difference on the same source (session, salary piece or item) i
 import uuid
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import Final, Literal, Protocol, cast, get_args
 
@@ -159,7 +159,9 @@ class PayableCancellation:
 
 @dataclass(frozen=True)
 class FinalizedCourseLine:
-    """What a line of a finalized period fixes for good (#442 C3)."""
+    """What a line of a finalized period fixes for good (#442 C3), or a posted
+    per-course ``late_approval``, an anchor of the walk (M7-08d E1): both are
+    fixed steps, with the ``k``, ``N`` and rate they stored."""
 
     class_session_id: uuid.UUID
     cumulative_sessions: int
@@ -174,12 +176,16 @@ type CohortStep = ApprovedSession | FinalizedCourseLine
 class CohortWalk:
     """A cohort as one tutor's per-course pay reads it (#442 C).
 
-    ``steps`` are that tutor's approved sessions not in a finalized period and
-    their finalized lines, by ``(session_starts_at, class_session_id)``."""
+    ``steps`` are that tutor's approved sessions not in a finalized period, their
+    finalized lines and their anchors, in :func:`in_walk_order`."""
 
     first_session_date: date
     planned_sessions: int
     steps: Sequence[CohortStep]
+    late: Sequence[ApprovedSession] = ()
+    """Approved sessions dated in a finalized period with neither a line nor an
+    anchor, by date: never walked by :func:`walk_cohort`, only read by
+    :func:`course_anchor_draft` (M7-08d E1)."""
 
 
 @dataclass(frozen=True)
@@ -280,6 +286,29 @@ def repriced_on(
     if new_model == PER_COURSE and taken(first_session_date):
         return first_session_date
     return None
+
+
+def repriced_by_delete(
+    line: FinalizedPricedLine,
+    *,
+    first_session_date: date,
+    previous: RateVersion | None,
+    deleted_from: date,
+    until: date | None,
+) -> date | None:
+    """:func:`repriced_on` for a delete (M7-08d E3): deleting the version in
+    force from ``deleted_from`` to ``until`` gives that window to ``previous``, or
+    to nothing if it was the first. On every date of the window the price is then
+    ``previous``'s, exactly as if a version of its model and rate had been added
+    there, so the add's rule answers, the same-rate pass (#110 QA D4) included."""
+    return repriced_on(
+        line,
+        first_session_date=first_session_date,
+        new_model=None if previous is None else previous.rate_model,
+        new_rate=None if previous is None else previous.rate,
+        effective_from=deleted_from,
+        until=until,
+    )
 
 
 @dataclass(frozen=True)
@@ -621,6 +650,27 @@ def _course_draft(
     )
 
 
+def in_walk_order(steps: Sequence[CohortStep]) -> list[CohortStep]:
+    """``steps`` by ``(session_starts_at, class_session_id)``, with the fixed
+    steps re-sorted by their stored ``k`` in the places fixed steps hold
+    (M7-08d E1).
+
+    Oldest-first finalize (#110 E2) makes the finalized periods a prefix in time,
+    so the approved steps never fall between two fixed ones: the ones before are
+    work before the first period, the ones after are open. An anchor stores the
+    ``k`` it was posted at, after every finalized line then, so its order among
+    the fixed steps is its ``k``, not its date."""
+    fixed = iter(
+        sorted(
+            (step for step in steps if isinstance(step, FinalizedCourseLine)),
+            key=lambda step: step.cumulative_sessions,
+        )
+    )
+    return [
+        next(fixed) if isinstance(step, FinalizedCourseLine) else step for step in steps
+    ]
+
+
 def walk_cohort(
     basis: PayBasis,
     paid: RateInEffect,
@@ -631,11 +681,17 @@ def walk_cohort(
 ) -> list[LineDraft]:
     """The lines of ``cohort`` in the period (#442 C, D1). Every step counts,
     in any period, and a session with no terms on its date too: it earns no line,
-    and the next line doesn't catch it up."""
+    and the next line doesn't catch it up.
+
+    **A fixed step beyond ``N``** (M7-08d edge case): an anchor stores the ``N``
+    it was posted at, and a step after a fixed one may find ``k > N`` now. It is
+    floored at ``0.00``, like a line under the peak, and nothing is paid back (a
+    ``manual`` does). With no fixed step before it, ``k > N`` stays a bug."""
     n = cohort.planned_sessions
     k = 0
     cum = ZERO
     finalized_peak = ZERO
+    fixed_seen = False
     drafts: list[LineDraft] = []
     for step in cohort.steps:
         if isinstance(step, FinalizedCourseLine):
@@ -644,12 +700,13 @@ def walk_cohort(
                 finalized_peak, step.rate.to_money(k, step.cohort_sessions)
             )
             cum = finalized_peak
+            fixed_seen = True
             continue
         k += 1
-        if k > n:
+        if k > n and not fixed_seen:
             raise CourseWalkError(str(step.class_session_id))
         try:
-            reached = max(cum, paid.rate.to_money(k, n))
+            reached = cum if k > n else max(cum, paid.rate.to_money(k, n))
             in_period = starts_on <= step.service_date <= ends_on
             if in_period and _paying_terms(basis, step.service_date) is not None:
                 drafts.append(_course_draft(basis, paid, step, reached - cum, k, n))
@@ -813,11 +870,18 @@ def classify_unresolved(
 @dataclass(frozen=True)
 class OriginSnapshot:
     """What paid a session first, in a finalized way (#111 E2): a finalized
-    session line, or a ``late_approval``. ``None`` values: "covered by salary"."""
+    session line, or a ``late_approval``. ``None`` values: "covered by salary".
+    A ``per_course`` origin also needs its kind, amount, ``k``, ``N`` and rule
+    (M7-08d E2)."""
 
     rate_model: str | None
     rate: Rate | None
     compensation_rate_id: uuid.UUID | None
+    kind: str | None = None
+    line_amount: Money | None = None
+    cumulative_sessions: int | None = None
+    cohort_sessions: int | None = None
+    session_pay_rule_id: uuid.UUID | None = None
 
 
 def late_approval_draft(
@@ -840,7 +904,8 @@ def correction_draft(
 ) -> LineDraft | None:
     """The current revision priced on the origin's snapshot, with the rule of
     its event on the service date (#111 E2). A covered origin has no price, so
-    no correction (C7); a ``per_course`` one is M7-08d's, never priced here."""
+    no correction (C7); a ``per_course`` one is :func:`course_correction_draft`'s,
+    never priced here."""
     if (
         origin.rate_model not in ORDINARY_MODELS
         or origin.rate is None
@@ -857,6 +922,111 @@ def correction_draft(
         return _priced_approved_draft(basis, paid, work)
     except MoneyRangeError:
         raise PayrollAmountOutOfRangeError(work.class_session_id) from None
+
+
+def course_anchor_draft(
+    basis: PayBasis, paid: RateInEffect, cohort: CohortWalk, work: ApprovedSession
+) -> LineDraft | None:
+    """A late session of a cohort paid ``per_course`` as an anchor of the walk
+    (M7-08d E1). It is the step after every fixed step of ``cohort``, and after
+    the work before the first period, which counts in ``K`` as in
+    :func:`walk_cohort`: ``k = K + 1``, paid
+    ``max(0.00, rate x k / N - peak)``, or its event's amount, where the peak is
+    the highest ``rate x k / N`` of the fixed steps, each at its own ``N``. The
+    open steps, later in time, aren't walked. ``None``: no terms on its date, so
+    no line would have been paid either.
+
+    **The other late sessions dated before it** (``cohort.late``) count in ``k``
+    too, but raise nothing. An anchor floored at ``0.00`` is never written (P9),
+    so without them a cohort whose remaining sessions are all late would compute
+    ``K + 1`` again and again and never reach its rate. The anchor pays their
+    shares with its own, and one of them anchored later pays only what the peak
+    hasn't reached. ``k`` is stored capped at ``N``. So a cohort always pays the
+    highest ``rate x k / N`` among its fixed steps: never more than the rate, and
+    the rate itself once its last session is fixed (the oracle in
+    ``tests/unit/test_payroll_course_anchors.py``)."""
+    if _paying_terms(basis, work.service_date) is None:
+        return None
+    n = cohort.planned_sessions
+    k = 0
+    cum = ZERO
+    peak = ZERO
+    try:
+        for step in cohort.steps:
+            if isinstance(step, FinalizedCourseLine):
+                k = step.cumulative_sessions
+                peak = max(peak, step.rate.to_money(k, step.cohort_sessions))
+                cum = peak
+            elif step.service_date < work.service_date:
+                k += 1  # work before the first period, as the walk counts it
+                cum = max(cum, paid.rate.to_money(min(k, n), n))
+        k += 1 + sum(
+            1
+            for item in cohort.late
+            if item.class_session_id != work.class_session_id
+            and (item.service_date, item.class_session_id)
+            < (work.service_date, work.class_session_id)
+        )
+        stored = min(k, n)
+        share = max(cum, paid.rate.to_money(stored, n)) - cum
+        return _course_draft(basis, paid, work, share, stored, n)
+    except MoneyRangeError:
+        raise PayrollAmountOutOfRangeError(work.class_session_id) from None
+
+
+def _whole_share(basis: PayBasis, origin: OriginSnapshot) -> bool:
+    """Whether a per-course origin's amount is its whole share: a ``session``,
+    or an event whose rule paid exactly 100 % (M7-08d E2)."""
+    if origin.kind == "session":
+        return True
+    rule = next(
+        (item for item in basis.rules if item.id == origin.session_pay_rule_id), None
+    )
+    return rule is not None and rule.mode == "percent" and rule.percent == WHOLE_LINE
+
+
+def course_correction_draft(
+    basis: PayBasis, origin: OriginSnapshot, work: ApprovedSession
+) -> LineDraft | None:
+    """The current revision of a session paid ``per_course`` (a finalized line or
+    an anchor), at the origin's own ``k``, ``N`` and rate, so the walk's later
+    lines don't move (M7-08d E2). Minutes don't change per-course pay, so a
+    revision of the origin's kind targets the origin's amount. Another kind
+    targets the share ``S`` (the origin's amount when it is a whole share, else
+    ``max(0.00, rate x k / N - rate x (k - 1) / N)``) through the line's own
+    function: ``S`` for a ``session``, the rule's amount for a ``no_show``."""
+    k, n = origin.cumulative_sessions, origin.cohort_sessions
+    if (
+        origin.rate_model != PER_COURSE
+        or origin.rate is None
+        or origin.compensation_rate_id is None
+        or origin.line_amount is None
+        or k is None
+        or n is None
+    ):
+        return None
+    paid = RateInEffect(
+        compensation_rate_id=origin.compensation_rate_id,
+        rate_model=PER_COURSE,
+        rate=origin.rate,
+        effective_from=work.service_date,
+    )
+    try:
+        share = (
+            origin.line_amount
+            if _whole_share(basis, origin)
+            else max(ZERO, origin.rate.to_money(k, n) - origin.rate.to_money(k - 1, n))
+        )
+        draft = _course_draft(basis, paid, work, share, k, n)
+    except MoneyRangeError:
+        raise PayrollAmountOutOfRangeError(work.class_session_id) from None
+    if draft.kind == origin.kind:
+        return replace(
+            draft,
+            amount=origin.line_amount,
+            session_pay_rule_id=origin.session_pay_rule_id,
+        )
+    return draft
 
 
 def owed(target: Money, paid: Iterable[Money]) -> Money | None:

@@ -21,7 +21,9 @@ every ``open`` period of the tutor, oldest first, then the version, then deletes
 its lines in those periods, then the version. A line of a ``prepared`` period
 stays, and the foreign key refuses (``23001``, ``409 …_in_use``). The order is
 the run's, periods before versions, or the two deadlock. A terms delete takes
-the advisory lock below before any of that.
+the advisory lock below before any of that. A rate delete locks every
+not-finalized period instead, as an add does (M7-08d B1), so it can't race a
+finalize.
 
 **Terms against generated periods** (#106 F): the terms insert and delete take
 the advisory lock of :mod:`~app.modules.payroll.period_rows` first, then
@@ -44,7 +46,20 @@ price, and no other. A version of a line's own model and rate never refuses it,
 for any kind (QA D4). The first dates are
 ``scheduling``'s, so the workflow passes them in (``first_session_dates``).
 ``no_rate`` work has no line and "covered by salary" no rate snapshot, so a
-back-dated rate stays the way out of #443 D7's blocking item.
+back-dated rate stays the way out of #443 D7's blocking item. A posted
+``late_approval`` or ``hours_correction`` with a rate snapshot counts as a
+finalized priced line (M7-08d E4): ordinary on its service date, per-course on
+its cohort's first date.
+
+**A delete runs the add's refusal (M7-08d E3).** Deleting a version gives its
+window, from its ``effective_from`` to the next version of the kind, to the
+previous version, or to nothing if it is the first. That is a version of the
+previous one's model and rate added on the deleted one's date, so the same rule
+answers (:func:`~app.modules.payroll.calculation.repriced_by_delete`), the
+same-rate pass included: ``409 compensation_rate_delete_under_finalized_line``
+with ``details.latest_finalized_on``. A version a prepared or finalized line or
+an adjustment names is ``409 compensation_rate_in_use`` first, so its own lines
+never reach the new check.
 
 **Lookups.** :func:`rate_in_effect` and :func:`terms_in_effect` return the
 version with the greatest ``effective_from <= on`` (W3.4), or ``None`` when
@@ -75,11 +90,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.authz import RecordNotFoundError
 from app.core.money import Money, Rate
 from app.modules.payroll.calculation import (
+    FinalizedPricedLine,
     RateVersion,
     TermsBasisVersion,
+    repriced_by_delete,
     repriced_on,
 )
 from app.modules.payroll.errors import (
+    CompensationRateDeleteUnderFinalizedLineError,
     CompensationRateExistsError,
     CompensationRateInUseError,
     EffectiveFromBeforeFirstPeriodError,
@@ -258,6 +276,29 @@ async def _latest_repriced_course_date(
 ) -> date | None:
     """The newest date on which this version would price a finalized ``course``
     line, or ``None``. A session with no cohort is its own first date."""
+
+    def rule(line: FinalizedPricedLine, first: date) -> date | None:
+        return repriced_on(
+            line,
+            first_session_date=first,
+            new_model=rate_model,
+            new_rate=rate,
+            effective_from=effective_from,
+            until=until,
+        )
+
+    return await _latest_course_date(session, tutor_user_id, first_session_dates, rule)
+
+
+async def _latest_course_date(
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID,
+    first_session_dates: FirstSessionDates,
+    rule: Callable[[FinalizedPricedLine, date], date | None],
+) -> date | None:
+    """The newest date ``rule`` answers over the tutor's finalized ``course``
+    prices (lines and posted adjustments), or ``None``. A session with no cohort
+    is its own first date. Three statements, one with no price."""
     lines = await finalized_course_kind_lines(session, tutor_user_id)
     if not lines:
         return None
@@ -266,18 +307,7 @@ async def _latest_repriced_course_date(
         (
             day
             for line in lines
-            if (
-                day := repriced_on(
-                    line,
-                    first_session_date=first.get(
-                        line.class_session_id, line.service_date
-                    ),
-                    new_model=rate_model,
-                    new_rate=rate,
-                    effective_from=effective_from,
-                    until=until,
-                )
-            )
+            if (day := rule(line, first.get(line.class_session_id, line.service_date)))
             is not None
         ),
         default=None,
@@ -337,13 +367,20 @@ async def delete_pay_terms(
 
 
 async def delete_compensation_rate(
-    session: AsyncSession, tutor_user_id: uuid.UUID, rate_id: uuid.UUID
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID,
+    rate_id: uuid.UUID,
+    *,
+    first_session_dates: FirstSessionDates,
 ) -> None:
     """Delete a rate version of this tutor, whatever its date (#105 E4), with
-    its lines in ``open`` periods (#107 E8, module docstring); ``404`` for a
-    row of another tutor, ``409 compensation_rate_in_use`` for a version a
-    prepared or finalized period uses."""
-    period_ids = await lock_open_periods_of_tutor(session, tutor_user_id)
+    its lines in ``open`` periods (#107 E8, module docstring). Order (M7-08d
+    B1): the not-finalized periods ``FOR UPDATE``, oldest first, then the
+    version: ``404`` for a row of another tutor, ``409
+    compensation_rate_in_use`` for a version a prepared or finalized period or
+    an adjustment uses, then ``409 compensation_rate_delete_under_finalized_line``
+    (M7-08d E3), then the delete."""
+    period_ids = await lock_unfinalized_periods_of_tutor(session, tutor_user_id)
     version = await session.scalar(
         select(CompensationRate)
         .where(
@@ -354,6 +391,7 @@ async def delete_compensation_rate(
     )
     if version is None:
         raise RecordNotFoundError()
+    class_kind, deleted_from = version.class_kind, version.effective_from
     await delete_lines_of_rate(session, rate_id, period_ids)
     await session.delete(version)
     try:
@@ -363,6 +401,78 @@ async def delete_compensation_rate(
         if state == INSUFFICIENT_PRIVILEGE or state in FOREIGN_KEY_REFUSALS:
             raise CompensationRateInUseError() from None
         raise
+    # The version is gone in this transaction: the refusal reads the history
+    # without it, and a refusal rolls the delete back with the Unit of Work.
+    latest = await _latest_repriced_by_delete(
+        session,
+        tutor_user_id,
+        class_kind,
+        deleted_from,
+        first_session_dates,
+    )
+    if latest is not None:
+        raise CompensationRateDeleteUnderFinalizedLineError(latest)
+
+
+async def _latest_repriced_by_delete(
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID,
+    class_kind: str,
+    deleted_from: date,
+    first_session_dates: FirstSessionDates,
+) -> date | None:
+    """The newest date on which the deleted window, now the previous version's,
+    changes a finalized price (M7-08d E3, E4). Two statements, more for
+    ``course``."""
+    until = await _next_rate_date(session, tutor_user_id, class_kind, deleted_from)
+    previous = await _previous_rate_version(
+        session, tutor_user_id, class_kind, deleted_from
+    )
+    if class_kind != COURSE:
+        return await latest_finalized_priced_date(
+            session,
+            tutor_user_id,
+            class_kind=class_kind,
+            effective_from=deleted_from,
+            until=until,
+            rate_model=None if previous is None else previous.rate_model,
+            rate=None if previous is None else previous.rate,
+        )
+
+    def rule(line: FinalizedPricedLine, first: date) -> date | None:
+        return repriced_by_delete(
+            line,
+            first_session_date=first,
+            previous=previous,
+            deleted_from=deleted_from,
+            until=until,
+        )
+
+    return await _latest_course_date(session, tutor_user_id, first_session_dates, rule)
+
+
+async def _previous_rate_version(
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID,
+    class_kind: str,
+    before: date,
+) -> RateVersion | None:
+    """The version of the kind in force the day before ``before``. One
+    statement."""
+    row = (
+        await session.execute(
+            _rate_version_columns()
+            .where(
+                CompensationRate.tutor_user_id == tutor_user_id,
+                CompensationRate.class_kind == class_kind,
+                CompensationRate.effective_from < before,
+            )
+            .order_by(None)
+            .order_by(CompensationRate.effective_from.desc())
+            .limit(1)
+        )
+    ).first()
+    return None if row is None else _rate_version(row)
 
 
 # --- Lookups -------------------------------------------------------------------------
