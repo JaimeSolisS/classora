@@ -409,7 +409,10 @@ export interface PlacedErrors {
 /** The student ids a problem names (`details.student_ids`). */
 export function detailStudentIds(error: ApiError): string[] {
   const ids = error.problem?.details?.student_ids;
-  return Array.isArray(ids) ? ids : typeof ids === 'string' ? [ids] : [];
+  if (Array.isArray(ids)) {
+    return ids.filter((id): id is string => typeof id === 'string');
+  }
+  return typeof ids === 'string' ? [ids] : [];
 }
 
 const TOP_FIELDS: Record<string, FormField> = {

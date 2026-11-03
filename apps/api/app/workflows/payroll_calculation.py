@@ -13,8 +13,8 @@ and neither side waits for the other (§15).
   (#108 C2), then the item lines by item (#109 C1). ``finalize``'s drift check
   (#110 D3) compares them with the stored lines, with no write. It reads the
   period's work in center-local dates: ``floor_instant(starts_on)`` to
-  ``floor_instant(ends_on + 1)``, half-open, and a service date is the local date of the start. It takes the versions and the
-  items of the tutor ``FOR KEY SHARE``, so a concurrent delete waits for the run.
+  ``floor_instant(ends_on + 1)``, half-open, and a service date is the local date
+  of the start. It takes the versions and the items of the tutor ``FOR KEY SHARE``, so a concurrent delete waits for the run.
 - :func:`recalculate`: the period ``FOR UPDATE``, re-read → ``404`` → ``409
   payroll_period_not_open`` → :func:`compute_lines` → replace the rebuilt kinds
   → the event. A second run leaves the same lines but for ``id`` and
@@ -40,7 +40,8 @@ as a line. :func:`unresolved_work` is one tutor's list, :func:`blocking_work`
 what ``prepare`` and ``finalize`` refuse on (#110), and
 :func:`list_unresolved_work` the staff route. It reads the whole of "approved, no
 line, since the floor" into memory. That is small for one center: a run empties
-most of it, and what is left is what Finance has to fix. It takes no lock, so it can't delay a run.
+most of it, and what is left is what Finance has to fix. It takes no lock, so it
+can't delay a run.
 
 **Salary (#108; ADR-0017 E1, E7).** :func:`_salary_lines` reads the basis and
 the anchor only for a tutor with a salary on some terms version, and
