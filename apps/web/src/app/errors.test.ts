@@ -392,6 +392,18 @@ const API_CODES = [
   'effective_to_not_allowed',
   'effective_to_before_from',
   'payroll_amount_out_of_range',
+  // The payroll workflow (#110b G1).
+  'payroll_period_not_open',
+  'payroll_period_not_ended',
+  'payroll_unresolved_work',
+  'payroll_negative_total',
+  'payroll_period_not_prepared',
+  'payroll_self_finalize',
+  'payroll_review_outdated',
+  'payroll_period_out_of_order',
+  'payroll_period_stale',
+  'payroll_review_route_required',
+  'effective_from_under_finalized_line',
   'anchor_not_monday',
   // The makeup link (#436 C1, C2).
   'makeup_target_unknown',

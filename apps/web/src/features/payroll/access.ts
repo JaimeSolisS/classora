@@ -11,3 +11,17 @@ export const PAYROLL_ACCESS = {
 export const MY_PAY_ACCESS = {
   anyRole: ['tutor'],
 } as const satisfies AccessRequirement;
+
+/**
+ * The period list and review pages (#110b A1): Finance and Owners
+ * (`payroll.view`, `payroll.prepare`) and a delegated Administrator
+ * (`payroll.finalize`). The API decides what each one may read and do.
+ */
+export const PAYROLL_REVIEW_ACCESS = {
+  anyPermission: ['payroll.view', 'payroll.prepare', 'payroll.finalize'],
+} as const satisfies AccessRequirement;
+
+/** The header's Payroll item and `/payroll` (#110b A2, A3): either. */
+export const PAYROLL_ANY_ACCESS = {
+  anyOf: [PAYROLL_ACCESS, PAYROLL_REVIEW_ACCESS],
+} as const satisfies AccessRequirement;

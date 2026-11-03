@@ -394,8 +394,8 @@
   "credit_override_duplicate": "Cada línea se puede ajustar una sola vez.",
   "pay_terms_exists": "Este tutor ya tiene condiciones de pago desde esa fecha. Elige otra fecha.",
   "compensation_rate_exists": "Este tutor ya tiene una tarifa de ese tipo de clase desde esa fecha. Elige otra fecha.",
-  "pay_terms_in_use": "Estas condiciones ya se pagaron en una nómina y deben conservarse.",
-  "compensation_rate_in_use": "Esta tarifa ya se pagó en una nómina y debe conservarse.",
+  "pay_terms_in_use": "Una nómina usa estas condiciones.",
+  "compensation_rate_in_use": "Una nómina usa esta tarifa.",
   "payroll_own_compensation": "Otra persona debe cambiar tu pago.",
   "salary_not_positive": "El salario debe ser mayor que cero. Déjalo vacío si no hay salario.",
   "salary_without_frequency": "Un salario necesita una frecuencia de pago.",
@@ -434,5 +434,16 @@
   "text_invalid": "Este texto tiene un carácter no válido. Vuelve a escribirlo.",
   "effective_to_not_allowed": "Solo un concepto recurrente tiene fecha de fin.",
   "effective_to_before_from": "El fin no puede ser antes del inicio.",
-  "payroll_amount_out_of_range": "Las líneas o el total de este periodo superan el monto máximo. Termina o elimina un bono del tutor y vuelve a calcular."
+  "payroll_amount_out_of_range": "Las líneas o el total de este periodo superan el monto máximo. Termina o elimina un bono del tutor y vuelve a calcular.",
+  "payroll_period_not_open": "Este periodo ya no está abierto.",
+  "payroll_period_not_ended": "Este periodo aún no termina, así que no se puede preparar.",
+  "payroll_unresolved_work": "Hay trabajo aprobado sin base de pago, así que este periodo no puede continuar. Corrígelo desde la pestaña Trabajo sin resolver.",
+  "payroll_negative_total": "El total de este periodo es menor que cero, así que no se puede preparar.",
+  "payroll_period_not_prepared": "Este periodo ya no está preparado.",
+  "payroll_self_finalize": "Otra persona debe finalizar este periodo: tú lo preparaste o es tu propio pago.",
+  "payroll_review_outdated": "Este periodo se volvió a preparar después de que lo abriste. Revísalo de nuevo.",
+  "payroll_period_out_of_order": "Primero se debe finalizar un periodo anterior de este tutor.",
+  "payroll_period_stale": "Algo cambió desde que se preparó este periodo. Regrésalo a Finanzas para que lo prepare de nuevo.",
+  "payroll_review_route_required": "Este periodo se decide en su propia página.",
+  "effective_from_under_finalized_line": "Una línea de nómina finalizada usa la tarifa actual en esta fecha. Elige una fecha posterior y paga la diferencia con un ajuste."
 }

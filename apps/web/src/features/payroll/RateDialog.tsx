@@ -18,14 +18,17 @@ import {
   useFieldMessage,
   useReturnFocus,
 } from '@/features/scheduling/series/hooks';
+import { useFormatters } from '@/lib/formatters';
 import type { LocalDate } from '@/lib/time';
 import type { ClassKind, RateModel } from './api';
+import { latestFinalizedOn } from './periodRules';
 import {
   changeRateKind,
   CLASS_KINDS,
   emptyRateForm,
   modelsFor,
   rateServerErrors,
+  UNDER_FINALIZED_CODE,
   validateRateForm,
   type RateErrors,
   type RateField,
@@ -45,7 +48,8 @@ import {
 // the rate and sends null, the model (`per_course` only for courses) and the
 // rate, up to four decimals. A 422 goes on its field (the payroll date rules
 // on the date), anything else is an alert; the dialog stays open and nothing
-// typed is lost.
+// typed is lost. A version that would re-price a finalized line is refused on
+// the date with the newest date it would take over (#110 E5, #110b G3).
 
 export interface RateDialogProps {
   open: boolean;
@@ -100,12 +104,16 @@ function DialogBody({
   const [errors, setErrors] = useState<RateErrors>(initialErrors);
   const [failure, setFailure] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
+  // `details.latest_finalized_on` of the last refusal on the date (G3).
+  const [finalizedOn, setFinalizedOn] = useState<string | null>(null);
+  const { formatLocalDate } = useFormatters();
 
   const fieldId = (field: RateField) => `${id}-${field}`;
   const errorId = (field: RateField) => `${id}-${field}-error`;
   const ids = {
     noRate: `${id}-no-rate`,
     dateHelp: `${id}-date-help`,
+    finalizedHelp: `${id}-finalized-help`,
     rateHelp: `${id}-rate-help`,
   };
   const describedBy = (field: RateField, help?: string) =>
@@ -136,6 +144,7 @@ function DialogBody({
       return;
     } catch (caught) {
       const fromServer = rateServerErrors(caught);
+      setFinalizedOn(latestFinalizedOn(caught));
       if (fromServer) {
         setErrors(fromServer);
         focusFirst(fromServer);
@@ -214,7 +223,10 @@ function DialogBody({
             className={INPUT_CLASS}
             value={values.effectiveFrom}
             aria-invalid={errors.effectiveFrom ? true : undefined}
-            aria-describedby={describedBy('effectiveFrom', ids.dateHelp)}
+            aria-describedby={describedBy(
+              'effectiveFrom',
+              `${ids.dateHelp} ${ids.finalizedHelp}`,
+            )}
             onChange={(event) =>
               setValues({ ...values, effectiveFrom: event.target.value })
             }
@@ -222,9 +234,19 @@ function DialogBody({
           <p id={ids.dateHelp} className="text-sm text-muted-foreground">
             {t('payroll.rateDialog.dateHelp')}
           </p>
+          <p id={ids.finalizedHelp} className="text-sm text-muted-foreground">
+            {t('payroll.rateDialog.finalizedHelp')}
+          </p>
           <FieldError
             id={errorId('effectiveFrom')}
-            message={message(errors.effectiveFrom)}
+            message={
+              finalizedOn &&
+              errors.effectiveFrom === `errors:${UNDER_FINALIZED_CODE}`
+                ? t('payroll.rateDialog.underFinalized', {
+                    date: formatLocalDate(finalizedOn),
+                  })
+                : message(errors.effectiveFrom)
+            }
           />
         </div>
         <div className={CHECK_ROW_CLASS}>

@@ -161,6 +161,8 @@ describe('route tree', () => {
       'payroll/pay-rules',
       'payroll/unresolved',
       'payroll/pay-item-types',
+      'payroll/periods',
+      'payroll/periods/:periodId',
       'my-pay',
       'account/password',
       'privacy-notice',
@@ -182,6 +184,7 @@ describe('route tree', () => {
         'tutor.manage',
         'teaching_hours.approve',
         'progress_report.review',
+        'payroll.finalize',
       ],
     });
     expect(children[6]!.handle).toBeUndefined();
@@ -431,7 +434,11 @@ describe('route tree', () => {
     }
     // #425 A3: payroll (code-split, the index a redirect), then My pay.
     const payroll = { anyPermission: ['payroll.view', 'payroll.manage'] };
-    expect(children[100]!.handle).toEqual(payroll);
+    const review = {
+      anyPermission: ['payroll.view', 'payroll.prepare', 'payroll.finalize'],
+    };
+    // #110b A3: /payroll also opens for a delegated Administrator.
+    expect(children[100]!.handle).toEqual({ anyOf: [payroll, review] });
     expect(children[100]!.element).toBeDefined();
     // #444 A1, #454 A1: the pay rules, the unresolved work and the pay item
     // types are code-split the same.
@@ -440,12 +447,18 @@ describe('route tree', () => {
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
-    expect(children[107]!.handle).toEqual({ anyRole: ['tutor'] });
-    expect(children[107]!.lazy).toBeTypeOf('function');
-    expect(children[108]!.handle).toBeUndefined();
+    // #110b A1: the periods and a period's review (code-split).
+    for (const index of [107, 108]) {
+      expect(children[index]!.handle).toEqual(review);
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    expect(children[109]!.handle).toEqual({ anyRole: ['tutor'] });
+    expect(children[109]!.lazy).toBeTypeOf('function');
+    expect(children[110]!.handle).toBeUndefined();
     // #174 G1: any signed-in user, no permission.
-    expect(children[109]!.id).toBe('privacy-notice');
-    expect(children[109]!.handle).toBeUndefined();
+    expect(children[111]!.id).toBe('privacy-notice');
+    expect(children[111]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

@@ -76,13 +76,16 @@ const INSTANT_PARAMS = new Set([
 
 /** Params that hold a local date (`YYYY-MM-DD`, #233 series offers; #80
  * evaluations; #82 homework deadlines; #83 progress report periods, also
- * of #316's due placeholders). */
+ * of #316's due placeholders; #110b payroll periods). */
 const DATE_PARAMS = new Set([
   'from_date',
   'evaluated_on',
   'due_on',
   'period_start',
   'period_end',
+  // #110b F3: payroll.period_finalized.
+  'starts_on',
+  'ends_on',
 ]);
 const LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -477,6 +480,8 @@ export const NOTIFICATION_LINKS: Readonly<
   'scheduling.tutor_substituted': mySchedule,
   // #388 H1: the family billing portal, filtered by the reminder's stage.
   'billing.payment_reminder': paymentReminder,
+  // #110b F3: the tutor's finalized pay opens My pay.
+  'payroll.period_finalized': () => '/my-pay',
 };
 
 /** The bell's badge text: the count, or "99+" above 99. */

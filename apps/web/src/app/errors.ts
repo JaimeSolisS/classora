@@ -464,6 +464,21 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['effective_to_not_allowed', 'effective_to_not_allowed'],
   ['effective_to_before_from', 'effective_to_before_from'],
   ['payroll_amount_out_of_range', 'payroll_amount_out_of_range'],
+  // The payroll workflow (#110, #110b G1) and the rate refusal (#110 E5).
+  ['payroll_period_not_open', 'payroll_period_not_open'],
+  ['payroll_period_not_ended', 'payroll_period_not_ended'],
+  ['payroll_unresolved_work', 'payroll_unresolved_work'],
+  ['payroll_negative_total', 'payroll_negative_total'],
+  ['payroll_period_not_prepared', 'payroll_period_not_prepared'],
+  ['payroll_self_finalize', 'payroll_self_finalize'],
+  ['payroll_review_outdated', 'payroll_review_outdated'],
+  ['payroll_period_out_of_order', 'payroll_period_out_of_order'],
+  ['payroll_period_stale', 'payroll_period_stale'],
+  ['payroll_review_route_required', 'payroll_review_route_required'],
+  [
+    'effective_from_under_finalized_line',
+    'effective_from_under_finalized_line',
+  ],
   // The makeup link (#436 C1, C2): field codes, and the one problem code.
   ['makeup_target_unknown', 'makeup_target_unknown'],
   ['makeup_target_not_cancelled', 'makeup_target_not_cancelled'],

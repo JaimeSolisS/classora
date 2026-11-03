@@ -309,7 +309,13 @@ export function rateCreateBody(values: RateFormValues): CompensationRateCreate {
   };
 }
 
+/** The rate refusal that belongs on the date (#110 E5, #110b G3). */
+export const UNDER_FINALIZED_CODE = 'effective_from_under_finalized_line';
+
 export function rateServerErrors(error: unknown): RateErrors | null {
+  if (error instanceof ApiError && error.code === UNDER_FINALIZED_CODE) {
+    return { effectiveFrom: serverMessage(UNDER_FINALIZED_CODE) };
+  }
   return serverErrors<RateField>(
     error,
     {

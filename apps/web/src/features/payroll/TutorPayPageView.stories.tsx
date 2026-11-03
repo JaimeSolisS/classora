@@ -9,8 +9,9 @@ import { FINANCE_SESSION } from './storySession';
 import { TutorPayPageView } from './TutorPayPage';
 
 // The tutor pay page without its query (#425 H2): a delete refused because
-// the version has been paid, and the non-Owner's own read-only page. No
-// request: every call is a stub. axe runs on each story in both themes.
+// a payroll period uses the version (#110b G2), and the non-Owner's own
+// read-only page. No request: every call is a stub. axe runs on each story in
+// both themes.
 
 const meta = {
   title: 'Payroll/TutorPayPageView',
