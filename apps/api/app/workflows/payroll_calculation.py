@@ -14,7 +14,8 @@ and neither side waits for the other (§15).
   (#110 D3) compares them with the stored lines, with no write. It reads the
   period's work in center-local dates: ``floor_instant(starts_on)`` to
   ``floor_instant(ends_on + 1)``, half-open, and a service date is the local date
-  of the start. It takes the versions and the items of the tutor ``FOR KEY SHARE``, so a concurrent delete waits for the run.
+  of the start. It takes the versions and the items of the tutor ``FOR KEY
+  SHARE``, so a concurrent delete waits for the run.
 - :func:`recalculate`: the period ``FOR UPDATE``, re-read → ``404`` → ``409
   payroll_period_not_open`` → :func:`compute_lines` → replace the rebuilt kinds
   → the event. A second run leaves the same lines but for ``id`` and
