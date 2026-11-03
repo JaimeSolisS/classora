@@ -23204,7 +23204,7 @@
           "payroll"
         ],
         "summary": "Add Compensation Rate",
-        "description": "Add a rate version from any date, unless it would take over a finalized\npriced line of this class kind. A null rate model and rate mean no rate for\nthis class kind from that date.",
+        "description": "Add a rate version from any date, unless it would re-price a finalized\nline. A null rate model and rate mean no rate for\nthis class kind from that date.",
         "operationId": "add_compensation_rate_api_v1_payroll_tutors__tutor_user_id__rates_post",
         "parameters": [
           {

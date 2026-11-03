@@ -4733,8 +4733,8 @@ export interface paths {
         put?: never;
         /**
          * Add Compensation Rate
-         * @description Add a rate version from any date, unless it would take over a finalized
-         *     priced line of this class kind. A null rate model and rate mean no rate for
+         * @description Add a rate version from any date, unless it would re-price a finalized
+         *     line. A null rate model and rate mean no rate for
          *     this class kind from that date.
          */
         post: operations["add_compensation_rate_api_v1_payroll_tutors__tutor_user_id__rates_post"];

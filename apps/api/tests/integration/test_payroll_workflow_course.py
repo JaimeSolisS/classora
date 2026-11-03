@@ -671,20 +671,21 @@ def test_d1_the_window_is_on_the_first_date_not_on_the_lines_own_date(
 
 
 def test_l3_an_hourly_course_line_refuses_a_per_course_version(ctx):
-    """#442 D6: a per-course version on the first date would re-price every line
-    of the cohort, though a later version covers the line's own date."""
+    """#442 D6: a per-course version on the first date would re-price the cohort,
+    though the next version, on Tuesday, covers the line's own date."""
     who = team(ctx)
-    cohort = make_cohort(ctx, 2)
+    cohort = make_cohort(ctx, 2)  # Monday and Wednesday
     add_terms(ctx.url, ctx.tutor.id)
     add_rate(ctx.url, ctx.tutor.id, rate="100", kind="course", model="per_hour")
-    period = period_of(ctx, ctx.tutor, 0, 7)
-    teach(ctx, cohort, 0, 1)
+    add_rate(ctx.url, ctx.tutor.id, day(ctx, 1), "110", kind="course", model="per_hour")
+    period = period_of(ctx, ctx.tutor, 2, 7, first=True)
+    teach(ctx, cohort, 1)
     lock_at(ctx.client, ctx.url, who, later(ctx), period)
 
-    assert code(add_version(ctx, who, day(ctx, 0))) == (
-        422,
-        "effective_from_under_finalized_line",
-    )
+    response = add_version(ctx, who, day(ctx, 0))
+
+    assert code(response) == (422, "effective_from_under_finalized_line")
+    assert response.json()["details"] == {"latest_finalized_on": day(ctx, 0)}
 
 
 def test_l3_an_hourly_course_line_is_taken_over_on_its_own_date_too(ctx):
