@@ -1,5 +1,6 @@
 import type {
   PayrollLine,
+  PayrollPayment,
   PayrollPeriod,
   PayrollPeriodDetail,
   PayrollPeriodPage,
@@ -255,6 +256,26 @@ export const PERIOD_FINALIZED: PayrollPeriodDetail = {
   paid_state: 'unpaid',
 };
 
+/** M7-09b: part paid, all paid, and a 0.00 total (paid with no payment). */
+export const PERIOD_PARTIAL: PayrollPeriodDetail = {
+  ...PERIOD_FINALIZED,
+  paid_total: '1000.00',
+  paid_state: 'partially_paid',
+};
+
+export const PERIOD_PAID: PayrollPeriodDetail = {
+  ...PERIOD_FINALIZED,
+  paid_total: '4116.67',
+  paid_state: 'paid',
+};
+
+export const PERIOD_ZERO: PayrollPeriodDetail = {
+  ...PERIOD_FINALIZED,
+  total_amount: '0.00',
+  paid_total: '0.00',
+  paid_state: 'paid',
+};
+
 export const PERIOD_NOT_ENDED: PayrollPeriodDetail = {
   ...detail,
   id: FUTURE_PERIOD_ID,
@@ -324,3 +345,46 @@ export const EMPTY_PERIODS: PayrollPeriodPage = {
   limit: 25,
   offset: 0,
 };
+
+// ------------------------------------------------ payments (M7-09b)
+
+export const payment = (
+  n: number,
+  overrides: Partial<PayrollPayment> = {},
+): PayrollPayment => ({
+  id: `96000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
+  paid_on: '2026-10-20',
+  amount: '1000.00',
+  method_code: 'transfer',
+  reference: `SPEI ${n}`,
+  note: null,
+  recorded_by: { id: FINANCE_ID, display_name: 'Demo Finance' },
+  created_at: '2026-10-20T16:00:00Z',
+  reversal: null,
+  ...overrides,
+});
+
+/** Counted: the 1000.00 of PERIOD_PARTIAL. */
+export const PAYMENT_TRANSFER = payment(1, {
+  note: 'Primera parte',
+});
+
+/** Reversed: listed, struck through, counted for nothing (C3). */
+export const PAYMENT_REVERSED = payment(2, {
+  paid_on: '2026-10-19',
+  amount: '500.00',
+  method_code: 'cash',
+  reference: 'Recibo 12',
+  created_at: '2026-10-19T16:00:00Z',
+  reversal: {
+    reason: 'Monto equivocado',
+    reversed_by: { id: OWNER_ID, display_name: 'Demo Owner' },
+    created_at: '2026-10-19T18:00:00Z',
+  },
+});
+
+export const PAYMENT_METHODS = [
+  { code: 'cash', is_active: true },
+  { code: 'transfer', is_active: true },
+  { code: 'other', is_active: false },
+];

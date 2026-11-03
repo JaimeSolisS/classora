@@ -273,7 +273,8 @@ describe('period list (B)', () => {
         'Carla Grande',
         'Oct 1, 2026 – Oct 15, 2026',
         'Weekly',
-        'Finalized',
+        // M7-09b D2: what's paid, on a finalized row only.
+        'FinalizedUnpaid',
         '12',
         'Too large to show',
       ],
@@ -1359,12 +1360,22 @@ describe('pure rules', () => {
     const params = parsePeriodFilters(
       new URLSearchParams(`status=open&tutor=${TUTOR_ID.toUpperCase()}&page=2`),
     );
-    expect(params).toEqual({ status: 'open', tutor: TUTOR_ID, page: 2 });
+    expect(params).toEqual({
+      status: 'open',
+      tutor: TUTOR_ID,
+      paid: null,
+      page: 2,
+    });
     expect(periodSearchParams(params).toString()).toBe(
       `status=open&tutor=${TUTOR_ID}&page=2`,
     );
     expect(
-      periodSearchParams({ status: null, tutor: null, page: 1 }).toString(),
+      periodSearchParams({
+        status: null,
+        tutor: null,
+        paid: null,
+        page: 1,
+      }).toString(),
     ).toBe('');
   });
 

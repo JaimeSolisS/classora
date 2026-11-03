@@ -81,6 +81,8 @@ export interface PeriodReviewViewProps {
   onCorrect?: (line: PayrollLine) => void;
   /** Carry the negative total forward (M7-08b E2). */
   onCarry?: () => void;
+  /** A finalized period's payments section (M7-09b E1), above the lines. */
+  payments?: ReactNode;
 }
 
 const LINK_CLASS =
@@ -438,6 +440,7 @@ export function PeriodReviewView({
   onFinalize,
   onCorrect,
   onCarry,
+  payments,
 }: PeriodReviewViewProps) {
   const { t } = useTranslation();
   const { formatLocalDate } = useFormatters();
@@ -638,6 +641,7 @@ export function PeriodReviewView({
           ) : null}
         </section>
       ) : null}
+      {payments}
       <section
         aria-labelledby={ids.lines}
         className="flex min-w-0 flex-col gap-4"

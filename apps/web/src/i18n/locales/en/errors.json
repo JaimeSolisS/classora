@@ -453,5 +453,11 @@
   "payroll_work_settled": "An adjustment already pays that work. The list was reloaded.",
   "payroll_total_not_negative": "This period's total isn't below zero any more, so there's no balance to carry. The page was reloaded.",
   "compensation_rate_delete_under_finalized_line": "Without this version, a finalized payroll line would get another price, so it can't be deleted.",
-  "adjustment_references_both": "An adjustment corrects a line or pays work, not both."
+  "adjustment_references_both": "An adjustment corrects a line or pays work, not both.",
+  "paid_on_in_future": "The payment date can't be after today.",
+  "paid_on_before_period": "The payment date can't be before the payroll period starts.",
+  "payroll_period_not_finalized": "This period isn't finalized, so it can't take payments.",
+  "payroll_payment_duplicate": "A payment with this method and reference is already recorded on this period. Check the list of payments.",
+  "payroll_payment_exceeds_balance": "This payment is more than what is left to pay for this period.",
+  "payroll_payment_already_reversed": "This payment was already reversed. Check the list of payments."
 }

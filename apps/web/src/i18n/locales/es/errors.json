@@ -453,5 +453,11 @@
   "payroll_work_settled": "Un ajuste ya paga ese trabajo. Se volvió a cargar la lista.",
   "payroll_total_not_negative": "El total de este periodo ya no es menor que cero, así que no hay saldo que pasar. Se volvió a cargar la página.",
   "compensation_rate_delete_under_finalized_line": "Sin esta versión, una línea de nómina finalizada cambiaría de precio, así que no se puede eliminar.",
-  "adjustment_references_both": "Un ajuste corrige una línea o paga un trabajo, no las dos cosas."
+  "adjustment_references_both": "Un ajuste corrige una línea o paga un trabajo, no las dos cosas.",
+  "paid_on_in_future": "La fecha del pago no puede ser posterior a hoy.",
+  "paid_on_before_period": "La fecha del pago no puede ser anterior al inicio del periodo de nómina.",
+  "payroll_period_not_finalized": "Este periodo no está finalizado, así que no admite pagos.",
+  "payroll_payment_duplicate": "Ya hay un pago registrado con este método y referencia en este periodo. Revisa la lista de pagos.",
+  "payroll_payment_exceeds_balance": "Este pago es mayor que lo que queda por pagar de este periodo.",
+  "payroll_payment_already_reversed": "Este pago ya se había revertido. Revisa la lista de pagos."
 }

@@ -24,11 +24,17 @@ import {
   type PayrollPeriod,
   type PayrollPeriodListParams,
   type PayrollPeriodPage,
+  type PaidState,
   type PayrollTutor,
   type PeriodStatus,
 } from './api';
 import { usePayLabels } from './labels';
-import { PERIOD_STATUSES, periodPath, REVIEWER_STATUSES } from './periodRules';
+import {
+  PAID_STATES,
+  PERIOD_STATUSES,
+  periodPath,
+  REVIEWER_STATUSES,
+} from './periodRules';
 import { INPUT_CLASS, SELECT_CLASS } from './sheet';
 import type { PayrollOffState } from './UnresolvedWorkView';
 
@@ -92,6 +98,41 @@ export function PeriodStatusBadge({ status }: { status: string }) {
       )}
     >
       {known ? t(`payroll.periods.statuses.${known}`) : status}
+    </span>
+  );
+}
+
+const PAID_STYLE: Record<PaidState, string> = {
+  unpaid: 'border-dashed border-border bg-background',
+  partially_paid: 'border-border bg-background',
+  paid: 'border-border bg-muted',
+};
+
+/** What's paid of a finalized period, as a text badge (M7-09b D). */
+export function PaidStateBadge({ state }: { state: string }) {
+  const { t } = useTranslation();
+  const known = PAID_STATES.find((item) => item === state);
+  return (
+    <span
+      data-paid-state={state}
+      className={cn(
+        'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium whitespace-nowrap text-foreground',
+        known ? PAID_STYLE[known] : 'border-border bg-background',
+      )}
+    >
+      {known ? t(`payroll.periods.paidStates.${known}`) : state}
+    </span>
+  );
+}
+
+/** A row's status, and what's paid once it's finalized (D2). */
+function RowStatus({ period }: { period: PayrollPeriod }) {
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <PeriodStatusBadge status={period.status} />
+      {period.status === 'finalized' && period.paid_state ? (
+        <PaidStateBadge state={period.paid_state} />
+      ) : null}
     </span>
   );
 }
@@ -182,7 +223,7 @@ function Rows({ items }: { items: readonly PayrollPeriod[] }) {
                   </TableCell>
                   <TableCell>{row.frequency}</TableCell>
                   <TableCell>
-                    <PeriodStatusBadge status={period.status} />
+                    <RowStatus period={period} />
                   </TableCell>
                   <TableCell className="text-right">
                     {period.line_count}
@@ -210,7 +251,7 @@ function Rows({ items }: { items: readonly PayrollPeriod[] }) {
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Tutor period={period} />
-                <PeriodStatusBadge status={period.status} />
+                <RowStatus period={period} />
               </div>
               <Link
                 to={periodPath(period.id)}
@@ -261,8 +302,13 @@ export function PeriodsView({
 }: PeriodsViewProps) {
   const { t } = useTranslation();
   const id = useId();
-  const ids = { filters: `${id}-filters`, status: `${id}-status` };
-  const filtered = filters.status !== null || filters.tutor !== null;
+  const ids = {
+    filters: `${id}-filters`,
+    status: `${id}-status`,
+    paid: `${id}-paid`,
+  };
+  const filtered =
+    filters.status !== null || filters.tutor !== null || filters.paid !== null;
   const off = payroll?.status === 'ready' && payroll.off;
   const statuses = reviewerOnly ? REVIEWER_STATUSES : PERIOD_STATUSES;
   const chipName = tutorName ?? t('payroll.periods.filters.selected');
@@ -347,7 +393,7 @@ export function PeriodsView({
         <h2 id={ids.filters} className="text-lg font-semibold">
           {t('payroll.periods.filters.label')}
         </h2>
-        <div className="grid min-w-0 gap-4 md:grid-cols-2">
+        <div className="grid min-w-0 gap-4 md:grid-cols-3">
           <div className="flex min-w-0 flex-col gap-2">
             <label htmlFor={ids.status} className="text-sm font-medium">
               {t('payroll.periods.filters.status')}
@@ -374,6 +420,37 @@ export function PeriodsView({
                 </option>
               ))}
             </select>
+          </div>
+          <div className="flex min-w-0 flex-col gap-2">
+            <label htmlFor={ids.paid} className="text-sm font-medium">
+              {t('payroll.periods.filters.paid')}
+            </label>
+            <select
+              id={ids.paid}
+              className={SELECT_CLASS}
+              value={filters.paid ?? ''}
+              aria-describedby={`${ids.paid}-help`}
+              onChange={(event) =>
+                onFilters({
+                  paid:
+                    PAID_STATES.find((paid) => paid === event.target.value) ??
+                    null,
+                })
+              }
+            >
+              <option value="">{t('payroll.periods.filters.allPaid')}</option>
+              {PAID_STATES.map((paid) => (
+                <option key={paid} value={paid}>
+                  {t(`payroll.periods.paidStates.${paid}`)}
+                </option>
+              ))}
+            </select>
+            <p
+              id={`${ids.paid}-help`}
+              className="text-sm text-muted-foreground"
+            >
+              {t('payroll.periods.filters.paidHelp')}
+            </p>
           </div>
           {searchTutors ? (
             <div className="min-w-0">
@@ -417,7 +494,9 @@ export function PeriodsView({
               variant="outline"
               size="sm"
               className="min-h-11 md:min-h-8"
-              onClick={() => onFilters({ status: null, tutor: null })}
+              onClick={() =>
+                onFilters({ status: null, tutor: null, paid: null })
+              }
             >
               {t('payroll.periods.filters.clear')}
             </Button>

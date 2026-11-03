@@ -37,6 +37,7 @@ import { CarryForwardDialog } from './CarryForwardDialog';
 import { FinalizePeriodDialog } from './FinalizePeriodDialog';
 import { usePayLabels } from './labels';
 import { ManualAdjustmentDialog } from './ManualAdjustmentDialog';
+import { PeriodPaymentsSection } from './PeriodPaymentsSection';
 import { PayrollTabs } from './PayrollTabs';
 import {
   adjustmentKindKey,
@@ -89,6 +90,9 @@ import { useManualAdjustment } from './useManualAdjustment';
 // - "Correct line" (M7-08b E1) on a finalized period opens the manual
 //   adjustment dialog on that line; it lands in a later period, so this page
 //   announces where.
+// - A finalized period shows its payments (M7-09b), with their own query and
+//   dialogs in PeriodPaymentsSection; nothing starts there while an action
+//   here runs or the page may be out of date.
 
 /** Where the list reads a send-back confirmation (QA #459 D1). */
 export interface PeriodsNotice {
@@ -150,6 +154,11 @@ export function PeriodReviewPage() {
     openPayPages: canAccess(user, PAYROLL_ACCESS),
     correct: false,
   };
+  // The payments' readers (#112 D1): payroll.view, or a delegated
+  // Administrator's payroll.finalize (M7-09b A1).
+  const readsPayments = canAccess(user, {
+    anyPermission: ['payroll.view', 'payroll.finalize'],
+  });
 
   const review = useQuery({
     queryKey: periodReviewKey(periodId),
@@ -444,6 +453,16 @@ export function PeriodReviewPage() {
           setAnnouncement('');
           setDialog({ kind: 'adjust', line, summary: lineSummary(line) });
         }}
+        payments={
+          data.period.status === 'finalized' && readsPayments ? (
+            <PeriodPaymentsSection
+              period={data.period}
+              user={user}
+              today={todayInZone(timeZone)}
+              locked={running !== null || unknownRefresh || review.isError}
+            />
+          ) : undefined
+        }
       />
     );
   } else if (review.isError) {

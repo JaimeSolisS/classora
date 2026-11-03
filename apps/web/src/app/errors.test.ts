@@ -414,6 +414,13 @@ const API_CODES = [
   'adjustment_references_both',
   'compensation_rate_delete_under_finalized_line',
   'anchor_not_monday',
+  // Payroll payments (#112, M7-09b).
+  'paid_on_in_future',
+  'paid_on_before_period',
+  'payroll_period_not_finalized',
+  'payroll_payment_duplicate',
+  'payroll_payment_exceeds_balance',
+  'payroll_payment_already_reversed',
   // The makeup link (#436 C1, C2).
   'makeup_target_unknown',
   'makeup_target_not_cancelled',
