@@ -7,7 +7,9 @@ import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { useSession, useCan } from '@/features/auth/useSession';
+import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/features/guardians/ConfirmDialog';
+import { useFormatters } from '@/lib/formatters';
 import type { LocalDate } from '@/lib/time';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import {
@@ -19,14 +21,17 @@ import {
   fetchCompensation,
   PAYROLL_TUTORS_KEY,
   type CompensationRate,
+  type PayrollAdjustmentCreate,
   type PayTerms,
   type TutorCompensation,
 } from './api';
 import { CompensationView } from './CompensationView';
 import { usePayLabels } from './labels';
+import { ManualAdjustmentDialog } from './ManualAdjustmentDialog';
 import { PayItemsSection } from './PayItemsSection';
 import { PayrollTabs } from './PayrollTabs';
 import { PayTermsDialog } from './PayTermsDialog';
+import { deleteUnderFinalizedOn, isCode } from './periodRules';
 import { RateDialog } from './RateDialog';
 import {
   rateCreateBody,
@@ -34,6 +39,7 @@ import {
   type RateFormValues,
   type TermsFormValues,
 } from './rules';
+import { useManualAdjustment } from './useManualAdjustment';
 
 // /payroll/tutors/:tutorUserId (#425 C): a tutor's terms and rates, with the
 // add dialogs and delete behind a confirmation for payroll.manage holders.
@@ -44,6 +50,10 @@ import {
 // (this page and the list) are invalidated. The bonuses and deductions are
 // their own section after the rates (#454 B): CompensationView stays as it is,
 // because /my-pay shares it.
+//
+// M7-08b: "Manual adjustment" (free, E1) for the same people who edit, and a
+// rate delete refused under a finalized line says until when and what to do
+// instead: a later version plus a manual adjustment (M7-08d, D1).
 
 function BackLink() {
   const { t } = useTranslation();
@@ -66,6 +76,7 @@ export function TutorPayPage() {
   const queryClient = useQueryClient();
   const session = useSession();
   const canManage = useCan('payroll.manage');
+  const postAdjustment = useManualAdjustment();
   const detail = useQuery({
     queryKey: compensationKey(tutorUserId),
     queryFn: ({ signal }) => fetchCompensation(tutorUserId, signal),
@@ -129,6 +140,7 @@ export function TutorPayPage() {
         await refresh();
       }}
       onReload={refresh}
+      onAdjust={(body, key) => postAdjustment(tutorUserId, body, key)}
       items={
         <PayItemsSection
           tutorUserId={tutorUserId}
@@ -154,6 +166,8 @@ interface TutorPayPageViewProps {
   onAddRate: (values: RateFormValues) => Promise<void>;
   onDelete: (version: DeletedVersion) => Promise<void>;
   onReload: () => Promise<void>;
+  /** Posts a free manual adjustment; resolves with the announcement. */
+  onAdjust?: (body: PayrollAdjustmentCreate, key: string) => Promise<string>;
   /** The bonuses and deductions section. */
   items?: ReactNode;
 }
@@ -167,10 +181,13 @@ export function TutorPayPageView({
   onAddRate,
   onDelete,
   onReload,
+  onAdjust,
   items,
 }: TutorPayPageViewProps) {
   const { t } = useTranslation();
   const labels = usePayLabels();
+  const { formatLocalDate } = useFormatters();
+  const [adjusting, setAdjusting] = useState(false);
   const [adding, setAdding] = useState<'terms' | 'rate' | null>(null);
   const [deleting, setDeleting] = useState<DeletedVersion | null>(null);
   const [deleteError, setDeleteError] = useState<unknown>(null);
@@ -235,6 +252,27 @@ export function TutorPayPageView({
           }
         />
       </div>
+      {canEdit && onAdjust ? (
+        <section
+          className="flex min-w-0 flex-col items-start gap-2"
+          data-manual-adjustment
+        >
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11 md:min-h-9"
+            onClick={() => {
+              setAnnouncement('');
+              setAdjusting(true);
+            }}
+          >
+            {t('payroll.adjustmentDialog.open')}
+          </Button>
+          <p className="text-sm text-muted-foreground">
+            {t('payroll.compensation.adjustmentHelp')}
+          </p>
+        </section>
+      ) : null}
       {items}
       <p role="status" className="text-sm">
         {announcement}
@@ -272,15 +310,50 @@ export function TutorPayPageView({
             }
             confirmLabel={t('payroll.deleteDialog.confirm')}
             destructive
-            alert={deleteError ? <ErrorAlert error={deleteError} /> : null}
+            alert={deleteError ? deleteRefusal(deleteError) : null}
             onConfirm={confirmDelete}
             onCancel={() => {
               setDeleting(null);
               setDeleteError(null);
             }}
           />
+          {onAdjust && adjusting ? (
+            <ManualAdjustmentDialog
+              open
+              tutorName={compensation.tutor.display_name}
+              reference={{ kind: 'free' }}
+              onSubmit={async (body, key) => {
+                setAnnouncement(await onAdjust(body, key));
+              }}
+              onClose={(outcome) => {
+                setAdjusting(false);
+                if (outcome === 'unknown') {
+                  setAnnouncement(t('payroll.adjustmentDialog.closedUnknown'));
+                }
+              }}
+            />
+          ) : null}
         </>
       ) : null}
     </div>
   );
+
+  function deleteRefusal(error: unknown) {
+    if (!isCode(error, 'compensation_rate_delete_under_finalized_line')) {
+      return <ErrorAlert error={error} />;
+    }
+    const date = deleteUnderFinalizedOn(error);
+    return (
+      <ErrorAlert
+        error={error}
+        message={
+          date
+            ? t('payroll.deleteDialog.underFinalized', {
+                date: formatLocalDate(date),
+              })
+            : t('payroll.deleteDialog.underFinalizedNoDate')
+        }
+      />
+    );
+  }
 }

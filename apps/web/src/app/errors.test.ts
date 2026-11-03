@@ -404,6 +404,15 @@ const API_CODES = [
   'payroll_period_stale',
   'payroll_review_route_required',
   'effective_from_under_finalized_line',
+  // Corrections after lock (M7-08b).
+  'payroll_no_period',
+  'payroll_line_not_finalized',
+  'payroll_work_not_unresolved',
+  'payroll_work_before_first_period',
+  'payroll_work_settled',
+  'payroll_total_not_negative',
+  'adjustment_references_both',
+  'compensation_rate_delete_under_finalized_line',
   'anchor_not_monday',
   // The makeup link (#436 C1, C2).
   'makeup_target_unknown',

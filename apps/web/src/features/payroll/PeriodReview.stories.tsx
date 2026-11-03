@@ -113,7 +113,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Open and ended, every line kind (#111's adjustment as "Other line"). */
+/** Open and ended, every line kind (#111's adjustment labelled, M7-08b). */
 export const Open: Story = {
   play: async ({ canvas }) => {
     await expect(
@@ -125,7 +125,7 @@ export const Open: Story = {
       name: i18n.t('payroll.period.lines.caption'),
     });
     await expect(table.textContent).toContain(
-      i18n.t('payroll.period.lines.kinds.unknown'),
+      i18n.t('payroll.period.lines.adjustmentKinds.late_approval'),
     );
   },
 };

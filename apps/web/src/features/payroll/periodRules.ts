@@ -2,6 +2,7 @@ import { ApiError, CLIENT_ERROR_CODES } from '@/app/api';
 import type { LocalDate } from '@/lib/time';
 import type {
   LineKind,
+  PayrollAdjustmentKind,
   PayrollLine,
   PayrollPeriodDetail,
   PayrollPeriodListParams,
@@ -72,24 +73,37 @@ export function isNegativeAmount(amount: string): boolean {
 
 // -------------------------------------------------------------- lines
 
-/** The line kinds this page labels. The API sends `adjustment` since #111;
- * M7-08b labels it, so until then it reads as `unknown` (C9). */
-type LabelledLineKind = Exclude<LineKind, 'adjustment'>;
-
-export const KNOWN_LINE_KINDS: readonly LabelledLineKind[] = [
+/** The line kinds this page labels (C9; `adjustment` since M7-08b). */
+export const KNOWN_LINE_KINDS: readonly LineKind[] = [
   'session',
   'late_cancellation',
   'no_show',
   'makeup',
   'salary',
   'pay_item',
+  'adjustment',
 ];
 
-export type LineKindKey = LabelledLineKind | 'unknown';
+export type LineKindKey = LineKind | 'unknown';
 
 /** The label key of a line's kind; an unknown kind is `unknown`. */
 export function lineKindKey(kind: string): LineKindKey {
   return KNOWN_LINE_KINDS.find((item) => item === kind) ?? 'unknown';
+}
+
+/** The adjustment kinds this page labels (M7-08b A1). */
+export const ADJUSTMENT_KINDS: readonly PayrollAdjustmentKind[] = [
+  'late_approval',
+  'hours_correction',
+  'manual',
+  'carry_forward',
+];
+
+/** The label key of an adjustment's kind; anything else is null. */
+export function adjustmentKindKey(
+  kind: string | null,
+): PayrollAdjustmentKind | null {
+  return ADJUSTMENT_KINDS.find((item) => item === kind) ?? null;
 }
 
 const SESSION_KINDS: readonly string[] = [
@@ -317,6 +331,36 @@ export function latestFinalizedOn(error: unknown): string | null {
   if (!isCode(error, 'effective_from_under_finalized_line')) return null;
   const date = detailString(error, 'latest_finalized_on');
   return date && LOCAL_DATE.test(date) ? date : null;
+}
+
+/** `409 compensation_rate_delete_under_finalized_line`'s date (M7-08b D1). */
+export function deleteUnderFinalizedOn(error: unknown): string | null {
+  if (!isCode(error, 'compensation_rate_delete_under_finalized_line')) {
+    return null;
+  }
+  const date = detailString(error, 'latest_finalized_on');
+  return date && LOCAL_DATE.test(date) ? date : null;
+}
+
+/**
+ * Whether the period offers carry-forward (M7-08b E2): open, ended for the
+ * center, and below zero. The API decides again (C2).
+ */
+export function canCarryForward(
+  period: Pick<PayrollPeriodDetail, 'status' | 'ends_on'>,
+  total: string,
+  today: LocalDate,
+): boolean {
+  return (
+    period.status === 'open' &&
+    hasEnded(period, today) &&
+    isNegativeAmount(total)
+  );
+}
+
+/** The amount without its minus sign, for "moves 300.00" (C1). */
+export function absoluteAmount(amount: string): string {
+  return amount.startsWith('-') ? amount.slice(1) : amount;
 }
 
 /** The period's page. */

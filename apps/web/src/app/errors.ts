@@ -479,6 +479,18 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
     'effective_from_under_finalized_line',
     'effective_from_under_finalized_line',
   ],
+  // Corrections after lock (M7-08c, M7-08d; the pages are M7-08b).
+  ['payroll_no_period', 'payroll_no_period'],
+  ['payroll_line_not_finalized', 'payroll_line_not_finalized'],
+  ['payroll_work_not_unresolved', 'payroll_work_not_unresolved'],
+  ['payroll_work_before_first_period', 'payroll_work_before_first_period'],
+  ['payroll_work_settled', 'payroll_work_settled'],
+  ['payroll_total_not_negative', 'payroll_total_not_negative'],
+  ['adjustment_references_both', 'adjustment_references_both'],
+  [
+    'compensation_rate_delete_under_finalized_line',
+    'compensation_rate_delete_under_finalized_line',
+  ],
   // The makeup link (#436 C1, C2): field codes, and the one problem code.
   ['makeup_target_unknown', 'makeup_target_unknown'],
   ['makeup_target_not_cancelled', 'makeup_target_not_cancelled'],

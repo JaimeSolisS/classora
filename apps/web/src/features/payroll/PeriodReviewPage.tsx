@@ -20,6 +20,7 @@ import { todayInZone } from '@/lib/time';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PAYROLL_ACCESS } from './access';
 import {
+  carryPeriodForward,
   fetchPeriodReview,
   finalizePeriod,
   PAYROLL_PERIODS_KEY,
@@ -28,15 +29,22 @@ import {
   recalculatePeriod,
   returnPeriod,
   UNRESOLVED_KEY,
+  type PayrollLine,
   type PayrollPeriodPage,
   type PayrollPeriodReview,
 } from './api';
+import { CarryForwardDialog } from './CarryForwardDialog';
 import { FinalizePeriodDialog } from './FinalizePeriodDialog';
+import { usePayLabels } from './labels';
+import { ManualAdjustmentDialog } from './ManualAdjustmentDialog';
 import { PayrollTabs } from './PayrollTabs';
 import {
+  adjustmentKindKey,
+  canCarryForward,
   isCode,
   isUnknownResult,
   isUuid,
+  lineKindKey,
   RECALCULATE_AFTER_PREPARE,
 } from './periodRules';
 import {
@@ -47,6 +55,7 @@ import {
   type PeriodCapabilities,
 } from './PeriodReviewView';
 import { ReturnPeriodDialog } from './ReturnPeriodDialog';
+import { useManualAdjustment } from './useManualAdjustment';
 
 // /payroll/periods/:periodId (#110b C, D). One query, `GET …/lines`; every
 // action refreshes the period, the list and the unresolved work afterwards,
@@ -73,6 +82,13 @@ import { ReturnPeriodDialog } from './ReturnPeriodDialog';
 //   after the dialog is cancelled (QA #459 D2).
 // - A period that fails to load with `payroll_amount_out_of_range` shows the
 //   way out, and Recalculate for a payroll.prepare holder (C8).
+// - Carry-forward (M7-08b C) works as finalize does: a snapshot and a key per
+//   opening, a lost answer keeps the dialog open and locks every action until
+//   its refresh lands; the landed refresh closes it once there is nothing
+//   left to carry. A settled refusal closes it and shows here.
+// - "Correct line" (M7-08b E1) on a finalized period opens the manual
+//   adjustment dialog on that line; it lands in a later period, so this page
+//   announces where.
 
 /** Where the list reads a send-back confirmation (QA #459 D1). */
 export interface PeriodsNotice {
@@ -110,7 +126,10 @@ function BackLink() {
 }
 
 type OpenDialog =
-  { kind: 'return' } | { kind: 'finalize'; snapshot: PayrollPeriodReview };
+  | { kind: 'return' }
+  | { kind: 'finalize'; snapshot: PayrollPeriodReview }
+  | { kind: 'carry'; snapshot: PayrollPeriodReview }
+  | { kind: 'adjust'; line: PayrollLine; summary: string };
 
 export function PeriodReviewPage() {
   const { t } = useTranslation();
@@ -120,13 +139,16 @@ export function PeriodReviewPage() {
   const session = useSession();
   const user = session.status === 'signedIn' ? session.user : null;
   const timeZone = useCenterTimeZone();
-  const { formatLocalDate } = useFormatters();
+  const { formatLocalDate, formatMoney } = useFormatters();
+  const labels = usePayLabels();
+  const postAdjustment = useManualAdjustment();
   const valid = isUuid(periodId);
   const can: PeriodCapabilities = {
     prepare: canAccess(user, { permission: 'payroll.prepare' }),
     finalize: canAccess(user, { permission: 'payroll.finalize' }),
     openSession: canAccess(user, { permission: 'schedule.view' }),
     openPayPages: canAccess(user, PAYROLL_ACCESS),
+    correct: false,
   };
 
   const review = useQuery({
@@ -145,6 +167,8 @@ export function PeriodReviewPage() {
   const [finalizeUnknown, setFinalizeUnknown] = useState(false);
   // The refresh after a lost finalize answer hasn't landed (QA #459 D2).
   const [unknownRefresh, setUnknownRefresh] = useState(false);
+  // A carry-forward whose answer was lost: the refresh says what happened.
+  const [carryUnknown, setCarryUnknown] = useState(false);
 
   // The period was shown here, then a refresh read 404: it left the user's
   // review (QA #459 D1).
@@ -154,6 +178,12 @@ export function PeriodReviewPage() {
     review.error.status === 404;
   const data = gone ? undefined : review.data;
   const period = data?.period;
+  // "Correct line": payroll.manage, and a non-Owner's own pay never (#105 E5;
+  // the API's 403 is still handled).
+  can.correct =
+    canAccess(user, { permission: 'payroll.manage' }) &&
+    period !== undefined &&
+    (period.tutor_user_id !== user?.id || user.roles.includes('owner'));
   const title = period
     ? t('payroll.period.title', {
         name: period.tutor_display_name,
@@ -181,6 +211,21 @@ export function PeriodReviewPage() {
     );
     setFinalizeUnknown(false);
     setFailure(null);
+  }
+  // The same for a lost carry-forward: once the landed refresh shows
+  // nothing left to carry, it moved (or someone fixed the total).
+  if (
+    !unknownRefresh &&
+    data &&
+    (dialog?.kind === 'carry' || carryUnknown) &&
+    !canCarryForward(data.period, data.total, todayInZone(timeZone))
+  ) {
+    if (dialog?.kind === 'carry') setDialog(null);
+    if (carryUnknown) {
+      setAnnouncement(t('payroll.period.carry.settled'));
+      setFailure(null);
+    }
+    setCarryUnknown(false);
   }
   if (gone && dialog !== null) {
     setDialog(null);
@@ -292,6 +337,56 @@ export function PeriodReviewPage() {
     setRunning(null);
   }
 
+  async function carry(idempotencyKey: string) {
+    try {
+      await carryPeriodForward(periodId, idempotencyKey);
+    } catch (caught) {
+      if (isUnknownResult(caught)) {
+        setCarryUnknown(true);
+        setUnknownRefresh(true);
+        setFailure(caught);
+        void refresh().finally(() => setUnknownRefresh(false));
+        throw caught;
+      }
+      setDialog(null);
+      begin('carry');
+      await refresh();
+      setFailure(caught);
+      setRunning(null);
+      return;
+    }
+    setCarryUnknown(false);
+    setDialog(null);
+    begin('carry');
+    await refresh();
+    setAnnouncement(t('payroll.period.carry.done'));
+    setRunning(null);
+  }
+
+  function lineSummary(line: PayrollLine): string {
+    const kind = lineKindKey(line.kind);
+    const adjustment = adjustmentKindKey(line.adjustment_kind);
+    const label =
+      kind === 'adjustment' && adjustment
+        ? t(`payroll.period.lines.adjustmentKinds.${adjustment}`)
+        : kind === 'pay_item' && line.pay_item_type_name
+          ? line.pay_item_type_name
+          : t(`payroll.period.lines.kinds.${kind}`);
+    const date =
+      line.service_date ??
+      line.adjustment_service_date ??
+      line.salary_starts_on;
+    const kindText = line.class_kind ? labels.kind(line.class_kind) : null;
+    return [
+      label,
+      kindText,
+      date ? formatLocalDate(date) : null,
+      formatMoney(line.amount),
+    ]
+      .filter(Boolean)
+      .join(', ');
+  }
+
   if (
     !valid ||
     (!gone && review.error instanceof ApiError && review.error.status === 404)
@@ -323,7 +418,10 @@ export function PeriodReviewPage() {
         today={todayInZone(timeZone)}
         user={{ id: user?.id ?? '', roles: user?.roles ?? [] }}
         can={can}
-        running={running ?? (unknownRefresh ? 'finalize' : null)}
+        running={
+          running ??
+          (unknownRefresh ? (carryUnknown ? 'carry' : 'finalize') : null)
+        }
         refreshError={review.isError ? review.error : null}
         onReload={() => void review.refetch()}
         announcement={announcement}
@@ -337,6 +435,14 @@ export function PeriodReviewPage() {
         onFinalize={() => {
           setAnnouncement('');
           setDialog({ kind: 'finalize', snapshot: data });
+        }}
+        onCarry={() => {
+          setAnnouncement('');
+          setDialog({ kind: 'carry', snapshot: data });
+        }}
+        onCorrect={(line) => {
+          setAnnouncement('');
+          setDialog({ kind: 'adjust', line, summary: lineSummary(line) });
         }}
       />
     );
@@ -405,6 +511,34 @@ export function PeriodReviewPage() {
         onClose={() => setDialog(null)}
         refreshing={review.isFetching}
       />
+      <CarryForwardDialog
+        open={dialog?.kind === 'carry'}
+        review={dialog?.kind === 'carry' ? dialog.snapshot : null}
+        onSubmit={carry}
+        onClose={() => setDialog(null)}
+        refreshing={review.isFetching}
+      />
+      {dialog?.kind === 'adjust' && period ? (
+        <ManualAdjustmentDialog
+          open
+          tutorName={period.tutor_display_name}
+          reference={{
+            kind: 'line',
+            lineId: dialog.line.id,
+            summary: dialog.summary,
+          }}
+          onSubmit={async (body, key) => {
+            const said = await postAdjustment(period.tutor_user_id, body, key);
+            setAnnouncement(said);
+          }}
+          onClose={(outcome) => {
+            setDialog(null);
+            if (outcome === 'unknown') {
+              setAnnouncement(t('payroll.adjustmentDialog.closedUnknown'));
+            }
+          }}
+        />
+      ) : null}
     </div>
   );
 }

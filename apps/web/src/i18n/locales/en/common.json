@@ -6265,13 +6265,16 @@
       "ownPay": "Someone else must change your pay.",
       "saved": "Change saved.",
       "deleted": "Version deleted.",
-      "gone": "That version no longer exists. The page was reloaded."
+      "gone": "That version no longer exists. The page was reloaded.",
+      "adjustmentHelp": "To pay or take back something with no other way: it lands in the tutor's earliest open period."
     },
     "deleteDialog": {
       "title": "Delete version",
       "terms": "This deletes the terms from {{date}}: {{value}}.",
       "rate": "This deletes the {{kind}} rate from {{date}}: {{value}}.",
-      "confirm": "Delete"
+      "confirm": "Delete",
+      "underFinalized": "Without this version, a finalized payroll line up to {{date}} would get another price, so it can't be deleted. Add a new version starting after {{date}} and pay the difference with a manual adjustment.",
+      "underFinalizedNoDate": "Without this version, a finalized payroll line would get another price, so it can't be deleted. Add a later version and pay the difference with a manual adjustment."
     },
     "termsDialog": {
       "title": "Add terms",
@@ -6309,7 +6312,10 @@
       "descriptionTooLong": "Use at most 500 characters.",
       "amountRequired": "Enter the amount.",
       "amountInvalid": "Enter a valid amount, for example 500 or 500.50.",
-      "amountPositive": "The amount must be above zero."
+      "amountPositive": "The amount must be above zero.",
+      "adjustmentDirectionRequired": "Choose pay more or take back.",
+      "reasonRequired": "Enter the reason.",
+      "reasonTooLong": "Use at most 1000 characters."
     },
     "settings": {
       "title": "Payroll settings",
@@ -6445,7 +6451,9 @@
       },
       "payWithItem": "Pay with a one-time item",
       "payWithItemFor": "Pay with a one-time item: {{name}}",
-      "payWithItemHelp": "Add a one-time item for what the line would have paid. The work stays on this list."
+      "payWithItemHelp": "Add a one-time item for what the line would have paid. The work stays on this list.",
+      "outdated": "The list couldn't be reloaded, so it may be out of date. Reload it before paying by hand.",
+      "reload": "Reload"
     },
     "payItems": {
       "title": "Bonuses and deductions",
@@ -6644,7 +6652,8 @@
           "date": "Date",
           "line": "Line",
           "details": "Details",
-          "amount": "Amount"
+          "amount": "Amount",
+          "actions": "Actions"
         },
         "kinds": {
           "session": "Session",
@@ -6653,7 +6662,8 @@
           "makeup": "Makeup",
           "salary": "Salary",
           "pay_item": "Bonus or deduction",
-          "unknown": "Other line"
+          "unknown": "Other line",
+          "adjustment": "Adjustment"
         },
         "noDate": "—",
         "coveredBySalary": "Covered by the salary",
@@ -6673,7 +6683,19 @@
         "directions": {
           "bonus": "Bonus",
           "deduction": "Deduction"
-        }
+        },
+        "adjustmentKinds": {
+          "late_approval": "Late approval",
+          "hours_correction": "Hours correction",
+          "manual": "Manual adjustment",
+          "carry_forward": "Carried balance"
+        },
+        "adjustmentWork": "Work on {{date}}",
+        "reason": "Reason: {{reason}}",
+        "originPeriod": "Open the origin period",
+        "carriedTo": "See the tutor's periods",
+        "correct": "Correct line",
+        "correctFor": "Correct line: {{line}}, {{date}}"
       },
       "actions": {
         "label": "Actions",
@@ -6721,7 +6743,16 @@
       "notFound": "This period doesn't exist, or you can't open it.",
       "gone": "This period's status changed, and it's no longer in your review.",
       "goneReturned": "Period sent back to Finance. It's no longer in your review.",
-      "goneLink": "Go to the periods"
+      "goneLink": "Go to the periods",
+      "adjustmentsNote": "Adjustments correct periods that are already finalized. They take no part in the change check at finalize.",
+      "carry": {
+        "banner": "The total is below zero, so this period can't be prepared. You can correct a bonus or a deduction and recalculate, or carry the balance to the next period.",
+        "waiting": "This tutor's later periods are waiting: they can't be finalized until this one is.",
+        "help": "You can carry the balance to the next period: it's taken from that one, not forgiven.",
+        "action": "Carry the balance to the next period",
+        "done": "Balance carried to the next period. This period can now be prepared.",
+        "settled": "This period no longer has a negative balance, so the page was reloaded."
+      }
     },
     "finalizeDialog": {
       "title": "Finalize this period?",
@@ -6743,6 +6774,47 @@
       "submit": "Send back",
       "submitting": "Sending back…",
       "cancel": "Cancel"
+    },
+    "adjustmentDialog": {
+      "title": {
+        "line": "Correct {{name}}'s line",
+        "session": "Pay {{name}} by hand",
+        "free": "Manual adjustment for {{name}}"
+      },
+      "help": "A manual adjustment pays more or takes back an amount in the tutor's earliest open period.",
+      "reference": "Reference",
+      "referenceLine": "A line of a finalized period: {{line}}",
+      "referenceSession": "Unresolved work on {{date}}: {{reason}}. After this adjustment nothing else pays it.",
+      "referenceNone": "No reference",
+      "direction": "Kind of adjustment",
+      "directions": {
+        "pay_more": "Pay more",
+        "take_back": "Take back"
+      },
+      "amount": "Amount",
+      "reason": "Reason",
+      "reasonHelp": "The tutor will see this reason on their payslip once the period is finalized. It is also stored with the adjustment and shown on this page. Don't write personal data.",
+      "counter": "{{n}} of {{max}} characters",
+      "strandedTitle": "A waiting one-time item would be paid twice",
+      "stranded": "If this adjustment pays a one-time item left without a period (for example, a tutor who left), first delete that waiting item under Bonuses and deductions. If you don't, the tutor is paid twice: this adjustment and the item.",
+      "target": "It lands in the tutor's earliest open period; if there is none, one is opened.",
+      "password": "If you haven't confirmed your password in the last 5 minutes, you'll be asked to.",
+      "submit": "Save adjustment",
+      "resend": "Send the same adjustment again",
+      "unknown": "We don't know whether the adjustment was saved. Sending it again from here is safe: it isn't paid twice. Don't change the details or start another adjustment.",
+      "saved": "Adjustment saved. It will apply in the period from {{start}} to {{end}}.",
+      "savedNoDates": "Adjustment saved. It will apply in the tutor's earliest open period.",
+      "closedUnknown": "The adjustment may have been saved. Check the lines of the tutor's open period before adding another.",
+      "open": "Manual adjustment",
+      "payByHand": "Pay by hand",
+      "payByHandFor": "Pay by hand: {{name}}, {{date}}"
+    },
+    "carryDialog": {
+      "title": "Carry the balance to the next period",
+      "body": "{{amount}} of {{name}} ({{dates}}) moves to the tutor's next open period; if there is none, one is opened.",
+      "notForgiven": "The balance moves, it isn't forgiven: this period goes to 0.00 and the next one takes it back. Both are prepared and finalized as usual.",
+      "submit": "Carry the balance",
+      "unknown": "We don't know whether the balance moved. The page is reloading; confirming again from here is safe."
     }
   },
   "familyBilling": {
