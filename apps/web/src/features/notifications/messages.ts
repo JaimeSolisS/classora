@@ -393,6 +393,15 @@ function paymentReminder(params: NotificationItem['params']): string {
   return familyBillingPath();
 }
 
+/** The finalized period's page under My pay (M7-10b A3); My pay without
+ * a usable id. */
+function finalizedPeriod(params: NotificationItem['params']): string {
+  const id = params.payroll_period_id;
+  return typeof id === 'string' && id
+    ? `/my-pay/periods/${encodeURIComponent(id)}`
+    : '/my-pay';
+}
+
 /** The voided evaluation's page (#308 F2); home without an id. */
 function voidedEvaluation(params: NotificationItem['params']): string {
   const id = params.evaluation_id;
@@ -480,8 +489,9 @@ export const NOTIFICATION_LINKS: Readonly<
   'scheduling.tutor_substituted': mySchedule,
   // #388 H1: the family billing portal, filtered by the reminder's stage.
   'billing.payment_reminder': paymentReminder,
-  // #110b F3: the tutor's finalized pay opens My pay.
-  'payroll.period_finalized': () => '/my-pay',
+  // #110b F3, M7-10b A3: the tutor's finalized period opens its page
+  // under My pay; without a usable id, My pay.
+  'payroll.period_finalized': finalizedPeriod,
 };
 
 /** The bell's badge text: the count, or "99+" above 99. */

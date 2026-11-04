@@ -6358,6 +6358,110 @@
       "title": "My pay",
       "empty": "Your pay isn't set up yet. Check with administration."
     },
+    "earnings": {
+      "title": "Earnings",
+      "intro": "What you were paid for each finalized period, newest first. A period appears here once it is finalized.",
+      "empty": "No finalized periods yet. Your earnings appear here once a period is finalized.",
+      "caption": "Your finalized periods",
+      "columns": {
+        "period": "Period",
+        "frequency": "Frequency",
+        "total": "Total",
+        "paid": "Payment",
+        "lastPaid": "Last payment",
+        "payslip": "Payslip"
+      },
+      "noActivity": "No activity",
+      "openFor": "Open the period {{dates}}",
+      "payslip": {
+        "download": "Download payslip",
+        "downloadFor": "Download payslip {{number}}",
+        "language": "The payslip downloads in the language it was issued in."
+      },
+      "outdated": "Your earnings may be out of date: they couldn't be reloaded.",
+      "reload": "Reload",
+      "pagination": "Earnings pages"
+    },
+    "earningsPeriod": {
+      "back": "Back to My pay",
+      "title": "Pay for {{start}} – {{end}}",
+      "fallbackTitle": "Pay period",
+      "notFoundTitle": "Period not found",
+      "notFound": "This period wasn't found among your finalized periods.",
+      "outdated": "This period may be out of date: it couldn't be reloaded.",
+      "head": {
+        "frequency": "Frequency",
+        "finalizedOn": "Finalized on",
+        "total": "Total",
+        "paid": "Paid",
+        "remaining": "Left to pay",
+        "state": "Payment",
+        "payslip": "Payslip"
+      },
+      "summary": {
+        "title": "Summary",
+        "classLines": "Classes paid",
+        "classTime": "Class time",
+        "classTimeValue": "{{hours}} h {{minutes}} min",
+        "classes": "Classes",
+        "salary": "Salary",
+        "bonuses": "Bonuses",
+        "deductions": "Deductions",
+        "adjustments": "Adjustments",
+        "total": "Period total"
+      },
+      "linesTitle": "Detail",
+      "noLines": "No activity in this period.",
+      "groups": {
+        "classes": "Classes",
+        "salary": "Salary",
+        "bonuses": "Bonuses",
+        "deductions": "Deductions",
+        "adjustments": "Adjustments"
+      },
+      "columns": {
+        "date": "Date",
+        "classKind": "Class kind",
+        "event": "Concept",
+        "minutes": "Minutes",
+        "rate": "Rate",
+        "amount": "Amount",
+        "piece": "Dates",
+        "detail": "Detail",
+        "type": "Type",
+        "description": "Description",
+        "kind": "Kind",
+        "details": "Detail"
+      },
+      "eventWithRule": "{{event}} ({{rule}})",
+      "rules": {
+        "percent": "{{percent}}% of the rate",
+        "fixed": "fixed amount of {{amount}}",
+        "none": "unpaid"
+      },
+      "coveredBySalary": "Covered by the salary",
+      "courseShare": "{{rate}}, session {{k}} / {{n}}",
+      "salaryDetail": "{{numerator}} / {{denominator}} of {{amount}}, counted in {{basis}}",
+      "adjustments": {
+        "work": "Work on {{date}}",
+        "workKind": "Work on {{date}} ({{kind}})",
+        "origin": "From the period {{period}}",
+        "paired": "Related period: {{period}}"
+      },
+      "payments": {
+        "title": "Payments",
+        "caption": "The period's payments",
+        "empty": "No payments yet.",
+        "columns": {
+          "date": "Date",
+          "amount": "Amount",
+          "method": "Method",
+          "reference": "Reference",
+          "status": "Status"
+        },
+        "reversedOn": "Reversed on {{date}}"
+      }
+    },
     "payRules": {
       "title": "Pay rules",
       "intro": "What a tutor is paid for a class that didn't run as planned. A rule applies by the session's date and never changes past work.",

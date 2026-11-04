@@ -560,3 +560,74 @@ export function reversePayrollPayment(
     }),
   );
 }
+
+// ------------------------------------------- the tutor's earnings (M7-10b)
+
+export type EarningsPeriod = components['schemas']['EarningsPeriodItem'];
+export type EarningsPage =
+  components['schemas']['OffsetPage_EarningsPeriodItem_'];
+export type EarningsPeriodDetail =
+  components['schemas']['EarningsPeriodDetail'];
+export type PayslipLine = components['schemas']['PayslipLine'];
+export type PayslipSummary = components['schemas']['PayslipSummary'];
+export type EarningsPayment = components['schemas']['EarningsPayment'];
+export type PayslipReference = components['schemas']['PayslipReference'];
+
+/** Rows per page of the earnings list (the API default). */
+export const EARNINGS_PAGE_SIZE = 25;
+
+/** Every cached earnings query: the list pages and each period. */
+export const EARNINGS_KEY = ['payroll', 'earnings'] as const;
+
+export function earningsListKey(tutorUserId: string, page: number) {
+  return [...EARNINGS_KEY, tutorUserId, 'list', page] as const;
+}
+
+export function earningsPeriodKey(tutorUserId: string, periodId: string) {
+  return [...EARNINGS_KEY, tutorUserId, 'period', periodId] as const;
+}
+
+/** The tutor's finalized periods, newest first (#113 C2). */
+export function fetchEarnings(
+  tutorUserId: string,
+  page: number,
+  signal: AbortSignal,
+): Promise<EarningsPage> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/payroll/tutors/{tutor_user_id}/earnings', {
+        params: {
+          path: { tutor_user_id: tutorUserId },
+          query: {
+            limit: EARNINGS_PAGE_SIZE,
+            offset: (page - 1) * EARNINGS_PAGE_SIZE,
+          },
+        },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+/** One finalized period with its lines and payments (#113 C3). */
+export function fetchEarningsPeriod(
+  tutorUserId: string,
+  periodId: string,
+  signal: AbortSignal,
+): Promise<EarningsPeriodDetail> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/payroll/tutors/{tutor_user_id}/earnings/{period_id}', {
+        params: {
+          path: { tutor_user_id: tutorUserId, period_id: periodId },
+        },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+/** The payslip's PDF route: a plain same-origin link (#113 C4). */
+export function payslipUrl(tutorUserId: string, payslipId: string): string {
+  return `/api/v1/payroll/tutors/${encodeURIComponent(tutorUserId)}/payslips/${encodeURIComponent(payslipId)}/pdf`;
+}

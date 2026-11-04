@@ -1060,6 +1060,15 @@ export const routes: RouteObject[] = [
             }),
             handle: MY_PAY_ACCESS,
           },
+          // M7-10b C: one of the tutor's finalized periods (code-split).
+          {
+            path: 'my-pay/periods/:periodId',
+            lazy: async () => ({
+              Component: (await import('@/features/payroll/EarningsPeriodPage'))
+                .EarningsPeriodPage,
+            }),
+            handle: MY_PAY_ACCESS,
+          },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },
           // Any signed-in user, before and after accepting (#174 G1).
