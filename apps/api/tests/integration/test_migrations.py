@@ -72,8 +72,11 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0083"
+HEAD = "0084"
 FINANCE_TABLES_0083 = frozenset({"expense_categories", "vendors"})
+EXPENSE_TABLES_0084 = frozenset(
+    {"expenses", "expense_payments", "expense_payment_reversals", "expense_adjustments"}
+)
 PAY_RULES = "session_pay_rules"
 LINES = "payroll_lines"
 SALARY_LINE_COLUMNS = frozenset(
@@ -472,6 +475,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *PAYROLL_PAYMENT_TABLES,
             PAYSLIPS,
             *FINANCE_TABLES_0083,
+            *EXPENSE_TABLES_0084,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4871,9 +4875,22 @@ def _of_0083(diff: Any) -> bool:
     return diff[0] == "add_index" and diff[1].table.name in FINANCE_TABLES_0083
 
 
+def _of_0084(diff: Any) -> bool:
+    """A metadata difference that revision 0084 adds: the four expense tables
+    and their indexes (#115 A1). CHECKs are not compared."""
+    if diff[0] == "add_table":
+        return bool(diff[1].name in EXPENSE_TABLES_0084)
+    return diff[0] == "add_index" and diff[1].table.name in EXPENSE_TABLES_0084
+
+
+def _of_0083_on(diff: Any) -> bool:
+    """A metadata difference that revision 0083 or a later one adds."""
+    return _of_0083(diff) or _of_0084(diff)
+
+
 def _of_0082_on(diff: Any) -> bool:
     """A metadata difference that revision 0082 or a later one adds."""
-    return _of_0082(diff) or _of_0083(diff)
+    return _of_0082(diff) or _of_0083_on(diff)
 
 
 def _of_0081_on(diff: Any) -> bool:
@@ -15828,7 +15845,7 @@ def test_0082_adds_the_table_and_downgrade_restores_0081(fresh_database_url):
     command.upgrade(config, "0082")
 
     assert version_nums(dsn) == ["0082"]
-    assert [d for d in metadata_diff(dsn) if not _of_0083(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0083_on(d)] == []
     assert public_tables(dsn) - tables == {PAYSLIPS}
     constraints = _constraints(dsn, PAYSLIPS)
     assert set(constraints) == PAYSLIP_CONSTRAINTS_0082
@@ -15994,7 +16011,7 @@ def test_0083_adds_the_tables_and_downgrade_restores_0082(fresh_database_url):
     command.upgrade(config, "0083")
 
     assert version_nums(dsn) == ["0083"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0084(d)] == []
     assert public_tables(dsn) - tables == FINANCE_TABLES_0083
     rows = run_sql(
         dsn,
@@ -16014,7 +16031,7 @@ def test_0083_adds_the_tables_and_downgrade_restores_0082(fresh_database_url):
         "SELECT count(*) AS n FROM pg_proc WHERE proname = 'finance_config_no_truncate'"
     )
     assert run_sql(dsn, guard)[0].n == 0
-    assert [d for d in metadata_diff(dsn) if not _of_0083(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0083_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -16141,8 +16158,416 @@ def test_0083_neither_table_truncates(fresh_database_url):
     command.upgrade(alembic_config(dsn), "head")
     run_sql(dsn, "INSERT INTO vendors (name) VALUES ('Acme')")
 
+    # The expense tables (0084) reference both: alone, the TRUNCATE is 0A000.
+    expenses = ", ".join(sorted(EXPENSE_TABLES_0084))
     for table in FINANCE_TABLES_0083:
-        assert _sqlstate_0076(dsn, f"TRUNCATE {table}") == "42501", table
+        assert _sqlstate_0076(dsn, f"TRUNCATE {table}, {expenses}") == "42501", table
         assert _sqlstate_0076(dsn, f"TRUNCATE {table} CASCADE") == "42501", table
     assert run_sql(dsn, "SELECT count(*) AS n FROM expense_categories")[0].n == 5
     assert run_sql(dsn, "SELECT count(*) AS n FROM vendors")[0].n == 1
+
+
+# --- 0084: operating expenses (#115 A1) -----
+
+EXPENSE_CONSTRAINTS_0084 = {
+    "expenses": {
+        "pk_expenses",
+        "fk_expenses_category_id_expense_categories",
+        "fk_expenses_vendor_id_vendors",
+        "fk_expenses_created_by_user_id_users",
+        "ck_expenses_amount_positive",
+        "ck_expenses_description_trimmed",
+        "ck_expenses_receipt_reference_trimmed",
+        "ck_expenses_note_trimmed",
+        "ck_expenses_due_on_after_incurred_on",
+    },
+    "expense_payments": {
+        "pk_expense_payments",
+        "fk_expense_payments_expense_id_expenses",
+        "fk_expense_payments_method_code_payment_methods",
+        "fk_expense_payments_recorded_by_user_id_users",
+        "ck_expense_payments_amount_positive",
+        "ck_expense_payments_reference_trimmed",
+        "ck_expense_payments_note_trimmed",
+    },
+    "expense_payment_reversals": {
+        "pk_expense_payment_reversals",
+        "fk_expense_payment_reversals_payment",
+        "fk_expense_payment_reversals_reversed_by_user_id_users",
+        "uq_expense_payment_reversals_expense_payment_id",
+        "ck_expense_payment_reversals_reason_trimmed",
+    },
+    "expense_adjustments": {
+        "pk_expense_adjustments",
+        "fk_expense_adjustments_expense_id_expenses",
+        "fk_expense_adjustments_created_by_user_id_users",
+        "ck_expense_adjustments_amount_not_zero",
+        "ck_expense_adjustments_reason_trimmed",
+    },
+}
+EXPENSE_INDEXES_0084 = {
+    "expenses": {
+        "pk_expenses",
+        "ix_expenses_due_on",
+        "ix_expenses_incurred_on",
+        "ix_expenses_category_id_incurred_on",
+        "ix_expenses_vendor_id",
+    },
+    "expense_payments": {
+        "pk_expense_payments",
+        "ix_expense_payments_expense_id",
+        "ix_expense_payments_paid_on",
+    },
+    "expense_payment_reversals": {
+        "pk_expense_payment_reversals",
+        "uq_expense_payment_reversals_expense_payment_id",
+    },
+    "expense_adjustments": {
+        "pk_expense_adjustments",
+        "ix_expense_adjustments_expense_id",
+    },
+}
+UNVERSIONED_COLUMNS_0084 = {
+    name: shape for name, shape in STANDARD_COLUMNS.items() if name != "version"
+}
+
+
+def test_0084_adds_the_tables_and_downgrade_restores_0083(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0083")
+    tables = public_tables(dsn)
+
+    command.upgrade(config, "0084")
+
+    assert version_nums(dsn) == ["0084"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == EXPENSE_TABLES_0084
+    for table in EXPENSE_TABLES_0084:
+        constraints = _constraints(dsn, table)
+        assert set(constraints) == EXPENSE_CONSTRAINTS_0084[table], table
+        for name, definition in constraints.items():
+            if name.startswith("fk_"):
+                assert definition.endswith("ON DELETE RESTRICT"), name
+        assert set(_indexes(dsn, table)) == EXPENSE_INDEXES_0084[table], table
+        assert _triggers(dsn, table) == {
+            f"{table}_no_update_delete",
+            f"{table}_no_truncate",
+        }
+    assert (
+        "(category_id, incurred_on)"
+        in (_indexes(dsn, "expenses")["ix_expenses_category_id_incurred_on"])
+    )
+    assert (
+        "REFERENCES payment_methods(code)"
+        in (
+            _constraints(dsn, "expense_payments")[
+                "fk_expense_payments_method_code_payment_methods"
+            ]
+        )
+    )
+
+    command.downgrade(config, "0083")
+
+    assert version_nums(dsn) == ["0083"]
+    assert public_tables(dsn) == tables
+    functions = run_sql(
+        dsn,
+        "SELECT count(*) AS n FROM pg_proc WHERE proname = ANY(:n)",
+        {"n": [f"{table}_append_only" for table in EXPENSE_TABLES_0084]},
+    )
+    assert functions[0].n == 0
+    assert [d for d in metadata_diff(dsn) if not _of_0084(d)] == []
+
+    command.upgrade(config, "head")
+
+    assert metadata_diff(dsn) == []
+
+
+def test_0084_columns(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    money = ("numeric", "NO", None, None)
+
+    assert _columns(dsn, "expenses") == {
+        **UNVERSIONED_COLUMNS_0084,
+        "category_id": ("uuid", "NO", None, None),
+        "vendor_id": ("uuid", "YES", None, None),
+        "description": ("text", "NO", None, None),
+        "amount": money,
+        "incurred_on": ("date", "NO", None, None),
+        "due_on": ("date", "NO", None, None),
+        "receipt_reference": ("text", "YES", None, None),
+        "note": ("text", "YES", None, None),
+        "created_by_user_id": ("uuid", "YES", None, None),
+    }
+    assert _columns(dsn, "expense_payments") == {
+        **UNVERSIONED_COLUMNS_0084,
+        "expense_id": ("uuid", "NO", None, None),
+        "paid_on": ("date", "NO", None, None),
+        "amount": money,
+        "method_code": ("character varying", "NO", 32, None),
+        "reference": ("text", "YES", None, None),
+        "note": ("text", "YES", None, None),
+        "recorded_by_user_id": ("uuid", "NO", None, None),
+    }
+    assert _columns(dsn, "expense_payment_reversals") == {
+        **UNVERSIONED_COLUMNS_0084,
+        "expense_payment_id": ("uuid", "NO", None, None),
+        "reason": ("text", "NO", None, None),
+        "reversed_by_user_id": ("uuid", "NO", None, None),
+    }
+    assert _columns(dsn, "expense_adjustments") == {
+        **UNVERSIONED_COLUMNS_0084,
+        "expense_id": ("uuid", "NO", None, None),
+        "amount": money,
+        "reason": ("text", "NO", None, None),
+        "created_by_user_id": ("uuid", "NO", None, None),
+    }
+
+
+def _expense_world_0084(dsn: str) -> dict[str, Any]:
+    command.upgrade(alembic_config(dsn), "head")
+    [category] = run_sql(
+        dsn, "SELECT id FROM expense_categories WHERE system_key = 'rent'"
+    )
+    [vendor] = run_sql(dsn, "INSERT INTO vendors (name) VALUES ('Acme') RETURNING id")
+    return {"category": category.id, "vendor": vendor.id, "user": _user_row(dsn)}
+
+
+def _insert_0084(dsn: str, table: str, row: dict[str, Any]) -> Any:
+    columns = ", ".join(row)
+    binds = ", ".join(f":{name}" for name in row)
+    return run_sql(
+        dsn,
+        f"INSERT INTO {table} ({columns}) VALUES ({binds}) RETURNING id",  # noqa: S608
+        row,
+    )[0].id
+
+
+def _expense_row_0084(world: dict[str, Any], **change: Any) -> dict[str, Any]:
+    return {
+        "category_id": world["category"],
+        "vendor_id": world["vendor"],
+        "description": "Renta",
+        "amount": Decimal("100.00"),
+        "incurred_on": date(2031, 1, 6),
+        "due_on": date(2031, 1, 6),
+        "receipt_reference": None,
+        "note": None,
+        "created_by_user_id": None,
+        **change,
+    }
+
+
+def _payment_row_0084(
+    world: dict[str, Any], expense: Any, **change: Any
+) -> dict[str, Any]:
+    return {
+        "expense_id": expense,
+        "paid_on": date(2031, 1, 1),
+        "amount": Decimal("10.00"),
+        "method_code": "transfer",
+        "reference": None,
+        "note": None,
+        "recorded_by_user_id": world["user"],
+        **change,
+    }
+
+
+def _adjustment_row_0084(
+    world: dict[str, Any], expense: Any, **change: Any
+) -> dict[str, Any]:
+    return {
+        "expense_id": expense,
+        "amount": Decimal("-5.00"),
+        "reason": "Corrección",
+        "created_by_user_id": world["user"],
+        **change,
+    }
+
+
+def _reversal_row_0084(world: dict[str, Any], payment: Any, **change: Any) -> Any:
+    return {
+        "expense_payment_id": payment,
+        "reason": "Error",
+        "reversed_by_user_id": world["user"],
+        **change,
+    }
+
+
+@pytest.mark.parametrize(
+    ("table", "change", "constraint"),
+    [
+        ("expenses", {"amount": Decimal("0.00")}, "ck_expenses_amount_positive"),
+        ("expenses", {"amount": Decimal("-1.00")}, "ck_expenses_amount_positive"),
+        ("expenses", {"description": ""}, "ck_expenses_description_trimmed"),
+        ("expenses", {"description": " Renta"}, "ck_expenses_description_trimmed"),
+        ("expenses", {"description": "x" * 501}, "ck_expenses_description_trimmed"),
+        (
+            "expenses",
+            {"receipt_reference": "F1 "},
+            "ck_expenses_receipt_reference_trimmed",
+        ),
+        (
+            "expenses",
+            {"receipt_reference": "x" * 101},
+            "ck_expenses_receipt_reference_trimmed",
+        ),
+        ("expenses", {"note": ""}, "ck_expenses_note_trimmed"),
+        ("expenses", {"note": "x" * 1001}, "ck_expenses_note_trimmed"),
+        (
+            "expenses",
+            {"due_on": date(2031, 1, 5)},
+            "ck_expenses_due_on_after_incurred_on",
+        ),
+        (
+            "expense_payments",
+            {"amount": Decimal("0.00")},
+            "ck_expense_payments_amount_positive",
+        ),
+        (
+            "expense_payments",
+            {"amount": Decimal("-1.00")},
+            "ck_expense_payments_amount_positive",
+        ),
+        (
+            "expense_payments",
+            {"reference": " SPEI"},
+            "ck_expense_payments_reference_trimmed",
+        ),
+        (
+            "expense_payments",
+            {"reference": "x" * 101},
+            "ck_expense_payments_reference_trimmed",
+        ),
+        ("expense_payments", {"note": ""}, "ck_expense_payments_note_trimmed"),
+        (
+            "expense_payments",
+            {"method_code": "cheque"},
+            "fk_expense_payments_method_code_payment_methods",
+        ),
+        (
+            "expense_adjustments",
+            {"amount": Decimal("0.00")},
+            "ck_expense_adjustments_amount_not_zero",
+        ),
+        (
+            "expense_adjustments",
+            {"reason": ""},
+            "ck_expense_adjustments_reason_trimmed",
+        ),
+        (
+            "expense_adjustments",
+            {"reason": "x" * 1001},
+            "ck_expense_adjustments_reason_trimmed",
+        ),
+        (
+            "expense_payment_reversals",
+            {"reason": " Error"},
+            "ck_expense_payment_reversals_reason_trimmed",
+        ),
+    ],
+)
+def test_0084_rows_are_checked(fresh_database_url, table, change, constraint):
+    dsn = fresh_database_url
+    world = _expense_world_0084(dsn)
+    expense = _insert_0084(dsn, "expenses", _expense_row_0084(world))
+    payment = _insert_0084(dsn, "expense_payments", _payment_row_0084(world, expense))
+    rows = {
+        "expenses": _expense_row_0084(world, **change),
+        "expense_payments": _payment_row_0084(world, expense, **change),
+        "expense_adjustments": _adjustment_row_0084(world, expense, **change),
+        "expense_payment_reversals": _reversal_row_0084(world, payment, **change),
+    }
+
+    with pytest.raises(IntegrityError) as caught:
+        _insert_0084(dsn, table, rows[table])
+
+    expected = "23503" if constraint.startswith("fk_") else "23514"
+    assert getattr(caught.value.orig, "sqlstate", None) == expected
+    assert constraint in str(caught.value.orig)
+
+
+def test_0084_one_reversal_and_all_four_are_append_only(fresh_database_url):
+    dsn = fresh_database_url
+    world = _expense_world_0084(dsn)
+    expense = _insert_0084(
+        dsn, "expenses", _expense_row_0084(world, created_by_user_id=world["user"])
+    )
+    payment = _insert_0084(dsn, "expense_payments", _payment_row_0084(world, expense))
+    adjustment = _insert_0084(
+        dsn, "expense_adjustments", _adjustment_row_0084(world, expense)
+    )
+    reversal = _insert_0084(
+        dsn, "expense_payment_reversals", _reversal_row_0084(world, payment)
+    )
+
+    with pytest.raises(IntegrityError) as caught:
+        _insert_0084(
+            dsn, "expense_payment_reversals", _reversal_row_0084(world, payment)
+        )
+    assert getattr(caught.value.orig, "sqlstate", None) == "23505"
+    assert "uq_expense_payment_reversals_expense_payment_id" in str(caught.value.orig)
+    every = ", ".join(sorted(EXPENSE_TABLES_0084))
+    for statement, row in (
+        ("UPDATE expenses SET description = 'x' WHERE id = :id", expense),
+        ("DELETE FROM expenses WHERE id = :id", expense),
+        ("UPDATE expense_payments SET amount = 1 WHERE id = :id", payment),
+        ("DELETE FROM expense_payments WHERE id = :id", payment),
+        ("UPDATE expense_payment_reversals SET reason = 'x' WHERE id = :id", reversal),
+        ("DELETE FROM expense_payment_reversals WHERE id = :id", reversal),
+        ("UPDATE expense_adjustments SET amount = 1 WHERE id = :id", adjustment),
+        ("DELETE FROM expense_adjustments WHERE id = :id", adjustment),
+        # The others reference them: alone, the TRUNCATE is 0A000.
+        (f"TRUNCATE {every}", expense),
+        ("TRUNCATE expenses CASCADE", expense),
+        ("TRUNCATE expense_payments CASCADE", payment),
+        ("TRUNCATE expense_payment_reversals", reversal),
+        ("TRUNCATE expense_adjustments", adjustment),
+    ):
+        assert _sqlstate_0076(dsn, statement, {"id": row}) == "42501", statement
+    # The referenced category, vendor, method and user can't go.
+    for statement, params in (
+        ("DELETE FROM expense_categories WHERE id = :i", {"i": world["category"]}),
+        ("DELETE FROM vendors WHERE id = :i", {"i": world["vendor"]}),
+        ("DELETE FROM payment_methods WHERE code = 'transfer'", {}),
+        ("DELETE FROM users WHERE id = :i", {"i": world["user"]}),
+    ):
+        assert _sqlstate_0076(dsn, statement, params) in {
+            "23001",
+            "23503",
+            "42501",
+        }, statement
+
+
+def test_0084_an_expense_locks_for_update_and_a_job_row_has_no_creator(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    world = _expense_world_0084(dsn)
+    expense = _insert_0084(dsn, "expenses", _expense_row_0084(world, vendor_id=None))
+
+    assert run_sql(
+        dsn, "SELECT id FROM expenses WHERE id = :id FOR UPDATE", {"id": expense}
+    )
+    [row] = run_sql(
+        dsn,
+        "SELECT created_by_user_id, vendor_id FROM expenses WHERE id = :id",
+        {"id": expense},
+    )
+    assert (row.created_by_user_id, row.vendor_id) == (None, None)
+
+
+def test_0084_downgrade_refuses_while_an_expense_exists(fresh_database_url):
+    dsn = fresh_database_url
+    world = _expense_world_0084(dsn)
+    _insert_0084(dsn, "expenses", _expense_row_0084(world))
+    config = alembic_config(dsn)
+
+    with pytest.raises(DBAPIError) as caught:
+        command.downgrade(config, "0083")
+
+    assert getattr(caught.value.orig, "sqlstate", None) == "55000"
+    assert version_nums(dsn) == [HEAD]
+    assert run_sql(dsn, "SELECT count(*) AS n FROM expenses")[0].n == 1

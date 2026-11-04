@@ -1,5 +1,5 @@
-"""Shared helpers for the finance tests (#114): the routes, a reset to the
-migration's seed, and readers of the stored rows and their audit events."""
+"""Shared helpers for the finance tests (#114, #115): the routes, a reset to
+the migration's seed, and readers of the stored rows and their audit events."""
 
 import uuid
 from typing import Any, Final
@@ -22,9 +22,36 @@ SEED: Final = (
 """The five categories migration ``0083`` inserts."""
 
 
+EXPENSE_TABLES: Final = (
+    "expense_adjustments",
+    "expense_payment_reversals",
+    "expense_payments",
+    "expenses",
+)
+"""The append-only expense tables (#115), children first."""
+
+
+def clear_expenses(url: str) -> None:
+    """No expense, payment, reversal or adjustment. The tables are append-only
+    and reference each other, so every trigger of each is off meanwhile, the
+    foreign keys' included (a test database runs as a superuser), and back on
+    in a ``finally`` (the ``payroll_period_support.clear_adjustments``
+    pattern)."""
+    for table in EXPENSE_TABLES:
+        run_sql(url, f"ALTER TABLE {table} DISABLE TRIGGER ALL")
+    try:
+        for table in EXPENSE_TABLES:
+            run_sql(url, f"DELETE FROM {table}")  # noqa: S608
+    finally:
+        for table in EXPENSE_TABLES:
+            run_sql(url, f"ALTER TABLE {table} ENABLE TRIGGER ALL")
+
+
 def reset(url: str) -> None:
-    """Back to the migration's state: the five seeded categories, no vendor.
-    ``DELETE``, because both tables refuse ``TRUNCATE``."""
+    """Back to the migration's state: no expense (:func:`clear_expenses`), the
+    five seeded categories, no vendor. ``DELETE``, because the tables refuse
+    ``TRUNCATE``."""
+    clear_expenses(url)
     run_sql(url, "DELETE FROM vendors")
     run_sql(url, "DELETE FROM expense_categories")
     run_sql(

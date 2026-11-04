@@ -5231,6 +5231,129 @@ export interface paths {
         patch: operations["update_vendor_api_v1_finance_vendors__vendor_id__patch"];
         trace?: never;
     };
+    "/api/v1/finance/expenses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Expenses
+         * @description A page of expenses with their net (`adjusted_amount`), paid and open
+         *     amounts and their status, computed with the center's today. Newest
+         *     expense date first (`-incurred_on`, the default), or soonest due date
+         *     first (`due_on`). Inactive categories and vendors are listed and can be
+         *     filtered on.
+         */
+        get: operations["list_expenses_api_v1_finance_expenses_get"];
+        put?: never;
+        /**
+         * Create Expense
+         * @description Record a one-time operating expense. The answer holds the id and the
+         *     status only (`unpaid`, or `overdue` for a past due date). Send a new
+         *     `Idempotency-Key` per expense and the same one to retry it. An expense is
+         *     never edited: a wrong amount takes an adjustment, anything else a void
+         *     and a new expense.
+         */
+        post: operations["create_expense_api_v1_finance_expenses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/expenses/{expense_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Expense
+         * @description One expense with its note, who entered it (`null` when generated), its
+         *     payments (reversed ones included, newest payment date first) and its
+         *     adjustments (oldest first).
+         */
+        get: operations["get_expense_api_v1_finance_expenses__expense_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/expenses/{expense_id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Expense Payment
+         * @description Record a payment of an expense made outside the platform. Partial
+         *     payments are allowed, up to the open amount. A mistake is reversed, never
+         *     edited. Send a new `Idempotency-Key` per payment and the same one to
+         *     retry it.
+         */
+        post: operations["record_expense_payment_api_v1_finance_expenses__expense_id__payments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/expense-payments/{payment_id}/reversal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reverse Expense Payment
+         * @description Reverse a payment recorded by mistake, with a reason. The payment stays
+         *     listed, marked reversed, and no longer counts toward what was paid, so the
+         *     right one can be recorded again, with the same reference too. Needs a
+         *     password reauthentication in the last 5 minutes.
+         */
+        post: operations["reverse_expense_payment_api_v1_finance_expense_payments__payment_id__reversal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/expenses/{expense_id}/adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Expense Adjustment
+         * @description Correct an expense's amount with a signed adjustment and a reason.
+         *     Exactly minus the net voids an expense with nothing paid, for good: re-enter
+         *     it as a new expense. Needs a password reauthentication in the last 5
+         *     minutes.
+         */
+        post: operations["post_expense_adjustment_api_v1_finance_expenses__expense_id__adjustments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/overdue-accounts": {
         parameters: {
             query?: never;
@@ -12492,6 +12615,66 @@ export interface components {
         /** @enum {string} */
         ExceptionKind: "unavailable" | "available";
         /**
+         * ExpenseAdjustmentCreate
+         * @description ``POST /api/v1/finance/expenses/{id}/adjustments`` (#115 F2).
+         */
+        ExpenseAdjustmentCreate: {
+            /**
+             * Amount
+             * Format: decimal
+             * @description Signed, never 0.00. Exactly minus the net voids the expense.
+             * @example 1250.00
+             */
+            amount: string;
+            /**
+             * Reason
+             * @description 1-1000 characters, trimmed.
+             */
+            reason: string;
+        };
+        /**
+         * ExpenseAdjustmentItem
+         * @description One adjustment of an expense (#115 C3).
+         */
+        ExpenseAdjustmentItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            /** Reason */
+            reason: string;
+            created_by: components["schemas"]["AccountName"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * ExpenseAdjustmentPosted
+         * @description What ``POST …/adjustments`` answers (#115 F4, E7).
+         */
+        ExpenseAdjustmentPosted: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Expense Id
+             * Format: uuid
+             */
+            expense_id: string;
+            status: components["schemas"]["ExpenseStatus"];
+        };
+        /**
          * ExpenseCategoryCreate
          * @description ``POST /api/v1/finance/expense-categories`` (#114 B2).
          */
@@ -12523,6 +12706,23 @@ export interface components {
             version: number;
         };
         /**
+         * ExpenseCategoryRef
+         * @description An expense's category, inactive ones included (#114 MUST). While
+         *     ``system_key`` is set, show the key's label in the viewer's language.
+         */
+        ExpenseCategoryRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            system_key: components["schemas"]["SystemKey"] | null;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /**
          * ExpenseCategoryUpdate
          * @description ``PATCH /api/v1/finance/expense-categories/{id}`` (#114 B3). A missing
          *     field stays as it is; at least one of ``name`` and ``is_active``.
@@ -12538,6 +12738,328 @@ export interface components {
             /** Is Active */
             is_active?: boolean | null;
         };
+        /**
+         * ExpenseCreate
+         * @description ``POST /api/v1/finance/expenses`` (#115 B2). The category and vendor
+         *     must exist and be active; ``incurred_on`` not after the center's today,
+         *     ``due_on`` not before ``incurred_on`` (#115 E2).
+         */
+        ExpenseCreate: {
+            /**
+             * Category Id
+             * Format: uuid
+             */
+            category_id: string;
+            /** Vendor Id */
+            vendor_id?: string | null;
+            /**
+             * Description
+             * @description 1-500 characters, trimmed; one line.
+             */
+            description: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @description Above zero.
+             * @example 1250.00
+             */
+            amount: string;
+            /**
+             * Incurred On
+             * Format: date
+             * @description Up to the center's today.
+             */
+            incurred_on: string;
+            /**
+             * Due On
+             * Format: date
+             * @description On or after `incurred_on`; a past date is allowed (overdue).
+             */
+            due_on: string;
+            /**
+             * Receipt Reference
+             * @description The vendor's invoice or receipt number, 1-100 characters; blank is null.
+             */
+            receipt_reference?: string | null;
+            /**
+             * Note
+             * @description Up to 1000 characters; blank is null.
+             */
+            note?: string | null;
+        };
+        /**
+         * ExpenseCreated
+         * @description What ``POST /expenses`` answers (#115 B5, E7): no amount or text.
+         */
+        ExpenseCreated: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            status: components["schemas"]["ExpenseStatus"];
+        };
+        /**
+         * ExpenseDetail
+         * @description ``GET /expenses/{id}`` (#115 C3): the item, the note, who entered it
+         *     (``null`` for the recurring job), the payments (newest ``paid_on`` first)
+         *     and the adjustments (oldest first).
+         */
+        ExpenseDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            category: components["schemas"]["ExpenseCategoryRef"];
+            vendor: components["schemas"]["VendorRef"] | null;
+            /** Description */
+            description: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @description As entered.
+             * @example 1250.00
+             */
+            amount: string;
+            /**
+             * Adjusted Amount
+             * Format: decimal
+             * @description The net: the amount plus every adjustment.
+             * @example 1250.00
+             */
+            adjusted_amount: string;
+            /**
+             * Paid Amount
+             * Format: decimal
+             * @description The payments without a reversal.
+             * @example 1250.00
+             */
+            paid_amount: string;
+            /**
+             * Open Amount
+             * Format: decimal
+             * @description adjusted_amount - paid_amount.
+             * @example 1250.00
+             */
+            open_amount: string;
+            status: components["schemas"]["ExpenseStatus"];
+            /**
+             * Incurred On
+             * Format: date
+             */
+            incurred_on: string;
+            /**
+             * Due On
+             * Format: date
+             */
+            due_on: string;
+            /** Receipt Reference */
+            receipt_reference: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Note */
+            note: string | null;
+            created_by: components["schemas"]["AccountName"] | null;
+            /** Payments */
+            payments: components["schemas"]["ExpensePaymentItem"][];
+            /** Adjustments */
+            adjustments: components["schemas"]["ExpenseAdjustmentItem"][];
+        };
+        /**
+         * ExpenseItem
+         * @description One expense of the list (#115 C1), with its derived figures.
+         */
+        ExpenseItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            category: components["schemas"]["ExpenseCategoryRef"];
+            vendor: components["schemas"]["VendorRef"] | null;
+            /** Description */
+            description: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @description As entered.
+             * @example 1250.00
+             */
+            amount: string;
+            /**
+             * Adjusted Amount
+             * Format: decimal
+             * @description The net: the amount plus every adjustment.
+             * @example 1250.00
+             */
+            adjusted_amount: string;
+            /**
+             * Paid Amount
+             * Format: decimal
+             * @description The payments without a reversal.
+             * @example 1250.00
+             */
+            paid_amount: string;
+            /**
+             * Open Amount
+             * Format: decimal
+             * @description adjusted_amount - paid_amount.
+             * @example 1250.00
+             */
+            open_amount: string;
+            status: components["schemas"]["ExpenseStatus"];
+            /**
+             * Incurred On
+             * Format: date
+             */
+            incurred_on: string;
+            /**
+             * Due On
+             * Format: date
+             */
+            due_on: string;
+            /** Receipt Reference */
+            receipt_reference: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * ExpensePaymentCreate
+         * @description ``POST /api/v1/finance/expenses/{id}/payments`` (#115 D2).
+         */
+        ExpensePaymentCreate: {
+            /**
+             * Paid On
+             * Format: date
+             * @description Up to the center's today; before the expense date is fine.
+             */
+            paid_on: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @description Above zero, up to the open amount.
+             * @example 1250.00
+             */
+            amount: string;
+            /**
+             * Method Code
+             * @description An active payment method's code.
+             */
+            method_code: string;
+            /**
+             * Reference
+             * @description Up to 100 characters; blank is null. With the method, it identifies the payment: the same pair twice on an expense is refused.
+             */
+            reference?: string | null;
+            /**
+             * Note
+             * @description Up to 1000 characters; blank is null.
+             */
+            note?: string | null;
+        };
+        /**
+         * ExpensePaymentItem
+         * @description One payment of an expense, reversed ones included (#115 C3).
+         */
+        ExpensePaymentItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Paid On
+             * Format: date
+             */
+            paid_on: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            /** Method Code */
+            method_code: string;
+            /** Reference */
+            reference: string | null;
+            /** Note */
+            note: string | null;
+            recorded_by: components["schemas"]["AccountName"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            reversal: components["schemas"]["ExpensePaymentReversalItem"] | null;
+        };
+        /**
+         * ExpensePaymentRecorded
+         * @description What ``POST …/payments`` answers (#115 D5, E7).
+         */
+        ExpensePaymentRecorded: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Expense Id
+             * Format: uuid
+             */
+            expense_id: string;
+            status: components["schemas"]["ExpenseStatus"];
+        };
+        /**
+         * ExpensePaymentReversalCreate
+         * @description ``POST /api/v1/finance/expense-payments/{id}/reversal`` (#115 E2).
+         */
+        ExpensePaymentReversalCreate: {
+            /**
+             * Reason
+             * @description 1-1000 characters, trimmed.
+             */
+            reason: string;
+        };
+        /**
+         * ExpensePaymentReversalItem
+         * @description A payment's reversal (#115 C3).
+         */
+        ExpensePaymentReversalItem: {
+            /** Reason */
+            reason: string;
+            reversed_by: components["schemas"]["AccountName"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * ExpensePaymentReversed
+         * @description What ``POST …/reversal`` answers (#115 E2, E7).
+         */
+        ExpensePaymentReversed: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Expense Payment Id
+             * Format: uuid
+             */
+            expense_payment_id: string;
+            status: components["schemas"]["ExpenseStatus"];
+        };
+        /** @enum {string} */
+        ExpenseStatus: "unpaid" | "partially_paid" | "paid" | "overdue" | "void";
         /** FactsAssignments */
         FactsAssignments: {
             /** Count */
@@ -14749,6 +15271,17 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** OffsetPage[ExpenseItem] */
+        OffsetPage_ExpenseItem_: {
+            /** Items */
+            items: components["schemas"]["ExpenseItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /** OffsetPage[FamilyListItem] */
         OffsetPage_FamilyListItem_: {
             /** Items */
@@ -16867,7 +17400,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "billing.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "expense.configure" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payment.record" | "payroll.finalize" | "payroll.manage" | "payroll.payment.record" | "payroll.prepare" | "payroll.view" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "billing.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "expense.configure" | "expense.manage" | "expense.view" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payment.record" | "payroll.finalize" | "payroll.manage" | "payroll.payment.record" | "payroll.prepare" | "payroll.view" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /** @enum {string} */
         PlanAction: "activate" | "complete" | "discontinue";
         /** @enum {string} */
@@ -21311,6 +21844,21 @@ export interface components {
             is_active: boolean;
             /** Version */
             version: number;
+        };
+        /**
+         * VendorRef
+         * @description An expense's vendor, inactive ones included.
+         */
+        VendorRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Is Active */
+            is_active: boolean;
         };
         /**
          * VendorUpdate
@@ -39613,6 +40161,444 @@ export interface operations {
                 };
             };
             /** @description The version is stale (version_conflict), or another vendor has this name (vendor_exists). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_expenses_api_v1_finance_expenses_get: {
+        parameters: {
+            query?: {
+                /** @description Only expenses in these statuses (repeatable). */
+                status?: components["schemas"]["ExpenseStatus"][] | null;
+                category_id?: string | null;
+                vendor_id?: string | null;
+                incurred_from?: string | null;
+                incurred_to?: string | null;
+                /** @description Part of the description or the receipt reference, ignoring case; trimmed. `%`, `_` and `\` match themselves. */
+                q?: string | null;
+                sort?: "-incurred_on" | "due_on";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_ExpenseItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_expense_api_v1_finance_expenses_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID(). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExpenseCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpenseCreated"];
+                };
+            };
+            /** @description The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The category or the vendor is inactive (expense_category_inactive, vendor_inactive). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_expense_api_v1_finance_expenses__expense_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                expense_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpenseDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such expense (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    record_expense_payment_api_v1_finance_expenses__expense_id__payments_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID(). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                expense_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExpensePaymentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpensePaymentRecorded"];
+                };
+            };
+            /** @description The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such expense (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The expense is void and takes no more payments or adjustments (expense_void); a payment without a reversal has the same method and reference (expense_payment_duplicate, with details.payment_id); or the payments would add up to more than the expense (expense_payment_exceeds_open, with details.open). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    reverse_expense_payment_api_v1_finance_expense_payments__payment_id__reversal_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID(). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                payment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExpensePaymentReversalCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpensePaymentReversed"];
+                };
+            };
+            /** @description The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not allowed (permission_denied: finance.refund.approve and expense.view are both needed), or the session wasn't reauthenticated (reauth_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such payment (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The payment was already reversed (expense_payment_already_reversed). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    post_expense_adjustment_api_v1_finance_expenses__expense_id__adjustments_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID(). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                expense_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExpenseAdjustmentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpenseAdjustmentPosted"];
+                };
+            };
+            /** @description The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not allowed (permission_denied), or the session wasn't reauthenticated (reauth_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such expense (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The expense is void and takes no more payments or adjustments (expense_void); or a negative amount goes beyond the open amount (expense_adjustment_exceeds_open, with details.open): reverse a payment first. */
             409: {
                 headers: {
                     [name: string]: unknown;

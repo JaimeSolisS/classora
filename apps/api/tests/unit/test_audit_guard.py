@@ -92,7 +92,14 @@ from app.modules.families.models import (
     StudentEmergencyContact,
     StudentGuardian,
 )
-from app.modules.finance.models import ExpenseCategory, Vendor
+from app.modules.finance.models import (
+    Expense,
+    ExpenseAdjustment,
+    ExpenseCategory,
+    ExpensePayment,
+    ExpensePaymentReversal,
+    Vendor,
+)
 from app.modules.identity.models import (
     PrivacyNoticeAcceptance,
     RegistrationRequest,
@@ -209,7 +216,11 @@ def test_the_guard_scans_the_real_audited_models():
         EvaluationScore,
         EvaluationTemplate,
         EvaluationTemplateCriterion,
+        Expense,
+        ExpenseAdjustment,
         ExpenseCategory,
+        ExpensePayment,
+        ExpensePaymentReversal,
         Family,
         FamilyGuardian,
         FamilyStudent,
@@ -327,6 +338,17 @@ def test_the_guard_scans_the_real_audited_models():
     ):
         assert unmasked.__audit_exclude__ == frozenset()
         assert unmasked.__audit_mask__ == frozenset()
+    # #115 E7: expense amounts and staff-only texts are masked (ADR-0017 E12:
+    # Administrators hold audit.view and see no expense amounts).
+    assert Expense.__audit_mask__ == {
+        "amount",
+        "description",
+        "receipt_reference",
+        "note",
+    }
+    assert ExpensePayment.__audit_mask__ == {"amount", "reference", "note"}
+    assert ExpensePaymentReversal.__audit_mask__ == {"reason"}
+    assert ExpenseAdjustment.__audit_mask__ == {"amount", "reason"}
     # #64: a snapshot's content is the immutable row itself, not repeated in
     # its create event.
     assert CourseTemplateSnapshot.__audit_exclude__ == {"content"}

@@ -1353,9 +1353,14 @@ Referenced by id, so a rename never changes a report grouping (E15). `Audited`, 
 | `expense_template_id` | UUID | yes | FK `expense_templates` RESTRICT (added by #116) |
 | `period_start` | DATE | yes | set iff `expense_template_id` is (added by #116) |
 | `created_by_user_id` | UUID | yes | FK `users` RESTRICT; `NULL` for the job |
+| `created_at`, `updated_at` | TIMESTAMPTZ | no | `updated_at` never moves: the row is append-only |
 
+- **CHECK (#115 E2):** `due_on >= incurred_on` (`ck_expenses_due_on_after_incurred_on`). The application also refuses an `incurred_on` after the center's today (`422 incurred_on_in_future`); a past `due_on` is allowed (the expense is `overdue` at once).
 - **Natural key (#116, X2):** partial unique index on `(expense_template_id, period_start) WHERE expense_template_id IS NOT NULL`.
-- **Corrections:** a wrong amount is an adjustment. A wrong category, vendor or date is a full negative adjustment (void) and a new expense.
+- **Corrections (#115 E3):** no `PATCH`. A wrong amount is an adjustment. A wrong category, vendor, date, description, receipt reference or note is a full negative adjustment (void) and a new expense.
+- **Void is final (#115 E4):** once `net = 0`, every payment and adjustment is `409 expense_void`; a void is re-entered as a new expense, never revived.
+- **One insert path:** `finance.service.insert_expense` (the route and #116's job), which reads the category and vendor `FOR SHARE` (`usable_*`) and applies the date rules.
+- **Audit (#115 E7):** `Audited`, with `amount`, `description`, `receipt_reference` and `note` masked. No duplicate-expense rule (#115 E5: the `Idempotency-Key` covers a retry).
 - No tax column (spec §1). No file.
 
 ### 12.4 `expense_payments` (#115)
@@ -1372,14 +1377,18 @@ Partial payments are allowed. Marking an expense paid is one of these rows, neve
 | `reference` | TEXT | yes | trimmed, 1–100 |
 | `note` | TEXT | yes | trimmed, 1–1000 |
 | `recorded_by_user_id` | UUID | no | FK `users` RESTRICT |
+| `created_at`, `updated_at` | TIMESTAMPTZ | no | |
+
+- **Rules (#115 D, E2, E5), under the expense lock:** `paid_on` not after the center's today, with no lower bound (before `incurred_on` passes); the cap (X1); with a `reference`, no other payment without a reversal of the same expense with the same `method_code` and `lower(reference)` (`409 expense_payment_duplicate`). A reversal frees the pair, so no database key.
+- **Audit (#115 E7):** `amount`, `reference` and `note` masked.
 
 ### 12.5 `expense_payment_reversals` (#115)
 
-`id`; `expense_payment_id` (FK RESTRICT, **UNIQUE**: at most one per payment); `reason` (trimmed, 1–1000); `reversed_by_user_id` (FK `users` RESTRICT). Needs `finance.refund.approve` with `finance.refund_or_reversal` reauthentication (E12).
+`id`; `expense_payment_id` (FK RESTRICT `fk_expense_payment_reversals_payment`, named because the convention's name passes 63 characters; **UNIQUE**: at most one per payment); `reason` (trimmed, 1–1000); `reversed_by_user_id` (FK `users` RESTRICT); `created_at`, `updated_at`. Needs `finance.refund.approve` **and** `expense.view` with `finance.refund_or_reversal` reauthentication (E12, #115 E6): today the Owner only. `reason` is masked in the audit (#115 E7).
 
 ### 12.6 `expense_adjustments` (#115)
 
-`id`; `expense_id` (FK RESTRICT); `amount` (`NUMERIC(14,2)`, signed, `<> 0`); `reason` (trimmed, 1–1000, required); `created_by_user_id` (FK `users` RESTRICT). The only correction of an expense. Needs `expense.manage` plus `finance.correction` reauthentication (E12).
+`id`; `expense_id` (FK RESTRICT); `amount` (`NUMERIC(14,2)`, signed, `<> 0`); `reason` (trimmed, 1–1000, required); `created_by_user_id` (FK `users` RESTRICT); `created_at`, `updated_at`. The only correction of an expense. Needs `expense.manage` plus `finance.correction` reauthentication (E12). Under the expense lock, `amount < -open` is refused (`409 expense_adjustment_exceeds_open`, X1), so an expense goes down to what was paid and no further; exactly `-net` with nothing paid voids it (#115 E4). `amount` and `reason` are masked in the audit (#115 E7).
 
 ### 12.7 `expense_templates` (#116)
 
@@ -1489,7 +1498,7 @@ Line writes are serialized by the period row lock (§15); the trigger is the bac
 - **Oldest first (#110 E2):** `finalize` reads the earlier periods with no lock. A period never leaves `finalized`, so a stale read can only refuse, and an uncommitted earlier finalize reads as `prepared`.
 - **Rate inserts (#110 L5):** the tutor's not-finalized periods `FOR UPDATE`, oldest first, then the insert, then the refusal (`422 effective_from_under_finalized_line`, #110 E5; for `course` by the line's and the version's model, with the cohort first date read with no lock), so a rate waiting for a finalize sees its lines, and a finalize waiting for a rate goes stale. Posted `late_approval` and `hours_correction` snapshots count as finalized lines (M7-08d E4).
 - **Rate deletes (M7-08d B1, E3):** the tutor's not-finalized periods `FOR UPDATE`, oldest first (not only the open ones), then the version `FOR UPDATE`: `404` → the open lines of the version and the version deleted, and the foreign keys' `409 compensation_rate_in_use` → the add's refusal on the window the version leaves to the previous one, `409 compensation_rate_delete_under_finalized_line` (rolled back with the Unit of Work) → `204`. A delete waiting for a finalize sees its lines and refuses; a finalize waiting for a delete goes stale.
-- **Lock order, expense mutations:** the `idempotency_keys` row, on the routes that take a key → `expenses` row `FOR UPDATE`, the **last business lock** of finance. Payments, reversals and adjustments of one expense serialize on it.
+- **Lock order, expense mutations:** the `idempotency_keys` row, on the routes that take a key → `expenses` row `FOR UPDATE`, the **last business lock** of finance. Payments, reversals and adjustments of one expense serialize on it (#115: a reversal reads its payment's expense with no lock first; every rule reads after the lock). A create takes the category and vendor `FOR SHARE` (`usable_*`), which a deactivation's `FOR UPDATE` waits for; neither path takes the other's lock, so no cycle.
 - **`recalculate`:** reads committed scheduling and academics state with **no lock on them** and no advisory lock, under the period row lock. No scheduling or academics write ever takes a period lock, so there is no cycle, and a payroll failure can't roll back a closeout or a cancellation (E9). The period row is re-read after the lock, so a run that waited sees a status that changed.
 - **Versions in a run (#107 C4, #108 C3, #109 C2):** `tutor_pay_terms`, `compensation_rates`, `session_pay_rules` and `pay_items` are read `FOR KEY SHARE`, after the period lock, so a concurrent delete waits for the run and then fails on the new line, instead of an insert failing with `23503`.
 - **Deleting a version (#107 E8):** periods before the version, always, or a run and a delete deadlock: the open periods `FOR UPDATE`, oldest first, then the version `FOR UPDATE`. Two rule deletes also share the `session_pay_rules` advisory lock, taken first, and a terms delete takes the terms-and-periods advisory lock first: the order is the advisory lock, the open periods, the version, the #106 refusals, the version's lines, the version (#108 F).
@@ -1518,7 +1527,8 @@ Beyond primary keys, unique keys and natural keys, for the access paths of spec 
 - `payroll_adjustments (target_period_id)` and `(origin_line_id)`;
 - `payroll_payments (payroll_period_id)` and `(paid_on)`;
 - `expenses (due_on)`, `(incurred_on)`, `(category_id, incurred_on)` and `(vendor_id)`;
-- `expense_payments (expense_id)` and `(paid_on)`.
+- `expense_payments (expense_id)` and `(paid_on)`;
+- `expense_adjustments (expense_id)` (#115).
 
 #107's read path over approvals is the existing `ix_session_closeout_approvals_tutor_user_id_session_starts_at` (`tutor_user_id`, `session_starts_at`). Its read of a tutor's cancelled sessions needs a new one, `ix_class_sessions_cancelled_tutor_user_id_starts_at` on `class_sessions (tutor_user_id, starts_at) WHERE state = 'cancelled'`, because `class_sessions` had no btree on the tutor.
 

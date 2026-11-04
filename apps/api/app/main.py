@@ -79,6 +79,7 @@ from app.modules.families.consent_router import router as consent_router
 from app.modules.families.groupings_router import router as groupings_router
 from app.modules.families.guardians_router import router as guardians_router
 from app.modules.families.router import router as families_router
+from app.modules.finance.expenses_router import router as expenses_router
 from app.modules.finance.router import router as finance_router
 from app.modules.identity.invitations_router import router as invitations_router
 from app.modules.identity.privacy_router import router as privacy_router
@@ -370,6 +371,7 @@ def build_app(
     app.include_router(payroll_pay_rules_router)
     app.include_router(payroll_settings_router)
     app.include_router(finance_router)
+    app.include_router(expenses_router)
     app.include_router(billing_overdue_router)
     app.include_router(billing_settings_router)
     app.include_router(cancellation_rules_router)

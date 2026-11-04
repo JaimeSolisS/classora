@@ -110,6 +110,10 @@ EXPECTED = {
     # #114 E6 (ADR-0017 E12): expense categories and vendors, reads included;
     # no Academic Coordinator, Tutor, Student or Guardian.
     "expense.configure": {OWNER, ADMINISTRATOR, FINANCE_STAFF},
+    # #115 (ADR-0017 E12): expenses with their amounts, and recording them;
+    # no Administrator (no expense amounts), Coordinator, Tutor or family.
+    "expense.view": {OWNER, FINANCE_STAFF},
+    "expense.manage": {OWNER, FINANCE_STAFF},
 }
 
 
@@ -123,8 +127,8 @@ def test_catalog_matches_the_approved_table():
     }
 
     assert by_permission == EXPECTED
-    assert len(PERMISSIONS) == 43
-    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 110
+    assert len(PERMISSIONS) == 45
+    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 114
 
 
 def test_every_code_has_the_dotted_form():
