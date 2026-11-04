@@ -53,8 +53,10 @@ from tests.integration.payroll_payment_support import (
     finalized_period,
     pay,
     reverse,
+    worked_period,
 )
 from tests.integration.payroll_period_support import set_floor
+from tests.integration.payroll_workflow_support import prepare
 
 PROFITABILITY = "/api/v1/reports/finance/profitability"
 BALANCES = "/api/v1/reports/finance/balances"
@@ -268,6 +270,16 @@ def scenario(
     reversed_ = reverse(client, owner, paid.json()["id"])
     assert reversed_.status_code == 201, reversed_.text
 
+    # T3: another tutor's prepared period (lines, not finalized): never cost.
+    other = create_user(url, roles=(TUTOR,), display_name="Tutor Preparado")
+    open_period = worked_period(url, client, owner, other)
+    assert prepare(client, finance_staff, open_period).status_code == 200
+    [lines] = run_sql(
+        url,
+        "SELECT count(*) AS n FROM payroll_lines WHERE payroll_period_id = :p",
+        {"p": open_period},
+    )
+    assert lines.n > 0
     made = Scenario(account=account, period=period)
     made.before["accrual_nov"] = accrual(client, owner, d(11, 1), d(11, 30))
     _expense_adjusted(url, actor, x2, "150.00")  # posted after the snapshot (D3)
