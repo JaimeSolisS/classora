@@ -170,6 +170,13 @@ PAYMENT_RECORD = "payment.record"
 # them (Owner, Administrator, Finance Staff; not delegable). The reads need it
 # too (#114 E6).
 EXPENSE_CONFIGURE = "expense.configure"
+# Operating expenses (#115; ADR-0017 E12, E16): who reads expenses, with their
+# amounts, receipt references and notes, and who records expenses, payments and
+# adjustments (Owner, Finance Staff; not delegable). Administrators see no
+# expense amounts. Reversing a payment needs finance.refund.approve as well as
+# expense.view (#115 E6).
+EXPENSE_VIEW = "expense.view"
+EXPENSE_MANAGE = "expense.manage"
 
 
 @dataclass(frozen=True)
@@ -222,6 +229,8 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(PAYROLL_PREPARE),
     PermissionDef(PAYROLL_PAYMENT_RECORD),
     PermissionDef(EXPENSE_CONFIGURE),
+    PermissionDef(EXPENSE_VIEW),
+    PermissionDef(EXPENSE_MANAGE),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
 )
@@ -307,6 +316,8 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 PAYROLL_PREPARE,
                 PAYROLL_PAYMENT_RECORD,
                 EXPENSE_CONFIGURE,
+                EXPENSE_VIEW,
+                EXPENSE_MANAGE,
             }
         ),
         # Record policies limit these to assigned students, self and linked

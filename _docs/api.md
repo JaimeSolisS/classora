@@ -7872,6 +7872,135 @@ and `vendors.py`, tables `expense_categories` and `vendors` (`_docs/data-model.m
   A rename's event holds the old and the new name (and the cleared key). The
   seeded rows have no create event. Responses carry no actor names.
 
+### Operating expenses
+
+Implemented by M7-12 (#115; spec §8; ADR-0017 E12, E16 and its #115 notes,
+orchestrator-recommended, pending owner review). Routes in
+`app/modules/finance/expenses_router.py`, the rules in
+`app/modules/finance/expenses.py`, `expense_payments.py` and
+`expense_adjustments.py`, tables `expenses`, `expense_payments`,
+`expense_payment_reversals` and `expense_adjustments` (`_docs/data-model.md`
+§12.3-§12.6). The pages are M7-12b.
+
+| Route | Access | Notes |
+|---|---|---|
+| `GET /api/v1/finance/expenses` | `require("expense.view")` | Offset page of `ExpenseItem`. Filters and sorts below. |
+| `GET /api/v1/finance/expenses/{expense_id}` | `require("expense.view")` | `ExpenseDetail`; `404` for no expense. |
+| `POST /api/v1/finance/expenses` | `require("expense.manage")`, `Idempotency-Key` | Body `{category_id, vendor_id?, description, amount, incurred_on, due_on, receipt_reference?, note?}`. No reauthentication. `201` with `{id, status}`. |
+| `POST /api/v1/finance/expenses/{expense_id}/payments` | `require("expense.manage")`, `Idempotency-Key` | Body `{paid_on, amount, method_code, reference?, note?}`. No reauthentication. `201` with `{id, expense_id, status}`. |
+| `POST /api/v1/finance/expense-payments/{payment_id}/reversal` | `require("expense.view")` **and** `finance.refund.approve` (checked together), `require_recent_auth("finance.refund_or_reversal")`, `Idempotency-Key` | Body `{reason}`. `201` with `{id, expense_payment_id, status}`. |
+| `POST /api/v1/finance/expenses/{expense_id}/adjustments` | `require("expense.manage")`, `require_recent_auth("finance.correction")`, `Idempotency-Key` | Body `{amount, reason}`. `201` with `{id, expense_id, status}`. |
+
+- **Who (ADR-0017 E12, #115 E6):** Owners and Finance Staff (`expense.view`,
+  `expense.manage`, not delegable) read and record expenses, payments and
+  adjustments. Reversing a payment needs `finance.refund.approve` and
+  `expense.view`, checked together before the reauthentication: today only the
+  Owner. Finance Staff (no `finance.refund.approve`) and an Administrator
+  delegated `finance.refund.approve` (no `expense.view`) get `403
+  permission_denied`. Administrators, Academic Coordinators, Tutors, Students
+  and Guardians get `403` on all six.
+- **No edit (#115 E3):** there is no `PATCH` or `DELETE`. A wrong amount is
+  corrected by an adjustment; a wrong category, vendor, date, description,
+  receipt reference or note by a void (an adjustment of exactly minus the net)
+  and a new expense. A payment is corrected by its reversal.
+- **Derived, never stored (data-model §13.2):** `adjusted_amount` (the net) =
+  `amount` + every adjustment; `paid_amount` = the payments without a reversal;
+  `open_amount` = net − paid. `status`: `void` (net `0.00`), `paid` (open
+  `0.00`), `overdue` (something open and `due_on` before the center's today),
+  `partially_paid` (something paid), else `unpaid`. The center's today, never
+  UTC's.
+- **The body of an expense:** `amount` above zero (`amount_not_positive`,
+  `money_*`); `description` trimmed, 1 to 500 characters, one line;
+  `receipt_reference` (the vendor's invoice or receipt number; no file) trimmed,
+  1 to 100, one line; `note` trimmed, up to 1000, may span lines. A blank
+  optional text is `null`. `text_empty`, `text_too_long` and `text_invalid` (a
+  control character where one line is expected, a NUL, a lone surrogate) as
+  `422 validation_error`; any other field is `422`.
+- **Creating, in order:** `401` → `403 csrf_failed` → `403 permission_denied` →
+  `422 text_invalid` for a lone surrogate → `400 idempotency_key_required|invalid`
+  → replay / `422 idempotency_key_reused` → `422` (the body) → `422
+  expense_category_unknown` / `vendor_unknown` → `409 expense_category_inactive`
+  / `vendor_inactive` (the category and vendor are read `FOR SHARE`, so a
+  deactivation waits for the create or is seen by it) → `422
+  incurred_on_in_future` (after the center's today) → `422
+  due_on_before_incurred_on` → the row. A past `due_on` is allowed: the expense
+  is `overdue` at once. There is no duplicate-expense rule: the key covers a
+  retry, and a new key is a second expense (#115 E5).
+- **Payments, in order:** as creating, then `404` (no expense) → the expense
+  `FOR UPDATE` → `409 expense_void` → `422 payment_method_unavailable` (an
+  active method of `GET /api/v1/billing/payment-methods`) → `422
+  paid_on_in_future` (any earlier date passes, before `incurred_on` included,
+  #115 E2) → `409 expense_payment_duplicate` (`details.payment_id`) → `409
+  expense_payment_exceeds_open` (`details.open`) → the row. `reference` (up to
+  100) and `note` (up to 1000) are optional; blank is `null`.
+- **The cap (X1):** the payments without a reversal plus the amount may not pass
+  the net; exactly the open amount is accepted and makes the expense `paid`.
+  Over-payment is refused, never stored as a credit.
+- **Duplicates (#115 E5):** with a reference only: a payment without a reversal
+  of the same expense with the same `method_code` and the same reference,
+  trimmed and ignoring case. A reversal frees the pair; the same reference on
+  another expense passes. With no reference, the cap and the key are the
+  backstops.
+- **Reversing, in order:** `401` → `403 csrf_failed` → `403 permission_denied`
+  (both permissions) → `403 reauth_required` → `422 text_invalid` → `400` key →
+  replay / `422 idempotency_key_reused` → `422` (the reason: trimmed, 1 to 1000,
+  may span lines) → `404` (no payment) → the payment's expense `FOR UPDATE` →
+  `409 expense_payment_already_reversed` (the UNIQUE is the backstop) → the row.
+  The payment then counts for nothing: not `paid`, the cap or the duplicate
+  rule. A deactivated method's payment still reverses.
+- **Adjustments, in order:** `401` → `403 csrf_failed` → `403 permission_denied`
+  → `403 reauth_required` → `422 text_invalid` → `400` key → replay / `422
+  idempotency_key_reused` → `422` (the body: `amount` signed, never `0.00`,
+  `amount_zero`, `money_*`; `reason` trimmed, 1 to 1000) → `404` → the expense
+  `FOR UPDATE` → `409 expense_void` → `409 expense_adjustment_exceeds_open`
+  (`details.open`) when `amount < -open` → `422 validation_error` with
+  `money_out_of_range` at `body.amount` when the new net leaves the money range
+  → the row.
+- **Void (#115 E4):** an adjustment of exactly minus the net on an expense with
+  no valid payment makes it `void`, for good: every later payment or
+  adjustment is `409 expense_void`, and the expense is re-entered as a new one.
+  A partly paid expense goes down to what was paid (it becomes `paid`); below
+  that, reverse a payment first.
+- **The lock (data-model §15):** the key is claimed first; then the expense row
+  `FOR UPDATE` is the only business lock of a payment, a reversal or an
+  adjustment, so those of one expense run one after the other and each reads
+  what the one before committed. A create takes the category and vendor `FOR
+  SHARE`.
+- **The list:** `ExpenseItem`: `id`, `category {id, name, system_key,
+  is_active}`, `vendor {id, name, is_active} | null`, `description`, `amount`,
+  `adjusted_amount`, `paid_amount`, `open_amount`, `status`, `incurred_on`,
+  `due_on`, `receipt_reference`, `created_at`. Filters: `status` (repeatable:
+  `unpaid`, `partially_paid`, `paid`, `overdue`, `void`; another is `422`),
+  `category_id`, `vendor_id`, `incurred_from`, `incurred_to` (inclusive;
+  `incurred_to` before `incurred_from` is `422 validation_error` with
+  `range_invalid` at `query.incurred_to`), `q` (at most 100, trimmed, blank lists
+  all: part of the description or the receipt reference, ignoring case, `%`,
+  `_` and `\` literal). `sort=-incurred_on` (the default; then `created_at`
+  newest first, then `id`) or `sort=due_on` (then `incurred_on`, then `id`).
+  Inactive categories and vendors are listed and filterable. The figures and
+  the status are computed in the page's one statement, filters included (two
+  statements with the center's today, whatever the page holds).
+- **`ExpenseDetail`:** the item plus `note`, `created_by {id, display_name} |
+  null` (`null` for a generated expense, #116), `payments [{id, paid_on, amount,
+  method_code, reference, note, recorded_by {id, display_name}, created_at,
+  reversal {reason, reversed_by {id, display_name}, created_at} | null}]`
+  (newest `paid_on` first, then `created_at`, `id`), `adjustments [{id, amount,
+  reason, created_by {id, display_name}, created_at}]` (oldest first).
+- **No money in side channels (#115 E7):** the four `POST` answers hold ids and
+  the status only, because the stored idempotent response is kept in clear. The
+  audit rows mask `amount`, `description`, `receipt_reference` and `note` on
+  `expenses`; `amount`, `reference` and `note` on `expense_payments`; `reason`
+  on `expense_payment_reversals`; `amount` and `reason` on `expense_adjustments`.
+  The category, vendor, dates and method stay visible. No named event,
+  notification or log line.
+- **Seam for #116 and #117:** `finance.service.insert_expense(session, *,
+  category_id, vendor_id, description, amount, incurred_on, due_on,
+  receipt_reference, note, created_by_user_id)` runs `usable_*` and the date
+  rules and inserts through the ORM (the route and the recurring job both use
+  it). `finance.service.expense_figures(today)` is the list's subquery with
+  `net`, `paid`, `open` and `status`; `expense_status(...)` is the same rule in
+  Python.
+
 ### Response headers
 
 Every API response, errors included, carries exactly one

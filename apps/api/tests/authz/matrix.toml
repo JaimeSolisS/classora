@@ -1867,6 +1867,72 @@ allow = ["owner", "administrator", "finance_staff"]
 json = {}
 
 [[route]]
+method = "POST"
+path = "/api/v1/finance/expense-payments/{payment_id}/reversal"
+access = "permission"
+permission = "expense.view"
+allow = ["owner"]
+idempotency = true
+reauth = "finance.refund_or_reversal"
+json = {}
+# #115 E1, E6 (ADR-0017 E12): the rule is expense.view (not delegable) and
+# finance.refund.approve is checked with it, so Finance Staff and an
+# Administrator delegated finance.refund.approve get 403
+# (tests/integration/test_finance_expense_payments.py). Reauthentication, then
+# the key: without one the reauthenticated Owner gets 400.
+
+[[route]]
+method = "GET"
+path = "/api/v1/finance/expenses"
+access = "permission"
+permission = "expense.view"
+allow = ["owner", "finance_staff"]
+# #115 C1, ADR-0017 E12: Administrators see no expense amounts.
+
+[[route]]
+method = "POST"
+path = "/api/v1/finance/expenses"
+access = "permission"
+permission = "expense.manage"
+allow = ["owner", "finance_staff"]
+idempotency = true
+json = {}
+# #115 B1: no reauthentication. Without a key the allowed roles get 400. Rules,
+# replays and races: tests/integration/test_finance_expenses.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/finance/expenses/{expense_id}"
+access = "permission"
+permission = "expense.view"
+allow = ["owner", "finance_staff"]
+# #115 C3: the placeholder id is no expense: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/finance/expenses/{expense_id}/adjustments"
+access = "permission"
+permission = "expense.manage"
+allow = ["owner", "finance_staff"]
+idempotency = true
+reauth = "finance.correction"
+json = {}
+# #115 F1: reauthentication, then the key: without one the reauthenticated
+# allowed roles get 400. Rules and races:
+# tests/integration/test_finance_expense_adjustments.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/finance/expenses/{expense_id}/payments"
+access = "permission"
+permission = "expense.manage"
+allow = ["owner", "finance_staff"]
+idempotency = true
+json = {}
+# #115 D1: no reauthentication. Without a key the allowed roles get 400. Rules
+# and races: tests/integration/test_finance_expense_payments.py.
+
+[[route]]
 method = "GET"
 path = "/api/v1/finance/vendors"
 access = "permission"

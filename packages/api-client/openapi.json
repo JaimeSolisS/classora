@@ -25692,6 +25692,725 @@
         }
       }
     },
+    "/api/v1/finance/expenses": {
+      "get": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "List Expenses",
+        "description": "A page of expenses with their net (`adjusted_amount`), paid and open\namounts and their status, computed with the center's today. Newest\nexpense date first (`-incurred_on`, the default), or soonest due date\nfirst (`due_on`). Inactive categories and vendors are listed and can be\nfiltered on.",
+        "operationId": "list_expenses_api_v1_finance_expenses_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpenseStatus"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only expenses in these statuses (repeatable).",
+              "title": "Status"
+            },
+            "description": "Only expenses in these statuses (repeatable)."
+          },
+          {
+            "name": "category_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Id"
+            }
+          },
+          {
+            "name": "vendor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Vendor Id"
+            }
+          },
+          {
+            "name": "incurred_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Incurred From"
+            }
+          },
+          {
+            "name": "incurred_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Incurred To"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Part of the description or the receipt reference, ignoring case; trimmed. `%`, `_` and `\\` match themselves.",
+              "title": "Q"
+            },
+            "description": "Part of the description or the receipt reference, ignoring case; trimmed. `%`, `_` and `\\` match themselves."
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "-incurred_on",
+                "due_on"
+              ],
+              "type": "string",
+              "default": "-incurred_on",
+              "title": "Sort"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_ExpenseItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "Create Expense",
+        "description": "Record a one-time operating expense. The answer holds the id and the\nstatus only (`unpaid`, or `overdue` for a past due date). Send a new\n`Idempotency-Key` per expense and the same one to retry it. An expense is\nnever edited: a wrong amount takes an adjustment, anything else a void\nand a new expense.",
+        "operationId": "create_expense_api_v1_finance_expenses_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The category or the vendor is inactive (expense_category_inactive, vendor_inactive).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/finance/expenses/{expense_id}": {
+      "get": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "Get Expense",
+        "description": "One expense with its note, who entered it (`null` when generated), its\npayments (reversed ones included, newest payment date first) and its\nadjustments (oldest first).",
+        "operationId": "get_expense_api_v1_finance_expenses__expense_id__get",
+        "parameters": [
+          {
+            "name": "expense_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Expense Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such expense (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/finance/expenses/{expense_id}/payments": {
+      "post": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "Record Expense Payment",
+        "description": "Record a payment of an expense made outside the platform. Partial\npayments are allowed, up to the open amount. A mistake is reversed, never\nedited. Send a new `Idempotency-Key` per payment and the same one to\nretry it.",
+        "operationId": "record_expense_payment_api_v1_finance_expenses__expense_id__payments_post",
+        "parameters": [
+          {
+            "name": "expense_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Expense Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpensePaymentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpensePaymentRecorded"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such expense (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The expense is void and takes no more payments or adjustments (expense_void); a payment without a reversal has the same method and reference (expense_payment_duplicate, with details.payment_id); or the payments would add up to more than the expense (expense_payment_exceeds_open, with details.open).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/finance/expense-payments/{payment_id}/reversal": {
+      "post": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "Reverse Expense Payment",
+        "description": "Reverse a payment recorded by mistake, with a reason. The payment stays\nlisted, marked reversed, and no longer counts toward what was paid, so the\nright one can be recorded again, with the same reference too. Needs a\npassword reauthentication in the last 5 minutes.",
+        "operationId": "reverse_expense_payment_api_v1_finance_expense_payments__payment_id__reversal_post",
+        "parameters": [
+          {
+            "name": "payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Payment Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpensePaymentReversalCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpensePaymentReversed"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed (permission_denied: finance.refund.approve and expense.view are both needed), or the session wasn't reauthenticated (reauth_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such payment (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The payment was already reversed (expense_payment_already_reversed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/finance/expenses/{expense_id}/adjustments": {
+      "post": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "Post Expense Adjustment",
+        "description": "Correct an expense's amount with a signed adjustment and a reason.\nExactly minus the net voids an expense with nothing paid, for good: re-enter\nit as a new expense. Needs a password reauthentication in the last 5\nminutes.",
+        "operationId": "post_expense_adjustment_api_v1_finance_expenses__expense_id__adjustments_post",
+        "parameters": [
+          {
+            "name": "expense_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Expense Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "One key per submission, reused when the same submission is retried (ADR-0006). The web client sends crypto.randomUUID().",
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]{16,128}$",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseAdjustmentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseAdjustmentPosted"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed (permission_denied), or the session wasn't reauthenticated (reauth_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The Idempotency-Key header is missing (idempotency_key_required) or malformed (idempotency_key_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such expense (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The expense is void and takes no more payments or adjustments (expense_void); or a negative amount goes beyond the open amount (expense_adjustment_exceeds_open, with details.open): reverse a payment first.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/overdue-accounts": {
       "get": {
         "tags": [
@@ -43845,6 +44564,98 @@
           "available"
         ]
       },
+      "ExpenseAdjustmentCreate": {
+        "properties": {
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "description": "Signed, never 0.00. Exactly minus the net voids the expense.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "1-1000 characters, trimmed."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount",
+          "reason"
+        ],
+        "title": "ExpenseAdjustmentCreate",
+        "description": "``POST /api/v1/finance/expenses/{id}/adjustments`` (#115 F2)."
+      },
+      "ExpenseAdjustmentItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/AccountName"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "amount",
+          "reason",
+          "created_by",
+          "created_at"
+        ],
+        "title": "ExpenseAdjustmentItem",
+        "description": "One adjustment of an expense (#115 C3)."
+      },
+      "ExpenseAdjustmentPosted": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "expense_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Expense Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExpenseStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "expense_id",
+          "status"
+        ],
+        "title": "ExpenseAdjustmentPosted",
+        "description": "What ``POST …/adjustments`` answers (#115 F4, E7)."
+      },
       "ExpenseCategoryCreate": {
         "properties": {
           "name": {
@@ -43903,6 +44714,42 @@
         "title": "ExpenseCategoryItem",
         "description": "An expense category (#114 B1). While ``system_key`` is set, show the\ncatalog label of the key in the viewer's language instead of ``name``."
       },
+      "ExpenseCategoryRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "system_key": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SystemKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "system_key",
+          "is_active"
+        ],
+        "title": "ExpenseCategoryRef",
+        "description": "An expense's category, inactive ones included (#114 MUST). While\n``system_key`` is set, show the key's label in the viewer's language."
+      },
       "ExpenseCategoryUpdate": {
         "properties": {
           "version": {
@@ -43940,6 +44787,614 @@
         ],
         "title": "ExpenseCategoryUpdate",
         "description": "``PATCH /api/v1/finance/expense-categories/{id}`` (#114 B3). A missing\nfield stays as it is; at least one of ``name`` and ``is_active``."
+      },
+      "ExpenseCreate": {
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Category Id"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "1-500 characters, trimmed; one line."
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "description": "Above zero.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "incurred_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Incurred On",
+            "description": "Up to the center's today."
+          },
+          "due_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Due On",
+            "description": "On or after `incurred_on`; a past date is allowed (overdue)."
+          },
+          "receipt_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Reference",
+            "description": "The vendor's invoice or receipt number, 1-100 characters; blank is null."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "Up to 1000 characters; blank is null."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "category_id",
+          "description",
+          "amount",
+          "incurred_on",
+          "due_on"
+        ],
+        "title": "ExpenseCreate",
+        "description": "``POST /api/v1/finance/expenses`` (#115 B2). The category and vendor\nmust exist and be active; ``incurred_on`` not after the center's today,\n``due_on`` not before ``incurred_on`` (#115 E2)."
+      },
+      "ExpenseCreated": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExpenseStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "ExpenseCreated",
+        "description": "What ``POST /expenses`` answers (#115 B5, E7): no amount or text."
+      },
+      "ExpenseDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "category": {
+            "$ref": "#/components/schemas/ExpenseCategoryRef"
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VendorRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "description": "As entered.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "adjusted_amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Adjusted Amount",
+            "description": "The net: the amount plus every adjustment.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "paid_amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Paid Amount",
+            "description": "The payments without a reversal.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "open_amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Open Amount",
+            "description": "adjusted_amount - paid_amount.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExpenseStatus"
+          },
+          "incurred_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Incurred On"
+          },
+          "due_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Due On"
+          },
+          "receipt_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Reference"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountName"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "payments": {
+            "items": {
+              "$ref": "#/components/schemas/ExpensePaymentItem"
+            },
+            "type": "array",
+            "title": "Payments"
+          },
+          "adjustments": {
+            "items": {
+              "$ref": "#/components/schemas/ExpenseAdjustmentItem"
+            },
+            "type": "array",
+            "title": "Adjustments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "vendor",
+          "description",
+          "amount",
+          "adjusted_amount",
+          "paid_amount",
+          "open_amount",
+          "status",
+          "incurred_on",
+          "due_on",
+          "receipt_reference",
+          "created_at",
+          "note",
+          "created_by",
+          "payments",
+          "adjustments"
+        ],
+        "title": "ExpenseDetail",
+        "description": "``GET /expenses/{id}`` (#115 C3): the item, the note, who entered it\n(``null`` for the recurring job), the payments (newest ``paid_on`` first)\nand the adjustments (oldest first)."
+      },
+      "ExpenseItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "category": {
+            "$ref": "#/components/schemas/ExpenseCategoryRef"
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VendorRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "description": "As entered.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "adjusted_amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Adjusted Amount",
+            "description": "The net: the amount plus every adjustment.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "paid_amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Paid Amount",
+            "description": "The payments without a reversal.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "open_amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Open Amount",
+            "description": "adjusted_amount - paid_amount.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExpenseStatus"
+          },
+          "incurred_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Incurred On"
+          },
+          "due_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Due On"
+          },
+          "receipt_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Reference"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "vendor",
+          "description",
+          "amount",
+          "adjusted_amount",
+          "paid_amount",
+          "open_amount",
+          "status",
+          "incurred_on",
+          "due_on",
+          "receipt_reference",
+          "created_at"
+        ],
+        "title": "ExpenseItem",
+        "description": "One expense of the list (#115 C1), with its derived figures."
+      },
+      "ExpensePaymentCreate": {
+        "properties": {
+          "paid_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Paid On",
+            "description": "Up to the center's today; before the expense date is fine."
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "description": "Above zero, up to the open amount.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "method_code": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Method Code",
+            "description": "An active payment method's code."
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference",
+            "description": "Up to 100 characters; blank is null. With the method, it identifies the payment: the same pair twice on an expense is refused."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "Up to 1000 characters; blank is null."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "paid_on",
+          "amount",
+          "method_code"
+        ],
+        "title": "ExpensePaymentCreate",
+        "description": "``POST /api/v1/finance/expenses/{id}/payments`` (#115 D2)."
+      },
+      "ExpensePaymentItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "paid_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Paid On"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "method_code": {
+            "type": "string",
+            "title": "Method Code"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "recorded_by": {
+            "$ref": "#/components/schemas/AccountName"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "reversal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpensePaymentReversalItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "paid_on",
+          "amount",
+          "method_code",
+          "reference",
+          "note",
+          "recorded_by",
+          "created_at",
+          "reversal"
+        ],
+        "title": "ExpensePaymentItem",
+        "description": "One payment of an expense, reversed ones included (#115 C3)."
+      },
+      "ExpensePaymentRecorded": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "expense_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Expense Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExpenseStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "expense_id",
+          "status"
+        ],
+        "title": "ExpensePaymentRecorded",
+        "description": "What ``POST …/payments`` answers (#115 D5, E7)."
+      },
+      "ExpensePaymentReversalCreate": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "1-1000 characters, trimmed."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "ExpensePaymentReversalCreate",
+        "description": "``POST /api/v1/finance/expense-payments/{id}/reversal`` (#115 E2)."
+      },
+      "ExpensePaymentReversalItem": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "reversed_by": {
+            "$ref": "#/components/schemas/AccountName"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason",
+          "reversed_by",
+          "created_at"
+        ],
+        "title": "ExpensePaymentReversalItem",
+        "description": "A payment's reversal (#115 C3)."
+      },
+      "ExpensePaymentReversed": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "expense_payment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Expense Payment Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExpenseStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "expense_payment_id",
+          "status"
+        ],
+        "title": "ExpensePaymentReversed",
+        "description": "What ``POST …/reversal`` answers (#115 E2, E7)."
+      },
+      "ExpenseStatus": {
+        "type": "string",
+        "enum": [
+          "unpaid",
+          "partially_paid",
+          "paid",
+          "overdue",
+          "void"
+        ]
       },
       "FactsAssignments": {
         "properties": {
@@ -48753,6 +50208,37 @@
           "offset"
         ],
         "title": "OffsetPage[EducationLevelDetail]"
+      },
+      "OffsetPage_ExpenseItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExpenseItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[ExpenseItem]"
       },
       "OffsetPage_FamilyListItem_": {
         "properties": {
@@ -53651,6 +55137,8 @@
           "course.view",
           "evaluation.manage",
           "expense.configure",
+          "expense.manage",
+          "expense.view",
           "family.manage",
           "finance.refund.approve",
           "guardian.view",
@@ -63258,6 +64746,31 @@
         ],
         "title": "VendorItem",
         "description": "A vendor (#114 C1)."
+      },
+      "VendorRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "is_active"
+        ],
+        "title": "VendorRef",
+        "description": "An expense's vendor, inactive ones included."
       },
       "VendorUpdate": {
         "properties": {

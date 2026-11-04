@@ -1089,6 +1089,10 @@ def test_the_real_matrix_lists_the_idempotent_routes():
         "/refunds",
         "POST /api/v1/families/{family_id}/billing-account/payments/{payment_id}"
         "/reversal",
+        "POST /api/v1/finance/expense-payments/{payment_id}/reversal",
+        "POST /api/v1/finance/expenses",
+        "POST /api/v1/finance/expenses/{expense_id}/adjustments",
+        "POST /api/v1/finance/expenses/{expense_id}/payments",
         "POST /api/v1/payroll/payments/{payment_id}/reversal",
         "POST /api/v1/payroll/periods/{period_id}/carry-forward",
         "POST /api/v1/payroll/periods/{period_id}/finalize",

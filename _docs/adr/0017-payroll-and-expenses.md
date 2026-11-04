@@ -380,6 +380,19 @@ The E5 shape of ADR-0006, smaller, all append-only:
 
 **A wrong category, vendor or date** is corrected by voiding (a full negative adjustment) and entering a new expense. `receipt_reference` and `note` replace the attachment and are visible to `expense.view` holders only. No file. No tax column (spec §1). The expense row `FOR UPDATE` is the last lock.
 
+#### Implementation notes (#115)
+
+Orchestrator-recommended, pending owner review (#115 E1–E7, owner-delegated). They refine E16 where it is silent; `_docs/data-model.md` §12.3–§12.6 and `_docs/api.md` "Operating expenses" are the current rules. Migration `0084`; `expense_template_id` and `period_start` arrive with #116.
+
+- **E1, split:** the API (tables, permissions, six routes, the `insert_expense` seam for #116) in #115; the pages in M7-12b.
+- **E2, dates:** `incurred_on` not after the center's today (`422 incurred_on_in_future`); `due_on ≥ incurred_on` (a CHECK, and `422 due_on_before_incurred_on`); `paid_on` not after the center's today (`422 paid_on_in_future`) with no lower bound, because a payment may precede the expense it pays.
+- **E3, no edit:** no `PATCH`. Anything but the amount is corrected by a void and a new expense, so a typo in a description costs a void.
+- **E4, void is final:** once `net = 0`, every payment and adjustment is `409 expense_void`; nothing revives a void.
+- **E5, duplicates:** payments with a reference: the same expense, `method_code` and reference (trimmed, ignoring case) on a payment without a reversal is `409 expense_payment_duplicate`; a reversal frees the pair. No duplicate-expense rule; the `Idempotency-Key` covers a retry (vendor + receipt reference is a follow-up candidate).
+- **E6, reversals:** `finance.refund.approve` **and** `expense.view`, with `finance.refund_or_reversal` reauthentication: today the Owner only. A delegated Administrator holds no `expense.view`, so this keeps E12's "no expense amounts for Administrators".
+- **E7, side channels:** the `POST` answers hold ids and the derived status only (the stored idempotent response is in clear). Audit masks: `expenses {amount, description, receipt_reference, note}`, payments `{amount, reference, note}`, reversals `{reason}`, adjustments `{amount, reason}`. No named event or log line.
+- **Permissions:** `expense.view` and `expense.manage` (Owner, Finance Staff; not delegable), seeded by `make seed`.
+
 ### Recurring templates (E17 (a), spec §8, #116, ISSUE-J4)
 
 - `expense_templates` (`name`, `category_id`, `vendor_id NULL`, `amount`, `frequency` `weekly`, `monthly` or `annual`, `starts_on`, `ends_on NULL`, `due_offset_days` 0–60, `next_period_start`, `is_active`, `version`).
