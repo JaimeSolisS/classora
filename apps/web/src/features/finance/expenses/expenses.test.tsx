@@ -33,6 +33,7 @@ import {
   EXPENSE_UNPAID,
   expenseDetail,
   expensePage,
+  GENERATED_EXPENSES,
   MIXED_CATEGORIES,
   VENDOR_PAPER,
   VENDOR_RETIRED,
@@ -730,5 +731,21 @@ describe('a lost answer (D6, E2 (a))', () => {
     await settle();
     expect(api.requests.length).toBe(before);
     expect(said()).toBe('');
+  });
+});
+
+describe('generated expenses in the list (M7-13b E1)', () => {
+  it('marks rows with a template, with an accessible label', async () => {
+    stub({
+      [EXPENSES]: page(expensePage([...GENERATED_EXPENSES, ...EXPENSE_ITEMS])),
+    });
+    await openList();
+    const markers = [...table()!.querySelectorAll('[data-recurring-marker]')];
+    expect(markers).toHaveLength(2);
+    expect(markers[0]!.getAttribute('role')).toBe('img');
+    expect(markers[0]!.getAttribute('aria-label')).toBe('Recurring');
+    expect(
+      main().querySelectorAll('[data-expenses-cards] [data-recurring-marker]'),
+    ).toHaveLength(2);
   });
 });

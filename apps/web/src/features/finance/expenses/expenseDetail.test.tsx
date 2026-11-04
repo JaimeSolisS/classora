@@ -25,6 +25,7 @@ import {
   type RenderedApp,
 } from '@/test/render-app';
 import {
+  EXPENSE_GENERATED,
   EXPENSE_METHODS,
   EXPENSE_PAID,
   EXPENSE_PARTIAL,
@@ -786,4 +787,43 @@ it('a close with no attempt makes no request', async () => {
   await click(buttonNamed(dialog('adjust')!, 'Cancel'));
   await settle();
   expect(api.requests.length).toBe(before);
+});
+
+describe('a generated expense (M7-13b E1, E2)', () => {
+  it('names its template with a link and shows "Automatic" as its recorder', async () => {
+    stub(EXPENSE_GENERATED);
+    await openDetail(EXPENSE_GENERATED);
+    const line = main().querySelector('[data-expense-template]');
+    expect(line?.textContent).toBe(
+      'Generated automatically by the template Renta del local',
+    );
+    expect(line?.querySelector('a')?.getAttribute('href')).toBe(
+      `/expenses/templates/${EXPENSE_GENERATED.template!.id}`,
+    );
+    expect(
+      head()!.querySelector('[data-expense-field="createdBy"] dd')?.textContent,
+    ).toBe('Automatic');
+    // It is paid, adjusted and voided like any other.
+    for (const name of ['Record payment', 'Adjust', 'Void']) {
+      expect(action(name)).not.toBeNull();
+    }
+  });
+
+  it('says it in Spanish', async () => {
+    applyLanguage('es');
+    stub(EXPENSE_GENERATED);
+    await openDetail(EXPENSE_GENERATED);
+    expect(main().querySelector('[data-expense-template]')?.textContent).toBe(
+      'Generado automáticamente por la plantilla Renta del local',
+    );
+    expect(
+      head()!.querySelector('[data-expense-field="createdBy"] dd')?.textContent,
+    ).toBe('Automático');
+  });
+
+  it('a hand-entered expense has no template line', async () => {
+    stub();
+    await openDetail();
+    expect(main().querySelector('[data-expense-template]')).toBeNull();
+  });
 });

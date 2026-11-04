@@ -35,7 +35,13 @@ import {
   SEEDED_CATEGORIES,
 } from '../fixtures';
 import { validateCategoryForm } from '../forms';
-import { CATEGORIES, CATEGORY_POST, categoryPatch, FINANCE } from '../testing';
+import {
+  ADMIN,
+  CATEGORIES,
+  CATEGORY_POST,
+  categoryPatch,
+  FINANCE,
+} from '../testing';
 
 // M7-11b B, D, E: the categories page. Seeded labels in both languages, a
 // renamed row's own text, the badges and the sort, each dialog's success and
@@ -619,4 +625,67 @@ describe('lost answers and failed reloads (D1, D2)', () => {
       );
     },
   );
+});
+
+// M7-13b F1: a row used by live recurring templates (#116 E2).
+const inUse = (code: string, count: number) => () =>
+  new Response(
+    JSON.stringify({
+      type: 'about:blank',
+      title: 'Conflict',
+      status: 409,
+      code,
+      request_id: `req-${code}`,
+      detail: 'Server detail that must never reach the UI',
+      details: { template_count: count },
+    }),
+    { status: 409, headers: { 'Content-Type': 'application/problem+json' } },
+  );
+
+describe('in use by recurring templates (M7-13b F1)', () => {
+  it.each([
+    [
+      1,
+      "It's used by 1 active recurring template. That template must be paused or moved to another category first (the owner or finance staff can do it).",
+    ],
+    [
+      3,
+      "It's used by 3 active recurring templates. Those templates must be paused or moved to another category first (the owner or finance staff can do it).",
+    ],
+  ])('says how many (%i) and keeps the row active', async (count, text) => {
+    const api = stub(
+      { [categoryPatch(CAT_RENT.id)]: inUse('expense_category_in_use', count) },
+      { as: ADMIN },
+    );
+    await openPage();
+    await click(named(row(CAT_RENT), 'Deactivate Rent')!);
+    await settleUntil(() => openDialog());
+    await click(buttonNamed(dialog(), 'Deactivate'));
+    await settleUntil(() => alerts(dialog()).length > 0);
+    const alert = alerts(dialog()).join();
+    expect(alert).toContain(text);
+    // It names no template and links nowhere.
+    expect(dialog().querySelector('[role="alert"] a')).toBeNull();
+    expect(openDialog()).not.toBeNull();
+    expect(api.calls(categoryPatch(CAT_RENT.id))).toHaveLength(1);
+    await click(buttonNamed(dialog(), 'Cancel'));
+    await settleUntil(() => !openDialog());
+    expect(row(CAT_RENT)?.textContent).toContain('Active');
+  });
+
+  it('says it in Spanish, with the plural', async () => {
+    applyLanguage('es');
+    stub(
+      { [categoryPatch(CAT_RENT.id)]: inUse('expense_category_in_use', 3) },
+      { as: ADMIN },
+    );
+    await openPage();
+    await click(named(row(CAT_RENT), 'Desactivar Renta')!);
+    await settleUntil(() => openDialog());
+    await click(buttonNamed(dialog(), 'Desactivar'));
+    await settleUntil(() => alerts(dialog()).length > 0);
+    expect(alerts(dialog()).join()).toContain(
+      'Se usa en 3 plantillas recurrentes activas. Primero hay que pausar esas plantillas o cambiarles la categoría (lo hacen el propietario o finanzas).',
+    );
+  });
 });

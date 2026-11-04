@@ -8,6 +8,7 @@ import {
   type ExpenseItem,
   type ExpensePage,
   type ExpensePayment,
+  type ExpenseTemplate,
   type Vendor,
   type VendorPage,
 } from './api';
@@ -335,3 +336,124 @@ export const EXPENSES_OWNER_SESSION: Session = {
     ],
   },
 };
+
+// --------------------------------- recurring templates (M7-13b H1, H2)
+
+const templateId = (n: number) =>
+  `85000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
+export function expenseTemplate(
+  n: number,
+  fields: Partial<ExpenseTemplate> = {},
+): ExpenseTemplate {
+  return {
+    id: templateId(n),
+    name: `Plantilla ${n}`,
+    category: ref(CAT_RENT),
+    vendor: vendorRef(VENDOR_PAPER),
+    amount: '12500.00',
+    frequency: 'monthly',
+    starts_on: '2026-09-01',
+    ends_on: null,
+    due_offset_days: 5,
+    next_period_start: '2026-11-01',
+    last_period_start: '2026-10-01',
+    status: 'active',
+    is_active: true,
+    version: 1,
+    created_at: '2026-09-01T15:00:00Z',
+    updated_at: '2026-09-01T15:00:00Z',
+    ...fields,
+  };
+}
+
+/** Monthly rent, two periods generated. */
+export const TEMPLATE_RENT = expenseTemplate(1, { name: 'Renta del local' });
+/** Weekly cleaning, paused, with no vendor. */
+export const TEMPLATE_PAUSED = expenseTemplate(2, {
+  name: 'Limpieza semanal',
+  category: ref(CAT_MAINTENANCE),
+  vendor: null,
+  amount: '800.00',
+  frequency: 'weekly',
+  starts_on: '2026-10-05',
+  next_period_start: '2026-10-26',
+  last_period_start: '2026-10-19',
+  due_offset_days: 0,
+  status: 'paused',
+  is_active: false,
+  version: 2,
+});
+/** Annual, ended, on an inactive category and vendor. */
+export const TEMPLATE_ENDED = expenseTemplate(3, {
+  name: 'Garrafones de agua',
+  category: ref(CAT_RETIRED),
+  vendor: vendorRef(VENDOR_RETIRED),
+  amount: '3000.00',
+  frequency: 'annual',
+  starts_on: '2025-10-01',
+  ends_on: '2026-09-30',
+  next_period_start: '2027-10-01',
+  last_period_start: '2025-10-01',
+  due_offset_days: 1,
+  status: 'ended',
+  version: 3,
+});
+/** Starts next month: nothing generated yet. */
+export const TEMPLATE_FUTURE = expenseTemplate(4, {
+  name: 'Internet',
+  category: ref(CAT_UTILITIES),
+  vendor: vendorRef(VENDOR_CLEANING),
+  amount: '650.00',
+  starts_on: '2026-11-15',
+  next_period_start: '2026-11-15',
+  last_period_start: null,
+  due_offset_days: 10,
+});
+
+export const TEMPLATES: ExpenseTemplate[] = [
+  TEMPLATE_RENT,
+  TEMPLATE_FUTURE,
+  TEMPLATE_PAUSED,
+  TEMPLATE_ENDED,
+];
+
+/** The expenses TEMPLATE_RENT generated, newest period first. */
+export const GENERATED_EXPENSES: ExpenseItem[] = [
+  expenseDetail(11, {
+    description: TEMPLATE_RENT.name,
+    amount: '12500.00',
+    adjusted_amount: '12500.00',
+    open_amount: '12500.00',
+    incurred_on: '2026-10-01',
+    due_on: '2026-10-06',
+    status: 'overdue',
+    template: { id: TEMPLATE_RENT.id, name: TEMPLATE_RENT.name },
+    created_by: null,
+  }),
+  expenseDetail(12, {
+    description: TEMPLATE_RENT.name,
+    amount: '12500.00',
+    adjusted_amount: '12500.00',
+    paid_amount: '12500.00',
+    open_amount: '0.00',
+    incurred_on: '2026-09-01',
+    due_on: '2026-09-06',
+    status: 'paid',
+    template: { id: TEMPLATE_RENT.id, name: TEMPLATE_RENT.name },
+    created_by: null,
+  }),
+].map(expenseItem);
+
+/** A generated expense's detail (M7-13b E1). */
+export const EXPENSE_GENERATED = expenseDetail(11, {
+  description: TEMPLATE_RENT.name,
+  amount: '12500.00',
+  adjusted_amount: '12500.00',
+  open_amount: '12500.00',
+  incurred_on: '2026-10-01',
+  due_on: '2026-10-06',
+  status: 'overdue',
+  template: { id: TEMPLATE_RENT.id, name: TEMPLATE_RENT.name },
+  created_by: null,
+});

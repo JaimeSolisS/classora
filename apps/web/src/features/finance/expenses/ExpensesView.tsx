@@ -1,3 +1,4 @@
+import { Repeat } from 'lucide-react';
 import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
@@ -88,6 +89,24 @@ export interface ExpensesViewProps {
 const L = 'finance.expenses';
 const WRAP = '[overflow-wrap:anywhere]';
 const LINK_CLASS = `inline-flex min-h-11 items-center font-medium underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring md:min-h-6 ${WRAP}`;
+
+/** A generated expense's marker (M7-13b E1): an icon with its label. */
+function RecurringMarker({ expense }: { expense: ExpenseItem }) {
+  const { t } = useTranslation();
+  if (!expense.template) return null;
+  const label = t('finance.templates.marker');
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      className="ml-1 inline-flex shrink-0 align-middle text-muted-foreground"
+      data-recurring-marker
+    >
+      <Repeat aria-hidden="true" className="size-4" />
+    </span>
+  );
+}
 
 function CategoryCell({ expense }: { expense: ExpenseItem }) {
   const { t } = useTranslation();
@@ -414,6 +433,7 @@ export function ExpensesView({
                         >
                           {expense.description}
                         </Link>
+                        <RecurringMarker expense={expense} />
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {formatMoney(expense.adjusted_amount)}
@@ -438,9 +458,12 @@ export function ExpensesView({
                   className="flex min-w-0 flex-col gap-2 rounded-lg border border-border p-4"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
-                    <Link to={expensePath(expense.id)} className={LINK_CLASS}>
-                      {expense.description}
-                    </Link>
+                    <span className="flex min-w-0 items-center">
+                      <Link to={expensePath(expense.id)} className={LINK_CLASS}>
+                        {expense.description}
+                      </Link>
+                      <RecurringMarker expense={expense} />
+                    </span>
                     <ExpenseStatusBadge status={expense.status} />
                   </div>
                   <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">

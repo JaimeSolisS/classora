@@ -609,3 +609,41 @@ describe('lost answers and failed reloads (D1, D2)', () => {
     expect(api.calls(LIST)).toHaveLength(1);
   });
 });
+
+// M7-13b F1: a row used by live recurring templates (#116 E2).
+const inUse = (code: string, count: number) => () =>
+  new Response(
+    JSON.stringify({
+      type: 'about:blank',
+      title: 'Conflict',
+      status: 409,
+      code,
+      request_id: `req-${code}`,
+      detail: 'Server detail that must never reach the UI',
+      details: { template_count: count },
+    }),
+    { status: 409, headers: { 'Content-Type': 'application/problem+json' } },
+  );
+
+describe('in use by recurring templates (M7-13b F1)', () => {
+  it.each([
+    [
+      1,
+      "It's used by 1 active recurring template. That template must be paused or moved to another vendor first (the owner or finance staff can do it).",
+    ],
+    [
+      3,
+      "It's used by 3 active recurring templates. Those templates must be paused or moved to another vendor first (the owner or finance staff can do it).",
+    ],
+  ])('says how many (%i) and keeps the row active', async (count, text) => {
+    stub({ [vendorPatch(VENDOR_PAPER.id)]: inUse('vendor_in_use', count) });
+    await openPage();
+    await click(named(row(VENDOR_PAPER), `Deactivate ${VENDOR_PAPER.name}`)!);
+    await settleUntil(() => openDialog());
+    await click(buttonNamed(dialog(), 'Deactivate'));
+    await settleUntil(() => alerts(dialog()).length > 0);
+    expect(alerts(dialog()).join()).toContain(text);
+    expect(dialog().querySelector('[role="alert"] a')).toBeNull();
+    expect(openDialog()).not.toBeNull();
+  });
+});

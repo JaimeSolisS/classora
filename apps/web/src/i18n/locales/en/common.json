@@ -7014,6 +7014,7 @@
     "tabs": {
       "label": "Expense sections",
       "records": "Expenses",
+      "templates": "Recurring",
       "categories": "Categories",
       "vendors": "Vendors"
     },
@@ -7085,7 +7086,9 @@
         "deactivateTitle": "Deactivate {{name}}",
         "deactivateBody": "It can't be chosen for new expenses; past expenses and reports keep it.",
         "reactivateTitle": "Reactivate {{name}}",
-        "reactivateBody": "It can be chosen for new expenses again."
+        "reactivateBody": "It can be chosen for new expenses again.",
+        "inUse_one": "It's used by {{count}} active recurring template. That template must be paused or moved to another category first (the owner or finance staff can do it).",
+        "inUse_other": "It's used by {{count}} active recurring templates. Those templates must be paused or moved to another category first (the owner or finance staff can do it)."
       }
     },
     "vendors": {
@@ -7148,7 +7151,9 @@
         "deactivateTitle": "Deactivate {{name}}",
         "deactivateBody": "It can't be chosen for new expenses; past expenses and reports keep it.",
         "reactivateTitle": "Reactivate {{name}}",
-        "reactivateBody": "It can be chosen for new expenses again."
+        "reactivateBody": "It can be chosen for new expenses again.",
+        "inUse_one": "It's used by {{count}} active recurring template. That template must be paused or moved to another vendor first (the owner or finance staff can do it).",
+        "inUse_other": "It's used by {{count}} active recurring templates. Those templates must be paused or moved to another vendor first (the owner or finance staff can do it)."
       }
     },
     "expenses": {
@@ -7361,6 +7366,159 @@
         "reasonRequired": "Enter the reason.",
         "reasonTooLong": "Use at most 1000 characters."
       }
+    },
+    "templates": {
+      "title": "Recurring expenses",
+      "intro": "Each period generates an ordinary expense, once, described with the template's name. Changes only apply to expenses not generated yet.",
+      "caption": "Recurring expenses",
+      "add": "New template",
+      "empty": "There are no recurring expenses yet.",
+      "noMatch": "No recurring expense matches the filters.",
+      "stale": "The list couldn't be refreshed and may be out of date.",
+      "none": "—",
+      "inactiveCategory": "Inactive",
+      "inactiveVendor": "Inactive",
+      "filters": {
+        "label": "Filter recurring expenses",
+        "status": "Status",
+        "category": "Category",
+        "vendor": "Vendor",
+        "all": "All",
+        "inactiveOption": "{{name}} (inactive)"
+      },
+      "columns": {
+        "name": "Name",
+        "category": "Category",
+        "vendor": "Vendor",
+        "amount": "Amount",
+        "frequency": "Frequency",
+        "next": "Next period",
+        "last": "Last generated",
+        "status": "Status"
+      },
+      "statuses": {
+        "active": "Active",
+        "paused": "Paused",
+        "ended": "Ended"
+      },
+      "frequencies": {
+        "weekly": "Weekly",
+        "monthly": "Monthly",
+        "annual": "Annual"
+      },
+      "detail": {
+        "title": "Recurring expense",
+        "back": "Back to recurring expenses",
+        "notFound": "This recurring expense doesn't exist.",
+        "stale": "The recurring expense couldn't be refreshed and may be out of date. Reload it before changing anything.",
+        "reload": "Reload",
+        "created": "Recurring expense created.",
+        "fields": {
+          "category": "Category",
+          "vendor": "Vendor",
+          "amount": "Amount",
+          "frequency": "Frequency",
+          "startsOn": "Starts on",
+          "endsOn": "Ends on",
+          "dueOffset": "Due",
+          "next": "Next period",
+          "last": "Last generated",
+          "status": "Status"
+        },
+        "noEnd": "No end",
+        "dueOffset_zero": "Due on the day the period starts",
+        "dueOffset_one": "Due {{count}} day after the period starts",
+        "dueOffset_other": "Due {{count}} days after the period starts",
+        "actions": {
+          "label": "Recurring expense actions",
+          "edit": "Edit",
+          "pause": "Pause",
+          "resume": "Resume",
+          "end": "End"
+        },
+        "generated": {
+          "title": "Generated expenses",
+          "caption": "Expenses this recurring expense generated",
+          "empty": "No expense has been generated yet. The first one is generated on {{date}}.",
+          "emptyEnded": "No expense was generated.",
+          "columns": {
+            "period": "Period start",
+            "net": "Amount",
+            "open": "Open",
+            "status": "Status"
+          }
+        },
+        "saved": "Changes saved.",
+        "paused": "Recurring expense paused.",
+        "resumed": "Recurring expense resumed. The next period starts on {{date}}.",
+        "resumedEnded": "Recurring expense resumed. It has no periods left before its end.",
+        "ended": "Recurring expense ended.",
+        "endSet": "End date saved. The last period starts on {{date}} at the latest.",
+        "gone": "This recurring expense no longer exists.",
+        "goneNotReloaded": "This recurring expense no longer exists. It couldn't be reloaded.",
+        "conflictRefreshed": "Someone else changed this recurring expense. It was reloaded: check it and try again.",
+        "conflictNotReloaded": "Someone else changed this recurring expense. It couldn't be reloaded: reload it and try again."
+      },
+      "pause": {
+        "title": "Pause {{name}}",
+        "body": "No expenses are generated while it's paused. Expenses already generated don't change.",
+        "confirm": "Pause"
+      },
+      "resume": {
+        "title": "Resume {{name}}",
+        "body": "It resumes from the first period starting today or later. Paused periods aren't generated.",
+        "confirm": "Resume"
+      },
+      "dialog": {
+        "createTitle": "New template",
+        "editTitle": "Edit recurring expense",
+        "endTitle": "End {{name}}",
+        "createHelp": "Each period generates an expense with these details. The name becomes each expense's description and can't repeat another template's.",
+        "editHelp": "The name can't repeat another template's.",
+        "editNotice": "Changes apply to expenses not generated yet; expenses already generated don't change.",
+        "fixedHint": "To change the frequency or the start, end this template and create another.",
+        "endHelp": "Periods starting up to this date, inclusive, are generated.",
+        "endMin": "It can't be before the latest period generated ({{date}}).",
+        "name": "Name",
+        "category": "Category",
+        "vendor": "Vendor (optional)",
+        "noVendor": "No vendor",
+        "choose": "Choose…",
+        "inactiveOption": "{{name}} (inactive)",
+        "amount": "Amount of each expense",
+        "amountHint": "In pesos, with up to 2 decimals, e.g. 1250.50.",
+        "frequency": "Frequency",
+        "startsOn": "First period starts on",
+        "startsOnHint": "Between 31 days ago and 366 days from today. Later periods count from this date.",
+        "pastStart": "The expenses of the periods from that date up to today are generated automatically.",
+        "endsOn": "Ends on (optional)",
+        "endsOnHint": "Leave it empty if it has no end.",
+        "endsOnRequired": "End date",
+        "dueOffset": "Days until due",
+        "dueOffsetHint": "Each expense is due this many days after its period starts (0 to 60).",
+        "counter": "{{n}} of {{max}} characters",
+        "submitCreate": "Create",
+        "submitEnd": "End",
+        "pickersReloaded": "The categories and vendors were reloaded.",
+        "notices": {
+          "conflictReloaded": "Someone else changed this recurring expense. It was reloaded: check it and try again.",
+          "goneReloaded": "This recurring expense no longer exists. It was reloaded.",
+          "goneNotReloaded": "This recurring expense no longer exists. It couldn't be reloaded.",
+          "maybeSavedReloaded": "Your earlier attempt may already have created this template. The list was reloaded: check it before trying again.",
+          "maybeSavedNotReloaded": "Your earlier attempt may already have created this template. The list couldn't be reloaded: close and check the list."
+        }
+      },
+      "validation": {
+        "nameRequired": "Enter the name.",
+        "nameTooLong": "Use at most 200 characters.",
+        "categoryRequired": "Choose the category.",
+        "frequencyRequired": "Choose the frequency.",
+        "dateRequired": "Enter a valid date.",
+        "dueOffsetRange": "Enter a whole number from 0 to 60."
+      },
+      "marker": "Recurring",
+      "generatedBy": "Generated automatically by the template",
+      "automatic": "Automatic"
     }
   },
   "familyBilling": {

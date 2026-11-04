@@ -7137,6 +7137,7 @@
     "tabs": {
       "label": "Secciones de gastos",
       "records": "Gastos",
+      "templates": "Recurrentes",
       "categories": "Categorías",
       "vendors": "Proveedores"
     },
@@ -7208,7 +7209,10 @@
         "deactivateTitle": "Desactivar {{name}}",
         "deactivateBody": "No se podrá elegir en gastos nuevos; los gastos y reportes anteriores la conservan.",
         "reactivateTitle": "Reactivar {{name}}",
-        "reactivateBody": "Se podrá volver a elegir en gastos nuevos."
+        "reactivateBody": "Se podrá volver a elegir en gastos nuevos.",
+        "inUse_one": "Se usa en {{count}} plantilla recurrente activa. Primero hay que pausar esa plantilla o cambiarle la categoría (lo hacen el propietario o finanzas).",
+        "inUse_many": "Se usa en {{count}} plantillas recurrentes activas. Primero hay que pausar esas plantillas o cambiarles la categoría (lo hacen el propietario o finanzas).",
+        "inUse_other": "Se usa en {{count}} plantillas recurrentes activas. Primero hay que pausar esas plantillas o cambiarles la categoría (lo hacen el propietario o finanzas)."
       }
     },
     "vendors": {
@@ -7271,7 +7275,10 @@
         "deactivateTitle": "Desactivar {{name}}",
         "deactivateBody": "No se podrá elegir en gastos nuevos; los gastos y reportes anteriores lo conservan.",
         "reactivateTitle": "Reactivar {{name}}",
-        "reactivateBody": "Se podrá volver a elegir en gastos nuevos."
+        "reactivateBody": "Se podrá volver a elegir en gastos nuevos.",
+        "inUse_one": "Se usa en {{count}} plantilla recurrente activa. Primero hay que pausar esa plantilla o cambiarle el proveedor (lo hacen el propietario o finanzas).",
+        "inUse_many": "Se usa en {{count}} plantillas recurrentes activas. Primero hay que pausar esas plantillas o cambiarles el proveedor (lo hacen el propietario o finanzas).",
+        "inUse_other": "Se usa en {{count}} plantillas recurrentes activas. Primero hay que pausar esas plantillas o cambiarles el proveedor (lo hacen el propietario o finanzas)."
       }
     },
     "expenses": {
@@ -7484,6 +7491,160 @@
         "reasonRequired": "Escribe el motivo.",
         "reasonTooLong": "Usa como máximo 1000 caracteres."
       }
+    },
+    "templates": {
+      "title": "Gastos recurrentes",
+      "intro": "Cada periodo genera un gasto normal, una sola vez, con el nombre de la plantilla como descripción. Los cambios solo se aplican a los gastos que aún no se generan.",
+      "caption": "Gastos recurrentes",
+      "add": "Nueva plantilla",
+      "empty": "Todavía no hay gastos recurrentes.",
+      "noMatch": "Ningún gasto recurrente coincide con los filtros.",
+      "stale": "No se pudo actualizar la lista y puede estar desactualizada.",
+      "none": "—",
+      "inactiveCategory": "Inactiva",
+      "inactiveVendor": "Inactivo",
+      "filters": {
+        "label": "Filtrar gastos recurrentes",
+        "status": "Estado",
+        "category": "Categoría",
+        "vendor": "Proveedor",
+        "all": "Todos",
+        "inactiveOption": "{{name}} (inactivo)"
+      },
+      "columns": {
+        "name": "Nombre",
+        "category": "Categoría",
+        "vendor": "Proveedor",
+        "amount": "Monto",
+        "frequency": "Frecuencia",
+        "next": "Próximo periodo",
+        "last": "Último generado",
+        "status": "Estado"
+      },
+      "statuses": {
+        "active": "Activa",
+        "paused": "Pausada",
+        "ended": "Finalizada"
+      },
+      "frequencies": {
+        "weekly": "Semanal",
+        "monthly": "Mensual",
+        "annual": "Anual"
+      },
+      "detail": {
+        "title": "Gasto recurrente",
+        "back": "Volver a gastos recurrentes",
+        "notFound": "Este gasto recurrente no existe.",
+        "stale": "No se pudo actualizar el gasto recurrente y puede estar desactualizado. Vuelve a cargarlo antes de cambiar algo.",
+        "reload": "Volver a cargar",
+        "created": "Gasto recurrente creado.",
+        "fields": {
+          "category": "Categoría",
+          "vendor": "Proveedor",
+          "amount": "Monto",
+          "frequency": "Frecuencia",
+          "startsOn": "Inicio",
+          "endsOn": "Fin",
+          "dueOffset": "Vencimiento",
+          "next": "Próximo periodo",
+          "last": "Último generado",
+          "status": "Estado"
+        },
+        "noEnd": "Sin fin",
+        "dueOffset_zero": "Vence el día en que empieza el periodo",
+        "dueOffset_one": "Vence {{count}} día después del inicio del periodo",
+        "dueOffset_many": "Vence {{count}} días después del inicio del periodo",
+        "dueOffset_other": "Vence {{count}} días después del inicio del periodo",
+        "actions": {
+          "label": "Acciones del gasto recurrente",
+          "edit": "Editar",
+          "pause": "Pausar",
+          "resume": "Reanudar",
+          "end": "Finalizar"
+        },
+        "generated": {
+          "title": "Gastos generados",
+          "caption": "Gastos que generó este gasto recurrente",
+          "empty": "Aún no se ha generado ningún gasto. El primero se genera el {{date}}.",
+          "emptyEnded": "No se generó ningún gasto.",
+          "columns": {
+            "period": "Inicio del periodo",
+            "net": "Monto",
+            "open": "Por pagar",
+            "status": "Estado"
+          }
+        },
+        "saved": "Cambios guardados.",
+        "paused": "Gasto recurrente pausado.",
+        "resumed": "Gasto recurrente reanudado. El próximo periodo empieza el {{date}}.",
+        "resumedEnded": "Gasto recurrente reanudado. Ya no le quedan periodos antes de su fin.",
+        "ended": "Gasto recurrente finalizado.",
+        "endSet": "Fecha de fin guardada. El último periodo empieza a más tardar el {{date}}.",
+        "gone": "Este gasto recurrente ya no existe.",
+        "goneNotReloaded": "Este gasto recurrente ya no existe. No se pudo volver a cargar.",
+        "conflictRefreshed": "Alguien más cambió este gasto recurrente. Se volvió a cargar: revísalo e inténtalo de nuevo.",
+        "conflictNotReloaded": "Alguien más cambió este gasto recurrente. No se pudo volver a cargar: vuelve a cargarlo e inténtalo de nuevo."
+      },
+      "pause": {
+        "title": "Pausar {{name}}",
+        "body": "No se generan gastos mientras esté en pausa. Los ya generados no cambian.",
+        "confirm": "Pausar"
+      },
+      "resume": {
+        "title": "Reanudar {{name}}",
+        "body": "Se reanuda desde el primer periodo que empiece hoy o después. No se generan los periodos en pausa.",
+        "confirm": "Reanudar"
+      },
+      "dialog": {
+        "createTitle": "Nueva plantilla",
+        "editTitle": "Editar gasto recurrente",
+        "endTitle": "Finalizar {{name}}",
+        "createHelp": "Cada periodo genera un gasto con estos datos. El nombre será la descripción de cada gasto y no puede repetir el de otra plantilla.",
+        "editHelp": "El nombre no puede repetir el de otra plantilla.",
+        "editNotice": "Los cambios se aplican a los gastos que aún no se han generado; los gastos ya generados no cambian.",
+        "fixedHint": "Para cambiar la frecuencia o el inicio, finaliza esta plantilla y crea otra.",
+        "endHelp": "Se generan los periodos que empiecen hasta esta fecha, incluida.",
+        "endMin": "No puede ser anterior al último periodo generado ({{date}}).",
+        "name": "Nombre",
+        "category": "Categoría",
+        "vendor": "Proveedor (opcional)",
+        "noVendor": "Sin proveedor",
+        "choose": "Elige…",
+        "inactiveOption": "{{name}} (inactivo)",
+        "amount": "Monto de cada gasto",
+        "amountHint": "En pesos, con hasta 2 decimales, p. ej. 1250.50.",
+        "frequency": "Frecuencia",
+        "startsOn": "Inicio del primer periodo",
+        "startsOnHint": "Entre hace 31 días y dentro de 366 días. Los periodos siguientes se cuentan desde esta fecha.",
+        "pastStart": "Los gastos de los periodos desde esa fecha hasta hoy se generan automáticamente.",
+        "endsOn": "Fin (opcional)",
+        "endsOnHint": "Déjalo vacío si no tiene fin.",
+        "endsOnRequired": "Fecha de fin",
+        "dueOffset": "Días para el vencimiento",
+        "dueOffsetHint": "Cada gasto vence estos días después de que empieza su periodo (0 a 60).",
+        "counter": "{{n}} de {{max}} caracteres",
+        "submitCreate": "Crear",
+        "submitEnd": "Finalizar",
+        "pickersReloaded": "Se volvieron a cargar las categorías y los proveedores.",
+        "notices": {
+          "conflictReloaded": "Alguien más cambió este gasto recurrente. Se volvió a cargar: revísalo e inténtalo de nuevo.",
+          "goneReloaded": "Este gasto recurrente ya no existe. Se volvió a cargar.",
+          "goneNotReloaded": "Este gasto recurrente ya no existe. No se pudo volver a cargar.",
+          "maybeSavedReloaded": "Puede que tu intento anterior ya haya creado esta plantilla. La lista se volvió a cargar: revísala antes de intentarlo de nuevo.",
+          "maybeSavedNotReloaded": "Puede que tu intento anterior ya haya creado esta plantilla. No se pudo volver a cargar la lista: cierra y revisa la lista."
+        }
+      },
+      "validation": {
+        "nameRequired": "Escribe el nombre.",
+        "nameTooLong": "Usa como máximo 200 caracteres.",
+        "categoryRequired": "Elige la categoría.",
+        "frequencyRequired": "Elige la frecuencia.",
+        "dateRequired": "Escribe una fecha válida.",
+        "dueOffsetRange": "Escribe un número entero de 0 a 60."
+      },
+      "marker": "Recurrente",
+      "generatedBy": "Generado automáticamente por la plantilla",
+      "automatic": "Automático"
     }
   },
   "familyBilling": {

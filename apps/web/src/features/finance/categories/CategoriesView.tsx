@@ -16,6 +16,7 @@ import { ConfirmDialog } from '@/features/guardians/ConfirmDialog';
 import type { ExpenseCategory } from '../api';
 import { DefaultBadge, StateBadge } from '../Badges';
 import { ExpensesTabs } from '../ExpensesTabs';
+import { inUseCount } from '../forms';
 import { useCategoryLabel } from '../labels';
 
 // The categories tab (M7-11b B1, B4), without any query: the label (the
@@ -109,6 +110,11 @@ export function CategoriesView({
     initialToggle ?? null,
   );
   const [toggleError, setToggleError] = useState<unknown>(initialToggleError);
+  // M7-13b F1: a row used by live recurring templates says how many.
+  const inUseMessage = (error: unknown) => {
+    const count = inUseCount(error);
+    return count === null ? undefined : t(`${C}.toggle.inUse`, { count });
+  };
 
   function startToggle(category: ExpenseCategory) {
     setToggleError(null);
@@ -258,7 +264,14 @@ export function CategoriesView({
           toggling?.is_active ? t(`${C}.deactivate`) : t(`${C}.reactivate`)
         }
         destructive={toggling?.is_active === true}
-        alert={toggleError ? <ErrorAlert error={toggleError} /> : null}
+        alert={
+          toggleError ? (
+            <ErrorAlert
+              error={toggleError}
+              message={inUseMessage(toggleError)}
+            />
+          ) : null
+        }
         onConfirm={confirmToggle}
         onCancel={() => {
           setToggling(null);

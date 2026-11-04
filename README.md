@@ -433,6 +433,10 @@ unless a bullet says otherwise.
   vendor and date, log full or partial payments, correct an amount with an
   adjustment or void a wrong expense and enter it again, and the owner
   reverses a mistaken payment (Expenses → Expenses).
+- Owners and finance staff set up weekly, monthly or annual recurring
+  expenses that are created automatically each period, see the expenses each
+  one generated, and edit, pause, resume or end them; changes apply only to
+  expenses not generated yet (Expenses → Recurring).
 
 **Notifications**
 
@@ -464,7 +468,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** the rest of billing, recurring expense templates, reporting and analytics, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
+**Not built yet:** the rest of billing, reporting and analytics, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 
 **Not in this version:** file uploads and documents (attachments, the shared

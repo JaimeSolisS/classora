@@ -57,3 +57,11 @@ export const reversalPost = (id: string) =>
   `POST /api/v1/finance/expense-payments/${id}/reversal`;
 export const METHODS = 'GET /api/v1/billing/payment-methods';
 export const REAUTH = 'POST /api/v1/auth/reauthenticate';
+
+// M7-13b: the recurring template routes.
+export const TEMPLATES = 'GET /api/v1/finance/expense-templates';
+export const TEMPLATE_POST = 'POST /api/v1/finance/expense-templates';
+export const templateGet = (id: string) =>
+  `GET /api/v1/finance/expense-templates/${id}`;
+export const templatePatch = (id: string) =>
+  `PATCH /api/v1/finance/expense-templates/${id}`;
