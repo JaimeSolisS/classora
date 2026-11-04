@@ -6478,6 +6478,110 @@
       "title": "Mi pago",
       "empty": "Tu pago aún no está configurado. Consulta con administración."
     },
+    "earnings": {
+      "title": "Ingresos",
+      "intro": "Lo que se te pagó en cada periodo finalizado, del más reciente al más antiguo. Un periodo aparece aquí cuando se finaliza.",
+      "empty": "Aún no hay periodos finalizados. Tus ingresos aparecerán aquí cuando se finalice un periodo.",
+      "caption": "Tus periodos finalizados",
+      "columns": {
+        "period": "Periodo",
+        "frequency": "Frecuencia",
+        "total": "Total",
+        "paid": "Pago",
+        "lastPaid": "Último pago",
+        "payslip": "Comprobante"
+      },
+      "noActivity": "Sin movimientos",
+      "openFor": "Abrir el periodo {{dates}}",
+      "payslip": {
+        "download": "Descargar comprobante",
+        "downloadFor": "Descargar comprobante {{number}}",
+        "language": "El comprobante se descarga en el idioma en que se emitió."
+      },
+      "outdated": "Tus ingresos pueden estar desactualizados: no se pudieron volver a cargar.",
+      "reload": "Volver a cargar",
+      "pagination": "Páginas de ingresos"
+    },
+    "earningsPeriod": {
+      "back": "Volver a Mi pago",
+      "title": "Pago del {{start}} al {{end}}",
+      "fallbackTitle": "Periodo de pago",
+      "notFoundTitle": "Periodo no encontrado",
+      "notFound": "Este periodo no está entre tus periodos finalizados.",
+      "outdated": "Este periodo puede estar desactualizado: no se pudo volver a cargar.",
+      "head": {
+        "frequency": "Frecuencia",
+        "finalizedOn": "Fecha de cierre",
+        "total": "Total",
+        "paid": "Pagado",
+        "remaining": "Por pagar",
+        "state": "Pago",
+        "payslip": "Comprobante"
+      },
+      "summary": {
+        "title": "Resumen",
+        "classLines": "Clases pagadas",
+        "classTime": "Tiempo de clase",
+        "classTimeValue": "{{hours}} h {{minutes}} min",
+        "classes": "Clases",
+        "salary": "Salario",
+        "bonuses": "Bonos",
+        "deductions": "Deducciones",
+        "adjustments": "Ajustes",
+        "total": "Total del periodo"
+      },
+      "linesTitle": "Detalle",
+      "noLines": "Sin movimientos en este periodo.",
+      "groups": {
+        "classes": "Clases",
+        "salary": "Salario",
+        "bonuses": "Bonos",
+        "deductions": "Deducciones",
+        "adjustments": "Ajustes"
+      },
+      "columns": {
+        "date": "Fecha",
+        "classKind": "Tipo de clase",
+        "event": "Concepto",
+        "minutes": "Minutos",
+        "rate": "Tarifa",
+        "amount": "Importe",
+        "piece": "Fechas",
+        "detail": "Detalle",
+        "type": "Tipo",
+        "description": "Descripción",
+        "kind": "Tipo",
+        "details": "Detalle"
+      },
+      "eventWithRule": "{{event}} ({{rule}})",
+      "rules": {
+        "percent": "{{percent}}% de la tarifa",
+        "fixed": "monto fijo de {{amount}}",
+        "none": "sin pago"
+      },
+      "coveredBySalary": "Cubierta por salario",
+      "courseShare": "{{rate}}, sesión {{k}} / {{n}}",
+      "salaryDetail": "{{numerator}} / {{denominator}} de {{amount}}, contado en {{basis}}",
+      "adjustments": {
+        "work": "Trabajo del {{date}}",
+        "workKind": "Trabajo del {{date}} ({{kind}})",
+        "origin": "Del periodo {{period}}",
+        "paired": "Periodo relacionado: {{period}}"
+      },
+      "payments": {
+        "title": "Pagos",
+        "caption": "Los pagos del periodo",
+        "empty": "Aún no hay pagos.",
+        "columns": {
+          "date": "Fecha",
+          "amount": "Monto",
+          "method": "Método",
+          "reference": "Referencia",
+          "status": "Estado"
+        },
+        "reversedOn": "Anulado el {{date}}"
+      }
+    },
     "payRules": {
       "title": "Reglas de pago",
       "intro": "Qué se le paga al tutor por una clase que no se dio como estaba previsto. La regla se aplica según la fecha de la sesión y nunca cambia el trabajo ya pasado.",

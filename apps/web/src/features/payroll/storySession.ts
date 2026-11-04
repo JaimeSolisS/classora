@@ -15,3 +15,18 @@ export const FINANCE_SESSION: Session = {
     permissions: ['payroll.view', 'payroll.manage'],
   },
 };
+
+/** A tutor reading their own pay (M7-10b). */
+export const TUTOR_SESSION: Session = {
+  status: 'signedIn',
+  user: {
+    id: '70000000-0000-4000-8000-000000000001',
+    username: 'demo.tutor',
+    display_name: 'Demo Tutor',
+    privacy_notice_required: false,
+    preferences: { language: null, theme: null },
+    center_time_zone: 'America/Mexico_City',
+    roles: ['tutor'],
+    permissions: ['tutor.view'],
+  },
+};

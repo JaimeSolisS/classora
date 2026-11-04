@@ -7638,7 +7638,9 @@ Implemented by M7-10 (#113; spec §2, §7; ADR-0017 E12, E14 and its #113 notes,
 orchestrator-recommended, pending owner review) in
 `app/workflows/payroll_earnings.py` and its router, with the payslips in
 `app/modules/payroll/payslips.py` and the rows in `app/modules/payroll/earnings.py`.
-Table: `_docs/data-model.md` §11.12. The pages are M7-10b.
+Table: `_docs/data-model.md` §11.12. The pages are M7-10b: the tutor's periods
+under `/my-pay` and each one at `/my-pay/periods/{period_id}`, which the
+`payroll.period_finalized` notification opens.
 
 | Route | Access | Notes |
 |---|---|---|

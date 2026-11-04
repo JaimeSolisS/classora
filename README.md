@@ -417,6 +417,10 @@ unless a bullet says otherwise.
   on a finalized period, partial or full, with its reference as proof, and
   see what's paid and what's left (a paid-state badge and filter on the
   period list). The owner reverses a mistaken payment with their password.
+- Tutors see their finalized earnings period by period under My pay
+  (classes, hours, rates, salary, bonuses, deductions, adjustments and
+  payments) and download each period's payslip as a PDF, which isn't a tax
+  document.
 
 **Notifications**
 
@@ -448,7 +452,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** the rest of billing, the rest of payroll (payslips), expenses, reporting and analytics, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
+**Not built yet:** the rest of billing, expenses, reporting and analytics, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 
 **Not in this version:** file uploads and documents (attachments, the shared

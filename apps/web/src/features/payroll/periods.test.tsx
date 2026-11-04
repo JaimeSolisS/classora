@@ -1335,7 +1335,7 @@ describe('inbox and notifications (F)', () => {
     expect(reviewLinkOf(error)).toBe(`/payroll/periods/${PERIOD_ID}`);
   });
 
-  it('F3: the tutor is told, with the dates, and it opens My pay', () => {
+  it('F3: the tutor is told, with the dates, and it opens the period (M7-10b A3)', () => {
     const notification = {
       notification_type: 'payroll.period_finalized',
       params: {
@@ -1351,7 +1351,7 @@ describe('inbox and notifications (F)', () => {
       NOTIFICATION_LINKS['payroll.period_finalized']!(notification.params, {
         userId: TUTOR_ID,
       }),
-    ).toBe('/my-pay');
+    ).toBe(`/my-pay/periods/${PERIOD_ID}`);
   });
 });
 
