@@ -438,6 +438,14 @@ unless a bullet says otherwise.
   one generated, and edit, pause, resume or end them; changes apply only to
   expenses not generated yet (Expenses → Recurring).
 
+**Reports**
+
+- Owners and finance staff see revenue, direct tutor cost and gross profit
+  by individual tutoring, group tutoring and courses, operating expenses by
+  category and vendor, and the net result, on an accrual or cash basis for
+  any range up to a year, plus today's receivables, payables and deferred
+  revenue (Reports).
+
 **Notifications**
 
 - A bell in the header shows how many notifications are unread and opens a
@@ -468,7 +476,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** the rest of billing, reporting and analytics, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
+**Not built yet:** the rest of billing, analytics, dashboards and report exports, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 
 **Not in this version:** file uploads and documents (attachments, the shared

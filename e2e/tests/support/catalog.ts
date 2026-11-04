@@ -49,6 +49,8 @@ type Common = {
     myPay: string;
     // M7-11b F3: expense categories and vendors.
     expenses: string;
+    // M7-14b E3: the financial reports.
+    reports: string;
   };
   // M7-11b F3: expense categories and vendors.
   finance: {
@@ -122,6 +124,29 @@ type Common = {
       deactivate: string;
       states: Record<'active' | 'inactive', string>;
       dialog: Record<'addTitle' | 'name' | 'contact', string>;
+    };
+  };
+  // M7-14b E3: the financial reports.
+  reports: {
+    title: string;
+    profitability: {
+      title: string;
+      basis: Record<'accrual' | 'cash', string>;
+      range: {
+        from: string;
+        to: string;
+        errors: Record<'tooLong', string>;
+      };
+      classTypes: Record<
+        'individual' | 'group' | 'course' | 'unallocated',
+        string
+      >;
+    };
+    balances: {
+      title: string;
+      receivables: { title: string };
+      payables: { title: string };
+      deferred: { title: string };
     };
   };
   // #425 H3: tutor pay and payroll settings.

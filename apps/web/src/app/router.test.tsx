@@ -172,6 +172,8 @@ describe('route tree', () => {
       'expenses/templates/:templateId',
       'expenses/categories',
       'expenses/vendors',
+      'reports',
+      'reports/finance',
       'account/password',
       'privacy-notice',
       '*',
@@ -482,10 +484,18 @@ describe('route tree', () => {
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
-    expect(children[118]!.handle).toBeUndefined();
+    // M7-14b A2: /reports redirects to the financial report (code-split),
+    // both finance.report.view.
+    const reports = { permission: 'finance.report.view' };
+    expect(children[118]!.handle).toEqual(reports);
+    expect(children[118]!.element).toBeDefined();
+    expect(children[119]!.handle).toEqual(reports);
+    expect(children[119]!.lazy).toBeTypeOf('function');
+    expect(children[119]!.element).toBeUndefined();
+    expect(children[120]!.handle).toBeUndefined();
     // #174 G1: any signed-in user, no permission.
-    expect(children[119]!.id).toBe('privacy-notice');
-    expect(children[119]!.handle).toBeUndefined();
+    expect(children[121]!.id).toBe('privacy-notice');
+    expect(children[121]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

@@ -67,6 +67,7 @@ import {
   EXPENSE_CONFIGURE_ACCESS,
   EXPENSE_VIEW_ACCESS,
 } from '@/features/finance/access';
+import { FINANCE_REPORT_ACCESS } from '@/features/reporting/access';
 import { MY_HISTORY_ACCESS } from '@/features/academics/history/access';
 import {
   ASSIGNMENT_FORM_ACCESS,
@@ -1138,6 +1139,22 @@ export const routes: RouteObject[] = [
               ).VendorsPage,
             }),
             handle: EXPENSE_CONFIGURE_ACCESS,
+          },
+          // M7-14b A2: the financial reports, finance.report.view holders.
+          // /reports opens the financial report (room for M8 reports).
+          {
+            path: 'reports',
+            element: <Navigate to="/reports/finance" replace />,
+            handle: FINANCE_REPORT_ACCESS,
+          },
+          {
+            path: 'reports/finance',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/reporting/FinancialReportPage')
+              ).FinancialReportPage,
+            }),
+            handle: FINANCE_REPORT_ACCESS,
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

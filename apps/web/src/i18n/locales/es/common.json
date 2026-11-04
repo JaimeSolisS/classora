@@ -59,6 +59,7 @@
     "familyBilling": "Cuenta familiar",
     "payroll": "Nómina",
     "expenses": "Gastos",
+    "reports": "Reportes",
     "myPay": "Mi pago"
   },
   "notFound": {
@@ -7645,6 +7646,113 @@
       "marker": "Recurrente",
       "generatedBy": "Generado automáticamente por la plantilla",
       "automatic": "Automático"
+    }
+  },
+  "reports": {
+    "title": "Informes financieros",
+    "intro": "Ingresos, costo de tutores y resultado del centro en un periodo, y los saldos de hoy.",
+    "stale": "No pudimos actualizar estas cifras y pueden estar desactualizadas.",
+    "reload": "Volver a cargar",
+    "profitability": {
+      "title": "Rentabilidad",
+      "controls": "Opciones del informe",
+      "basis": {
+        "label": "Base",
+        "accrual": "Devengado",
+        "cash": "Flujo de efectivo"
+      },
+      "presets": {
+        "label": "Periodo",
+        "thisMonth": "Este mes",
+        "lastMonth": "Mes anterior",
+        "last3Months": "Últimos 3 meses",
+        "yearToDate": "Año en curso"
+      },
+      "range": {
+        "label": "Rango personalizado",
+        "from": "Desde",
+        "to": "Hasta",
+        "caption": "Del {{from}} al {{to}}",
+        "errors": {
+          "required": "Elige una fecha",
+          "order": "La fecha inicial debe ser anterior a la final",
+          "future": "No puede ser posterior a hoy",
+          "tooLong": "Máximo 366 días",
+          "server": "El centro no acepta este rango. Revisa esta fecha."
+        }
+      },
+      "classTypes": {
+        "individual": "Individual",
+        "group": "Grupal",
+        "course": "Cursos",
+        "unallocated": "Sin asignar"
+      },
+      "columns": {
+        "classType": "Tipo de clase",
+        "revenue": "Ingresos",
+        "cost": "Costo directo de tutores",
+        "grossProfit": "Utilidad bruta"
+      },
+      "total": "Total",
+      "accrualCaption": "Rentabilidad por tipo de clase (devengado)",
+      "cash": {
+        "revenue": "Ingresos cobrados",
+        "payroll": "Nómina pagada",
+        "expenses": "Gastos pagados",
+        "net": "Resultado neto"
+      },
+      "expenses": {
+        "title": "Gastos de operación",
+        "total": "Total de gastos",
+        "byCategory": "Por categoría",
+        "byVendor": "Por proveedor",
+        "noVendor": "Sin proveedor",
+        "inactiveCategory": "Inactiva",
+        "inactiveVendor": "Inactivo",
+        "empty": "Sin gastos en este periodo"
+      },
+      "net": {
+        "title": "Resultado neto",
+        "grossProfit": "Utilidad bruta",
+        "expenses": "Gastos de operación",
+        "result": "Resultado neto"
+      },
+      "notes": {
+        "accrual": "Los ingresos se reconocen cuando se imparte la clase (paquetes al consumirse, cursos por sesión). Las correcciones posteriores (créditos, retiros, ajustes de gastos) cambian el periodo al que pertenecen; los ajustes de nómina se reconocen en el periodo en que se registran.",
+        "unallocated": "Sin asignar: sueldos, bonos, deducciones y ajustes de nómina no ligados a una clase, y cargos manuales. No se reparten entre tipos de clase.",
+        "cash": "Base de efectivo: solo totales del centro, por fecha de pago. Un pago revertido desaparece de su fecha; un reembolso cuenta en la fecha del reembolso."
+      }
+    },
+    "balances": {
+      "title": "Saldos",
+      "asOf": "al {{date}}",
+      "receivables": {
+        "title": "Cuentas por cobrar",
+        "outstanding": "Saldo pendiente",
+        "overdue": "De lo cual vencido",
+        "credit": "Saldo a favor (no se descuenta)",
+        "accounts": "Cuentas con saldo",
+        "link": "Ver cuentas vencidas"
+      },
+      "payables": {
+        "title": "Cuentas por pagar",
+        "expensesOpen": "Gastos pendientes",
+        "expensesOverdue": "De lo cual vencido",
+        "payrollUnpaid": "Nómina por pagar",
+        "payrollPeriods_one": "{{count}} periodo",
+        "payrollPeriods_many": "{{count}} periodos",
+        "payrollPeriods_other": "{{count}} periodos",
+        "total": "Total",
+        "link": "Ver gastos vencidos"
+      },
+      "deferred": {
+        "title": "Ingresos diferidos",
+        "packages": "Paquetes",
+        "courses": "Cursos",
+        "scheduledSessions": "Clases programadas",
+        "other": "Otros",
+        "total": "Total"
+      }
     }
   },
   "familyBilling": {

@@ -124,6 +124,7 @@
   "invalid_effective_from": "Una política nueva debe entrar en vigor ahora o después, y después de todos los cambios próximos. Elige una fecha posterior.",
   "policy_version_in_effect": "Esta política ya está vigente, así que no se puede eliminar. Recarga la página.",
   "range_invalid": "El final del periodo debe ser posterior a su inicio.",
+  "report_range_invalid": "El rango del informe no es válido.",
   "range_too_long": "Elige un periodo de 45 días como máximo.",
   "offer_not_pending": "Esta oferta ya fue respondida.",
   "offer_expired": "El plazo para responder esta oferta ya terminó.",
