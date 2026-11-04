@@ -59,6 +59,7 @@
     "familyBilling": "Family billing",
     "payroll": "Payroll",
     "expenses": "Expenses",
+    "reports": "Reports",
     "myPay": "My pay"
   },
   "notFound": {
@@ -7519,6 +7520,112 @@
       "marker": "Recurring",
       "generatedBy": "Generated automatically by the template",
       "automatic": "Automatic"
+    }
+  },
+  "reports": {
+    "title": "Financial reports",
+    "intro": "The center's revenue, tutor cost and result over a period, and today's balances.",
+    "stale": "We couldn't update these figures, so they may be out of date.",
+    "reload": "Load again",
+    "profitability": {
+      "title": "Profitability",
+      "controls": "Report options",
+      "basis": {
+        "label": "Basis",
+        "accrual": "Accrual",
+        "cash": "Cash"
+      },
+      "presets": {
+        "label": "Period",
+        "thisMonth": "This month",
+        "lastMonth": "Last month",
+        "last3Months": "Last 3 months",
+        "yearToDate": "Year to date"
+      },
+      "range": {
+        "label": "Custom range",
+        "from": "From",
+        "to": "To",
+        "caption": "{{from}} to {{to}}",
+        "errors": {
+          "required": "Choose a date",
+          "order": "The start date must be before the end date",
+          "future": "It can't be after today",
+          "tooLong": "366 days at most",
+          "server": "The center doesn't accept this range. Check this date."
+        }
+      },
+      "classTypes": {
+        "individual": "Individual",
+        "group": "Group",
+        "course": "Courses",
+        "unallocated": "Unallocated"
+      },
+      "columns": {
+        "classType": "Class type",
+        "revenue": "Revenue",
+        "cost": "Direct tutor cost",
+        "grossProfit": "Gross profit"
+      },
+      "total": "Total",
+      "accrualCaption": "Profitability by class type (accrual)",
+      "cash": {
+        "revenue": "Revenue collected",
+        "payroll": "Payroll paid",
+        "expenses": "Expenses paid",
+        "net": "Net result"
+      },
+      "expenses": {
+        "title": "Operating expenses",
+        "total": "Total expenses",
+        "byCategory": "By category",
+        "byVendor": "By vendor",
+        "noVendor": "No vendor",
+        "inactiveCategory": "Inactive",
+        "inactiveVendor": "Inactive",
+        "empty": "No expenses in this period"
+      },
+      "net": {
+        "title": "Net result",
+        "grossProfit": "Gross profit",
+        "expenses": "Operating expenses",
+        "result": "Net result"
+      },
+      "notes": {
+        "accrual": "Revenue is recognized when the class is taught (packages as they are used, courses per session). Later corrections (credits, withdrawals, expense adjustments) change the period they belong to; payroll adjustments are recognized in the period in which they are recorded.",
+        "unallocated": "Unallocated: salaries, bonuses, deductions and payroll adjustments not tied to a class, and manual charges. They are not split across class types.",
+        "cash": "Cash basis: center totals only, by payment date. A reversed payment disappears from its date; a refund counts on the refund date."
+      }
+    },
+    "balances": {
+      "title": "Balances",
+      "asOf": "as of {{date}}",
+      "receivables": {
+        "title": "Receivables",
+        "outstanding": "Outstanding",
+        "overdue": "Of which overdue",
+        "credit": "Account credit (not deducted)",
+        "accounts": "Accounts with a balance",
+        "link": "See overdue accounts"
+      },
+      "payables": {
+        "title": "Payables",
+        "expensesOpen": "Open expenses",
+        "expensesOverdue": "Of which overdue",
+        "payrollUnpaid": "Unpaid payroll",
+        "payrollPeriods_one": "{{count}} period",
+        "payrollPeriods_other": "{{count}} periods",
+        "total": "Total",
+        "link": "See overdue expenses"
+      },
+      "deferred": {
+        "title": "Deferred revenue",
+        "packages": "Packages",
+        "courses": "Courses",
+        "scheduledSessions": "Scheduled classes",
+        "other": "Other",
+        "total": "Total"
+      }
     }
   },
   "familyBilling": {
