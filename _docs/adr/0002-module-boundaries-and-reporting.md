@@ -45,6 +45,7 @@ Resolves architecture §10 **ISSUE-A1** (enforcing module boundaries) and **ISSU
 - It runs read-only SQL across module tables and never writes to other modules' tables.
 - Heavy exports run as worker jobs.
 - It is built in M8, not in M2. Accepting it now settles the reporting exception in the boundary test up front.
+- Clarification (#117, M7-14; orchestrator-recommended, pending owner review): #117 first creates the `reporting` module for the financial reports (`app/modules/reporting/`: two read routes, no table), ahead of M8. It has no saved report setups or widget preferences yet; M8 adds them.
 
 ## Consequences
 

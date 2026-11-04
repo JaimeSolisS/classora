@@ -314,6 +314,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - Add a read-only `reporting` module that owns saved report setups and dashboard widget preferences.
   - It runs read-only SQL across module tables and never writes to other modules.
   - Heavy exports run as worker jobs.
+  - #117 (M7-14) creates the module for the financial reports ahead of M8 (no saved setups yet; see `_docs/api.md` "Financial reports").
 
 #### ISSUE-A3 — How audit events are captured (M)
 - **Spec:** §9 audit trail (actor, action, timestamp, prior/new values).
@@ -508,6 +509,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - Packages are deferred revenue, recognized per consumption (`net price × units consumed / units granted`); expired unused credit is recognized on the expiry date.
   - Course fees are recognized pro rata over the cohort's not-cancelled, not-skipped sessions; tuition periods and flat group fees in full on `period_start` (or the enrollment date).
   - Unrecognized prepaid amounts are reported as deferred revenue. Cash basis uses `received_on`, net of reversals and refunds.
+  - Implemented by #117 (M7-14): `app/modules/reporting/` and ADR-0006 "Implementation notes (M7-14)".
 
 #### ISSUE-F7 — Who records payments and approves closeout (C)
 - **Spec:**

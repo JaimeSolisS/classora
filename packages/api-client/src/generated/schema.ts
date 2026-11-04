@@ -5416,6 +5416,57 @@ export interface paths {
         patch: operations["update_expense_template_api_v1_finance_expense_templates__template_id__patch"];
         trace?: never;
     };
+    "/api/v1/reports/finance/profitability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Profitability
+         * @description Revenue, direct tutor cost, gross profit, operating expenses and the
+         *     net result over the range. **Accrual** (ADR-0006 E7): computed live from
+         *     the current nets, so a credit, withdrawal or expense adjustment posted
+         *     later changes the figures of the period it belongs to; payroll adjustments
+         *     count on their target period's end date and never restate. `class_rows`
+         *     gives individual, group, course and unallocated (manual charges, salary,
+         *     pay items, free payroll adjustments). **Cash**: payments received minus
+         *     refunds paid out, payroll paid and expenses paid; a reversed payment
+         *     disappears from its date; `class_rows` is empty.
+         */
+        get: operations["get_profitability_api_v1_reports_finance_profitability_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/finance/balances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Balances
+         * @description Receivables (open charges, of which overdue, and the account credit,
+         *     shown and never netted), payables (open expenses, of which overdue, and
+         *     unpaid finalized payroll) and deferred revenue (what the accrual rules
+         *     recognize after today), as of the center's today.
+         */
+        get: operations["get_balances_api_v1_reports_finance_balances_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/overdue-accounts": {
         parameters: {
             query?: never;
@@ -7649,6 +7700,21 @@ export interface components {
             /** Days */
             days: components["schemas"]["AvailableDay"][];
         };
+        /**
+         * Balances
+         * @description ``GET /api/v1/reports/finance/balances`` (#117 E9): as of the center's
+         *     today only.
+         */
+        Balances: {
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
+            receivables: components["schemas"]["Receivables"];
+            payables: components["schemas"]["Payables"];
+            deferred_revenue: components["schemas"]["DeferredRevenue"];
+        };
         /** @enum {string} */
         BillableState: "confirmed" | "completed";
         /**
@@ -8028,6 +8094,20 @@ export interface components {
         CatalogPricingModel: "per_session" | "full_course" | "per_period";
         /** @enum {string} */
         CatalogStatus: "active" | "inactive" | "all";
+        /**
+         * CategoryAmount
+         * @description Operating expenses of one category: its **current** label (inactive
+         *     categories included).
+         */
+        CategoryAmount: {
+            category: components["schemas"]["ExpenseCategoryRef"];
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+        };
         /** @enum {string} */
         ChangeClassification: "on_time" | "late" | "no_show" | "excused";
         /** @enum {string} */
@@ -8669,6 +8749,32 @@ export interface components {
         ChargeStatus: "void" | "paid" | "overdue" | "partially_paid" | "pending";
         /** @enum {string} */
         ClassKind: "individual" | "group" | "course";
+        /**
+         * ClassRow
+         * @description Accrual profitability of one class type (ADR-0017 E18).
+         */
+        ClassRow: {
+            class_type: components["schemas"]["ReportClassType"];
+            /**
+             * Revenue
+             * Format: decimal
+             * @example 1250.00
+             */
+            revenue: string;
+            /**
+             * Direct Tutor Cost
+             * Format: decimal
+             * @example 1250.00
+             */
+            direct_tutor_cost: string;
+            /**
+             * Gross Profit
+             * Format: decimal
+             * @description revenue - direct_tutor_cost.
+             * @example 1250.00
+             */
+            gross_profit: string;
+        };
         /**
          * ClassSeriesCancel
          * @description Cancel a series' occurrences from a date on (``POST
@@ -11576,6 +11682,42 @@ export interface components {
          * @example 7.50
          */
         DecimalOut: string;
+        /**
+         * DeferredRevenue
+         * @description What the accrual rules recognize after today, from current nets.
+         */
+        DeferredRevenue: {
+            /**
+             * Total
+             * Format: decimal
+             * @example 1250.00
+             */
+            total: string;
+            /**
+             * Packages
+             * Format: decimal
+             * @example 1250.00
+             */
+            packages: string;
+            /**
+             * Courses
+             * Format: decimal
+             * @example 1250.00
+             */
+            courses: string;
+            /**
+             * Scheduled Sessions
+             * Format: decimal
+             * @example 1250.00
+             */
+            scheduled_sessions: string;
+            /**
+             * Other
+             * Format: decimal
+             * @example 1250.00
+             */
+            other: string;
+        };
         /** @enum {string} */
         DelegablePermissionCode: "finance.refund.approve" | "payroll.finalize" | "schedule.override" | "user.admin_role.assign";
         /**
@@ -15741,6 +15883,24 @@ export interface components {
             offset: number;
         };
         /**
+         * OperatingExpenses
+         * @description The range's operating expenses: accrual by ``incurred_on`` at their
+         *     current net, cash by unreversed payment ``paid_on``. Only non-zero rows,
+         *     by amount descending, then id.
+         */
+        OperatingExpenses: {
+            /**
+             * Total
+             * Format: decimal
+             * @example 1250.00
+             */
+            total: string;
+            /** By Category */
+            by_category: components["schemas"]["CategoryAmount"][];
+            /** By Vendor */
+            by_vendor: components["schemas"]["VendorAmount"][];
+        };
+        /**
          * OperatingHoursItem
          * @description The opening interval of one weekday, in the center's local time.
          */
@@ -16539,6 +16699,39 @@ export interface components {
             /** Salary Amount */
             salary_amount: string | null;
             status: components["schemas"]["CompensationStatus"];
+        };
+        /**
+         * Payables
+         * @description Open non-void expenses (of which overdue) and unpaid finalized payroll.
+         */
+        Payables: {
+            /**
+             * Expenses Open
+             * Format: decimal
+             * @example 1250.00
+             */
+            expenses_open: string;
+            /**
+             * Expenses Overdue
+             * Format: decimal
+             * @example 1250.00
+             */
+            expenses_overdue: string;
+            /**
+             * Payroll Unpaid
+             * Format: decimal
+             * @example 1250.00
+             */
+            payroll_unpaid: string;
+            /** Payroll Periods Unpaid */
+            payroll_periods_unpaid: number;
+            /**
+             * Total
+             * Format: decimal
+             * @description expenses_open + payroll_unpaid.
+             * @example 1250.00
+             */
+            total: string;
         };
         /**
          * PaymentAllocationBody
@@ -17616,7 +17809,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "billing.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "expense.configure" | "expense.manage" | "expense.view" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payment.record" | "payroll.finalize" | "payroll.manage" | "payroll.payment.record" | "payroll.prepare" | "payroll.view" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "billing.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "expense.configure" | "expense.manage" | "expense.view" | "family.manage" | "finance.refund.approve" | "finance.report.view" | "guardian.view" | "learning_plan.manage" | "payment.record" | "payroll.finalize" | "payroll.manage" | "payroll.payment.record" | "payroll.prepare" | "payroll.view" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /** @enum {string} */
         PlanAction: "activate" | "complete" | "discontinue";
         /** @enum {string} */
@@ -17900,6 +18093,62 @@ export interface components {
                     [key: string]: unknown;
                 };
             };
+        };
+        /**
+         * Profitability
+         * @description ``GET /api/v1/reports/finance/profitability`` (#117 E2).
+         */
+        Profitability: {
+            basis: components["schemas"]["ReportBasis"];
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            /**
+             * Today
+             * Format: date
+             * @description The center's today when it was computed.
+             */
+            today: string;
+            /**
+             * Class Rows
+             * @description Accrual: individual, group, course, unallocated, in this order. Cash: empty (cash profitability is center-wide only).
+             */
+            class_rows: components["schemas"]["ClassRow"][];
+            /**
+             * Revenue Total
+             * Format: decimal
+             * @description Accrual: recognized revenue. Cash: unreversed payments received minus refunds paid out.
+             * @example 1250.00
+             */
+            revenue_total: string;
+            /**
+             * Direct Tutor Cost Total
+             * Format: decimal
+             * @description Accrual: finalized payroll. Cash: unreversed payroll payments.
+             * @example 1250.00
+             */
+            direct_tutor_cost_total: string;
+            /**
+             * Gross Profit
+             * Format: decimal
+             * @example 1250.00
+             */
+            gross_profit: string;
+            operating_expenses: components["schemas"]["OperatingExpenses"];
+            /**
+             * Net Result
+             * Format: decimal
+             * @description gross_profit - operating_expenses.total.
+             * @example 1250.00
+             */
+            net_result: string;
         };
         /** ProgressAttendance */
         ProgressAttendance: {
@@ -18667,6 +18916,33 @@ export interface components {
             number: string;
         };
         /**
+         * Receivables
+         * @description Σ open charges over every account, of which overdue (effective due
+         *     date), and the account credit (shown, never netted).
+         */
+        Receivables: {
+            /**
+             * Outstanding
+             * Format: decimal
+             * @example 1250.00
+             */
+            outstanding: string;
+            /**
+             * Overdue
+             * Format: decimal
+             * @example 1250.00
+             */
+            overdue: string;
+            /**
+             * Account Credit
+             * Format: decimal
+             * @example 1250.00
+             */
+            account_credit: string;
+            /** Accounts With Outstanding */
+            accounts_with_outstanding: number;
+        };
+        /**
          * RecordedAllocationItem
          * @description An allocation written by the request.
          */
@@ -18846,6 +19122,10 @@ export interface components {
              */
             amount: string;
         };
+        /** @enum {string} */
+        ReportBasis: "accrual" | "cash";
+        /** @enum {string} */
+        ReportClassType: "individual" | "group" | "course" | "unallocated";
         /** @enum {string} */
         ReportKind: "weekly" | "monthly" | "on_demand";
         /** @enum {string} */
@@ -22027,6 +22307,20 @@ export interface components {
             email?: string | null;
             /** Phone */
             phone?: string | null;
+        };
+        /**
+         * VendorAmount
+         * @description Operating expenses of one vendor; ``vendor`` is ``null`` for the
+         *     expenses with no vendor.
+         */
+        VendorAmount: {
+            vendor: components["schemas"]["VendorRef"] | null;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
         };
         /**
          * VendorCreate
@@ -41070,6 +41364,98 @@ export interface operations {
             };
             /** @description Validation Error */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_profitability_api_v1_reports_finance_profitability_get: {
+        parameters: {
+            query: {
+                /** @description accrual or cash. */
+                basis: components["schemas"]["ReportBasis"];
+                /** @description First local date, inclusive. */
+                from: string;
+                /** @description Last local date, inclusive. */
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profitability"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_balances_api_v1_reports_finance_balances_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Balances"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -26779,6 +26779,136 @@
         }
       }
     },
+    "/api/v1/reports/finance/profitability": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Get Profitability",
+        "description": "Revenue, direct tutor cost, gross profit, operating expenses and the\nnet result over the range. **Accrual** (ADR-0006 E7): computed live from\nthe current nets, so a credit, withdrawal or expense adjustment posted\nlater changes the figures of the period it belongs to; payroll adjustments\ncount on their target period's end date and never restate. `class_rows`\ngives individual, group, course and unallocated (manual charges, salary,\npay items, free payroll adjustments). **Cash**: payments received minus\nrefunds paid out, payroll paid and expenses paid; a reversed payment\ndisappears from its date; `class_rows` is empty.",
+        "operationId": "get_profitability_api_v1_reports_finance_profitability_get",
+        "parameters": [
+          {
+            "name": "basis",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ReportBasis",
+              "description": "accrual or cash."
+            },
+            "description": "accrual or cash."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "First local date, inclusive.",
+              "title": "From"
+            },
+            "description": "First local date, inclusive."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Last local date, inclusive.",
+              "title": "To"
+            },
+            "description": "Last local date, inclusive."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profitability"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/finance/balances": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Get Balances",
+        "description": "Receivables (open charges, of which overdue, and the account credit,\nshown and never netted), payables (open expenses, of which overdue, and\nunpaid finalized payroll) and deferred revenue (what the accrual rules\nrecognize after today), as of the center's today.",
+        "operationId": "get_balances_api_v1_reports_finance_balances_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Balances"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/overdue-accounts": {
       "get": {
         "tags": [
@@ -33872,6 +34002,33 @@
         "title": "AvailableSlots",
         "description": "``GET /api/v1/available-slots``: every date of the range, in order."
       },
+      "Balances": {
+        "properties": {
+          "today": {
+            "type": "string",
+            "format": "date",
+            "title": "Today"
+          },
+          "receivables": {
+            "$ref": "#/components/schemas/Receivables"
+          },
+          "payables": {
+            "$ref": "#/components/schemas/Payables"
+          },
+          "deferred_revenue": {
+            "$ref": "#/components/schemas/DeferredRevenue"
+          }
+        },
+        "type": "object",
+        "required": [
+          "today",
+          "receivables",
+          "payables",
+          "deferred_revenue"
+        ],
+        "title": "Balances",
+        "description": "``GET /api/v1/reports/finance/balances`` (#117 E9): as of the center's\ntoday only."
+      },
       "BillableState": {
         "type": "string",
         "enum": [
@@ -34623,6 +34780,29 @@
           "inactive",
           "all"
         ]
+      },
+      "CategoryAmount": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/ExpenseCategoryRef"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "amount"
+        ],
+        "title": "CategoryAmount",
+        "description": "Operating expenses of one category: its **current** label (inactive\ncategories included)."
       },
       "ChangeClassification": {
         "type": "string",
@@ -36105,6 +36285,50 @@
           "group",
           "course"
         ]
+      },
+      "ClassRow": {
+        "properties": {
+          "class_type": {
+            "$ref": "#/components/schemas/ReportClassType"
+          },
+          "revenue": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Revenue",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "direct_tutor_cost": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Direct Tutor Cost",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "gross_profit": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Gross Profit",
+            "description": "revenue - direct_tutor_cost.",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "class_type",
+          "revenue",
+          "direct_tutor_cost",
+          "gross_profit"
+        ],
+        "title": "ClassRow",
+        "description": "Accrual profitability of one class type (ADR-0017 E18)."
       },
       "ClassSeriesCancel": {
         "properties": {
@@ -42408,6 +42632,65 @@
         "examples": [
           "7.50"
         ]
+      },
+      "DeferredRevenue": {
+        "properties": {
+          "total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Total",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "packages": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Packages",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "courses": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Courses",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "scheduled_sessions": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Scheduled Sessions",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "other": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Other",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "packages",
+          "courses",
+          "scheduled_sessions",
+          "other"
+        ],
+        "title": "DeferredRevenue",
+        "description": "What the accrual rules recognize after today, from current nets."
       },
       "DelegablePermissionCode": {
         "type": "string",
@@ -51645,6 +51928,41 @@
         ],
         "title": "OffsetPage[WithdrawalItem]"
       },
+      "OperatingExpenses": {
+        "properties": {
+          "total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Total",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "by_category": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryAmount"
+            },
+            "type": "array",
+            "title": "By Category"
+          },
+          "by_vendor": {
+            "items": {
+              "$ref": "#/components/schemas/VendorAmount"
+            },
+            "type": "array",
+            "title": "By Vendor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "by_category",
+          "by_vendor"
+        ],
+        "title": "OperatingExpenses",
+        "description": "The range's operating expenses: accrual by ``incurred_on`` at their\ncurrent net, cash by unreversed payment ``paid_on``. Only non-zero rows,\nby amount descending, then id."
+      },
       "OperatingHoursItem": {
         "properties": {
           "weekday": {
@@ -53285,6 +53603,61 @@
         ],
         "title": "PayTermsItem",
         "description": "One terms version. ``status`` is against the center's local today:\n``current`` is the version in effect, even when ``pay_frequency`` is\n``null`` (not on payroll)."
+      },
+      "Payables": {
+        "properties": {
+          "expenses_open": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Expenses Open",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "expenses_overdue": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Expenses Overdue",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "payroll_unpaid": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Payroll Unpaid",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "payroll_periods_unpaid": {
+            "type": "integer",
+            "title": "Payroll Periods Unpaid"
+          },
+          "total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Total",
+            "description": "expenses_open + payroll_unpaid.",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "expenses_open",
+          "expenses_overdue",
+          "payroll_unpaid",
+          "payroll_periods_unpaid",
+          "total"
+        ],
+        "title": "Payables",
+        "description": "Open non-void expenses (of which overdue) and unpaid finalized payroll."
       },
       "PaymentAllocationBody": {
         "properties": {
@@ -55864,6 +56237,7 @@
           "expense.view",
           "family.manage",
           "finance.refund.approve",
+          "finance.report.view",
           "guardian.view",
           "learning_plan.manage",
           "payment.record",
@@ -56409,6 +56783,94 @@
         ],
         "title": "ProblemDetails",
         "type": "object"
+      },
+      "Profitability": {
+        "properties": {
+          "basis": {
+            "$ref": "#/components/schemas/ReportBasis"
+          },
+          "from": {
+            "type": "string",
+            "format": "date",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "title": "To"
+          },
+          "today": {
+            "type": "string",
+            "format": "date",
+            "title": "Today",
+            "description": "The center's today when it was computed."
+          },
+          "class_rows": {
+            "items": {
+              "$ref": "#/components/schemas/ClassRow"
+            },
+            "type": "array",
+            "title": "Class Rows",
+            "description": "Accrual: individual, group, course, unallocated, in this order. Cash: empty (cash profitability is center-wide only)."
+          },
+          "revenue_total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Revenue Total",
+            "description": "Accrual: recognized revenue. Cash: unreversed payments received minus refunds paid out.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "direct_tutor_cost_total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Direct Tutor Cost Total",
+            "description": "Accrual: finalized payroll. Cash: unreversed payroll payments.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "gross_profit": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Gross Profit",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "operating_expenses": {
+            "$ref": "#/components/schemas/OperatingExpenses"
+          },
+          "net_result": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Net Result",
+            "description": "gross_profit - operating_expenses.total.",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "basis",
+          "from",
+          "to",
+          "today",
+          "class_rows",
+          "revenue_total",
+          "direct_tutor_cost_total",
+          "gross_profit",
+          "operating_expenses",
+          "net_result"
+        ],
+        "title": "Profitability",
+        "description": "``GET /api/v1/reports/finance/profitability`` (#117 E2)."
       },
       "ProgressAttendance": {
         "properties": {
@@ -58218,6 +58680,50 @@
         "title": "ReceiptReference",
         "description": "A payment's receipt (#98 G1): download it from ``GET\n/api/v1/families/{family_id}/billing-account/receipts/{id}/pdf``."
       },
+      "Receivables": {
+        "properties": {
+          "outstanding": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Outstanding",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "overdue": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Overdue",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "account_credit": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Account Credit",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "accounts_with_outstanding": {
+            "type": "integer",
+            "title": "Accounts With Outstanding"
+          }
+        },
+        "type": "object",
+        "required": [
+          "outstanding",
+          "overdue",
+          "account_credit",
+          "accounts_with_outstanding"
+        ],
+        "title": "Receivables",
+        "description": "Σ open charges over every account, of which overdue (effective due\ndate), and the account credit (shown, never netted)."
+      },
       "RecordedAllocationItem": {
         "properties": {
           "id": {
@@ -58548,6 +59054,22 @@
         ],
         "title": "ReleasedAllocationItem",
         "description": "An allocation a reversal released (its charge reopens)."
+      },
+      "ReportBasis": {
+        "type": "string",
+        "enum": [
+          "accrual",
+          "cash"
+        ]
+      },
+      "ReportClassType": {
+        "type": "string",
+        "enum": [
+          "individual",
+          "group",
+          "course",
+          "unallocated"
+        ]
       },
       "ReportKind": {
         "type": "string",
@@ -65407,6 +65929,36 @@
         ],
         "title": "UserUpdate",
         "description": "A profile change (``PATCH /api/v1/users/{user_id}``). Fields that are not\nsent stay unchanged; ``\"\"`` or ``null`` clears ``email`` or ``phone``. The\nusername never changes (ADR-0007 D7)."
+      },
+      "VendorAmount": {
+        "properties": {
+          "vendor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VendorRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "vendor",
+          "amount"
+        ],
+        "title": "VendorAmount",
+        "description": "Operating expenses of one vendor; ``vendor`` is ``null`` for the\nexpenses with no vendor."
       },
       "VendorCreate": {
         "properties": {

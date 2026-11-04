@@ -329,6 +329,7 @@ Codes in use today:
 | `expense_template_starts_on_invalid` | 422 | A template's `starts_on` is more than 31 days before or 366 days after the center's today; the field error is on `["body","starts_on"]`. |
 | `expense_template_ends_on_invalid` | 422 | A template's `ends_on` is before `starts_on` or before a period it already generated; the field error is on `["body","ends_on"]`. |
 | `expense_category_in_use` / `vendor_in_use` | 409 | Deactivating an expense category or vendor that an active, not ended recurring template uses. `details.template_count` only (see Expense categories and vendors). |
+| `report_range_invalid` | 422 | A financial report range with `from` after `to`, `to` after the center's today (field error at `["query","to"]`), or `to − from` of 366 days or more (at `["query","from"]`) (see Financial reports). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
 | `permission_not_delegable` | 422 | The identity service was asked to delegate a permission outside the four delegable ones (the route's body enum answers `validation_error` first). |
@@ -8125,6 +8126,112 @@ orchestrator-recommended, pending owner review). Routes in
   - **Run by hand:** `run_generate_recurring_expenses(settings)` in
     `app/workflows/recurring_expenses.py` builds and disposes its own direct
     engine (the command is in the module docstring).
+
+### Financial reports
+
+#117 (M7-14; spec §8; ADR-0006 E7; ADR-0017 E12, E18; #117 E1–E10,
+orchestrator-recommended, pending owner review). The read-only `reporting`
+module (`app/modules/reporting/`, ADR-0002 D3). Both routes need
+`finance.report.view` (Owner and Finance Staff, not delegable): an
+Administrator, even with `payroll.finalize` delegated, an Academic Coordinator,
+a tutor, a student or a guardian gets `403 permission_denied`. No lock, no
+write, no audit event, no `Idempotency-Key`; a fixed number of statements
+whatever the number of rows. Money values are strings. No response carries a
+description, receipt reference, note, reason, payment reference, template
+name, tutor, student or family.
+
+| Route | Guard | Notes |
+|---|---|---|
+| `GET /api/v1/reports/finance/profitability?basis=&from=&to=` | `require("finance.report.view")` | `basis` `accrual` or `cash`, `from` and `to` ISO dates, all required (`422 validation_error`). Center-local dates, both inclusive: `from ≤ to ≤` the center's today and `to − from < 366`, else `422 report_range_invalid` (`from > to` and `to > today` at `["query","to"]`, the span at `["query","from"]`). Range totals; no monthly series. |
+| `GET /api/v1/reports/finance/balances` | `require("finance.report.view")` | As of the center's today only (no as-of date). |
+
+**Profitability** `{basis, from, to, today, class_rows, revenue_total,
+direct_tutor_cost_total, gross_profit, operating_expenses: {total,
+by_category: [{category: {id, name, system_key, is_active}, amount}],
+by_vendor: [{vendor: {id, name, is_active} | null, amount}]}, net_result}`.
+`gross_profit = revenue_total − direct_tutor_cost_total`, `net_result =
+gross_profit − operating_expenses.total`. Accrual `class_rows` holds four rows
+in this order, zeros included: `individual`, `group`, `course`,
+`unallocated`, each `{class_type, revenue, direct_tutor_cost, gross_profit}`.
+Cash `class_rows` is `[]` (cash profitability is center-wide only). Expense
+lists hold non-zero rows only, by amount descending then id, with the
+**current** category and vendor (renamed or inactive ones included; the web
+shows the keyed label while `system_key` is set); `vendor: null` is "no
+vendor". Never grouped by template.
+
+**Accrual revenue.** Every charge contributes its **current net** (amount + Σ
+adjustments) once. All dates are center-local; a session's date is its current
+`starts_at` in the center's zone, never a UTC date.
+
+| Charge kind | Date | Class |
+|---|---|---|
+| `session` | the session's current local date (a reschedule moves it) | the session's `kind` |
+| `package_purchase` | per consumption (below) | `individual` |
+| `cohort_enrollment` | per counted occurrence (below) | `course` |
+| `group_enrollment` | `service_date` | `group` |
+| `tuition_period` | `service_date` (`period_start`) | the plan's price `class_type` |
+| `manual` | `service_date` | `unallocated` |
+
+- **Packages:** each `consume` row on the consumed session's current local date
+  at `amount.prorate(C_k, G) − amount.prorate(C_(k−1), G)` (`C` cumulative
+  units, `G` granted; rows by session start, then id), from the purchase
+  `amount`. The rest (the net minus what was recognized): on `expires_on` when
+  the package has an `expire` row (breakage); on the local posting date of the
+  cancellation or withdrawal (a `reversal` or `refund` units row) when it was
+  cancelled or withdrawn, which is the remainder plus the credit (`0.00` or
+  ±0.01 with the default credit, what was kept or given back with an
+  override); otherwise deferred.
+- **Course fees:** equal `split` shares over the cohort's counted occurrences
+  (materialized and projected, not `cancelled`/`skipped_closure`) that start
+  after the enrollment's `enrolled_at` and, when withdrawn, at or before
+  `withdrawn_at`, each on its local date. An empty window recognizes the whole
+  net on `service_date`.
+- **Restatement:** the report is computed live, so a credit, a withdrawal, a
+  repricing or an expense adjustment posted later **changes the figure of the
+  period it belongs to**. Payroll does not restate: a payroll adjustment line
+  counts on its target period's `ends_on`.
+
+**Accrual direct tutor cost:** lines of `finalized` periods only (open and
+prepared periods never count; payslips are never read). Session-sourced lines
+(`session`, `late_cancellation`, `no_show`, `makeup`) on `service_date` by
+`class_kind`; `salary` and `pay_item` lines in `unallocated` on the period's
+`ends_on`; `adjustment` lines on their period's `ends_on`, classed:
+`late_approval`/`hours_correction` by their `class_kind` snapshot, a `manual` on
+a line by that line's kind when session-sourced (else unallocated), a `manual`
+on unresolved work by the session's kind, a free `manual` and both
+`carry_forward` rows unallocated (a pair nets to `0.00`, though its halves may
+fall in different ranges).
+
+**Accrual operating expenses:** expenses by `incurred_on` at their current net
+(`expense_figures`); a void contributes `0.00`; generated expenses are ordinary
+expenses.
+
+**Cash basis:** revenue = payments without a reversal by `received_on`, minus
+refunds by `refunded_on` (a refund is money out on its own day and never
+rewrites the payment's month); payroll = `payroll_payments` without a reversal
+by `paid_on`; expenses = `expense_payments` without a reversal by `paid_on`. A
+reversed payment disappears from its date; nothing is posted on the reversal
+date.
+
+**Balances** `{today, receivables: {outstanding, overdue, account_credit,
+accounts_with_outstanding}, payables: {expenses_open, expenses_overdue,
+payroll_unpaid, payroll_periods_unpaid, total}, deferred_revenue: {total,
+packages, courses, scheduled_sessions, other}}`:
+
+- **Receivables:** Σ open over every account's charges, of which overdue (open
+  above zero and the **effective** due date before today), and the account
+  credit (shown, never netted); equal to Σ of the account balances.
+- **Payables:** Σ `open` of non-void expenses, of which `overdue`, plus Σ
+  (`total_amount` − paid) over finalized periods paid less than their total.
+  `total = expenses_open + payroll_unpaid`. Templates and open payroll are
+  never projected.
+- **Deferred revenue:** what the accrual rules recognize after today, from
+  current nets: packages (the unrecognized remainder of open packages and
+  consumptions dated after today), courses (shares after today), scheduled
+  sessions (`session` charges whose session is after today) and other. Σ
+  accrual revenue through today + deferred = Σ charge net.
+- **Billing or payroll off** gives zeros, not errors. A change of the center's
+  time zone re-dates everything by the current zone.
 
 ### Response headers
 

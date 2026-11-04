@@ -165,7 +165,7 @@ def test_the_demo_owner_can_log_in(migrated_url, env_for):
     body = response.json()
     assert body["username"] == DEMO_OWNER_USERNAME
     assert body["roles"] == ["owner"]
-    assert len(body["permissions"]) == 45
+    assert len(body["permissions"]) == 46
     assert body["preferences"] == {"language": "es", "theme": "system"}
 
 
