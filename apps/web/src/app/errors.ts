@@ -515,6 +515,15 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['expense_category_inactive', 'expense_category_inactive'],
   ['vendor_unknown', 'vendor_unknown'],
   ['vendor_inactive', 'vendor_inactive'],
+  // Operating expenses (#115; the pages are M7-12b E2). paid_on_in_future,
+  // amount_zero and payment_method_unavailable are mapped above.
+  ['incurred_on_in_future', 'incurred_on_in_future'],
+  ['due_on_before_incurred_on', 'due_on_before_incurred_on'],
+  ['expense_void', 'expense_void'],
+  ['expense_payment_duplicate', 'expense_payment_duplicate'],
+  ['expense_payment_exceeds_open', 'expense_payment_exceeds_open'],
+  ['expense_payment_already_reversed', 'expense_payment_already_reversed'],
+  ['expense_adjustment_exceeds_open', 'expense_adjustment_exceeds_open'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

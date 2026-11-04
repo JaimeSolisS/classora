@@ -437,6 +437,14 @@ const API_CODES = [
   'expense_category_inactive',
   'vendor_unknown',
   'vendor_inactive',
+  // Operating expenses (#115, M7-12b E2).
+  'incurred_on_in_future',
+  'due_on_before_incurred_on',
+  'expense_void',
+  'expense_payment_duplicate',
+  'expense_payment_exceeds_open',
+  'expense_payment_already_reversed',
+  'expense_adjustment_exceeds_open',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

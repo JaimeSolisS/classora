@@ -52,8 +52,26 @@ type Common = {
   };
   // M7-11b F3: expense categories and vendors.
   finance: {
-    tabs: Record<'label' | 'categories' | 'vendors', string>;
+    tabs: Record<'label' | 'records' | 'categories' | 'vendors', string>;
     save: string;
+    // M7-12b F3: the expense records.
+    expenses: {
+      title: string;
+      add: string;
+      statuses: Record<'unpaid' | 'partially_paid' | 'paid', string>;
+      detail: {
+        actions: { record: string };
+        saved: { payment: string };
+        fields: Record<'paid' | 'open', string>;
+      };
+      dialog: {
+        create: Record<
+          'title' | 'category' | 'description' | 'amount' | 'submit',
+          string
+        >;
+        payment: Record<'title' | 'amount' | 'method' | 'submit', string>;
+      };
+    };
     categories: {
       title: string;
       add: string;

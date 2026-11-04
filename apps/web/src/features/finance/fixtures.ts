@@ -1,7 +1,13 @@
 import type { Session } from '@/features/auth/session';
+import type { LocalDate } from '@/lib/time';
 import {
+  EXPENSES_PAGE_SIZE,
   VENDORS_PAGE_SIZE,
   type ExpenseCategory,
+  type ExpenseDetail,
+  type ExpenseItem,
+  type ExpensePage,
+  type ExpensePayment,
   type Vendor,
   type VendorPage,
 } from './api';
@@ -129,5 +135,201 @@ export const EXPENSES_SESSION: Session = {
     center_time_zone: 'America/Mexico_City',
     roles: ['administrator'],
     permissions: ['user.view', 'expense.configure'],
+  },
+};
+
+// ------------------------------------------------- expenses (M7-12b F1, F2)
+
+/** The center's today in these fixtures. */
+export const EXPENSE_TODAY = '2026-10-20' as LocalDate;
+
+const ref = (category: ExpenseCategory) => ({
+  id: category.id,
+  name: category.name,
+  system_key: category.system_key,
+  is_active: category.is_active,
+});
+const vendorRef = (row: Vendor) => ({
+  id: row.id,
+  name: row.name,
+  is_active: row.is_active,
+});
+const PERSON = {
+  id: '00000000-0000-4000-8000-000000000001',
+  display_name: 'Demo Owner',
+};
+const FINANCE_PERSON = {
+  id: '00000000-0000-4000-8000-000000000003',
+  display_name: 'Demo Finance',
+};
+
+const expenseId = (n: number) =>
+  `84000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const paymentId = (n: number) =>
+  `84100000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
+export function expenseDetail(
+  n: number,
+  fields: Partial<ExpenseDetail> = {},
+): ExpenseDetail {
+  return {
+    id: expenseId(n),
+    category: ref(CAT_RENT),
+    vendor: vendorRef(VENDOR_PAPER),
+    description: `Gasto de prueba ${n}`,
+    amount: '1000.00',
+    adjusted_amount: '1000.00',
+    paid_amount: '0.00',
+    open_amount: '1000.00',
+    status: 'unpaid',
+    incurred_on: '2026-10-10',
+    due_on: '2026-10-30',
+    receipt_reference: null,
+    created_at: '2026-10-10T16:00:00Z',
+    note: null,
+    created_by: PERSON,
+    payments: [],
+    adjustments: [],
+    ...fields,
+  };
+}
+
+export function payment(
+  n: number,
+  fields: Partial<ExpensePayment> = {},
+): ExpensePayment {
+  return {
+    id: paymentId(n),
+    paid_on: '2026-10-15',
+    amount: '400.00',
+    method_code: 'transfer',
+    reference: `SPEI ${n}`,
+    note: null,
+    recorded_by: FINANCE_PERSON,
+    created_at: '2026-10-15T17:00:00Z',
+    reversal: null,
+    ...fields,
+  };
+}
+
+export const PAYMENT_VALID = payment(1);
+export const PAYMENT_REVERSED = payment(2, {
+  amount: '300.00',
+  reversal: {
+    reason: 'Monto equivocado',
+    reversed_by: PERSON,
+    created_at: '2026-10-16T15:00:00Z',
+  },
+});
+
+export const EXPENSE_UNPAID = expenseDetail(1, {
+  receipt_reference: 'F-1001',
+  note: 'Renta de octubre\nPagar por transferencia',
+});
+export const EXPENSE_PARTIAL = expenseDetail(2, {
+  category: ref(CAT_UTILITIES),
+  vendor: null,
+  description: 'Luz de octubre',
+  paid_amount: '400.00',
+  open_amount: '600.00',
+  status: 'partially_paid',
+  payments: [PAYMENT_VALID, PAYMENT_REVERSED],
+});
+export const EXPENSE_OVERDUE = expenseDetail(3, {
+  category: ref(CAT_RETIRED),
+  vendor: vendorRef(VENDOR_RETIRED),
+  description: 'Café para la sala',
+  amount: '250.00',
+  adjusted_amount: '250.00',
+  open_amount: '250.00',
+  incurred_on: '2026-09-01',
+  due_on: '2026-09-15',
+  status: 'overdue',
+});
+export const EXPENSE_PAID = expenseDetail(4, {
+  description: 'Papelería',
+  amount: '400.00',
+  adjusted_amount: '400.00',
+  paid_amount: '400.00',
+  open_amount: '0.00',
+  status: 'paid',
+  payments: [PAYMENT_VALID],
+});
+export const EXPENSE_VOID = expenseDetail(5, {
+  description: 'Gasto capturado por error',
+  adjusted_amount: '0.00',
+  open_amount: '0.00',
+  status: 'void',
+  adjustments: [
+    {
+      id: '84200000-0000-4000-8000-000000000001',
+      amount: '-1000.00',
+      reason: 'Categoría equivocada',
+      created_by: PERSON,
+      created_at: '2026-10-11T15:00:00Z',
+    },
+  ],
+});
+
+/** A list item from a detail (the item has no note, payments or adjustments). */
+export function expenseItem(detail: ExpenseDetail): ExpenseItem {
+  return {
+    id: detail.id,
+    category: detail.category,
+    vendor: detail.vendor,
+    description: detail.description,
+    amount: detail.amount,
+    adjusted_amount: detail.adjusted_amount,
+    paid_amount: detail.paid_amount,
+    open_amount: detail.open_amount,
+    status: detail.status,
+    incurred_on: detail.incurred_on,
+    due_on: detail.due_on,
+    receipt_reference: detail.receipt_reference,
+    created_at: detail.created_at,
+  };
+}
+
+export const EXPENSE_ITEMS: ExpenseItem[] = [
+  EXPENSE_UNPAID,
+  EXPENSE_PARTIAL,
+  EXPENSE_OVERDUE,
+  EXPENSE_PAID,
+  EXPENSE_VOID,
+].map(expenseItem);
+
+export function expensePage(
+  items: ExpenseItem[] = EXPENSE_ITEMS,
+  {
+    total = items.length,
+    offset = 0,
+  }: { total?: number; offset?: number } = {},
+): ExpensePage {
+  return { items, total, limit: EXPENSES_PAGE_SIZE, offset };
+}
+
+export const EXPENSE_METHODS = [
+  { code: 'cash', is_active: true },
+  { code: 'other', is_active: false },
+  { code: 'transfer', is_active: true },
+];
+
+/** Storybook: the signed-in Owner (every expense action). */
+export const EXPENSES_OWNER_SESSION: Session = {
+  status: 'signedIn',
+  user: {
+    id: '00000000-0000-4000-8000-000000000001',
+    username: 'demo.owner',
+    privacy_notice_required: false,
+    preferences: { language: null, theme: null },
+    center_time_zone: 'America/Mexico_City',
+    display_name: 'Demo Owner',
+    roles: ['owner'],
+    permissions: [
+      'expense.configure',
+      'expense.view',
+      'expense.manage',
+      'finance.refund.approve',
+    ],
   },
 };

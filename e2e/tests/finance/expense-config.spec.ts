@@ -30,9 +30,9 @@ test('the Owner adds, renames, deactivates and reactivates a category', async ({
   const main = page.getByRole('main');
   const status = main.getByRole('status');
 
-  // /expenses opens the first tab.
-  await page.goto('/expenses');
-  await expect(page).toHaveURL('/expenses/categories');
+  // The Owner's /expenses opens the expense list (M7-12b); categories are
+  // the second tab.
+  await page.goto('/expenses/categories');
   await expect(
     main.getByRole('heading', { level: 1, name: labels.title }),
   ).toBeVisible();
