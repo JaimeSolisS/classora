@@ -7812,6 +7812,66 @@ orchestrator-recommended, pending owner review). The routes are in
   the one containing the center's today. While `payroll_starts_on` is `null` it
   opens nothing. The list and the review are under Payroll workflow.
 
+### Expense categories and vendors
+
+Implemented by M7-11 (#114; spec §8; ADR-0017 E12, E15 and its #114 notes,
+orchestrator-recommended, pending owner review). Routes in
+`app/modules/finance/router.py`, the rules in `app/modules/finance/categories.py`
+and `vendors.py`, tables `expense_categories` and `vendors` (`_docs/data-model.md`
+§12.1, §12.2). The pages are M7-11b.
+
+| Route | Access | Notes |
+|---|---|---|
+| `GET /api/v1/finance/expense-categories` | `require("expense.configure")` | Every category (`ExpenseCategoryItem`: `id`, `name`, `system_key`, `is_active`, `version`), active first, then `lower(name)`, then `id`. Not paginated. A fresh database lists the five seeded rows. |
+| `POST /api/v1/finance/expense-categories` | `require("expense.configure")` | Body `{name}`; any other field, `system_key` included, is `422`. `201` with the item (`system_key: null`). `409 expense_category_exists` (label rule below). |
+| `PATCH /api/v1/finance/expense-categories/{category_id}` | `require("expense.configure")` | Body `{version, name?, is_active?}`, at least one of the two (`422 no_changes`). `404`, `409 version_conflict`, `409 expense_category_exists`. `200` with the item. |
+| `GET /api/v1/finance/vendors` | `require("expense.configure")` | Offset page of `VendorItem` (`id`, `name`, `contact`, `is_active`, `version`), active first, then `lower(name)`, then `id`. `q` (at most 100, trimmed; blank lists all): part of the name, ignoring case, with `%`, `_` and `\` matched literally. `active=true\|false` filters; left out, all. One statement whatever the page size. |
+| `POST /api/v1/finance/vendors` | `require("expense.configure")` | Body `{name, contact?}`. `201` with the item. `409 vendor_exists` on a name taken, ignoring case. |
+| `PATCH /api/v1/finance/vendors/{vendor_id}` | `require("expense.configure")` | Body `{version, name?, contact?, is_active?}`, at least one (`422 no_changes`). `contact: null` clears it; left out, it stays. `404`, `409 version_conflict`, `409 vendor_exists`. |
+
+- **Access (#114 E6):** Owners, Administrators (no delegation involved) and
+  Finance Staff, the reads included. Academic Coordinators, Tutors, Students and
+  Guardians get `403 permission_denied` on all six. No reauthentication, no
+  `Idempotency-Key` (a name is the natural key, so a double click is a `409`) and
+  no rate limit.
+- **Check order:** `401` → `403 csrf_failed` (writes) → `403 permission_denied`
+  → `422` (the body or the query) → `404` → `409`. A `PATCH` takes the row `FOR
+  UPDATE`, then checks the version. An unchanged `PATCH` writes nothing and keeps
+  the version.
+- **Text:** names are trimmed, 1–100 (category) or 1–200 (vendor); `contact` is
+  trimmed, 1–500, and may hold tabs and line breaks. Empty is `text_empty`, too
+  long `text_too_long`, and a control character (a line break in a name
+  included), a NUL or a lone surrogate `text_invalid`, as `422
+  validation_error` with `errors[].code`.
+- **Seeded categories and labels (#114 E3):** migration `0083` seeds Renta
+  (`rent`), Servicios (`utilities`), Insumos (`supplies`), Equipo (`equipment`)
+  and Mantenimiento (`maintenance`). While `system_key` is set, a client shows its
+  own label for the key in the viewer's language instead of `name` (the server's
+  documents use `finance.json`, `categories.system.<key>`, through
+  `finance.service.category_label`). A real change of `name`, a case-only one
+  included, sets `system_key` to `null` for good; sending the current name keeps
+  it. No route sets a key.
+- **`expense_category_exists`:** the name equals, ignoring case and surrounding
+  spaces, another category's stored name, active or not, **or** the Spanish or
+  English label of another category that still holds a key. So "renta", "RENT "
+  and "Maintenance" are refused while the seeds hold their keys, "Renta" → "Rent"
+  on the seeded row passes (its own labels don't count), and after "Renta" →
+  "Alquiler" a new "Renta" or "Rent" passes. No accent folding.
+- **Deactivation:** `is_active: false` always passes in #114; #116 adds the
+  refusal for a category or vendor an active template uses, on these same
+  routes. An inactive row stays listed (after the active ones) and can be renamed
+  and reactivated, but a new expense or template can't use it. There is no
+  `DELETE` (#114 E5).
+- **Seam for #115 and #116:** `finance.service.usable_category(session, id)` and
+  `usable_vendor(session, id)` read the row `FOR SHARE` and raise `422
+  expense_category_unknown` / `vendor_unknown` or `409 expense_category_inactive`
+  / `vendor_inactive`. The routes that create expenses and templates surface
+  those codes.
+- **Audit:** both tables have the automatic create and update events with the
+  staff actor, unmasked: there is no amount, and the vendor `contact` is in clear.
+  A rename's event holds the old and the new name (and the cleared key). The
+  seeded rows have no create event. Responses carry no actor names.
+
 ### Response headers
 
 Every API response, errors included, carries exactly one

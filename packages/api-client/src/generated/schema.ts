@@ -5136,6 +5136,101 @@ export interface paths {
         patch: operations["change_payroll_settings_api_v1_payroll_settings_patch"];
         trace?: never;
     };
+    "/api/v1/finance/expense-categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Expense Categories
+         * @description Every expense category, active first, then by name ignoring case. Not
+         *     paginated. While `system_key` is set, show the label of the key in the
+         *     viewer's language instead of `name`.
+         */
+        get: operations["list_expense_categories_api_v1_finance_expense_categories_get"];
+        put?: never;
+        /**
+         * Create Expense Category
+         * @description Add an expense category.
+         */
+        post: operations["create_expense_category_api_v1_finance_expense_categories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/expense-categories/{category_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Expense Category
+         * @description Rename, deactivate or reactivate a category. Its id never changes, so
+         *     past expenses keep their grouping and show the new name. A new name
+         *     clears `system_key` for good. An inactive category stays listed but can't
+         *     be used for a new expense.
+         */
+        patch: operations["update_expense_category_api_v1_finance_expense_categories__category_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/finance/vendors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Vendors
+         * @description A page of vendors, active first, then by name ignoring case.
+         */
+        get: operations["list_vendors_api_v1_finance_vendors_get"];
+        put?: never;
+        /**
+         * Create Vendor
+         * @description Add a vendor.
+         */
+        post: operations["create_vendor_api_v1_finance_vendors_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/vendors/{vendor_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Vendor
+         * @description Rename a vendor, change or clear (`null`) its contact, or deactivate or
+         *     reactivate it. An inactive vendor stays listed but can't be used for a
+         *     new expense.
+         */
+        patch: operations["update_vendor_api_v1_finance_vendors__vendor_id__patch"];
+        trace?: never;
+    };
     "/api/v1/billing/overdue-accounts": {
         parameters: {
             query?: never;
@@ -12396,6 +12491,53 @@ export interface components {
         };
         /** @enum {string} */
         ExceptionKind: "unavailable" | "available";
+        /**
+         * ExpenseCategoryCreate
+         * @description ``POST /api/v1/finance/expense-categories`` (#114 B2).
+         */
+        ExpenseCategoryCreate: {
+            /**
+             * Name
+             * @description 1-100 characters, trimmed. Unique ignoring case, also against a seeded category's Spanish and English label.
+             */
+            name: string;
+        };
+        /**
+         * ExpenseCategoryItem
+         * @description An expense category (#114 B1). While ``system_key`` is set, show the
+         *     catalog label of the key in the viewer's language instead of ``name``.
+         */
+        ExpenseCategoryItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** @description A seeded category's key, until its first rename (never set again). While set, the client shows its own label for the key. */
+            system_key: components["schemas"]["SystemKey"] | null;
+            /** Is Active */
+            is_active: boolean;
+            /** Version */
+            version: number;
+        };
+        /**
+         * ExpenseCategoryUpdate
+         * @description ``PATCH /api/v1/finance/expense-categories/{id}`` (#114 B3). A missing
+         *     field stays as it is; at least one of ``name`` and ``is_active``.
+         */
+        ExpenseCategoryUpdate: {
+            /** Version */
+            version: number;
+            /**
+             * Name
+             * @description A new name clears the seeded key for good (#114 E3).
+             */
+            name?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
         /** FactsAssignments */
         FactsAssignments: {
             /** Count */
@@ -14827,6 +14969,17 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** OffsetPage[VendorItem] */
+        OffsetPage_VendorItem_: {
+            /** Items */
+            items: components["schemas"]["VendorItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /** OffsetPage[WithdrawalItem] */
         OffsetPage_WithdrawalItem_: {
             /** Items */
@@ -16714,7 +16867,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "billing.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payment.record" | "payroll.finalize" | "payroll.manage" | "payroll.payment.record" | "payroll.prepare" | "payroll.view" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "billing.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "expense.configure" | "family.manage" | "finance.refund.approve" | "guardian.view" | "learning_plan.manage" | "payment.record" | "payroll.finalize" | "payroll.manage" | "payroll.payment.record" | "payroll.prepare" | "payroll.view" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /** @enum {string} */
         PlanAction: "activate" | "complete" | "discontinue";
         /** @enum {string} */
@@ -20207,6 +20360,8 @@ export interface components {
             warnings: components["schemas"]["SchedulingWarning"][];
         };
         SummaryText: string | null;
+        /** @enum {string} */
+        SystemKey: "rent" | "utilities" | "supplies" | "equipment" | "maintenance";
         /**
          * TeachingLimitsDetail
          * @description A tutor's teaching limits (#197), in minutes; null is no limit (no
@@ -21121,6 +21276,60 @@ export interface components {
             email?: string | null;
             /** Phone */
             phone?: string | null;
+        };
+        /**
+         * VendorCreate
+         * @description ``POST /api/v1/finance/vendors`` (#114 C2).
+         */
+        VendorCreate: {
+            /**
+             * Name
+             * @description 1-200 characters, trimmed; unique ignoring case.
+             */
+            name: string;
+            /**
+             * Contact
+             * @description Free text, 1-500 characters, trimmed.
+             */
+            contact?: string | null;
+        };
+        /**
+         * VendorItem
+         * @description A vendor (#114 C1).
+         */
+        VendorItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Contact */
+            contact: string | null;
+            /** Is Active */
+            is_active: boolean;
+            /** Version */
+            version: number;
+        };
+        /**
+         * VendorUpdate
+         * @description ``PATCH /api/v1/finance/vendors/{id}`` (#114 C3). A missing field stays
+         *     as it is; ``contact: null`` clears the contact. At least one of ``name``,
+         *     ``contact`` and ``is_active``.
+         */
+        VendorUpdate: {
+            /** Version */
+            version: number;
+            /** Name */
+            name?: string | null;
+            /**
+             * Contact
+             * @description `null` clears it; leaving it out keeps it.
+             */
+            contact?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
         };
         /** @enum {string} */
         WarningCode: "future_covered_sessions" | "fee_posted_now" | "tuition_posted_now" | "open_ended_fee";
@@ -39050,6 +39259,360 @@ export interface operations {
                 };
             };
             /** @description The settings changed since they were loaded (version_conflict); or periods exist, so the start date can't change (payroll_start_locked); or biweekly periods exist, so the anchor can't change (biweekly_anchor_locked). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_expense_categories_api_v1_finance_expense_categories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpenseCategoryItem"][];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_expense_category_api_v1_finance_expense_categories_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExpenseCategoryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpenseCategoryItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Another category has this name, or a seeded category still shows it as its Spanish or English label, ignoring case (expense_category_exists). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_expense_category_api_v1_finance_expense_categories__category_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExpenseCategoryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpenseCategoryItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such category (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The version is stale (version_conflict), or the name is taken (expense_category_exists; the category's own name and labels don't count). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_vendors_api_v1_finance_vendors_get: {
+        parameters: {
+            query?: {
+                /** @description Part of the name, ignoring case; trimmed. `%`, `_` and `\` match themselves. */
+                q?: string | null;
+                /** @description Only active (`true`) or inactive (`false`) vendors. */
+                active?: boolean | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_VendorItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_vendor_api_v1_finance_vendors_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VendorCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VendorItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Another vendor has this name, ignoring case (vendor_exists). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_vendor_api_v1_finance_vendors__vendor_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vendor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VendorUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VendorItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such vendor (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The version is stale (version_conflict), or another vendor has this name (vendor_exists). */
             409: {
                 headers: {
                     [name: string]: unknown;

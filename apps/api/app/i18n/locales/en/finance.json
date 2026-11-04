@@ -1,0 +1,11 @@
+{
+  "categories": {
+    "system": {
+      "rent": "Rent",
+      "utilities": "Utilities",
+      "supplies": "Supplies",
+      "equipment": "Equipment",
+      "maintenance": "Maintenance"
+    }
+  }
+}

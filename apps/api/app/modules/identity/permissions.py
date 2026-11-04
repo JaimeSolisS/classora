@@ -166,6 +166,10 @@ BILLING_VIEW = "billing.view"
 # account credit later (Owner, Administrator, Finance Staff; not delegable; no
 # reauthentication: a mistake is undone by a #100 reversal, which needs it).
 PAYMENT_RECORD = "payment.record"
+# Expense categories and vendors (#114; ADR-0017 E12): who reads and manages
+# them (Owner, Administrator, Finance Staff; not delegable). The reads need it
+# too (#114 E6).
+EXPENSE_CONFIGURE = "expense.configure"
 
 
 @dataclass(frozen=True)
@@ -217,6 +221,7 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(PAYROLL_MANAGE),
     PermissionDef(PAYROLL_PREPARE),
     PermissionDef(PAYROLL_PAYMENT_RECORD),
+    PermissionDef(EXPENSE_CONFIGURE),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
 )
@@ -266,6 +271,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 BILLING_MANAGE,
                 BILLING_VIEW,
                 PAYMENT_RECORD,
+                EXPENSE_CONFIGURE,
             }
         ),
         ACADEMIC_COORDINATOR: frozenset(
@@ -300,6 +306,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 PAYROLL_MANAGE,
                 PAYROLL_PREPARE,
                 PAYROLL_PAYMENT_RECORD,
+                EXPENSE_CONFIGURE,
             }
         ),
         # Record policies limit these to assigned students, self and linked
