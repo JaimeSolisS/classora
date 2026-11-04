@@ -66,6 +66,12 @@ lock-free reads, the status moves, and the pure :func:`line_drift`, for
 :func:`paid_state`, for ``app.workflows.payroll_payments``. The period list
 carries the paid state (:func:`list_periods`).
 
+**Payslips and the tutor's earnings** (#113; :mod:`~app.modules.payroll.payslips`,
+:mod:`~app.modules.payroll.earnings`): :func:`issue_payslip` for ``finalize``,
+the projection :func:`earnings_lines`, the reads :func:`list_finalized_periods`,
+:func:`finalized_period`, :func:`has_periods` and :func:`get_payslip`, and the
+rendering :func:`render_payslip`.
+
 **Record policies** (:mod:`~app.modules.payroll.permissions`):
 :func:`can_view_compensation`, :func:`can_write_compensation`, and for a period
 :func:`can_list_periods`, :func:`can_read_period`, :func:`can_return_period` and
@@ -126,6 +132,12 @@ from app.modules.payroll.calculation import (
     line_drift,
     owed,
     planned_sessions,
+)
+from app.modules.payroll.earnings import (
+    EarningsPeriodRow,
+    finalized_period,
+    has_periods,
+    list_finalized_periods,
 )
 from app.modules.payroll.errors import (
     PaidOnBeforePeriodError,
@@ -204,6 +216,20 @@ from app.modules.payroll.payments import (
     record_payment,
     reverse_payment,
 )
+from app.modules.payroll.payslips import (
+    PAYSLIP_SERIES,
+    IssuedPayslip,
+    PayslipCenter,
+    PayslipInputs,
+    PayslipLine,
+    PayslipSummary,
+    StoredPayslip,
+    earnings_lines,
+    get_payslip,
+    issue_payslip,
+    render_payslip,
+    summarize,
+)
 from app.modules.payroll.period_review import (
     EarlierPeriod,
     earliest_unfinalized_before,
@@ -261,6 +287,7 @@ __all__ = [
     "CANCELLATION_KEY",
     "HOURS_CORRECTION",
     "LATE_APPROVAL",
+    "PAYSLIP_SERIES",
     "PER_COURSE",
     "REBUILT_KINDS",
     "RECURRING",
@@ -271,9 +298,11 @@ __all__ = [
     "CohortWalk",
     "CourseWalkError",
     "EarlierPeriod",
+    "EarningsPeriodRow",
     "FinalizedCourseLine",
     "FinalizedSpan",
     "FirstSessionDates",
+    "IssuedPayslip",
     "LineDraft",
     "LineDrift",
     "ManualDraft",
@@ -307,9 +336,14 @@ __all__ = [
     "PayrollWorkBeforeFirstPeriodError",
     "PayrollWorkNotUnresolvedError",
     "PayrollWorkSettledError",
+    "PayslipCenter",
+    "PayslipInputs",
+    "PayslipLine",
+    "PayslipSummary",
     "PeriodDates",
     "PostedAdjustment",
     "SalaryCover",
+    "StoredPayslip",
     "TermsBasisVersion",
     "UnresolvedCandidate",
     "UnresolvedItem",
@@ -341,27 +375,33 @@ __all__ = [
     "duplicate_of",
     "earliest_open_period",
     "earliest_unfinalized_before",
+    "earnings_lines",
     "end_pay_item",
     "finalize_refusal",
     "finalized_course_lines",
     "finalized_pay_item_ids",
+    "finalized_period",
     "finalized_period_dates",
     "finalized_span_of",
     "finalized_spans_of_tutors",
     "first_period_starts",
     "get_pay_item",
+    "get_payslip",
     "get_session_pay_rule_overview",
     "has_no_adjustment",
     "has_no_adjustment_keyed",
     "has_no_session_line",
+    "has_periods",
     "in_walk_order",
     "is_reversed",
+    "issue_payslip",
     "keyed",
     "late_approval_draft",
     "line_drift",
     "line_period_status",
     "lines_total",
     "list_compensation_rates",
+    "list_finalized_periods",
     "list_pay_item_types",
     "list_pay_items",
     "list_pay_terms",
@@ -399,6 +439,7 @@ __all__ = [
     "rate_versions_of_tutors",
     "rebuilt_only",
     "record_payment",
+    "render_payslip",
     "replace_lines",
     "reverse_payment",
     "revision_unpaid",
@@ -410,6 +451,7 @@ __all__ = [
     "settled_by_tutor",
     "settled_session_ids",
     "stored_lines",
+    "summarize",
     "terms_basis_versions",
     "terms_basis_versions_of_tutors",
     "terms_in_effect",

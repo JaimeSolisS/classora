@@ -4763,6 +4763,73 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payroll/tutors/{tutor_user_id}/earnings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tutor Earnings
+         * @description A tutor's finalized pay periods, newest first, with what was paid and
+         *     the payslip. For the tutor themselves or a holder of payroll.view. Periods
+         *     still open or prepared are never listed.
+         */
+        get: operations["list_tutor_earnings_api_v1_payroll_tutors__tutor_user_id__earnings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payroll/tutors/{tutor_user_id}/earnings/{period_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Tutor Earnings Period
+         * @description One finalized pay period of a tutor: its lines (sessions, salary,
+         *     bonuses, deductions, adjustments), the summary, the payments (reversed
+         *     ones marked) and the payslip. For the tutor themselves or a holder of
+         *     payroll.view.
+         */
+        get: operations["get_tutor_earnings_period_api_v1_payroll_tutors__tutor_user_id__earnings__period_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payroll/tutors/{tutor_user_id}/payslips/{payslip_id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Payslip
+         * @description Download a payslip as a PDF (not a tax document: not a CFDI de nómina),
+         *     in the language it was issued in. For the tutor themselves or a holder of
+         *     payroll.view.
+         */
+        get: operations["download_payslip_api_v1_payroll_tutors__tutor_user_id__payslips__payslip_id__pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payroll/tutors": {
         parameters: {
             query?: never;
@@ -11536,6 +11603,115 @@ export interface components {
             status: components["schemas"]["ChargeStatus"];
         };
         /**
+         * EarningsPayment
+         * @description A payment of the period, as the tutor sees it (#113 E5): no note, no
+         *     reversal reason and nobody's name.
+         */
+        EarningsPayment: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Paid On
+             * Format: date
+             */
+            paid_on: string;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            /** Method Code */
+            method_code: string;
+            /** Reference */
+            reference: string;
+            /**
+             * Reversed On
+             * @description The center-local date of the reversal; a reversed payment doesn't count toward paid_total.
+             */
+            reversed_on: string | null;
+        };
+        /**
+         * EarningsPeriodDetail
+         * @description One finalized period with its lines, summary and payments (#113 C3). The
+         *     lines are live, through the payslip's projection: only a pay item type
+         *     renamed after finalize reads differently from the payslip.
+         */
+        EarningsPeriodDetail: {
+            period: components["schemas"]["EarningsPeriodItem"];
+            /** Lines */
+            lines: components["schemas"]["PayslipLine"][];
+            summary: components["schemas"]["PayslipSummary"];
+            /**
+             * Total
+             * Format: decimal
+             * @example 1250.00
+             */
+            total: string;
+            /**
+             * Payments
+             * @description Newest paid_on first; reversed ones included.
+             */
+            payments: components["schemas"]["EarningsPayment"][];
+            payslip: components["schemas"]["PayslipReference"] | null;
+        };
+        /**
+         * EarningsPeriodItem
+         * @description One finalized period of the tutor (#113 C2).
+         */
+        EarningsPeriodItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+            pay_frequency: components["schemas"]["PayFrequency"];
+            /**
+             * Finalized On
+             * Format: date
+             * @description The center-local date of finalize.
+             */
+            finalized_on: string;
+            /**
+             * Total
+             * Format: decimal
+             * @description The period's finalized total.
+             * @example 1250.00
+             */
+            total: string;
+            /**
+             * Paid Total
+             * Format: decimal
+             * @description The payments without a reversal.
+             * @example 1250.00
+             */
+            paid_total: string;
+            /** @description unpaid, partially_paid or paid; a 0.00 total is paid. */
+            paid_state: components["schemas"]["PaidState"];
+            /**
+             * Last Paid On
+             * @description The latest paid_on of a payment without a reversal.
+             */
+            last_paid_on: string | null;
+            /** Line Count */
+            line_count: number;
+            /** @description Null for a period with no lines, or one finalized before payslips existed. */
+            payslip: components["schemas"]["PayslipReference"] | null;
+        };
+        /**
          * EducationLevelCreate
          * @description A new education level (``POST /api/v1/education-levels``). Without
          *     ``sort_order`` the level goes last (the current maximum + 10, at most
@@ -14409,6 +14585,17 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** OffsetPage[EarningsPeriodItem] */
+        OffsetPage_EarningsPeriodItem_: {
+            /** Items */
+            items: components["schemas"]["EarningsPeriodItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
         /** OffsetPage[EducationLevelDetail] */
         OffsetPage_EducationLevelDetail_: {
             /** Items */
@@ -16298,6 +16485,180 @@ export interface components {
             current_terms: components["schemas"]["CurrentTerms"] | null;
             /** Current Rate Kinds */
             current_rate_kinds: components["schemas"]["ClassKind"][];
+        };
+        /**
+         * PayslipAdjustment
+         * @description A correction after lock: its kind, the session's date and class kind it
+         *     corrects, the period it comes from, the other period of a carry pair, and
+         *     the reason on ``manual`` only (E6).
+         */
+        PayslipAdjustment: {
+            kind: components["schemas"]["app__modules__payroll__schemas__AdjustmentKind"];
+            /** Reason */
+            reason: string | null;
+            /** Service Date */
+            service_date: string | null;
+            class_kind: components["schemas"]["ClassKind"] | null;
+            origin_period: components["schemas"]["PayslipPeriodDates"] | null;
+            paired_period: components["schemas"]["PayslipPeriodDates"] | null;
+        };
+        /**
+         * PayslipLine
+         * @description One line as the tutor sees it (E4, E6): no ids and no student data. A
+         *     "covered by salary" line is a ``0.00`` ``session`` line with no rate.
+         */
+        PayslipLine: {
+            kind: components["schemas"]["LineKind"];
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            /** Service Date */
+            service_date: string | null;
+            class_kind: components["schemas"]["ClassKind"] | null;
+            /** Minutes */
+            minutes: number | null;
+            rate_model: components["schemas"]["RateModel"] | null;
+            /** Rate */
+            rate: string | null;
+            /** Covered By Salary */
+            covered_by_salary: boolean;
+            /** Cumulative Sessions */
+            cumulative_sessions: number | null;
+            /** Cohort Sessions */
+            cohort_sessions: number | null;
+            pay_rule: components["schemas"]["PayslipPayRule"] | null;
+            salary: components["schemas"]["PayslipSalary"] | null;
+            pay_item: components["schemas"]["PayslipPayItem"] | null;
+            adjustment: components["schemas"]["PayslipAdjustment"] | null;
+        };
+        /**
+         * PayslipPayItem
+         * @description A bonus or deduction: the type's name (at issue on the payslip, current
+         *     on the screen), its direction and the item's description.
+         */
+        PayslipPayItem: {
+            /** Type Name */
+            type_name: string;
+            direction: components["schemas"]["PayItemDirection"];
+            /** Description */
+            description: string;
+        };
+        /**
+         * PayslipPayRule
+         * @description The rule an event line was priced on.
+         */
+        PayslipPayRule: {
+            event: components["schemas"]["PayRuleEvent"];
+            mode: components["schemas"]["PayRuleMode"];
+            /** Percent */
+            percent: string | null;
+            /** Amount */
+            amount: string | null;
+        };
+        /**
+         * PayslipPeriodDates
+         * @description Another period an adjustment names: its dates only.
+         */
+        PayslipPeriodDates: {
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+        };
+        /**
+         * PayslipReference
+         * @description A payslip to download (``…/payslips/{id}/pdf``).
+         */
+        PayslipReference: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Number
+             * @description P-YYYY-NNNNNN.
+             */
+            number: string;
+        };
+        /**
+         * PayslipSalary
+         * @description How a salary piece was reached: ``amount`` × ``numerator`` /
+         *     ``denominator`` for ``starts_on`` to ``ends_on``, counted in ``basis``.
+         */
+        PayslipSalary: {
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+            /** Numerator */
+            numerator: number;
+            /** Denominator */
+            denominator: number;
+            basis: components["schemas"]["ProrationBasis"];
+        };
+        /**
+         * PayslipSummary
+         * @description The class lines (:data:`SESSION_LINE_KINDS`) counted, their minutes, and
+         *     the subtotals: ``bonuses`` are the pay items above zero, ``deductions``
+         *     those below (negative).
+         */
+        PayslipSummary: {
+            /** Class Line Count */
+            class_line_count: number;
+            /** Class Minutes */
+            class_minutes: number;
+            /**
+             * Classes
+             * Format: decimal
+             * @example 1250.00
+             */
+            classes: string;
+            /**
+             * Salary
+             * Format: decimal
+             * @example 1250.00
+             */
+            salary: string;
+            /**
+             * Bonuses
+             * Format: decimal
+             * @example 1250.00
+             */
+            bonuses: string;
+            /**
+             * Deductions
+             * Format: decimal
+             * @example 1250.00
+             */
+            deductions: string;
+            /**
+             * Adjustments
+             * Format: decimal
+             * @example 1250.00
+             */
+            adjustments: string;
         };
         /**
          * PendingOffer
@@ -37413,6 +37774,194 @@ export interface operations {
             };
             /** @description Validation Error */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_tutor_earnings_api_v1_payroll_tutors__tutor_user_id__earnings_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                tutor_user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_EarningsPeriodItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such tutor, or one whose pay you can't read (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_tutor_earnings_period_api_v1_payroll_tutors__tutor_user_id__earnings__period_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tutor_user_id: string;
+                period_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EarningsPeriodDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such finalized period of this tutor, or a tutor whose pay you can't read (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    download_payslip_api_v1_payroll_tutors__tutor_user_id__payslips__payslip_id__pdf_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tutor_user_id: string;
+                payslip_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The payslip as a PDF attachment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such payslip of this tutor, or a tutor whose pay you can't read (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The payslip could not be rendered (internal_error). */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

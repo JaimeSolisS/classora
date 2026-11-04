@@ -81,6 +81,17 @@ def paid_sum(period_id: Any) -> ScalarSelect[Any]:
     )
 
 
+def last_paid_on(period_id: Any) -> ScalarSelect[Any]:
+    """The latest ``paid_on`` of the period's payments without a reversal,
+    ``NULL`` with none: a scalar subquery correlated on ``period_id``, like
+    :func:`paid_sum` (#113 C2)."""
+    return (
+        select(func.max(PayrollPayment.paid_on))
+        .where(PayrollPayment.payroll_period_id == period_id, _unreversed())
+        .scalar_subquery()
+    )
+
+
 async def paid_total(session: AsyncSession, period_id: uuid.UUID) -> Money:
     """:func:`paid_sum` of one period. One statement; under the period lock it
     can't change."""

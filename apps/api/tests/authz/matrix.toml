@@ -2289,6 +2289,21 @@ access = "authenticated"
 
 [[route]]
 method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/earnings"
+access = "authenticated"
+# #113 E2: the compensation record policy (payroll.view or the tutor
+# themselves) answers 404 for everyone else, and the placeholder id is no
+# tutor: 404 for all. Roles, IDOR and the 200 cases:
+# tests/integration/test_payroll_earnings_access.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/earnings/{period_id}"
+access = "authenticated"
+# #113 E2, E3: as above; only a finalized period of this tutor is found.
+
+[[route]]
+method = "GET"
 path = "/api/v1/payroll/tutors/{tutor_user_id}/pay-items"
 access = "permission"
 permission = "payroll.view"
@@ -2341,6 +2356,12 @@ access = "permission"
 permission = "payroll.manage"
 allow = ["owner", "finance_staff"]
 # #105 G6: the placeholder ids are no tutor: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/payslips/{payslip_id}/pdf"
+access = "authenticated"
+# #113 C4: as above; only a payslip of this tutor is found.
 
 [[route]]
 method = "POST"

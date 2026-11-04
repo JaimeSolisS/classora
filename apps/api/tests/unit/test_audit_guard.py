@@ -107,6 +107,7 @@ from app.modules.payroll.models import (
     PayrollPayment,
     PayrollPaymentReversal,
     PayrollSettings,
+    Payslip,
     SessionPayRule,
     TutorPayTerms,
 )
@@ -229,6 +230,7 @@ def test_the_guard_scans_the_real_audited_models():
         PayrollPayment,
         PayrollPaymentReversal,
         PayrollSettings,
+        Payslip,
         PriceVersion,
         PrivacyNoticeAcceptance,
         ProgressReport,

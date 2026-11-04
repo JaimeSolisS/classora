@@ -1261,6 +1261,7 @@ PATH_PARAMS: dict[str, Callable[[LeakWorld], list[str]]] = {
     "charge_id": _unknown,
     # #98: the receipt PDF route (the family is unknown too, so 404).
     "receipt_id": _unknown,
+    "payslip_id": _unknown,
     # #102: the family package detail (the family is unknown too, so 404;
     # the billing walk is tests/integration/test_billing_family_leak.py).
     "package_id": _unknown,

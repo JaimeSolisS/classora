@@ -23466,6 +23466,282 @@
         }
       }
     },
+    "/api/v1/payroll/tutors/{tutor_user_id}/earnings": {
+      "get": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "List Tutor Earnings",
+        "description": "A tutor's finalized pay periods, newest first, with what was paid and\nthe payslip. For the tutor themselves or a holder of payroll.view. Periods\nstill open or prepared are never listed.",
+        "operationId": "list_tutor_earnings_api_v1_payroll_tutors__tutor_user_id__earnings_get",
+        "parameters": [
+          {
+            "name": "tutor_user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tutor User Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_EarningsPeriodItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The privacy notice must be accepted first (privacy_notice_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tutor, or one whose pay you can't read (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/tutors/{tutor_user_id}/earnings/{period_id}": {
+      "get": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Get Tutor Earnings Period",
+        "description": "One finalized pay period of a tutor: its lines (sessions, salary,\nbonuses, deductions, adjustments), the summary, the payments (reversed\nones marked) and the payslip. For the tutor themselves or a holder of\npayroll.view.",
+        "operationId": "get_tutor_earnings_period_api_v1_payroll_tutors__tutor_user_id__earnings__period_id__get",
+        "parameters": [
+          {
+            "name": "tutor_user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tutor User Id"
+            }
+          },
+          {
+            "name": "period_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Period Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EarningsPeriodDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The privacy notice must be accepted first (privacy_notice_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such finalized period of this tutor, or a tutor whose pay you can't read (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payroll/tutors/{tutor_user_id}/payslips/{payslip_id}/pdf": {
+      "get": {
+        "tags": [
+          "payroll"
+        ],
+        "summary": "Download Payslip",
+        "description": "Download a payslip as a PDF (not a tax document: not a CFDI de nómina),\nin the language it was issued in. For the tutor themselves or a holder of\npayroll.view.",
+        "operationId": "download_payslip_api_v1_payroll_tutors__tutor_user_id__payslips__payslip_id__pdf_get",
+        "parameters": [
+          {
+            "name": "tutor_user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tutor User Id"
+            }
+          },
+          {
+            "name": "payslip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Payslip Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The payslip as a PDF attachment.",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The privacy notice must be accepted first (privacy_notice_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such payslip of this tutor, or a tutor whose pay you can't read (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The payslip could not be rendered (internal_error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/payroll/tutors": {
       "get": {
         "tags": [
@@ -41381,6 +41657,212 @@
         "title": "DueDateChangeRecorded",
         "description": "A recorded change (#97 D1) with the charge's ``status`` after it."
       },
+      "EarningsPayment": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "paid_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Paid On"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "method_code": {
+            "type": "string",
+            "title": "Method Code"
+          },
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "reversed_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversed On",
+            "description": "The center-local date of the reversal; a reversed payment doesn't count toward paid_total."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "paid_on",
+          "amount",
+          "method_code",
+          "reference",
+          "reversed_on"
+        ],
+        "title": "EarningsPayment",
+        "description": "A payment of the period, as the tutor sees it (#113 E5): no note, no\nreversal reason and nobody's name."
+      },
+      "EarningsPeriodDetail": {
+        "properties": {
+          "period": {
+            "$ref": "#/components/schemas/EarningsPeriodItem"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/PayslipLine"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/PayslipSummary"
+          },
+          "total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Total",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "payments": {
+            "items": {
+              "$ref": "#/components/schemas/EarningsPayment"
+            },
+            "type": "array",
+            "title": "Payments",
+            "description": "Newest paid_on first; reversed ones included."
+          },
+          "payslip": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayslipReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "period",
+          "lines",
+          "summary",
+          "total",
+          "payments",
+          "payslip"
+        ],
+        "title": "EarningsPeriodDetail",
+        "description": "One finalized period with its lines, summary and payments (#113 C3). The\nlines are live, through the payslip's projection: only a pay item type\nrenamed after finalize reads differently from the payslip."
+      },
+      "EarningsPeriodItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Ends On"
+          },
+          "pay_frequency": {
+            "$ref": "#/components/schemas/PayFrequency"
+          },
+          "finalized_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Finalized On",
+            "description": "The center-local date of finalize."
+          },
+          "total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Total",
+            "description": "The period's finalized total.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "paid_total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Paid Total",
+            "description": "The payments without a reversal.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "paid_state": {
+            "$ref": "#/components/schemas/PaidState",
+            "description": "unpaid, partially_paid or paid; a 0.00 total is paid."
+          },
+          "last_paid_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Paid On",
+            "description": "The latest paid_on of a payment without a reversal."
+          },
+          "line_count": {
+            "type": "integer",
+            "title": "Line Count"
+          },
+          "payslip": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayslipReference"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null for a period with no lines, or one finalized before payslips existed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "starts_on",
+          "ends_on",
+          "pay_frequency",
+          "finalized_on",
+          "total",
+          "paid_total",
+          "paid_state",
+          "last_paid_on",
+          "line_count",
+          "payslip"
+        ],
+        "title": "EarningsPeriodItem",
+        "description": "One finalized period of the tutor (#113 C2)."
+      },
       "EducationLevelCreate": {
         "properties": {
           "name": {
@@ -47626,6 +48108,37 @@
         ],
         "title": "OffsetPage[DiscountItem]"
       },
+      "OffsetPage_EarningsPeriodItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EarningsPeriodItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[EarningsPeriodItem]"
+      },
       "OffsetPage_EducationLevelDetail_": {
         "properties": {
           "items": {
@@ -51938,6 +52451,474 @@
         ],
         "title": "PayrollTutorItem",
         "description": "A tutor on the payroll list. ``current_terms`` is ``null`` without\nterms or when not on payroll; ``current_rate_kinds`` are the class kinds\nwith a rate in effect today."
+      },
+      "PayslipAdjustment": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/app__modules__payroll__schemas__AdjustmentKind"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "service_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Date"
+          },
+          "class_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "origin_period": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayslipPeriodDates"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "paired_period": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayslipPeriodDates"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "reason",
+          "service_date",
+          "class_kind",
+          "origin_period",
+          "paired_period"
+        ],
+        "title": "PayslipAdjustment",
+        "description": "A correction after lock: its kind, the session's date and class kind it\ncorrects, the period it comes from, the other period of a carry pair, and\nthe reason on ``manual`` only (E6)."
+      },
+      "PayslipLine": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/LineKind"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "service_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Date"
+          },
+          "class_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes"
+          },
+          "rate_model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RateModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,10}(\\.\\d{1,4})?$",
+                "format": "decimal",
+                "examples": [
+                  "250.0000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          },
+          "covered_by_salary": {
+            "type": "boolean",
+            "title": "Covered By Salary"
+          },
+          "cumulative_sessions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cumulative Sessions"
+          },
+          "cohort_sessions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Sessions"
+          },
+          "pay_rule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayslipPayRule"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "salary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayslipSalary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pay_item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayslipPayItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "adjustment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayslipAdjustment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "amount",
+          "service_date",
+          "class_kind",
+          "minutes",
+          "rate_model",
+          "rate",
+          "covered_by_salary",
+          "cumulative_sessions",
+          "cohort_sessions",
+          "pay_rule",
+          "salary",
+          "pay_item",
+          "adjustment"
+        ],
+        "title": "PayslipLine",
+        "description": "One line as the tutor sees it (E4, E6): no ids and no student data. A\n\"covered by salary\" line is a ``0.00`` ``session`` line with no rate."
+      },
+      "PayslipPayItem": {
+        "properties": {
+          "type_name": {
+            "type": "string",
+            "title": "Type Name"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/PayItemDirection"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type_name",
+          "direction",
+          "description"
+        ],
+        "title": "PayslipPayItem",
+        "description": "A bonus or deduction: the type's name (at issue on the payslip, current\non the screen), its direction and the item's description."
+      },
+      "PayslipPayRule": {
+        "properties": {
+          "event": {
+            "$ref": "#/components/schemas/PayRuleEvent"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/PayRuleMode"
+          },
+          "percent": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,10}(\\.\\d{1,4})?$",
+                "format": "decimal",
+                "examples": [
+                  "250.0000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "event",
+          "mode",
+          "percent",
+          "amount"
+        ],
+        "title": "PayslipPayRule",
+        "description": "The rule an event line was priced on."
+      },
+      "PayslipPeriodDates": {
+        "properties": {
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Ends On"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "starts_on",
+          "ends_on"
+        ],
+        "title": "PayslipPeriodDates",
+        "description": "Another period an adjustment names: its dates only."
+      },
+      "PayslipReference": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "number": {
+            "type": "string",
+            "title": "Number",
+            "description": "P-YYYY-NNNNNN."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "number"
+        ],
+        "title": "PayslipReference",
+        "description": "A payslip to download (``…/payslips/{id}/pdf``)."
+      },
+      "PayslipSalary": {
+        "properties": {
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Ends On"
+          },
+          "numerator": {
+            "type": "integer",
+            "title": "Numerator"
+          },
+          "denominator": {
+            "type": "integer",
+            "title": "Denominator"
+          },
+          "basis": {
+            "$ref": "#/components/schemas/ProrationBasis"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount",
+          "starts_on",
+          "ends_on",
+          "numerator",
+          "denominator",
+          "basis"
+        ],
+        "title": "PayslipSalary",
+        "description": "How a salary piece was reached: ``amount`` × ``numerator`` /\n``denominator`` for ``starts_on`` to ``ends_on``, counted in ``basis``."
+      },
+      "PayslipSummary": {
+        "properties": {
+          "class_line_count": {
+            "type": "integer",
+            "title": "Class Line Count"
+          },
+          "class_minutes": {
+            "type": "integer",
+            "title": "Class Minutes"
+          },
+          "classes": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Classes",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "salary": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Salary",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "bonuses": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Bonuses",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "deductions": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Deductions",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "adjustments": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Adjustments",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "class_line_count",
+          "class_minutes",
+          "classes",
+          "salary",
+          "bonuses",
+          "deductions",
+          "adjustments"
+        ],
+        "title": "PayslipSummary",
+        "description": "The class lines (:data:`SESSION_LINE_KINDS`) counted, their minutes, and\nthe subtotals: ``bonuses`` are the pay items above zero, ``deductions``\nthose below (negative)."
       },
       "PendingOffer": {
         "properties": {

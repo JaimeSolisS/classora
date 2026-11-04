@@ -23,11 +23,13 @@ def clear_pay_items(url: str) -> None:
 
 
 def clear_adjustments(url: str) -> None:
-    """No payments (#112), no adjustments and no adjustment lines. The tables are
-    append-only and reference each other, so every trigger of each is off
-    meanwhile, the foreign keys' included (a test database runs as a
-    superuser)."""
+    """No payslips (#113), no payments (#112), no adjustments and no adjustment
+    lines. The tables are append-only and reference each other, so every
+    trigger of each is off meanwhile, the foreign keys' included (a test
+    database runs as a superuser). Every reset that clears periods calls this
+    first."""
     tables = (
+        "payslips",
         "payroll_lines",
         "payroll_adjustments",
         "payroll_payments",
@@ -36,6 +38,7 @@ def clear_adjustments(url: str) -> None:
     for table in tables:
         run_sql(url, f"ALTER TABLE {table} DISABLE TRIGGER ALL")
     try:
+        run_sql(url, "DELETE FROM payslips")
         run_sql(url, "DELETE FROM payroll_payment_reversals")
         run_sql(url, "DELETE FROM payroll_payments")
         run_sql(url, "DELETE FROM payroll_lines WHERE kind = 'adjustment'")

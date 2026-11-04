@@ -1257,7 +1257,7 @@ Audited. **Append-only** (§5.1). `id`; `payroll_payment_id` (FK RESTRICT, **UNI
 
 ### 11.12 `payslips` (#113)
 
-One row per finalized period that has lines, issued in the finalize transaction after the period lock (E14). The row is a frozen snapshot, the §3.21 pattern. Audited. **Append-only** (§5.1).
+One row per finalized period that has lines, issued in the finalize transaction after the period lock (E14). The row is a frozen snapshot, the §3.21 pattern. Audited, `snapshot` masked (#113 A2: it holds amounts, descriptions and reasons, and Administrators hold `audit.view`). **Append-only** (§5.1). Created by migration `0082` (#113).
 
 | Column | Type | Null | Check / note |
 |---|---|---|---|
@@ -1268,7 +1268,13 @@ One row per finalized period that has lines, issued in the finalize transaction 
 | `issued_at` | TIMESTAMPTZ | no | its center-local year is the number's year |
 | `language` | VARCHAR(2) | no | the tutor's stored preference, else `es` ([ADR-0015](adr/0015-server-side-i18n.md)) |
 | `template_version` | SMALLINT | no | `> 0` |
-| `snapshot` | JSONB | no | center, tutor, period, lines, total; no payment dates (they are shown live) |
+| `snapshot` | JSONB | no | `PayslipSnapshotV1`, below; `jsonb_typeof = 'object'`; no payment dates (they are shown live) |
+
+- **Index:** `(tutor_user_id, issued_at)`; `UNIQUE (number)`, `UNIQUE (payroll_period_id)`. The composite FK is `ON DELETE RESTRICT`. A downgrade of `0082` refuses while a row exists.
+- **Issuing (#113 B1):** `finalize`'s last step, after the status, the event, the approval decision and the notification: the inputs (lines, settings, tutor name, language) are read first, then `issued_at`, then `next_number('P', <center-local year of issued_at>)`, the **last lock** (§15), then the insert. A rollback gives the number back. A finalize replay issues nothing; the UNIQUE period is the backstop.
+- **Snapshot (`"v": 1`, #113 B5):** `center {name, address, phone, email}`, `tutor {user_id, display_name}`, `period {id, starts_on, ends_on, pay_frequency, finalized_on}`, `issued_on`, `lines` (one per stored line, in the `GET …/lines` order: `kind`, `amount`, `service_date`, `class_kind`, `minutes`, `rate_model`, `rate`, `covered_by_salary`, `cumulative_sessions`, `cohort_sessions`, `pay_rule {event, mode, percent, amount} | null`, `salary {amount, starts_on, ends_on, numerator, denominator, basis} | null`, `pay_item {type_name, direction, description} | null`, `adjustment {kind, reason (manual only), service_date, class_kind, origin_period {starts_on, ends_on} | null, paired_period {starts_on, ends_on} | null} | null`), `summary {class_line_count, class_minutes, classes, salary, bonuses, deductions, adjustments}` and `total`. Money is text. Validated on write and read: Σ lines = `total` = Σ subtotals, and at issue `total` = the period's `total_amount`. No student or subject names, no ids but the period's and the tutor's, no payments and no actor names (#113 E6).
+- **Screen and payslip (#113 E4):** the tutor's period read projects the live lines the same way, so both show the same figures. The one expected difference is a pay item type renamed after finalize (§11.7): the screen shows the current name, the payslip keeps the name at issue.
+- **Reports never read it (#117):** the snapshot is a display copy; `payroll_periods` and `payroll_lines` are the source.
 
 The PDF is rendered synchronously and streamed, never stored. It states it is not a tax document (no CFDI de nómina, spec §1). Periods finalized before #113 merges get no payslip.
 

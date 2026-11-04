@@ -47,11 +47,15 @@ outside the platform against a finalized period, and its reversal (#112,
 migration ``0081``): :class:`PayrollPayment`, :class:`PayrollPaymentReversal`.
 Both are append-only and audited, with ``amount``, ``reference``, ``note`` and
 ``reason`` masked.
+
+``payslips`` is the frozen, numbered payslip of a finalized period that has
+lines, issued by ``finalize`` (#113, migration ``0082``): :class:`Payslip`.
+Append-only and audited, with ``snapshot`` masked.
 """
 
 import uuid
 from datetime import date, datetime
-from typing import ClassVar, Final
+from typing import Any, ClassVar, Final
 
 from sqlalchemy import (
     Boolean,
@@ -63,13 +67,14 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID, ExcludeConstraint
+from sqlalchemy.dialects.postgresql import JSONB, UUID, ExcludeConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.audit import Audited
@@ -147,6 +152,11 @@ ADJUSTMENT_TARGET_KEY: Final = "uq_payroll_adjustments_id_target"
 PAYMENT_REVERSAL_KEY: Final = "uq_payroll_payment_reversals_payroll_payment_id"
 PAYMENT_REVERSAL_FK: Final = "fk_payroll_payment_reversals_payment"
 """Named: the convention's name is beyond PostgreSQL's 63 characters."""
+PAYSLIP_NUMBER_PATTERN: Final = "^P-[0-9]{4}-[0-9]{6}$"
+PAYSLIP_NUMBER_MAX: Final = 16
+PAYSLIP_LANGUAGES: Final = ("es", "en")
+PAYSLIP_NUMBER_KEY: Final = "uq_payslips_number"
+PAYSLIP_PERIOD_KEY: Final = "uq_payslips_payroll_period_id"
 ADJUSTMENT_SNAPSHOT_COLUMNS: Final = (
     "line_kind",
     "service_date",
@@ -966,3 +976,40 @@ class PayrollPaymentReversal(Audited, Model):
     reversed_by_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
+
+
+class Payslip(Audited, Model):
+    """The payslip of one finalized period with lines, issued by ``finalize``
+    in its transaction (data-model §11.12; ADR-0017 E14; #113). Append-only
+    (migration ``0082``'s ``payslips_append_only()`` triggers, SQLSTATE
+    42501). ``snapshot`` is a ``payroll.payslips.PayslipSnapshotV1`` (``"v":
+    1``); the PDF is built from the row alone. ``language`` and
+    ``template_version`` never change. ``snapshot`` is masked in the audit log
+    (#113 A2): it holds amounts, descriptions and reasons, and Administrators
+    hold ``audit.view``."""
+
+    __tablename__ = "payslips"
+    __audit_mask__: ClassVar[frozenset[str]] = frozenset({"snapshot"})
+    __table_args__ = (
+        CheckConstraint(f"number ~ '{PAYSLIP_NUMBER_PATTERN}'", name="number_format"),
+        CheckConstraint(_one_of("language", PAYSLIP_LANGUAGES), name="language"),
+        CheckConstraint("template_version > 0", name="template_version_positive"),
+        CheckConstraint("jsonb_typeof(snapshot) = 'object'", name="snapshot_object"),
+        UniqueConstraint("number", name=PAYSLIP_NUMBER_KEY),
+        UniqueConstraint("payroll_period_id", name=PAYSLIP_PERIOD_KEY),
+        ForeignKeyConstraint(
+            ["payroll_period_id", "tutor_user_id"],
+            ["payroll_periods.id", "payroll_periods.tutor_user_id"],
+            name="fk_payslips_period_tutor",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_payslips_tutor_user_id_issued_at", "tutor_user_id", "issued_at"),
+    )
+
+    number: Mapped[str] = mapped_column(String(PAYSLIP_NUMBER_MAX))
+    payroll_period_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    tutor_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    language: Mapped[str] = mapped_column(String(2))
+    template_version: Mapped[int] = mapped_column(SmallInteger)
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB)
