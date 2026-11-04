@@ -92,6 +92,7 @@ from app.modules.families.models import (
     StudentEmergencyContact,
     StudentGuardian,
 )
+from app.modules.finance.models import ExpenseCategory, Vendor
 from app.modules.identity.models import (
     PrivacyNoticeAcceptance,
     RegistrationRequest,
@@ -208,6 +209,7 @@ def test_the_guard_scans_the_real_audited_models():
         EvaluationScore,
         EvaluationTemplate,
         EvaluationTemplateCriterion,
+        ExpenseCategory,
         Family,
         FamilyGuardian,
         FamilyStudent,
@@ -263,6 +265,7 @@ def test_the_guard_scans_the_real_audited_models():
         User,
         UserDelegation,
         UserRole,
+        Vendor,
         Withdrawal,
     ]
     assert AuditedThing in audited_classes(TestBase)
@@ -318,6 +321,9 @@ def test_the_guard_scans_the_real_audited_models():
         ProgressReport,
         # #316 A1: a schedule's diffs are its history; nothing excluded.
         ProgressReportSchedule,
+        # #114 E6: no amount; a vendor's contact is audited in clear.
+        ExpenseCategory,
+        Vendor,
     ):
         assert unmasked.__audit_exclude__ == frozenset()
         assert unmasked.__audit_mask__ == frozenset()

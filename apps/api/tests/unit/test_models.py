@@ -180,6 +180,8 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "payroll_payments",
         "payroll_payment_reversals",
         "payslips",
+        "expense_categories",
+        "vendors",
         "number_series",
         "account_tokens",
         "registration_requests",

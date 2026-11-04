@@ -1841,6 +1841,60 @@ allow = ["owner", "administrator"]
 
 [[route]]
 method = "GET"
+path = "/api/v1/finance/expense-categories"
+access = "permission"
+permission = "expense.configure"
+allow = ["owner", "administrator", "finance_staff"]
+# #114 E6 (ADR-0017 E12): the reads need expense.configure too.
+
+[[route]]
+method = "POST"
+path = "/api/v1/finance/expense-categories"
+access = "permission"
+permission = "expense.configure"
+allow = ["owner", "administrator", "finance_staff"]
+# #114 B2: the empty body is 422 for the allowed roles. A name is a natural
+# key, so no Idempotency-Key.
+json = {}
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/finance/expense-categories/{category_id}"
+access = "permission"
+permission = "expense.configure"
+allow = ["owner", "administrator", "finance_staff"]
+# #114 B3: the empty body is 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/finance/vendors"
+access = "permission"
+permission = "expense.configure"
+allow = ["owner", "administrator", "finance_staff"]
+# #114 E6, C1.
+
+[[route]]
+method = "POST"
+path = "/api/v1/finance/vendors"
+access = "permission"
+permission = "expense.configure"
+allow = ["owner", "administrator", "finance_staff"]
+# #114 C2, E4: the empty body is 422 for the allowed roles; no
+# Idempotency-Key.
+json = {}
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/finance/vendors/{vendor_id}"
+access = "permission"
+permission = "expense.configure"
+allow = ["owner", "administrator", "finance_staff"]
+# #114 C3: the empty body is 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
 path = "/api/v1/groups"
 access = "authenticated"
 # #56 H1/I2: record policy; schedule.view holders see every group, a student

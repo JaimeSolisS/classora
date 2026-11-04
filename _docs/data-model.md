@@ -1295,7 +1295,7 @@ Module `finance`. Every table is `Audited`; on generated rows that means the sav
 | Table | Module | Creating issue | Class |
 |---|---|---|---|
 | `expense_categories` | finance | #114 | mutable config |
-| `vendors` | finance | #114 | mutable config |
+| `vendors` | finance | #114 | mutable config; name unique ignoring case |
 | `expenses` | finance | #115 | append-only |
 | `expense_payments` | finance | #115 | append-only |
 | `expense_payment_reversals` | finance | #115 | append-only |
@@ -1304,31 +1304,38 @@ Module `finance`. Every table is `Audited`; on generated rows that means the sav
 
 ### 12.1 `expense_categories` (#114)
 
-Referenced by id, so a rename never changes a report grouping (E15).
+Referenced by id, so a rename never changes a report grouping (E15). `Audited`, with no mask: no amount (#114 E6).
 
 | Column | Type | Null | Check / note |
 |---|---|---|---|
 | `id` | UUID | no | PK |
-| `name` | VARCHAR(100) | no | trimmed; unique ignoring case |
-| `system_key` | VARCHAR(20) | yes | **UNIQUE**; `rent`, `utilities`, `supplies`, `equipment`, `maintenance` on the seeded rows; translated until renamed, when staff text wins |
-| `is_active` | BOOLEAN | no | |
+| `name` | VARCHAR(100) | no | trimmed, 1–100 (`ck_expense_categories_name_trimmed`); unique on `lower(name)` (`uq_expense_categories_lower_name`) |
+| `system_key` | VARCHAR(20) | yes | **UNIQUE**; CHECK in `rent`, `utilities`, `supplies`, `equipment`, `maintenance` (only on the seeded rows); translated until renamed, when staff text wins |
+| `is_active` | BOOLEAN | no | default `true` |
 | `version` | INTEGER | no | |
+| `created_at`, `updated_at` | TIMESTAMPTZ | no | |
 
-- **Seed:** the five rows above, inserted by #114's migration.
-- **Deactivated** rows can't be used on new expenses or templates but still appear in reports. Deactivating a row used by an active template is `409 in_use_by_template`.
-- **Reports** group by id and show the current name. Never deleted once referenced.
+- **Seed:** inserted by migration `0083`, not audited (the `session_pay_rules` precedent): Renta (`rent`), Servicios (`utilities`), Insumos (`supplies`), Equipo (`equipment`), Mantenimiento (`maintenance`). The stored `name` is Spanish.
+- **Labels (#114 E3):** while a row holds its `system_key`, clients show the catalog label of the key in the viewer's language (server catalog `finance.json`, `categories.system.<key>`). A real change of name sets `system_key` to `NULL` in the same update, and nothing sets it again; sending the current name keeps it. A case-only change is a change.
+- **Name clash (#114 E3):** a new or changed name is refused (`409 expense_category_exists`) when, ignoring case and surrounding spaces, it equals another row's stored name (the unique index) **or** the es or en label of another row that still holds a key (an application check: the labels are constants and a key is only ever lost). A row's own name and labels don't count. An inactive row's name still blocks.
+- **Deactivated** rows can't be used on new expenses or templates (`finance.service.usable_category`, which reads the row `FOR SHARE`) but still appear in lists and reports. Deactivating a row used by an active template is refused from #116 (`in_use_by_template`, added to the same `PATCH` under the row lock); in #114 deactivation always passes (#114 E2).
+- **No delete (#114 E5):** no route deletes a row; `is_active` retires it and a rename fixes a typo. A `BEFORE TRUNCATE` trigger refuses `TRUNCATE` (42501). **Reports** group by id and show the current name.
 
 ### 12.2 `vendors` (#114)
 
+`Audited`, with no mask; `contact` is audited in clear (#114 E6).
+
 | Column | Type | Null | Check / note |
 |---|---|---|---|
 | `id` | UUID | no | PK |
-| `name` | VARCHAR(200) | no | trimmed |
-| `contact` | TEXT | yes | trimmed, 1–500 |
-| `is_active` | BOOLEAN | no | |
+| `name` | VARCHAR(200) | no | trimmed, 1–200; unique on `lower(name)` (`uq_vendors_lower_name`, #114 E4) |
+| `contact` | TEXT | yes | trimmed, 1–500; free text, may span lines |
+| `is_active` | BOOLEAN | no | default `true` |
 | `version` | INTEGER | no | |
+| `created_at`, `updated_at` | TIMESTAMPTZ | no | |
 
-The same deactivation and report rules as §12.1.
+- The name is the natural key (`409 vendor_exists`); two vendors with one trade name are told apart in the name itself. No label rule.
+- The same deactivation (`usable_vendor`), no-delete and `TRUNCATE` rules as §12.1.
 
 ### 12.3 `expenses` (#115)
 

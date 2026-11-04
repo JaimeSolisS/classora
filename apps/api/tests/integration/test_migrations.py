@@ -72,7 +72,8 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0082"
+HEAD = "0083"
+FINANCE_TABLES_0083 = frozenset({"expense_categories", "vendors"})
 PAY_RULES = "session_pay_rules"
 LINES = "payroll_lines"
 SALARY_LINE_COLUMNS = frozenset(
@@ -470,6 +471,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             ADJUSTMENTS,
             *PAYROLL_PAYMENT_TABLES,
             PAYSLIPS,
+            *FINANCE_TABLES_0083,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4861,9 +4863,22 @@ def _of_0082(diff: Any) -> bool:
     return diff[0] == "add_index" and diff[1].table.name == PAYSLIPS
 
 
+def _of_0083(diff: Any) -> bool:
+    """A metadata difference that revision 0083 adds: the expense categories
+    and vendors tables and their indexes (#114 A1). CHECKs are not compared."""
+    if diff[0] == "add_table":
+        return bool(diff[1].name in FINANCE_TABLES_0083)
+    return diff[0] == "add_index" and diff[1].table.name in FINANCE_TABLES_0083
+
+
+def _of_0082_on(diff: Any) -> bool:
+    """A metadata difference that revision 0082 or a later one adds."""
+    return _of_0082(diff) or _of_0083(diff)
+
+
 def _of_0081_on(diff: Any) -> bool:
     """A metadata difference that revision 0081 or a later one adds."""
-    return _of_0081(diff) or _of_0082(diff)
+    return _of_0081(diff) or _of_0082_on(diff)
 
 
 def _of_0080_on(diff: Any) -> bool:
@@ -15609,7 +15624,7 @@ def test_0081_adds_the_tables_and_downgrade_restores_0080(fresh_database_url):
     command.upgrade(config, "0081")
 
     assert version_nums(dsn) == ["0081"]
-    assert [d for d in metadata_diff(dsn) if not _of_0082(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0082_on(d)] == []
     assert public_tables(dsn) - tables == set(PAYROLL_PAYMENT_TABLES)
     for table in PAYROLL_PAYMENT_TABLES:
         constraints = _constraints(dsn, table)
@@ -15813,7 +15828,7 @@ def test_0082_adds_the_table_and_downgrade_restores_0081(fresh_database_url):
     command.upgrade(config, "0082")
 
     assert version_nums(dsn) == ["0082"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0083(d)] == []
     assert public_tables(dsn) - tables == {PAYSLIPS}
     constraints = _constraints(dsn, PAYSLIPS)
     assert set(constraints) == PAYSLIP_CONSTRAINTS_0082
@@ -15843,7 +15858,7 @@ def test_0082_adds_the_table_and_downgrade_restores_0081(fresh_database_url):
         )[0].n
         == 0
     )
-    assert [d for d in metadata_diff(dsn) if not _of_0082(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0082_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -15959,3 +15974,175 @@ def test_0082_downgrade_refuses_while_a_payslip_exists(fresh_database_url):
     assert getattr(caught.value.orig, "sqlstate", None) == "55000"
     assert version_nums(dsn) == [HEAD]
     assert run_sql(dsn, "SELECT count(*) AS n FROM payslips")[0].n == 1
+
+
+SEEDED_CATEGORIES_0083 = [
+    ("Renta", "rent"),
+    ("Servicios", "utilities"),
+    ("Insumos", "supplies"),
+    ("Equipo", "equipment"),
+    ("Mantenimiento", "maintenance"),
+]
+
+
+def test_0083_adds_the_tables_and_downgrade_restores_0082(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0082")
+    tables = public_tables(dsn)
+
+    command.upgrade(config, "0083")
+
+    assert version_nums(dsn) == ["0083"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == FINANCE_TABLES_0083
+    rows = run_sql(
+        dsn,
+        "SELECT name, system_key, is_active, version FROM expense_categories"
+        " ORDER BY id",
+    )
+    assert [tuple(row) for row in rows] == [
+        (name, key, True, 1) for name, key in SEEDED_CATEGORIES_0083
+    ]
+    assert run_sql(dsn, "SELECT count(*) AS n FROM audit_events")[0].n == 0
+
+    command.downgrade(config, "0082")
+
+    assert version_nums(dsn) == ["0082"]
+    assert public_tables(dsn) == tables
+    guard = (
+        "SELECT count(*) AS n FROM pg_proc WHERE proname = 'finance_config_no_truncate'"
+    )
+    assert run_sql(dsn, guard)[0].n == 0
+    assert [d for d in metadata_diff(dsn) if not _of_0083(d)] == []
+
+    command.upgrade(config, "head")
+
+    assert metadata_diff(dsn) == []
+    assert run_sql(dsn, "SELECT count(*) AS n FROM expense_categories")[0].n == 5
+
+
+def test_0083_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    assert _columns(dsn, "expense_categories") == {
+        **STANDARD_COLUMNS,
+        "name": ("character varying", "NO", 100, None),
+        "system_key": ("character varying", "YES", 20, None),
+        "is_active": ("boolean", "NO", None, "true"),
+    }
+    assert _columns(dsn, "vendors") == {
+        **STANDARD_COLUMNS,
+        "name": ("character varying", "NO", 200, None),
+        "contact": ("text", "YES", None, None),
+        "is_active": ("boolean", "NO", None, "true"),
+    }
+    assert set(_constraints(dsn, "expense_categories")) == {
+        "pk_expense_categories",
+        "uq_expense_categories_system_key",
+        "ck_expense_categories_name_trimmed",
+        "ck_expense_categories_system_key_valid",
+    }
+    assert set(_constraints(dsn, "vendors")) == {
+        "pk_vendors",
+        "ck_vendors_name_trimmed",
+        "ck_vendors_contact_trimmed",
+    }
+    category_indexes = _indexes(dsn, "expense_categories")
+    assert set(category_indexes) == {
+        "pk_expense_categories",
+        "uq_expense_categories_system_key",
+        "uq_expense_categories_lower_name",
+    }
+    assert "lower((name)::text)" in category_indexes["uq_expense_categories_lower_name"]
+    vendor_indexes = _indexes(dsn, "vendors")
+    assert set(vendor_indexes) == {"pk_vendors", "uq_vendors_lower_name"}
+    assert "lower((name)::text)" in vendor_indexes["uq_vendors_lower_name"]
+    assert _triggers(dsn, "expense_categories") == {"expense_categories_no_truncate"}
+    assert _triggers(dsn, "vendors") == {"vendors_no_truncate"}
+
+
+@pytest.mark.parametrize(
+    ("table", "row", "constraint"),
+    [
+        ("expense_categories", {"name": ""}, "ck_expense_categories_name_trimmed"),
+        ("expense_categories", {"name": " Luz"}, "ck_expense_categories_name_trimmed"),
+        ("expense_categories", {"name": "Luz "}, "ck_expense_categories_name_trimmed"),
+        (
+            "expense_categories",
+            {"name": "Luz", "system_key": "power"},
+            "ck_expense_categories_system_key_valid",
+        ),
+        ("vendors", {"name": ""}, "ck_vendors_name_trimmed"),
+        ("vendors", {"name": " Acme"}, "ck_vendors_name_trimmed"),
+        ("vendors", {"name": "Acme", "contact": ""}, "ck_vendors_contact_trimmed"),
+        ("vendors", {"name": "Acme", "contact": "55 "}, "ck_vendors_contact_trimmed"),
+        (
+            "vendors",
+            {"name": "Acme", "contact": "5" * 501},
+            "ck_vendors_contact_trimmed",
+        ),
+    ],
+)
+def test_0083_checks(fresh_database_url, table, row, constraint):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    columns = ", ".join(row)
+    binds = ", ".join(f":{name}" for name in row)
+
+    with pytest.raises(IntegrityError) as caught:
+        run_sql(dsn, f"INSERT INTO {table} ({columns}) VALUES ({binds})", row)  # noqa: S608
+
+    assert getattr(caught.value.orig, "sqlstate", None) == "23514"
+    assert constraint in str(caught.value.orig)
+
+
+@pytest.mark.parametrize(
+    ("table", "first", "second", "index"),
+    [
+        ("expense_categories", "Luz", "LUZ", "uq_expense_categories_lower_name"),
+        ("expense_categories", "renta", None, "uq_expense_categories_lower_name"),
+        ("vendors", "Acme", "aCME", "uq_vendors_lower_name"),
+    ],
+)
+def test_0083_a_name_is_unique_ignoring_case(
+    fresh_database_url, table, first, second, index
+):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    insert = f"INSERT INTO {table} (name) VALUES (:n)"  # noqa: S608
+    if second is not None:
+        run_sql(dsn, insert, {"n": first})
+
+    with pytest.raises(IntegrityError) as caught:
+        run_sql(dsn, insert, {"n": second or first})
+
+    assert getattr(caught.value.orig, "sqlstate", None) == "23505"
+    assert index in str(caught.value.orig)
+
+
+def test_0083_a_system_key_is_held_once(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    with pytest.raises(IntegrityError) as caught:
+        run_sql(
+            dsn,
+            "INSERT INTO expense_categories (name, system_key)"
+            " VALUES ('Alquiler', 'rent')",
+        )
+
+    assert "uq_expense_categories_system_key" in str(caught.value.orig)
+
+
+def test_0083_neither_table_truncates(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    run_sql(dsn, "INSERT INTO vendors (name) VALUES ('Acme')")
+
+    for table in FINANCE_TABLES_0083:
+        assert _sqlstate_0076(dsn, f"TRUNCATE {table}") == "42501", table
+        assert _sqlstate_0076(dsn, f"TRUNCATE {table} CASCADE") == "42501", table
+    assert run_sql(dsn, "SELECT count(*) AS n FROM expense_categories")[0].n == 5
+    assert run_sql(dsn, "SELECT count(*) AS n FROM vendors")[0].n == 1

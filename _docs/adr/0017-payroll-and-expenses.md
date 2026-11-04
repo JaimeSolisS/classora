@@ -356,6 +356,17 @@ Permissions, not roles; each seeded by its first user; only `payroll.finalize` i
 - **Reports group by id and show the current name**, which answers #114's "if that is decided".
 - Deactivated rows can't be used on new expenses or templates but still appear in reports. Deactivating a row used by an active template is `409 in_use_by_template`.
 
+#### Implementation notes (#114)
+
+Orchestrator-recommended, pending owner review (#114 E2–E7, owner-delegated). They refine E15 where it is silent; `_docs/data-model.md` §12.1 and §12.2 and `_docs/api.md` "Expense categories and vendors" are the current rules.
+
+- **E2, `in_use_by_template`:** `expense_templates` arrives with #116, so in #114 deactivation always passes. #116 adds the refusal to the #114 `PATCH` routes, under the row lock.
+- **E3, seeded names:** the migration stores the Spanish name (Renta, Servicios, Insumos, Equipo, Mantenimiento) with the key. While a row holds its key, clients show the catalog label of the key in the viewer's language; the server catalog is `finance.json`. A real rename sets `system_key` to `NULL` for good. A new or renamed name is refused (`409 expense_category_exists`) when it equals, ignoring case and spaces, another row's stored name or the es or en label of another keyed row.
+- **E4, vendor names:** unique ignoring case (`409 vendor_exists`), so the name is the natural key and no `Idempotency-Key` is needed.
+- **E5, no delete:** neither table has a `DELETE` route; `is_active` retires a row, and both refuse `TRUNCATE` (42501). "Never deleted once referenced" holds trivially.
+- **E6, access:** all six routes, the reads included, need `expense.configure` (Owner, Administrator, Finance Staff; not delegable). No amount, so nothing is masked in the audit log, the vendor `contact` included.
+- **E7, "can't be used for new expenses":** `finance.service.usable_category` / `usable_vendor` read the row `FOR SHARE` and raise `422 expense_category_unknown|vendor_unknown` or `409 expense_category_inactive|vendor_inactive`; #115 and #116 call them before inserting.
+
 ### Expense ledger (E16 (a), spec §8, §16, #115, #117, spec reading)
 
 The E5 shape of ADR-0006, smaller, all append-only:
