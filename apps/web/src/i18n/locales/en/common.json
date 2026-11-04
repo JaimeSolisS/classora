@@ -58,6 +58,7 @@
     "progress": "Progress",
     "familyBilling": "Family billing",
     "payroll": "Payroll",
+    "expenses": "Expenses",
     "myPay": "My pay"
   },
   "notFound": {
@@ -7007,6 +7008,147 @@
       "password": "If you haven't confirmed your password in the last 5 minutes, you'll be asked for it.",
       "submit": "Reverse payment",
       "unknown": "We don't know whether the payment was reversed. Sending it again from here unchanged is safe. When you close this dialog, check the list of payments."
+    }
+  },
+  "finance": {
+    "tabs": {
+      "label": "Expense sections",
+      "categories": "Categories",
+      "vendors": "Vendors"
+    },
+    "categoryLabels": {
+      "rent": "Rent",
+      "utilities": "Utilities",
+      "supplies": "Supplies",
+      "equipment": "Equipment",
+      "maintenance": "Maintenance"
+    },
+    "cancel": "Cancel",
+    "save": "Save",
+    "saving": "Saving…",
+    "reload": "Reload",
+    "reloadList": "Reload the list",
+    "validation": {
+      "nameRequired": "Enter the name.",
+      "categoryNameTooLong": "Use at most 100 characters.",
+      "vendorNameTooLong": "Use at most 200 characters.",
+      "contactTooLong": "Use at most 500 characters."
+    },
+    "categories": {
+      "title": "Expense categories",
+      "intro": "Categories group expenses. A deactivated category can't be chosen for new expenses; past expenses and reports keep it.",
+      "caption": "Expense categories",
+      "empty": "There are no categories yet.",
+      "add": "Add category",
+      "columns": {
+        "name": "Name",
+        "state": "State",
+        "actions": "Actions"
+      },
+      "states": {
+        "active": "Active",
+        "inactive": "Inactive"
+      },
+      "default": "Default",
+      "rename": "Rename",
+      "deactivate": "Deactivate",
+      "reactivate": "Reactivate",
+      "renameFor": "Rename {{name}}",
+      "deactivateFor": "Deactivate {{name}}",
+      "reactivateFor": "Reactivate {{name}}",
+      "saved": "Category saved.",
+      "deactivated": "Category deactivated.",
+      "reactivated": "Category reactivated.",
+      "gone": "That category no longer exists. The list was reloaded.",
+      "goneNotReloaded": "That category no longer exists. The list couldn't be reloaded.",
+      "conflictRefreshed": "Someone else changed this category. The list was reloaded: check it and try again.",
+      "conflictNotReloaded": "Someone else changed this category. The list couldn't be reloaded: reload it and try again.",
+      "stale": "The list couldn't be refreshed and may be out of date. Reload it before changing a category.",
+      "dialog": {
+        "addTitle": "Add category",
+        "renameTitle": "Rename category",
+        "addHelp": "The name can't repeat another category's.",
+        "renameHelp": "Past expenses will show the new name.",
+        "name": "Name",
+        "keyedWarning": "This is a default category: the text you type will show in both languages, and the default translation won't come back.",
+        "existsHint": "A deactivated category with this name may exist: find it in the list and reactivate it.",
+        "notices": {
+          "conflictReloaded": "Someone else changed this category. It was reloaded: check it and try again.",
+          "goneReloaded": "This category no longer exists. The list was reloaded.",
+          "goneNotReloaded": "This category no longer exists. The list couldn't be reloaded.",
+          "maybeSavedReloaded": "Your earlier attempt may already have saved this name. The list was reloaded: check it before trying again.",
+          "maybeSavedNotReloaded": "Your earlier attempt may already have saved this name. The list couldn't be reloaded: close and check the list."
+        }
+      },
+      "toggle": {
+        "deactivateTitle": "Deactivate {{name}}",
+        "deactivateBody": "It can't be chosen for new expenses; past expenses and reports keep it.",
+        "reactivateTitle": "Reactivate {{name}}",
+        "reactivateBody": "It can be chosen for new expenses again."
+      }
+    },
+    "vendors": {
+      "title": "Vendors",
+      "intro": "A deactivated vendor can't be chosen for new expenses; past expenses and reports keep it.",
+      "caption": "Vendors",
+      "search": "Search by name",
+      "stateFilter": "State",
+      "stateOptions": {
+        "active": "Active",
+        "inactive": "Inactive",
+        "all": "All"
+      },
+      "empty": "There are no vendors yet.",
+      "noMatch": "No vendor matches the search or the filter.",
+      "add": "Add vendor",
+      "columns": {
+        "name": "Name",
+        "contact": "Contact",
+        "state": "State",
+        "actions": "Actions"
+      },
+      "states": {
+        "active": "Active",
+        "inactive": "Inactive"
+      },
+      "noContact": "—",
+      "edit": "Edit",
+      "deactivate": "Deactivate",
+      "reactivate": "Reactivate",
+      "editFor": "Edit {{name}}",
+      "deactivateFor": "Deactivate {{name}}",
+      "reactivateFor": "Reactivate {{name}}",
+      "saved": "Vendor saved.",
+      "deactivated": "Vendor deactivated.",
+      "reactivated": "Vendor reactivated.",
+      "gone": "That vendor no longer exists. The list was reloaded.",
+      "goneNotReloaded": "That vendor no longer exists. The list couldn't be reloaded.",
+      "conflictRefreshed": "Someone else changed this vendor. The list was reloaded: check it and try again.",
+      "conflictNotReloaded": "Someone else changed this vendor. The list couldn't be reloaded: reload it and try again.",
+      "stale": "The list couldn't be refreshed and may be out of date. Reload it before changing a vendor.",
+      "dialog": {
+        "addTitle": "Add vendor",
+        "editTitle": "Edit vendor",
+        "help": "The name can't repeat another vendor's.",
+        "name": "Name",
+        "contact": "Contact (optional)",
+        "contactHelp": "A phone, an email or whatever reaches them. It can span several lines.",
+        "counter": "{{length}} of {{max}} characters",
+        "existsHint": "A deactivated vendor with this name may exist: find it with the Inactive filter and reactivate it.",
+        "notices": {
+          "conflictReloaded": "Someone else changed this vendor. It was reloaded: check it and try again.",
+          "goneReloaded": "This vendor no longer exists. The list was reloaded.",
+          "goneNotReloaded": "This vendor no longer exists. The list couldn't be reloaded.",
+          "maybeSavedReloaded": "Your earlier attempt may already have saved this name. The list was reloaded: check it before trying again.",
+          "maybeSavedNotReloaded": "Your earlier attempt may already have saved this name. The list couldn't be reloaded: close and check the list."
+        }
+      },
+      "toggle": {
+        "deactivateTitle": "Deactivate {{name}}",
+        "deactivateBody": "It can't be chosen for new expenses; past expenses and reports keep it.",
+        "reactivateTitle": "Reactivate {{name}}",
+        "reactivateBody": "It can be chosen for new expenses again."
+      }
     }
   },
   "familyBilling": {

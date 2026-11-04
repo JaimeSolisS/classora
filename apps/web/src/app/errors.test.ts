@@ -430,6 +430,13 @@ const API_CODES = [
   'makeup_subject_mismatch',
   'makeup_window_passed',
   'makeup_already_scheduled',
+  // Expense categories and vendors (#114, M7-11b E2).
+  'expense_category_exists',
+  'vendor_exists',
+  'expense_category_unknown',
+  'expense_category_inactive',
+  'vendor_unknown',
+  'vendor_inactive',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [
