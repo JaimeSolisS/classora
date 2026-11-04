@@ -10,11 +10,13 @@ import {
   settleUntil,
   type RenderedApp,
 } from '@/test/render-app';
-import { SEEDED_CATEGORIES, vendorPage } from './fixtures';
+import { expensePage, SEEDED_CATEGORIES, vendorPage } from './fixtures';
 import {
   ADMIN,
+  ADMIN_REFUNDS,
   CATEGORIES,
   COORDINATOR,
+  EXPENSES,
   FINANCE,
   GUARDIAN,
   OWNER,
@@ -35,6 +37,7 @@ function stub(as: SessionUserBody, routes = {}) {
     'GET /api/v1/auth/me': meAs(as),
     [CATEGORIES]: () => jsonResponse(200, SEEDED_CATEGORIES),
     [VENDORS]: () => jsonResponse(200, vendorPage()),
+    [EXPENSES]: () => jsonResponse(200, expensePage()),
     ...routes,
   });
 }
@@ -86,6 +89,8 @@ describe('routes (A3, A4)', () => {
     async (_who, as) => {
       for (const path of [
         '/expenses',
+        '/expenses/records',
+        '/expenses/records/84000000-0000-4000-8000-000000000001',
         '/expenses/categories',
         '/expenses/vendors',
       ]) {
@@ -103,23 +108,62 @@ describe('routes (A3, A4)', () => {
 
   it.each([
     ['the Owner', OWNER],
-    ['an Administrator', ADMIN],
     ['Finance Staff', FINANCE],
-  ] as const)('/expenses opens the categories for %s', async (_who, as) => {
-    stub(as);
-    await open('/expenses');
-    await settleUntil(() => h1() === 'Expense categories');
-    expect(app!.router.state.location.pathname).toBe('/expenses/categories');
-    const tabs = [
-      ...main().querySelectorAll<HTMLAnchorElement>(
-        'nav[aria-label="Expense sections"] a',
-      ),
-    ].map((a) => [a.textContent, a.getAttribute('aria-current')]);
-    expect(tabs).toEqual([
-      ['Categories', 'page'],
-      ['Vendors', null],
-    ]);
-  });
+  ] as const)(
+    'M7-12b A1: /expenses opens the expense list for %s, first tab',
+    async (_who, as) => {
+      stub(as);
+      await open('/expenses');
+      await settleUntil(() => h1() === 'Expenses');
+      expect(app!.router.state.location.pathname).toBe('/expenses/records');
+      const tabs = [
+        ...main().querySelectorAll<HTMLAnchorElement>(
+          'nav[aria-label="Expense sections"] a',
+        ),
+      ].map((a) => [a.textContent, a.getAttribute('aria-current')]);
+      expect(tabs).toEqual([
+        ['Expenses', 'page'],
+        ['Categories', null],
+        ['Vendors', null],
+      ]);
+    },
+  );
+
+  it.each([
+    ['an Administrator', ADMIN],
+    ['an Administrator delegated refunds', ADMIN_REFUNDS],
+  ] as const)(
+    'M7-12b A1: /expenses opens the categories for %s, with no expense tab',
+    async (_who, as) => {
+      const api = stub(as);
+      await open('/expenses');
+      await settleUntil(() => h1() === 'Expense categories');
+      expect(app!.router.state.location.pathname).toBe('/expenses/categories');
+      const tabs = [
+        ...main().querySelectorAll<HTMLAnchorElement>(
+          'nav[aria-label="Expense sections"] a',
+        ),
+      ].map((a) => [a.textContent, a.getAttribute('aria-current')]);
+      expect(tabs).toEqual([
+        ['Categories', 'page'],
+        ['Vendors', null],
+      ]);
+      expect(api.calls(EXPENSES)).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    ['an Administrator', ADMIN],
+    ['an Administrator delegated refunds', ADMIN_REFUNDS],
+  ] as const)(
+    'M7-12b A2: %s is forbidden on the expense records with no request',
+    async (_who, as) => {
+      const api = stub(as);
+      await open('/expenses/records');
+      expect(h1()).toBe("You don't have access to this page");
+      expect(api.calls(EXPENSES)).toHaveLength(0);
+    },
+  );
 
   it('the vendors tab is marked current on its page', async () => {
     stub(ADMIN);
@@ -133,6 +177,7 @@ describe('routes (A3, A4)', () => {
   it.each([
     ['/expenses/categories', CATEGORIES],
     ['/expenses/vendors', VENDORS],
+    ['/expenses/records', EXPENSES],
   ])('a 403 on %s shows the forbidden page', async (path, route) => {
     stub(FINANCE, { [route]: () => problem(403, 'permission_denied') });
     await open(path);

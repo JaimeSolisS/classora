@@ -166,6 +166,8 @@ describe('route tree', () => {
       'my-pay',
       'my-pay/periods/:periodId',
       'expenses',
+      'expenses/records',
+      'expenses/records/:expenseId',
       'expenses/categories',
       'expenses/vendors',
       'account/password',
@@ -463,18 +465,24 @@ describe('route tree', () => {
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
-    // M7-11b A3: expenses, the index included, code-split.
-    for (const index of [111, 112, 113]) {
+    // M7-11b A3: expenses, the index included, code-split; M7-12b A2: the
+    // expense records, expense.view.
+    for (const index of [111, 114, 115]) {
       expect(children[index]!.handle).toEqual({
         permission: 'expense.configure',
       });
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
-    expect(children[114]!.handle).toBeUndefined();
+    for (const index of [112, 113]) {
+      expect(children[index]!.handle).toEqual({ permission: 'expense.view' });
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    expect(children[116]!.handle).toBeUndefined();
     // #174 G1: any signed-in user, no permission.
-    expect(children[115]!.id).toBe('privacy-notice');
-    expect(children[115]!.handle).toBeUndefined();
+    expect(children[117]!.id).toBe('privacy-notice');
+    expect(children[117]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

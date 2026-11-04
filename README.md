@@ -428,6 +428,11 @@ unless a bullet says otherwise.
   defaults that can be renamed and deactivated) and vendors (Expenses →
   Categories, Vendors). A deactivated category or vendor can't be chosen for
   new expenses but stays in past records.
+- Owners and finance staff record one-time expenses with a receipt or
+  invoice number and a note (no file), filter them by status, category,
+  vendor and date, log full or partial payments, correct an amount with an
+  adjustment or void a wrong expense and enter it again, and the owner
+  reverses a mistaken payment (Expenses → Expenses).
 
 **Notifications**
 
@@ -459,7 +464,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** the rest of billing, expenses, reporting and analytics, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
+**Not built yet:** the rest of billing, recurring expense templates, reporting and analytics, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 
 **Not in this version:** file uploads and documents (attachments, the shared

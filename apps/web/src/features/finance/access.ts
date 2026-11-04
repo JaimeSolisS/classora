@@ -7,3 +7,10 @@ import type { AccessRequirement } from '@/features/auth/access';
 export const EXPENSE_CONFIGURE_ACCESS = {
   permission: 'expense.configure',
 } as const satisfies AccessRequirement;
+
+// The expense records (M7-12b A1, A2): Owners and Finance Staff (#115).
+// Recording, adjusting and voiding need expense.manage, and reversing a
+// payment needs finance.refund.approve too (expenses/rules.ts).
+export const EXPENSE_VIEW_ACCESS = {
+  permission: 'expense.view',
+} as const satisfies AccessRequirement;

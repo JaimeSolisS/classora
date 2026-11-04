@@ -7136,6 +7136,7 @@
   "finance": {
     "tabs": {
       "label": "Secciones de gastos",
+      "records": "Gastos",
       "categories": "Categorías",
       "vendors": "Proveedores"
     },
@@ -7271,6 +7272,217 @@
         "deactivateBody": "No se podrá elegir en gastos nuevos; los gastos y reportes anteriores lo conservan.",
         "reactivateTitle": "Reactivar {{name}}",
         "reactivateBody": "Se podrá volver a elegir en gastos nuevos."
+      }
+    },
+    "expenses": {
+      "title": "Gastos",
+      "intro": "Lo que el centro debe y paga. Un gasto no se edita: un monto equivocado se ajusta y cualquier otro dato se anula y se captura de nuevo.",
+      "caption": "Gastos",
+      "add": "Nuevo gasto",
+      "empty": "Todavía no hay gastos.",
+      "noMatch": "Ningún gasto coincide con los filtros.",
+      "stale": "No se pudo actualizar la lista y puede estar desactualizada.",
+      "closedLost": "Puede que el gasto ya se haya registrado. Revisa la lista antes de capturarlo otra vez.",
+      "filters": {
+        "label": "Filtrar gastos",
+        "status": "Estado",
+        "category": "Categoría",
+        "vendor": "Proveedor",
+        "all": "Todos",
+        "inactiveOption": "{{name}} (inactivo)",
+        "from": "Fecha desde",
+        "to": "Fecha hasta",
+        "search": "Buscar en la descripción o el comprobante",
+        "sort": "Ordenar por",
+        "sorts": {
+          "incurred": "Fecha del gasto, más reciente primero",
+          "due": "Vencimiento, más próximo primero"
+        }
+      },
+      "columns": {
+        "incurredOn": "Fecha",
+        "category": "Categoría",
+        "vendor": "Proveedor",
+        "description": "Descripción",
+        "net": "Monto",
+        "open": "Por pagar",
+        "dueOn": "Vence",
+        "status": "Estado"
+      },
+      "statuses": {
+        "unpaid": "Sin pagar",
+        "partially_paid": "Pago parcial",
+        "paid": "Pagado",
+        "overdue": "Vencido",
+        "void": "Anulado"
+      },
+      "inactiveCategory": "Inactiva",
+      "inactiveVendor": "Inactivo",
+      "none": "—",
+      "detail": {
+        "title": "Gasto",
+        "back": "Volver a gastos",
+        "notFound": "Este gasto no existe.",
+        "stale": "No se pudo actualizar el gasto y puede estar desactualizado. Vuelve a cargarlo antes de registrar algo.",
+        "reload": "Volver a cargar",
+        "created": "Gasto registrado.",
+        "fields": {
+          "category": "Categoría",
+          "vendor": "Proveedor",
+          "description": "Descripción",
+          "amount": "Monto capturado",
+          "adjustments": "Ajustes",
+          "net": "Monto",
+          "paid": "Pagado",
+          "open": "Por pagar",
+          "status": "Estado",
+          "incurredOn": "Fecha del gasto",
+          "dueOn": "Vencimiento",
+          "receiptReference": "Comprobante o factura",
+          "note": "Nota",
+          "createdBy": "Registrado por"
+        },
+        "createdBy": "{{name}}, {{when}}",
+        "actions": {
+          "label": "Acciones del gasto",
+          "record": "Registrar pago",
+          "adjust": "Ajustar",
+          "void": "Anular",
+          "voidBlocked": "Revierte los pagos primero."
+        },
+        "payments": {
+          "title": "Pagos",
+          "caption": "Pagos de este gasto",
+          "empty": "Todavía no hay pagos.",
+          "columns": {
+            "date": "Fecha",
+            "amount": "Monto",
+            "method": "Método",
+            "reference": "Referencia",
+            "note": "Nota",
+            "recordedBy": "Registrado por",
+            "actions": "Acciones"
+          },
+          "reversedBy": "Revertido por {{name}}, {{when}}",
+          "reason": "Motivo: {{reason}}",
+          "reversedState": "Revertido",
+          "reverse": "Revertir",
+          "reverseFor": "Revertir el pago {{payment}}"
+        },
+        "adjustments": {
+          "title": "Ajustes",
+          "caption": "Ajustes de este gasto",
+          "empty": "Sin ajustes.",
+          "columns": {
+            "date": "Fecha",
+            "amount": "Monto",
+            "reason": "Motivo",
+            "by": "Por"
+          }
+        },
+        "saved": {
+          "payment": "Pago registrado.",
+          "adjustment": "Ajuste guardado.",
+          "void": "Gasto anulado.",
+          "reversal": "Pago revertido."
+        },
+        "closedLost": {
+          "payment": "Puede que el pago ya se haya registrado. Revisa los pagos antes de registrarlo otra vez.",
+          "adjustment": "Puede que el ajuste ya se haya guardado. Revisa los ajustes antes de ajustar otra vez.",
+          "void": "Puede que el gasto ya se haya anulado. Revísalo antes de intentarlo otra vez.",
+          "reversal": "Puede que el pago ya se haya revertido. Revisa los pagos antes de intentarlo otra vez."
+        }
+      },
+      "dialog": {
+        "choose": "Elige…",
+        "counter": "{{n}} de {{max}} caracteres",
+        "amountHint": "En pesos, con hasta 2 decimales, por ejemplo 1250.50.",
+        "create": {
+          "title": "Nuevo gasto",
+          "help": "Un gasto no se puede editar después: revísalo antes de guardar. Solo se ofrecen categorías y proveedores activos.",
+          "category": "Categoría",
+          "vendor": "Proveedor (opcional)",
+          "noVendor": "Sin proveedor",
+          "description": "Descripción",
+          "amount": "Monto",
+          "incurredOn": "Fecha del gasto",
+          "dueOn": "Vencimiento",
+          "dueOnHint": "El mismo día del gasto o después.",
+          "receiptReference": "Número de comprobante o factura (opcional)",
+          "note": "Nota (opcional)",
+          "submit": "Registrar gasto",
+          "resend": "Volver a enviar el mismo gasto",
+          "lost": "No sabemos si el gasto se registró. Volver a enviarlo desde aquí es seguro; para cambiar algo, cierra y revisa la lista primero.",
+          "pickersReloaded": "Se volvieron a cargar las categorías y los proveedores."
+        },
+        "payment": {
+          "title": "Registrar pago",
+          "help": "Un pago hecho al proveedor, fuera de la aplicación.",
+          "open": "Por pagar: {{amount}}",
+          "paidOn": "Fecha del pago",
+          "amount": "Monto",
+          "method": "Método",
+          "reference": "Referencia (opcional)",
+          "referenceHint": "Con el método identifica el pago: el mismo par no se puede registrar dos veces en este gasto.",
+          "note": "Nota (opcional)",
+          "submit": "Registrar pago",
+          "resend": "Volver a enviar el mismo pago",
+          "lost": "No sabemos si el pago se registró. Volver a enviarlo desde aquí es seguro; para cambiar algo, cierra y revisa los pagos primero.",
+          "duplicate": "Este pago ya está registrado: {{payment}}.",
+          "exceedsOpen": "El pago es mayor que lo que queda por pagar ({{open}})."
+        },
+        "adjust": {
+          "title": "Ajustar el monto",
+          "help": "Un ajuste cambia el monto que se debe y queda en el registro con su motivo.",
+          "figures": "Monto: {{net}}. Pagado: {{paid}}. Por pagar: {{open}}.",
+          "direction": "Cambio",
+          "increase": "Aumentar",
+          "decrease": "Reducir",
+          "amount": "Por cuánto",
+          "reason": "Motivo",
+          "password": "Si no confirmaste tu contraseña en los últimos 5 minutos, se te pedirá.",
+          "submit": "Guardar ajuste",
+          "resend": "Volver a enviar el mismo ajuste",
+          "lost": "No sabemos si el ajuste se guardó. Volver a enviarlo desde aquí es seguro; para cambiar algo, cierra y revisa los ajustes primero.",
+          "exceedsOpen": "Puedes reducir como máximo lo que queda por pagar ({{open}}). Para reducir más, revierte pagos primero."
+        },
+        "void": {
+          "title": "Anular el gasto",
+          "help": "Anular es definitivo: el gasto queda en el registro con un monto de $0.00, ya no admite pagos ni ajustes y el correcto se captura como un gasto nuevo.",
+          "amount": "Monto que se anula: {{amount}}",
+          "reason": "Motivo",
+          "submit": "Anular el gasto",
+          "resend": "Volver a enviar la misma anulación",
+          "lost": "No sabemos si el gasto se anuló. Volver a enviarlo desde aquí es seguro; para cambiar algo, cierra y revisa el gasto primero."
+        },
+        "reverse": {
+          "title": "Revertir el pago",
+          "help": "El pago queda en la lista, tachado, y deja de contar como pagado. No se puede deshacer.",
+          "payment": "Pago: {{payment}}",
+          "reason": "Motivo",
+          "submit": "Revertir pago",
+          "resend": "Volver a enviar la misma reversión",
+          "lost": "No sabemos si el pago se revirtió. Volver a enviarlo desde aquí es seguro; para cambiar algo, cierra y revisa los pagos primero."
+        }
+      },
+      "validation": {
+        "categoryRequired": "Elige la categoría.",
+        "descriptionRequired": "Escribe la descripción.",
+        "descriptionTooLong": "Usa como máximo 500 caracteres.",
+        "amountRequired": "Escribe el monto.",
+        "amountInvalid": "Escribe el monto en pesos, con hasta 2 decimales.",
+        "amountPositive": "Escribe un monto mayor que 0.",
+        "amountAboveOpen": "El monto no puede ser mayor que lo que queda por pagar.",
+        "dateRequired": "Escribe una fecha válida.",
+        "receiptTooLong": "Usa como máximo 100 caracteres.",
+        "referenceTooLong": "Usa como máximo 100 caracteres.",
+        "noteTooLong": "Usa como máximo 1000 caracteres.",
+        "methodRequired": "Elige el método.",
+        "directionRequired": "Elige si el monto aumenta o se reduce.",
+        "reductionAboveOpen": "Puedes reducir como máximo lo que queda por pagar. Para reducir más, revierte pagos primero.",
+        "reductionIsVoid": "Esto anularía el gasto: usa Anular.",
+        "reasonRequired": "Escribe el motivo.",
+        "reasonTooLong": "Usa como máximo 1000 caracteres."
       }
     }
   },

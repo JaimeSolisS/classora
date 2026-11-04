@@ -63,7 +63,10 @@ import {
   PAYROLL_REVIEW_ACCESS,
 } from '@/features/payroll/access';
 import { PayrollIndex } from '@/features/payroll/PayrollIndex';
-import { EXPENSE_CONFIGURE_ACCESS } from '@/features/finance/access';
+import {
+  EXPENSE_CONFIGURE_ACCESS,
+  EXPENSE_VIEW_ACCESS,
+} from '@/features/finance/access';
 import { MY_HISTORY_ACCESS } from '@/features/academics/history/access';
 import {
   ASSIGNMENT_FORM_ACCESS,
@@ -1079,6 +1082,25 @@ export const routes: RouteObject[] = [
                 .ExpensesIndex,
             }),
             handle: EXPENSE_CONFIGURE_ACCESS,
+          },
+          // M7-12b A2: the expense records (code-split), expense.view holders.
+          {
+            path: 'expenses/records',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/finance/expenses/ExpensesPage')
+              ).ExpensesPage,
+            }),
+            handle: EXPENSE_VIEW_ACCESS,
+          },
+          {
+            path: 'expenses/records/:expenseId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/finance/expenses/ExpensePage')
+              ).ExpensePage,
+            }),
+            handle: EXPENSE_VIEW_ACCESS,
           },
           {
             path: 'expenses/categories',

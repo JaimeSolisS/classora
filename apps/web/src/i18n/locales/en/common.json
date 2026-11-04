@@ -7013,6 +7013,7 @@
   "finance": {
     "tabs": {
       "label": "Expense sections",
+      "records": "Expenses",
       "categories": "Categories",
       "vendors": "Vendors"
     },
@@ -7148,6 +7149,217 @@
         "deactivateBody": "It can't be chosen for new expenses; past expenses and reports keep it.",
         "reactivateTitle": "Reactivate {{name}}",
         "reactivateBody": "It can be chosen for new expenses again."
+      }
+    },
+    "expenses": {
+      "title": "Expenses",
+      "intro": "What the center owes and pays. An expense isn't edited: a wrong amount is adjusted, anything else is voided and entered again.",
+      "caption": "Expenses",
+      "add": "New expense",
+      "empty": "There are no expenses yet.",
+      "noMatch": "No expense matches the filters.",
+      "stale": "The list couldn't be refreshed and may be out of date.",
+      "closedLost": "The expense may already have been recorded. Check the list before entering it again.",
+      "filters": {
+        "label": "Filter expenses",
+        "status": "Status",
+        "category": "Category",
+        "vendor": "Vendor",
+        "all": "All",
+        "inactiveOption": "{{name}} (inactive)",
+        "from": "Incurred from",
+        "to": "Incurred to",
+        "search": "Search the description or the receipt",
+        "sort": "Sort by",
+        "sorts": {
+          "incurred": "Expense date, newest first",
+          "due": "Due date, soonest first"
+        }
+      },
+      "columns": {
+        "incurredOn": "Date",
+        "category": "Category",
+        "vendor": "Vendor",
+        "description": "Description",
+        "net": "Amount",
+        "open": "Open",
+        "dueOn": "Due",
+        "status": "Status"
+      },
+      "statuses": {
+        "unpaid": "Unpaid",
+        "partially_paid": "Partly paid",
+        "paid": "Paid",
+        "overdue": "Overdue",
+        "void": "Void"
+      },
+      "inactiveCategory": "Inactive",
+      "inactiveVendor": "Inactive",
+      "none": "—",
+      "detail": {
+        "title": "Expense",
+        "back": "Back to expenses",
+        "notFound": "This expense doesn't exist.",
+        "stale": "The expense couldn't be refreshed and may be out of date. Reload it before recording anything.",
+        "reload": "Reload",
+        "created": "Expense recorded.",
+        "fields": {
+          "category": "Category",
+          "vendor": "Vendor",
+          "description": "Description",
+          "amount": "Amount entered",
+          "adjustments": "Adjustments",
+          "net": "Amount",
+          "paid": "Paid",
+          "open": "Open",
+          "status": "Status",
+          "incurredOn": "Expense date",
+          "dueOn": "Due date",
+          "receiptReference": "Receipt or invoice",
+          "note": "Note",
+          "createdBy": "Recorded by"
+        },
+        "createdBy": "{{name}}, {{when}}",
+        "actions": {
+          "label": "Expense actions",
+          "record": "Record payment",
+          "adjust": "Adjust",
+          "void": "Void",
+          "voidBlocked": "Reverse the payments first."
+        },
+        "payments": {
+          "title": "Payments",
+          "caption": "Payments of this expense",
+          "empty": "No payments yet.",
+          "columns": {
+            "date": "Date",
+            "amount": "Amount",
+            "method": "Method",
+            "reference": "Reference",
+            "note": "Note",
+            "recordedBy": "Recorded by",
+            "actions": "Actions"
+          },
+          "reversedBy": "Reversed by {{name}}, {{when}}",
+          "reason": "Reason: {{reason}}",
+          "reversedState": "Reversed",
+          "reverse": "Reverse",
+          "reverseFor": "Reverse the payment of {{payment}}"
+        },
+        "adjustments": {
+          "title": "Adjustments",
+          "caption": "Adjustments of this expense",
+          "empty": "No adjustments.",
+          "columns": {
+            "date": "Date",
+            "amount": "Amount",
+            "reason": "Reason",
+            "by": "By"
+          }
+        },
+        "saved": {
+          "payment": "Payment recorded.",
+          "adjustment": "Adjustment saved.",
+          "void": "Expense voided.",
+          "reversal": "Payment reversed."
+        },
+        "closedLost": {
+          "payment": "The payment may already have been recorded. Check the payments before recording it again.",
+          "adjustment": "The adjustment may already have been saved. Check the adjustments before adjusting again.",
+          "void": "The expense may already have been voided. Check it before trying again.",
+          "reversal": "The payment may already have been reversed. Check the payments before trying again."
+        }
+      },
+      "dialog": {
+        "choose": "Choose…",
+        "counter": "{{n}} of {{max}} characters",
+        "amountHint": "In pesos, with up to 2 decimals, e.g. 1250.50.",
+        "create": {
+          "title": "New expense",
+          "help": "An expense can't be edited later: check it before you save. Only active categories and vendors are offered.",
+          "category": "Category",
+          "vendor": "Vendor (optional)",
+          "noVendor": "No vendor",
+          "description": "Description",
+          "amount": "Amount",
+          "incurredOn": "Expense date",
+          "dueOn": "Due date",
+          "dueOnHint": "On or after the expense date.",
+          "receiptReference": "Receipt or invoice number (optional)",
+          "note": "Note (optional)",
+          "submit": "Record expense",
+          "resend": "Resend the same expense",
+          "lost": "We don't know whether the expense was recorded. Resending it from here is safe; to change anything, close and check the list first.",
+          "pickersReloaded": "The categories and vendors were reloaded."
+        },
+        "payment": {
+          "title": "Record payment",
+          "help": "A payment made to the vendor, outside the app.",
+          "open": "Open: {{amount}}",
+          "paidOn": "Payment date",
+          "amount": "Amount",
+          "method": "Method",
+          "reference": "Reference (optional)",
+          "referenceHint": "With the method, it identifies the payment: the same pair can't be recorded twice on this expense.",
+          "note": "Note (optional)",
+          "submit": "Record payment",
+          "resend": "Resend the same payment",
+          "lost": "We don't know whether the payment was recorded. Resending it from here is safe; to change anything, close and check the payments first.",
+          "duplicate": "This payment is already recorded: {{payment}}.",
+          "exceedsOpen": "The payment is more than what's open ({{open}})."
+        },
+        "adjust": {
+          "title": "Adjust the amount",
+          "help": "An adjustment changes the amount owed and stays in the record with its reason.",
+          "figures": "Amount: {{net}}. Paid: {{paid}}. Open: {{open}}.",
+          "direction": "Change",
+          "increase": "Increase",
+          "decrease": "Reduce",
+          "amount": "By how much",
+          "reason": "Reason",
+          "password": "If you didn't confirm your password in the last 5 minutes, you'll be asked for it.",
+          "submit": "Save adjustment",
+          "resend": "Resend the same adjustment",
+          "lost": "We don't know whether the adjustment was saved. Resending it from here is safe; to change anything, close and check the adjustments first.",
+          "exceedsOpen": "You can reduce at most what's open ({{open}}). To reduce more, reverse payments first."
+        },
+        "void": {
+          "title": "Void the expense",
+          "help": "A void is final: the expense stays in the records with an amount of $0.00, takes no more payments or adjustments, and the right one is entered as a new expense.",
+          "amount": "Amount voided: {{amount}}",
+          "reason": "Reason",
+          "submit": "Void the expense",
+          "resend": "Resend the same void",
+          "lost": "We don't know whether the expense was voided. Resending it from here is safe; to change anything, close and check the expense first."
+        },
+        "reverse": {
+          "title": "Reverse the payment",
+          "help": "The payment stays listed, struck through, and stops counting as paid. It can't be undone.",
+          "payment": "Payment: {{payment}}",
+          "reason": "Reason",
+          "submit": "Reverse payment",
+          "resend": "Resend the same reversal",
+          "lost": "We don't know whether the payment was reversed. Resending it from here is safe; to change anything, close and check the payments first."
+        }
+      },
+      "validation": {
+        "categoryRequired": "Choose the category.",
+        "descriptionRequired": "Enter the description.",
+        "descriptionTooLong": "Use at most 500 characters.",
+        "amountRequired": "Enter the amount.",
+        "amountInvalid": "Enter the amount in pesos, with up to 2 decimals.",
+        "amountPositive": "Enter an amount greater than 0.",
+        "amountAboveOpen": "The amount can't be more than what's open.",
+        "dateRequired": "Enter a valid date.",
+        "receiptTooLong": "Use at most 100 characters.",
+        "referenceTooLong": "Use at most 100 characters.",
+        "noteTooLong": "Use at most 1000 characters.",
+        "methodRequired": "Choose the method.",
+        "directionRequired": "Choose whether to increase or reduce the amount.",
+        "reductionAboveOpen": "You can reduce at most what's open. To reduce more, reverse payments first.",
+        "reductionIsVoid": "This would void the expense: use Void instead.",
+        "reasonRequired": "Enter the reason.",
+        "reasonTooLong": "Use at most 1000 characters."
       }
     }
   },
