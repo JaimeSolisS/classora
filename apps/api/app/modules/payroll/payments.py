@@ -70,6 +70,12 @@ def _unreversed() -> ColumnElement[bool]:
     )
 
 
+def unreversed_payment() -> ColumnElement[bool]:
+    """A ``payroll_payments`` row without a reversal: the only payments that
+    count (#112), public for the cash basis of the financial reports (#117)."""
+    return _unreversed()
+
+
 def paid_sum(period_id: Any) -> ScalarSelect[Any]:
     """The sum of the period's payments without a reversal, ``0`` with none: a
     scalar subquery, correlated on ``period_id`` (a column), so a list reads it

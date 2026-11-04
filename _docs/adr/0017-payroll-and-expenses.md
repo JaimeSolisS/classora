@@ -325,7 +325,7 @@ Permissions, not roles; each seeded by its first user; only `payroll.finalize` i
 | `expense.configure` | Owner, Administrator, Finance Staff | categories and vendors ("administrator-defined", spec §8) | #114 |
 | `expense.view` | Owner, Finance Staff | read expenses, templates, payments | #115 |
 | `expense.manage` | Owner, Finance Staff | expenses, payments, adjustments, templates | #115 |
-| `finance.report.view` | Owner, Finance Staff | #117 reports | #117 |
+| `finance.report.view` | Owner, Finance Staff | #117 reports (seeded by #117) | #117 |
 
 - **Administrators see no pay and no expense amounts** unless delegated `payroll.finalize` (#105, #115 and #117 name only Finance and the Owner). **Academic Coordinators** get no payroll or expense permission.
 - **Tutors** read their own terms, rates, finalized lines, payments and payslips through record policy only, with no permission. Another tutor's id is the same `404`.
@@ -425,6 +425,16 @@ A reporting rule for #117, in the new read-only `reporting` module (ADR-0002 D3)
 - **Cash:** payroll by `paid_on`, expenses by `paid_on`, net of reversals.
 - **Direct tutor cost by class type:** session and pay-event lines by `class_kind`; an adjustment inherits its origin line's kind. **Salary and pay items are not allocated** to class types: they are a separate center-wide row (spec §8 selected no overhead allocation). So a fully salaried tutor shows no direct cost by class type. Cash-basis profitability is center-wide only.
 - **Payables:** Σ open expenses plus Σ unpaid finalized payroll, reported apart from receivables.
+
+#### Implementation notes (#117)
+
+#117 E3, E8–E10 (orchestrator-recommended, pending owner review); `_docs/api.md` "Financial reports" is the current rule.
+
+- **E3:** expense accrual uses each expense's current net (`expense_figures`), so a later expense adjustment restates the month of its `incurred_on`; payroll adjustments still count on their target period's `ends_on` and never restate.
+- **E8, class kind of payroll adjustments:** `late_approval` and `hours_correction` by their `class_kind` snapshot; a `manual` on a line by that line's kind when it is session-sourced (else unallocated); a `manual` on unresolved work by the session's kind; a free `manual` and both `carry_forward` rows unallocated.
+- **E9:** balances are as of the center's today only: receivables (outstanding, overdue by the effective due date, account credit shown apart), payables (open non-void expenses, of which overdue, plus unpaid finalized payroll) and deferred revenue (packages, courses, scheduled sessions, other).
+- **E10:** operating expenses as a total, by category and by vendor ("no vendor" row), with the current category and vendor rows (inactive ones included), non-zero rows only; never by template, and no description, reference, note or template name.
+- Permission `finance.report.view` (E12) is seeded for the Owner and Finance Staff, not delegable.
 
 ## Consequences
 

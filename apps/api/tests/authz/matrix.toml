@@ -2643,6 +2643,24 @@ json = { version = 1 }
 
 [[route]]
 method = "GET"
+path = "/api/v1/reports/finance/balances"
+access = "permission"
+permission = "finance.report.view"
+allow = ["owner", "finance_staff"]
+# #117 B1, ADR-0017 E12: Owner and Finance Staff only (not delegable, so an
+# Administrator with payroll.finalize delegated still gets 403).
+
+[[route]]
+method = "GET"
+path = "/api/v1/reports/finance/profitability"
+access = "permission"
+permission = "finance.report.view"
+allow = ["owner", "finance_staff"]
+query = { basis = "accrual", from = "2026-01-01", to = "2026-01-31" }
+# #117 B1. Range rules and figures: tests/integration/test_reporting_finance_*.
+
+[[route]]
+method = "GET"
 path = "/api/v1/schedule/family-students"
 access = "permission"
 permission = "student.view"

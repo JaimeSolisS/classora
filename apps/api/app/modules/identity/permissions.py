@@ -177,6 +177,10 @@ EXPENSE_CONFIGURE = "expense.configure"
 # expense.view (#115 E6).
 EXPENSE_VIEW = "expense.view"
 EXPENSE_MANAGE = "expense.manage"
+# Financial reports (#117; ADR-0017 E12): profitability on the accrual and cash
+# bases, receivables, payables and deferred revenue (Owner, Finance Staff; not
+# delegable). Administrators get none, even with payroll.finalize delegated.
+FINANCE_REPORT_VIEW = "finance.report.view"
 
 
 @dataclass(frozen=True)
@@ -231,6 +235,7 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(EXPENSE_CONFIGURE),
     PermissionDef(EXPENSE_VIEW),
     PermissionDef(EXPENSE_MANAGE),
+    PermissionDef(FINANCE_REPORT_VIEW),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
 )
@@ -318,6 +323,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 EXPENSE_CONFIGURE,
                 EXPENSE_VIEW,
                 EXPENSE_MANAGE,
+                FINANCE_REPORT_VIEW,
             }
         ),
         # Record policies limit these to assigned students, self and linked

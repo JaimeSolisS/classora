@@ -211,10 +211,12 @@ from app.modules.payroll.payments import (
     is_reversed,
     list_payments,
     paid_state,
+    paid_sum,
     paid_total,
     payment_period_id,
     record_payment,
     reverse_payment,
+    unreversed_payment,
 )
 from app.modules.payroll.payslips import (
     PAYSLIP_SERIES,
@@ -421,6 +423,7 @@ __all__ = [
     "paid_after_lock",
     "paid_so_far",
     "paid_state",
+    "paid_sum",
     "paid_total",
     "pay_item_drafts",
     "pay_item_facts",
@@ -442,6 +445,7 @@ __all__ = [
     "render_payslip",
     "replace_lines",
     "reverse_payment",
+    "unreversed_payment",
     "revision_unpaid",
     "salary_covers_of_tutors",
     "salary_drafts",

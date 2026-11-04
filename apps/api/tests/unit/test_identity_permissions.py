@@ -114,6 +114,9 @@ EXPECTED = {
     # no Administrator (no expense amounts), Coordinator, Tutor or family.
     "expense.view": {OWNER, FINANCE_STAFF},
     "expense.manage": {OWNER, FINANCE_STAFF},
+    # #117 (ADR-0017 E12): financial reports; no Administrator, even with
+    # payroll.finalize delegated.
+    "finance.report.view": {OWNER, FINANCE_STAFF},
 }
 
 
@@ -127,8 +130,8 @@ def test_catalog_matches_the_approved_table():
     }
 
     assert by_permission == EXPECTED
-    assert len(PERMISSIONS) == 45
-    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 114
+    assert len(PERMISSIONS) == 46
+    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 116
 
 
 def test_every_code_has_the_dotted_form():

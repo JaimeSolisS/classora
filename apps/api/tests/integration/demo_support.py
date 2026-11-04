@@ -348,9 +348,9 @@ FROZEN_NOW = datetime(2026, 11, 4, 17, 0, tzinfo=UTC)
 version 1 (2026-10-18) that the demo families' consent needs."""
 
 REFERENCE_LINES = [
-    "identity.permissions: 45 inserted, 0 updated",
+    "identity.permissions: 46 inserted, 0 updated",
     "identity.roles: 7 inserted, 0 updated",
-    "identity.role_permissions: 114 inserted, 0 updated",
+    "identity.role_permissions: 116 inserted, 0 updated",
     "catalog.education_levels: 4 inserted, 0 updated",
 ]
 RERUN_REFERENCE_LINES = [

@@ -121,6 +121,12 @@ For other modules:
   and a pinned ``PriceQuery`` for a ``package`` item (its ``subject_id``
   may be ``None``).
 
+**Financial report figures** (#117; :mod:`~app.modules.billing.report_figures`).
+For the reporting module: :func:`charge_figures` (every charge with its
+``net``), :func:`unreversed_payment` (the cash-basis condition) and
+:func:`receivable_totals` (Σ :func:`account_balance` over every account, as
+of a given today). Reads only.
+
 **Payments and allocations** (#96; :mod:`~app.modules.billing.payments`;
 the workflow ``app.workflows.billing_payments``). For other modules:
 
@@ -717,6 +723,14 @@ from app.modules.billing.reminder_log import (
 from app.modules.billing.reminders import REMINDER_STAGES as REMINDER_STAGES
 from app.modules.billing.reminders import ReminderStage as ReminderStage
 from app.modules.billing.reminders import reminder_stage as reminder_stage
+from app.modules.billing.report_figures import ReceivableTotals as ReceivableTotals
+from app.modules.billing.report_figures import charge_figures as charge_figures
+from app.modules.billing.report_figures import (
+    receivable_totals as receivable_totals,
+)
+from app.modules.billing.report_figures import (
+    unreversed_payment as unreversed_payment,
+)
 from app.modules.billing.schemas import AccountBalance as AccountBalance
 from app.modules.billing.schemas import AccountSettings as AccountSettings
 from app.modules.billing.schemas import AdjustmentDraft as AdjustmentDraft

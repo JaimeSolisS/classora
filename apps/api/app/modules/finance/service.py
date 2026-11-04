@@ -57,6 +57,7 @@ from app.modules.finance.expenses import (
     get_expense,
     insert_expense,
     list_expenses,
+    unreversed,
 )
 from app.modules.finance.template_periods import (
     Frequency,
@@ -122,6 +123,7 @@ __all__ = [
     "post_adjustment",
     "record_payment",
     "reverse_payment",
+    "unreversed",
     "usable_category",
     "usable_vendor",
 ]

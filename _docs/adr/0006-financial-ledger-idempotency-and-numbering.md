@@ -312,6 +312,16 @@ Owner-delegated recommended decisions of #101 (2026-10-28, S1–S8 (a)). No acce
 - **S5 adds reauthentication on the account-credit outcome** (`finance.correction`), stricter than E8's wording; a refund needs `finance.refund.approve` + `finance.refund_or_reversal`; an enrollment subject also needs `schedule.manage`. A clarification, not a rule change.
 - **S6 adds the `withdrawal_settled` guard:** the confirm posts a billable unposted fee and the due tuition periods in the same transaction, then credits them; afterwards the #92 classification never posts a fee for a settled period. E9 holds: per-session group charges are credited only by #92 J4, flat and course fees and posted tuition periods only by #101.
 
+## Implementation notes (M7-14)
+
+#117 E3–E7 (orchestrator-recommended, pending owner review). They fill gaps E7 leaves; no rule changes. `_docs/api.md` "Financial reports" is the current rule.
+
+- **E3, restatement:** accrual is computed live from each charge's **current** net, so a credit, withdrawal or repricing posted later changes the figure of the period the charge belongs to, not the posting date's.
+- **E4, packages:** the base is the purchase charge's `amount`. Each `consume` row is recognized on the consumed session's current local date at `amount.prorate(C_k, G) − amount.prorate(C_(k−1), G)` (the `allocate` prefix property; rows by session start, then id). The rest is recognized on `expires_on` (breakage, an `expire` row), or on the local posting date of a cancellation or withdrawal (remainder plus the credit), else deferred.
+- **E5, course fees:** the window is the cohort's counted occurrences starting after the enrollment's `enrolled_at` and, when withdrawn, at or before `withdrawn_at`; equal `split` shares on each occurrence's local date. An empty window recognizes the whole net on `service_date`.
+- **E6, cash refunds:** a reversal removes the payment from its `received_on`; a refund is a negative cash row on its own `refunded_on`.
+- **E7, class type of revenue:** a `session` charge by its session's kind, `package_purchase` individual, `group_enrollment` group, `cohort_enrollment` course, `tuition_period` by its plan's price `class_type`, `manual` in an "unallocated" row.
+
 ## References
 
 - [`../architecture.md`](../architecture.md) §4.2, §4.4, §5, §6, §10.4 ISSUE-J4, §10.6 ISSUE-F1–F7, §11, §12
