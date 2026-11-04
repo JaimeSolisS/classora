@@ -63,6 +63,7 @@ import {
   PAYROLL_REVIEW_ACCESS,
 } from '@/features/payroll/access';
 import { PayrollIndex } from '@/features/payroll/PayrollIndex';
+import { EXPENSE_CONFIGURE_ACCESS } from '@/features/finance/access';
 import { MY_HISTORY_ACCESS } from '@/features/academics/history/access';
 import {
   ASSIGNMENT_FORM_ACCESS,
@@ -1068,6 +1069,34 @@ export const routes: RouteObject[] = [
                 .EarningsPeriodPage,
             }),
             handle: MY_PAY_ACCESS,
+          },
+          // M7-11b A3: expenses (code-split), expense.configure holders. The
+          // index opens the first tab the user may open.
+          {
+            path: 'expenses',
+            lazy: async () => ({
+              Component: (await import('@/features/finance/ExpensesIndex'))
+                .ExpensesIndex,
+            }),
+            handle: EXPENSE_CONFIGURE_ACCESS,
+          },
+          {
+            path: 'expenses/categories',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/finance/categories/CategoriesPage')
+              ).CategoriesPage,
+            }),
+            handle: EXPENSE_CONFIGURE_ACCESS,
+          },
+          {
+            path: 'expenses/vendors',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/finance/vendors/VendorsPage')
+              ).VendorsPage,
+            }),
+            handle: EXPENSE_CONFIGURE_ACCESS,
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

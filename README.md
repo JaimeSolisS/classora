@@ -422,6 +422,13 @@ unless a bullet says otherwise.
   payments) and download each period's payslip as a PDF, which isn't a tax
   document.
 
+**Expenses**
+
+- Owners, administrators and finance staff manage expense categories (five
+  defaults that can be renamed and deactivated) and vendors (Expenses →
+  Categories, Vendors). A deactivated category or vendor can't be chosen for
+  new expenses but stays in past records.
+
 **Notifications**
 
 - A bell in the header shows how many notifications are unread and opens a

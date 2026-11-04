@@ -47,6 +47,38 @@ type Common = {
     // #425 H3: Payroll and My pay.
     payroll: string;
     myPay: string;
+    // M7-11b F3: expense categories and vendors.
+    expenses: string;
+  };
+  // M7-11b F3: expense categories and vendors.
+  finance: {
+    tabs: Record<'label' | 'categories' | 'vendors', string>;
+    save: string;
+    categories: {
+      title: string;
+      add: string;
+      saved: string;
+      deactivated: string;
+      reactivated: string;
+      renameFor: string;
+      deactivateFor: string;
+      reactivateFor: string;
+      deactivate: string;
+      reactivate: string;
+      states: Record<'active' | 'inactive', string>;
+      dialog: Record<'addTitle' | 'renameTitle' | 'name', string>;
+    };
+    vendors: {
+      title: string;
+      add: string;
+      search: string;
+      saved: string;
+      deactivated: string;
+      deactivateFor: string;
+      deactivate: string;
+      states: Record<'active' | 'inactive', string>;
+      dialog: Record<'addTitle' | 'name' | 'contact', string>;
+    };
   };
   // #425 H3: tutor pay and payroll settings.
   payroll: {

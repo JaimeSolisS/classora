@@ -58,6 +58,7 @@
     "progress": "Progreso",
     "familyBilling": "Cuenta familiar",
     "payroll": "Nómina",
+    "expenses": "Gastos",
     "myPay": "Mi pago"
   },
   "notFound": {
@@ -7130,6 +7131,147 @@
       "password": "Si no confirmaste tu contraseña en los últimos 5 minutos, se te pedirá.",
       "submit": "Revertir pago",
       "unknown": "No sabemos si el pago se revirtió. Volver a enviarlo sin cambios desde aquí es seguro. Al cerrar este diálogo, revisa la lista de pagos."
+    }
+  },
+  "finance": {
+    "tabs": {
+      "label": "Secciones de gastos",
+      "categories": "Categorías",
+      "vendors": "Proveedores"
+    },
+    "categoryLabels": {
+      "rent": "Renta",
+      "utilities": "Servicios",
+      "supplies": "Insumos",
+      "equipment": "Equipo",
+      "maintenance": "Mantenimiento"
+    },
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "reload": "Volver a cargar",
+    "reloadList": "Volver a cargar la lista",
+    "validation": {
+      "nameRequired": "Escribe el nombre.",
+      "categoryNameTooLong": "Usa como máximo 100 caracteres.",
+      "vendorNameTooLong": "Usa como máximo 200 caracteres.",
+      "contactTooLong": "Usa como máximo 500 caracteres."
+    },
+    "categories": {
+      "title": "Categorías de gastos",
+      "intro": "Las categorías agrupan los gastos. Una categoría desactivada no se puede elegir en gastos nuevos; los gastos y reportes anteriores la conservan.",
+      "caption": "Categorías de gastos",
+      "empty": "Aún no hay categorías.",
+      "add": "Agregar categoría",
+      "columns": {
+        "name": "Nombre",
+        "state": "Estado",
+        "actions": "Acciones"
+      },
+      "states": {
+        "active": "Activa",
+        "inactive": "Inactiva"
+      },
+      "default": "Predefinida",
+      "rename": "Renombrar",
+      "deactivate": "Desactivar",
+      "reactivate": "Reactivar",
+      "renameFor": "Renombrar {{name}}",
+      "deactivateFor": "Desactivar {{name}}",
+      "reactivateFor": "Reactivar {{name}}",
+      "saved": "Categoría guardada.",
+      "deactivated": "Categoría desactivada.",
+      "reactivated": "Categoría reactivada.",
+      "gone": "Esa categoría ya no existe. La lista se volvió a cargar.",
+      "goneNotReloaded": "Esa categoría ya no existe. No se pudo volver a cargar la lista.",
+      "conflictRefreshed": "Alguien más cambió esta categoría. La lista se volvió a cargar: revísala e inténtalo de nuevo.",
+      "conflictNotReloaded": "Alguien más cambió esta categoría. No se pudo volver a cargar la lista: vuelve a cargarla e inténtalo de nuevo.",
+      "stale": "No se pudo actualizar la lista y puede estar desactualizada. Vuelve a cargarla antes de cambiar una categoría.",
+      "dialog": {
+        "addTitle": "Agregar categoría",
+        "renameTitle": "Renombrar categoría",
+        "addHelp": "El nombre no puede repetir el de otra categoría.",
+        "renameHelp": "Los gastos anteriores mostrarán el nombre nuevo.",
+        "name": "Nombre",
+        "keyedWarning": "Es una categoría predefinida: el texto que escribas se mostrará en los dos idiomas y la traducción predefinida no volverá.",
+        "existsHint": "Puede existir una categoría desactivada con ese nombre: búscala en la lista y reactívala.",
+        "notices": {
+          "conflictReloaded": "Alguien más cambió esta categoría. Se volvió a cargar: revísala e inténtalo de nuevo.",
+          "goneReloaded": "Esta categoría ya no existe. La lista se volvió a cargar.",
+          "goneNotReloaded": "Esta categoría ya no existe. No se pudo volver a cargar la lista.",
+          "maybeSavedReloaded": "Puede que tu intento anterior ya haya guardado este nombre. La lista se volvió a cargar: revísala antes de intentarlo de nuevo.",
+          "maybeSavedNotReloaded": "Puede que tu intento anterior ya haya guardado este nombre. No se pudo volver a cargar la lista: cierra y revisa la lista."
+        }
+      },
+      "toggle": {
+        "deactivateTitle": "Desactivar {{name}}",
+        "deactivateBody": "No se podrá elegir en gastos nuevos; los gastos y reportes anteriores la conservan.",
+        "reactivateTitle": "Reactivar {{name}}",
+        "reactivateBody": "Se podrá volver a elegir en gastos nuevos."
+      }
+    },
+    "vendors": {
+      "title": "Proveedores",
+      "intro": "Un proveedor desactivado no se puede elegir en gastos nuevos; los gastos y reportes anteriores lo conservan.",
+      "caption": "Proveedores",
+      "search": "Buscar por nombre",
+      "stateFilter": "Estado",
+      "stateOptions": {
+        "active": "Activos",
+        "inactive": "Inactivos",
+        "all": "Todos"
+      },
+      "empty": "Aún no hay proveedores.",
+      "noMatch": "Ningún proveedor coincide con la búsqueda o el filtro.",
+      "add": "Agregar proveedor",
+      "columns": {
+        "name": "Nombre",
+        "contact": "Contacto",
+        "state": "Estado",
+        "actions": "Acciones"
+      },
+      "states": {
+        "active": "Activo",
+        "inactive": "Inactivo"
+      },
+      "noContact": "—",
+      "edit": "Editar",
+      "deactivate": "Desactivar",
+      "reactivate": "Reactivar",
+      "editFor": "Editar {{name}}",
+      "deactivateFor": "Desactivar {{name}}",
+      "reactivateFor": "Reactivar {{name}}",
+      "saved": "Proveedor guardado.",
+      "deactivated": "Proveedor desactivado.",
+      "reactivated": "Proveedor reactivado.",
+      "gone": "Ese proveedor ya no existe. La lista se volvió a cargar.",
+      "goneNotReloaded": "Ese proveedor ya no existe. No se pudo volver a cargar la lista.",
+      "conflictRefreshed": "Alguien más cambió este proveedor. La lista se volvió a cargar: revísalo e inténtalo de nuevo.",
+      "conflictNotReloaded": "Alguien más cambió este proveedor. No se pudo volver a cargar la lista: vuelve a cargarla e inténtalo de nuevo.",
+      "stale": "No se pudo actualizar la lista y puede estar desactualizada. Vuelve a cargarla antes de cambiar un proveedor.",
+      "dialog": {
+        "addTitle": "Agregar proveedor",
+        "editTitle": "Editar proveedor",
+        "help": "El nombre no puede repetir el de otro proveedor.",
+        "name": "Nombre",
+        "contact": "Contacto (opcional)",
+        "contactHelp": "Teléfono, correo o lo que sirva para contactarlo. Puede ocupar varias líneas.",
+        "counter": "{{length}} de {{max}} caracteres",
+        "existsHint": "Puede existir un proveedor desactivado con ese nombre: búscalo con el filtro Inactivos y reactívalo.",
+        "notices": {
+          "conflictReloaded": "Alguien más cambió este proveedor. Se volvió a cargar: revísalo e inténtalo de nuevo.",
+          "goneReloaded": "Este proveedor ya no existe. La lista se volvió a cargar.",
+          "goneNotReloaded": "Este proveedor ya no existe. No se pudo volver a cargar la lista.",
+          "maybeSavedReloaded": "Puede que tu intento anterior ya haya guardado este nombre. La lista se volvió a cargar: revísala antes de intentarlo de nuevo.",
+          "maybeSavedNotReloaded": "Puede que tu intento anterior ya haya guardado este nombre. No se pudo volver a cargar la lista: cierra y revisa la lista."
+        }
+      },
+      "toggle": {
+        "deactivateTitle": "Desactivar {{name}}",
+        "deactivateBody": "No se podrá elegir en gastos nuevos; los gastos y reportes anteriores lo conservan.",
+        "reactivateTitle": "Reactivar {{name}}",
+        "reactivateBody": "Se podrá volver a elegir en gastos nuevos."
+      }
     }
   },
   "familyBilling": {

@@ -507,6 +507,14 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['makeup_subject_mismatch', 'makeup_subject_mismatch'],
   ['makeup_window_passed', 'makeup_window_passed'],
   ['makeup_already_scheduled', 'makeup_already_scheduled'],
+  // Expense categories and vendors (#114; the pages are M7-11b E2), and the
+  // codes #114 E7 defines for the expense pickers of #115b.
+  ['expense_category_exists', 'expense_category_exists'],
+  ['vendor_exists', 'vendor_exists'],
+  ['expense_category_unknown', 'expense_category_unknown'],
+  ['expense_category_inactive', 'expense_category_inactive'],
+  ['vendor_unknown', 'vendor_unknown'],
+  ['vendor_inactive', 'vendor_inactive'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],
