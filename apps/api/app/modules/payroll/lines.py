@@ -81,6 +81,16 @@ REBUILT_KINDS: Final = (*SESSION_LINE_KINDS, SALARY, PAY_ITEM)
 not one (#111 A4): an adjustment line is written once, with its adjustment, and
 never rebuilt, so its id is stable and a later correction may name it."""
 
+LINE_ORDER: Final = (
+    PayrollLine.service_date.asc().nulls_last(),
+    PayrollLine.class_session_id,
+    PayrollLine.salary_starts_on,
+    PayrollLine.pay_item_id,
+    PayrollLine.payroll_adjustment_id,
+)
+"""A period's line order (:func:`period_lines`; the payslip and the tutor's
+reads, #113 B5): never by ``id``, which changes on every run."""
+
 OPEN: Final = "open"
 FINALIZED: Final = "finalized"
 FOREIGN_KEY_REFUSALS: Final = frozenset({"23001", "23503"})
@@ -219,13 +229,7 @@ async def period_lines(
                 PayrollAdjustment.id == PayrollLine.payroll_adjustment_id,
             )
             .where(PayrollLine.payroll_period_id == period_id)
-            .order_by(
-                PayrollLine.service_date.asc().nulls_last(),
-                PayrollLine.class_session_id,
-                PayrollLine.salary_starts_on,
-                PayrollLine.pay_item_id,
-                PayrollLine.payroll_adjustment_id,
-            )
+            .order_by(*LINE_ORDER)
         )
     ).all()
     try:

@@ -7411,8 +7411,11 @@ pages are M7-07b.
   payroll_period_out_of_order` → `409 payroll_period_stale` → `409
   payroll_unresolved_work` → the total (`409 payroll_amount_out_of_range`, `409
   payroll_negative_total` below `0.00`, #111 E8) → the writes, the inbox item and
-  the tutor's notification. A negative total reaches `finalize` only if a prepared
-  period gained a line no route writes; the database CHECK stays the backstop.
+  the tutor's notification → **issues the payslip** of a period with lines (#113,
+  below; the `number_series` `P` row is the last lock). A negative total reaches
+  `finalize` only if a prepared period gained a line no route writes; the database
+  CHECK stays the backstop. A failure while issuing the payslip rolls the whole
+  finalize back (a `500`), and the number is given back.
 - **Oldest first:** a tutor's periods finalize in order, empty ones included: each
   takes a `prepare` and a `finalize`, at `0.00`. A stuck period stops the tutor's
   later ones, on purpose.
@@ -7628,6 +7631,75 @@ The pages are M7-09b.
 - **Audit:** both rows are audited with the caller as actor, `amount`,
   `reference`, `note` and `reason` masked. No named event, log line or
   notification carries any of them.
+
+### Tutor earnings and payslips
+
+Implemented by M7-10 (#113; spec §2, §7; ADR-0017 E12, E14 and its #113 notes,
+orchestrator-recommended, pending owner review) in
+`app/workflows/payroll_earnings.py` and its router, with the payslips in
+`app/modules/payroll/payslips.py` and the rows in `app/modules/payroll/earnings.py`.
+Table: `_docs/data-model.md` §11.12. The pages are M7-10b.
+
+| Route | Access | Notes |
+|---|---|---|
+| `GET /api/v1/payroll/tutors/{tutor_user_id}/earnings` | `authenticated()` + the compensation record policy | Offset-paginated (`limit`, `offset`), newest `ends_on` first. `OffsetPage[EarningsPeriodItem]`. |
+| `GET /api/v1/payroll/tutors/{tutor_user_id}/earnings/{period_id}` | `authenticated()` + the compensation record policy | `EarningsPeriodDetail`. |
+| `GET /api/v1/payroll/tutors/{tutor_user_id}/payslips/{payslip_id}/pdf` | `authenticated()` + the compensation record policy | `200 application/pdf`, `Content-Disposition: attachment; filename="<number>.pdf"`, `Cache-Control: no-store`. |
+
+- **Who (#113 E2):** the tutor themselves, while holding the tutor role, or a
+  `payroll.view` holder (Owner, Finance Staff), the `GET …/compensation` policy.
+  Everyone else, a delegated Administrator (`payroll.finalize`), a Coordinator and a
+  guardian included, gets the same `404 not_found` as an unknown id. For a
+  `payroll.view` holder the id must be a tutor's: a user holding the role or one
+  with a payroll period, so Finance still reads a leaver or someone who lost the
+  role; that person reads nothing. No `Idempotency-Key`, no reauthentication, no
+  audit, no rate limit.
+- **Check order (all three):** `401` → `403 privacy_notice_required` → `422` (a
+  malformed id, `limit` or `offset`) → `404 not_found` → `200`. The `404` also
+  covers another tutor's period or payslip, under either tutor's path, and a period
+  that isn't `finalized`.
+- **Only finalized periods (#113 E3):** `open` and `prepared` periods are never
+  listed and their ids are `404`. A finalized period with no lines is listed at
+  `0.00` with `payslip: null`; so is a period finalized before #113.
+- **`EarningsPeriodItem`:** `id`, `starts_on`, `ends_on`, `pay_frequency`,
+  `finalized_on` (center-local), `total`, `paid_total` and `paid_state` (#112:
+  payments without a reversal), `last_paid_on` (the latest such `paid_on`, or
+  `null`), `line_count`, `payslip {id, number} | null`. The list is a fixed number
+  of statements, whatever the page size.
+- **`EarningsPeriodDetail`:** `period` (an `EarningsPeriodItem`), `lines`,
+  `summary`, `total`, `payments`, `payslip {id, number} | null`.
+  - **`lines` (#113 E4, E6):** read live through the payslip's own projection, in
+    the `GET …/lines` order. Each: `kind`, `amount`, `service_date`, `class_kind`,
+    `minutes`, `rate_model`, `rate`, `covered_by_salary`, `cumulative_sessions`,
+    `cohort_sessions` (`k / N` of a per-course line), `pay_rule {event, mode,
+    percent, amount} | null`, `salary {amount, starts_on, ends_on, numerator,
+    denominator, basis} | null`, `pay_item {type_name, direction, description} |
+    null`, `adjustment {kind, reason, service_date, class_kind, origin_period
+    {starts_on, ends_on} | null, paired_period {starts_on, ends_on} | null} | null`.
+    The adjustment's `reason` is set on `manual` only; its date and class kind are
+    its own, or its origin line's. No ids, no student or subject names.
+  - **`summary`:** `class_line_count` and `class_minutes` (the session kinds),
+    `classes`, `salary`, `bonuses` (pay items above zero), `deductions` (below
+    zero, negative), `adjustments`.
+  - **`payments` (#113 E5):** `id`, `paid_on`, `amount`, `method_code`,
+    `reference`, `reversed_on` (the center-local date of the reversal, or `null`),
+    newest `paid_on` first, reversed ones included. Never the note, the reversal
+    reason or anyone's name.
+  - The screen and the payslip agree on every figure; only a pay item type renamed
+    after finalize differs (the screen shows the current name, the payslip the
+    name at issue).
+- **The payslip (#113 B, ADR-0017 E14):** `finalize` issues one per period with
+  lines, numbered `P-YYYY-NNNNNN` gap-free per center-local year, in the tutor's
+  stored language (else `es`), with a frozen snapshot (center, tutor, period,
+  lines, summary, total; no payments). Later renames, name changes, settings,
+  corrections and payments never change it. The finalize response is unchanged.
+- **The PDF (C4):** rendered on every request, never stored, in the payslip's
+  stored language and template version, whoever downloads it. Title "Comprobante
+  de pago" / "Payslip" and the notice "Este documento no es un comprobante fiscal
+  (no es un CFDI de nómina)." (#113 E7). The read transaction is committed before
+  the render, which runs in a worker thread. A render failure, or an unknown
+  template version, is logged with the payslip id and the error type only and
+  answers `500 internal_error`.
 
 ### Bonuses and deductions
 

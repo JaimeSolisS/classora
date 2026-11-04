@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0081"
+HEAD = "0082"
 PAY_RULES = "session_pay_rules"
 LINES = "payroll_lines"
 SALARY_LINE_COLUMNS = frozenset(
@@ -215,6 +215,7 @@ PAYROLL_PERIOD_TABLES = ["payroll_settings", "payroll_periods"]
 RETURN_COLUMNS = ("returned_at", "returned_by_user_id", "return_reason")
 ADJUSTMENTS = "payroll_adjustments"
 PAYROLL_PAYMENT_TABLES = ["payroll_payments", "payroll_payment_reversals"]
+PAYSLIPS = "payslips"
 """The tables revision 0072 adds (#105 B1, B2)."""
 APPEND_ONLY_LEDGER_TABLES = [
     "charges",
@@ -468,6 +469,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *PAY_ITEM_TABLES,
             ADJUSTMENTS,
             *PAYROLL_PAYMENT_TABLES,
+            PAYSLIPS,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4851,9 +4853,22 @@ def _of_0081(diff: Any) -> bool:
     return diff[0] == "add_index" and diff[1].table.name in PAYROLL_PAYMENT_TABLES
 
 
+def _of_0082(diff: Any) -> bool:
+    """A metadata difference that revision 0082 adds: the payslips table and its
+    index (#113 A1). CHECKs are not compared."""
+    if diff[0] == "add_table":
+        return bool(diff[1].name == PAYSLIPS)
+    return diff[0] == "add_index" and diff[1].table.name == PAYSLIPS
+
+
+def _of_0081_on(diff: Any) -> bool:
+    """A metadata difference that revision 0081 or a later one adds."""
+    return _of_0081(diff) or _of_0082(diff)
+
+
 def _of_0080_on(diff: Any) -> bool:
     """A metadata difference that revision 0080 or a later one adds."""
-    return _of_0080(diff) or _of_0081(diff)
+    return _of_0080(diff) or _of_0081_on(diff)
 
 
 def _of_0079_on(diff: Any) -> bool:
@@ -15088,7 +15103,7 @@ def test_0080_adds_the_table_and_downgrade_restores_0079(fresh_database_url):
     command.upgrade(config, "0080")
 
     assert version_nums(dsn) == ["0080"]
-    assert [d for d in metadata_diff(dsn) if not _of_0081(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0081_on(d)] == []
     assert public_tables(dsn) - tables == {ADJUSTMENTS}
     constraints = _constraints(dsn, ADJUSTMENTS)
     assert set(constraints) == ADJUSTMENT_CONSTRAINTS_0080
@@ -15594,7 +15609,7 @@ def test_0081_adds_the_tables_and_downgrade_restores_0080(fresh_database_url):
     command.upgrade(config, "0081")
 
     assert version_nums(dsn) == ["0081"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0082(d)] == []
     assert public_tables(dsn) - tables == set(PAYROLL_PAYMENT_TABLES)
     for table in PAYROLL_PAYMENT_TABLES:
         constraints = _constraints(dsn, table)
@@ -15628,7 +15643,7 @@ def test_0081_adds_the_tables_and_downgrade_restores_0080(fresh_database_url):
         )[0].n
         == 0
     )
-    assert [d for d in metadata_diff(dsn) if not _of_0081(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0081_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -15767,3 +15782,180 @@ def test_0081_downgrade_refuses_while_a_payment_exists(fresh_database_url):
     assert getattr(caught.value.orig, "sqlstate", None) == "55000"
     assert version_nums(dsn) == [HEAD]
     assert run_sql(dsn, "SELECT count(*) AS n FROM payroll_payments")[0].n == 1
+
+
+# --- 0082: payslips (#113 A1) -----
+
+PAYSLIP_CONSTRAINTS_0082 = {
+    "pk_payslips",
+    "fk_payslips_period_tutor",
+    "uq_payslips_number",
+    "uq_payslips_payroll_period_id",
+    "ck_payslips_number_format",
+    "ck_payslips_language",
+    "ck_payslips_template_version_positive",
+    "ck_payslips_snapshot_object",
+}
+PAYSLIP_INDEXES_0082 = {
+    "pk_payslips",
+    "uq_payslips_number",
+    "uq_payslips_payroll_period_id",
+    "ix_payslips_tutor_user_id_issued_at",
+}
+
+
+def test_0082_adds_the_table_and_downgrade_restores_0081(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0081")
+    tables = public_tables(dsn)
+
+    command.upgrade(config, "0082")
+
+    assert version_nums(dsn) == ["0082"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == {PAYSLIPS}
+    constraints = _constraints(dsn, PAYSLIPS)
+    assert set(constraints) == PAYSLIP_CONSTRAINTS_0082
+    assert constraints["fk_payslips_period_tutor"].endswith("ON DELETE RESTRICT")
+    assert (
+        "(payroll_period_id, tutor_user_id)"
+        " REFERENCES payroll_periods(id, tutor_user_id)"
+    ) in constraints["fk_payslips_period_tutor"]
+    indexes = _indexes(dsn, PAYSLIPS)
+    assert set(indexes) == PAYSLIP_INDEXES_0082
+    assert (
+        "(tutor_user_id, issued_at)" in indexes["ix_payslips_tutor_user_id_issued_at"]
+    )
+    assert _triggers(dsn, PAYSLIPS) == {
+        "payslips_no_update_delete",
+        "payslips_no_truncate",
+    }
+
+    command.downgrade(config, "0081")
+
+    assert version_nums(dsn) == ["0081"]
+    assert public_tables(dsn) == tables
+    assert (
+        run_sql(
+            dsn,
+            "SELECT count(*) AS n FROM pg_proc WHERE proname = 'payslips_append_only'",
+        )[0].n
+        == 0
+    )
+    assert [d for d in metadata_diff(dsn) if not _of_0082(d)] == []
+
+    command.upgrade(config, "head")
+
+    assert metadata_diff(dsn) == []
+
+
+def _payslip_row_0082(world: dict[str, Any], **change: Any) -> dict[str, Any]:
+    """A valid payslip of the finalized period of :func:`_adjustment_world`."""
+    return {
+        "number": "P-2031-000001",
+        "payroll_period_id": world["origin"],
+        "tutor_user_id": world["tutor"],
+        "issued_at": datetime(2031, 1, 13, 18, 0, tzinfo=UTC),
+        "language": "es",
+        "template_version": 1,
+        "snapshot": '{"v": 1}',
+        **change,
+    }
+
+
+def _insert_payslip_0082(dsn: str, row: dict[str, Any]) -> Any:
+    columns = ", ".join(row)
+    binds = ", ".join(
+        f"CAST(:{name} AS jsonb)" if name == "snapshot" else f":{name}" for name in row
+    )
+    return run_sql(
+        dsn,
+        f"INSERT INTO payslips ({columns}) VALUES ({binds})"  # noqa: S608
+        " RETURNING id",
+        row,
+    )[0].id
+
+
+@pytest.mark.parametrize(
+    ("change", "constraint"),
+    [
+        ({"number": "R-2031-000001"}, "ck_payslips_number_format"),
+        ({"number": "P-2031-00001"}, "ck_payslips_number_format"),
+        ({"number": "P-31-000001"}, "ck_payslips_number_format"),
+        ({"language": "fr"}, "ck_payslips_language"),
+        ({"template_version": 0}, "ck_payslips_template_version_positive"),
+        ({"snapshot": "[]"}, "ck_payslips_snapshot_object"),
+        ({"snapshot": '"v1"'}, "ck_payslips_snapshot_object"),
+    ],
+)
+def test_0082_a_payslip_row_is_checked(fresh_database_url, change, constraint):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+
+    with pytest.raises(IntegrityError) as caught:
+        _insert_payslip_0082(dsn, _payslip_row_0082(world, **change))
+
+    assert constraint in str(caught.value.orig)
+
+
+def test_0082_one_payslip_per_period_and_number_of_the_periods_tutor(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+    _insert_payslip_0082(dsn, _payslip_row_0082(world))
+    [other] = run_sql(
+        dsn,
+        "INSERT INTO users (username, email, password_hash, display_name)"
+        " VALUES ('otra', 'otra@example.com', 'x', 'Otra') RETURNING id",
+    )
+
+    for change, constraint in (
+        ({"number": "P-2031-000002"}, "uq_payslips_payroll_period_id"),
+        ({"payroll_period_id": world["target"]}, "uq_payslips_number"),
+        (
+            {
+                "number": "P-2031-000002",
+                "payroll_period_id": world["target"],
+                "tutor_user_id": other.id,
+            },
+            "fk_payslips_period_tutor",
+        ),
+    ):
+        with pytest.raises(IntegrityError) as caught:
+            _insert_payslip_0082(dsn, _payslip_row_0082(world, **change))
+        assert constraint in str(caught.value.orig), change
+
+
+def test_0082_payslips_are_append_only_and_keep_their_period(fresh_database_url):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+    payslip = _insert_payslip_0082(dsn, _payslip_row_0082(world))
+
+    for statement in (
+        "UPDATE payslips SET language = 'en' WHERE id = :id",
+        "UPDATE payslips SET snapshot = '{}' WHERE id = :id",
+        "DELETE FROM payslips WHERE id = :id",
+        "TRUNCATE payslips",
+        "TRUNCATE payroll_periods CASCADE",
+    ):
+        assert _sqlstate_0076(dsn, statement, {"id": payslip}) == "42501", statement
+    assert _sqlstate_0076(
+        dsn, "DELETE FROM payroll_periods WHERE id = :id", {"id": world["origin"]}
+    ) in {"23001", "23503", "42501"}
+    assert run_sql(dsn, "SELECT count(*) AS n FROM payslips")[0].n == 1
+
+
+def test_0082_downgrade_refuses_while_a_payslip_exists(fresh_database_url):
+    dsn = fresh_database_url
+    world = _adjustment_world(dsn)
+    _insert_payslip_0082(dsn, _payslip_row_0082(world))
+    config = alembic_config(dsn)
+
+    with pytest.raises(DBAPIError) as caught:
+        command.downgrade(config, "0081")
+
+    assert getattr(caught.value.orig, "sqlstate", None) == "55000"
+    assert version_nums(dsn) == [HEAD]
+    assert run_sql(dsn, "SELECT count(*) AS n FROM payslips")[0].n == 1

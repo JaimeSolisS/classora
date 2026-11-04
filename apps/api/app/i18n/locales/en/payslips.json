@@ -1,0 +1,95 @@
+{
+  "v1": {
+    "title": "Payslip",
+    "number": "Number",
+    "issued_on": "Issue date",
+    "tutor": "Tutor",
+    "period": "Period",
+    "frequency": "Pay frequency",
+    "finalized_on": "Closed on",
+    "period_range": "{start} to {end}",
+    "frequencies": {
+      "weekly": "Weekly",
+      "biweekly": "Biweekly",
+      "monthly": "Monthly"
+    },
+    "sections": {
+      "classes": "Classes",
+      "salary": "Salary",
+      "bonuses": "Bonuses",
+      "deductions": "Deductions",
+      "adjustments": "Adjustments",
+      "summary": "Summary"
+    },
+    "columns": {
+      "date": "Date",
+      "class_kind": "Class type",
+      "event": "Item",
+      "minutes": "Minutes",
+      "rate": "Rate",
+      "amount": "Amount",
+      "piece": "Period",
+      "detail": "Detail",
+      "type": "Type",
+      "description": "Description",
+      "kind": "Type"
+    },
+    "minutes": "{minutes} min",
+    "kinds": {
+      "session": "Class",
+      "late_cancellation": "Late cancellation",
+      "no_show": "No-show",
+      "makeup": "Makeup"
+    },
+    "event_with_rule": "{event} ({rule})",
+    "rules": {
+      "percent": "{percent} of the rate",
+      "fixed": "fixed amount of {amount}",
+      "none": "unpaid"
+    },
+    "covered_by_salary": "Covered by salary",
+    "rate": "{rate} {model}",
+    "course_share": "{rate}, session {k} / {n}",
+    "models": {
+      "per_hour": "per hour",
+      "per_session": "per session",
+      "per_course": "per course"
+    },
+    "class_kinds": {
+      "individual": "Individual",
+      "group": "Group",
+      "course": "Course"
+    },
+    "salary": {
+      "detail": "{numerator} / {denominator} of {amount}, counted in {basis}"
+    },
+    "bases": {
+      "calendar_days": "calendar days",
+      "weekdays": "weekdays"
+    },
+    "adjustment_kinds": {
+      "late_approval": "Late approval",
+      "hours_correction": "Hours correction",
+      "manual": "Manual adjustment",
+      "carry_forward": "Carried balance"
+    },
+    "adjustments": {
+      "work": "Work on {date}",
+      "work_kind": "Work on {date} ({class_kind})",
+      "origin": "Origin period: {period}",
+      "paired": "Related period: {period}",
+      "reason": "Reason: {reason}"
+    },
+    "summary": {
+      "class_lines": "Paid classes",
+      "class_count": "{count} ({minutes} min)",
+      "classes": "Classes",
+      "salary": "Salary",
+      "bonuses": "Bonuses",
+      "deductions": "Deductions",
+      "adjustments": "Adjustments",
+      "total": "Period total"
+    },
+    "notice": "This document is not a tax document (it is not a CFDI de nómina)."
+  }
+}

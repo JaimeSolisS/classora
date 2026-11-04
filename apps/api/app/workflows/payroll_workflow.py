@@ -27,7 +27,11 @@ UPDATE``, re-read → the versions and items ``FOR KEY SHARE`` → the
   → ``blocking_work`` again, ``409 payroll_unresolved_work`` → the total, ``409
   payroll_negative_total`` below ``0.00`` (#111 E8) → the write.
   ``blocking_work`` runs again because work approved after ``prepare`` with no
-  basis has no draft and no line, so the drift comparison can't see it.
+  basis has no draft and no line, so the drift comparison can't see it. Then,
+  after the writes (status, event, approval decision, notification), the
+  payslip of a period with lines (#113 B1,
+  :func:`app.workflows.payroll_earnings.issue_for`): the ``number_series``
+  ``P`` row is the last lock.
 
 **Oldest first (#110 E2).** An out-of-order finalize pays wrongly when a cohort's
 ``N`` changes afterwards (833.33 or 1166.67 on 1000.00). Every earlier period
@@ -48,7 +52,8 @@ response. The figure stays on the period, and the page refetches it.
 Administrator ``prepared`` and ``finalized`` ones. Any other status is the same
 ``404`` as a missing id on the reads. Neither read takes a lock (#443 D3).
 
-**Statements:** ``finalize`` is fixed whatever the number of lines (#110 M8).
+**Statements:** ``finalize`` is fixed whatever the number of lines (#110 M8);
+the payslip adds a fixed number (#113 B7).
 """
 
 import uuid
@@ -82,7 +87,7 @@ from app.modules.payroll.schemas import (
     PeriodStatus,
 )
 from app.modules.scheduling import service as scheduling
-from app.workflows import payroll_calculation
+from app.workflows import payroll_calculation, payroll_earnings
 from app.workflows.charge_pricing import floor_instant
 from app.workflows.payroll_calculation import PERIOD_RECORD_TYPE
 from app.workflows.payroll_period_approval import PAYROLL_PERIOD_TYPE
@@ -229,8 +234,8 @@ async def finalize(
     period_id: uuid.UUID,
     prepared_at: datetime,
 ) -> PayrollPeriodTransition:
-    """``POST …/finalize``, in the order of the module docstring. #113 adds the
-    payslip after these writes."""
+    """``POST …/finalize``, in the order of the module docstring, then the
+    payslip after these writes when the period has lines (#113 B1)."""
     period = await payroll.lock_period(session, period_id)
     if period.status != PREPARED:
         raise payroll.PayrollPeriodNotPreparedError(period.status)
@@ -281,6 +286,8 @@ async def finalize(
             ends_on=period.ends_on.isoformat(),
         ),
     )
+    if stored:
+        await payroll_earnings.issue_for(session, finalized)
     return _transition(finalized)
 
 
