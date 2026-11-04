@@ -52,7 +52,10 @@ type Common = {
   };
   // M7-11b F3: expense categories and vendors.
   finance: {
-    tabs: Record<'label' | 'records' | 'categories' | 'vendors', string>;
+    tabs: Record<
+      'label' | 'records' | 'templates' | 'categories' | 'vendors',
+      string
+    >;
     save: string;
     // M7-12b F3: the expense records.
     expenses: {
@@ -71,6 +74,29 @@ type Common = {
         >;
         payment: Record<'title' | 'amount' | 'method' | 'submit', string>;
       };
+    };
+    // M7-13b H3: the recurring expense templates.
+    templates: {
+      title: string;
+      add: string;
+      statuses: Record<'active' | 'paused', string>;
+      detail: {
+        created: string;
+        paused: string;
+        resumed: string;
+        actions: Record<'pause' | 'resume', string>;
+      };
+      pause: { confirm: string };
+      resume: { confirm: string };
+      dialog: Record<
+        | 'createTitle'
+        | 'name'
+        | 'category'
+        | 'amount'
+        | 'startsOn'
+        | 'submitCreate',
+        string
+      >;
     };
     categories: {
       title: string;

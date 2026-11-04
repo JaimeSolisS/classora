@@ -1102,6 +1102,25 @@ export const routes: RouteObject[] = [
             }),
             handle: EXPENSE_VIEW_ACCESS,
           },
+          // M7-13b A2: the recurring templates (code-split), expense.view.
+          {
+            path: 'expenses/templates',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/finance/templates/TemplatesPage')
+              ).TemplatesPage,
+            }),
+            handle: EXPENSE_VIEW_ACCESS,
+          },
+          {
+            path: 'expenses/templates/:templateId',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/finance/templates/TemplatePage')
+              ).TemplatePage,
+            }),
+            handle: EXPENSE_VIEW_ACCESS,
+          },
           {
             path: 'expenses/categories',
             lazy: async () => ({

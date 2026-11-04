@@ -53,6 +53,8 @@ export function isLostAnswer(error: unknown): boolean {
 export const EXISTS_CODES: readonly string[] = [
   'expense_category_exists',
   'vendor_exists',
+  // M7-13b E2: a template's name is its natural key too (#116 E3).
+  'expense_template_exists',
 ];
 
 export function isNameTaken(error: unknown): boolean {
@@ -60,7 +62,7 @@ export function isNameTaken(error: unknown): boolean {
 }
 
 /** A 422's field errors on the form's fields (the first per field). */
-function fieldErrors<F extends string>(
+export function fieldErrors<F extends string>(
   error: unknown,
   fields: Readonly<Record<string, F>>,
 ): Partial<Record<F, FinanceMessage>> | null {
@@ -178,4 +180,23 @@ export function vendorServerErrors(error: unknown): VendorErrors | null {
     return { name: serverMessage('vendor_exists') };
   }
   return fieldErrors<VendorField>(error, { name: 'name', contact: 'contact' });
+}
+
+// ------------------------------------------------------------ in use (M7-13b F1)
+
+/**
+ * `details.template_count` of `409 expense_category_in_use` /
+ * `vendor_in_use` (#116 E2): how many live recurring templates use the row
+ * being deactivated; null for any other error.
+ */
+export function inUseCount(error: unknown): number | null {
+  if (!hasCode(error, ['expense_category_in_use', 'vendor_in_use'])) {
+    return null;
+  }
+  const details: unknown = error.problem?.details;
+  if (typeof details !== 'object' || details === null) return null;
+  const count = (details as Record<string, unknown>).template_count;
+  return typeof count === 'number' && Number.isInteger(count) && count > 0
+    ? count
+    : null;
 }

@@ -273,3 +273,113 @@ export function postExpenseAdjustment(
     }),
   );
 }
+
+// --------------------------------- recurring expense templates (#116, M7-13b)
+// No Idempotency-Key: the name is unique, so a retried create can only end in
+// `409 expense_template_exists` (#116 E3); an edit carries `version`.
+
+export type ExpenseTemplate = components['schemas']['ExpenseTemplateItem'];
+export type ExpenseTemplateCreate =
+  components['schemas']['ExpenseTemplateCreate'];
+export type ExpenseTemplateUpdate =
+  components['schemas']['ExpenseTemplateUpdate'];
+export type TemplateStatus = components['schemas']['TemplateStatus'];
+export type Frequency = components['schemas']['Frequency'];
+
+/** Every cached template query: the list and the details. */
+export const TEMPLATES_KEY = [...FINANCE_KEY, 'templates'] as const;
+
+export interface TemplateListParams {
+  statuses: TemplateStatus[];
+  categoryId: string;
+  vendorId: string;
+}
+
+export function templatesListKey(params: TemplateListParams) {
+  return [...TEMPLATES_KEY, 'list', params] as const;
+}
+
+export function templateKey(templateId: string) {
+  return [...TEMPLATES_KEY, 'detail', templateId] as const;
+}
+
+/** A template's generated expenses: under EXPENSES_KEY, so any expense
+ * change refreshes them too. */
+export function templateExpensesKey(templateId: string, page: number) {
+  return [...EXPENSES_KEY, 'template', templateId, page] as const;
+}
+
+export function fetchExpenseTemplates(
+  params: TemplateListParams,
+  signal: AbortSignal,
+): Promise<ExpenseTemplate[]> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/finance/expense-templates', {
+        params: {
+          query: {
+            ...(params.statuses.length > 0 ? { status: params.statuses } : {}),
+            ...(params.categoryId ? { category_id: params.categoryId } : {}),
+            ...(params.vendorId ? { vendor_id: params.vendorId } : {}),
+          },
+        },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+export function fetchExpenseTemplate(
+  templateId: string,
+  signal: AbortSignal,
+): Promise<ExpenseTemplate> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/finance/expense-templates/{template_id}', {
+        params: { path: { template_id: templateId } },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+/** The expenses a template generated, newest period first. */
+export function fetchTemplateExpenses(
+  templateId: string,
+  page: number,
+  signal: AbortSignal,
+): Promise<ExpensePage> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/finance/expenses', {
+        params: {
+          query: {
+            template_id: templateId,
+            sort: '-incurred_on',
+            limit: EXPENSES_PAGE_SIZE,
+            offset: (page - 1) * EXPENSES_PAGE_SIZE,
+          },
+        },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+export function createExpenseTemplate(
+  body: ExpenseTemplateCreate,
+): Promise<ExpenseTemplate> {
+  return apiCall(() => api.POST('/api/v1/finance/expense-templates', { body }));
+}
+
+export function updateExpenseTemplate(
+  templateId: string,
+  body: ExpenseTemplateUpdate,
+): Promise<ExpenseTemplate> {
+  return apiCall(() =>
+    api.PATCH('/api/v1/finance/expense-templates/{template_id}', {
+      params: { path: { template_id: templateId } },
+      body,
+    }),
+  );
+}

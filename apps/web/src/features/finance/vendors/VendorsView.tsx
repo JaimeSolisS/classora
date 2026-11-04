@@ -19,6 +19,7 @@ import { SELECT_CLASS } from '@/features/payroll/sheet';
 import type { Vendor, VendorPage, VendorStateFilter } from '../api';
 import { StateBadge } from '../Badges';
 import { ExpensesTabs } from '../ExpensesTabs';
+import { inUseCount } from '../forms';
 import { SEARCH_MAX_LENGTH, VENDOR_STATE_FILTERS } from './listParams';
 
 // The vendors tab (M7-11b C1, C3, C4), without any query: search, the state
@@ -125,6 +126,11 @@ export function VendorsView({
     initialToggle ?? null,
   );
   const [toggleError, setToggleError] = useState<unknown>(initialToggleError);
+  // M7-13b F1: a row used by live recurring templates says how many.
+  const inUseMessage = (error: unknown) => {
+    const count = inUseCount(error);
+    return count === null ? undefined : t(`${V}.toggle.inUse`, { count });
+  };
 
   function startToggle(vendor: Vendor) {
     setToggleError(null);
@@ -337,7 +343,14 @@ export function VendorsView({
           toggling?.is_active ? t(`${V}.deactivate`) : t(`${V}.reactivate`)
         }
         destructive={toggling?.is_active === true}
-        alert={toggleError ? <ErrorAlert error={toggleError} /> : null}
+        alert={
+          toggleError ? (
+            <ErrorAlert
+              error={toggleError}
+              message={inUseMessage(toggleError)}
+            />
+          ) : null
+        }
         onConfirm={confirmToggle}
         onCancel={() => {
           setToggling(null);

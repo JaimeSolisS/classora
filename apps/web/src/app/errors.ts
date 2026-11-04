@@ -524,6 +524,13 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['expense_payment_exceeds_open', 'expense_payment_exceeds_open'],
   ['expense_payment_already_reversed', 'expense_payment_already_reversed'],
   ['expense_adjustment_exceeds_open', 'expense_adjustment_exceeds_open'],
+  // Recurring expense templates (#116; the pages are M7-13b D5, F1). The
+  // in-use codes have a page text with details.template_count too.
+  ['expense_template_exists', 'expense_template_exists'],
+  ['expense_template_starts_on_invalid', 'expense_template_starts_on_invalid'],
+  ['expense_template_ends_on_invalid', 'expense_template_ends_on_invalid'],
+  ['expense_category_in_use', 'expense_category_in_use'],
+  ['vendor_in_use', 'vendor_in_use'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

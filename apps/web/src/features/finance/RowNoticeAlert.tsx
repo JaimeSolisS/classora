@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import type { RowNotice } from './useRowSave';
 
-// What a category or vendor dialog says after a reload (M7-11b B5, D2), in
+// What a category, vendor or template dialog says after a reload (M7-11b B5, D2), in
 // the row kind's words. Each "reloaded" text shows only when the list did.
 
 export function RowNoticeAlert({
@@ -9,7 +9,7 @@ export function RowNoticeAlert({
   kind,
 }: {
   notice: RowNotice | null;
-  kind: 'categories' | 'vendors';
+  kind: 'categories' | 'vendors' | 'templates';
 }) {
   const { t } = useTranslation();
   if (!notice) {

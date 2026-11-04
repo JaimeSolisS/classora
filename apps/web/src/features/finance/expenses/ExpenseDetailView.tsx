@@ -22,6 +22,7 @@ import type { ExpenseDetail, ExpensePayment } from '../api';
 import { ExpenseStatusBadge, StateBadge } from '../Badges';
 import { ExpensesTabs } from '../ExpensesTabs';
 import { useCategoryLabel } from '../labels';
+import { templatePath } from '../templates/rules';
 import { usePaymentSummary } from './labels';
 import {
   EXPENSES_PATH,
@@ -29,8 +30,9 @@ import {
   type ExpenseCapabilities,
 } from './rules';
 
-// One expense (M7-12b C), without any query: the header figures, the
-// actions (A3, E3), the payments (a reversed one struck through, with its
+// One expense (M7-12b C), without any query: the header figures (a
+// generated one names its template and shows "Automático" as its recorder,
+// M7-13b E1), the actions (A3, E3), the payments (a reversed one struck through, with its
 // reason, who and when; it doesn't count in paid) and the adjustments. A
 // failed refetch keeps what is shown, with the out-of-date alert, and holds
 // every action until a reload lands (C3).
@@ -109,6 +111,17 @@ export function ExpenseDetailView({
           </h1>
           <ExpenseStatusBadge status={expense.status} />
         </div>
+        {expense.template ? (
+          <p className="text-sm" data-expense-template>
+            {t('finance.templates.generatedBy')}{' '}
+            <Link
+              to={templatePath(expense.template.id)}
+              className={`${LINK_CLASS} ${WRAP}`}
+            >
+              {expense.template.name}
+            </Link>
+          </p>
+        ) : null}
         <p
           role="status"
           aria-live="polite"
@@ -171,7 +184,7 @@ export function ExpenseDetailView({
                   name: expense.created_by.display_name,
                   when: labels.instantDate(expense.created_at),
                 })
-              : none,
+              : t('finance.templates.automatic'),
           )}
           {field('note', expense.note ?? none, true)}
         </dl>

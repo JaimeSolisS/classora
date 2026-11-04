@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import type { ExpenseStatus } from './api';
+import type { ExpenseStatus, TemplateStatus } from './api';
 
 // The category and vendor badges (M7-11b B1, C1): text badges, the word
 // carries the meaning and the border style only reinforces it (never colour
@@ -63,6 +63,27 @@ export function ExpenseStatusBadge({ status }: { status: ExpenseStatus }) {
       className={cn(BADGE, STATUS_STYLE[status])}
     >
       {t(`finance.expenses.statuses.${status}`)}
+    </span>
+  );
+}
+
+// A recurring template's status (M7-13b B1): the word always shows; dashed
+// for ended, muted for paused.
+const TEMPLATE_STYLE: Record<TemplateStatus, string> = {
+  active: 'border-border bg-background',
+  paused: 'border-border bg-muted',
+  ended: 'border-dashed border-border bg-muted',
+};
+
+export function TemplateStatusBadge({ status }: { status: TemplateStatus }) {
+  const { t } = useTranslation();
+  return (
+    <span
+      data-slot="template-status-badge"
+      data-status={status}
+      className={cn(BADGE, TEMPLATE_STYLE[status])}
+    >
+      {t(`finance.templates.statuses.${status}`)}
     </span>
   );
 }

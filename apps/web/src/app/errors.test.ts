@@ -445,6 +445,12 @@ const API_CODES = [
   'expense_payment_exceeds_open',
   'expense_payment_already_reversed',
   'expense_adjustment_exceeds_open',
+  // Recurring expense templates (#116, M7-13b D5, F1).
+  'expense_template_exists',
+  'expense_template_starts_on_invalid',
+  'expense_template_ends_on_invalid',
+  'expense_category_in_use',
+  'vendor_in_use',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [
