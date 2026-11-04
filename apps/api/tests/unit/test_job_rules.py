@@ -231,6 +231,7 @@ MODULE_TASKS = {
     "billing:reconcile_session_charges",
     "payroll:open_periods",
     "payroll:post_adjustments",
+    "finance:generate_recurring_expenses",
 }
 
 
@@ -393,6 +394,89 @@ def test_the_payroll_periods_open_daily_at_0750_utc():
     )
     assert jobs.PAYROLL_OPEN_PERIODS_TASK == "payroll:open_periods"
     assert jobs.task_parameter_types(app)["payroll:open_periods"] == {"timestamp": int}
+
+
+def test_the_recurring_expenses_generate_daily_at_0755_utc():
+    # #116 D1: 01:55 in Mexico City; one queued job at a time; only the cron
+    # and defer_recurring_expenses (E8) queue it.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "finance:generate_recurring_expenses"
+    ]
+    assert periodic.cron == "55 7 * * *"
+    assert periodic.periodic_id == "finance-generate-recurring-expenses"
+    assert periodic.configure_kwargs["queueing_lock"] == (
+        "finance-generate-recurring-expenses"
+    )
+    assert app.tasks["finance:generate_recurring_expenses"].queueing_lock == (
+        jobs.RECURRING_EXPENSES_QUEUEING_LOCK
+    )
+    assert jobs.RECURRING_EXPENSES_TASK == "finance:generate_recurring_expenses"
+    assert jobs.task_parameter_types(app)["finance:generate_recurring_expenses"] == {
+        "timestamp": int
+    }
+
+
+class _RecordingDeferrer:
+    def __init__(self, error: Exception | None) -> None:
+        self.error = error
+        self.calls: list[dict[str, object]] = []
+
+    async def defer_async(self, **kwargs: object) -> int:
+        self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return 1
+
+
+class _RecordingJobApp:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.deferrer = _RecordingDeferrer(error)
+        self.configured: list[tuple[str, dict[str, object]]] = []
+
+    def configure_task(self, name: str, **options: object) -> _RecordingDeferrer:
+        self.configured.append((name, options))
+        return self.deferrer
+
+
+@pytest.mark.anyio
+async def test_deferring_the_recurring_expenses_names_the_task_and_its_lock():
+    # #116 E8: the defer_tuition_charges contract.
+    app = _RecordingJobApp()
+
+    await jobs.defer_recurring_expenses(app)  # type: ignore[arg-type]
+
+    [(name, options)] = app.configured
+    assert name == "finance:generate_recurring_expenses"
+    assert options == {
+        "allow_unknown": False,
+        "queueing_lock": "finance-generate-recurring-expenses",
+    }
+    [call] = app.deferrer.calls
+    assert set(call) == {"timestamp"} and isinstance(call["timestamp"], int)
+
+
+@pytest.mark.anyio
+async def test_deferring_the_recurring_expenses_ignores_a_queued_run_and_logs_errors(
+    caplog,
+):
+    from procrastinate.exceptions import AlreadyEnqueued
+
+    with caplog.at_level("ERROR", logger=jobs.__name__):
+        await jobs.defer_recurring_expenses(
+            _RecordingJobApp(AlreadyEnqueued("queued"))  # type: ignore[arg-type]
+        )
+        assert caplog.records == []
+        await jobs.defer_recurring_expenses(
+            _RecordingJobApp(OSError("unreachable"))  # type: ignore[arg-type]
+        )
+
+    [record] = caplog.records
+    assert record.message == "Deferring the recurring expenses failed"
+    assert record.error == "OSError"
 
 
 def test_the_payroll_adjustments_post_every_15_minutes():

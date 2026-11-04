@@ -195,3 +195,62 @@ class ExpensePaymentAlreadyReversedError(AppError):
     status = 409
     code = "expense_payment_already_reversed"
     detail = "This payment was already reversed."
+
+
+# --- Recurring templates (#116) -------------------------------------------------------
+
+
+class ExpenseTemplateExistsError(AppError):
+    """Another template has this name, ignoring case and surrounding spaces,
+    a paused or ended one included (#116 E3)."""
+
+    status = 409
+    code = "expense_template_exists"
+    detail = "A recurring expense with this name already exists."
+
+
+class ExpenseTemplateStartsOnInvalidError(_FieldRuleError):
+    """``starts_on`` is more than 31 days before or 366 days after the
+    center's today (#116 E5)."""
+
+    code = "expense_template_starts_on_invalid"
+    field = "starts_on"
+    detail = "The start date must be at most 31 days ago and 366 days ahead."
+
+
+class ExpenseTemplateEndsOnInvalidError(_FieldRuleError):
+    """``ends_on`` is before ``starts_on``, or before a period already
+    generated (#116 E6)."""
+
+    code = "expense_template_ends_on_invalid"
+    field = "ends_on"
+    detail = (
+        "The end date can't be before the start date or before a period"
+        " already generated."
+    )
+
+
+class _InUseError(AppError):
+    """A live template uses the row (#116 E2). ``details.template_count``
+    only: an Administrator may deactivate the row but can't read templates."""
+
+    status = 409
+
+    def __init__(self, template_count: int) -> None:
+        super().__init__(details={"template_count": template_count})
+
+
+class ExpenseCategoryInUseError(_InUseError):
+    """Deactivating a category that an active, not ended template uses
+    (#116 E2)."""
+
+    code = "expense_category_in_use"
+    detail = "An active recurring expense uses this category."
+
+
+class VendorInUseError(_InUseError):
+    """Deactivating a vendor that an active, not ended template uses (#116
+    E2)."""
+
+    code = "vendor_in_use"
+    detail = "An active recurring expense uses this vendor."

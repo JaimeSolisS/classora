@@ -185,6 +185,7 @@ export function expenseDetail(
     incurred_on: '2026-10-10',
     due_on: '2026-10-30',
     receipt_reference: null,
+    template: null,
     created_at: '2026-10-10T16:00:00Z',
     note: null,
     created_by: PERSON,
@@ -286,6 +287,7 @@ export function expenseItem(detail: ExpenseDetail): ExpenseItem {
     incurred_on: detail.incurred_on,
     due_on: detail.due_on,
     receipt_reference: detail.receipt_reference,
+    template: detail.template,
     created_at: detail.created_at,
   };
 }

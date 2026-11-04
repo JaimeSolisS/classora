@@ -1883,6 +1883,42 @@ json = {}
 
 [[route]]
 method = "GET"
+path = "/api/v1/finance/expense-templates"
+access = "permission"
+permission = "expense.view"
+allow = ["owner", "finance_staff"]
+# #116 F1, ADR-0017 E12: a template holds an amount; Administrators get 403.
+
+[[route]]
+method = "POST"
+path = "/api/v1/finance/expense-templates"
+access = "permission"
+permission = "expense.manage"
+allow = ["owner", "finance_staff"]
+json = {}
+# #116 C1, E3: no Idempotency-Key (the name is the natural key); the empty body
+# is 422 for the allowed roles. Rules and races:
+# tests/integration/test_finance_expense_templates.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/finance/expense-templates/{template_id}"
+access = "permission"
+permission = "expense.view"
+allow = ["owner", "finance_staff"]
+# #116 C8: the placeholder id is no template: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/finance/expense-templates/{template_id}"
+access = "permission"
+permission = "expense.manage"
+allow = ["owner", "finance_staff"]
+json = {}
+# #116 C4: the empty body is 422 for the allowed roles (version is required).
+
+[[route]]
+method = "GET"
 path = "/api/v1/finance/expenses"
 access = "permission"
 permission = "expense.view"

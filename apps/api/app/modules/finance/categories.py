@@ -14,8 +14,11 @@ harmless false refusal.
 **Keys.** A real change of name clears ``system_key`` in the same update.
 Sending the current name keeps it. Nothing sets a key again.
 
-**Deactivation** always passes in #114 (E2): #116 adds the refusal for a
-category an active template uses, here, under the row lock.
+**Deactivation** of an active row is refused while a live template uses it
+(``409 expense_category_in_use`` with ``details.template_count``, #116 E2):
+read after the row lock and the version check, with no lock on the templates
+(:mod:`~app.modules.finance.template_usage`). A rename and a reactivation
+never read templates.
 
 **Usable** (:func:`usable_category`, E7): the row ``FOR SHARE``, so it takes
 turns with a deactivation (``FOR UPDATE``) and nothing new uses a category that
@@ -36,15 +39,21 @@ from app.core.models import ensure_version
 from app.modules.finance.errors import (
     ExpenseCategoryExistsError,
     ExpenseCategoryInactiveError,
+    ExpenseCategoryInUseError,
     ExpenseCategoryUnknownError,
 )
-from app.modules.finance.models import CATEGORY_NAME_KEY, ExpenseCategory
+from app.modules.finance.models import (
+    CATEGORY_NAME_KEY,
+    ExpenseCategory,
+    ExpenseTemplate,
+)
 from app.modules.finance.schemas import (
     ExpenseCategoryCreate,
     ExpenseCategoryItem,
     ExpenseCategoryUpdate,
     SystemKey,
 )
+from app.modules.finance.template_usage import live_template_count
 
 
 class LabelledCategory(Protocol):
@@ -143,9 +152,11 @@ async def add_category(
 async def change_category(
     session: AsyncSession, category_id: uuid.UUID, body: ExpenseCategoryUpdate
 ) -> ExpenseCategoryItem:
-    """The row ``FOR UPDATE`` (``404``) → ``409 version_conflict`` → a new name:
-    the label rule, then the key cleared → the update (``409
-    expense_category_exists``). Unchanged: nothing written, no new version."""
+    """The row ``FOR UPDATE`` (``404``) → ``409 version_conflict`` → a
+    deactivation: ``409 expense_category_in_use`` while a live template uses
+    the row (#116 E2) → a new name: the label rule, then the key cleared → the
+    update (``409 expense_category_exists``). Unchanged: nothing written, no
+    new version."""
     row = await session.scalar(
         select(ExpenseCategory)
         .where(ExpenseCategory.id == category_id)
@@ -155,6 +166,10 @@ async def change_category(
     if row is None:
         raise RecordNotFoundError()
     ensure_version(row, body.version)
+    if body.is_active is False and row.is_active:
+        count = await live_template_count(session, ExpenseTemplate.category_id, row.id)
+        if count:
+            raise ExpenseCategoryInUseError(count)
     if body.name is not None and body.name != row.name:
         await _refuse_a_label(session, body.name, other_than=row.id)
         row.name = body.name

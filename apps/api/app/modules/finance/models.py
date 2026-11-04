@@ -15,6 +15,13 @@ negative one), a payment only by its reversal (ADR-0017 E16). Their amounts and
 staff-only texts are masked in the audit log (#115 E7): Administrators hold
 ``audit.view`` and see no expense amounts (ADR-0017 E12).
 
+``expense_templates`` (#116; data-model §12.7) is mutable config: a template
+generates one ordinary expense per period (``expense_template_id``,
+``period_start``: the natural key ``uq_expenses_template_period``, X2). Its
+``name`` and ``amount`` are masked in the audit log (#116 E9): the name becomes
+the generated expense's description. No delete; ``TRUNCATE`` is refused
+(migration ``0085``).
+
 A category's ``system_key`` marks one of the five rows the migration seeds.
 While a row holds it, clients show the catalog label of the key in the viewer's
 language; a rename clears it, and nothing ever sets it again (#114 E3).
@@ -22,7 +29,7 @@ language; a rename clears it, and nothing ever sets it again (#114 E3).
 
 import uuid
 from datetime import date
-from typing import ClassVar, Final
+from typing import Any, ClassVar, Final
 
 from sqlalchemy import (
     Boolean,
@@ -30,6 +37,7 @@ from sqlalchemy import (
     Date,
     ForeignKey,
     Index,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -37,7 +45,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, declared_attr, mapped_column
 
 from app.core.audit import Audited
 from app.core.models import Model, VersionedMixin
@@ -60,6 +68,12 @@ NOTE_MAX: Final = 1000
 REASON_MAX: Final = 1000
 METHOD_CODE_MAX: Final = 32
 """``payment_methods.code`` is ``VARCHAR(32)`` (billing)."""
+
+TEMPLATE_NAME_MAX: Final = 200
+TEMPLATE_NAME_KEY: Final = "uq_expense_templates_lower_name"
+TEMPLATE_PERIOD_KEY: Final = "uq_expenses_template_period"
+"""The natural key of a generated expense (X2; #116 D3)."""
+DUE_OFFSET_MAX: Final = 60
 
 EXPENSE_PAYMENT_REVERSAL_KEY: Final = "uq_expense_payment_reversals_expense_payment_id"
 EXPENSE_PAYMENT_REVERSAL_FK: Final = "fk_expense_payment_reversals_payment"
@@ -125,9 +139,11 @@ class Expense(Audited, Model):
     (#115 E3). ``net``, ``paid``, ``open`` and the status are derived, never
     stored (data-model §13.2).
 
-    ``created_by_user_id`` is ``NULL`` only for the recurring job (#116).
-    ``amount``, ``description``, ``receipt_reference`` and ``note`` are masked
-    in the audit log (#115 E7)."""
+    ``created_by_user_id`` is ``NULL`` only for the recurring job (#116), whose
+    rows carry ``expense_template_id`` and ``period_start`` (set together or
+    not at all; one expense per template and period, X2). ``amount``,
+    ``description``, ``receipt_reference`` and ``note`` are masked in the audit
+    log (#115 E7)."""
 
     __tablename__ = "expenses"
     __audit_mask__: ClassVar[frozenset[str]] = frozenset(
@@ -144,6 +160,17 @@ class Expense(Audited, Model):
         ),
         CheckConstraint(_trimmed("note", NOTE_MAX), name="note_trimmed"),
         CheckConstraint("due_on >= incurred_on", name="due_on_after_incurred_on"),
+        CheckConstraint(
+            "(expense_template_id IS NULL) = (period_start IS NULL)",
+            name="template_period",
+        ),
+        Index(
+            TEMPLATE_PERIOD_KEY,
+            "expense_template_id",
+            "period_start",
+            unique=True,
+            postgresql_where=text("expense_template_id IS NOT NULL"),
+        ),
         Index("ix_expenses_due_on", "due_on"),
         Index("ix_expenses_incurred_on", "incurred_on"),
         Index("ix_expenses_category_id_incurred_on", "category_id", "incurred_on"),
@@ -165,6 +192,10 @@ class Expense(Audited, Model):
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), _restrict("users.id"), nullable=True
     )
+    expense_template_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), _restrict("expense_templates.id"), nullable=True
+    )
+    period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 class ExpensePayment(Audited, Model):
@@ -244,3 +275,71 @@ class ExpenseAdjustment(Audited, Model):
     created_by_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), _restrict("users.id")
     )
+
+
+class ExpenseTemplate(Audited, VersionedMixin, Model):
+    """A recurring expense template (data-model §12.7; ADR-0017 E17; #116).
+
+    Period ``k`` starts on the grid of :mod:`~app.modules.finance.template_periods`
+    from ``starts_on``; ``frequency`` and ``starts_on`` never change (#116 E4).
+    ``next_period_start`` is the next period the job will look at. The template
+    is **live** while ``is_active`` and not ended (``ends_on`` is ``NULL`` or
+    ``next_period_start <= ends_on``): only a live template blocks the
+    deactivation of its category or vendor (#116 E2). ``name`` and ``amount``
+    are masked in the audit log (#116 E9).
+
+    ``version`` counts staff changes only: the mapper doesn't generate it
+    (``version_id_generator=False``), so :func:`~app.modules.finance.templates.
+    change_template` sets it, and the job's advance of ``next_period_start``
+    leaves it alone. A change read before a run therefore still applies after
+    it (#116 D7), and every update still carries ``WHERE version = …``."""
+
+    __tablename__ = "expense_templates"
+    __audit_mask__: ClassVar[frozenset[str]] = frozenset({"name", "amount"})
+    __table_args__ = (
+        CheckConstraint(_trimmed("name", TEMPLATE_NAME_MAX), name="name_trimmed"),
+        CheckConstraint("amount > 0", name="amount_positive"),
+        CheckConstraint(
+            "frequency IN ('weekly', 'monthly', 'annual')", name="frequency_valid"
+        ),
+        CheckConstraint("ends_on >= starts_on", name="ends_on_after_starts_on"),
+        CheckConstraint(
+            f"due_offset_days BETWEEN 0 AND {DUE_OFFSET_MAX}",
+            name="due_offset_days_range",
+        ),
+        CheckConstraint(
+            "next_period_start >= starts_on",
+            name="next_period_start_after_starts_on",
+        ),
+        Index(TEMPLATE_NAME_KEY, func.lower(text("name")), unique=True),
+        Index("ix_expense_templates_category_id", "category_id"),
+        Index("ix_expense_templates_vendor_id", "vendor_id"),
+        Index(
+            "ix_expense_templates_next_period_start_active",
+            "next_period_start",
+            postgresql_where=text("is_active"),
+        ),
+    )
+
+    name: Mapped[str] = mapped_column(String(TEMPLATE_NAME_MAX))
+    category_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), _restrict("expense_categories.id")
+    )
+    vendor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), _restrict("vendors.id"), nullable=True
+    )
+    amount: Mapped[Money] = mapped_column(MoneyType())
+    frequency: Mapped[str] = mapped_column(String(10))
+    starts_on: Mapped[date] = mapped_column(Date)
+    ends_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    due_offset_days: Mapped[int] = mapped_column(SmallInteger)
+    next_period_start: Mapped[date] = mapped_column(Date)
+    is_active: Mapped[bool] = _active_column()
+
+    @declared_attr.directive
+    def __mapper_args__(cls) -> dict[str, Any]:
+        return {
+            "eager_defaults": True,
+            "version_id_col": cls.version,
+            "version_id_generator": False,
+        }

@@ -25326,7 +25326,7 @@
           "finance"
         ],
         "summary": "Update Expense Category",
-        "description": "Rename, deactivate or reactivate a category. Its id never changes, so\npast expenses keep their grouping and show the new name. A new name\nclears `system_key` for good. An inactive category stays listed but can't\nbe used for a new expense.",
+        "description": "Rename, deactivate or reactivate a category. Its id never changes, so\npast expenses keep their grouping and show the new name. A new name\nclears `system_key` for good. An inactive category stays listed but can't\nbe used for a new expense or recurring expense; a category an active\nrecurring expense uses can't be deactivated.",
         "operationId": "update_expense_category_api_v1_finance_expense_categories__category_id__patch",
         "parameters": [
           {
@@ -25392,7 +25392,7 @@
             }
           },
           "409": {
-            "description": "The version is stale (version_conflict), or the name is taken (expense_category_exists; the category's own name and labels don't count).",
+            "description": "The version is stale (version_conflict); deactivating while an active, not ended recurring expense uses the category (expense_category_in_use, with details.template_count); or the name is taken (expense_category_exists; the category's own name and labels don't count).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -25604,7 +25604,7 @@
           "finance"
         ],
         "summary": "Update Vendor",
-        "description": "Rename a vendor, change or clear (`null`) its contact, or deactivate or\nreactivate it. An inactive vendor stays listed but can't be used for a\nnew expense.",
+        "description": "Rename a vendor, change or clear (`null`) its contact, or deactivate or\nreactivate it. An inactive vendor stays listed but can't be used for a\nnew expense or recurring expense; a vendor an active recurring expense\nuses can't be deactivated.",
         "operationId": "update_vendor_api_v1_finance_vendors__vendor_id__patch",
         "parameters": [
           {
@@ -25670,7 +25670,7 @@
             }
           },
           "409": {
-            "description": "The version is stale (version_conflict), or another vendor has this name (vendor_exists).",
+            "description": "The version is stale (version_conflict); deactivating while an active, not ended recurring expense uses the vendor (vendor_in_use, with details.template_count); or another vendor has this name (vendor_exists).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -25698,7 +25698,7 @@
           "finance"
         ],
         "summary": "List Expenses",
-        "description": "A page of expenses with their net (`adjusted_amount`), paid and open\namounts and their status, computed with the center's today. Newest\nexpense date first (`-incurred_on`, the default), or soonest due date\nfirst (`due_on`). Inactive categories and vendors are listed and can be\nfiltered on.",
+        "description": "A page of expenses with their net (`adjusted_amount`), paid and open\namounts and their status, computed with the center's today. Newest\nexpense date first (`-incurred_on`, the default), or soonest due date\nfirst (`due_on`). Inactive categories and vendors are listed and can be\nfiltered on. `template` names the recurring expense that generated an\nexpense (`null` for one entered by hand).",
         "operationId": "list_expenses_api_v1_finance_expenses_get",
         "parameters": [
           {
@@ -25755,6 +25755,25 @@
               ],
               "title": "Vendor Id"
             }
+          },
+          {
+            "name": "template_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the expenses this recurring expense generated.",
+              "title": "Template Id"
+            },
+            "description": "Only the expenses this recurring expense generated."
           },
           {
             "name": "incurred_from",
@@ -26400,6 +26419,355 @@
           },
           "409": {
             "description": "The expense is void and takes no more payments or adjustments (expense_void); or a negative amount goes beyond the open amount (expense_adjustment_exceeds_open, with details.open): reverse a payment first.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/finance/expense-templates": {
+      "get": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "List Expense Templates",
+        "description": "Every recurring expense, not paginated: active first, then paused, then\nended, then by name ignoring case. Inactive categories and vendors are\nlisted and can be filtered on.",
+        "operationId": "list_expense_templates_api_v1_finance_expense_templates_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TemplateStatus"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only templates in these statuses (repeatable).",
+              "title": "Status"
+            },
+            "description": "Only templates in these statuses (repeatable)."
+          },
+          {
+            "name": "category_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Id"
+            }
+          },
+          {
+            "name": "vendor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Vendor Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpenseTemplateItem"
+                  },
+                  "title": "Response List Expense Templates Api V1 Finance Expense Templates Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "Create Expense Template",
+        "description": "Set up a weekly, monthly or annual recurring expense. Each period\ngenerates one ordinary expense, once: described with the template's name,\ndated on the period's first day and due `due_offset_days` later. Periods\nalready due (from a `starts_on` up to 31 days back) are generated at once.\nNo `Idempotency-Key`: the name is unique, so a retried create is `409\nexpense_template_exists`.",
+        "operationId": "create_expense_template_api_v1_finance_expense_templates_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseTemplateCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseTemplateItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another recurring expense has this name, ignoring case, a paused or ended one included (expense_template_exists); or the category or the vendor is inactive (expense_category_inactive, vendor_inactive).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/finance/expense-templates/{template_id}": {
+      "get": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "Get Expense Template",
+        "description": "One recurring expense, with its next and latest generated periods.",
+        "operationId": "get_expense_template_api_v1_finance_expense_templates__template_id__get",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseTemplateItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such recurring expense (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "Update Expense Template",
+        "description": "Change a recurring expense. Changes apply to the expenses not generated\nyet; generated ones keep their values. `is_active: false` pauses it;\n`true` resumes it from the first period on or after today, with no\nback-fill. `frequency` and `starts_on` can't change: end this template\nand set up a new one.",
+        "operationId": "update_expense_template_api_v1_finance_expense_templates__template_id__patch",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseTemplateUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseTemplateItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such recurring expense (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The version is stale (version_conflict); the name is taken (expense_template_exists); or the category or the vendor is inactive (expense_category_inactive, vendor_inactive), checked whenever the template stays or becomes active and not ended.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -44978,6 +45346,17 @@
             ],
             "title": "Receipt Reference"
           },
+          "template": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpenseTemplateRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The recurring expense that generated it (#116); `null` for an expense entered by hand."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -45033,6 +45412,7 @@
           "incurred_on",
           "due_on",
           "receipt_reference",
+          "template",
           "created_at",
           "note",
           "created_by",
@@ -45130,6 +45510,17 @@
             ],
             "title": "Receipt Reference"
           },
+          "template": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpenseTemplateRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The recurring expense that generated it (#116); `null` for an expense entered by hand."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -45150,6 +45541,7 @@
           "incurred_on",
           "due_on",
           "receipt_reference",
+          "template",
           "created_at"
         ],
         "title": "ExpenseItem",
@@ -45395,6 +45787,329 @@
           "overdue",
           "void"
         ]
+      },
+      "ExpenseTemplateCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "1-200 characters, trimmed; one line. Unique ignoring case, paused and ended templates included. Each generated expense takes it as its description."
+          },
+          "category_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Category Id"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "description": "Above zero.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "frequency": {
+            "$ref": "#/components/schemas/Frequency",
+            "description": "Fixed for the template's life."
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On",
+            "description": "The first period's start, at most 31 days before and 366 days after the center's today. Fixed for the template's life; the periods are anchored on it (the day of the month is clamped)."
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On",
+            "description": "On or after `starts_on`. A period is generated only if it starts on or before this date."
+          },
+          "due_offset_days": {
+            "type": "integer",
+            "maximum": 60.0,
+            "minimum": 0.0,
+            "title": "Due Offset Days",
+            "description": "Each expense is due this many days after its period starts."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "category_id",
+          "amount",
+          "frequency",
+          "starts_on",
+          "due_offset_days"
+        ],
+        "title": "ExpenseTemplateCreate",
+        "description": "``POST /api/v1/finance/expense-templates`` (#116 C1)."
+      },
+      "ExpenseTemplateItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "category": {
+            "$ref": "#/components/schemas/ExpenseCategoryRef"
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VendorRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Amount",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "frequency": {
+            "$ref": "#/components/schemas/Frequency"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "due_offset_days": {
+            "type": "integer",
+            "title": "Due Offset Days"
+          },
+          "next_period_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Next Period Start",
+            "description": "The next period the job will generate (when due and before the end)."
+          },
+          "last_period_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Period Start",
+            "description": "The latest period generated, or `null`."
+          },
+          "status": {
+            "$ref": "#/components/schemas/TemplateStatus"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "category",
+          "vendor",
+          "amount",
+          "frequency",
+          "starts_on",
+          "ends_on",
+          "due_offset_days",
+          "next_period_start",
+          "last_period_start",
+          "status",
+          "is_active",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ExpenseTemplateItem",
+        "description": "A recurring expense template (#116 C7), in the list and the detail."
+      },
+      "ExpenseTemplateRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ExpenseTemplateRef",
+        "description": "The template that generated an expense (#116 C10)."
+      },
+      "ExpenseTemplateUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id",
+            "description": "`null` removes the vendor; leaving it out keeps it."
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "format": "decimal",
+                "examples": [
+                  "1250.00"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "due_offset_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 60.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Offset Days"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On",
+            "description": "`null` clears the end; leaving it out keeps it."
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active",
+            "description": "`false` pauses the template; `true` resumes it from the first period on or after today, with no back-fill."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "ExpenseTemplateUpdate",
+        "description": "``PATCH /api/v1/finance/expense-templates/{id}`` (#116 C4). A missing\nfield (or ``null``) stays as it is, except ``vendor_id: null``, which\nremoves the vendor, and ``ends_on: null``, which clears the end. At least\none change (``no_changes``).\n``frequency`` and ``starts_on`` are unknown fields (#116 E4)."
       },
       "FactsAssignments": {
         "properties": {
@@ -46219,6 +46934,14 @@
         ],
         "title": "FieldError",
         "type": "object"
+      },
+      "Frequency": {
+        "type": "string",
+        "enum": [
+          "weekly",
+          "monthly",
+          "annual"
+        ]
       },
       "GradePut": {
         "properties": {
@@ -62744,6 +63467,14 @@
         ],
         "title": "TeachingSubject",
         "description": "A subject the tutor holds an **approved** qualification for (#44 D1).\nA subject deactivated later stays, with ``subject_is_active`` false."
+      },
+      "TemplateStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "paused",
+          "ended"
+        ]
       },
       "Text": {
         "anyOf": [

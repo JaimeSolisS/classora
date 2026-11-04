@@ -577,6 +577,7 @@ def test_c1_an_item_carries_its_figures_and_status(
         "incurred_on": TODAY.isoformat(),
         "due_on": TODAY.isoformat(),
         "receipt_reference": "F-77",
+        "template": None,  # #116 C10: entered by hand
         "created_at": item["created_at"],
     }
     assert datetime.fromisoformat(item["created_at"]) == row.created_at

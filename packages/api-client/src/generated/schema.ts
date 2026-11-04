@@ -5180,7 +5180,8 @@ export interface paths {
          * @description Rename, deactivate or reactivate a category. Its id never changes, so
          *     past expenses keep their grouping and show the new name. A new name
          *     clears `system_key` for good. An inactive category stays listed but can't
-         *     be used for a new expense.
+         *     be used for a new expense or recurring expense; a category an active
+         *     recurring expense uses can't be deactivated.
          */
         patch: operations["update_expense_category_api_v1_finance_expense_categories__category_id__patch"];
         trace?: never;
@@ -5226,7 +5227,8 @@ export interface paths {
          * Update Vendor
          * @description Rename a vendor, change or clear (`null`) its contact, or deactivate or
          *     reactivate it. An inactive vendor stays listed but can't be used for a
-         *     new expense.
+         *     new expense or recurring expense; a vendor an active recurring expense
+         *     uses can't be deactivated.
          */
         patch: operations["update_vendor_api_v1_finance_vendors__vendor_id__patch"];
         trace?: never;
@@ -5244,7 +5246,8 @@ export interface paths {
          *     amounts and their status, computed with the center's today. Newest
          *     expense date first (`-incurred_on`, the default), or soonest due date
          *     first (`due_on`). Inactive categories and vendors are listed and can be
-         *     filtered on.
+         *     filtered on. `template` names the recurring expense that generated an
+         *     expense (`null` for one entered by hand).
          */
         get: operations["list_expenses_api_v1_finance_expenses_get"];
         put?: never;
@@ -5352,6 +5355,65 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/expense-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Expense Templates
+         * @description Every recurring expense, not paginated: active first, then paused, then
+         *     ended, then by name ignoring case. Inactive categories and vendors are
+         *     listed and can be filtered on.
+         */
+        get: operations["list_expense_templates_api_v1_finance_expense_templates_get"];
+        put?: never;
+        /**
+         * Create Expense Template
+         * @description Set up a weekly, monthly or annual recurring expense. Each period
+         *     generates one ordinary expense, once: described with the template's name,
+         *     dated on the period's first day and due `due_offset_days` later. Periods
+         *     already due (from a `starts_on` up to 31 days back) are generated at once.
+         *     No `Idempotency-Key`: the name is unique, so a retried create is `409
+         *     expense_template_exists`.
+         */
+        post: operations["create_expense_template_api_v1_finance_expense_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/expense-templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Expense Template
+         * @description One recurring expense, with its next and latest generated periods.
+         */
+        get: operations["get_expense_template_api_v1_finance_expense_templates__template_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Expense Template
+         * @description Change a recurring expense. Changes apply to the expenses not generated
+         *     yet; generated ones keep their values. `is_active: false` pauses it;
+         *     `true` resumes it from the first period on or after today, with no
+         *     back-fill. `frequency` and `starts_on` can't change: end this template
+         *     and set up a new one.
+         */
+        patch: operations["update_expense_template_api_v1_finance_expense_templates__template_id__patch"];
         trace?: never;
     };
     "/api/v1/billing/overdue-accounts": {
@@ -12856,6 +12918,8 @@ export interface components {
             due_on: string;
             /** Receipt Reference */
             receipt_reference: string | null;
+            /** @description The recurring expense that generated it (#116); `null` for an expense entered by hand. */
+            template: components["schemas"]["ExpenseTemplateRef"] | null;
             /**
              * Created At
              * Format: date-time
@@ -12924,6 +12988,8 @@ export interface components {
             due_on: string;
             /** Receipt Reference */
             receipt_reference: string | null;
+            /** @description The recurring expense that generated it (#116); `null` for an expense entered by hand. */
+            template: components["schemas"]["ExpenseTemplateRef"] | null;
             /**
              * Created At
              * Format: date-time
@@ -13060,6 +13126,154 @@ export interface components {
         };
         /** @enum {string} */
         ExpenseStatus: "unpaid" | "partially_paid" | "paid" | "overdue" | "void";
+        /**
+         * ExpenseTemplateCreate
+         * @description ``POST /api/v1/finance/expense-templates`` (#116 C1).
+         */
+        ExpenseTemplateCreate: {
+            /**
+             * Name
+             * @description 1-200 characters, trimmed; one line. Unique ignoring case, paused and ended templates included. Each generated expense takes it as its description.
+             */
+            name: string;
+            /**
+             * Category Id
+             * Format: uuid
+             */
+            category_id: string;
+            /** Vendor Id */
+            vendor_id?: string | null;
+            /**
+             * Amount
+             * Format: decimal
+             * @description Above zero.
+             * @example 1250.00
+             */
+            amount: string;
+            /** @description Fixed for the template's life. */
+            frequency: components["schemas"]["Frequency"];
+            /**
+             * Starts On
+             * Format: date
+             * @description The first period's start, at most 31 days before and 366 days after the center's today. Fixed for the template's life; the periods are anchored on it (the day of the month is clamped).
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * @description On or after `starts_on`. A period is generated only if it starts on or before this date.
+             */
+            ends_on?: string | null;
+            /**
+             * Due Offset Days
+             * @description Each expense is due this many days after its period starts.
+             */
+            due_offset_days: number;
+        };
+        /**
+         * ExpenseTemplateItem
+         * @description A recurring expense template (#116 C7), in the list and the detail.
+         */
+        ExpenseTemplateItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            category: components["schemas"]["ExpenseCategoryRef"];
+            vendor: components["schemas"]["VendorRef"] | null;
+            /**
+             * Amount
+             * Format: decimal
+             * @example 1250.00
+             */
+            amount: string;
+            frequency: components["schemas"]["Frequency"];
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /** Ends On */
+            ends_on: string | null;
+            /** Due Offset Days */
+            due_offset_days: number;
+            /**
+             * Next Period Start
+             * Format: date
+             * @description The next period the job will generate (when due and before the end).
+             */
+            next_period_start: string;
+            /**
+             * Last Period Start
+             * @description The latest period generated, or `null`.
+             */
+            last_period_start: string | null;
+            status: components["schemas"]["TemplateStatus"];
+            /** Is Active */
+            is_active: boolean;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ExpenseTemplateRef
+         * @description The template that generated an expense (#116 C10).
+         */
+        ExpenseTemplateRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * ExpenseTemplateUpdate
+         * @description ``PATCH /api/v1/finance/expense-templates/{id}`` (#116 C4). A missing
+         *     field (or ``null``) stays as it is, except ``vendor_id: null``, which
+         *     removes the vendor, and ``ends_on: null``, which clears the end. At least
+         *     one change (``no_changes``).
+         *     ``frequency`` and ``starts_on`` are unknown fields (#116 E4).
+         */
+        ExpenseTemplateUpdate: {
+            /** Version */
+            version: number;
+            /** Name */
+            name?: string | null;
+            /** Category Id */
+            category_id?: string | null;
+            /**
+             * Vendor Id
+             * @description `null` removes the vendor; leaving it out keeps it.
+             */
+            vendor_id?: string | null;
+            /** Amount */
+            amount?: string | null;
+            /** Due Offset Days */
+            due_offset_days?: number | null;
+            /**
+             * Ends On
+             * @description `null` clears the end; leaving it out keeps it.
+             */
+            ends_on?: string | null;
+            /**
+             * Is Active
+             * @description `false` pauses the template; `true` resumes it from the first period on or after today, with no back-fill.
+             */
+            is_active?: boolean | null;
+        };
         /** FactsAssignments */
         FactsAssignments: {
             /** Count */
@@ -13442,6 +13656,8 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** @enum {string} */
+        Frequency: "weekly" | "monthly" | "annual";
         /**
          * GradePut
          * @description `PUT /api/v1/assignments/{id}/students/{student_id}/grade` (#82 D2):
@@ -20932,6 +21148,8 @@ export interface components {
             /** Subject Is Active */
             subject_is_active: boolean;
         };
+        /** @enum {string} */
+        TemplateStatus: "active" | "paused" | "ended";
         Text: string | null;
         /** @enum {string} */
         Theme: "light" | "dark" | "system";
@@ -39975,7 +40193,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The version is stale (version_conflict), or the name is taken (expense_category_exists; the category's own name and labels don't count). */
+            /** @description The version is stale (version_conflict); deactivating while an active, not ended recurring expense uses the category (expense_category_in_use, with details.template_count); or the name is taken (expense_category_exists; the category's own name and labels don't count). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -40160,7 +40378,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The version is stale (version_conflict), or another vendor has this name (vendor_exists). */
+            /** @description The version is stale (version_conflict); deactivating while an active, not ended recurring expense uses the vendor (vendor_in_use, with details.template_count); or another vendor has this name (vendor_exists). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -40187,6 +40405,8 @@ export interface operations {
                 status?: components["schemas"]["ExpenseStatus"][] | null;
                 category_id?: string | null;
                 vendor_id?: string | null;
+                /** @description Only the expenses this recurring expense generated. */
+                template_id?: string | null;
                 incurred_from?: string | null;
                 incurred_to?: string | null;
                 /** @description Part of the description or the receipt reference, ignoring case; trimmed. `%`, `_` and `\` match themselves. */
@@ -40599,6 +40819,247 @@ export interface operations {
                 };
             };
             /** @description The expense is void and takes no more payments or adjustments (expense_void); or a negative amount goes beyond the open amount (expense_adjustment_exceeds_open, with details.open): reverse a payment first. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_expense_templates_api_v1_finance_expense_templates_get: {
+        parameters: {
+            query?: {
+                /** @description Only templates in these statuses (repeatable). */
+                status?: components["schemas"]["TemplateStatus"][] | null;
+                category_id?: string | null;
+                vendor_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpenseTemplateItem"][];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_expense_template_api_v1_finance_expense_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExpenseTemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpenseTemplateItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Another recurring expense has this name, ignoring case, a paused or ended one included (expense_template_exists); or the category or the vendor is inactive (expense_category_inactive, vendor_inactive). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_expense_template_api_v1_finance_expense_templates__template_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpenseTemplateItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such recurring expense (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_expense_template_api_v1_finance_expense_templates__template_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExpenseTemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpenseTemplateItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such recurring expense (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The version is stale (version_conflict); the name is taken (expense_template_exists); or the category or the vendor is inactive (expense_category_inactive, vendor_inactive), checked whenever the template stays or becomes active and not ended. */
             409: {
                 headers: {
                     [name: string]: unknown;

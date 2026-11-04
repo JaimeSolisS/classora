@@ -72,11 +72,12 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0084"
+HEAD = "0085"
 FINANCE_TABLES_0083 = frozenset({"expense_categories", "vendors"})
 EXPENSE_TABLES_0084 = frozenset(
     {"expenses", "expense_payments", "expense_payment_reversals", "expense_adjustments"}
 )
+TEMPLATES_0085 = "expense_templates"
 PAY_RULES = "session_pay_rules"
 LINES = "payroll_lines"
 SALARY_LINE_COLUMNS = frozenset(
@@ -476,6 +477,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             PAYSLIPS,
             *FINANCE_TABLES_0083,
             *EXPENSE_TABLES_0084,
+            TEMPLATES_0085,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4883,9 +4885,33 @@ def _of_0084(diff: Any) -> bool:
     return diff[0] == "add_index" and diff[1].table.name in EXPENSE_TABLES_0084
 
 
+def _of_0085(diff: Any) -> bool:
+    """A metadata difference that revision 0085 adds: the templates table and
+    its indexes, and the two ``expenses`` columns with their foreign key and
+    natural key (#116 A1). CHECKs are not compared."""
+    if diff[0] == "add_table":
+        return bool(diff[1].name == TEMPLATES_0085)
+    if diff[0] == "add_column":
+        return bool(
+            diff[2] == "expenses"
+            and diff[3].name in {"expense_template_id", "period_start"}
+        )
+    if diff[0] == "add_fk":
+        return bool(diff[1].name == "fk_expenses_expense_template_id_expense_templates")
+    return diff[0] == "add_index" and (
+        diff[1].name == "uq_expenses_template_period"
+        or diff[1].table.name == TEMPLATES_0085
+    )
+
+
+def _of_0084_on(diff: Any) -> bool:
+    """A metadata difference that revision 0084 or a later one adds."""
+    return _of_0084(diff) or _of_0085(diff)
+
+
 def _of_0083_on(diff: Any) -> bool:
     """A metadata difference that revision 0083 or a later one adds."""
-    return _of_0083(diff) or _of_0084(diff)
+    return _of_0083(diff) or _of_0084_on(diff)
 
 
 def _of_0082_on(diff: Any) -> bool:
@@ -16011,7 +16037,7 @@ def test_0083_adds_the_tables_and_downgrade_restores_0082(fresh_database_url):
     command.upgrade(config, "0083")
 
     assert version_nums(dsn) == ["0083"]
-    assert [d for d in metadata_diff(dsn) if not _of_0084(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0084_on(d)] == []
     assert public_tables(dsn) - tables == FINANCE_TABLES_0083
     rows = run_sql(
         dsn,
@@ -16158,8 +16184,9 @@ def test_0083_neither_table_truncates(fresh_database_url):
     command.upgrade(alembic_config(dsn), "head")
     run_sql(dsn, "INSERT INTO vendors (name) VALUES ('Acme')")
 
-    # The expense tables (0084) reference both: alone, the TRUNCATE is 0A000.
-    expenses = ", ".join(sorted(EXPENSE_TABLES_0084))
+    # The expense tables (0084) and the templates (0085) reference both:
+    # alone, the TRUNCATE is 0A000.
+    expenses = ", ".join(sorted(EXPENSE_TABLES_0084 | {TEMPLATES_0085}))
     for table in FINANCE_TABLES_0083:
         assert _sqlstate_0076(dsn, f"TRUNCATE {table}, {expenses}") == "42501", table
         assert _sqlstate_0076(dsn, f"TRUNCATE {table} CASCADE") == "42501", table
@@ -16241,7 +16268,7 @@ def test_0084_adds_the_tables_and_downgrade_restores_0083(fresh_database_url):
     command.upgrade(config, "0084")
 
     assert version_nums(dsn) == ["0084"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0085(d)] == []
     assert public_tables(dsn) - tables == EXPENSE_TABLES_0084
     for table in EXPENSE_TABLES_0084:
         constraints = _constraints(dsn, table)
@@ -16277,7 +16304,7 @@ def test_0084_adds_the_tables_and_downgrade_restores_0083(fresh_database_url):
         {"n": [f"{table}_append_only" for table in EXPENSE_TABLES_0084]},
     )
     assert functions[0].n == 0
-    assert [d for d in metadata_diff(dsn) if not _of_0084(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0084_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -16300,6 +16327,9 @@ def test_0084_columns(fresh_database_url):
         "receipt_reference": ("text", "YES", None, None),
         "note": ("text", "YES", None, None),
         "created_by_user_id": ("uuid", "YES", None, None),
+        # #116 (0085): the generated expense's natural key.
+        "expense_template_id": ("uuid", "YES", None, None),
+        "period_start": ("date", "YES", None, None),
     }
     assert _columns(dsn, "expense_payments") == {
         **UNVERSIONED_COLUMNS_0084,
@@ -16571,3 +16601,273 @@ def test_0084_downgrade_refuses_while_an_expense_exists(fresh_database_url):
     assert getattr(caught.value.orig, "sqlstate", None) == "55000"
     assert version_nums(dsn) == [HEAD]
     assert run_sql(dsn, "SELECT count(*) AS n FROM expenses")[0].n == 1
+
+
+# --- 0085: recurring expense templates (#116 A1) -----
+
+TEMPLATE_CONSTRAINTS_0085 = {
+    "pk_expense_templates",
+    "fk_expense_templates_category_id_expense_categories",
+    "fk_expense_templates_vendor_id_vendors",
+    "ck_expense_templates_name_trimmed",
+    "ck_expense_templates_amount_positive",
+    "ck_expense_templates_frequency_valid",
+    "ck_expense_templates_ends_on_after_starts_on",
+    "ck_expense_templates_due_offset_days_range",
+    "ck_expense_templates_next_period_start_after_starts_on",
+}
+OFFSET_RANGE_0085 = "ck_expense_templates_due_offset_days_range"
+TEMPLATE_INDEXES_0085 = {
+    "pk_expense_templates",
+    "uq_expense_templates_lower_name",
+    "ix_expense_templates_category_id",
+    "ix_expense_templates_vendor_id",
+    "ix_expense_templates_next_period_start_active",
+}
+
+
+def test_0085_adds_the_table_and_columns_and_downgrade_restores_0084(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0084")
+    tables = public_tables(dsn)
+    expense_constraints = set(_constraints(dsn, "expenses"))
+    expense_indexes = set(_indexes(dsn, "expenses"))
+
+    command.upgrade(config, "0085")
+
+    assert version_nums(dsn) == ["0085"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == {TEMPLATES_0085}
+    constraints = _constraints(dsn, TEMPLATES_0085)
+    assert set(constraints) == TEMPLATE_CONSTRAINTS_0085
+    for name, definition in constraints.items():
+        if name.startswith("fk_"):
+            assert definition.endswith("ON DELETE RESTRICT"), name
+    indexes = _indexes(dsn, TEMPLATES_0085)
+    assert set(indexes) == TEMPLATE_INDEXES_0085
+    assert "lower((name)::text)" in indexes["uq_expense_templates_lower_name"]
+    assert (
+        "WHERE is_active" in (indexes["ix_expense_templates_next_period_start_active"])
+    )
+    assert _triggers(dsn, TEMPLATES_0085) == {"expense_templates_no_truncate"}
+    new_constraints = _constraints(dsn, "expenses")
+    assert set(new_constraints) - expense_constraints == {
+        "fk_expenses_expense_template_id_expense_templates",
+        "ck_expenses_template_period",
+    }
+    assert new_constraints[
+        "fk_expenses_expense_template_id_expense_templates"
+    ].endswith("ON DELETE RESTRICT")
+    new_indexes = _indexes(dsn, "expenses")
+    assert set(new_indexes) - expense_indexes == {"uq_expenses_template_period"}
+    assert (
+        "(expense_template_id, period_start)"
+        in (new_indexes["uq_expenses_template_period"])
+    )
+    assert (
+        "WHERE (expense_template_id IS NOT NULL)"
+        in (new_indexes["uq_expenses_template_period"])
+    )
+
+    command.downgrade(config, "0084")
+
+    assert version_nums(dsn) == ["0084"]
+    assert public_tables(dsn) == tables
+    assert set(_constraints(dsn, "expenses")) == expense_constraints
+    assert set(_indexes(dsn, "expenses")) == expense_indexes
+    guard = (
+        "SELECT count(*) AS n FROM pg_proc"
+        " WHERE proname = 'expense_templates_no_truncate'"
+    )
+    assert run_sql(dsn, guard)[0].n == 0
+    assert [d for d in metadata_diff(dsn) if not _of_0085(d)] == []
+
+    command.upgrade(config, "head")
+
+    assert metadata_diff(dsn) == []
+
+
+def test_0085_columns(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    assert _columns(dsn, TEMPLATES_0085) == {
+        **STANDARD_COLUMNS,
+        "name": ("character varying", "NO", 200, None),
+        "category_id": ("uuid", "NO", None, None),
+        "vendor_id": ("uuid", "YES", None, None),
+        "amount": ("numeric", "NO", None, None),
+        "frequency": ("character varying", "NO", 10, None),
+        "starts_on": ("date", "NO", None, None),
+        "ends_on": ("date", "YES", None, None),
+        "due_offset_days": ("smallint", "NO", None, None),
+        "next_period_start": ("date", "NO", None, None),
+        "is_active": ("boolean", "NO", None, "true"),
+    }
+
+
+def _template_row_0085(world: dict[str, Any], **change: Any) -> dict[str, Any]:
+    return {
+        "name": "Renta local",
+        "category_id": world["category"],
+        "vendor_id": world["vendor"],
+        "amount": Decimal("8000.00"),
+        "frequency": "monthly",
+        "starts_on": date(2031, 1, 1),
+        "ends_on": None,
+        "due_offset_days": 5,
+        "next_period_start": date(2031, 1, 1),
+        **change,
+    }
+
+
+@pytest.mark.parametrize(
+    ("change", "constraint", "sqlstate"),
+    [
+        ({"amount": Decimal("0.00")}, "ck_expense_templates_amount_positive", "23514"),
+        ({"amount": Decimal("-1.00")}, "ck_expense_templates_amount_positive", "23514"),
+        ({"name": ""}, "ck_expense_templates_name_trimmed", "23514"),
+        ({"name": " Renta"}, "ck_expense_templates_name_trimmed", "23514"),
+        ({"name": "x" * 201}, "ck_expense_templates_name_trimmed", "22001"),
+        ({"frequency": "biweekly"}, "ck_expense_templates_frequency_valid", "23514"),
+        (
+            {"ends_on": date(2030, 12, 31)},
+            "ck_expense_templates_ends_on_after_starts_on",
+            "23514",
+        ),
+        (
+            {"next_period_start": date(2030, 12, 31)},
+            "ck_expense_templates_next_period_start_after_starts_on",
+            "23514",
+        ),
+        ({"due_offset_days": -1}, OFFSET_RANGE_0085, "23514"),
+        ({"due_offset_days": 61}, OFFSET_RANGE_0085, "23514"),
+        (
+            {"category_id": uuid.UUID(int=1)},
+            "fk_expense_templates_category_id_expense_categories",
+            "23503",
+        ),
+        (
+            {"vendor_id": uuid.UUID(int=1)},
+            "fk_expense_templates_vendor_id_vendors",
+            "23503",
+        ),
+    ],
+)
+def test_0085_template_rows_are_checked(
+    fresh_database_url, change, constraint, sqlstate
+):
+    dsn = fresh_database_url
+    world = _expense_world_0084(dsn)
+
+    with pytest.raises(DBAPIError) as caught:
+        _insert_0084(dsn, TEMPLATES_0085, _template_row_0085(world, **change))
+
+    assert getattr(caught.value.orig, "sqlstate", None) == sqlstate
+    if sqlstate != "22001":
+        assert constraint in str(caught.value.orig)
+
+
+def test_0085_a_name_is_unique_ignoring_case_and_the_references_restrict(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    world = _expense_world_0084(dsn)
+    template = _insert_0084(dsn, TEMPLATES_0085, _template_row_0085(world))
+
+    with pytest.raises(IntegrityError) as caught:
+        _insert_0084(dsn, TEMPLATES_0085, _template_row_0085(world, name="RENTA LOCAL"))
+
+    assert getattr(caught.value.orig, "sqlstate", None) == "23505"
+    assert "uq_expense_templates_lower_name" in str(caught.value.orig)
+    for statement, params in (
+        ("DELETE FROM expense_categories WHERE id = :i", {"i": world["category"]}),
+        ("DELETE FROM vendors WHERE id = :i", {"i": world["vendor"]}),
+    ):
+        assert _sqlstate_0076(dsn, statement, params) in {"23001", "23503"}, statement
+    _insert_0084(
+        dsn,
+        "expenses",
+        _expense_row_0084(
+            world, expense_template_id=template, period_start=date(2031, 1, 1)
+        ),
+    )
+    assert _sqlstate_0076(
+        dsn, "DELETE FROM expense_templates WHERE id = :i", {"i": template}
+    ) in {"23001", "23503"}
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"expense_template_id": "template", "period_start": None},
+        {"expense_template_id": None, "period_start": date(2031, 1, 1)},
+    ],
+)
+def test_0085_a_template_and_its_period_are_set_together(fresh_database_url, change):
+    dsn = fresh_database_url
+    world = _expense_world_0084(dsn)
+    template = _insert_0084(dsn, TEMPLATES_0085, _template_row_0085(world))
+    if change["expense_template_id"] == "template":
+        change = {**change, "expense_template_id": template}
+
+    with pytest.raises(IntegrityError) as caught:
+        _insert_0084(dsn, "expenses", _expense_row_0084(world, **change))
+
+    assert getattr(caught.value.orig, "sqlstate", None) == "23514"
+    assert "ck_expenses_template_period" in str(caught.value.orig)
+
+
+def test_0085_one_expense_per_template_and_period(fresh_database_url):
+    dsn = fresh_database_url
+    world = _expense_world_0084(dsn)
+    template = _insert_0084(dsn, TEMPLATES_0085, _template_row_0085(world))
+    generated = _expense_row_0084(
+        world, expense_template_id=template, period_start=date(2031, 1, 1)
+    )
+    _insert_0084(dsn, "expenses", generated)
+
+    with pytest.raises(IntegrityError) as caught:
+        _insert_0084(dsn, "expenses", generated)
+
+    assert getattr(caught.value.orig, "sqlstate", None) == "23505"
+    assert "uq_expenses_template_period" in str(caught.value.orig)
+    # Another period, and manual rows (both NULL), pass.
+    _insert_0084(
+        dsn,
+        "expenses",
+        _expense_row_0084(
+            world, expense_template_id=template, period_start=date(2031, 2, 1)
+        ),
+    )
+    _insert_0084(dsn, "expenses", _expense_row_0084(world))
+    _insert_0084(dsn, "expenses", _expense_row_0084(world))
+    assert run_sql(dsn, "SELECT count(*) AS n FROM expenses")[0].n == 4
+
+
+def test_0085_templates_never_truncate(fresh_database_url):
+    dsn = fresh_database_url
+    world = _expense_world_0084(dsn)
+    _insert_0084(dsn, TEMPLATES_0085, _template_row_0085(world))
+    expenses = ", ".join(sorted(EXPENSE_TABLES_0084))
+
+    assert _sqlstate_0076(dsn, f"TRUNCATE {TEMPLATES_0085}, {expenses}") == "42501"
+    assert _sqlstate_0076(dsn, f"TRUNCATE {TEMPLATES_0085} CASCADE") == "42501"
+    assert run_sql(dsn, "SELECT count(*) AS n FROM expense_templates")[0].n == 1
+
+
+def test_0085_downgrade_refuses_while_a_template_exists(fresh_database_url):
+    dsn = fresh_database_url
+    world = _expense_world_0084(dsn)
+    _insert_0084(dsn, TEMPLATES_0085, _template_row_0085(world))
+    config = alembic_config(dsn)
+
+    with pytest.raises(DBAPIError) as caught:
+        command.downgrade(config, "0084")
+
+    assert getattr(caught.value.orig, "sqlstate", None) == "55000"
+    assert version_nums(dsn) == [HEAD]
+    assert run_sql(dsn, "SELECT count(*) AS n FROM expense_templates")[0].n == 1
