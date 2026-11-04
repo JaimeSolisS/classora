@@ -98,6 +98,7 @@ from app.modules.finance.models import (
     ExpenseCategory,
     ExpensePayment,
     ExpensePaymentReversal,
+    ExpenseTemplate,
     Vendor,
 )
 from app.modules.identity.models import (
@@ -221,6 +222,7 @@ def test_the_guard_scans_the_real_audited_models():
         ExpenseCategory,
         ExpensePayment,
         ExpensePaymentReversal,
+        ExpenseTemplate,
         Family,
         FamilyGuardian,
         FamilyStudent,
@@ -349,6 +351,8 @@ def test_the_guard_scans_the_real_audited_models():
     assert ExpensePayment.__audit_mask__ == {"amount", "reference", "note"}
     assert ExpensePaymentReversal.__audit_mask__ == {"reason"}
     assert ExpenseAdjustment.__audit_mask__ == {"amount", "reason"}
+    # #116 E9: a template's name becomes each generated expense's description.
+    assert ExpenseTemplate.__audit_mask__ == {"name", "amount"}
     # #64: a snapshot's content is the immutable row itself, not repeated in
     # its create event.
     assert CourseTemplateSnapshot.__audit_exclude__ == {"content"}

@@ -1,4 +1,4 @@
-"""Shared helpers for the finance tests (#114, #115): the routes, a reset to
+"""Shared helpers for the finance tests (#114, #115, #116): the routes, a reset to
 the migration's seed, and readers of the stored rows and their audit events."""
 
 import uuid
@@ -32,11 +32,12 @@ EXPENSE_TABLES: Final = (
 
 
 def clear_expenses(url: str) -> None:
-    """No expense, payment, reversal or adjustment. The tables are append-only
-    and reference each other, so every trigger of each is off meanwhile, the
-    foreign keys' included (a test database runs as a superuser), and back on
-    in a ``finally`` (the ``payroll_period_support.clear_adjustments``
-    pattern)."""
+    """No expense, payment, reversal or adjustment, then no template (#116
+    A4). The expense tables are append-only and reference each other, so
+    every trigger of each is off meanwhile, the foreign keys' included (a test
+    database runs as a superuser), and back on in a ``finally`` (the
+    ``payroll_period_support.clear_adjustments`` pattern). ``expense_templates``
+    refuses only ``TRUNCATE``, so a ``DELETE`` after the expenses clears it."""
     for table in EXPENSE_TABLES:
         run_sql(url, f"ALTER TABLE {table} DISABLE TRIGGER ALL")
     try:
@@ -45,12 +46,13 @@ def clear_expenses(url: str) -> None:
     finally:
         for table in EXPENSE_TABLES:
             run_sql(url, f"ALTER TABLE {table} ENABLE TRIGGER ALL")
+    run_sql(url, "DELETE FROM expense_templates")
 
 
 def reset(url: str) -> None:
-    """Back to the migration's state: no expense (:func:`clear_expenses`), the
-    five seeded categories, no vendor. ``DELETE``, because the tables refuse
-    ``TRUNCATE``."""
+    """Back to the migration's state: no expense and no template
+    (:func:`clear_expenses`), the five seeded categories, no vendor.
+    ``DELETE``, because the tables refuse ``TRUNCATE``."""
     clear_expenses(url)
     run_sql(url, "DELETE FROM vendors")
     run_sql(url, "DELETE FROM expense_categories")

@@ -128,6 +128,10 @@ async def list_expenses(
     ] = None,
     category_id: uuid.UUID | None = None,
     vendor_id: uuid.UUID | None = None,
+    template_id: Annotated[
+        uuid.UUID | None,
+        Query(description="Only the expenses this recurring expense generated."),
+    ] = None,
     incurred_from: date | None = None,
     incurred_to: date | None = None,
     q: Annotated[
@@ -144,7 +148,8 @@ async def list_expenses(
     amounts and their status, computed with the center's today. Newest
     expense date first (`-incurred_on`, the default), or soonest due date
     first (`due_on`). Inactive categories and vendors are listed and can be
-    filtered on."""
+    filtered on. `template` names the recurring expense that generated an
+    expense (`null` for one entered by hand)."""
     if (
         incurred_from is not None
         and incurred_to is not None
@@ -157,6 +162,7 @@ async def list_expenses(
             statuses=status,
             category_id=category_id,
             vendor_id=vendor_id,
+            template_id=template_id,
             incurred_from=incurred_from,
             incurred_to=incurred_to,
             q=(q or "").strip() or None,

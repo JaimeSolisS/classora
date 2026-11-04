@@ -3,7 +3,9 @@
 Every route needs ``expense.configure`` (Owners, Administrators and Finance
 Staff; not delegable), the reads too (#114 E6). No reauthentication, no
 ``Idempotency-Key`` (the name is a natural key) and no rate limit. There is no
-``DELETE`` (#114 E5): ``is_active`` retires a row.
+``DELETE`` (#114 E5): ``is_active`` retires a row, unless a live recurring
+template uses it (``409 expense_category_in_use`` / ``vendor_in_use``, #116
+E2).
 
 Check order: ``401`` → ``403 csrf_failed`` (writes) → ``403
 permission_denied`` → ``422`` (the body or the query) → ``404`` → ``409``.
@@ -83,9 +85,11 @@ async def create_expense_category(
         **PERMISSION_RESPONSES,
         404: problem_response_doc("No such category (not_found)."),
         409: problem_response_doc(
-            "The version is stale (version_conflict), or the name is taken"
-            " (expense_category_exists; the category's own name and labels"
-            " don't count)."
+            "The version is stale (version_conflict); deactivating while an"
+            " active, not ended recurring expense uses the category"
+            " (expense_category_in_use, with details.template_count); or the"
+            " name is taken (expense_category_exists; the category's own name"
+            " and labels don't count)."
         ),
         422: problem_response_doc(
             "The body is not valid (validation_error): an unknown field, neither"
@@ -102,7 +106,8 @@ async def update_expense_category(
     """Rename, deactivate or reactivate a category. Its id never changes, so
     past expenses keep their grouping and show the new name. A new name
     clears `system_key` for good. An inactive category stays listed but can't
-    be used for a new expense."""
+    be used for a new expense or recurring expense; a category an active
+    recurring expense uses can't be deactivated."""
     return await finance.change_category(uow.session, category_id, body)
 
 
@@ -167,8 +172,10 @@ async def create_vendor(
         **PERMISSION_RESPONSES,
         404: problem_response_doc("No such vendor (not_found)."),
         409: problem_response_doc(
-            "The version is stale (version_conflict), or another vendor has"
-            " this name (vendor_exists)."
+            "The version is stale (version_conflict); deactivating while an"
+            " active, not ended recurring expense uses the vendor"
+            " (vendor_in_use, with details.template_count); or another vendor"
+            " has this name (vendor_exists)."
         ),
         422: problem_response_doc(
             "The body is not valid (validation_error): an unknown field, none of"
@@ -185,5 +192,6 @@ async def update_vendor(
 ) -> VendorItem:
     """Rename a vendor, change or clear (`null`) its contact, or deactivate or
     reactivate it. An inactive vendor stays listed but can't be used for a
-    new expense."""
+    new expense or recurring expense; a vendor an active recurring expense
+    uses can't be deactivated."""
     return await finance.change_vendor(uow.session, vendor_id, body)

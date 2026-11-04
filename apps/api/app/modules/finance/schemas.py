@@ -13,6 +13,10 @@ Expense texts (#115) follow the same codes: ``description``,
 ``reason`` may span lines. An optional text sent blank is ``null``. The
 ``POST`` answers hold ids and the derived status only (#115 E7): the stored
 idempotent response is kept in clear.
+
+Recurring templates (#116) follow the same codes: ``name`` is one line, 1-200
+characters. ``frequency`` and ``starts_on`` can't be changed (#116 E4): the
+``PATCH`` body refuses them as unknown fields.
 """
 
 import unicodedata
@@ -28,13 +32,16 @@ from app.modules.administration.schemas import AccountName
 from app.modules.finance.models import (
     CATEGORY_NAME_MAX,
     DESCRIPTION_MAX,
+    DUE_OFFSET_MAX,
     METHOD_CODE_MAX,
     NOTE_MAX,
     REASON_MAX,
     REFERENCE_MAX,
+    TEMPLATE_NAME_MAX,
     VENDOR_CONTACT_MAX,
     VENDOR_NAME_MAX,
 )
+from app.modules.finance.template_periods import Frequency
 
 type SystemKey = Literal["rent", "utilities", "supplies", "equipment", "maintenance"]
 
@@ -311,6 +318,13 @@ class VendorRef(BaseModel):
     is_active: bool
 
 
+class ExpenseTemplateRef(BaseModel):
+    """The template that generated an expense (#116 C10)."""
+
+    id: uuid.UUID
+    name: str
+
+
 class ExpenseItem(BaseModel):
     """One expense of the list (#115 C1), with its derived figures."""
 
@@ -328,6 +342,10 @@ class ExpenseItem(BaseModel):
     incurred_on: date
     due_on: date
     receipt_reference: str | None
+    template: ExpenseTemplateRef | None = Field(
+        description="The recurring expense that generated it (#116); `null` for"
+        " an expense entered by hand."
+    )
     created_at: datetime
 
 
@@ -471,3 +489,141 @@ class ExpenseAdjustmentPosted(BaseModel):
     id: uuid.UUID
     expense_id: uuid.UUID
     status: ExpenseStatus
+
+
+# --- Recurring templates (#116) ---------------------------------------------------
+
+type TemplateStatus = Literal["active", "paused", "ended"]
+"""Derived (#116 C7): ``ended`` (``ends_on`` set and ``next_period_start`` after
+it), else ``paused`` (``is_active`` false), else ``active``."""
+
+TEMPLATE_STATUSES: Final[tuple[TemplateStatus, ...]] = ("active", "paused", "ended")
+
+
+def _template_name(value: str) -> str:
+    return _clean(value, TEMPLATE_NAME_MAX)
+
+
+class ExpenseTemplateCreate(BaseModel):
+    """``POST /api/v1/finance/expense-templates`` (#116 C1)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(
+        description="1-200 characters, trimmed; one line. Unique ignoring case,"
+        " paused and ended templates included. Each generated expense takes it"
+        " as its description."
+    )
+    category_id: uuid.UUID
+    vendor_id: uuid.UUID | None = None
+    amount: Money = Field(description="Above zero.")
+    frequency: Frequency = Field(description="Fixed for the template's life.")
+    starts_on: date = Field(
+        description="The first period's start, at most 31 days before and 366"
+        " days after the center's today. Fixed for the template's life; the"
+        " periods are anchored on it (the day of the month is clamped)."
+    )
+    ends_on: date | None = Field(
+        default=None,
+        description="On or after `starts_on`. A period is generated only if it"
+        " starts on or before this date.",
+    )
+    due_offset_days: int = Field(
+        ge=0,
+        le=DUE_OFFSET_MAX,
+        description="Each expense is due this many days after its period starts.",
+    )
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, value: str) -> str:
+        return _template_name(value)
+
+    @field_validator("amount")
+    @classmethod
+    def _amount(cls, value: Money) -> Money:
+        return _positive(value)
+
+
+TEMPLATE_PLAIN_FIELDS: Final = (
+    "name",
+    "category_id",
+    "amount",
+    "due_offset_days",
+    "is_active",
+)
+"""``PATCH`` fields where ``null`` means "unchanged" (the #114 rule)."""
+TEMPLATE_NULLABLE_FIELDS: Final = frozenset({"vendor_id", "ends_on"})
+"""``PATCH`` fields where ``null`` clears the value."""
+
+
+class ExpenseTemplateUpdate(BaseModel):
+    """``PATCH /api/v1/finance/expense-templates/{id}`` (#116 C4). A missing
+    field (or ``null``) stays as it is, except ``vendor_id: null``, which
+    removes the vendor, and ``ends_on: null``, which clears the end. At least
+    one change (``no_changes``).
+    ``frequency`` and ``starts_on`` are unknown fields (#116 E4)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int
+    name: str | None = None
+    category_id: uuid.UUID | None = None
+    vendor_id: uuid.UUID | None = Field(
+        default=None, description="`null` removes the vendor; leaving it out keeps it."
+    )
+    amount: Money | None = None
+    due_offset_days: int | None = Field(default=None, ge=0, le=DUE_OFFSET_MAX)
+    ends_on: date | None = Field(
+        default=None, description="`null` clears the end; leaving it out keeps it."
+    )
+    is_active: bool | None = Field(
+        default=None,
+        description="`false` pauses the template; `true` resumes it from the first"
+        " period on or after today, with no back-fill.",
+    )
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, value: str | None) -> str | None:
+        return None if value is None else _template_name(value)
+
+    @field_validator("amount")
+    @classmethod
+    def _amount(cls, value: Money | None) -> Money | None:
+        return None if value is None else _positive(value)
+
+    @model_validator(mode="after")
+    def _something_changes(self) -> Self:
+        given = {
+            field for field in TEMPLATE_PLAIN_FIELDS if getattr(self, field) is not None
+        } | (self.model_fields_set & TEMPLATE_NULLABLE_FIELDS)
+        if not given:
+            raise _nothing_to_change()
+        return self
+
+
+class ExpenseTemplateItem(BaseModel):
+    """A recurring expense template (#116 C7), in the list and the detail."""
+
+    id: uuid.UUID
+    name: str
+    category: ExpenseCategoryRef
+    vendor: VendorRef | None
+    amount: Money
+    frequency: Frequency
+    starts_on: date
+    ends_on: date | None
+    due_offset_days: int
+    next_period_start: date = Field(
+        description="The next period the job will generate (when due and"
+        " before the end)."
+    )
+    last_period_start: date | None = Field(
+        description="The latest period generated, or `null`."
+    )
+    status: TemplateStatus
+    is_active: bool
+    version: int
+    created_at: datetime
+    updated_at: datetime

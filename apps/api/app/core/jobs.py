@@ -54,7 +54,10 @@ billing settings ``PATCH``'s triggers of ``billing:post_session_charges``
 after the settings ``PATCH`` and the tuition plan writes (#93 E1);
 :func:`defer_schedule_reconciliation` the trigger of
 ``billing:reconcile_session_charges`` after the session-changing routes,
-the settings ``PATCH`` and the series materialization (#99 D9).
+the settings ``PATCH`` and the series materialization (#99 D9);
+:func:`defer_recurring_expenses` the trigger of
+``finance:generate_recurring_expenses`` after a template create, reactivation
+or ``ends_on`` change (#116 E8).
 """
 
 import functools
@@ -149,6 +152,13 @@ CHARGE_REMINDERS_TASK: Final = "billing:send_charge_reminders"
 CHARGE_REMINDERS_QUEUEING_LOCK: Final = "billing-send-charge-reminders"
 """At most one queued ``billing:send_charge_reminders`` job (the periodic
 tick shares it)."""
+
+RECURRING_EXPENSES_TASK: Final = "finance:generate_recurring_expenses"
+"""The daily recurring expense job (#116 D1), also deferred after a template
+create, reactivation or ``ends_on`` change (#116 E8)."""
+RECURRING_EXPENSES_QUEUEING_LOCK: Final = "finance-generate-recurring-expenses"
+"""At most one queued ``finance:generate_recurring_expenses`` job (the
+periodic tick shares it)."""
 
 # Worker concurrency is fixed at 1 here; making it configurable and sizing it
 # (with the pools below and mem_limit) is M10-04 (ISSUE-I8).
@@ -282,8 +292,8 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     enrollment charge sweepers, #91 and #92, the daily tuition charges,
     #93, the daily package expiry, #94, and the daily charge reminders,
     #97, the 15-minute schedule reconciliation, #99, the daily payroll
-    periods, #106, and the 15-minute payroll adjustments, #111, whose task
-    files are
+    periods, #106, the 15-minute payroll adjustments, #111, and the daily
+    recurring expenses, #116, whose task files are
     ``app/workflows/progress_report_schedule_tasks.py``,
     ``app/workflows/session_charge_tasks.py``,
     ``app/workflows/enrollment_charge_tasks.py``,
@@ -291,8 +301,9 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     ``app/workflows/package_expiry_tasks.py``,
     ``app/workflows/charge_reminder_tasks.py``,
     ``app/workflows/schedule_reconciliation_tasks.py``,
-    ``app/workflows/payroll_period_tasks.py`` and
-    ``app/workflows/payroll_adjustment_tasks.py`` because they compose
+    ``app/workflows/payroll_period_tasks.py``,
+    ``app/workflows/payroll_adjustment_tasks.py`` and
+    ``app/workflows/recurring_expense_tasks.py`` because they compose
     modules)
     are registered in every environment. The demo tasks
     (and the periodic demo) are registered only in :data:`DEMO_ENVIRONMENTS`.
@@ -309,6 +320,7 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
         payroll_adjustment_tasks,
         payroll_period_tasks,
         progress_report_schedule_tasks,
+        recurring_expense_tasks,
         schedule_reconciliation_tasks,
         session_charge_tasks,
         tuition_charge_tasks,
@@ -328,6 +340,7 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     schedule_reconciliation_tasks.register(app)
     payroll_period_tasks.register(app)
     payroll_adjustment_tasks.register(app)
+    recurring_expense_tasks.register(app)
     if app_env in DEMO_ENVIRONMENTS:
         demo_jobs.register(app)
     return app
@@ -471,4 +484,29 @@ async def defer_schedule_reconciliation(job_app: App) -> None:
                 "task_name": SCHEDULE_RECONCILIATION_TASK,
                 "error": type(exc).__name__,
             },
+        )
+
+
+async def defer_recurring_expenses(job_app: App) -> None:
+    """Queue one ``finance:generate_recurring_expenses`` run now (#116 E8).
+
+    The same contract as :func:`defer_tuition_charges`: only after the Unit
+    of Work has committed (a template create, reactivation or ``ends_on``
+    change adds it as a background task, which runs after the response); a
+    run already queued is a no-op (``AlreadyEnqueued`` is ignored); any other
+    failure is logged and swallowed (the next daily run generates the
+    periods).
+    """
+    try:
+        await job_app.configure_task(
+            RECURRING_EXPENSES_TASK,
+            allow_unknown=False,
+            queueing_lock=RECURRING_EXPENSES_QUEUEING_LOCK,
+        ).defer_async(timestamp=int(time.time()))
+    except AlreadyEnqueued:
+        return
+    except Exception as exc:  # noqa: BLE001 - the write must still answer 2xx
+        logger.error(
+            "Deferring the recurring expenses failed",
+            extra={"task_name": RECURRING_EXPENSES_TASK, "error": type(exc).__name__},
         )

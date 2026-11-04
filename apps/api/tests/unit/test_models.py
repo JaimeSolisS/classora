@@ -186,6 +186,7 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "expense_payments",
         "expense_payment_reversals",
         "expense_adjustments",
+        "expense_templates",
         "number_series",
         "account_tokens",
         "registration_requests",

@@ -354,13 +354,13 @@ Permissions, not roles; each seeded by its first user; only `payroll.finalize` i
 - Module `finance`. `expense_categories` (`name`, `is_active`, `system_key NULL`, unique name ignoring case) is seeded with `rent`, `utilities`, `supplies`, `equipment` and `maintenance`; a seeded row keeps its `system_key` for translation until renamed, when staff text wins. `vendors` (`name`, `contact NULL`, `is_active`).
 - Both are mutable config with `version`, never deleted once referenced.
 - **Reports group by id and show the current name**, which answers #114's "if that is decided".
-- Deactivated rows can't be used on new expenses or templates but still appear in reports. Deactivating a row used by an active template is `409 in_use_by_template`.
+- Deactivated rows can't be used on new expenses or templates but still appear in reports. Deactivating a row used by an active template is `409 expense_category_in_use` / `vendor_in_use` (named `in_use_by_template` before #116; see the #116 notes under E17).
 
 #### Implementation notes (#114)
 
 Orchestrator-recommended, pending owner review (#114 E2–E7, owner-delegated). They refine E15 where it is silent; `_docs/data-model.md` §12.1 and §12.2 and `_docs/api.md` "Expense categories and vendors" are the current rules.
 
-- **E2, `in_use_by_template`:** `expense_templates` arrives with #116, so in #114 deactivation always passes. #116 adds the refusal to the #114 `PATCH` routes, under the row lock.
+- **E2, the template refusal:** `expense_templates` arrives with #116, so in #114 deactivation always passes. #116 adds the refusal to the #114 `PATCH` routes, under the row lock, as `409 expense_category_in_use` / `vendor_in_use`.
 - **E3, seeded names:** the migration stores the Spanish name (Renta, Servicios, Insumos, Equipo, Mantenimiento) with the key. While a row holds its key, clients show the catalog label of the key in the viewer's language; the server catalog is `finance.json`. A real rename sets `system_key` to `NULL` for good. A new or renamed name is refused (`409 expense_category_exists`) when it equals, ignoring case and spaces, another row's stored name or the es or en label of another keyed row.
 - **E4, vendor names:** unique ignoring case (`409 vendor_exists`), so the name is the natural key and no `Idempotency-Key` is needed.
 - **E5, no delete:** neither table has a `DELETE` route; `is_active` retires a row, and both refuse `TRUNCATE` (42501). "Never deleted once referenced" holds trivially.
@@ -400,6 +400,21 @@ Orchestrator-recommended, pending owner review (#115 E1–E7, owner-delegated). 
 - The job `finance:generate_recurring_expenses`, daily at 07:55 UTC with a `queueing_lock`, posts each due period (`period_start ≤` the center's today), with catch-up, on the natural key `(expense_template_id, period_start)` from [`../architecture.md`](../architecture.md) ISSUE-J4.
 - `incurred_on = period_start`, `due_on = period_start + due_offset_days`. Generated rows snapshot the template's values, so editing a template affects only future periods.
 - Reactivating sets `next_period_start` to the first period on or after today, so a paused template never back-fills.
+
+#### Implementation notes (#116)
+
+Orchestrator-recommended, pending owner review (#116 E1–E10, owner-delegated). They refine E15 and E17 where they are silent; `_docs/data-model.md` §12.3, §12.7 and §15 and `_docs/api.md` "Recurring expense templates" are the current rules. Migration `0085`.
+
+- **E1, split:** the API (table, the two `expenses` columns, the job, four template routes plus the `template_id` filter, the category/vendor refusal) in #116; the pages in M7-13b.
+- **E2, what blocks a deactivation:** a **live** template, active and not ended (`ends_on IS NULL OR next_period_start <= ends_on`). The code is `409 expense_category_in_use` / `vendor_in_use` (E15's `in_use_by_template` renamed, the `pay_item_type_in_use` pattern), with `details.template_count` only, because Administrators hold `expense.configure` but not `expense.view`. Every write that leaves a template live reads its category and vendor through `usable_*`, so the job never meets an inactive one.
+- **E3, names:** unique ignoring case and surrounding spaces (`409 expense_template_exists`), paused and ended templates included; the name is the natural key, so the create takes no `Idempotency-Key`.
+- **E4, editable fields:** `name`, `category_id`, `vendor_id`, `amount`, `due_offset_days`, `ends_on`, `is_active`. `frequency` and `starts_on` are fixed for life; a new schedule is a new template.
+- **E5, start window:** `starts_on` from the center's today − 31 days to today + 366 days (`422 expense_template_starts_on_invalid`, the #93 tuition bound); the due past periods in the window are generated at once.
+- **E6, `ends_on`:** on or after `starts_on` and not before the latest generated `period_start` (`422 expense_template_ends_on_invalid`); a period is generated iff it starts on or before `ends_on`.
+- **E7, future periods:** every period not generated when a change commits, a due one the job hasn't reached included: after a worker outage, a back-filled period takes the current values. The template row lock serializes a change and a job step. The job's advance of `next_period_start` doesn't change `version`, so a change read before a run still applies after it.
+- **E8, a run after a write:** a create, a reactivation or an `ends_on` change queues one run after its commit (`defer_recurring_expenses`, the `defer_tuition_charges` contract).
+- **E9, text and masks:** the generated `description` is the template name verbatim; `receipt_reference`, `note` and `created_by_user_id` are `NULL`. `expense_templates` masks `name` and `amount` in the audit log; logs carry ids and counts only.
+- **E10, no delete:** pause or end a template; `TRUNCATE` is refused (42501).
 
 ### Reporting (E18 (a), spec §8, ADR-0006 E7, #117, product)
 

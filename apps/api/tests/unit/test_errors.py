@@ -405,6 +405,8 @@ def test_production_app_has_no_demo_route(
         "/api/v1/finance/expense-categories",
         "/api/v1/finance/expense-categories/{category_id}",
         "/api/v1/finance/expense-payments/{payment_id}/reversal",
+        "/api/v1/finance/expense-templates",
+        "/api/v1/finance/expense-templates/{template_id}",
         "/api/v1/finance/expenses",
         "/api/v1/finance/expenses/{expense_id}",
         "/api/v1/finance/expenses/{expense_id}/adjustments",

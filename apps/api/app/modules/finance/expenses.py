@@ -65,6 +65,7 @@ from app.modules.finance.models import (
     ExpenseCategory,
     ExpensePayment,
     ExpensePaymentReversal,
+    ExpenseTemplate,
     Vendor,
 )
 from app.modules.finance.schemas import (
@@ -78,6 +79,7 @@ from app.modules.finance.schemas import (
     ExpensePaymentReversalItem,
     ExpenseSort,
     ExpenseStatus,
+    ExpenseTemplateRef,
     SystemKey,
     VendorRef,
 )
@@ -171,6 +173,27 @@ def expense_figures(today: date) -> Subquery:
 # --- Insert (the seam for #116) ---------------------------------------------------
 
 
+async def ensure_usable(
+    session: AsyncSession, category_id: uuid.UUID, vendor_id: uuid.UUID | None
+) -> None:
+    """The category and the vendor (if any) read ``FOR SHARE`` through
+    ``usable_*``, refused in the module's order: every ``…_unknown`` (``422``),
+    then every ``…_inactive`` (``409``), the category first. Shared by
+    :func:`insert_expense` and the template writes (#116 C1, C5)."""
+    inactive: list[Exception] = []
+    try:
+        await usable_category(session, category_id)
+    except ExpenseCategoryInactiveError as exc:
+        inactive.append(exc)
+    if vendor_id is not None:
+        try:
+            await usable_vendor(session, vendor_id)
+        except VendorInactiveError as exc:
+            inactive.append(exc)
+    if inactive:
+        raise inactive[0]
+
+
 async def insert_expense(
     session: AsyncSession,
     *,
@@ -184,26 +207,19 @@ async def insert_expense(
     note: str | None,
     created_by_user_id: uuid.UUID | None,
     today: date | None = None,
+    expense_template_id: uuid.UUID | None = None,
+    period_start: date | None = None,
 ) -> Expense:
     """A new expense, after every rule of the module docstring: ``422
     expense_category_unknown`` / ``vendor_unknown`` → ``409
     expense_category_inactive`` / ``vendor_inactive`` → ``422
     incurred_on_in_future`` → ``422 due_on_before_incurred_on``. The texts are
     already trimmed (the schema or the template). ``created_by_user_id`` is
-    ``None`` only for the job. ``today`` is the center's (read when not
-    given)."""
-    inactive: list[Exception] = []
-    try:
-        await usable_category(session, category_id)
-    except ExpenseCategoryInactiveError as exc:
-        inactive.append(exc)
-    if vendor_id is not None:
-        try:
-            await usable_vendor(session, vendor_id)
-        except VendorInactiveError as exc:
-            inactive.append(exc)
-    if inactive:
-        raise inactive[0]
+    ``None`` only for the job, which also passes ``expense_template_id`` and
+    ``period_start`` (the natural key, #116 D3: the caller runs this in a
+    savepoint and maps ``uq_expenses_template_period``). ``today`` is the
+    center's (read when not given)."""
+    await ensure_usable(session, category_id, vendor_id)
     if today is None:
         today = await administration.center_today(session)
     if incurred_on > today:
@@ -221,6 +237,8 @@ async def insert_expense(
         receipt_reference=receipt_reference,
         note=note,
         created_by_user_id=created_by_user_id,
+        expense_template_id=expense_template_id,
+        period_start=period_start,
     )
     session.add(expense)
     await session.flush()
@@ -314,6 +332,7 @@ class ExpenseFilters:
     incurred_from: date | None = None
     incurred_to: date | None = None
     q: str | None = None
+    template_id: uuid.UUID | None = None
 
 
 def _rows(today: date) -> tuple[Subquery, Any]:
@@ -326,9 +345,11 @@ def _rows(today: date) -> tuple[Subquery, Any]:
             ExpenseCategory.is_active.label("category_is_active"),
             Vendor.name.label("vendor_name"),
             Vendor.is_active.label("vendor_is_active"),
+            ExpenseTemplate.name.label("template_name"),
         )
         .join(ExpenseCategory, ExpenseCategory.id == figures.c.category_id)
         .outerjoin(Vendor, Vendor.id == figures.c.vendor_id)
+        .outerjoin(ExpenseTemplate, ExpenseTemplate.id == figures.c.expense_template_id)
     )
     return figures, statement
 
@@ -341,6 +362,8 @@ def _conditions(figures: Subquery, filters: ExpenseFilters) -> list[Any]:
         conditions.append(figures.c.category_id == filters.category_id)
     if filters.vendor_id is not None:
         conditions.append(figures.c.vendor_id == filters.vendor_id)
+    if filters.template_id is not None:
+        conditions.append(figures.c.expense_template_id == filters.template_id)
     if filters.incurred_from is not None:
         conditions.append(figures.c.incurred_on >= filters.incurred_from)
     if filters.incurred_to is not None:
@@ -380,6 +403,11 @@ def _item_fields(row: Any) -> dict[str, Any]:
         "incurred_on": row.incurred_on,
         "due_on": row.due_on,
         "receipt_reference": row.receipt_reference,
+        "template": (
+            None
+            if row.expense_template_id is None
+            else ExpenseTemplateRef(id=row.expense_template_id, name=row.template_name)
+        ),
         "created_at": row.created_at,
     }
 

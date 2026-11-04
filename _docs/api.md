@@ -325,6 +325,10 @@ Codes in use today:
 | `effective_from_under_finalized_line` | 422 | A new rate version would re-price a finalized line of that tutor and class kind: for `course`, compared on the cohort's first date. `details.latest_finalized_on` is the newest date taken over. |
 | `payroll_amount_out_of_range` | 409 | A payroll line, or the period's total, is beyond the money range: nothing is written. `GET …/lines` answers it too when the stored lines sum beyond the range. `details.class_session_id` names the line's session; no amount is in the body. |
 | `pay_rule_values_mismatch` / `percent_out_of_range` | 422 | Field codes of a session pay rule body: a `percent` or `amount` that doesn't match `mode`, a `percent` outside 0 to 1000 (see Session pay rules). |
+| `expense_template_exists` | 409 | Another recurring expense template has this name, ignoring case and surrounding spaces, a paused or ended one included (see Recurring expense templates). |
+| `expense_template_starts_on_invalid` | 422 | A template's `starts_on` is more than 31 days before or 366 days after the center's today; the field error is on `["body","starts_on"]`. |
+| `expense_template_ends_on_invalid` | 422 | A template's `ends_on` is before `starts_on` or before a period it already generated; the field error is on `["body","ends_on"]`. |
+| `expense_category_in_use` / `vendor_in_use` | 409 | Deactivating an expense category or vendor that an active, not ended recurring template uses. `details.template_count` only (see Expense categories and vendors). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
 | `permission_not_delegable` | 422 | The identity service was asked to delegate a permission outside the four delegable ones (the route's body enum answers `validation_error` first). |
@@ -7824,10 +7828,10 @@ and `vendors.py`, tables `expense_categories` and `vendors` (`_docs/data-model.m
 |---|---|---|
 | `GET /api/v1/finance/expense-categories` | `require("expense.configure")` | Every category (`ExpenseCategoryItem`: `id`, `name`, `system_key`, `is_active`, `version`), active first, then `lower(name)`, then `id`. Not paginated. A fresh database lists the five seeded rows. |
 | `POST /api/v1/finance/expense-categories` | `require("expense.configure")` | Body `{name}`; any other field, `system_key` included, is `422`. `201` with the item (`system_key: null`). `409 expense_category_exists` (label rule below). |
-| `PATCH /api/v1/finance/expense-categories/{category_id}` | `require("expense.configure")` | Body `{version, name?, is_active?}`, at least one of the two (`422 no_changes`). `404`, `409 version_conflict`, `409 expense_category_exists`. `200` with the item. |
+| `PATCH /api/v1/finance/expense-categories/{category_id}` | `require("expense.configure")` | Body `{version, name?, is_active?}`, at least one of the two (`422 no_changes`). `404`, `409 version_conflict`, `409 expense_category_in_use` (deactivating, #116), `409 expense_category_exists`. `200` with the item. |
 | `GET /api/v1/finance/vendors` | `require("expense.configure")` | Offset page of `VendorItem` (`id`, `name`, `contact`, `is_active`, `version`), active first, then `lower(name)`, then `id`. `q` (at most 100, trimmed; blank lists all): part of the name, ignoring case, with `%`, `_` and `\` matched literally. `active=true\|false` filters; left out, all. One statement whatever the page size. |
 | `POST /api/v1/finance/vendors` | `require("expense.configure")` | Body `{name, contact?}`. `201` with the item. `409 vendor_exists` on a name taken, ignoring case. |
-| `PATCH /api/v1/finance/vendors/{vendor_id}` | `require("expense.configure")` | Body `{version, name?, contact?, is_active?}`, at least one (`422 no_changes`). `contact: null` clears it; left out, it stays. `404`, `409 version_conflict`, `409 vendor_exists`. |
+| `PATCH /api/v1/finance/vendors/{vendor_id}` | `require("expense.configure")` | Body `{version, name?, contact?, is_active?}`, at least one (`422 no_changes`). `contact: null` clears it; left out, it stays. `404`, `409 version_conflict`, `409 vendor_in_use` (deactivating, #116), `409 vendor_exists`. |
 
 - **Access (#114 E6):** Owners, Administrators (no delegation involved) and
   Finance Staff, the reads included. Academic Coordinators, Tutors, Students and
@@ -7857,11 +7861,16 @@ and `vendors.py`, tables `expense_categories` and `vendors` (`_docs/data-model.m
   and "Maintenance" are refused while the seeds hold their keys, "Renta" → "Rent"
   on the seeded row passes (its own labels don't count), and after "Renta" →
   "Alquiler" a new "Renta" or "Rent" passes. No accent folding.
-- **Deactivation:** `is_active: false` always passes in #114; #116 adds the
-  refusal for a category or vendor an active template uses, on these same
-  routes. An inactive row stays listed (after the active ones) and can be renamed
-  and reactivated, but a new expense or template can't use it. There is no
-  `DELETE` (#114 E5).
+- **Deactivation (#116 E2):** `is_active: false` on an active row is refused
+  with `409 expense_category_in_use` / `vendor_in_use` while a **live**
+  recurring template uses it (active and not ended: `ends_on` is `null` or
+  `next_period_start <= ends_on`). `details.template_count` is the only detail
+  (an Administrator can deactivate but holds no `expense.view`, so no template
+  name or id). It is read after the row `FOR UPDATE` and the version check,
+  with no lock on the templates. A paused or ended template doesn't block; a
+  rename and a reactivation never read templates. An inactive row stays listed
+  (after the active ones) and can be renamed and reactivated, but a new expense
+  or template can't use it. There is no `DELETE` (#114 E5).
 - **Seam for #115 and #116:** `finance.service.usable_category(session, id)` and
   `usable_vendor(session, id)` read the row `FOR SHARE` and raise `422
   expense_category_unknown` / `vendor_unknown` or `409 expense_category_inactive`
@@ -7884,7 +7893,7 @@ orchestrator-recommended, pending owner review). Routes in
 
 | Route | Access | Notes |
 |---|---|---|
-| `GET /api/v1/finance/expenses` | `require("expense.view")` | Offset page of `ExpenseItem`. Filters and sorts below. |
+| `GET /api/v1/finance/expenses` | `require("expense.view")` | Offset page of `ExpenseItem`. Filters and sorts below; `template_id` (#116) lists what one recurring expense generated. |
 | `GET /api/v1/finance/expenses/{expense_id}` | `require("expense.view")` | `ExpenseDetail`; `404` for no expense. |
 | `POST /api/v1/finance/expenses` | `require("expense.manage")`, `Idempotency-Key` | Body `{category_id, vendor_id?, description, amount, incurred_on, due_on, receipt_reference?, note?}`. No reauthentication. `201` with `{id, status}`. |
 | `POST /api/v1/finance/expenses/{expense_id}/payments` | `require("expense.manage")`, `Idempotency-Key` | Body `{paid_on, amount, method_code, reference?, note?}`. No reauthentication. `201` with `{id, expense_id, status}`. |
@@ -7969,9 +7978,12 @@ orchestrator-recommended, pending owner review). Routes in
 - **The list:** `ExpenseItem`: `id`, `category {id, name, system_key,
   is_active}`, `vendor {id, name, is_active} | null`, `description`, `amount`,
   `adjusted_amount`, `paid_amount`, `open_amount`, `status`, `incurred_on`,
-  `due_on`, `receipt_reference`, `created_at`. Filters: `status` (repeatable:
+  `due_on`, `receipt_reference`, `template {id, name} | null` (the recurring
+  expense that generated it, #116 C10; `null` for one entered by hand),
+  `created_at`. Filters: `status` (repeatable:
   `unpaid`, `partially_paid`, `paid`, `overdue`, `void`; another is `422`),
-  `category_id`, `vendor_id`, `incurred_from`, `incurred_to` (inclusive;
+  `category_id`, `vendor_id`, `template_id` (#116), `incurred_from`,
+  `incurred_to` (inclusive;
   `incurred_to` before `incurred_from` is `422 validation_error` with
   `range_invalid` at `query.incurred_to`), `q` (at most 100, trimmed, blank lists
   all: part of the description or the receipt reference, ignoring case, `%`,
@@ -7995,11 +8007,124 @@ orchestrator-recommended, pending owner review). Routes in
   notification or log line.
 - **Seam for #116 and #117:** `finance.service.insert_expense(session, *,
   category_id, vendor_id, description, amount, incurred_on, due_on,
-  receipt_reference, note, created_by_user_id)` runs `usable_*` and the date
+  receipt_reference, note, created_by_user_id, today=None,
+  expense_template_id=None, period_start=None)` runs `usable_*` and the date
   rules and inserts through the ORM (the route and the recurring job both use
-  it). `finance.service.expense_figures(today)` is the list's subquery with
+  it; only the job passes the last two). `finance.service.expense_figures(today)` is the list's subquery with
   `net`, `paid`, `open` and `status`; `expense_status(...)` is the same rule in
   Python.
+
+### Recurring expense templates
+
+Implemented by M7-13 (#116; spec §8; ADR-0017 E17 and its #116 notes,
+orchestrator-recommended, pending owner review). Routes in
+`app/modules/finance/templates_router.py`, the rules in
+`app/modules/finance/templates.py`, the grid in `template_periods.py`, the job in
+`app/workflows/recurring_expenses.py`, table `expense_templates` and the
+`expenses` columns `expense_template_id` and `period_start`
+(`_docs/data-model.md` §12.3, §12.7). The pages are M7-13b.
+
+| Route | Access | Notes |
+|---|---|---|
+| `GET /api/v1/finance/expense-templates` | `require("expense.view")` | Every template (`ExpenseTemplateItem`), not paginated: `active`, then `paused`, then `ended`, then `lower(name)`, then `id`. Filters `status` (repeatable; another value is `422`), `category_id`, `vendor_id`. One statement. |
+| `GET /api/v1/finance/expense-templates/{template_id}` | `require("expense.view")` | The item; `404` for none. |
+| `POST /api/v1/finance/expense-templates` | `require("expense.manage")` | Body `{name, category_id, vendor_id?, amount, frequency, starts_on, ends_on?, due_offset_days}`. **No `Idempotency-Key`**: the name is the natural key. `201` with the item; queues a run. |
+| `PATCH /api/v1/finance/expense-templates/{template_id}` | `require("expense.manage")` | Body `{version, name?, category_id?, vendor_id?, amount?, due_offset_days?, ends_on?, is_active?}`. `200` with the item; a reactivation or an `ends_on` change queues a run. |
+
+- **Who (ADR-0017 E12):** Owners and Finance Staff. Administrators (with or
+  without a delegation), Academic Coordinators, Tutors, Students and Guardians
+  get `403 permission_denied` on all four. No reauthentication, no rate limit.
+- **The item:** `id`, `name`, `category {id, name, system_key, is_active}`,
+  `vendor {id, name, is_active} | null`, `amount`, `frequency` (`weekly`,
+  `monthly`, `annual`), `starts_on`, `ends_on`, `due_offset_days`,
+  `next_period_start` (the next period the job looks at), `last_period_start`
+  (the latest generated, or `null`), `status`, `is_active`, `version`,
+  `created_at`, `updated_at`. `status` is derived: `ended` (`ends_on` set and
+  `next_period_start` after it), else `paused` (`is_active` false), else
+  `active`. Inactive categories and vendors are shown and filterable.
+- **The grid (ADR-0017 E17, #116 B1):** period *k* starts on `starts_on` + 7*k*
+  days (weekly), plus *k* months (monthly) or *k* years (annual), the day of
+  the month clamped to the month's length and always computed from
+  `starts_on`: from 31 January, 28 (29) February, 31 March, 30 April; from 29
+  February, 28 February until the next leap year.
+- **The body:** `name` trimmed, 1 to 200 characters, one line (`text_*`);
+  `amount` above zero (`amount_not_positive`, `money_*`); `due_offset_days` 0 to
+  60; any other field is `422`.
+- **Creating, in order:** `401` → `403 csrf_failed` → `403 permission_denied` →
+  `422 text_invalid` for a lone surrogate → `422` (the body) → `409
+  expense_template_exists` (the name equals another template's, ignoring case
+  and surrounding spaces, a paused or ended one included) → `422
+  expense_category_unknown` / `vendor_unknown` → `409 expense_category_inactive`
+  / `vendor_inactive` (read `FOR SHARE` through `usable_*`) → `422
+  expense_template_starts_on_invalid` at `body.starts_on` (not from the center's
+  today − 31 days to today + 366 days, inclusive) → `422
+  expense_template_ends_on_invalid` at `body.ends_on` (before `starts_on`) → the
+  row, with `next_period_start = starts_on`. A retried create is `409
+  expense_template_exists`; two real rents get two names.
+- **Changing, in order:** `401` → `403 csrf_failed` → `403 permission_denied` →
+  `422 text_invalid` → `422` (the body: `frequency`, `starts_on` and
+  `next_period_start` are unknown fields; no change is `no_changes`) → the
+  template `FOR UPDATE` (`404`) → `409 version_conflict` → `409
+  expense_template_exists` → the category and vendor → `422
+  expense_template_ends_on_invalid` → the update and `version + 1`. A missing
+  field, or `null`, keeps the value, except `vendor_id: null` (removes the
+  vendor) and `ends_on: null` (clears the end). An unchanged `PATCH` writes
+  nothing and keeps the version.
+- **Category and vendor on a change (#116 C5):** when the template is live
+  after the change (active and not ended), its resulting category and vendor
+  are read through `usable_*` (`FOR SHARE`), changed or not: a reactivation, a
+  new category or vendor, an amount change and an `ends_on` that revives an
+  ended template all refuse an inactive one with `409 …_inactive`. A change that
+  leaves it paused or ended only checks that a new category or vendor exists
+  (`422 …_unknown`).
+- **`ends_on` (#116 E6):** on or after `starts_on` and not before the latest
+  generated `period_start`. A period is generated iff its start is on or before
+  `ends_on` (no proration). A wrong generated expense is voided first (#115),
+  and stays generated: its period keeps blocking an earlier `ends_on`.
+- **Pause and resume (#116 C6):** `is_active: false` pauses (only `is_active`
+  changes). `is_active: true` sets `next_period_start` to the later of itself
+  and the first period on or after the center's today: the paused periods are
+  never generated and the date never moves back.
+- **Future periods only (#116 E7):** a change applies to every period not
+  generated when it commits, a due one the job hasn't reached yet included
+  (after a worker outage, a back-filled period takes the current values).
+  Generated expenses keep theirs. The template row lock makes a change and a
+  job step take turns. The job's advance of `next_period_start` doesn't change
+  `version`, so a change read before a run still applies after it.
+- **No delete (#116 E10):** no `DELETE`; pause a template, or end it. A paused
+  or ended template keeps its name.
+- **Audit (#116 E9):** create and update events with the staff actor, `name`
+  and `amount` masked (the name becomes each generated expense's description);
+  the category, vendor, frequency and dates stay visible. The job's advance is
+  an update event with no actor. No named event; no log line holds a name or an
+  amount.
+- **`finance:generate_recurring_expenses`** (daily at 07:55 UTC, 01:55 in Mexico
+  City; `queueing_lock` and `periodic_id` `finance-generate-recurring-expenses`;
+  `app/workflows/recurring_expense_tasks.py`; also queued after the commit of a
+  create, a reactivation or an `ends_on` change through
+  `app.core.jobs.defer_recurring_expenses`, which ignores a run already queued
+  and logs and swallows any other failure):
+  - **Candidates**, read with no lock in keyset pages by id: active, not ended,
+    `next_period_start` on or before the center's today (read once per run).
+  - **One Unit of Work per template** (no actor): the template `FOR UPDATE`,
+    re-read (paused, ended or advanced by a concurrent run → skipped, or resumed
+    from the new value) → each period from `next_period_start` while it starts
+    on or before today and `ends_on`, oldest first, in a savepoint through
+    `insert_expense`: `description` = the name, `amount`, `category_id`,
+    `vendor_id`, `incurred_on = period_start`, `due_on = period_start +
+    due_offset_days`, `receipt_reference`, `note` and `created_by_user_id`
+    `null`, plus `expense_template_id` and `period_start`. A violation of
+    `uq_expenses_template_period` rolls the savepoint back and counts as
+    already generated → `next_period_start` moves past the last period looked
+    at. A failure rolls back that template only and is logged with its id and
+    the error class; the next run catches up.
+  - **Exactly once:** a rerun, a retry, a manual run and two concurrent runs
+    leave one expense per template and period. A voided generated expense keeps
+    its period. The run logs `templates`, `generated`, `already_generated` and
+    `failed` counts only.
+  - **Run by hand:** `run_generate_recurring_expenses(settings)` in
+    `app/workflows/recurring_expenses.py` builds and disposes its own direct
+    engine (the command is in the module docstring).
 
 ### Response headers
 

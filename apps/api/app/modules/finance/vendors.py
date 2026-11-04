@@ -5,7 +5,9 @@ Every function runs in the caller's Unit of Work and never commits.
 The name is the natural key, unique ignoring case (#114 E4): a savepoint maps
 the unique index to ``409 vendor_exists``, so a double click is a ``409``, not
 a second vendor, and no ``Idempotency-Key`` is needed. No label rule applies.
-Deactivation always passes in #114 (E2). :func:`usable_vendor` reads the row
+Deactivating an active vendor is refused while a live template uses it (``409
+vendor_in_use`` with ``details.template_count``, #116 E2), read after the row
+lock with no lock on the templates. :func:`usable_vendor` reads the row
 ``FOR SHARE`` (E7), like :func:`~app.modules.finance.categories.usable_category`.
 """
 
@@ -21,10 +23,12 @@ from app.core.pagination import OffsetPage, OffsetParams
 from app.modules.finance.errors import (
     VendorExistsError,
     VendorInactiveError,
+    VendorInUseError,
     VendorUnknownError,
 )
-from app.modules.finance.models import VENDOR_NAME_KEY, Vendor
+from app.modules.finance.models import VENDOR_NAME_KEY, ExpenseTemplate, Vendor
 from app.modules.finance.schemas import VendorCreate, VendorItem, VendorUpdate
+from app.modules.finance.template_usage import live_template_count
 
 
 def _item(row: Vendor) -> VendorItem:
@@ -100,9 +104,11 @@ async def add_vendor(session: AsyncSession, body: VendorCreate) -> VendorItem:
 async def change_vendor(
     session: AsyncSession, vendor_id: uuid.UUID, body: VendorUpdate
 ) -> VendorItem:
-    """The row ``FOR UPDATE`` (``404``) → ``409 version_conflict`` → the update
-    (``409 vendor_exists``). ``contact`` sent as ``null`` clears it; left out,
-    it stays. Unchanged: nothing written, no new version."""
+    """The row ``FOR UPDATE`` (``404``) → ``409 version_conflict`` → a
+    deactivation: ``409 vendor_in_use`` while a live template uses the row
+    (#116 E2) → the update (``409 vendor_exists``). ``contact`` sent as
+    ``null`` clears it; left out, it stays. Unchanged: nothing written, no new
+    version."""
     row = await session.scalar(
         select(Vendor)
         .where(Vendor.id == vendor_id)
@@ -112,6 +118,10 @@ async def change_vendor(
     if row is None:
         raise RecordNotFoundError()
     ensure_version(row, body.version)
+    if body.is_active is False and row.is_active:
+        count = await live_template_count(session, ExpenseTemplate.vendor_id, row.id)
+        if count:
+            raise VendorInUseError(count)
     if body.name is not None:
         row.name = body.name
     if "contact" in body.model_fields_set:

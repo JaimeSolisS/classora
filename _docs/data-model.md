@@ -1318,7 +1318,7 @@ Referenced by id, so a rename never changes a report grouping (E15). `Audited`, 
 - **Seed:** inserted by migration `0083`, not audited (the `session_pay_rules` precedent): Renta (`rent`), Servicios (`utilities`), Insumos (`supplies`), Equipo (`equipment`), Mantenimiento (`maintenance`). The stored `name` is Spanish.
 - **Labels (#114 E3):** while a row holds its `system_key`, clients show the catalog label of the key in the viewer's language (server catalog `finance.json`, `categories.system.<key>`). A real change of name sets `system_key` to `NULL` in the same update, and nothing sets it again; sending the current name keeps it. A case-only change is a change.
 - **Name clash (#114 E3):** a new or changed name is refused (`409 expense_category_exists`) when, ignoring case and surrounding spaces, it equals another row's stored name (the unique index) **or** the es or en label of another row that still holds a key (an application check: the labels are constants and a key is only ever lost). A row's own name and labels don't count. An inactive row's name still blocks.
-- **Deactivated** rows can't be used on new expenses or templates (`finance.service.usable_category`, which reads the row `FOR SHARE`) but still appear in lists and reports. Deactivating a row used by an active template is refused from #116 (`in_use_by_template`, added to the same `PATCH` under the row lock); in #114 deactivation always passes (#114 E2).
+- **Deactivated** rows can't be used on new expenses or templates (`finance.service.usable_category`, which reads the row `FOR SHARE`) but still appear in lists and reports. Deactivating a row a **live** template uses (active and not ended, §12.7) is refused with `409 expense_category_in_use` (`details.template_count` only), on the same `PATCH`, after the row `FOR UPDATE` and the version check; the templates are read with no lock (#116 E2). A paused or ended template doesn't block.
 - **No delete (#114 E5):** no route deletes a row; `is_active` retires it and a rename fixes a typo. A `BEFORE TRUNCATE` trigger refuses `TRUNCATE` (42501). **Reports** group by id and show the current name.
 
 ### 12.2 `vendors` (#114)
@@ -1335,7 +1335,7 @@ Referenced by id, so a rename never changes a report grouping (E15). `Audited`, 
 | `created_at`, `updated_at` | TIMESTAMPTZ | no | |
 
 - The name is the natural key (`409 vendor_exists`); two vendors with one trade name are told apart in the name itself. No label rule.
-- The same deactivation (`usable_vendor`), no-delete and `TRUNCATE` rules as §12.1.
+- The same deactivation (`usable_vendor`; `409 vendor_in_use` while a live template uses it, #116 E2), no-delete and `TRUNCATE` rules as §12.1.
 
 ### 12.3 `expenses` (#115)
 
@@ -1350,13 +1350,13 @@ Referenced by id, so a rename never changes a report grouping (E15). `Audited`, 
 | `due_on` | DATE | no | |
 | `receipt_reference` | TEXT | yes | trimmed, 1–100; replaces the attachment; `expense.view` holders only |
 | `note` | TEXT | yes | trimmed, 1–1000; `expense.view` holders only |
-| `expense_template_id` | UUID | yes | FK `expense_templates` RESTRICT (added by #116) |
-| `period_start` | DATE | yes | set iff `expense_template_id` is (added by #116) |
+| `expense_template_id` | UUID | yes | FK `expense_templates` RESTRICT (`fk_expenses_expense_template_id_expense_templates`; added by #116, migration `0085`) |
+| `period_start` | DATE | yes | set iff `expense_template_id` is (`ck_expenses_template_period`; added by #116) |
 | `created_by_user_id` | UUID | yes | FK `users` RESTRICT; `NULL` for the job |
 | `created_at`, `updated_at` | TIMESTAMPTZ | no | `updated_at` never moves: the row is append-only |
 
 - **CHECK (#115 E2):** `due_on >= incurred_on` (`ck_expenses_due_on_after_incurred_on`). The application also refuses an `incurred_on` after the center's today (`422 incurred_on_in_future`); a past `due_on` is allowed (the expense is `overdue` at once).
-- **Natural key (#116, X2):** partial unique index on `(expense_template_id, period_start) WHERE expense_template_id IS NOT NULL`.
+- **Natural key (#116, X2):** partial unique index `uq_expenses_template_period` on `(expense_template_id, period_start) WHERE expense_template_id IS NOT NULL`. A generated row has `description` = the template's name, `receipt_reference`, `note` and `created_by_user_id` `NULL`; afterwards it is an ordinary expense (payments, adjustments, void). A voided generated expense keeps its key, so the job never posts its period again.
 - **Corrections (#115 E3):** no `PATCH`. A wrong amount is an adjustment. A wrong category, vendor, date, description, receipt reference or note is a full negative adjustment (void) and a new expense.
 - **Void is final (#115 E4):** once `net = 0`, every payment and adjustment is `409 expense_void`; a void is re-entered as a new expense, never revived.
 - **One insert path:** `finance.service.insert_expense` (the route and #116's job), which reads the category and vendor `FOR SHARE` (`usable_*`) and applies the date rules.
@@ -1392,24 +1392,30 @@ Partial payments are allowed. Marking an expense paid is one of these rows, neve
 
 ### 12.7 `expense_templates` (#116)
 
-Mutable config: editing affects only future periods, because generated rows snapshot the values (E17).
+Mutable config: editing affects only future periods, because generated rows snapshot the values (E17). Migration `0085`.
 
 | Column | Type | Null | Check / note |
 |---|---|---|---|
 | `id` | UUID | no | PK |
-| `name` | VARCHAR(200) | no | trimmed |
+| `name` | VARCHAR(200) | no | trimmed, 1–200 (`ck_expense_templates_name_trimmed`); unique on `lower(name)` (`uq_expense_templates_lower_name`, #116 E3) |
 | `category_id` | UUID | no | FK `expense_categories` RESTRICT |
 | `vendor_id` | UUID | yes | FK `vendors` RESTRICT |
 | `amount` | NUMERIC(14,2) | no | `> 0` |
-| `frequency` | VARCHAR(10) | no | `weekly` \| `monthly` \| `annual` |
-| `starts_on` | DATE | no | the anchor (weekly `+7k` days, monthly `+k` months, annual `+k` years, day clamped) |
-| `ends_on` | DATE | yes | `>= starts_on` |
+| `frequency` | VARCHAR(10) | no | `weekly` \| `monthly` \| `annual`; fixed for life (#116 E4) |
+| `starts_on` | DATE | no | the anchor (weekly `+7k` days, monthly `+k` months, annual `+k` years, day clamped, always from `starts_on`); fixed for life; created from the center's today − 31 to today + 366 days (#116 E5) |
+| `ends_on` | DATE | yes | `>= starts_on`; not before the latest generated `period_start` (application, #116 E6) |
 | `due_offset_days` | SMALLINT | no | 0–60 |
-| `next_period_start` | DATE | no | the next period to post; reactivating moves it to the first period on or after today (no back-fill) |
-| `is_active` | BOOLEAN | no | |
-| `version` | INTEGER | no | |
+| `next_period_start` | DATE | no | `>= starts_on`; the next period the job looks at; `starts_on` on create; reactivating moves it to `greatest(next_period_start, first period on or after today)` (no back-fill, never backwards) |
+| `is_active` | BOOLEAN | no | default `true` |
+| `version` | INTEGER | no | staff changes only: the job's advance of `next_period_start` leaves it (#116 D7) |
+| `created_at`, `updated_at` | TIMESTAMPTZ | no | |
 
-A generated expense has `incurred_on = period_start` and `due_on = period_start + due_offset_days`.
+- **Indexes:** `(category_id)` and `(vendor_id)` (the deactivation refusal), `ix_expense_templates_next_period_start_active` on `(next_period_start) WHERE is_active` (the job's candidates).
+- **Status (derived, #116 C7):** `ended` (`ends_on` set and `next_period_start > ends_on`), else `paused` (`NOT is_active`), else `active`. **Live** = active and not ended (`ends_on IS NULL OR next_period_start <= ends_on`): only a live template blocks a category or vendor deactivation, and every write that leaves a template live reads its category and vendor `FOR SHARE` (`usable_*`), so a live template's category and vendor are always active.
+- **No delete (#116 E10):** `is_active` pauses; a `BEFORE TRUNCATE` trigger refuses `TRUNCATE` (42501). Not append-only. Downgrading `0085` refuses (55000) while a template exists.
+- **Audit (#116 E9):** `Audited`, `name` and `amount` masked (the name becomes each generated expense's description).
+
+A generated expense has `incurred_on = period_start` and `due_on = period_start + due_offset_days`. A period is generated iff `period_start` is on or before the center's today and on or before `ends_on`.
 
 ## 13. Payroll and expense invariants and derived values
 
@@ -1510,7 +1516,8 @@ Line writes are serialized by the period row lock (§15); the trigger is the bac
 - **Jobs (`queueing_lock`, natural keys):**
   - `payroll:open_periods`, daily at 07:50 UTC, on `(tutor_user_id, starts_on)`, one Unit of Work per tutor. `payroll_periods` isn't `Audited`, so it uses `ON CONFLICT DO NOTHING`.
   - `payroll:post_adjustments`, every 15 minutes, nothing else enqueues it (#111 E10). The selection reads with no lock. One Unit of Work per adjustment (#111 B4): the terms-and-periods advisory lock, only when a period must be opened → the target period `FOR UPDATE`, re-read, the next open one if its status changed → the versions `FOR KEY SHARE` → the facts re-read and the amount computed → the adjustment in a savepoint (a key or first-payment conflict counts as done) → its line. A rate delete waits for it and then meets the snapshot's foreign key (`409 compensation_rate_in_use`), or the run waits for the delete and sees no basis. An ordinary adjustment locks only the target, so a `finalize` of an earlier period never waits on it. **A per-course anchor (M7-08d A9)** first takes the advisory lock and the tutor's not-finalized periods `FOR UPDATE`, oldest first, as a `manual` does, because its `k` reads the finalized lines: a `finalize` of an earlier `prepared` period either commits first and is read, or waits and finds its lines stale.
-  - `finance:generate_recurring_expenses`, daily at 07:55 UTC, on `(expense_template_id, period_start)`, one Unit of Work per template: the template row `FOR UPDATE` → each due period in a savepoint → `next_period_start`.
+  - `finance:generate_recurring_expenses`, daily at 07:55 UTC (also queued after a template create, reactivation or `ends_on` change), on `(expense_template_id, period_start)`. Candidates are read with no lock. One Unit of Work per template: the template row `FOR UPDATE`, re-read → each due period in a savepoint through `insert_expense` (the category and vendor `FOR SHARE`; a natural-key conflict counts as already generated, never `ON CONFLICT`) → `next_period_start`. Two runs take turns on the template row; without it, the unique index and the savepoint still hold.
+- **Templates and deactivations (#116 E2):** a template write takes the template row `FOR UPDATE` (a change) or none (a create), then the category and vendor `FOR SHARE`; a category or vendor deactivation takes its own row `FOR UPDATE` and reads the live templates with no lock. Whichever commits first is seen by the other (a deactivation that waited sees the new live template and is `409 …_in_use`; a write that waited sees the inactive row and is `409 …_inactive`), and neither takes the other's lock first, so no cycle. A template change and a job step serialize on the template row: each period takes all the old or all the new values (#116 E7).
 
 ## 16. Payroll and expense indexes
 
@@ -1528,7 +1535,8 @@ Beyond primary keys, unique keys and natural keys, for the access paths of spec 
 - `payroll_payments (payroll_period_id)` and `(paid_on)`;
 - `expenses (due_on)`, `(incurred_on)`, `(category_id, incurred_on)` and `(vendor_id)`;
 - `expense_payments (expense_id)` and `(paid_on)`;
-- `expense_adjustments (expense_id)` (#115).
+- `expense_adjustments (expense_id)` (#115);
+- `expense_templates (category_id)`, `(vendor_id)` and `(next_period_start) WHERE is_active`; `expenses (expense_template_id, period_start) WHERE expense_template_id IS NOT NULL` (the natural key) (#116).
 
 #107's read path over approvals is the existing `ix_session_closeout_approvals_tutor_user_id_session_starts_at` (`tutor_user_id`, `session_starts_at`). Its read of a tutor's cancelled sessions needs a new one, `ix_class_sessions_cancelled_tutor_user_id_starts_at` on `class_sessions (tutor_user_id, starts_at) WHERE state = 'cancelled'`, because `class_sessions` had no btree on the tutor.
 
