@@ -40,14 +40,16 @@ from tests.integration.demo_support import (
     DEMO_353_TABLE_COUNTS,
     DEV_LINES,
     EVALUATIONS_GENERATOR,
-    FIRST_RUN_LINES,
     FROZEN_NOW,
     GENERATOR_NAMES,
     NEW_353_GENERATORS,
     NEW_354_GENERATORS,
+    PAYROLL_GENERATORS,
+    REMINDERS_GENERATOR,
     RERUN_LINES,
     RERUN_REFERENCE_LINES,
     TABLE_COUNTS_THROUGH_353,
+    TABLE_COUNTS_THROUGH_420,
     UntouchedSession,
     count,
     demo_env,
@@ -239,24 +241,29 @@ def test_a_first_run_writes_the_notes_and_evaluations(
 def test_a_weekend_run_writes_the_same_counts(
     migrated_url, env_for, clock, capsys, now
 ):
-    # F3.
+    # F3. M7-demo G9: through billing.demo_reminders (the payroll weeks
+    # differ on a weekend; test_demo_payroll pins them).
     clock.set(now)
     env_for("local", migrated_url)
+    generators = generators_through(REMINDERS_GENERATOR)
 
-    assert demo.main([]) == 0
+    assert demo.main([], generators=generators) == 0
 
-    assert capsys.readouterr().out.splitlines() == FIRST_RUN_LINES
-    assert demo_table_counts(migrated_url, ALL_TABLE_COUNTS) == ALL_TABLE_COUNTS
+    assert capsys.readouterr().out.splitlines() == first_run_lines(generators)
+    assert (
+        demo_table_counts(migrated_url, TABLE_COUNTS_THROUGH_420)
+        == TABLE_COUNTS_THROUGH_420
+    )
     assert app_clock.now() == now
 
 
 def test_a_rerun_writes_nothing_even_days_later(migrated_url, env_for, clock, capsys):
-    # F4: every generator (25 since M6-demo) prints 0 rows.
+    # F4: every generator (31 since M7-demo) prints 0 rows.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
     assert demo.main([]) == 0
     capsys.readouterr()
-    assert len(GENERATOR_NAMES) == 28
+    assert len(GENERATOR_NAMES) == 31
 
     assert demo.main([]) == 0
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
@@ -301,7 +308,7 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
     migrated_url, env_for, clock, capsys
 ):
     # F6 / G3: the #303 run on 2026-11-04, then every generator 10 days later
-    # (the #354 and billing ones skip too).
+    # (the #354, billing and payroll ones skip too).
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
     assert demo.main([], generators=generators_through(CHANGES_GENERATOR)) == 0
@@ -315,7 +322,13 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
         *RERUN_REFERENCE_LINES,
         *(
             f"{name}: skipped ({STALE_SCHEDULE})"
-            if name in {*NEW_353_GENERATORS, *NEW_354_GENERATORS, *BILLING_GENERATORS}
+            if name
+            in {
+                *NEW_353_GENERATORS,
+                *NEW_354_GENERATORS,
+                *BILLING_GENERATORS,
+                *PAYROLL_GENERATORS,
+            }
             else f"{name}: 0 rows"
             for name in GENERATOR_NAMES
         ),
@@ -326,7 +339,7 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
 
 
 def test_the_353_counts_cover_its_new_tables():
-    assert GENERATOR_NAMES[-13:-9] == list(NEW_353_GENERATORS)
+    assert GENERATOR_NAMES[-16:-12] == list(NEW_353_GENERATORS)
     assert DEMO_353_TABLE_COUNTS["session_closeouts"] == 9
     assert DEMO_353_TABLE_COUNTS["evaluations"] == 9
 

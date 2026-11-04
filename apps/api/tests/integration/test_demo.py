@@ -103,7 +103,8 @@ def test_without_generators_only_reference_seeds_run(migrated_url, env_for, caps
 def test_registered_command_applies_the_registered_reference_seeds(
     migrated_url, env_for, capsys, clock
 ):
-    # The #299 frozen day: the M6-demo-b counts depend on the center's today.
+    # The #299 frozen day: the M6-demo-b and M7-demo counts depend on the
+    # center's today.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
 
@@ -142,6 +143,9 @@ def test_registered_command_applies_the_registered_reference_seeds(
         "billing.demo_reconciliation: 2 rows",
         "billing.demo_payments: 13 rows",
         "billing.demo_reminders: 13 rows",
+        "payroll.demo_setup: 9 rows",
+        "payroll.demo_periods: 73 rows",
+        "payroll.demo_corrections: 9 rows",
     ]
 
 

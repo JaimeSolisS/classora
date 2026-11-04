@@ -64,12 +64,15 @@ from tests.integration.demo_support import (
     DEMO_RECONCILIATION_ROWS,
     DEMO_REMINDERS_ROWS,
     FIRST_RUN_LINES,
+    FLAGGED_GENERATORS,
     FROZEN_NOW,
     GENERATOR_NAMES,
     PAYMENTS_GENERATOR,
+    PAYROLL_GENERATORS,
     RECONCILIATION_GENERATOR,
     REMINDERS_GENERATOR,
     RERUN_REFERENCE_LINES,
+    TABLE_COUNTS_THROUGH_420,
     UntouchedSession,
     count,
     demo_env,
@@ -168,7 +171,7 @@ def test_a_first_run_writes_the_money_data(migrated_url, env_for, clock, capsys)
 
     assert demo.main([], generators=generators) == 0
 
-    assert capsys.readouterr().out.splitlines() == FIRST_RUN_LINES
+    assert capsys.readouterr().out.splitlines() == first_run_lines(generators)
     assert app_clock.now() == FROZEN_NOW
     labels = _labels(migrated_url)
     families = {label: fid for fid, label in _families(migrated_url).items()}
@@ -388,7 +391,10 @@ def test_a_first_run_writes_the_money_data(migrated_url, env_for, clock, capsys)
     credits = asyncio.run(_credits(migrated_url, families))
     assert credits == {"F1": D("500.00"), "F2": D("0.00"), "F3": D("0.00")}
     assert asyncio.run(_violations(migrated_url)) == []
-    assert demo_table_counts(migrated_url, ALL_TABLE_COUNTS) == ALL_TABLE_COUNTS
+    assert (
+        demo_table_counts(migrated_url, TABLE_COUNTS_THROUGH_420)
+        == TABLE_COUNTS_THROUGH_420
+    )
 
 
 async def _credits(url: str, families: dict[str, Any]) -> dict[str, Decimal]:
@@ -408,7 +414,8 @@ async def _credits(url: str, families: dict[str, Any]) -> dict[str, Decimal]:
 
 
 def test_the_jobs_do_nothing_after_the_seed(migrated_url, env_for, clock):
-    # D4: worker parity on the same frozen day.
+    # D4: worker parity on the same frozen day (the full list: M7-demo E8
+    # posts L1's and N1's charges itself).
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
     assert demo.main([]) == 0
@@ -444,14 +451,15 @@ def test_the_jobs_do_nothing_after_the_seed(migrated_url, env_for, clock):
     ids=["saturday-night", "sunday"],
 )
 def test_a_weekend_run(migrated_url, env_for, clock, capsys, now, reminder_rows):
-    # E3: Saturday 23:30 and Sunday 12:00 local.
+    # E3: Saturday 23:30 and Sunday 12:00 local. M7-demo G9: through
+    # billing.demo_reminders (test_demo_payroll pins the payroll weekend).
     clock.set(now)
     env_for("local", migrated_url)
 
-    assert demo.main([]) == 0
+    assert demo.main([], generators=generators_through(REMINDERS_GENERATOR)) == 0
 
     lines = capsys.readouterr().out.splitlines()
-    assert lines[:-3] == FIRST_RUN_LINES[:-3]
+    assert lines[:-3] == FIRST_RUN_LINES[:-6]
     assert lines[-3:] == [
         _line(RECONCILIATION_GENERATOR, DEMO_RECONCILIATION_ROWS),
         _line(PAYMENTS_GENERATOR, DEMO_PAYMENTS_ROWS),
@@ -504,9 +512,9 @@ def test_a_new_generator_writes_nothing_under_the_flag(generator):
 
 def test_the_money_generators_come_last():
     # A1.
-    assert len(GENERATOR_NAMES) == 28
-    assert GENERATOR_NAMES[-3:] == list(BILLING_420_GENERATORS)
-    assert GENERATOR_NAMES[-4] == CHARGES_GENERATOR
+    assert len(GENERATOR_NAMES) == 31
+    assert GENERATOR_NAMES[-6:-3] == list(BILLING_420_GENERATORS)
+    assert GENERATOR_NAMES[-7] == CHARGES_GENERATOR
     assert BILLING_GENERATORS[-3:] == BILLING_420_GENERATORS
     assert (
         sum(DEMO_BILLING_MONEY_TABLE_COUNTS.values()) - CX_NOTIFICATIONS
@@ -531,7 +539,7 @@ def test_part_1_from_an_earlier_day_is_skipped(migrated_url, env_for, clock, cap
         *RERUN_REFERENCE_LINES,
         *(
             f"{name}: skipped ({STALE_SCHEDULE})"
-            if name in BILLING_420_GENERATORS
+            if name in {*BILLING_420_GENERATORS, *PAYROLL_GENERATORS}
             else f"{name}: 0 rows"
             for name in GENERATOR_NAMES
         ),
@@ -541,7 +549,8 @@ def test_part_1_from_an_earlier_day_is_skipped(migrated_url, env_for, clock, cap
 
 
 def _rest(capsys: Any) -> list[str]:
-    return capsys.readouterr().out.splitlines()[-3:]
+    """The three M6-demo-b lines (before the three payroll ones)."""
+    return capsys.readouterr().out.splitlines()[-6:-3]
 
 
 async def _cancel_cx_by_hand(url: str) -> None:
@@ -711,19 +720,20 @@ async def _refused_in_a_session(url: str) -> None:
 
 
 def test_without_billing_keeps_cx_confirmed(migrated_url, env_for, clock, capsys):
-    # E5, A5: the E2E seed; the six billing generators skip.
+    # E5, A5: the E2E seed; the six billing generators skip, and the three
+    # payroll ones (M7-demo E3).
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
 
     assert demo.main(["--without-billing"]) == 0
 
     lines = capsys.readouterr().out.splitlines()
-    assert lines[-6:] == [
-        f"{name}: skipped ({WITHOUT_BILLING})" for name in BILLING_GENERATORS
+    assert lines[-9:] == [
+        f"{name}: skipped ({WITHOUT_BILLING})" for name in FLAGGED_GENERATORS
     ]
     assert _cx(migrated_url).state == "confirmed"
     _no_money_data(migrated_url)
     assert (
         first_run_lines(generators_through("academics.demo_progress_reports"))
-        == lines[:-6]
+        == lines[:-9]
     )
