@@ -333,9 +333,9 @@ export const PAYMENT_DETAIL: PaymentDetail = {
 };
 
 export const PAYMENT_METHODS: PaymentMethod[] = [
-  { code: 'cash', is_active: true },
-  { code: 'other', is_active: false },
-  { code: 'transfer', is_active: true },
+  { code: 'cash', is_active: true, version: 1 },
+  { code: 'other', is_active: false, version: 1 },
+  { code: 'transfer', is_active: true, version: 1 },
 ];
 
 export const RECORDED_RECEIPT = {

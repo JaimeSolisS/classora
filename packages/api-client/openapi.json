@@ -3403,7 +3403,7 @@
           "business-settings"
         ],
         "summary": "Get Business Settings",
-        "description": "The center's name, contact details, time zone and weekly operating\nhours. A weekday that is not listed is closed.",
+        "description": "The center's name, contact details, time zone, weekly operating\nhours and receipt messages. A weekday that is not listed is closed.",
         "operationId": "get_business_settings_api_v1_business_settings_get",
         "responses": {
           "200": {
@@ -3433,7 +3433,7 @@
           "business-settings"
         ],
         "summary": "Update Business Settings",
-        "description": "Change the sent fields; fields not sent stay unchanged.\n``operating_hours`` replaces the whole week. Changing ``time_zone``\nneeds a password reauthentication in the last 5 minutes (``403\nreauth_required``) and is refused once classes are scheduled (``409\ntz_change_requires_migration``); sending the current zone needs none.",
+        "description": "Change the sent fields; fields not sent stay unchanged.\n``operating_hours`` replaces the whole week. Changing ``time_zone``\nneeds a password reauthentication in the last 5 minutes (``403\nreauth_required``) and is refused once classes are scheduled (``409\ntz_change_requires_migration``); sending the current zone needs none.\nA receipt message (trimmed; line breaks kept) needs no\nreauthentication and only changes receipts issued afterwards.",
         "operationId": "update_business_settings_api_v1_business_settings_patch",
         "requestBody": {
           "content": {
@@ -21999,6 +21999,99 @@
         }
       }
     },
+    "/api/v1/billing/payment-methods/{code}": {
+      "patch": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Update Payment Method",
+        "description": "Activate or deactivate a payment method. Changing `is_active` needs\na password reauthentication in the last 5 minutes (`403\nreauth_required`); sending the current value with the current version\nchanges nothing. The last active method can't be deactivated. A\ndeactivated method can't be used for new payments, refunds, corrections,\nwithdrawal settlements, payroll or expense payments; recorded ones keep\nit.",
+        "operationId": "update_payment_method_api_v1_billing_payment_methods__code__patch",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentMethodUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentMethodItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such payment method (payment_method_not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The method changed since it was loaded (version_conflict); reload and retry. Or it is the only active method and can't be deactivated (payment_method_last_active).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/families/{family_id}/billing-account/charges/{charge_id}/adjustments": {
       "post": {
         "tags": [
@@ -34830,6 +34923,30 @@
             "type": "array",
             "title": "Operating Hours"
           },
+          "receipt_message_es": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Message Es",
+            "description": "The message printed on new Spanish receipts (null: none)."
+          },
+          "receipt_message_en": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Message En",
+            "description": "The message printed on new English receipts (null: none)."
+          },
           "version": {
             "type": "integer",
             "title": "Version"
@@ -34848,6 +34965,8 @@
           "address",
           "time_zone",
           "operating_hours",
+          "receipt_message_es",
+          "receipt_message_en",
           "version",
           "updated_at"
         ],
@@ -34939,6 +35058,32 @@
               }
             ],
             "title": "Operating Hours"
+          },
+          "receipt_message_es": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Message Es",
+            "description": "Plain text printed on new receipts in this language, at most 500 characters; line breaks are kept. null (or an empty string) clears it."
+          },
+          "receipt_message_en": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Message En",
+            "description": "Plain text printed on new receipts in this language, at most 500 characters; line breaks are kept. null (or an empty string) clears it."
           }
         },
         "additionalProperties": false,
@@ -34947,7 +35092,7 @@
           "version"
         ],
         "title": "BusinessSettingsUpdate",
-        "description": "A change to the settings (``PATCH /api/v1/business-settings``) with the\n``version`` the caller loaded. Fields not sent stay unchanged; ``null``\n(or an empty string) clears a contact field; ``null`` is ``422`` for\n``center_name``, ``time_zone`` and ``operating_hours``.\n``operating_hours``, when sent, replaces the whole week (0 to 7 entries,\none per weekday)."
+        "description": "A change to the settings (``PATCH /api/v1/business-settings``) with the\n``version`` the caller loaded. Fields not sent stay unchanged; ``null``\n(or an empty string) clears a contact field or a receipt message (#121\nB2: it only changes receipts issued afterwards); ``null`` is ``422`` for\n``center_name``, ``time_zone`` and ``operating_hours``.\n``operating_hours``, when sent, replaces the whole week (0 to 7 entries,\none per weekday)."
       },
       "CalendarClassroom": {
         "properties": {
@@ -54668,15 +54813,41 @@
           "is_active": {
             "type": "boolean",
             "title": "Is Active"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
           }
         },
         "type": "object",
         "required": [
           "code",
-          "is_active"
+          "is_active",
+          "version"
         ],
         "title": "PaymentMethodItem",
-        "description": "A payment method (#96 M8). Labels come from the client catalogs\n(``billing.paymentMethods.<code>``); only active ones are offered."
+        "description": "A payment method (#96 M8). Labels come from the client catalogs\n(``billing.paymentMethods.<code>``); only active ones are offered.\n``version`` (#121 A1) is what ``PATCH …/payment-methods/{code}`` needs."
+      },
+      "PaymentMethodUpdate": {
+        "properties": {
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "is_active",
+          "version"
+        ],
+        "title": "PaymentMethodUpdate",
+        "description": "``PATCH /api/v1/billing/payment-methods/{code}`` (#121 A2): activate\nor deactivate a method, with the ``version`` the caller loaded."
       },
       "PaymentRecorded": {
         "properties": {

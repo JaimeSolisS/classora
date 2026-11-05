@@ -938,8 +938,8 @@ export interface paths {
         };
         /**
          * Get Business Settings
-         * @description The center's name, contact details, time zone and weekly operating
-         *     hours. A weekday that is not listed is closed.
+         * @description The center's name, contact details, time zone, weekly operating
+         *     hours and receipt messages. A weekday that is not listed is closed.
          */
         get: operations["get_business_settings_api_v1_business_settings_get"];
         put?: never;
@@ -954,6 +954,8 @@ export interface paths {
          *     needs a password reauthentication in the last 5 minutes (``403
          *     reauth_required``) and is refused once classes are scheduled (``409
          *     tz_change_requires_migration``); sending the current zone needs none.
+         *     A receipt message (trimmed; line breaks kept) needs no
+         *     reauthentication and only changes receipts issued afterwards.
          */
         patch: operations["update_business_settings_api_v1_business_settings_patch"];
         trace?: never;
@@ -4475,6 +4477,32 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/payment-methods/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Payment Method
+         * @description Activate or deactivate a payment method. Changing `is_active` needs
+         *     a password reauthentication in the last 5 minutes (`403
+         *     reauth_required`); sending the current value with the current version
+         *     changes nothing. The last active method can't be deactivated. A
+         *     deactivated method can't be used for new payments, refunds, corrections,
+         *     withdrawal settlements, payroll or expense payments; recorded ones keep
+         *     it.
+         */
+        patch: operations["update_payment_method_api_v1_billing_payment_methods__code__patch"];
         trace?: never;
     };
     "/api/v1/families/{family_id}/billing-account/charges/{charge_id}/adjustments": {
@@ -8042,6 +8070,16 @@ export interface components {
             time_zone: string;
             /** Operating Hours */
             operating_hours: components["schemas"]["OperatingHoursItem"][];
+            /**
+             * Receipt Message Es
+             * @description The message printed on new Spanish receipts (null: none).
+             */
+            receipt_message_es: string | null;
+            /**
+             * Receipt Message En
+             * @description The message printed on new English receipts (null: none).
+             */
+            receipt_message_en: string | null;
             /** Version */
             version: number;
             /**
@@ -8054,7 +8092,8 @@ export interface components {
          * BusinessSettingsUpdate
          * @description A change to the settings (``PATCH /api/v1/business-settings``) with the
          *     ``version`` the caller loaded. Fields not sent stay unchanged; ``null``
-         *     (or an empty string) clears a contact field; ``null`` is ``422`` for
+         *     (or an empty string) clears a contact field or a receipt message (#121
+         *     B2: it only changes receipts issued afterwards); ``null`` is ``422`` for
          *     ``center_name``, ``time_zone`` and ``operating_hours``.
          *     ``operating_hours``, when sent, replaces the whole week (0 to 7 entries,
          *     one per weekday).
@@ -8074,6 +8113,16 @@ export interface components {
             time_zone?: string | null;
             /** Operating Hours */
             operating_hours?: components["schemas"]["OperatingHoursItem"][] | null;
+            /**
+             * Receipt Message Es
+             * @description Plain text printed on new receipts in this language, at most 500 characters; line breaks are kept. null (or an empty string) clears it.
+             */
+            receipt_message_es?: string | null;
+            /**
+             * Receipt Message En
+             * @description Plain text printed on new receipts in this language, at most 500 characters; line breaks are kept. null (or an empty string) clears it.
+             */
+            receipt_message_en?: string | null;
         };
         /**
          * CalendarClassroom
@@ -17121,12 +17170,26 @@ export interface components {
          * PaymentMethodItem
          * @description A payment method (#96 M8). Labels come from the client catalogs
          *     (``billing.paymentMethods.<code>``); only active ones are offered.
+         *     ``version`` (#121 A1) is what ``PATCH …/payment-methods/{code}`` needs.
          */
         PaymentMethodItem: {
             /** Code */
             code: string;
             /** Is Active */
             is_active: boolean;
+            /** Version */
+            version: number;
+        };
+        /**
+         * PaymentMethodUpdate
+         * @description ``PATCH /api/v1/billing/payment-methods/{code}`` (#121 A2): activate
+         *     or deactivate a method, with the ``version`` the caller loaded.
+         */
+        PaymentMethodUpdate: {
+            /** Is Active */
+            is_active: boolean;
+            /** Version */
+            version: number;
         };
         /**
          * PaymentRecorded
@@ -38240,6 +38303,77 @@ export interface operations {
             };
             /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_payment_method_api_v1_billing_payment_methods__code__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentMethodUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentMethodItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such payment method (payment_method_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The method changed since it was loaded (version_conflict); reload and retry. Or it is the only active method and can't be deactivated (payment_method_last_active). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

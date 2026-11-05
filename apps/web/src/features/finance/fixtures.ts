@@ -312,9 +312,9 @@ export function expensePage(
 }
 
 export const EXPENSE_METHODS = [
-  { code: 'cash', is_active: true },
-  { code: 'other', is_active: false },
-  { code: 'transfer', is_active: true },
+  { code: 'cash', is_active: true, version: 1 },
+  { code: 'other', is_active: false, version: 1 },
+  { code: 'transfer', is_active: true, version: 1 },
 ];
 
 /** Storybook: the signed-in Owner (every expense action). */

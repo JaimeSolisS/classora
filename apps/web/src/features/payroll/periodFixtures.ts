@@ -384,7 +384,7 @@ export const PAYMENT_REVERSED = payment(2, {
 });
 
 export const PAYMENT_METHODS = [
-  { code: 'cash', is_active: true },
-  { code: 'transfer', is_active: true },
-  { code: 'other', is_active: false },
+  { code: 'cash', is_active: true, version: 1 },
+  { code: 'transfer', is_active: true, version: 1 },
+  { code: 'other', is_active: false, version: 1 },
 ];
