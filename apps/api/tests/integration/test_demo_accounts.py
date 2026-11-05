@@ -102,8 +102,8 @@ def test_the_accounts_are_the_documented_ones():
 def test_local_creates_one_active_account_per_role(
     migrated_url, env_for, capsys, clock
 ):
-    # The #299 frozen day: the M6-demo-b and M7-demo counts depend on the
-    # center's today.
+    # The #299 frozen day: the M6-demo-b, M7-demo and M7-demo-b counts depend
+    # on the center's today.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
 

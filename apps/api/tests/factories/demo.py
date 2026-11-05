@@ -22,18 +22,18 @@ Generates synthetic ``es_MX`` demo data for local and DEV databases:
    generated values.
 
 ``--without-billing`` (M6-demo E3; ``e2e/scripts/run.sh`` passes it, ``make
-seed-demo`` doesn't) makes the billing and payroll generators (#499 E3) print
-``skipped (--without-billing)`` without touching the database, so billing and
-payroll stay off in the E2E database.
+seed-demo`` doesn't) makes the billing, payroll (#499 E3) and expense (#501)
+generators print ``skipped (--without-billing)`` without touching the
+database, so billing, payroll and expenses stay off in the E2E database.
 
 The registered generators (#23, #195, #299, #303, #353, #354, M6-demo #413,
-M6-demo-b #420, M7-demo #499) write nothing on a rerun (``0 rows``), even on a
-later day: the #299, #303, #353, #354, M6-demo and M7-demo data keep the dates
-of their first run. A future generator may add rows on a rerun unless its
-issue says otherwise. The payroll start date locks once a payroll period
-exists (#106 E6), so the payroll data can't be moved either. To start over,
-reset with ``docker compose down -v``, then ``make migrate`` and ``make
-seed-demo``.
+M6-demo-b #420, M7-demo #499, M7-demo-b #501) write nothing on a rerun (``0
+rows``), even on a later day: the #299, #303, #353, #354, M6-demo, M7-demo and
+M7-demo-b data keep the dates of their first run. A future generator may add
+rows on a rerun unless its issue says otherwise. The payroll start date locks
+once a payroll period exists (#106 E6), so the payroll data can't be moved
+either. To start over, reset with ``docker compose down -v``, then ``make
+migrate`` and ``make seed-demo``.
 
 Like ``make seed``, it connects directly to PostgreSQL (``DATABASE_DIRECT_URL``,
 ADR-0003).
@@ -62,7 +62,12 @@ from app.seeds.runner import (
 )
 from app.seeds.upsert import UpsertResult
 from app.wiring import register_approval_wiring
-from tests.factories import demo_billing, demo_billing_money, demo_payroll
+from tests.factories import (
+    demo_billing,
+    demo_billing_money,
+    demo_finance,
+    demo_payroll,
+)
 from tests.factories.base import GeneratorSkipped, reseed
 from tests.factories.catalog import DemoCatalogGenerator
 from tests.factories.demo_academics import (
@@ -124,6 +129,10 @@ DEMO_GENERATORS: tuple[DemoGenerator, ...] = (
     demo_payroll.DemoPayrollSetupGenerator(),
     demo_payroll.DemoPayrollPeriodsGenerator(),
     demo_payroll.DemoPayrollCorrectionsGenerator(),
+    demo_finance.DemoPastCohortFeeGenerator(),
+    demo_finance.DemoFinanceSetupGenerator(),
+    demo_finance.DemoFinanceTemplatesGenerator(),
+    demo_finance.DemoFinanceExpensesGenerator(),
 )
 """Every demo generator, in order. Domain tasks append generators that use
 their factories (``persist`` / ``persist_batch``; never commit).
@@ -220,7 +229,26 @@ their factories (``persist`` / ``persist_batch``; never commit).
   unpaid, ``APP_ENV=local`` only. The three payroll generators also skip a
   database whose #299 schedule is from an earlier day or whose payroll was
   set up by hand, and under ``--without-billing``. The payroll start date
-  locks once periods exist, so a re-seed needs a clean database."""
+  locks once periods exist, so a re-seed needs a clean database.
+- ``billing.demo_past_cohort_fee`` (M7-demo-b #501): ``demo.finance`` prices
+  the finished cohort, then the enrollment-charge and reminder job steps post
+  its three fees and the reminder they call for, ``APP_ENV=local`` only.
+- ``finance.demo_setup`` (M7-demo-b #501): ``demo.finance`` renames one
+  default expense category and adds a "Mobiliario" category and four
+  vendors, ``APP_ENV=local`` only.
+- ``finance.demo_templates`` (M7-demo-b #501): five recurring expense
+  templates (monthly rent, a monthly service anchored on the 31st, a weekly
+  cleaning that ends up paused with one week paid and one voided, an ended
+  weekly print job and an annual contract), created the day before they
+  start, then the recurring-expense job step generates their expenses,
+  ``APP_ENV=local`` only.
+- ``finance.demo_expenses`` (M7-demo-b #501): nine expenses in every state
+  (payments, a payment reversed by ``demo.owner`` and entered again,
+  adjustments, a void), then "Mobiliario" and its vendor deactivated,
+  ``APP_ENV=local`` only. The four #501 generators also skip a database
+  whose #299 schedule is from an earlier day, and under
+  ``--without-billing``; the cohort fee skips billing set up by hand and the
+  three finance generators expenses set up by hand."""
 
 
 @dataclass

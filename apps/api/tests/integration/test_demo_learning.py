@@ -43,6 +43,7 @@ from tests.integration.demo_support import (
     DEMO_354_TABLE_COUNTS,
     DEV_LINES,
     EVALUATIONS_GENERATOR,
+    FINANCE_GENERATORS,
     FROZEN_NOW,
     GENERATOR_NAMES,
     HOMEWORK_GENERATOR,
@@ -264,7 +265,7 @@ def test_a_rerun_writes_nothing_even_days_later(migrated_url, env_for, clock, ca
     env_for("local", migrated_url)
     assert demo.main([]) == 0
     capsys.readouterr()
-    assert len(GENERATOR_NAMES) == 31
+    assert len(GENERATOR_NAMES) == 35
 
     assert demo.main([]) == 0
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
@@ -307,8 +308,8 @@ def test_a_new_generator_writes_nothing_outside_local(generator, app_env):
 
 def test_the_354_generators_come_last():
     # A1.
-    assert GENERATOR_NAMES[-12:-9] == list(NEW_354_GENERATORS)
-    assert GENERATOR_NAMES[-13] == EVALUATIONS_GENERATOR
+    assert GENERATOR_NAMES[-16:-13] == list(NEW_354_GENERATORS)
+    assert GENERATOR_NAMES[-17] == EVALUATIONS_GENERATOR
     assert DEMO_354_TABLE_COUNTS["learning_plan_milestones"] == 7
 
 
@@ -331,7 +332,13 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
         *RERUN_REFERENCE_LINES,
         *(
             f"{name}: skipped ({STALE_SCHEDULE})"
-            if name in {*NEW_354_GENERATORS, *BILLING_GENERATORS, *PAYROLL_GENERATORS}
+            if name
+            in {
+                *NEW_354_GENERATORS,
+                *BILLING_GENERATORS,
+                *PAYROLL_GENERATORS,
+                *FINANCE_GENERATORS,
+            }
             else f"{name}: 0 rows"
             for name in GENERATOR_NAMES
         ),

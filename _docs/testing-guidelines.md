@@ -98,7 +98,7 @@ threshold is enforced.
 |---|---|---|
 | Purpose | Data every environment needs (for example roles, education levels) | Synthetic records for local, DEV and E2E use |
 | Values | Fixed literals; no Faker, randomness, current date or environment-specific value | Factories with a fixed seed (`--seed`, default 1) |
-| Idempotent | Yes (upsert on a key) | The registered generators (#23, #195, #299, #303, #353, #354, #413, #420, #499) write nothing on a rerun; a future generator may add rows unless its issue says otherwise |
+| Idempotent | Yes (upsert on a key) | The registered generators (#23, #195, #299, #303, #353, #354, #413, #420, #499, #501) write nothing on a rerun; a future generator may add rows unless its issue says otherwise |
 | Where to register | Append to `REFERENCE_SEEDS` in `apps/api/app/seeds/registry.py`, in dependency order | Append a generator to `DEMO_GENERATORS` in `apps/api/tests/factories/demo.py` |
 | Command | `make seed` (`python -m app.seeds`) | `make seed-demo` (`python -m tests.factories.demo`); refused unless `APP_ENV` is `local` or `dev` |
 | Deletes rows | Never, with one exception: `identity.role_permissions` also deletes the pairs of the seeded roles that `ROLE_PERMISSIONS` no longer lists, so the database's role permission sets equal the code (ADR-0007). `roles` and `permissions` rows are never deleted. | Never |
@@ -476,7 +476,10 @@ which `ci-required` checks whenever the API changed.
   `--without-billing` to the demo command, so billing stays off there (#366)
   and specs keep creating their own billing data. The payroll demo data
   (#499) honours the same flag and is not there either, so payroll stays off
-  in the E2E database (#105) and specs never set `payroll_starts_on`.
+  in the E2E database (#105) and specs never set `payroll_starts_on`. The
+  expense demo data and the finished cohort's fees (#501) honour it too and
+  are not in the E2E database either, so specs keep creating their own
+  categories, vendors, expenses and templates.
 - Tests do not depend on each other or on the order they run in, and they
   pass with Playwright's parallel workers. Data a test changes is created by
   that test, with a unique per-test suffix. Tests never depend on a
