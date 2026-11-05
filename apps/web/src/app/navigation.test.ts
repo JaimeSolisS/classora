@@ -203,8 +203,9 @@ describe('the audit log nav item (#120 D1)', () => {
 });
 
 // M8-05b A1, E1: "Imports" right after Invitations, for holders of a
-// permission of some import kind: an Owner, a Coordinator (students only);
-// Finance and a tutor never see it.
+// permission of some import kind: an Owner, a Coordinator (students only),
+// Finance with billing.manage (opening balances only, #123 F1); a tutor and
+// Finance without billing.manage never see it.
 describe('the imports nav item (M8-05b E1)', () => {
   const OWNER = user(
     ['owner'],
@@ -219,6 +220,16 @@ describe('the imports nav item (M8-05b E1)', () => {
     ['an Owner', OWNER, true],
     ['a Coordinator', STUDENT_MANAGER, true],
     ['Finance', FINANCE, false],
+    [
+      'Finance with billing.manage',
+      user(['finance_staff'], ['student.view', 'billing.manage']),
+      true,
+    ],
+    [
+      'a scheduler',
+      user(['administrator'], ['schedule.view', 'schedule.manage']),
+      true,
+    ],
     ['a tutor-only user', TUTOR, false],
   ] as const)('%s: %s', (_who, as, visible) => {
     expect(shown(as).includes('/imports')).toBe(visible);
@@ -229,7 +240,12 @@ describe('the imports nav item (M8-05b E1)', () => {
     expect(paths.indexOf('/imports')).toBe(paths.indexOf('/invitations') + 1);
     expect(NAV_ITEMS.find((item) => item.to === '/imports')).toMatchObject({
       labelKey: 'nav.imports',
-      anyPermission: ['student.manage', 'user.invite'],
+      anyPermission: [
+        'student.manage',
+        'user.invite',
+        'schedule.manage',
+        'billing.manage',
+      ],
     });
   });
 });

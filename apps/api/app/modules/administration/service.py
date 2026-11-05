@@ -191,6 +191,9 @@ from app.modules.administration.imports.registry import (
 from app.modules.administration.imports.registry import (
     registered_import_kinds as registered_import_kinds,
 )
+from app.modules.administration.imports.registry import (
+    run_settings as run_settings,
+)
 from app.modules.administration.notification_preferences import (
     list_notification_preferences as list_notification_preferences,
 )

@@ -216,6 +216,12 @@ export function NewImportForm({ kinds, initialKind }: NewImportFormProps) {
           {kind.code === 'tutors' ? (
             <p className="text-sm">{t('imports.form.tutorsHelp')}</p>
           ) : null}
+          {kind.code === 'schedules' ? (
+            <p className="text-sm">{t('imports.form.schedulesHelp')}</p>
+          ) : null}
+          {kind.code === 'opening_balances' ? (
+            <p className="text-sm">{t('imports.form.balancesHelp')}</p>
+          ) : null}
           <div>
             <Button
               type="button"

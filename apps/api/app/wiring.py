@@ -33,7 +33,8 @@ types; #316: ``academics.progress_report_due``; #97:
 ``payroll.period_finalized``; #118: the review-candidate resolver of the
 approval inbox, :func:`review_candidates`, and
 ``administration.approval_assigned``; #122: the ``students`` and ``tutors``
-import kinds) are wired
+import kinds; #123: the ``schedules`` and ``opening_balances`` import kinds)
+are wired
 here, by the API app factory
 (``app.main.build_app``), ``app.cli`` and ``app.worker``.
 """
@@ -44,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.academics import service as academics_service
 from app.modules.administration import service as administration_service
+from app.modules.billing import service as billing_service
 from app.modules.families import service as families_service
 from app.modules.identity.service import (
     REGISTRATION_APPROVAL_HANDLER,
@@ -142,6 +144,12 @@ def register_approval_wiring() -> None:
     )
     administration_service.register_import_kind(families_service.STUDENTS_IMPORT_KIND)
     administration_service.register_import_kind(TUTORS_IMPORT_KIND)
+    administration_service.register_import_kind(
+        scheduling_service.SCHEDULES_IMPORT_KIND
+    )
+    administration_service.register_import_kind(
+        billing_service.OPENING_BALANCES_IMPORT_KIND
+    )
     administration_service.register_time_zone_dependency(
         scheduling_service.TIME_ZONE_DEPENDENCY, scheduling_service.has_class_sessions
     )

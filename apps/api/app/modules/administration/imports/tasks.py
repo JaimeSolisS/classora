@@ -49,6 +49,7 @@ from app.core.jobs import (
 )
 from app.core.uow import UnitOfWork
 from app.modules.administration.imports import service
+from app.modules.administration.imports.registry import RUN_SETTINGS_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +72,12 @@ class ImportRunResult:
 
 async def run_imports_with(
     sessionmaker: async_sessionmaker[AsyncSession],
+    settings: Settings | None = None,
 ) -> ImportRunResult:
-    """One run on ``sessionmaker`` (tests call it with their own engine)."""
+    """One run on ``sessionmaker`` (tests call it with their own engine).
+    ``settings`` (the run's) is put in each batch session's ``info`` for the
+    kinds (:func:`~app.modules.administration.imports.registry.run_settings`,
+    #123 B4)."""
     async with UnitOfWork(sessionmaker) as uow:
         jobs = await service.committing_jobs(uow.session)
     batches = committed = failed = 0
@@ -82,6 +87,8 @@ async def run_imports_with(
                 async with UnitOfWork(
                     sessionmaker, actor_id=job.committed_by_user_id
                 ) as uow:
+                    if settings is not None:
+                        uow.session.info[RUN_SETTINGS_KEY] = settings
                     done = await service.commit_next_batch(uow.session, job.id)
             except Exception as exc:  # noqa: BLE001 - one job never blocks the rest
                 failed += 1
@@ -123,7 +130,7 @@ async def run_imports(settings: Settings) -> ImportRunResult:
     """One run with its own direct engine (the worker's)."""
     engine = create_worker_engine(settings)
     try:
-        return await run_imports_with(create_sessionmaker(engine))
+        return await run_imports_with(create_sessionmaker(engine), settings)
     finally:
         await engine.dispose()
 

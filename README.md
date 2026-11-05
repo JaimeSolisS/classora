@@ -458,13 +458,18 @@ unless a bullet says otherwise.
 
 **Imports**
 
-- CSV import of students and tutors with a validation report and an explicit
-  commit: staff and academic coordinators (students only) choose a CSV saved
-  as UTF-8 (or download a template), review each row's errors, warnings and
-  duplicates, then import the valid rows in the background and follow the
-  result; past imports are listed with their outcome (Imports). Imported
-  tutors get pending invitations, whose links come from the Invitations page.
-  The file itself is never stored.
+- CSV import of students, tutors, recurring schedules and opening balances
+  with a validation report and an explicit commit: staff, academic
+  coordinators (students only) and finance staff (opening balances only)
+  choose a CSV saved as UTF-8 (or download a template), review each row's
+  errors, warnings and duplicates, then import the valid rows in the
+  background and follow the result; past imports are listed with their
+  outcome (Imports). Imported tutors get pending invitations, whose links
+  come from the Invitations page. Each imported schedule row creates a weekly
+  series and passes the same conflict checks as a manual booking (a row with
+  a conflict isn't created); each opening balance becomes a pending manual
+  charge on the family's account and is never posted twice. Payments and
+  credit balances aren't imported. The file itself is never stored.
 
 **Notifications**
 

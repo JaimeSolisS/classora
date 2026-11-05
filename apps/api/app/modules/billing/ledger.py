@@ -50,6 +50,7 @@ from app.modules.billing.models import (
     ADJUSTMENT_SOURCE_KEY,
     CHARGE_NATURAL_KEYS,
     ENROLLMENT_CHARGE_KINDS,
+    MANUAL,
     AllocationRelease,
     BillingAccount,
     Charge,
@@ -151,7 +152,18 @@ async def share_lock_billing_account(
 
 def _natural_key_filter(draft: ChargeDraft) -> list[Any] | None:
     """The ``WHERE`` of the draft's natural key (J4), or ``None`` (a manual
-    charge has none)."""
+    charge posted by hand has none). An **imported** manual charge (#123 D1)
+    is keyed by ``(student_id, service_date, lower(description))`` among
+    imported charges (``uq_charges_import_line``)."""
+    if draft.kind == MANUAL and draft.import_job_id is not None:
+        assert draft.description is not None  # noqa: S101 - a manual draft
+        return [
+            Charge.kind == MANUAL,
+            Charge.import_job_id.is_not(None),
+            Charge.student_id == draft.student_id,
+            Charge.service_date == draft.service_date,
+            func.lower(Charge.description) == draft.description.lower(),
+        ]
     if draft.kind == "session":
         return [
             Charge.kind == "session",
@@ -363,6 +375,8 @@ async def post_charge(session: AsyncSession, draft: ChargeDraft) -> PostedCharge
         proration_total=None if draft.proration is None else draft.proration[1],
         posted_at=clock.now(),
         posted_by_user_id=current_actor_id(session),
+        import_job_id=draft.import_job_id,
+        import_row_number=draft.import_row_number,
     )
     try:
         async with session.begin_nested():
@@ -371,6 +385,15 @@ async def post_charge(session: AsyncSession, draft: ChargeDraft) -> PostedCharge
         if key is None or not _violates(exc, CHARGE_NATURAL_KEYS):
             raise
         existing = await _posted_charge(session, key)
+        if existing is None and draft.import_job_id is not None:
+            # #123 D1: the same (job, row) posted with another line.
+            existing = await _posted_charge(
+                session,
+                [
+                    Charge.import_job_id == draft.import_job_id,
+                    Charge.import_row_number == draft.import_row_number,
+                ],
+            )
         if existing is None:  # pragma: no cover - the violation means it exists
             raise
         return existing

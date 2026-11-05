@@ -27,6 +27,7 @@ from app.modules.administration.imports.registry import (
     registered_import_kinds,
     unregister_import_kind,
 )
+from app.modules.billing import service as billing_service
 from app.modules.families import imports as student_imports
 from app.modules.families import service as families_service
 from app.modules.identity import imports as tutor_imports
@@ -38,6 +39,7 @@ from app.modules.identity.permissions import (
     OWNER,
     resolve_permissions,
 )
+from app.modules.scheduling import service as scheduling_service
 
 TODAY = date(2026, 11, 5)
 
@@ -148,11 +150,12 @@ async def test_the_seams_for_issue_123(fake):
 
 
 def test_who_may_import_what():
-    # #122 E5: the permission manual creation needs.
-    assert importable_kinds(principal(OWNER)) == ["students", "tutors"]
-    assert importable_kinds(principal(ADMINISTRATOR)) == ["students", "tutors"]
+    # #122 E5, #123 E1: the permission manual creation needs.
+    every = ["opening_balances", "schedules", "students", "tutors"]
+    assert importable_kinds(principal(OWNER)) == every
+    assert importable_kinds(principal(ADMINISTRATOR)) == every
     assert importable_kinds(principal(ACADEMIC_COORDINATOR)) == ["students"]
-    assert importable_kinds(principal(FINANCE_STAFF)) == []
+    assert importable_kinds(principal(FINANCE_STAFF)) == ["opening_balances"]
     for role in ("tutor", "student", "guardian"):
         assert importable_kinds(principal(role)) == []
 
@@ -162,7 +165,57 @@ def test_the_kinds_are_exported_by_their_modules_and_registered_by_the_wiring():
     assert identity_service.TUTORS_IMPORT_KIND is tutor_imports.TUTORS_IMPORT_KIND
     assert import_kind("students") is families_service.STUDENTS_IMPORT_KIND
     assert import_kind("tutors") is identity_service.TUTORS_IMPORT_KIND
+    assert import_kind("schedules") is scheduling_service.SCHEDULES_IMPORT_KIND
+    assert (
+        import_kind("opening_balances") is billing_service.OPENING_BALANCES_IMPORT_KIND
+    )
     assert administration.register_import_kind is register_import_kind
+
+
+def test_the_123_kinds_permissions_and_batch_sizes():
+    schedules = scheduling_service.SCHEDULES_IMPORT_KIND
+    balances = billing_service.OPENING_BALANCES_IMPORT_KIND
+    assert (schedules.code, schedules.permission, schedules.batch_size) == (
+        "schedules",
+        "schedule.manage",
+        20,
+    )
+    assert (balances.code, balances.permission, balances.batch_size) == (
+        "opening_balances",
+        "billing.manage",
+        100,
+    )
+    assert [c.name for c in schedules.columns if c.required] == [
+        "student_given_names",
+        "student_family_names",
+        "student_birthdate",
+        "subject",
+        "education_level",
+        "starts_on",
+        "start_time",
+        "duration_minutes",
+        "weekdays",
+    ]
+    assert [c.name for c in schedules.columns if not c.required] == [
+        "interval",
+        "until",
+        "count",
+        "tutor_username",
+        "classroom",
+    ]
+    assert [c.name for c in balances.columns] == [
+        "student_given_names",
+        "student_family_names",
+        "student_birthdate",
+        "description",
+        "amount",
+        "service_date",
+        "due_date",
+    ]
+    assert all(c.required for c in balances.columns)
+
+
+KINDS = ("students", "tutors", "schedules", "opening_balances")
 
 
 def test_the_cli_and_the_worker_register_the_import_kinds():
@@ -172,10 +225,10 @@ def test_the_cli_and_the_worker_register_the_import_kinds():
         lambda: pytest.raises(SystemExit, cli.main, ["bootstrap-owner"]),
         lambda: worker.main([]),
     ):
-        for code in ("students", "tutors"):
+        for code in KINDS:
             unregister_import_kind(code)
         run()
-        assert {"students", "tutors"} <= registered_import_kinds()
+        assert set(KINDS) <= registered_import_kinds()
 
 
 # --- Students (B5) -----------------------------------------------------------------

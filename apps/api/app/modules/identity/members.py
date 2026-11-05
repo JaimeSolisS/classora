@@ -150,6 +150,24 @@ async def get_role_member(
     return _member(user, roles)
 
 
+async def role_members_by_username(
+    session: AsyncSession, role: str, usernames: Collection[str]
+) -> dict[str, tuple[uuid.UUID, str]]:
+    """The holders of ``role`` among the users with these (normalized)
+    usernames, as ``{username: (id, state)}``, in one statement; none when
+    ``usernames`` is empty (#123: a schedule import names its tutor). A
+    user without the role is left out."""
+    if not usernames:
+        return {}
+    rows = await session.execute(
+        select(User.username, User.id, User.state)
+        .join(UserRole, UserRole.user_id == User.id)
+        .join(Role, Role.id == UserRole.role_id)
+        .where(Role.code == role, User.username.in_(set(usernames)))
+    )
+    return {username: (user_id, state) for username, user_id, state in rows}
+
+
 async def update_account_contact(
     session: AsyncSession,
     user_id: uuid.UUID,

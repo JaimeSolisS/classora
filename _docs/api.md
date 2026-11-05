@@ -1418,15 +1418,20 @@ staging rows only while the import is open.
 | `POST /api/v1/imports/{import_id}/commit` | same | Body `{version}`. `202` with `ImportJobDetail` (`status: "committing"`). |
 | `POST /api/v1/imports/{import_id}/discard` | same | Body `{version}`. `200` with `ImportJobDetail` (`status: "discarded"`). |
 
-- **Kinds and who may import them** (#122 E5; no import permission of its
-  own): `students` needs `student.manage` (Owner, Administrator, Academic
-  coordinator); `tutors` needs `user.invite` and the authority to assign
-  `tutor` (Owner, Administrator). A caller who may import no kind gets `403
-  permission_denied` on every route. A job of a kind the caller may not
-  import is `404 not_found`, the same as an unknown id, and the list leaves
-  it out. Modules register more kinds with
-  `administration.service.register_import_kind` (#123: schedules and
-  opening balances).
+- **Kinds and who may import them** (#122 E5, #123 E1; no import
+  permission of its own): `students` needs `student.manage` (Owner,
+  Administrator, Academic coordinator); `tutors` needs `user.invite` and the
+  authority to assign `tutor` (Owner, Administrator); `schedules` needs
+  `schedule.manage` (Owner, Administrator); `opening_balances` needs
+  `billing.manage` (Owner, Administrator, Finance staff; no
+  reauthentication, as for a manual charge). A caller who may import no kind
+  gets `403 permission_denied` on every route. A job of a kind the caller
+  may not import is `404 not_found`, the same as an unknown id, and the list
+  leaves it out. Modules register kinds with
+  `administration.service.register_import_kind`. **Nothing else that moves
+  money is importable:** no payments, receipts, account credit, allocations,
+  adjustments, refunds, packages, tuition plans, prices, discounts, payroll
+  or expenses (#123 E2).
 - **Body** (`ImportJobCreate`, `extra="forbid"`): `kind` (a registered
   code), `file_name` (optional, trimmed, at most 255 characters, for the
   history) and `csv` (the file's text). The route reads the body itself, so
@@ -1455,6 +1460,7 @@ staging rows only while the import is open.
   `duplicate_existing` (a record has its natural key) or
   `duplicate_in_file` (an earlier ready row has it). Duplicates are skipped,
   never updated; error rows are never imported. No code carries a value.
+  The #123 kinds add their own codes (below).
 - **`students` columns:** `given_names`\*, `family_names`\*, `birthdate`\*
   (`YYYY-MM-DD` or `DD/MM/YYYY`, not after the center's today), `email`,
   `phone`, `school_name`, `school_grade`, `education_level` (an **active**
@@ -1471,6 +1477,56 @@ staging rows only while the import is open.
   creates (a pending user with the `tutor` role and an invitation token, plus
   the email and phone); the link is never returned or stored: the admin gets
   it with **Reissue** on the Invitations page.
+- **Naming a student** (`schedules` and `opening_balances`, #123 E10):
+  `student_given_names`\*, `student_family_names`\*, `student_birthdate`\*,
+  matched by the `students` natural key (unaccented, any case). It must name
+  exactly one student: `student_unknown` (none) or `student_ambiguous` (more
+  than one), on the whole row.
+- **`schedules` columns** (#123 B1; one row = one recurring **individual**
+  series, `POST /api/v1/class-series`; a one-off class is `count = 1`): the
+  student columns, `subject`\* and `education_level`\* (the subject by its
+  level and name, any case), `starts_on`\*, `start_time`\* (`HH:MM`; a
+  one-digit hour is padded), `duration_minutes`\* (15–480), `weekdays`\*
+  (ISO 1–7 separated by spaces, for example `1 3`), `interval` (1–4, default
+  1), `until` or `count` (not both), `tutor_username` and `classroom` (by
+  name, any case). No override and no `respond_by` column (#123 E4). Staging
+  codes reuse the `POST /api/v1/class-series` ones: `student_inactive`,
+  `subject_unknown`, `subject_inactive`, `tutor_unknown`, `tutor_inactive`,
+  `classroom_unknown`, `classroom_inactive`, `invalid`, `invalid_date`,
+  `time_format`, `duration_out_of_range`, `weekdays_empty`,
+  `weekday_out_of_range`, `weekdays_duplicate`, `interval_out_of_range`,
+  `until_and_count`, `count_out_of_range`, `until_before_start`,
+  `no_occurrences`, `starts_on_in_past` (against the center's today) and
+  `crosses_local_date`. An existing individual series with the same
+  student, subject, `starts_on`, `start_time` and weekdays is
+  `duplicate_existing`. **Conflicts are checked at commit, not at staging**
+  (#123 E3): each row runs the real create, so every conflict check of a
+  manual booking applies, across the rows of the same file too. A row with
+  any conflict, hard or soft, is `failed` with `scheduling_conflict` followed
+  by its distinct conflict codes (`column: null`, for example
+  `tutor_overlap`, `outside_operating_hours`), and nothing of it is written;
+  book it by hand with an override. A closure date is a `skipped_closure`
+  occurrence and the row is still `created`. With a tutor the series gets
+  its pending series offer and the tutor a notification, as by hand.
+  `record_id` is the series id. Batches of 20 rows.
+- **`opening_balances` columns** (#123 C1; one row = one positive
+  **manual charge**): the student columns, `description`\* (trimmed, 1–200),
+  `amount`\* (digits with an optional `.` and up to 2 decimals: no sign,
+  symbol or thousands separator; above 0), `service_date`\* (2000-01-01 to
+  the center's today) and `due_date`\* (2000-01-01 to today + 366 days).
+  Codes: `student_has_no_family`, `invalid_amount`, `amount_not_positive`,
+  `invalid_date`, `date_out_of_range`, `future_date`, `too_long`. An
+  **imported** charge with the same student, `service_date` and description
+  (any case) is `duplicate_existing`; charges posted by hand are never
+  matched. At commit the student's **current** family is read again and the
+  charge is posted exactly like `POST …/billing-account/charges` (the account
+  is created if missing and locked; `kind = manual`, no discount, the due
+  date as entered; the audit actor is the committer), carrying the import
+  reference. A line already posted is `skipped` `duplicate_existing`;
+  `failed` codes are `student_has_no_family` and `student_not_in_family`.
+  `record_id` is the charge id. An imported charge is corrected with a
+  manual adjustment, never deleted. A past due date makes it `overdue` at
+  once, so the next reminder run sends its current reminder stage.
 - **`ImportJobDetail`:** `id`, `kind`, `status` (`staged`, `committing`,
   `committed`, `failed`, `discarded`, `expired`), `file_name`,
   `ignored_columns`, `counts {total, ready, duplicate, error, created,

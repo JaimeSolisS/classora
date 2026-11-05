@@ -45,7 +45,26 @@ function recordPath(kind: string, recordId: string): string | null {
   if (kind === 'tutors') {
     return `/tutors/${recordId}`;
   }
+  if (kind === 'schedules') {
+    return `/schedule/series/${recordId}`;
+  }
   return null;
+}
+
+/** The record link's label for a kind with a detail page. */
+function recordLabel(
+  kind: string,
+):
+  | 'imports.rows.openTutor'
+  | 'imports.rows.openSeries'
+  | 'imports.rows.openStudent' {
+  if (kind === 'tutors') {
+    return 'imports.rows.openTutor';
+  }
+  if (kind === 'schedules') {
+    return 'imports.rows.openSeries';
+  }
+  return 'imports.rows.openStudent';
 }
 
 function RowValues({ row }: { row: ImportRow }) {
@@ -140,11 +159,7 @@ export function ImportRowsTable({
                 <TableCell>
                   {path ? (
                     <Link to={path} className={LINK_CLASS}>
-                      {t(
-                        kind === 'tutors'
-                          ? 'imports.rows.openTutor'
-                          : 'imports.rows.openStudent',
-                      )}
+                      {t(recordLabel(kind))}
                       <span className="sr-only">
                         {' '}
                         {t('imports.rows.lineNumber', {
@@ -152,6 +167,9 @@ export function ImportRowsTable({
                         })}
                       </span>
                     </Link>
+                  ) : row.record_id && kind === 'opening_balances' ? (
+                    // #123 F3: an imported charge has no page of its own.
+                    t('imports.rows.chargeCreated')
                   ) : null}
                 </TableCell>
               </TableRow>

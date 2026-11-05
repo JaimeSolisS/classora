@@ -5,10 +5,11 @@ import type { SessionUser } from '@/features/auth/session';
 // The import kinds of the web app (M8-05b B1, B2; the API registry is #122
 // E5). Who may import a kind mirrors the API (UX only: the API checks every
 // request): students need student.manage; tutors need user.invite and the
-// authority to assign the tutor role (user.role.assign). #123 adds kinds
-// here and to the nav's anyPermission.
+// authority to assign the tutor role (user.role.assign); recurring schedules
+// need schedule.manage and opening balances billing.manage (#123 F1).
 
-export type ImportKindCode = 'students' | 'tutors';
+export type ImportKindCode =
+  'students' | 'tutors' | 'schedules' | 'opening_balances';
 
 export interface ImportColumn {
   name: string;
@@ -74,6 +75,64 @@ export const IMPORT_KINDS: readonly ImportKindDefinition[] = [
       optional('phone'),
     ],
     example: ['tutor.ejemplo', 'Tutor Ejemplo', 'tutor@example.com', ''],
+  },
+  {
+    code: 'schedules',
+    access: { permission: 'schedule.manage' },
+    columns: [
+      required('student_given_names'),
+      required('student_family_names'),
+      required('student_birthdate'),
+      required('subject'),
+      required('education_level'),
+      required('starts_on'),
+      required('start_time'),
+      required('duration_minutes'),
+      required('weekdays'),
+      optional('interval'),
+      optional('until'),
+      optional('count'),
+      optional('tutor_username'),
+      optional('classroom'),
+    ],
+    example: [
+      'Ana Sofía',
+      'Ejemplo Pérez',
+      '2014-03-15',
+      'Matemáticas',
+      'Primaria',
+      '2031-01-06',
+      '16:00',
+      '60',
+      '1 3',
+      '1',
+      '',
+      '24',
+      'tutor.ejemplo',
+      '',
+    ],
+  },
+  {
+    code: 'opening_balances',
+    access: { permission: 'billing.manage' },
+    columns: [
+      required('student_given_names'),
+      required('student_family_names'),
+      required('student_birthdate'),
+      required('description'),
+      required('amount'),
+      required('service_date'),
+      required('due_date'),
+    ],
+    example: [
+      'Ana Sofía',
+      'Ejemplo Pérez',
+      '2014-03-15',
+      'Saldo inicial',
+      '1250.00',
+      '2031-01-01',
+      '2031-01-15',
+    ],
   },
 ];
 

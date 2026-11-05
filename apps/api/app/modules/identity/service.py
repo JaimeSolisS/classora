@@ -110,6 +110,7 @@ from app.modules.identity.imports import TUTORS_IMPORT_KIND
 from app.modules.identity.members import (
     get_role_member,
     list_role_members,
+    role_members_by_username,
     update_account_contact,
 )
 from app.modules.identity.models import (
@@ -205,6 +206,7 @@ __all__ = [
     "get_account_reference",
     "get_account_references",
     "get_role_member",
+    "role_members_by_username",
     "get_user_preferences",
     "grant_delegation",
     "has_accepted_current_privacy_notice",

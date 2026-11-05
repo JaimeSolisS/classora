@@ -351,12 +351,22 @@ CHARGE_TUITION_PERIOD_KEY: Final = "uq_charges_tuition_period"
 CHARGE_TUITION_PLAN_FK: Final = "fk_charges_tuition_plan"
 CHARGE_PACKAGE_PURCHASE_KEY: Final = "uq_charges_package_purchase"
 CHARGE_PACKAGE_FK: Final = "fk_charges_package"
+CHARGE_IMPORT_ROW_KEY: Final = "uq_charges_import_row"
+CHARGE_IMPORT_LINE_KEY: Final = "uq_charges_import_line"
+IMPORT_REF_CHECK: Final = (
+    "(import_job_id IS NULL) = (import_row_number IS NULL)"
+    " AND (import_job_id IS NULL OR kind = 'manual')"
+)
+"""``ck_charges_import_ref`` (#123 D1, migration 0089): an import reference
+is both columns or neither, on a manual charge only."""
 CHARGE_NATURAL_KEYS: Final = (
     CHARGE_SESSION_KEY,
     CHARGE_GROUP_ENROLLMENT_KEY,
     CHARGE_COHORT_ENROLLMENT_KEY,
     CHARGE_TUITION_PERIOD_KEY,
     CHARGE_PACKAGE_PURCHASE_KEY,
+    CHARGE_IMPORT_ROW_KEY,
+    CHARGE_IMPORT_LINE_KEY,
 )
 """The named natural-key indexes of ``charges`` (J4): a violation of one of
 them means "already posted" (#90 E4)."""
@@ -581,6 +591,18 @@ class Charge(Audited, Model):
             unique=True,
             postgresql_where=text("kind = 'package_purchase'"),
         ),
+        CheckConstraint(IMPORT_REF_CHECK, name="import_ref"),
+        UniqueConstraint(
+            "import_job_id", "import_row_number", name=CHARGE_IMPORT_ROW_KEY
+        ),
+        Index(
+            CHARGE_IMPORT_LINE_KEY,
+            "student_id",
+            "service_date",
+            func.lower(text("description")),
+            unique=True,
+            postgresql_where=text("import_job_id IS NOT NULL"),
+        ),
     )
 
     billing_account_id: Mapped[uuid.UUID] = _uuid_fk("billing_accounts")
@@ -636,6 +658,15 @@ class Charge(Audited, Model):
     )
     posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     posted_by_user_id: Mapped[uuid.UUID | None] = _actor(nullable=True)
+    import_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("import_jobs.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    """The import job that posted this opening balance (#123 E6; manual
+    charges only; ``NULL`` for every charge posted by hand or by a job)."""
+    import_row_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    """The job's CSV line it came from (with :attr:`import_job_id`)."""
 
 
 class ChargeAdjustment(Audited, Model):

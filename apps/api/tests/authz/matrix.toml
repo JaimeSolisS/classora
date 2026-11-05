@@ -2134,40 +2134,43 @@ allow = ["owner", "administrator"]
 # An empty body (no version) gets 422 for the allowed roles.
 json = {}
 
-# Imports (#122 G1): open to any kind's importer. Students need
+# Imports (#122 G1, #123 E1): open to any kind's importer. Students need
 # student.manage (Owner, Administrator, Academic coordinator); tutors need
-# user.invite and may assign tutor (Owner, Administrator). The route checks
-# it itself, so the rest get 403. Per-kind cases (the Coordinator's 403 on a
-# tutors import and 404 on a tutors job):
-# tests/integration/test_imports_pipeline.py.
+# user.invite and may assign tutor (Owner, Administrator); schedules need
+# schedule.manage (Owner, Administrator); opening balances need
+# billing.manage (Owner, Administrator, Finance staff). The route checks it
+# itself, so the rest get 403. Per-kind cases (the Coordinator's 403 on a
+# tutors import and 404 on a tutors job; Finance's 403 on a schedules
+# import): tests/integration/test_imports_pipeline.py,
+# test_imports_schedules.py and test_imports_opening_balances.py.
 
 [[route]]
 method = "GET"
 path = "/api/v1/imports"
 access = "authenticated"
-deny = ["finance_staff", "tutor", "student", "guardian"]
+deny = ["tutor", "student", "guardian"]
 
 [[route]]
 method = "POST"
 path = "/api/v1/imports"
 access = "authenticated"
-deny = ["finance_staff", "tutor", "student", "guardian"]
-# An empty file gets 422 import_file_invalid for the allowed roles; nothing
-# is written.
-json = { kind = "students", csv = "" }
+deny = ["tutor", "student", "guardian"]
+# An unknown kind gets 422 import_kind_unknown for every allowed role (each
+# may import a different kind); nothing is written.
+json = { kind = "no_such_kind", csv = "" }
 
 [[route]]
 method = "GET"
 path = "/api/v1/imports/{import_id}"
 access = "authenticated"
-deny = ["finance_staff", "tutor", "student", "guardian"]
+deny = ["tutor", "student", "guardian"]
 # The placeholder id is no import: 404 for the allowed roles.
 
 [[route]]
 method = "POST"
 path = "/api/v1/imports/{import_id}/commit"
 access = "authenticated"
-deny = ["finance_staff", "tutor", "student", "guardian"]
+deny = ["tutor", "student", "guardian"]
 json = { version = 1 }
 # The placeholder id is no import: 404 for the allowed roles.
 
@@ -2175,7 +2178,7 @@ json = { version = 1 }
 method = "POST"
 path = "/api/v1/imports/{import_id}/discard"
 access = "authenticated"
-deny = ["finance_staff", "tutor", "student", "guardian"]
+deny = ["tutor", "student", "guardian"]
 json = { version = 1 }
 # The placeholder id is no import: 404 for the allowed roles.
 
@@ -2183,7 +2186,7 @@ json = { version = 1 }
 method = "GET"
 path = "/api/v1/imports/{import_id}/rows"
 access = "authenticated"
-deny = ["finance_staff", "tutor", "student", "guardian"]
+deny = ["tutor", "student", "guardian"]
 # The placeholder id is no import: 404 for the allowed roles.
 
 [[route]]
