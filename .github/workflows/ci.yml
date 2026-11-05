@@ -116,7 +116,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # Develop runs take 17–20 min and every migration adds cases (#482).
+    timeout-minutes: 35
     env:
       UV_LOCKED: "1"
     steps:
