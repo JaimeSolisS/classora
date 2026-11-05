@@ -5,7 +5,8 @@ import { cn } from '@/lib/utils';
 // The Settings area's tab bar (#61 F1, the #38 CatalogTabs pattern): links
 // (not ARIA tabs), the current section marked with aria-current="page" by
 // NavLink. Every settings route needs settings.manage, so the bar shows
-// every section. M8-04 adds its groups here.
+// every section. M8-04b (E1) adds "Payments and receipts"; the groups that
+// live in their own areas are linked from General ("More settings").
 
 const SECTIONS = [
   { to: '/settings', labelKey: 'settings.tabs.general', end: true },
@@ -14,6 +15,7 @@ const SECTIONS = [
     labelKey: 'settings.tabs.schedulingPolicies',
     end: false,
   },
+  { to: '/settings/payments', labelKey: 'settings.tabs.payments', end: false },
 ] as const;
 
 export function SettingsTabs() {

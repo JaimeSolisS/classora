@@ -1050,7 +1050,23 @@ type Common = {
       | 'sunday',
       string
     >;
-    tabs: { label: string; general: string; schedulingPolicies: string };
+    tabs: {
+      label: string;
+      general: string;
+      schedulingPolicies: string;
+      // M8-04b E2E: the Payments and receipts tab.
+      payments: string;
+    };
+    payments: {
+      title: string;
+      methods: {
+        title: string;
+        deactivate: string;
+        deactivateMethod: string;
+        confirm: { title: string };
+      };
+    };
+    receiptMessage: { title: string; es: string; save: string };
     schedulingPolicies: {
       title: string;
       current: { title: string };

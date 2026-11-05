@@ -123,6 +123,11 @@ unless a bullet says otherwise.
   and earlier versions are kept so past classes keep the rules in force at
   the time. Every signed-in user can read the policy (applying it to
   classes arrives with scheduling).
+- On the Payments and receipts tab, staff switch payment methods on or off
+  (with a password check; at least one stays active) and set a message
+  printed on new receipts in each language; receipts already issued don't
+  change. Academic periods, prices, billing settings and packages are linked
+  from Settings.
 
 **Tutors**
 

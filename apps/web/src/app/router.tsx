@@ -1164,6 +1164,19 @@ export const routes: RouteObject[] = [
             }),
             handle: { permission: 'audit.view' },
           },
+          // M8-04b A1: the Settings "Payments and receipts" tab
+          // (code-split), settings.manage holders. Declared here rather than
+          // next to the other settings routes so the pinned indexes before
+          // it stay put (matching is by rank, not order).
+          {
+            path: 'settings/payments',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/settings/PaymentsSettingsPage')
+              ).PaymentsSettingsPage,
+            }),
+            handle: { permission: 'settings.manage' },
+          },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },
           // M8-02b A1: any signed-in user's notification preferences

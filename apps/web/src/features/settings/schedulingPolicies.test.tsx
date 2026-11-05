@@ -113,6 +113,7 @@ describe('tabs and access (F1)', () => {
     expect(tabs()).toEqual([
       ['General', null],
       ['Scheduling policies', 'page'],
+      ['Payments and receipts', null],
     ]);
     expect(main().querySelectorAll('h1')).toHaveLength(1);
     expect(main().querySelector('h1')?.textContent).toBe('Scheduling policies');
@@ -127,6 +128,7 @@ describe('tabs and access (F1)', () => {
     expect(tabs()).toEqual([
       ['General', 'page'],
       ['Scheduling policies', null],
+      ['Payments and receipts', null],
     ]);
     expect(main().querySelectorAll('h1')).toHaveLength(1);
   });

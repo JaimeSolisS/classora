@@ -4,11 +4,13 @@ import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
 import { StoryRouter } from '@/test/StoryRouter';
 import { SETTINGS } from './fixtures';
+import { MORE_SETTINGS_LINKS } from './moreLinks';
 import { SettingsView } from './SettingsPage';
 
 // The settings page without its query (#37 H7): the form loaded, loading,
 // a failed load, the tz_change_requires_migration alert and the hours
-// validation error. No request: every call is a stub. axe runs on each
+// validation error; M8-04b D1: with and without the "More settings" links.
+// No request: every call is a stub. axe runs on each
 // story in both themes.
 
 const meta = {
@@ -54,6 +56,30 @@ export const Loaded: Story = {
     await expect(
       canvas.getByLabelText(i18n.t('settings.timeZone.label')),
     ).toHaveAccessibleDescription(i18n.t('settings.timeZone.help'));
+  },
+};
+
+/** Without links (the default): no "More settings" section. */
+export const WithoutMoreLinks: Story = {
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.queryByRole('heading', { name: i18n.t('settings.more.title') }),
+    ).toBeNull();
+  },
+};
+
+export const WithMoreLinks: Story = {
+  args: { moreLinks: MORE_SETTINGS_LINKS },
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.getByRole('heading', {
+        level: 2,
+        name: i18n.t('settings.more.title'),
+      }),
+    ).toBeVisible();
+    await expect(
+      canvas.getByRole('link', { name: i18n.t('settings.more.billing') }),
+    ).toHaveAccessibleDescription(i18n.t('settings.more.billingHelp'));
   },
 };
 

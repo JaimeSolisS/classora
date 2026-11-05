@@ -11,6 +11,14 @@ import { common, errors, fill } from '../support/catalog';
 // `finally` restores the original name and hours through the API if the
 // UI restore did not complete (#249).
 //
+// Payments and receipts (M8-04b), in the same serial test, since it edits
+// the same singleton: the "Pagos y recibos" tab sets a Spanish receipt
+// message, sees it kept after a reload and clears it (the `finally` clears
+// it through the API otherwise). Then "Desactivar" on "Otro", confirmed,
+// asks for the password; after "Cancelar" "Otro" is still active. The
+// deactivation is never completed: other specs record payments. No login,
+// registration or redemption: the Owner's shared session only.
+//
 // The settings record is a singleton: this is the only spec that edits it,
 // in one serial test, and it never changes the time zone, because every spec
 // runs in America/Mexico_City (_docs/testing-guidelines.md, E2E data rules).
@@ -32,7 +40,8 @@ const DEFAULT_ZONE = 'America/Mexico_City';
 const TEST_TIMEOUT_MS = 90_000;
 
 // Chromium logs every 4xx resource as a console error: the expected 403
-// reauth_required before the dialog.
+// reauth_required before the dialog (the time zone, and M8-04b's payment
+// method change).
 const EXPECTED_RESOURCE_ERROR =
   /Failed to load resource: the server responded with a status of 403/;
 
@@ -42,8 +51,10 @@ type OperatingHours = { weekday: number; opens_at: string; closes_at: string };
 type BusinessSettings = {
   center_name: string;
   operating_hours: OperatingHours[];
+  receipt_message_es: string | null;
   version: number;
 };
+type PaymentMethod = { code: string; is_active: boolean };
 
 async function loadSettings(page: Page): Promise<BusinessSettings> {
   const result = await api(page, '/api/v1/business-settings');
@@ -51,14 +62,15 @@ async function loadSettings(page: Page): Promise<BusinessSettings> {
   return result.body as BusinessSettings;
 }
 
-/** Puts back the original name and hours through the API (never the zone),
- * when the UI restore did not complete. */
+/** Puts back the original name, hours and Spanish receipt message through
+ * the API (never the zone), when the UI restore did not complete. */
 async function restoreSettingsViaApi(page: Page, original: BusinessSettings) {
   const current = await loadSettings(page);
   if (
     current.center_name === original.center_name &&
     JSON.stringify(current.operating_hours) ===
-      JSON.stringify(original.operating_hours)
+      JSON.stringify(original.operating_hours) &&
+    current.receipt_message_es === original.receipt_message_es
   ) {
     return;
   }
@@ -70,6 +82,7 @@ async function restoreSettingsViaApi(page: Page, original: BusinessSettings) {
       version: current.version,
       center_name: original.center_name,
       operating_hours: original.operating_hours,
+      receipt_message_es: original.receipt_message_es,
     },
     headers: { 'X-CSRF-Token': csrfTokenOf(me) },
   });
@@ -113,6 +126,64 @@ function centerDatePlus(days: number): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: DEFAULT_ZONE }).format(
     new Date(Date.now() + days * 86_400_000),
   );
+}
+
+/** M8-04b: an es receipt message, kept after a reload, then cleared. */
+async function editReceiptMessage(page: Page, message: string) {
+  const settings = common.settings;
+  const main = page.getByRole('main');
+  await main
+    .getByRole('navigation', { name: settings.tabs.label })
+    .getByRole('link', { name: settings.tabs.payments })
+    .click();
+  await expect(page).toHaveURL('/settings/payments');
+  await expect(
+    main.getByRole('heading', { level: 1, name: settings.payments.title }),
+  ).toBeVisible();
+  const card = main.getByRole('region', {
+    name: settings.receiptMessage.title,
+  });
+  const spanish = card.getByLabel(settings.receiptMessage.es, { exact: true });
+  const save = card.getByRole('button', { name: settings.receiptMessage.save });
+
+  await spanish.fill(message);
+  await save.click();
+  await expect(card.getByRole('status')).toHaveText(settings.saved);
+  await page.reload();
+  await expect(spanish).toHaveValue(message);
+
+  await spanish.fill('');
+  await save.click();
+  await expect(card.getByRole('status')).toHaveText(settings.saved);
+  await page.reload();
+  await expect(spanish).toHaveValue('');
+}
+
+/** M8-04b: deactivating "Otro" asks for the password; "Cancelar" keeps it. */
+async function cancelDeactivatingOther(page: Page) {
+  const methods = common.settings.payments.methods;
+  const other = common.billing.paymentMethods.other;
+  const main = page.getByRole('main');
+  const card = main.getByRole('region', { name: methods.title });
+  await card
+    .getByRole('button', {
+      name: fill(methods.deactivateMethod, { method: other }),
+    })
+    .click();
+  const confirm = page.getByRole('dialog', {
+    name: fill(methods.confirm.title, { method: other }),
+  });
+  await confirm.getByRole('button', { name: methods.deactivate }).click();
+  const reauth = page.getByRole('dialog', { name: common.auth.reauth.title });
+  await expect(reauth).toBeVisible();
+  await reauth.getByRole('button', { name: common.auth.reauth.cancel }).click();
+  await expect(reauth).toBeHidden();
+  await expect(card.getByRole('alert')).toContainText(errors.reauth_required);
+  const stored = await api(page, '/api/v1/billing/payment-methods');
+  expect(stored.status).toBe(200);
+  expect(
+    (stored.body as PaymentMethod[]).find((m) => m.code === 'other')?.is_active,
+  ).toBe(true);
 }
 
 async function openSchedulingPolicies(page: Page) {
@@ -268,6 +339,11 @@ test('editing the business settings', async ({ page }, testInfo) => {
     await page.reload();
     await expect(nameField(page)).toHaveValue(originalName);
     await expect(sundayOpen(page)).not.toBeChecked();
+
+    // 6. Payments and receipts (M8-04b): a receipt message set and cleared,
+    // then a payment method change that stops at the password dialog.
+    await editReceiptMessage(page, `Gracias por su pago. E2E ${suffix}`);
+    await cancelDeactivatingOther(page);
     uiRestored = true;
   } finally {
     if (!uiRestored) {

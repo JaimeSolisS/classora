@@ -5,12 +5,15 @@ import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { SESSION_QUERY_KEY } from '@/features/auth/session';
+import { useSession } from '@/features/auth/useSession';
 import {
   fetchSettings,
   SETTINGS_QUERY_KEY,
   updateSettings,
   type BusinessSettings,
 } from './api';
+import { visibleMoreLinks, type MoreSettingsLink } from './moreLinks';
+import { MoreSettingsLinks } from './MoreSettingsLinks';
 import { updateBody, valuesOf, type SettingsFormValues } from './rules';
 import { SettingsForm } from './SettingsForm';
 import { SettingsTabs } from './SettingsTabs';
@@ -18,7 +21,8 @@ import { SettingsTabs } from './SettingsTabs';
 // /settings (#37 H3, H4), for settings.manage holders: the business
 // settings form. A save sends `version` plus the changed fields, stores the
 // answer and invalidates the session (/auth/me), whose center_time_zone the
-// formatters read, so a new zone applies at once.
+// formatters read, so a new zone applies at once. Under the form, "More
+// settings" links the groups that live in their own areas (M8-04b D1).
 
 interface SettingsViewProps {
   /** The stored settings; undefined while loading or after an error. */
@@ -28,6 +32,8 @@ interface SettingsViewProps {
   onRetry: () => void;
   onSubmit: (values: SettingsFormValues) => Promise<void>;
   onReload: () => Promise<void>;
+  /** The "More settings" links the user may open (none: no section). */
+  moreLinks?: readonly MoreSettingsLink[];
 }
 
 /** The page without its query (stories render each state). */
@@ -37,6 +43,7 @@ export function SettingsView({
   onRetry,
   onSubmit,
   onReload,
+  moreLinks = [],
 }: SettingsViewProps) {
   const { t } = useTranslation();
   const titleId = useId();
@@ -62,6 +69,7 @@ export function SettingsView({
       ) : (
         <LoadingState rows={8} />
       )}
+      <MoreSettingsLinks links={moreLinks} />
     </div>
   );
 }
@@ -70,6 +78,11 @@ export function SettingsPage() {
   const { t } = useTranslation();
   useDocumentTitle(t('settings.title'));
   const queryClient = useQueryClient();
+  const session = useSession();
+  const moreLinks = useMemo(
+    () => visibleMoreLinks(session.status === 'signedIn' ? session.user : null),
+    [session],
+  );
   const query = useQuery({
     queryKey: SETTINGS_QUERY_KEY,
     queryFn: ({ signal }) => fetchSettings(signal),
@@ -78,6 +91,7 @@ export function SettingsPage() {
     <SettingsView
       settings={query.data}
       error={query.isError ? query.error : null}
+      moreLinks={moreLinks}
       onRetry={() => void query.refetch()}
       onSubmit={async (values) => {
         const current =

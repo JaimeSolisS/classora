@@ -1536,7 +1536,8 @@
     "tabs": {
       "label": "Settings sections",
       "general": "General",
-      "schedulingPolicies": "Scheduling policies"
+      "schedulingPolicies": "Scheduling policies",
+      "payments": "Payments and receipts"
     },
     "schedulingPolicies": {
       "title": "Scheduling policies",
@@ -1638,6 +1639,52 @@
         "dateRequired": "Choose a date.",
         "dateAfterToday": "Choose a date after today."
       }
+    },
+    "payments": {
+      "title": "Payments and receipts",
+      "help": "The payment methods offered when recording money movements, and the message printed on new receipts.",
+      "methods": {
+        "title": "Payment methods",
+        "help": "Only active methods are offered when recording payments, refunds, withdrawals, payroll payments and expense payments. Activating or deactivating a method asks for your password.",
+        "loading": "Loading the payment methods…",
+        "activate": "Activate",
+        "deactivate": "Deactivate",
+        "activateMethod": "Activate {{method}}",
+        "deactivateMethod": "Deactivate {{method}}",
+        "activated": "{{method}} activated.",
+        "deactivated": "{{method}} deactivated.",
+        "lastActive": "At least one method must stay active.",
+        "reloaded": "The payment methods changed and the list was refreshed. Check it and try again.",
+        "stale": "The payment methods changed and couldn't be reloaded; the list may be out of date.",
+        "confirm": {
+          "title": "Deactivate {{method}}?",
+          "body": "New payments won't be able to use this method. Payments already recorded don't change."
+        }
+      }
+    },
+    "receiptMessage": {
+      "title": "Receipt message",
+      "help": "Printed on new receipts in each receipt's language. Receipts already issued don't change.",
+      "loading": "Loading the receipt message…",
+      "es": "Message in Spanish",
+      "en": "Message in English",
+      "counter": "{{length}} of {{max}} characters",
+      "save": "Save message",
+      "tooLong": "Use at most {{max}} characters.",
+      "invalid": "Use only text and line breaks.",
+      "reloaded": "Someone else changed the settings. The saved message was loaded; make your change again.",
+      "stale": "The settings changed and couldn't be reloaded; the message may be out of date."
+    },
+    "more": {
+      "title": "More settings",
+      "periods": "Academic periods",
+      "periodsHelp": "School years, semesters and terms.",
+      "prices": "Prices",
+      "pricesHelp": "The service price catalog.",
+      "billing": "Billing settings",
+      "billingHelp": "When billing starts and the cancellation billing rules.",
+      "packages": "Packages",
+      "packagesHelp": "The class packages on sale."
     }
   },
   "notifications": {

@@ -1546,7 +1546,8 @@
     "tabs": {
       "label": "Secciones de configuración",
       "general": "General",
-      "schedulingPolicies": "Políticas de agenda"
+      "schedulingPolicies": "Políticas de agenda",
+      "payments": "Pagos y recibos"
     },
     "schedulingPolicies": {
       "title": "Políticas de agenda",
@@ -1648,6 +1649,52 @@
         "dateRequired": "Elige una fecha.",
         "dateAfterToday": "Elige una fecha posterior a hoy."
       }
+    },
+    "payments": {
+      "title": "Pagos y recibos",
+      "help": "Los métodos de pago que se ofrecen al registrar movimientos y el mensaje que se imprime en los recibos nuevos.",
+      "methods": {
+        "title": "Métodos de pago",
+        "help": "Solo los métodos activos se ofrecen al registrar pagos, devoluciones, retiros, pagos de nómina y pagos de gastos. Activar o desactivar un método pide tu contraseña.",
+        "loading": "Cargando los métodos de pago…",
+        "activate": "Activar",
+        "deactivate": "Desactivar",
+        "activateMethod": "Activar {{method}}",
+        "deactivateMethod": "Desactivar {{method}}",
+        "activated": "Se activó {{method}}.",
+        "deactivated": "Se desactivó {{method}}.",
+        "lastActive": "Debe quedar al menos un método activo.",
+        "reloaded": "La lista de métodos cambió y se actualizó. Revísala y vuelve a intentarlo.",
+        "stale": "La lista de métodos cambió y no se pudo recargar; puede estar desactualizada.",
+        "confirm": {
+          "title": "¿Desactivar {{method}}?",
+          "body": "Los pagos nuevos ya no podrán usar este método. Los pagos ya registrados no cambian."
+        }
+      }
+    },
+    "receiptMessage": {
+      "title": "Mensaje en los recibos",
+      "help": "Se imprime en los recibos nuevos en el idioma de cada recibo. Los recibos ya emitidos no cambian.",
+      "loading": "Cargando el mensaje de los recibos…",
+      "es": "Mensaje en español",
+      "en": "Mensaje en inglés",
+      "counter": "{{length}} de {{max}} caracteres",
+      "save": "Guardar mensaje",
+      "tooLong": "Usa como máximo {{max}} caracteres.",
+      "invalid": "Usa solo texto y saltos de línea.",
+      "reloaded": "Alguien más cambió la configuración. Se cargó el mensaje guardado; haz tu cambio de nuevo.",
+      "stale": "La configuración cambió y no se pudo recargar; el mensaje puede estar desactualizado."
+    },
+    "more": {
+      "title": "Más configuración",
+      "periods": "Periodos académicos",
+      "periodsHelp": "Ciclos escolares, semestres y periodos.",
+      "prices": "Precios",
+      "pricesHelp": "El catálogo de precios de los servicios.",
+      "billing": "Configuración de facturación",
+      "billingHelp": "El inicio de la facturación y las reglas de cobro por cancelación.",
+      "packages": "Paquetes",
+      "packagesHelp": "Los paquetes de clases que se venden."
     }
   },
   "notifications": {
