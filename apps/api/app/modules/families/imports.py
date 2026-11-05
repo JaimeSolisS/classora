@@ -100,6 +100,89 @@ _KEYS_SQL: Final = text(
 )
 
 
+_MATCH_SQL: Final = text(
+    """
+    SELECT k.i AS i, s.id AS student_id, s.is_active AS is_active,
+           fs.family_id AS family_id
+    FROM unnest(:g, :f, :b) WITH ORDINALITY AS k(g, f, b, i)
+    LEFT JOIN students s
+           ON public.f_unaccent(lower(s.given_names))
+              = public.f_unaccent(lower(k.g))
+          AND public.f_unaccent(lower(s.family_names))
+              = public.f_unaccent(lower(k.f))
+          AND s.birthdate = k.b
+    LEFT JOIN family_students fs ON fs.student_id = s.id
+    """
+).bindparams(
+    bindparam("g", type_=ARRAY(Text)),
+    bindparam("f", type_=ARRAY(Text)),
+    bindparam("b", type_=ARRAY(Date)),
+)
+
+STUDENT_KEY_COLUMNS: Final = (
+    "student_given_names",
+    "student_family_names",
+    "student_birthdate",
+)
+"""The columns other import kinds name a student with (#123 E10)."""
+
+
+@dataclass(frozen=True)
+class StudentKeyMatch:
+    """What one natural key names (#123 A3): ``status`` is ``found``,
+    ``student_unknown`` (no student) or ``student_ambiguous`` (more than
+    one); a found student carries its id, whether it is active and its
+    current family (``None`` without one)."""
+
+    status: str
+    student_id: uuid.UUID | None = None
+    is_active: bool = False
+    family_id: uuid.UUID | None = None
+
+
+async def students_by_natural_key(
+    session: AsyncSession, keys: Sequence[tuple[str, str, date]]
+) -> list[StudentKeyMatch]:
+    """Per ``(given_names, family_names, birthdate)`` key, in order, the
+    student it names by the #122 natural key (unaccented, case-insensitive
+    names and the birthdate), in **one** statement (none for no keys). Used
+    by the ``schedules`` and ``opening_balances`` import kinds (#123 A3,
+    E10). No access check."""
+    if not keys:
+        return []
+    rows = await session.execute(
+        _MATCH_SQL,
+        {
+            "g": [key[0] for key in keys],
+            "f": [key[1] for key in keys],
+            "b": [key[2] for key in keys],
+        },
+    )
+    found: dict[int, list[Any]] = {}
+    for row in rows:
+        found.setdefault(row.i, [])
+        if row.student_id is not None:
+            found[row.i].append(row)
+    matches: list[StudentKeyMatch] = []
+    for index in range(1, len(keys) + 1):
+        candidates = found.get(index, [])
+        if not candidates:
+            matches.append(StudentKeyMatch("student_unknown"))
+        elif len(candidates) > 1:
+            matches.append(StudentKeyMatch("student_ambiguous"))
+        else:
+            [one] = candidates
+            matches.append(
+                StudentKeyMatch(
+                    "found",
+                    student_id=one.student_id,
+                    is_active=bool(one.is_active),
+                    family_id=one.family_id,
+                )
+            )
+    return matches
+
+
 def parse_birthdate(value: str) -> date | None:
     """``YYYY-MM-DD`` or ``DD/MM/YYYY`` as a date, or ``None``."""
     iso = _ISO_DATE.fullmatch(value)

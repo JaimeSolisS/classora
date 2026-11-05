@@ -8,8 +8,9 @@ exactly as they were (every ledger table is append-only, §5.1).
 
 **Primitives** (exported through ``billing.service``). Each runs in the
 caller's Unit of Work, flushes and never commits, needs the Unit of Work's
-audit actor (a staff member; no job calls them) and audits every row it
-writes (``create``):
+audit actor (a staff member; no job calls them, except the import task,
+which posts opening balances through :func:`post_manual_charge` acting as
+the committer, #123 C3) and audits every row it writes (``create``):
 
 - :func:`post_manual_charge` (R7): a ``manual`` charge for a current member
   of the family, with the staff-entered due date as is (no family offset,
@@ -143,7 +144,9 @@ async def post_manual_charge(
     is allowed) → the family's account (created on first use) →
     :func:`~app.modules.billing.ledger.post_charge` (``kind='manual'``,
     ``list_amount = amount``, ``due_date`` as entered, no family offset, no
-    discounts; it takes the account lock). Never commits."""
+    discounts; it takes the account lock). With an import reference (#123
+    C3) the charge is keyed among imported charges: an already-posted line
+    or row is returned with ``created = False``. Never commits."""
     _actor(session)
     family = await families.family_of_student(session, draft.student_id)
     if family is None or family.id != draft.family_id:
@@ -159,6 +162,8 @@ async def post_manual_charge(
             due_date_base=draft.due_date,
             apply_family_offset=False,
             description=draft.description,
+            import_job_id=draft.import_job_id,
+            import_row_number=draft.import_row_number,
         ),
     )
     if posted.billing_account_id != account_id:

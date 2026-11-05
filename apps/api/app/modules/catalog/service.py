@@ -28,8 +28,10 @@ existing reference to a deactivated one stays valid and is still shown
 the id, name and active flag of levels a record points at (#33: one row,
 optionally locked ``FOR SHARE``, or one statement for a page of records);
 :func:`active_level_ids_by_name` finds active levels by name (#122 student
-imports); :func:`get_subject_for_reference` and :func:`subject_references` do the same
-for subjects, with their level (#44 tutor qualifications);
+imports), :func:`subjects_by_level_and_name` and :func:`classrooms_by_name`
+find subjects and rooms by name (#123 schedule imports);
+:func:`get_subject_for_reference` and :func:`subject_references` do the
+same for subjects, with their level (#44 tutor qualifications);
 :func:`subject_name_columns` is an unexecuted ``(id, name)`` select another
 module joins (#80); :func:`subject_sort_columns` and
 :func:`education_level_sort_columns` add the levels' names and sort order
@@ -63,9 +65,10 @@ Every function runs in the caller's Unit of Work and never commits.
 
 import uuid
 from collections.abc import Collection
+from dataclasses import dataclass
 from typing import Final
 
-from sqlalchemy import ColumnElement, Select, func, select
+from sqlalchemy import ColumnElement, Select, func, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
@@ -112,6 +115,7 @@ from app.modules.catalog.models import (
     LEVEL_NAME_INDEX,
     SORT_ORDER_MAX,
     SUBJECT_NAME_INDEX,
+    Classroom,
     EducationLevel,
     Subject,
 )
@@ -332,6 +336,60 @@ async def active_level_ids_by_name(
         )
     )
     return {name: level_id for name, level_id in rows}
+
+
+@dataclass(frozen=True)
+class NamedReference:
+    """A catalog row found by name (#123 schedule imports): its id and
+    whether a new record may pick it (a subject: it and its level active)."""
+
+    id: uuid.UUID
+    usable: bool
+
+
+async def subjects_by_level_and_name(
+    session: AsyncSession, pairs: Collection[tuple[str, str]]
+) -> dict[tuple[str, str], NamedReference]:
+    """The subjects named by ``(lower(level name), lower(subject name))``
+    pairs (given in lower case), active or not, in one statement; none when
+    ``pairs`` is empty (#123 B1). Subject names are unique per level
+    ignoring case, level names ignoring case."""
+    if not pairs:
+        return {}
+    level = func.lower(EducationLevel.name)
+    subject = func.lower(Subject.name)
+    rows = await session.execute(
+        select(
+            level,
+            subject,
+            Subject.id,
+            Subject.is_active & EducationLevel.is_active,
+        )
+        .join(EducationLevel, EducationLevel.id == Subject.education_level_id)
+        .where(tuple_(level, subject).in_(list(set(pairs))))
+    )
+    return {
+        (level_name, subject_name): NamedReference(subject_id, bool(usable))
+        for level_name, subject_name, subject_id, usable in rows
+    }
+
+
+async def classrooms_by_name(
+    session: AsyncSession, names: Collection[str]
+) -> dict[str, NamedReference]:
+    """The classrooms whose ``lower(name)`` is one of ``names`` (given in
+    lower case), active or not, in one statement; none when ``names`` is
+    empty (#123 B1). Names are unique ignoring case."""
+    if not names:
+        return {}
+    rows = await session.execute(
+        select(func.lower(Classroom.name), Classroom.id, Classroom.is_active).where(
+            func.lower(Classroom.name).in_(set(names))
+        )
+    )
+    return {
+        name: NamedReference(room_id, bool(active)) for name, room_id, active in rows
+    }
 
 
 def _subject_reference(subject: Subject, level: EducationLevel) -> SubjectReference:

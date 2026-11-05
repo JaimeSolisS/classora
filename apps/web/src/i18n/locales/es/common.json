@@ -636,7 +636,9 @@
     "importLink": "Importar",
     "kinds": {
       "students": "Estudiantes",
-      "tutors": "Tutores"
+      "tutors": "Tutores",
+      "schedules": "Horarios recurrentes",
+      "opening_balances": "Saldos iniciales"
     },
     "status": {
       "staged": "Por revisar",
@@ -677,7 +679,9 @@
       "csvHelp": "Guarda tu hoja de Excel como",
       "csvFormat": "CSV UTF-8",
       "submit": "Revisar archivo",
-      "submitting": "Revisando el archivo…"
+      "submitting": "Revisando el archivo…",
+      "schedulesHelp": "Cada fila crea una serie semanal. Los conflictos se revisan al importar: una fila con conflicto no se crea. Para permitir un conflicto, crea la serie a mano con una anulación. Con tutor, se le envía una oferta.",
+      "balancesHelp": "Cada fila crea un cargo manual pendiente para el estudiante, en la cuenta de su familia. Los pagos y saldos a favor no se importan: regístralos en Pagos. Un cargo importado no se borra; se corrige con un ajuste."
     },
     "file": {
       "required": "Elige un archivo CSV.",
@@ -733,6 +737,9 @@
       "commitDescription_one": "Se creará {{count}} registro. Las filas con errores o duplicadas no se importan.",
       "commitDescription_many": "Se crearán {{count}} registros. Las filas con errores o duplicadas no se importan.",
       "commitDescription_other": "Se crearán {{count}} registros. Las filas con errores o duplicadas no se importan.",
+      "commitBalancesDescription_one": "Se publicará {{count}} cargo en las cuentas de las familias. No se puede deshacer; se corrige con ajustes.",
+      "commitBalancesDescription_many": "Se publicarán {{count}} cargos en las cuentas de las familias. No se puede deshacer; se corrige con ajustes.",
+      "commitBalancesDescription_other": "Se publicarán {{count}} cargos en las cuentas de las familias. No se puede deshacer; se corrige con ajustes.",
       "commitConfirm": "Importar",
       "committing": "Importando…",
       "discard": "Descartar",
@@ -776,7 +783,9 @@
       "gone": {
         "discarded": "La importación se descartó y sus filas se eliminaron.",
         "expired": "La importación caducó y sus filas se eliminaron."
-      }
+      },
+      "openSeries": "Ver serie",
+      "chargeCreated": "Cargo creado"
     },
     "rowCodes": {
       "required": "Falta el valor.",
@@ -792,6 +801,34 @@
       "username_taken": "Ese nombre de usuario ya está en uso.",
       "duplicate_existing": "Ya existe un registro igual; no se importa.",
       "duplicate_in_file": "Repite una fila anterior del archivo; no se importa.",
+      "student_unknown": "No hay ningún estudiante con ese nombre y fecha de nacimiento.",
+      "student_ambiguous": "Hay más de un estudiante con ese nombre y fecha de nacimiento.",
+      "student_inactive": "El estudiante está inactivo.",
+      "subject_unknown": "No hay una materia con ese nombre en ese nivel educativo.",
+      "subject_inactive": "La materia o su nivel educativo están inactivos.",
+      "tutor_unknown": "No hay un tutor con ese nombre de usuario.",
+      "tutor_inactive": "El tutor no está activo.",
+      "classroom_unknown": "No hay un aula con ese nombre.",
+      "classroom_inactive": "El aula está inactiva.",
+      "time_format": "Escribe la hora como HH:MM.",
+      "duration_out_of_range": "La duración es de 15 a 480 minutos.",
+      "weekdays_empty": "Elige al menos un día de la semana.",
+      "weekday_out_of_range": "Los días van del 1 (lunes) al 7 (domingo).",
+      "weekdays_duplicate": "Escribe cada día una sola vez.",
+      "interval_out_of_range": "Repite cada 1 a 4 semanas.",
+      "until_and_count": "Indica una fecha final o un número de clases, no ambos.",
+      "count_out_of_range": "Una serie tiene de 1 a 200 clases.",
+      "until_before_start": "La fecha final no puede ser anterior al inicio.",
+      "no_occurrences": "La regla no da ninguna clase.",
+      "starts_on_in_past": "La serie no puede empezar antes de hoy.",
+      "crosses_local_date": "La clase debe empezar y terminar el mismo día.",
+      "scheduling_conflict": "Hay conflictos de horario; la serie no se creó. Créala a mano con una anulación si procede.",
+      "series_not_offerable": "No se pudo ofrecer la serie al tutor; no se creó.",
+      "student_has_no_family": "El estudiante no pertenece a ninguna familia.",
+      "student_not_in_family": "El estudiante cambió de familia; el cargo no se publicó.",
+      "invalid_amount": "Escribe el importe solo con dígitos y hasta 2 decimales con punto (sin signo, símbolo ni separador de miles).",
+      "amount_not_positive": "El importe debe ser mayor que 0.",
+      "date_out_of_range": "La fecha está fuera del rango permitido.",
       "unknown": "Valor no válido ({{code}})."
     }
   },

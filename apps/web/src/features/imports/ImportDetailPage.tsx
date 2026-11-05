@@ -401,9 +401,15 @@ function ImportReport({ job, onAnnounce, onChanged }: ImportReportProps) {
       <ConfirmImportDialog
         open={pending === 'commit'}
         title={t('imports.detail.commitTitle', { count: job.counts.ready })}
-        description={t('imports.detail.commitDescription', {
-          count: job.counts.ready,
-        })}
+        description={
+          job.kind === 'opening_balances'
+            ? t('imports.detail.commitBalancesDescription', {
+                count: job.counts.ready,
+              })
+            : t('imports.detail.commitDescription', {
+                count: job.counts.ready,
+              })
+        }
         confirmLabel={t('imports.detail.commitConfirm')}
         busyLabel={t('imports.detail.committing')}
         onConfirm={() => run('commit')}

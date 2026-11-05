@@ -51,6 +51,10 @@ the pure eligibility and workload ranking rule in
 implementation, for #52 / #55 too), :func:`suggest_for_slot` and
 :func:`suggest_replacements` (the two routes' reads).
 
+Imports (#123): :data:`SCHEDULES_IMPORT_KIND`
+(:mod:`~app.modules.scheduling.imports`), the ``schedules`` import kind the
+composition roots register; each row is one :func:`create_class_series`.
+
 Recurring series (#53): :func:`create_class_series` and
 :func:`get_class_series` (:mod:`~app.modules.scheduling.series`), the pure
 weekly rule (:mod:`~app.modules.scheduling.recurrence`), the one
@@ -650,6 +654,9 @@ from app.modules.scheduling.groups import (
 from app.modules.scheduling.groups import update_group as update_group
 from app.modules.scheduling.groups import (
     withdraw_from_group as withdraw_from_group,
+)
+from app.modules.scheduling.imports import (
+    SCHEDULES_IMPORT_KIND as SCHEDULES_IMPORT_KIND,
 )
 from app.modules.scheduling.locks import lock_students as lock_students
 from app.modules.scheduling.locks import lock_tutor as lock_tutor

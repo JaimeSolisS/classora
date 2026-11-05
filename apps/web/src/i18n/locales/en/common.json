@@ -629,7 +629,9 @@
     "importLink": "Import",
     "kinds": {
       "students": "Students",
-      "tutors": "Tutors"
+      "tutors": "Tutors",
+      "schedules": "Recurring schedules",
+      "opening_balances": "Opening balances"
     },
     "status": {
       "staged": "To review",
@@ -670,7 +672,9 @@
       "csvHelp": "Save your Excel sheet as",
       "csvFormat": "CSV UTF-8",
       "submit": "Check file",
-      "submitting": "Checking the file…"
+      "submitting": "Checking the file…",
+      "schedulesHelp": "Each row creates a weekly series. Conflicts are checked when importing: a row with a conflict isn’t created. To allow a conflict, create the series by hand with an override. With a tutor, they’re sent an offer.",
+      "balancesHelp": "Each row creates a pending manual charge for the student, on their family’s account. Payments and credit balances aren’t imported: record them in Payments. An imported charge isn’t deleted; it’s corrected with an adjustment."
     },
     "file": {
       "required": "Choose a CSV file.",
@@ -723,6 +727,8 @@
       "commitTitle_other": "Import {{count}} rows?",
       "commitDescription_one": "{{count}} record will be created. Rows with errors or duplicates aren't imported.",
       "commitDescription_other": "{{count}} records will be created. Rows with errors or duplicates aren't imported.",
+      "commitBalancesDescription_one": "{{count}} charge will be posted to the families’ accounts. It can’t be undone; it’s corrected with adjustments.",
+      "commitBalancesDescription_other": "{{count}} charges will be posted to the families’ accounts. It can’t be undone; it’s corrected with adjustments.",
       "commitConfirm": "Import",
       "committing": "Importing…",
       "discard": "Discard",
@@ -766,7 +772,9 @@
       "gone": {
         "discarded": "The import was discarded and its rows were deleted.",
         "expired": "The import expired and its rows were deleted."
-      }
+      },
+      "openSeries": "View series",
+      "chargeCreated": "Charge created"
     },
     "rowCodes": {
       "required": "The value is missing.",
@@ -782,6 +790,34 @@
       "username_taken": "That username is already taken.",
       "duplicate_existing": "A matching record already exists; it isn't imported.",
       "duplicate_in_file": "It repeats an earlier row of the file; it isn't imported.",
+      "student_unknown": "No student has that name and birthdate.",
+      "student_ambiguous": "More than one student has that name and birthdate.",
+      "student_inactive": "The student is inactive.",
+      "subject_unknown": "No subject has that name in that education level.",
+      "subject_inactive": "The subject or its education level is inactive.",
+      "tutor_unknown": "No tutor has that username.",
+      "tutor_inactive": "The tutor is not active.",
+      "classroom_unknown": "No classroom has that name.",
+      "classroom_inactive": "The classroom is inactive.",
+      "time_format": "Write the time as HH:MM.",
+      "duration_out_of_range": "The duration is 15 to 480 minutes.",
+      "weekdays_empty": "Choose at least one weekday.",
+      "weekday_out_of_range": "Weekdays are 1 (Monday) to 7 (Sunday).",
+      "weekdays_duplicate": "List each weekday only once.",
+      "interval_out_of_range": "Repeat every 1 to 4 weeks.",
+      "until_and_count": "Give an end date or a number of classes, not both.",
+      "count_out_of_range": "A series has 1 to 200 classes.",
+      "until_before_start": "The end date can’t be before the start.",
+      "no_occurrences": "The rule gives no class.",
+      "starts_on_in_past": "The series can’t start before today.",
+      "crosses_local_date": "A class starts and ends on the same day.",
+      "scheduling_conflict": "There are scheduling conflicts; the series wasn’t created. Book it by hand with an override if it applies.",
+      "series_not_offerable": "The series couldn’t be offered to the tutor; it wasn’t created.",
+      "student_has_no_family": "The student doesn’t belong to any family.",
+      "student_not_in_family": "The student changed family; the charge wasn’t posted.",
+      "invalid_amount": "Write the amount with digits only and up to 2 decimals after a point (no sign, symbol or thousands separator).",
+      "amount_not_positive": "The amount must be more than 0.",
+      "date_out_of_range": "The date is outside the allowed range.",
       "unknown": "Invalid value ({{code}})."
     }
   },

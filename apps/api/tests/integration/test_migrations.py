@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0088"
+HEAD = "0089"
 FINANCE_TABLES_0083 = frozenset({"expense_categories", "vendors"})
 EXPENSE_TABLES_0084 = frozenset(
     {"expenses", "expense_payments", "expense_payment_reversals", "expense_adjustments"}
@@ -4939,9 +4939,34 @@ def _of_0088(diff: Any) -> bool:
     return diff[0] == "add_index" and diff[1].table.name in IMPORT_TABLES_0088
 
 
+IMPORT_REF_0089 = ("import_job_id", "import_row_number")
+
+
+def _of_0089(diff: Any) -> bool:
+    """A metadata difference that revision 0089 adds: the import reference
+    of ``charges``, its foreign key and both unique keys (#123 D1; CHECKs are
+    not compared)."""
+    if diff[0] == "add_column":
+        return diff[2] == "charges" and diff[3].name in IMPORT_REF_0089
+    if diff[0] == "add_fk":
+        return diff[1].parent.name == "charges" and diff[1].column_keys == [
+            "import_job_id"
+        ]
+    if diff[0] == "add_index":
+        return bool(diff[1].name == "uq_charges_import_line")
+    if diff[0] == "add_constraint":
+        return bool(diff[1].name == "uq_charges_import_row")
+    return False
+
+
+def _of_0088_on(diff: Any) -> bool:
+    """A metadata difference that revision 0088 or a later one adds."""
+    return _of_0088(diff) or _of_0089(diff)
+
+
 def _of_0087_on(diff: Any) -> bool:
     """A metadata difference that revision 0087 or a later one adds."""
-    return _of_0087(diff) or _of_0088(diff)
+    return _of_0087(diff) or _of_0088_on(diff)
 
 
 def _of_0086_on(diff: Any) -> bool:
@@ -11417,6 +11442,8 @@ def test_ledger_columns_constraints_indexes_triggers_and_view(fresh_database_url
         "proration_total": ("smallint", "YES", None, None),
         "tuition_plan_id": uuid_null,
         "package_id": uuid_null,
+        "import_job_id": uuid_null,
+        "import_row_number": ("integer", "YES", None, None),
     }
     # E3: the staged columns come with their own issues (#95 added
     # custom_price_id, #92 the proration, #93 tuition_plan_id, #94
@@ -17044,7 +17071,7 @@ def test_0087_adds_the_message_columns_and_downgrade_restores_0086(
     command.upgrade(config, "0087")
 
     assert version_nums(dsn) == ["0087"]
-    assert [d for d in metadata_diff(dsn) if not _of_0088(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0088_on(d)] == []
     added = _columns(dsn, "business_settings")
     assert {k: v for k, v in added.items() if k not in columns} == {
         "receipt_message_es": ("character varying", "YES", 500, None),
@@ -17166,14 +17193,14 @@ def test_0088_adds_the_tables_and_downgrade_restores_0087(fresh_database_url):
     command.upgrade(config, "0088")
 
     assert version_nums(dsn) == ["0088"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0089(d)] == []
     assert public_tables(dsn) - tables == set(IMPORT_TABLES_0088)
 
     command.downgrade(config, "0087")
 
     assert version_nums(dsn) == ["0087"]
     assert public_tables(dsn) == tables
-    assert [d for d in metadata_diff(dsn) if not _of_0088(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0088_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -17313,3 +17340,208 @@ def test_0088_rows_cascade_with_their_job_and_users_restrict(fresh_database_url)
     run_sql(dsn, "DELETE FROM import_jobs WHERE id = :j", {"j": job_id})
 
     assert run_sql(dsn, "SELECT count(*) AS n FROM import_rows")[0].n == 0
+
+
+# --- 0089: the import reference of an opening balance (#123 D1, D2) -----
+
+
+def _account_0089(dsn: str) -> tuple[str, str]:
+    """A family's billing account and one student (raw SQL)."""
+    [family] = run_sql(
+        dsn, "INSERT INTO families (name) VALUES ('Familia Saldos') RETURNING id"
+    )
+    [student] = run_sql(
+        dsn,
+        "INSERT INTO students (given_names, family_names, birthdate)"
+        " VALUES ('Ana', 'Saldos', '2015-01-01') RETURNING id",
+    )
+    [account] = run_sql(
+        dsn,
+        "INSERT INTO billing_accounts (family_id) VALUES (:f) RETURNING id",
+        {"f": family.id},
+    )
+    return str(account.id), str(student.id)
+
+
+def _charge_0089(
+    dsn: str,
+    account_id: str,
+    student_id: str,
+    *,
+    kind: str = "manual",
+    description: str | None = "Saldo inicial",
+    job_id: str | None = None,
+    row_number: int | None = None,
+    service_date: date = date(2026, 9, 1),
+) -> str:
+    [row] = run_sql(
+        dsn,
+        "INSERT INTO charges (billing_account_id, student_id, kind, service_date,"
+        " service_period_end, list_amount, amount, due_date, description,"
+        " posted_at, import_job_id, import_row_number)"
+        " VALUES (:a, :s, :k, :d, :e,"
+        " 100, 100, '2026-10-01', :t, now(), :j, :r) RETURNING id",
+        {
+            "a": account_id,
+            "s": student_id,
+            "k": kind,
+            "d": service_date,
+            "e": service_date if kind == "tuition_period" else None,
+            "t": description,
+            "j": job_id,
+            "r": row_number,
+        },
+    )
+    return str(row.id)
+
+
+def test_0089_adds_the_import_reference_and_downgrade_restores_0088(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0088")
+    columns = set(_columns(dsn, "charges"))
+    constraints = set(_constraints(dsn, "charges"))
+    indexes = set(_indexes(dsn, "charges"))
+
+    command.upgrade(config, "0089")
+
+    assert version_nums(dsn) == ["0089"]
+    assert metadata_diff(dsn) == []
+    assert set(_columns(dsn, "charges")) - columns == set(IMPORT_REF_0089)
+    assert set(_constraints(dsn, "charges")) - constraints == {
+        "fk_charges_import_job_id_import_jobs",
+        "ck_charges_import_ref",
+        "uq_charges_import_row",
+    }
+    assert set(_indexes(dsn, "charges")) - indexes == {
+        "uq_charges_import_row",
+        "uq_charges_import_line",
+    }
+
+    command.downgrade(config, "0088")
+
+    assert version_nums(dsn) == ["0088"]
+    assert set(_columns(dsn, "charges")) == columns
+    assert set(_constraints(dsn, "charges")) == constraints
+    assert set(_indexes(dsn, "charges")) == indexes
+    assert [d for d in metadata_diff(dsn) if not _of_0089(d)] == []
+
+    command.upgrade(config, "head")
+
+    assert metadata_diff(dsn) == []
+
+
+def test_0089_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    columns = _columns(dsn, "charges")
+    assert columns["import_job_id"] == ("uuid", "YES", None, None)
+    assert columns["import_row_number"] == ("integer", "YES", None, None)
+    constraints = _constraints(dsn, "charges")
+    assert constraints["fk_charges_import_job_id_import_jobs"] == (
+        "FOREIGN KEY (import_job_id) REFERENCES import_jobs(id) ON DELETE RESTRICT"
+    )
+    assert constraints["uq_charges_import_row"] == (
+        "UNIQUE (import_job_id, import_row_number)"
+    )
+    check = constraints["ck_charges_import_ref"]
+    assert "import_job_id IS NULL" in check and "import_row_number IS NULL" in check
+    assert "'manual'" in check
+    line = _indexes(dsn, "charges")["uq_charges_import_line"]
+    assert "UNIQUE" in line
+    assert "(student_id, service_date, lower((description)::text))" in line
+    assert "WHERE (import_job_id IS NOT NULL)" in line
+
+
+@pytest.mark.parametrize(
+    ("kind", "with_job", "row_number"),
+    [
+        ("manual", True, None),
+        ("manual", False, 2),
+        ("tuition_period", True, 2),
+    ],
+)
+def test_0089_the_import_reference_check(
+    fresh_database_url, kind, with_job, row_number
+):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    account_id, student_id = _account_0089(dsn)
+    job_id = _job_0088(dsn, _user_0088(dsn)) if with_job else None
+
+    with pytest.raises(IntegrityError) as caught:
+        _charge_0089(
+            dsn,
+            account_id,
+            student_id,
+            kind=kind,
+            description="Saldo" if kind == "manual" else None,
+            job_id=job_id,
+            row_number=row_number,
+        )
+
+    assert "ck_charges_import_ref" in str(caught.value.orig)
+
+
+def test_0089_both_unique_keys_and_the_job_restrict(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    account_id, student_id = _account_0089(dsn)
+    job_id = _job_0088(dsn, _user_0088(dsn))
+    other_job = _job_0088(dsn, _user_0088(dsn))
+    _charge_0089(dsn, account_id, student_id, job_id=job_id, row_number=2)
+    # Hand-posted charges with the same line never collide.
+    _charge_0089(dsn, account_id, student_id)
+    _charge_0089(dsn, account_id, student_id)
+
+    with pytest.raises(IntegrityError) as same_row:
+        _charge_0089(
+            dsn,
+            account_id,
+            student_id,
+            description="Otra línea",
+            job_id=job_id,
+            row_number=2,
+        )
+    with pytest.raises(IntegrityError) as same_line:
+        _charge_0089(
+            dsn,
+            account_id,
+            student_id,
+            description="SALDO INICIAL",
+            job_id=other_job,
+            row_number=2,
+        )
+    with pytest.raises(IntegrityError) as restricted:
+        run_sql(dsn, "DELETE FROM import_jobs WHERE id = :j", {"j": job_id})
+
+    assert "uq_charges_import_row" in str(same_row.value.orig)
+    assert "uq_charges_import_line" in str(same_line.value.orig)
+    assert getattr(restricted.value.orig, "sqlstate", None) == "23001"
+    # Another date is another line.
+    _charge_0089(
+        dsn,
+        account_id,
+        student_id,
+        job_id=other_job,
+        row_number=3,
+        service_date=date(2026, 9, 2),
+    )
+
+
+def test_0089_downgrade_refuses_while_imported_charges_exist(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "head")
+    account_id, student_id = _account_0089(dsn)
+    job_id = _job_0088(dsn, _user_0088(dsn))
+    _charge_0089(dsn, account_id, student_id, job_id=job_id, row_number=2)
+
+    with pytest.raises(DBAPIError, match="imported charges exist"):
+        command.downgrade(config, "0088")
+
+    assert version_nums(dsn) == [HEAD]
+    assert set(IMPORT_REF_0089) <= set(_columns(dsn, "charges"))

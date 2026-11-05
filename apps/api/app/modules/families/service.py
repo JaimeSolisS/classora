@@ -94,7 +94,9 @@ profile is linked to the student and who have academic access (a minor on
 which the composition roots register with
 ``administration.service.register_import_kind``; its rows are created by
 :func:`create_imported_student` (:func:`create_student` without a
-principal).
+principal). :func:`students_by_natural_key` resolves the same natural key
+for the ``schedules`` and ``opening_balances`` kinds (#123 A3, E10), in one
+statement; :func:`parse_birthdate` reads their dates.
 
 **Ages:** :func:`is_minor` (re-exported from ``ages``) with
 ``administration.service.center_today(session)`` (the center's time zone
@@ -145,7 +147,13 @@ from app.modules.families.facts import (
     load_access_facts,
     own_student_id,
 )
-from app.modules.families.imports import STUDENTS_IMPORT_KIND
+from app.modules.families.imports import (
+    STUDENT_KEY_COLUMNS,
+    STUDENTS_IMPORT_KIND,
+    StudentKeyMatch,
+    parse_birthdate,
+    students_by_natural_key,
+)
 from app.modules.families.models import (
     ConsentRecord,
     Guardian,
@@ -197,6 +205,10 @@ __all__ = [
     "create_imported_student",
     "create_student",
     "STUDENTS_IMPORT_KIND",
+    "STUDENT_KEY_COLUMNS",
+    "StudentKeyMatch",
+    "parse_birthdate",
+    "students_by_natural_key",
     "families_of_students",
     "family_of_student",
     "family_billing_recipients",

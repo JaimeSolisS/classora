@@ -168,6 +168,10 @@ committing:
   ``manual`` charge for a current member of the family (else
   :class:`StudentNotInFamilyError`), no family offset, no discounts, no
   billing floor.
+  With an import reference (#123) it posts an opening balance, keyed
+  among imported charges; :data:`OPENING_BALANCES_IMPORT_KIND`
+  (:mod:`~app.modules.billing.imports`) is the ``opening_balances`` import
+  kind the composition roots register.
 - :func:`post_manual_adjustment` (``ManualAdjustmentResult``): a signed
   ``manual`` adjustment; ``package_purchase`` charges are refused
   (:class:`PackagePurchaseNotAdjustableError`); I1 →
@@ -554,6 +558,9 @@ from app.modules.billing.errors import (
 )
 from app.modules.billing.errors import (
     WithdrawalSubjectNotFoundError as WithdrawalSubjectNotFoundError,
+)
+from app.modules.billing.imports import (
+    OPENING_BALANCES_IMPORT_KIND as OPENING_BALANCES_IMPORT_KIND,
 )
 from app.modules.billing.ledger import (
     ENROLLMENT_REMOVAL as ENROLLMENT_REMOVAL,

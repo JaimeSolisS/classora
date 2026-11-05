@@ -505,10 +505,16 @@ describe('route tree', () => {
     expect(children[121]!.handle).toEqual({ permission: 'settings.manage' });
     expect(children[121]!.lazy).toBeTypeOf('function');
     expect(children[121]!.element).toBeUndefined();
-    // M8-05b A1: imports, any import kind's permission, code-split.
+    // M8-05b A1: imports, any import kind's permission (#123 F1 adds
+    // schedule.manage and billing.manage), code-split.
     for (const index of [122, 123]) {
       expect(children[index]!.handle).toEqual({
-        anyPermission: ['student.manage', 'user.invite'],
+        anyPermission: [
+          'student.manage',
+          'user.invite',
+          'schedule.manage',
+          'billing.manage',
+        ],
       });
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();

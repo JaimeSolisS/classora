@@ -26,7 +26,7 @@ import {
   POLL_TIMEOUT_MS,
   type ImportJob,
 } from './api';
-import { ROW_CODES } from './codes';
+import { CONFLICT_CODES, ROW_CODES } from './codes';
 import {
   COMMITTED,
   COMMITTED_ROWS,
@@ -842,7 +842,55 @@ describe('the row codes (C4)', () => {
       'username_taken',
       'duplicate_existing',
       'duplicate_in_file',
+      'student_unknown',
+      'student_ambiguous',
+      'student_inactive',
+      'subject_unknown',
+      'subject_inactive',
+      'tutor_unknown',
+      'tutor_inactive',
+      'classroom_unknown',
+      'classroom_inactive',
+      'time_format',
+      'duration_out_of_range',
+      'weekdays_empty',
+      'weekday_out_of_range',
+      'weekdays_duplicate',
+      'interval_out_of_range',
+      'until_and_count',
+      'count_out_of_range',
+      'until_before_start',
+      'no_occurrences',
+      'starts_on_in_past',
+      'crosses_local_date',
+      'scheduling_conflict',
+      'series_not_offerable',
+      'student_has_no_family',
+      'student_not_in_family',
+      'invalid_amount',
+      'amount_not_positive',
+      'date_out_of_range',
     ]);
+    // #123 B4: the ADR-0005 hard and soft codes of a scheduling_conflict.
+    expect(CONFLICT_CODES).toEqual([
+      'tutor_overlap',
+      'room_overlap',
+      'student_overlap',
+      'room_capacity_exceeded',
+      'tutor_unavailable',
+      'room_unavailable',
+      'center_closed',
+      'outside_operating_hours',
+      'tutor_not_qualified',
+      'group_capacity_exceeded',
+      'notice_window',
+    ]);
+  });
+
+  it.each(
+    CONFLICT_CODES.flatMap((code) => LANGUAGES.map((lng) => [code, lng])),
+  )('conflict %s has a %s label (the scheduling rule name)', (code, lng) => {
+    expect(i18n.exists(`scheduling.rules.${code}`, { lng })).toBe(true);
   });
 
   it.each(ROW_CODES.flatMap((code) => LANGUAGES.map((lng) => [code, lng])))(
@@ -851,4 +899,199 @@ describe('the row codes (C4)', () => {
       expect(i18n.exists(`imports.rowCodes.${code}`, { lng })).toBe(true);
     },
   );
+});
+
+// #123 F1-F4: the recurring schedules and opening balances kinds on the same
+// page: who sees which kind, their templates and help, a failed schedules
+// row with its conflicts, the record cells and the balances commit dialog.
+describe('schedules and opening balances (#123)', () => {
+  const FULL_OWNER = user(
+    ['owner'],
+    [
+      'user.view',
+      'user.invite',
+      'user.role.assign',
+      'student.view',
+      'student.manage',
+      'tutor.view',
+      'schedule.view',
+      'schedule.manage',
+      'billing.view',
+      'billing.manage',
+    ],
+  );
+  const BILLING = user(
+    ['finance_staff'],
+    ['student.view', 'billing.view', 'billing.manage'],
+  );
+  const SERIES_ID = '0199b000-0000-7000-8000-0000000000c1';
+  const CHARGE_ID = '0199b000-0000-7000-8000-0000000000d1';
+
+  it('shows Finance the Imports item with opening balances only', async () => {
+    stub(BILLING);
+    await open('/imports');
+    expect(
+      app!.container.querySelector('header nav a[href="/imports"]'),
+    ).not.toBeNull();
+    const select = field<HTMLSelectElement>('Data type');
+    expect([...select.options].map((option) => option.value)).toEqual([
+      'opening_balances',
+    ]);
+    expect(select.value).toBe('opening_balances');
+    expect(main().textContent).toContain(
+      'Each row creates a pending manual charge for the student',
+    );
+    const required = [...main().querySelectorAll('dd')][0]!.textContent;
+    expect(required).toBe(
+      'student_given_namesstudent_family_namesstudent_birthdatedescriptionamountservice_datedue_date',
+    );
+  });
+
+  it('offers an Owner with every permission the four kinds', async () => {
+    stub(FULL_OWNER);
+    await open('/imports?kind=schedules');
+    const select = field<HTMLSelectElement>('Data type');
+    expect([...select.options].map((option) => option.textContent)).toEqual([
+      'Choose a type',
+      'Students',
+      'Tutors',
+      'Recurring schedules',
+      'Opening balances',
+    ]);
+    expect(select.value).toBe('schedules');
+    expect(main().textContent).toContain(
+      'Each row creates a weekly series. Conflicts are checked when importing',
+    );
+    const optional = [...main().querySelectorAll('dd')][1]!.textContent;
+    expect(optional).toBe('intervaluntilcounttutor_usernameclassroom');
+  });
+
+  it('keeps a Coordinator to students', async () => {
+    stub(COORDINATOR);
+    await open('/imports?kind=opening_balances');
+    const select = field<HTMLSelectElement>('Data type');
+    expect([...select.options].map((option) => option.value)).toEqual([
+      'students',
+    ]);
+  });
+
+  it.each([
+    [
+      'schedules',
+      'student_given_names,student_family_names,student_birthdate,subject,education_level,starts_on,start_time,duration_minutes,weekdays,interval,until,count,tutor_username,classroom\r\n' +
+        'Ana Sofía,Ejemplo Pérez,2014-03-15,Matemáticas,Primaria,2031-01-06,16:00,60,1 3,1,,24,tutor.ejemplo,\r\n',
+    ],
+    [
+      'opening_balances',
+      'student_given_names,student_family_names,student_birthdate,description,amount,service_date,due_date\r\n' +
+        'Ana Sofía,Ejemplo Pérez,2014-03-15,Saldo inicial,1250.00,2031-01-01,2031-01-15\r\n',
+    ],
+  ])('%s: the template', (code, expected) => {
+    expect(templateCsv(importKind(code)!)).toBe(`\uFEFF${expected}`);
+  });
+
+  it('shows a failed schedules row with its conflicts and links a created series', async () => {
+    const job: ImportJob = {
+      ...COMMITTED,
+      kind: 'schedules',
+      counts: { ...COMMITTED.counts, created: 1, failed: 1 },
+    };
+    stub(FULL_OWNER, {
+      [DETAIL]: () => jsonResponse(200, job),
+      [ROWS]: () =>
+        jsonResponse(
+          200,
+          rowPage([
+            {
+              row_number: 2,
+              status: 'created',
+              values: null,
+              errors: [],
+              warnings: [],
+              record_id: SERIES_ID,
+            },
+            {
+              row_number: 3,
+              status: 'failed',
+              values: null,
+              errors: [
+                { column: null, code: 'scheduling_conflict' },
+                { column: null, code: 'tutor_overlap' },
+                { column: null, code: 'outside_operating_hours' },
+              ],
+              warnings: [],
+              record_id: null,
+            },
+          ]),
+        ),
+    });
+    await open(`/imports/${JOB_ID}`);
+    await settleUntil(() => main().querySelector('tbody'));
+
+    const link = main().querySelector<HTMLAnchorElement>(
+      `tbody a[href="/schedule/series/${SERIES_ID}"]`,
+    );
+    expect(link?.textContent).toBe('View series (line 2)');
+    const failed = main().querySelectorAll('tbody tr')[1]!.textContent;
+    expect(failed).toContain(
+      'There are scheduling conflicts; the series wasn’t created.',
+    );
+    expect(failed).toContain('Tutor overlap');
+    expect(failed).toContain('Opening hours');
+    expect(failed).not.toContain('Invalid value');
+  });
+
+  it('says a created balance is a charge, with no link', async () => {
+    const job: ImportJob = { ...COMMITTED, kind: 'opening_balances' };
+    stub(BILLING, {
+      [DETAIL]: () => jsonResponse(200, job),
+      [ROWS]: () =>
+        jsonResponse(
+          200,
+          rowPage([
+            {
+              row_number: 2,
+              status: 'created',
+              values: null,
+              errors: [],
+              warnings: [],
+              record_id: CHARGE_ID,
+            },
+          ]),
+        ),
+    });
+    await open(`/imports/${JOB_ID}`);
+    await settleUntil(() => main().querySelector('tbody'));
+
+    const cells = main().querySelectorAll('tbody td');
+    expect(cells[cells.length - 1]!.textContent).toBe('Charge created');
+    expect(main().querySelector('tbody a')).toBeNull();
+  });
+
+  it('warns before posting the balances', async () => {
+    stub(BILLING, {
+      [DETAIL]: () =>
+        jsonResponse(200, { ...STAGED, kind: 'opening_balances' }),
+    });
+    await open(`/imports/${JOB_ID}`);
+    await click(buttonNamed(main(), 'Import 2 rows'));
+
+    expect(dialog()!.textContent).toContain(
+      '2 charges will be posted to the families’ accounts. It can’t be undone; it’s corrected with adjustments.',
+    );
+  });
+
+  it('says the same in Spanish', async () => {
+    applyLanguage('es');
+    stub(BILLING, {
+      [DETAIL]: () =>
+        jsonResponse(200, { ...STAGED, kind: 'opening_balances' }),
+    });
+    await open(`/imports/${JOB_ID}`);
+    await click(buttonNamed(main(), 'Importar 2 filas'));
+
+    expect(dialog()!.textContent).toContain(
+      'Se publicarán 2 cargos en las cuentas de las familias. No se puede deshacer; se corrige con ajustes.',
+    );
+  });
 });

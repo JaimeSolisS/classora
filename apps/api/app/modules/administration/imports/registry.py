@@ -22,7 +22,9 @@ The kind decides everything that depends on its records:
   commit transaction;
 - :meth:`ImportKind.commit_row`: create one record from one row's staged
   values, inside the pipeline's savepoint, with the row reference
-  :class:`ImportRowRef` (#123 E7).
+  :class:`ImportRowRef` (#123 E7). A kind that needs a process setting (the
+  scheduling horizon, #123 B4) reads the run's settings with
+  :func:`run_settings`.
 
 Codes in :class:`RowIssue` are stable strings and never carry a value.
 """
@@ -36,9 +38,14 @@ from typing import Final, Literal, Protocol
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import PERMISSION_CODE_PATTERN, Principal
+from app.core.config import Settings, get_settings
 from app.modules.administration.imports.models import KIND_CODE_PATTERN
 
 _KIND_CODE: Final = re.compile(KIND_CODE_PATTERN)
+
+RUN_SETTINGS_KEY: Final = "administration.import_run_settings"
+"""The ``session.info`` key under which the import task puts the run's
+:class:`~app.core.config.Settings` for each batch's Unit of Work."""
 
 DEFAULT_BATCH_SIZE: Final = 100
 """Ready rows committed per transaction unless the kind says otherwise."""
@@ -199,3 +206,12 @@ def import_kind(code: str) -> ImportKind | None:
 def importable_kinds(principal: Principal) -> list[str]:
     """The registered kinds ``principal`` may import, sorted."""
     return sorted(code for code, kind in _kinds.items() if kind.may_import(principal))
+
+
+def run_settings(session: AsyncSession) -> Settings:
+    """The settings of the import run committing in ``session`` (#123 B4:
+    the scheduling horizon), else the process settings."""
+    settings = session.info.get(RUN_SETTINGS_KEY)
+    if isinstance(settings, Settings):
+        return settings
+    return get_settings()

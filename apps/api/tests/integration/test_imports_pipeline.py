@@ -155,7 +155,9 @@ def test_g2_who_may_import_each_kind(client, users, role, students, tutors):
     for response in (s, t):
         if response.status_code == 403:
             assert response.json()["code"] == "permission_denied"
-    assert listed.status_code == (200 if students == 201 else 403)
+    # #123 E1: Finance may import opening balances, so it may list (its kinds).
+    may_list = students == 201 or role == FINANCE_STAFF
+    assert listed.status_code == (200 if may_list else 403)
 
 
 def test_g2_anonymous_gets_401(client):
@@ -227,11 +229,12 @@ def test_b1_a_body_over_2_mib_is_413_by_length_and_while_streaming(client, owner
 
 
 def test_b1_order_permission_before_size_and_validation(client, users):
-    finance = actor(client, users, FINANCE_STAFF)
+    # A tutor may import no kind (#123: Finance now may import balances).
+    nobody = actor(client, users, TUTOR)
     coordinator = actor(client, users, ACADEMIC_COORDINATOR)
     big = b"x" * (MAX_BODY_BYTES + 1)
 
-    denied_big = post_raw(client, finance.cookie, big)
+    denied_big = post_raw(client, nobody.cookie, big)
     no_csrf = client.post(IMPORTS, content=big, headers={"Cookie": "x=y"})
     invalid_json = post_raw(client, coordinator.cookie, b"{nope")
     unknown_kind = post_import(client, coordinator.cookie, "payments", "a\nb\n")

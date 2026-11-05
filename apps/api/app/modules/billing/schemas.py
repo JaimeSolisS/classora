@@ -374,6 +374,10 @@ class ChargeDraft:
     ``group_enrollment`` and ``cohort_enrollment`` only, ``1 <= total`` and
     ``0 <= remaining <= total``; ``None`` for every other charge and for an
     open-ended group fee."""
+    import_job_id: uuid.UUID | None = None
+    """The import job of an opening balance (#123 E6): ``manual`` only, and
+    together with ``import_row_number``."""
+    import_row_number: int | None = None
 
     @classmethod
     def priced(cls, quote: Quote, **source_fields: Any) -> ChargeDraft:
@@ -421,6 +425,17 @@ class ChargeDraft:
             raise ValueError("discount_amount can't exceed list_amount")
         self._check_pricing(discount)
         self._check_proration()
+        self._check_import_ref()
+
+    def _check_import_ref(self) -> None:
+        """#123 D1: both import columns or neither, on a manual charge only
+        (``ck_charges_import_ref`` is the backstop)."""
+        if (self.import_job_id is None) != (self.import_row_number is None):
+            raise ValueError("an import reference is a job and a row number")
+        if self.import_job_id is not None and self.kind != MANUAL:
+            raise ValueError("only a manual charge carries an import reference")
+        if self.import_row_number is not None and self.import_row_number < 1:
+            raise ValueError("an import row number is positive")
 
     def _check_proration(self) -> None:
         """#92 A2: a proration only on an enrollment fee, in range (the
@@ -1842,6 +1857,11 @@ class ManualChargeDraft:
     amount: Money
     service_date: date
     due_date: date
+    import_job_id: uuid.UUID | None = None
+    """An opening balance's import job (#123 C3; both import fields or
+    neither). Never from a request body: ``ManualChargeCreate`` forbids
+    extra fields."""
+    import_row_number: int | None = None
 
     def __post_init__(self) -> None:
         if not _require_money(self.amount, "amount").is_positive():
