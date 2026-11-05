@@ -503,7 +503,10 @@ describe('the inbox, the session page and notifications (G2, F3)', () => {
 
     const link = main().querySelector<HTMLAnchorElement>(`a[href="${PATH}"]`);
     expect(link?.textContent).toBe('Review');
-    expect(main().querySelectorAll('tbody button')).toHaveLength(0);
+    // Only "View details" (M8-01b A3): no Approve or Reject.
+    expect(
+      [...main().querySelectorAll('tbody button')].map((b) => b.textContent),
+    ).toEqual(['View details']);
   });
 
   it('a route_required error names the review page', () => {

@@ -509,7 +509,10 @@ describe('the inbox and the family (H2, G2, F3)', () => {
       `a[href="/schedule/requests/${REQUEST_ID}"]`,
     );
     expect(link?.textContent).toBe('Review');
-    expect(main().querySelectorAll('tbody button')).toHaveLength(0);
+    // Only "View details" (M8-01b A3): no Approve or Reject.
+    expect(
+      [...main().querySelectorAll('tbody button')].map((b) => b.textContent),
+    ).toEqual(['View details']);
   });
 
   it('a route_required error names the review page', () => {
