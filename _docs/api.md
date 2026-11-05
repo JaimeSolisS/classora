@@ -820,8 +820,9 @@ architecture §4.1) in `apps/api/app/modules/administration/` (`models.py`,
 `approvals.py`, `approvals_router.py`), exported through
 `administration.service`. M8-01 (#118) added assignment, the assignee
 options, the `sort` and `priority` list parameters and the assignment
-notification. The web app lists the inbox at `/approvals`; its detail panel
-and assignment controls are M8-01b.
+notification. The web app lists the inbox at `/approvals`; M8-01b added the
+priority filter and sort, the detail panel (`/approvals?item=<id>`) and the
+assignment controls.
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
@@ -937,8 +938,12 @@ requests):
    `approval_request_id_for_subject` finds the request of a subject.
 4. Web: add the review permission to `APPROVAL_REVIEW_PERMISSIONS`, a label
    to `APPROVAL_TYPE_LABELS`, a summary renderer in
-   `features/approvals/summary.ts` and, when a rejection needs a reason, the
-   type to `REJECT_REASON_REQUIRED`.
+   `features/approvals/summary.ts`, a detail panel renderer in
+   `DETAIL_RENDERERS` (`features/approvals/details.ts`) and, when a rejection
+   needs a reason, the type to `REJECT_REASON_REQUIRED`, plus a fixture in
+   `ITEMS_BY_TYPE` (`fixtures.ts`); the web pin
+   `features/approvals/details.test.ts` (`EXPECTED_TYPES`) fails until all of
+   them have it.
 5. Add the type and its `(review_permission, inbox_decisions,
    supports_request_changes, reason_required_on_reject)` to `EXPECTED` in
    `tests/integration/test_approval_inbox_types.py`, which checks that every
@@ -1066,7 +1071,8 @@ active guardian profiles; plural on `count`, `open_total` shown as money;
 no link until the family portal pages, M6-17b #388).
 `administration.approval_assigned` `{request_id, request_type}` (#118, see
 Approval requests; to the new assignee when someone else assigned them; no
-names, no subject data; the web message and link come with M8-01b).
+names, no subject data; the web names the type's label and links to
+`/approvals?item=<request_id>`, M8-01b).
 
 **Adding a type** (later issues: #44 qualification decisions, M4 offers and
 reminders):

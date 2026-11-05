@@ -872,3 +872,38 @@ describe('the payment reminder notification (#97 F6)', () => {
     }
   });
 });
+
+// M8-01b C3: a request someone else assigned to the reader.
+describe('the approval assigned notification (M8-01b C3)', () => {
+  const assigned = (lng: 'es' | 'en', request_type: string) =>
+    notificationMessage(i18n.getFixedT(lng), i18n, {
+      notification_type: 'administration.approval_assigned',
+      params: {
+        request_id: '00000000-0000-4000-8000-0000000000c1',
+        request_type,
+      },
+    });
+
+  it("names the type's label in both languages, never an id", () => {
+    expect(assigned('es', 'identity.registration')).toBe(
+      'Te asignaron una solicitud: Solicitud de cuenta',
+    );
+    expect(assigned('en', 'academics.session_closeout')).toBe(
+      'A request was assigned to you: Session closeout',
+    );
+    expect(assigned('en', 'identity.registration')).not.toContain('0000');
+    // An unknown type shows its code.
+    expect(assigned('en', 'finance.refund')).toBe(
+      'A request was assigned to you: finance.refund',
+    );
+  });
+
+  it("links to the request's detail panel, the inbox without an id", () => {
+    const link = NOTIFICATION_LINKS['administration.approval_assigned']!;
+    const recipient = { userId: '00000000-0000-4000-8000-000000000001' };
+    expect(
+      link({ request_id: '00000000-0000-4000-8000-0000000000c1' }, recipient),
+    ).toBe('/approvals?item=00000000-0000-4000-8000-0000000000c1');
+    expect(link({}, recipient)).toBe('/approvals');
+  });
+});

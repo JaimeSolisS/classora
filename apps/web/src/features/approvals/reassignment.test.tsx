@@ -129,7 +129,7 @@ describe('the reassignment item (H3)', () => {
     expect(link?.textContent).toBe('Open the session');
     expect(
       [...main().querySelectorAll('tbody button')].map((b) => b.textContent),
-    ).toEqual(['Mark resolved', 'Dismiss']);
+    ).toEqual(['View details', 'Mark resolved', 'Dismiss']);
   });
 
   it('reassignment_still_needed shows in the dialog', async () => {
