@@ -78,7 +78,7 @@ export function ImportHistory({
               <TableCell>
                 <Link
                   to={`/imports/${job.id}`}
-                  className="inline-flex min-h-11 items-center font-medium underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring md:min-h-6"
+                  className="inline-flex min-h-11 max-w-64 items-center font-medium [overflow-wrap:anywhere] underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring md:min-h-6"
                 >
                   {job.file_name ?? t('imports.history.noFileName')}
                 </Link>

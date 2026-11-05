@@ -64,8 +64,21 @@ export const Empty: Story = {
   },
 };
 
-/** A phone (320 px): the table scrolls inside its container (D1). */
+/** A phone (320 px): the table scrolls inside its container and a long
+ * file name wraps (D1). */
 export const Mobile: Story = {
+  args: {
+    state: {
+      status: 'ready',
+      page: jobPage([
+        {
+          ...TUTORS_STAGED,
+          file_name: `${'Tutores_Turno_Vespertino_'.repeat(3)}2026.csv`,
+        },
+        COMMITTED,
+      ]),
+    },
+  },
   parameters: {
     viewport: {
       options: {

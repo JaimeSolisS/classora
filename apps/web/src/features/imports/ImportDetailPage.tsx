@@ -259,12 +259,14 @@ function ImportReport({ job, onAnnounce, onChanged }: ImportReportProps) {
   return (
     <>
       <section aria-labelledby={ids.title} className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          {/* A long file name wraps anywhere: the page never scrolls
+              sideways at 320 px (D1). */}
           <h1
             id={ids.title}
             ref={heading}
             tabIndex={-1}
-            className="text-2xl font-semibold outline-none"
+            className="max-w-full min-w-0 text-2xl font-semibold [overflow-wrap:anywhere] outline-none"
           >
             {job.file_name ?? t('imports.history.noFileName')}
           </h1>
@@ -354,10 +356,9 @@ function ImportReport({ job, onAnnounce, onChanged }: ImportReportProps) {
         ) : null}
       </section>
 
-      <section
-        aria-labelledby={ids.rowsTitle}
-        className="flex min-w-0 flex-col gap-4"
-      >
+      {/* Not a named landmark: the rows table names its own scroll region
+          after the same heading on a phone (axe landmark-unique). */}
+      <section className="flex min-w-0 flex-col gap-4">
         <h2 id={ids.rowsTitle} className="text-xl font-semibold">
           {t('imports.rows.title')}
         </h2>

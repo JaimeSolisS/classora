@@ -100,10 +100,9 @@ export function ImportsPage() {
             </h2>
             <NewImportForm kinds={kinds} initialKind={initialKind} />
           </section>
-          <section
-            aria-labelledby={ids.historyTitle}
-            className="flex min-w-0 flex-col gap-4"
-          >
+          {/* Not a named landmark: the history table names its own
+              scroll region after the same heading on a phone. */}
+          <section className="flex min-w-0 flex-col gap-4">
             <h2 id={ids.historyTitle} className="text-xl font-semibold">
               {t('imports.history.title')}
             </h2>
