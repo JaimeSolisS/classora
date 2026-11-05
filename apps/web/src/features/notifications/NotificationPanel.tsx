@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Spinner } from '@/components/feedback/Spinner';
@@ -7,6 +8,7 @@ import { useFormatters } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { NotificationItem } from './api';
 import { notificationMessage } from './messages';
+import { NOTIFICATION_PREFERENCES_PATH } from './preferences-api';
 
 export type NotificationListState =
   | { status: 'loading' }
@@ -27,11 +29,14 @@ interface NotificationPanelProps {
   markingAll?: boolean;
   /** A failed "mark read" or "mark all as read". */
   actionError?: unknown;
+  /** The preferences link was followed (M8-02b A2): close the panel. */
+  onOpenPreferences?: () => void;
 }
 
 // The bell's panel (#41 E3): the heading, the newest notifications with their
 // message, time (center zone) and an unread marker in text, "Load more",
-// "Mark all as read", and the empty, loading and error states.
+// "Mark all as read", the empty, loading and error states, and at its foot
+// the link to the notification preferences (M8-02b A2).
 export function NotificationPanel({
   headingId,
   list,
@@ -39,6 +44,7 @@ export function NotificationPanel({
   onMarkAll,
   markingAll = false,
   actionError,
+  onOpenPreferences,
 }: NotificationPanelProps) {
   const { t, i18n } = useTranslation();
   const { formatInstant } = useFormatters();
@@ -137,6 +143,13 @@ export function NotificationPanel({
           ) : null}
         </>
       )}
+      <Link
+        to={NOTIFICATION_PREFERENCES_PATH}
+        onClick={onOpenPreferences}
+        className="inline-flex min-h-11 items-center self-start rounded-md px-1 text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring"
+      >
+        {t('notifications.preferences.panelLink')}
+      </Link>
     </div>
   );
 }

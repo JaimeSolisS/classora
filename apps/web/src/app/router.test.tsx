@@ -175,6 +175,7 @@ describe('route tree', () => {
       'reports',
       'reports/finance',
       'account/password',
+      'account/notifications',
       'privacy-notice',
       '*',
     ]);
@@ -493,9 +494,13 @@ describe('route tree', () => {
     expect(children[119]!.lazy).toBeTypeOf('function');
     expect(children[119]!.element).toBeUndefined();
     expect(children[120]!.handle).toBeUndefined();
-    // #174 G1: any signed-in user, no permission.
-    expect(children[121]!.id).toBe('privacy-notice');
+    // M8-02b A1: any signed-in user, no permission, code-split.
     expect(children[121]!.handle).toBeUndefined();
+    expect(children[121]!.lazy).toBeTypeOf('function');
+    expect(children[121]!.element).toBeUndefined();
+    // #174 G1: any signed-in user, no permission.
+    expect(children[122]!.id).toBe('privacy-notice');
+    expect(children[122]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

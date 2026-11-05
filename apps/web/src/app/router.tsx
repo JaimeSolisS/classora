@@ -1158,6 +1158,16 @@ export const routes: RouteObject[] = [
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },
+          // M8-02b A1: any signed-in user's notification preferences
+          // (code-split), no permission.
+          {
+            path: 'account/notifications',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/notifications/NotificationPreferencesPage')
+              ).NotificationPreferencesPage,
+            }),
+          },
           // Any signed-in user, before and after accepting (#174 G1).
           {
             id: PRIVACY_NOTICE_ROUTE_ID,

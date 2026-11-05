@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
+import { MemoryRouter } from 'react-router';
 import { expect, waitFor, within } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
@@ -57,21 +58,24 @@ function Bell({
 }) {
   const [open, setOpen] = useState(initiallyOpen);
   return (
-    <div className="flex justify-end p-4">
-      <NotificationBellView
-        count={count}
-        open={open}
-        onOpenChange={setOpen}
-        headingId="notifications-heading"
-      >
-        <NotificationPanel
+    // A router for the panel's preferences link (M8-02b A2).
+    <MemoryRouter>
+      <div className="flex justify-end p-4">
+        <NotificationBellView
+          count={count}
+          open={open}
+          onOpenChange={setOpen}
           headingId="notifications-heading"
-          list={list}
-          onActivate={() => {}}
-          onMarkAll={() => {}}
-        />
-      </NotificationBellView>
-    </div>
+        >
+          <NotificationPanel
+            headingId="notifications-heading"
+            list={list}
+            onActivate={() => {}}
+            onMarkAll={() => {}}
+          />
+        </NotificationBellView>
+      </div>
+    </MemoryRouter>
   );
 }
 
@@ -165,6 +169,12 @@ export const PanelEmpty: Story = {
     await expect(
       await page.findByText(i18n.t('notifications.empty')),
     ).toBeVisible();
+    // M8-02b A2: the preferences link at the panel's foot.
+    await expect(
+      page.getByRole('link', {
+        name: i18n.t('notifications.preferences.panelLink'),
+      }),
+    ).toHaveAttribute('href', '/account/notifications');
   },
 };
 

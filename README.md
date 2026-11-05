@@ -457,6 +457,9 @@ unless a bullet says otherwise.
   panel to read them and mark one or all as read.
 - New notifications arrive live (Server-Sent Events); when the live
   connection isn't available, the bell checks every 30 seconds instead.
+- Each user turns optional notification types on or off from their account
+  menu (Notifications); notices about changes to their own classes can't be
+  turned off.
 - Today they tell tutors about qualification decisions and revocations and
   new session offers, tell staff when an offer is declined or expires, and
   tell tutors and families about substitutions and cancelled sessions, and
