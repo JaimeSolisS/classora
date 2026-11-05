@@ -1,5 +1,5 @@
 """Helpers for the ``make seed-demo`` generator tests (#23, #195, #299, #303,
-#353, #354, M6-demo #413, M6-demo-b #420, M7-demo #499).
+#353, #354, M6-demo #413, M6-demo-b #420, M7-demo #499, M7-demo-b #501).
 
 - :func:`migrate` and :func:`demo_env`: a fresh database at the Alembic head,
   and the environment of a ``demo.main`` run (each test module wraps them in
@@ -14,7 +14,8 @@
   :data:`TABLE_COUNTS_THROUGH_413`) and the M6-demo-b ones
   (:data:`DEMO_BILLING_MONEY_TABLE_COUNTS`, :data:`TABLE_COUNTS_THROUGH_420`)
   and the M7-demo payroll ones (:data:`DEMO_PAYROLL_TABLE_COUNTS`,
-  :data:`ALL_TABLE_COUNTS`).
+  :data:`TABLE_COUNTS_THROUGH_499`) and the M7-demo-b ones
+  (:data:`DEMO_FINANCE_TABLE_COUNTS`, :data:`ALL_TABLE_COUNTS`).
 - Prefixes of the registered generators by name (:func:`generators_through`).
 """
 
@@ -143,6 +144,23 @@ DEMO_PAYROLL_CORRECTIONS_ROWS = 9
 """M7-demo D: H2's new approval and its correction, the
 ``academics.closeout_corrected`` notification, the ``hours_correction`` and
 its line, PP1-PP3 and PP3's reversal."""
+
+PAST_COHORT_FEE_GENERATOR = "billing.demo_past_cohort_fee"
+DEMO_PAST_COHORT_FEE_ROWS = 11
+"""M7-demo-b B: PR7 and its version, #353's three fees and their 4 discount
+lines (S and B sibling, A scholarship and sibling), F1's reminder row and its
+``billing.payment_reminder`` to ``demo.guardian``."""
+FINANCE_SETUP_GENERATOR = "finance.demo_setup"
+DEMO_FINANCE_SETUP_ROWS = 5
+"""M7-demo-b C: "Mobiliario" and V1-V4 (the rename isn't counted, A2)."""
+FINANCE_TEMPLATES_GENERATOR = "finance.demo_templates"
+DEMO_FINANCE_TEMPLATES_ROWS = 18
+"""M7-demo-b D at :data:`FROZEN_NOW`: 5 templates, 9 generated expenses, 3
+payments (TL's first week, TV's two) and TL's voiding adjustment."""
+FINANCE_EXPENSES_GENERATOR = "finance.demo_expenses"
+DEMO_FINANCE_EXPENSES_ROWS = 20
+"""M7-demo-b E: X1-X9, 8 payments, X5's reversal and 2 adjustments (the
+deactivations aren't counted, A2)."""
 
 DEMO_TABLE_COUNTS = {
     "subjects": 8,
@@ -363,6 +381,29 @@ DEMO_PAYROLL_TABLE_COUNTS = {
 }
 """The rows the M7-demo generators add to each table they count, after a first
 run on a fresh database at :data:`FROZEN_NOW` (several tables are shared)."""
+SEEDED_CATEGORIES = 5
+"""The expense categories migration 0083 seeds (in every fresh database)."""
+DEMO_FINANCE_TABLE_COUNTS = {
+    # billing.demo_past_cohort_fee.
+    "service_prices": 1,
+    "price_versions": 1,
+    "charges": 3,
+    "charge_discounts": 4,
+    "charge_reminders": 1,
+    "notifications": 1,
+    # finance.demo_setup: the five seeded categories are already there.
+    "expense_categories": SEEDED_CATEGORIES + 1,
+    "vendors": 4,
+    # finance.demo_templates, then finance.demo_expenses.
+    "expense_templates": 5,
+    "expenses": 9 + 9,
+    "expense_payments": 3 + 8,
+    "expense_payment_reversals": 1,
+    "expense_adjustments": 1 + 2,
+}
+"""The rows the M7-demo-b generators add to each table they count, after a
+first run on a fresh database at :data:`FROZEN_NOW` (``expense_categories``
+also holds the :data:`SEEDED_CATEGORIES`)."""
 CX_NOTIFICATIONS = 3
 """CX's ``scheduling.session_cancelled`` notifications (in
 :data:`DEMO_BILLING_MONEY_TABLE_COUNTS`, not in a generator's rows)."""
@@ -403,9 +444,14 @@ TABLE_COUNTS_THROUGH_420 = _sum(
 of the generators through ``billing.demo_reminders`` (at :data:`FROZEN_NOW`;
 M7-demo G9)."""
 
-ALL_TABLE_COUNTS = _sum(TABLE_COUNTS_THROUGH_420, DEMO_PAYROLL_TABLE_COUNTS)
+TABLE_COUNTS_THROUGH_499 = _sum(TABLE_COUNTS_THROUGH_420, DEMO_PAYROLL_TABLE_COUNTS)
 """Every counted table of #299-#354, M6-demo, M6-demo-b and M7-demo after a
-first run of every generator (at :data:`FROZEN_NOW`)."""
+first run of the generators through ``payroll.demo_corrections`` (at
+:data:`FROZEN_NOW`; M7-demo-b G10)."""
+
+ALL_TABLE_COUNTS = _sum(TABLE_COUNTS_THROUGH_499, DEMO_FINANCE_TABLE_COUNTS)
+"""Every counted table of #299-#354, M6-demo, M6-demo-b, M7-demo and
+M7-demo-b after a first run of every generator (at :data:`FROZEN_NOW`)."""
 
 FROZEN_NOW = datetime(2026, 11, 4, 17, 0, tzinfo=UTC)
 """A Wednesday, 11:00 in Mexico City (#299 E2), after the privacy notice's
@@ -449,6 +495,10 @@ GENERATOR_NAMES = [
     PAYROLL_SETUP_GENERATOR,
     PAYROLL_PERIODS_GENERATOR,
     PAYROLL_CORRECTIONS_GENERATOR,
+    PAST_COHORT_FEE_GENERATOR,
+    FINANCE_SETUP_GENERATOR,
+    FINANCE_TEMPLATES_GENERATOR,
+    FINANCE_EXPENSES_GENERATOR,
 ]
 
 FIRST_RUN_LINES = [
@@ -477,6 +527,10 @@ FIRST_RUN_LINES = [
     f"{PAYROLL_SETUP_GENERATOR}: {DEMO_PAYROLL_SETUP_ROWS} rows",
     f"{PAYROLL_PERIODS_GENERATOR}: {DEMO_PAYROLL_PERIODS_ROWS} rows",
     f"{PAYROLL_CORRECTIONS_GENERATOR}: {DEMO_PAYROLL_CORRECTIONS_ROWS} rows",
+    f"{PAST_COHORT_FEE_GENERATOR}: {DEMO_PAST_COHORT_FEE_ROWS} rows",
+    f"{FINANCE_SETUP_GENERATOR}: {DEMO_FINANCE_SETUP_ROWS} rows",
+    f"{FINANCE_TEMPLATES_GENERATOR}: {DEMO_FINANCE_TEMPLATES_ROWS} rows",
+    f"{FINANCE_EXPENSES_GENERATOR}: {DEMO_FINANCE_EXPENSES_ROWS} rows",
 ]
 RERUN_LINES = [
     *RERUN_REFERENCE_LINES,
@@ -537,20 +591,30 @@ PAYROLL_GENERATORS = (
 )
 """The M7-demo payroll generators (#499); they also skip a stale #299
 schedule, payroll set up by hand and ``--without-billing``."""
-FLAGGED_GENERATORS = (*BILLING_GENERATORS, *PAYROLL_GENERATORS)
-"""Every generator ``--without-billing`` skips (M7-demo E3)."""
+FINANCE_GENERATORS = (
+    PAST_COHORT_FEE_GENERATOR,
+    FINANCE_SETUP_GENERATOR,
+    FINANCE_TEMPLATES_GENERATOR,
+    FINANCE_EXPENSES_GENERATOR,
+)
+"""The M7-demo-b generators (#501): the cohort fee and the three finance ones;
+they also skip a stale #299 schedule, billing or expenses set up by hand and
+``--without-billing``."""
+FLAGGED_GENERATORS = (*BILLING_GENERATORS, *PAYROLL_GENERATORS, *FINANCE_GENERATORS)
+"""Every generator ``--without-billing`` skips (M7-demo E3, M7-demo-b G9)."""
 
 
 def generators_before_303() -> list[demo.DemoGenerator]:
     """The #299 run: every registered generator except the four #303 ones,
-    the four #353 ones, the three #354 ones, the six billing ones and the
-    three payroll ones."""
+    the four #353 ones, the three #354 ones, the six billing ones, the
+    three payroll ones and the four #501 ones."""
     later = {
         *NEW_303_GENERATORS,
         *NEW_353_GENERATORS,
         *NEW_354_GENERATORS,
         *BILLING_GENERATORS,
         *PAYROLL_GENERATORS,
+        *FINANCE_GENERATORS,
     }
     return [g for g in demo.DEMO_GENERATORS if g.name not in later]
 

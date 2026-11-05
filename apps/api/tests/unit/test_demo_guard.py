@@ -1,5 +1,6 @@
 """Demo-data command without a database (M1-17 C5): the production guard,
-and the payroll generators' skips without a session (M7-demo #499 E5)."""
+and the payroll and M7-demo-b generators' skips without a session (M7-demo
+#499 E5, M7-demo-b #501 F5)."""
 
 import asyncio
 import os
@@ -16,6 +17,12 @@ from tests.authz.csrf import origin_for
 from tests.factories import demo
 from tests.factories.base import GeneratorSkipped
 from tests.factories.demo_billing import WITHOUT_BILLING
+from tests.factories.demo_finance import (
+    DemoFinanceExpensesGenerator,
+    DemoFinanceSetupGenerator,
+    DemoFinanceTemplatesGenerator,
+    DemoPastCohortFeeGenerator,
+)
 from tests.factories.demo_payroll import (
     DemoPayrollCorrectionsGenerator,
     DemoPayrollPeriodsGenerator,
@@ -170,6 +177,11 @@ PAYROLL_GENERATORS = [
     DemoPayrollSetupGenerator,
     DemoPayrollPeriodsGenerator,
     DemoPayrollCorrectionsGenerator,
+    # M7-demo-b #501 F5: the cohort fee and the three finance generators.
+    DemoPastCohortFeeGenerator,
+    DemoFinanceSetupGenerator,
+    DemoFinanceTemplatesGenerator,
+    DemoFinanceExpensesGenerator,
 ]
 
 

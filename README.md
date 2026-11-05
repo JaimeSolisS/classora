@@ -641,10 +641,9 @@ demo data:
   billing is on from about three weeks back; catalog prices with one change
   next month, a sibling discount and a scholarship; charges for the demo
   classes, the course cohort and a monthly tuition plan, so the family
-  accounts have overdue amounts and the Unbilled tab lists the finished
-  cohort; an English package for `demo.student` with one session used and an
-  expired package for the sibling; one class of `demo.student` cancelled by
-  the center and credited; two payments with receipts for `demo.guardian`'s
+  accounts have overdue amounts; an English package for `demo.student` with
+  one session used and an expired package for the sibling; one class of
+  `demo.student` cancelled by the center and credited; two payments with receipts for `demo.guardian`'s
   family, one paying the oldest charges and one kept as account credit; a due
   date moved with a reason and payment reminders for `demo.guardian`; and,
   for the second family, a due-date offset and a manual charge whose payment
@@ -658,14 +657,26 @@ demo data:
   last one carries a late-approved class and a manual adjustment, and the
   current week holds an hours correction. `demo.tutor`'s first week is paid,
   the second partly paid with one reversed payment, and `demo.tutor2` is
-  still unpaid, so "Mis pagos" and the Reports page have data.
+  still unpaid, so "Mi pago" and the Reports page have data.
+- **Expenses and reports** (local `make seed-demo` only; `make e2e` seeds
+  without it): one default category renamed, a "Mobiliario" category and a
+  vendor that were deactivated after use, and four vendors in all; expenses in
+  every state (unpaid, overdue, partly paid, paid in two payments, a payment
+  reversed and entered again, an amount adjusted, and a voided expense entered
+  again); and recurring expenses (monthly rent, a monthly service anchored on
+  the 31st, a paused weekly cleaning with one week paid, one voided and one
+  overdue, an ended weekly print job and an annual maintenance contract) with
+  their expenses generated. The finished course cohort is now charged too, so
+  the Reports page shows the demo's revenue, tutor cost, expenses and
+  balances; group tutoring shows only deferred revenue, because its classes
+  are still upcoming.
 
 The dates stay those of the first run (a second run changes nothing), so reset
 with `docker compose down -v`, `make dev`, `make migrate` and `make seed-demo`
 to get a fresh schedule. A database seeded before the courses and requests,
 the classes held and results, the learning plans, homework and progress
-reports, the billing data (charges, then payments and reminders) or the
-payroll data were added keeps its schedule and skips them
+reports, the billing data (charges, then payments and reminders), the
+payroll data or the expense data were added keeps its schedule and skips them
 (`make seed-demo` says
 so) until you reset the same way. The payroll start date locks once payroll
 periods exist, so re-seeding payroll also needs a clean database

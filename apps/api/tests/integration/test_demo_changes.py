@@ -42,6 +42,7 @@ from tests.integration.demo_support import (
     COURSES_GENERATOR,
     DEMO_303_TABLE_COUNTS,
     DEV_LINES,
+    FINANCE_GENERATORS,
     FROZEN_NOW,
     GENERATOR_NAMES,
     NEW_303_GENERATORS,
@@ -327,7 +328,7 @@ def test_a_rerun_writes_nothing_even_days_later(migrated_url, env_for, clock, ca
     env_for("local", migrated_url)
     assert demo.main([]) == 0
     capsys.readouterr()
-    assert len(GENERATOR_NAMES) == 31
+    assert len(GENERATOR_NAMES) == 35
 
     assert demo.main([]) == 0
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
@@ -389,6 +390,7 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
         *NEW_354_GENERATORS,
         *BILLING_GENERATORS,
         *PAYROLL_GENERATORS,
+        *FINANCE_GENERATORS,
     }
     assert capsys.readouterr().out.splitlines() == [
         *RERUN_REFERENCE_LINES,

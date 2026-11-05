@@ -24,17 +24,22 @@ nearest first): local dates and ``HH:MM`` times only (ADR-0004).
 ``demo.finance`` sets payroll up, prepares, posts the manual adjustment and
 records the payments; ``demo.owner`` finalizes and reverses; ``demo.tutor``
 records L1 and N1; ``demo.coordinator`` approves them and corrects H2
-(:func:`~tests.factories.demo_clock.seed_actor` with each account's
-:func:`~tests.factories.identity.demo_principal`, G2). The jobs' per-unit
-steps run with no actor in the seed's single Unit of Work:
+(each account's :func:`~tests.factories.identity.demo_principal`, G2; the
+real-clock writes also run under
+:func:`~tests.factories.demo_clock.seed_actor` with that account). The jobs'
+per-unit steps run with no actor in the seed's single Unit of Work:
 ``payroll_periods.open_tutor_periods``, ``payroll_adjustments.
 select_candidates`` + ``post_one``, and M6-demo's session-charge and reminder
 steps for L1 and N1 (E8; engineer D3). Only L1's and N1's creation,
 recording and N1's approval run under
 :func:`~tests.factories.demo_clock.seed_clock`; everything else runs on the
-real clock (E7). No ``persist``, no direct insert; payslips are
-issued by ``finalize`` and rendered only on download, so the seed needs no
-Pango.
+real clock (E7). Those seed-clock steps carry no audit actor
+(``audit_events.actor_user_id`` is NULL), as #353's H1-H3 don't: they run
+without :func:`~tests.factories.demo_clock.seed_actor`, and the domain
+columns name the users (the offer accepted by ``demo.tutor``, the approval's
+``approved_by`` ``demo.coordinator``; M7-demo-b #501 E4). No ``persist``, no
+direct insert; payslips are issued by ``finalize`` and rendered only on
+download, so the seed needs no Pango.
 
 **Idempotent; stale, hand-configured or E2E databases are skipped (G8).**
 Each generator writes all its rows or none and returns ``0`` when its
