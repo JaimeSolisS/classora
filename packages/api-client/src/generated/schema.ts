@@ -815,6 +815,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Preferences
+         * @description The caller's notification types (those of their roles) and whether
+         *     each is on. Mandatory types are always on.
+         */
+        get: operations["get_preferences_api_v1_notifications_preferences_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Preferences
+         * @description Turn the caller's optional notification types on or off (1 to 50, all
+         *     or none; sending the same change again changes nothing). Only future
+         *     notifications are affected.
+         */
+        patch: operations["update_preferences_api_v1_notifications_preferences_patch"];
+        trace?: never;
+    };
     "/api/v1/notifications/stream": {
         parameters: {
             query?: never;
@@ -15417,6 +15444,44 @@ export interface components {
             /** Read At */
             read_at: string | null;
         };
+        /** NotificationPreferenceChange */
+        NotificationPreferenceChange: {
+            /** Notification Type */
+            notification_type: string;
+            /** Enabled */
+            enabled: boolean;
+        };
+        /**
+         * NotificationPreferenceItem
+         * @description One type in the caller's catalogue. A mandatory type is always
+         *     ``enabled``.
+         */
+        NotificationPreferenceItem: {
+            /** Notification Type */
+            notification_type: string;
+            /** Mandatory */
+            mandatory: boolean;
+            /** Enabled */
+            enabled: boolean;
+        };
+        /**
+         * NotificationPreferences
+         * @description The caller's catalogue: the types of their roles, by
+         *     ``notification_type``.
+         */
+        NotificationPreferences: {
+            /** Items */
+            items: components["schemas"]["NotificationPreferenceItem"][];
+        };
+        /**
+         * NotificationPreferencesBody
+         * @description 1 to 50 changes, applied all or none (set semantics: a resend changes
+         *     nothing).
+         */
+        NotificationPreferencesBody: {
+            /** Items */
+            items: components["schemas"]["NotificationPreferenceChange"][];
+        };
         /**
          * NotificationReadAllBody
          * @description ``up_to``: the newest notification the caller has seen; only that one
@@ -24974,6 +25039,95 @@ export interface operations {
             };
             /** @description The privacy notice must be accepted first (privacy_notice_required). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_preferences_api_v1_notifications_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPreferences"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_preferences_api_v1_notifications_preferences_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationPreferencesBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPreferences"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

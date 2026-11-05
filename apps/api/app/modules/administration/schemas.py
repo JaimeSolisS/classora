@@ -327,6 +327,46 @@ class NotificationReadAllResult(BaseModel):
     updated: int
 
 
+# --- Notification preferences (#119 C) ----------------------------------------------
+
+NOTIFICATION_PREFERENCE_CHANGES_MAX = 50
+
+
+class NotificationPreferenceItem(BaseModel):
+    """One type in the caller's catalogue. A mandatory type is always
+    ``enabled``."""
+
+    notification_type: str
+    mandatory: bool
+    enabled: bool
+
+
+class NotificationPreferences(BaseModel):
+    """The caller's catalogue: the types of their roles, by
+    ``notification_type``."""
+
+    items: list[NotificationPreferenceItem]
+
+
+class NotificationPreferenceChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    notification_type: str
+    enabled: bool
+
+
+class NotificationPreferencesBody(BaseModel):
+    """1 to 50 changes, applied all or none (set semantics: a resend changes
+    nothing)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: Annotated[
+        list[NotificationPreferenceChange],
+        Field(min_length=1, max_length=NOTIFICATION_PREFERENCE_CHANGES_MAX),
+    ]
+
+
 # --- Scheduling policy (#61) ---------------------------------------------------------
 
 NoticeHours = Annotated[int, Field(ge=NOTICE_HOURS_MIN, le=NOTICE_HOURS_MAX)]

@@ -182,6 +182,63 @@ def test_no_recipient_writes_nothing_and_a_new_guardian_gets_it(module_seeded_ur
     assert [u for u, _ in dd.notifications(url, [user])] == [user]
 
 
+# --- Preferences (#119 D3, E6) --------------------------------------------------------
+
+
+def mute(url: str, *users: uuid.UUID) -> None:
+    for user in users:
+        run_sql(
+            url,
+            "INSERT INTO notification_opt_outs (user_id, notification_type)"
+            " VALUES (:u, 'billing.payment_reminder')",
+            {"u": user},
+        )
+
+
+def unmute(url: str, *users: uuid.UUID) -> None:
+    run_sql(
+        url,
+        "DELETE FROM notification_opt_outs WHERE user_id = ANY(:ids)",
+        {"ids": list(users)},
+    )
+
+
+def test_a_muted_guardian_is_skipped_and_only_created_ones_are_counted(
+    module_seeded_url,
+):
+    url = module_seeded_url
+    w = dd.world(url, guardians=2)
+    muted, notified = w.guardians
+    charge = dd.charge(url, w.student)
+    mute(url, muted)
+
+    result = dd.run(url)
+
+    assert [user for user, _ in dd.notifications(url, w.guardians)] == [notified]
+    assert (result.sent_charges, result.notifications) == (1, 1)
+    assert [stage for _, stage, _ in dd.reminders(url, charge)] == ["due_soon"]
+
+
+def test_when_every_guardian_muted_the_stage_is_still_recorded(module_seeded_url):
+    url = module_seeded_url
+    w = dd.world(url, guardians=2)
+    charge = dd.charge(url, w.student, due=TODAY + dd.days(2))
+    mute(url, *w.guardians)
+
+    result = dd.run(url)
+
+    assert dd.notifications(url, w.guardians) == []
+    assert (result.sent_charges, result.notifications) == (1, 0)
+    assert [stage for _, stage, _ in dd.reminders(url, charge)] == ["due_soon"]
+
+    # E6: turning reminders back on never re-sends the recorded stage.
+    unmute(url, *w.guardians)
+    again = dd.run(url, TODAY + dd.days(1))
+
+    assert (again.sent_charges, again.notifications) == (0, 0)
+    assert dd.notifications(url, w.guardians) == []
+
+
 def test_a_moved_student_reminds_the_accounts_family(module_seeded_url):
     url = module_seeded_url
     w = dd.world(url)

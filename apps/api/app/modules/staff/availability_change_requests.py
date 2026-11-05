@@ -100,7 +100,7 @@ def register_availability_notifications() -> None:
     """Register the two decision notification types (again: a no-op)."""
     for code in (AVAILABILITY_CHANGE_APPROVED, AVAILABILITY_CHANGE_REJECTED):
         administration.register_notification_type(
-            code, AvailabilityChangeDecisionParams
+            code, AvailabilityChangeDecisionParams, recipient_roles=frozenset({"tutor"})
         )
 
 

@@ -79,7 +79,9 @@ class ProgressReportDueParams(BaseModel):
 def register_schedule_notifications() -> None:
     """Register the ``due`` type (again: a no-op); ``app.wiring`` and the
     job call it."""
-    administration.register_notification_type(DUE_NOTIFICATION, ProgressReportDueParams)
+    administration.register_notification_type(
+        DUE_NOTIFICATION, ProgressReportDueParams, recipient_roles=frozenset({"tutor"})
+    )
 
 
 # --- Eligibility (shared with the job) ------------------------------------------------

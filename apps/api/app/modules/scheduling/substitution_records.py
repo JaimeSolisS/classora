@@ -58,8 +58,14 @@ class SessionNotificationParams(BaseModel):
 
 def register_substitution_notifications() -> None:
     """Register the three types (again: a no-op)."""
-    for code in (TUTOR_SUBSTITUTED, SESSION_TUTOR_CHANGED, SESSION_CANCELLED):
-        administration.register_notification_type(code, SessionNotificationParams)
+    for code, roles in (
+        (TUTOR_SUBSTITUTED, frozenset({"tutor"})),
+        (SESSION_TUTOR_CHANGED, frozenset({"student", "guardian"})),
+        (SESSION_CANCELLED, frozenset({"tutor", "student", "guardian"})),
+    ):
+        administration.register_notification_type(
+            code, SessionNotificationParams, mandatory=True, recipient_roles=roles
+        )
 
 
 async def family_recipients(

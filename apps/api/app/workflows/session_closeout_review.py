@@ -121,14 +121,15 @@ class CloseoutDecisionParams(CloseoutChangesRequestedParams):
 
 def register_closeout_notifications() -> None:
     """Register the three types (again: a no-op); ``app.wiring`` calls it."""
+    tutors = frozenset({"tutor"})
+    for code in (APPROVED_NOTIFICATION, CORRECTED_NOTIFICATION):
+        administration.register_notification_type(
+            code, CloseoutDecisionParams, recipient_roles=tutors
+        )
     administration.register_notification_type(
-        APPROVED_NOTIFICATION, CloseoutDecisionParams
-    )
-    administration.register_notification_type(
-        CORRECTED_NOTIFICATION, CloseoutDecisionParams
-    )
-    administration.register_notification_type(
-        CHANGES_REQUESTED_NOTIFICATION, CloseoutChangesRequestedParams
+        CHANGES_REQUESTED_NOTIFICATION,
+        CloseoutChangesRequestedParams,
+        recipient_roles=tutors,
     )
 
 

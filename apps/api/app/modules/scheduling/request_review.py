@@ -95,12 +95,15 @@ class SessionRequestDecisionParams(BaseModel):
 
 def register_request_notifications() -> None:
     """Register the two types (again: a no-op)."""
-    administration.register_notification_type(
-        SESSION_REQUEST_CONFIRMED_NOTIFICATION, SessionRequestDecisionParams
-    )
-    administration.register_notification_type(
-        SESSION_REQUEST_REJECTED_NOTIFICATION, SessionRequestDecisionParams
-    )
+    for code in (
+        SESSION_REQUEST_CONFIRMED_NOTIFICATION,
+        SESSION_REQUEST_REJECTED_NOTIFICATION,
+    ):
+        administration.register_notification_type(
+            code,
+            SessionRequestDecisionParams,
+            recipient_roles=frozenset({"student", "guardian"}),
+        )
 
 
 # --- B: the staff read ---------------------------------------------------------------

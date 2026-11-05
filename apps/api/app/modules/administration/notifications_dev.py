@@ -39,7 +39,9 @@ class DevNotificationBody(BaseModel):
 
 
 def register_dev_notification_type() -> None:
-    """Register ``dev.demo``; called only where the dev route is mounted."""
+    """Register ``dev.demo``; called only where the dev route is mounted. It
+    registers no recipient roles, so no preferences catalogue lists it
+    (#119 A3) and it is never muted."""
     notifications.register_notification_type(DEV_DEMO_TYPE, DevDemoParams)
 
 
@@ -67,6 +69,8 @@ async def create_dev_notification(
         notification_type=DEV_DEMO_TYPE,
         params=DevDemoParams(label=body.label),
     )
+    # dev.demo is in no catalogue (no recipient roles), so it is never muted.
+    assert notification_id is not None  # noqa: S101 (#119 D4)
     return await notifications.get_notification(
         uow.session,
         recipient_user_id=recipient.user_id,

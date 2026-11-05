@@ -66,6 +66,7 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/approval-requests/{request_id}/request-changes",
         "/api/v1/audit-events",
         "/api/v1/notifications",
+        "/api/v1/notifications/preferences",
         "/api/v1/notifications/stream",
         "/api/v1/notifications/unread-count",
         "/api/v1/notifications/read-all",

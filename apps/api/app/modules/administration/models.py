@@ -179,3 +179,35 @@ class Notification(Model):
     read_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class NotificationOptOut(Model):
+    """One optional notification type one user turned off (#119 B1; spec
+    §9 "in-app notification preferences"). No row means on, so a new type is
+    on for everyone without a backfill.
+
+    :func:`app.modules.administration.notifications.create_notification`
+    skips an optional type with a row for the recipient; a row for a type
+    that is mandatory, unregistered or outside the user's roles is ignored
+    or harmless, and never deleted automatically (#119 D2).
+
+    Neither :class:`~app.core.audit.Audited` nor versioned: a per-user
+    preference, like ``user_preferences`` (#36).
+    """
+
+    __tablename__ = "notification_opt_outs"
+    __table_args__ = (
+        CheckConstraint(
+            f"notification_type ~ '{NOTIFICATION_TYPE_PATTERN}'",
+            name="notification_type_format",
+        ),
+        # Also the lookup of create_notification and the catalogue.
+        UniqueConstraint(
+            "user_id", "notification_type", name="uq_notification_opt_outs_user_type"
+        ),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    notification_type: Mapped[str] = mapped_column(String(NOTIFICATION_TYPE_MAX_LENGTH))

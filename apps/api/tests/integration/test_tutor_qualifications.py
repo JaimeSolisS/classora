@@ -466,6 +466,23 @@ def test_the_list_order_and_status_filter(
 # --- C: decisions through the approval inbox ------------------------------------------
 
 
+def test_a_tutor_who_muted_approvals_gets_none_and_the_decision_stands(
+    module_seeded_url, client, admin, admin_cookie, level, subject, tutor
+):
+    # #119 D1: the central check in create_notification, end to end.
+    person, cookie = tutor
+    off = {"notification_type": "staff.qualification_approved", "enabled": False}
+    muted = patch(client, cookie, "/api/v1/notifications/preferences", {"items": [off]})
+    assert code_of(muted) == OK, muted.text
+    item = requested(client, cookie, person.id, subject["id"])
+
+    assert code_of(approve(client, admin_cookie, module_seeded_url, item["id"])) == OK
+
+    assert qualification_row(module_seeded_url, item["id"]).status == "approved"
+    assert approval_of(module_seeded_url, item["id"]).status == "approved"
+    assert notifications_of(module_seeded_url, person.id) == []
+
+
 def test_approving_mirrors_the_status_and_notifies_the_tutor(
     module_seeded_url, client, admin, admin_cookie, level, subject, tutor
 ):

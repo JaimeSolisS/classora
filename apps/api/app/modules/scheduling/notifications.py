@@ -75,11 +75,17 @@ class SeriesCancelledParams(BaseModel):
 
 def register_edit_notifications() -> None:
     """Register the three types (again: a no-op)."""
-    administration.register_notification_type(
-        SESSION_RESCHEDULED, SessionRescheduledParams
-    )
-    administration.register_notification_type(SERIES_CHANGED, SeriesChangedParams)
-    administration.register_notification_type(SERIES_CANCELLED, SeriesCancelledParams)
+    for code, model in (
+        (SESSION_RESCHEDULED, SessionRescheduledParams),
+        (SERIES_CHANGED, SeriesChangedParams),
+        (SERIES_CANCELLED, SeriesCancelledParams),
+    ):
+        administration.register_notification_type(
+            code,
+            model,
+            mandatory=True,
+            recipient_roles=frozenset({"tutor", "student", "guardian"}),
+        )
 
 
 def audience(previous_state: str) -> frozenset[Audience]:

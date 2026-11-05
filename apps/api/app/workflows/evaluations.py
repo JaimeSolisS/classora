@@ -133,10 +133,14 @@ class EvaluationVoidedParams(BaseModel):
 def register_evaluation_notifications() -> None:
     """Register both types (again: a no-op); ``app.wiring`` calls it."""
     administration.register_notification_type(
-        FINALIZED_NOTIFICATION, EvaluationFinalizedParams
+        FINALIZED_NOTIFICATION,
+        EvaluationFinalizedParams,
+        recipient_roles=frozenset({"student", "guardian"}),
     )
     administration.register_notification_type(
-        VOIDED_NOTIFICATION, EvaluationVoidedParams
+        VOIDED_NOTIFICATION,
+        EvaluationVoidedParams,
+        recipient_roles=frozenset({"tutor"}),
     )
 
 

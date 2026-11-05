@@ -205,6 +205,24 @@ def test_an_offered_session_withdraws_its_offer_and_tells_the_tutor(ctx):
     assert not {student_user, guardian_user} & {n.recipient_user_id for n in told}
 
 
+def test_a_mandatory_cancellation_reaches_a_tutor_with_an_opt_out_row(ctx):
+    # #119 D1, D2: session_cancelled is mandatory, so even a forged opt-out
+    # row (the route refuses one) never mutes it.
+    run_sql(
+        ctx.url,
+        "INSERT INTO notification_opt_outs (user_id, notification_type)"
+        " VALUES (:u, :t) ON CONFLICT DO NOTHING",
+        {"u": ctx.tutor.id, "t": CANCELLED},
+    )
+    session = one_off(ctx)
+
+    response = cancel(ctx, session["id"], session["version"])
+
+    assert code_of(response) == OK, response.text
+    told = cancelled_notes(ctx, session["id"])
+    assert [n.recipient_user_id for n in told] == [ctx.tutor.id]
+
+
 def test_a_confirmed_session_with_a_pending_substitution(ctx):
     student_user, guardian_user = with_family(ctx.url, ctx.student)
     _, stranger = with_family(ctx.url, new_student(ctx.url))

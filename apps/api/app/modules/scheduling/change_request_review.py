@@ -175,11 +175,16 @@ class ChangeRequestRejectedParams(BaseModel):
 
 def register_change_request_notifications() -> None:
     """Register the two types (again: a no-op)."""
+    requesters = frozenset({"tutor", "student", "guardian"})
     administration.register_notification_type(
-        CHANGE_REQUEST_APPROVED_NOTIFICATION, ChangeRequestApprovedParams
+        CHANGE_REQUEST_APPROVED_NOTIFICATION,
+        ChangeRequestApprovedParams,
+        recipient_roles=requesters,
     )
     administration.register_notification_type(
-        CHANGE_REQUEST_REJECTED_NOTIFICATION, ChangeRequestRejectedParams
+        CHANGE_REQUEST_REJECTED_NOTIFICATION,
+        ChangeRequestRejectedParams,
+        recipient_roles=requesters,
     )
 
 

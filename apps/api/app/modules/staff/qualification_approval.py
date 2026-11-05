@@ -59,7 +59,9 @@ class QualificationDecisionParams(BaseModel):
 def register_qualification_notifications() -> None:
     """Register the three notification types (again: a no-op)."""
     for code in (QUALIFICATION_APPROVED, QUALIFICATION_REJECTED, QUALIFICATION_REVOKED):
-        administration.register_notification_type(code, QualificationDecisionParams)
+        administration.register_notification_type(
+            code, QualificationDecisionParams, recipient_roles=frozenset({"tutor"})
+        )
 
 
 class QualificationApprovalHandler:

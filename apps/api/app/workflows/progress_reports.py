@@ -124,14 +124,14 @@ class ProgressReportDecisionParams(BaseModel):
 def register_progress_report_notifications() -> None:
     """Register the three types (again: a no-op); ``app.wiring`` calls it."""
     administration.register_notification_type(
-        APPROVED_NOTIFICATION, ProgressReportApprovedParams
+        APPROVED_NOTIFICATION,
+        ProgressReportApprovedParams,
+        recipient_roles=frozenset({"tutor", "student", "guardian"}),
     )
-    administration.register_notification_type(
-        CHANGES_REQUESTED_NOTIFICATION, ProgressReportDecisionParams
-    )
-    administration.register_notification_type(
-        RETRACTED_NOTIFICATION, ProgressReportDecisionParams
-    )
+    for code in (CHANGES_REQUESTED_NOTIFICATION, RETRACTED_NOTIFICATION):
+        administration.register_notification_type(
+            code, ProgressReportDecisionParams, recipient_roles=frozenset({"tutor"})
+        )
 
 
 type FieldIssue = tuple[list[str | int], str, str]

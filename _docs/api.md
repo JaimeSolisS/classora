@@ -106,6 +106,9 @@ Codes in use today:
 | `name_taken` | 409 | A catalog record (an education level, or a subject within its level), a classroom or a course template would get a name another record already has, ignoring case; inactive records count (see Academic catalog, Classrooms, Course templates). |
 | `education_level_has_active_subjects` | 409 | Deactivating an education level that still has an active subject (see Academic catalog). |
 | `education_level_inactive` | 409 | Creating or reactivating a subject of an inactive education level (see Academic catalog). |
+| `notification_type_duplicate` | 422 | `PATCH /api/v1/notifications/preferences` with a type in more than one item; `errors[].path` names each repeat (see Notifications, Preferences). |
+| `notification_type_unknown` | 422 | `PATCH /api/v1/notifications/preferences` with a type outside the caller's catalogue (unregistered, `dev.demo` or not for their roles); `errors[].path` names each item. |
+| `notification_type_mandatory` | 422 | `PATCH /api/v1/notifications/preferences` turning a mandatory type off; `errors[].path` names each item. |
 | `too_many_streams` | 429 | `GET /api/v1/notifications/stream` when the caller already holds 10 open streams in this API process; `Retry-After: 30`. The web app polls meanwhile (see Live notifications). |
 | `qualification_exists` | 409 | `POST /api/v1/tutors/{user_id}/qualifications` when the tutor already has a `pending` or `approved` qualification for the subject; also the loser of two concurrent requests (see Tutor qualifications). |
 | `subject_inactive` | 409 | `POST /api/v1/tutors/{user_id}/qualifications` for a subject that is inactive or whose education level is inactive (see Tutor qualifications). |
@@ -959,9 +962,10 @@ options and an assignment fail closed (`500`).
 
 Implemented by M3-05 (#41; spec §1, §9: in-app only; ISSUE-X1) in
 `apps/api/app/modules/administration/` (`models.py`, `notifications.py`,
-`notifications_router.py`, `notifications_dev.py`), exported through
+`notifications_router.py`, `notifications_dev.py`, and
+`notification_preferences.py` for M8-02 #119), exported through
 `administration.service`. Live delivery (SSE) is M3-06 (#42, below);
-preferences are M8-02 (#119); retention is M8-12 (#129).
+retention is M8-12 (#129).
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
@@ -969,6 +973,8 @@ preferences are M8-02 (#119); retention is M8-12 (#129).
 | `GET /api/v1/notifications/unread-count` | `authenticated()` | `{"count": n}` (one statement on a partial index). `403 privacy_notice_required` before the notice is accepted. |
 | `POST /api/v1/notifications/{notification_id}/read` | `authenticated()` | No body. `200` with the item. Idempotent: `read_at` keeps its first value. `403 csrf_failed` or `403 privacy_notice_required` before the notice is accepted; `404 not_found` for another user's or an unknown id. |
 | `POST /api/v1/notifications/read-all` | `authenticated()` | Body `{"up_to": <id> \| null}` (`extra="forbid"`; the body may be left out). `200` with `{"updated": n}`. `403 csrf_failed` or `403 privacy_notice_required` before the notice is accepted; `404 not_found` when `up_to` isn't the caller's. |
+| `GET /api/v1/notifications/preferences` | `authenticated()` | The caller's catalogue (#119 C1): `{"items": [{notification_type, mandatory, enabled}]}`, one per registered type whose `recipient_roles` meet the caller's roles, by `notification_type`. Mandatory items are always `enabled: true`. One statement. `403 privacy_notice_required` before the notice is accepted. |
+| `PATCH /api/v1/notifications/preferences` | `authenticated()` | Body `{"items": [{notification_type, enabled}]}` (`extra="forbid"`, 1–50 items), applied all or none; `200` with the catalogue. After the body shape: `422 notification_type_duplicate` → `422 notification_type_unknown` (not in the caller's catalogue: unregistered, `dev.demo` or another role's type) → `422 notification_type_mandatory` (`enabled: false` on a mandatory type; `enabled: true` on one is a no-op), each naming every offending item in `errors[].path` (`["body", "items", i, "notification_type"]`). Set semantics: no `version`, no `Idempotency-Key`, no reauthentication; a resend changes nothing. `403 csrf_failed` or `403 privacy_notice_required`. |
 | `POST /api/v1/dev/notifications` | `authenticated()` | **Local/DEV only** (mounted with `/api/v1/dev/demo-jobs`, never in the exported contract). Body `{"label"}` (1–100 characters). Creates one `dev.demo` notification for the caller; `201` with the item. |
 
 - **Model** (`notifications`; neither audited nor versioned: per-user
@@ -995,6 +1001,39 @@ preferences are M8-02 (#119); retention is M8-12 (#129).
   the newest id it shows.
 - **Recipients** may be in any account state; the notification waits until
   they can sign in.
+
+**Preferences** (M8-02 #119; spec §9, architecture §7.2; #119 E2–E7,
+orchestrator-recommended, pending owner review):
+
+- **Mandatory types** can't be turned off: today the 7 notices that a class
+  the recipient teaches or attends changed (`scheduling.session_cancelled`,
+  `_session_tutor_changed`, `_tutor_substituted`, `_session_rescheduled`,
+  `_series_changed`, `_series_cancelled`, `_occurrence_skipped_closure`).
+  Every other type is optional, including `billing.payment_reminder` and
+  `administration.approval_assigned`. A later security notice registers as
+  mandatory.
+- **Roles filter:** each type registers the `recipient_roles` (role codes)
+  that can receive it; a user sees the types of their roles (the union for
+  several roles). It is a display filter, not authorization; `dev.demo`
+  registers none, so it's in no catalogue.
+- **Storage:** `notification_opt_outs` (one row per user and type turned
+  off; no row means on, so a new type is on for everyone). Not audited, no
+  version, like `user_preferences`. A row for a type that later becomes
+  mandatory, is unregistered or leaves the user's roles is ignored or
+  harmless and never deleted automatically.
+- **Enforcement** is central, in `create_notification`: for an optional type
+  it looks up the recipient's opt-out row (one `SELECT`) and, with one, adds
+  no row, sends no `NOTIFY` and returns `None`. Mandatory types skip the
+  lookup. Params are validated first, so a bad call still raises. Callers
+  that count notifications count only the non-`None` results (the reminder
+  job's `notifications`).
+- **Not retroactive:** only notifications created after the change are
+  affected. Existing ones stay as they are, and turning a type back on
+  brings back nothing. A muted payment-reminder stage is still recorded in
+  `charge_reminders`, so it is never sent later.
+- **Concurrency:** a `PATCH` takes the caller's transaction advisory lock
+  (namespace `480401`), so two at once run one after the other and the last
+  wins per type.
 
 **Types today** (besides `dev.demo`): `staff.qualification_approved`,
 `_rejected`, `_revoked` (#44, #198); `scheduling.offer_received`,
@@ -1040,16 +1079,23 @@ reminders):
 
 1. Define a Pydantic model of the params and register it with
    `administration.service.register_notification_type("module.event",
-   Model)` in `app/wiring.py` (called by `build_app`, `app.cli` and
-   `app.worker`). Registering the same model again changes nothing; another
-   model for a registered code raises.
+   Model, mandatory=…, recipient_roles=frozenset({...}))` in `app/wiring.py`
+   (called by `build_app`, `app.cli` and `app.worker`). Pick both flags
+   (#119): `mandatory` only for a notice the user must not miss, and the
+   role codes of every possible recipient. Registering the same model and
+   flags again changes nothing; another model or other flags for a
+   registered code raise. Add the type to the pin in
+   `tests/unit/test_notification_catalogue.py` and to the web label pin of
+   the preferences page (M8-02b).
 2. Create notifications with `create_notification(session,
    recipient_user_id=…, notification_type=…, params=Model(...))` **inside
    the transaction of the action that causes them**. It validates the
    params, adds the row, flushes and issues the live `NOTIFY` (delivered
    only if the transaction commits); it never commits, so a rollback leaves
    no notification and no event. An unknown type or bad params raise
-   `ValueError` (a programming error).
+   `ValueError` (a programming error). It returns the new id, or `None` when
+   the recipient turned the (optional) type off; producers never check
+   preferences themselves.
 3. Web: add `notifications.types.<module_event>` to both `common.json`
    catalogs and, when the notification opens a page, an entry in
    `NOTIFICATION_LINKS` (`features/notifications/messages.ts`).
