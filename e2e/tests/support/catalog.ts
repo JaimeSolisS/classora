@@ -1078,7 +1078,7 @@ type Common = {
     filter: Record<'type' | 'assignee' | 'sort', string>;
     status: Record<'approved' | 'rejected', string>;
     types: { identity_registration: string };
-    list: { viewFor: string };
+    list: { view: string; viewFor: string };
     panel: { title: string };
     assign: { toMe: string; assignedTo: string };
     summary: {

@@ -252,12 +252,17 @@ const availabilityChange: Renderer = (item, t, f) => {
     subject.affected_count,
     subject.affected_sessions.length,
   );
+  // The exception's note (not in ChangeLike: the summary never shows it).
+  const exception = subject.change.exception as
+    { note?: unknown } | null | undefined;
+  const note = typeof exception?.note === 'string' ? exception.note : null;
   return present([
     row(t('approvals.details.tutor'), subject.tutor.display_name),
     row(
       t('approvals.details.change'),
       describeChange(subject, t, (date) => f.formatLocalDate(date)),
     ),
+    row(t('approvals.details.note'), note),
     row(t('approvals.details.affectedCount'), String(subject.affected_count)),
     {
       label: t('approvals.availabilityChange.affectedTitle'),

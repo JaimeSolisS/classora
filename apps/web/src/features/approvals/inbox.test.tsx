@@ -91,6 +91,15 @@ function stub(routes: Record<string, Responder | Responder[]> = {}): ApiStub {
   });
 }
 
+/** Moves focus to <body> the way a browser does when the focused control
+ * becomes disabled: no focusout reaches the dialog's focus trap. */
+function dropFocus() {
+  const hide = (event: Event) => event.stopImmediatePropagation();
+  window.addEventListener('focusout', hide, true);
+  (document.activeElement as HTMLElement | null)?.blur();
+  window.removeEventListener('focusout', hide, true);
+}
+
 async function openPanel() {
   await click(
     buttonNamed(
@@ -540,6 +549,64 @@ describe('assignment (C1, C2)', () => {
       expect(statusText()).toBe('');
     },
   );
+
+  // QA D2: a browser drops the focus of a control disabled while it sends
+  // to <body>, without a focusout the dialog's focus trap would see. The
+  // responders do the same (`dropFocus`); focus must come back to a usable
+  // control inside the panel once the assignment settles.
+  it('focus stays in the panel after "Assign" and after a conflict on "Assign to me"', async () => {
+    const blurred: Responder = () => {
+      dropFocus();
+      return jsonResponse(200, {
+        ...PENDING_REGISTRATION,
+        assignee: LAURA,
+        version: 2,
+      });
+    };
+    stub({
+      [DETAIL]: [
+        () => jsonResponse(200, PENDING_REGISTRATION),
+        () =>
+          jsonResponse(200, {
+            ...PENDING_REGISTRATION,
+            assignee: LAURA,
+            version: 2,
+          }),
+        () =>
+          jsonResponse(200, {
+            ...PENDING_REGISTRATION,
+            assignee: LAURA,
+            version: 3,
+          }),
+      ],
+      [ASSIGN]: [
+        blurred,
+        () => {
+          dropFocus();
+          return problem(409, 'version_conflict');
+        },
+      ],
+    });
+    app = await renderApp('/approvals');
+    await openPanel();
+
+    setFieldValue(panel().querySelector('select')!, LAURA.id);
+    const assign = buttonNamed(panel(), 'Assign');
+    assign.focus();
+    await click(assign);
+    await settle();
+    expect(statusText()).toBe('Assigned to Laura Méndez');
+    expect(panel().contains(document.activeElement)).toBe(true);
+    expect((document.activeElement as HTMLButtonElement).disabled).toBeFalsy();
+
+    const toMe = buttonNamed(panel(), 'Assign to me');
+    toMe.focus();
+    await click(toMe);
+    await settle();
+    expect(alerts(panel())).toContain('The request changed; it was reloaded.');
+    expect(panel().contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).toBe(buttonNamed(panel(), 'Assign to me'));
+  });
 
   it('a failed reload keeps the shown data and never claims it reloaded', async () => {
     stub({

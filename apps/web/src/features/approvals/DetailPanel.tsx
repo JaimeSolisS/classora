@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import type { RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { XIcon } from 'lucide-react';
@@ -87,6 +87,38 @@ export function DetailPanel({
 }: DetailPanelProps) {
   const { t } = useTranslation();
   const formatters = useFormatters();
+  const ownHeading = useRef<HTMLHeadingElement>(null);
+  const heading = headingRef ?? ownHeading;
+  // QA D2: the control that sent an assignment is disabled while it is
+  // sent, so the browser drops its focus to <body>, outside the modal (or
+  // it is gone afterwards, like "Assign to me" once assigned). When the
+  // assignment settles, focus goes back to that control if it is usable,
+  // else to the panel's heading.
+  const assignTrigger = useRef<Element | null>(null);
+  useEffect(() => {
+    if (assigning || assignTrigger.current === null) {
+      return;
+    }
+    const trigger = assignTrigger.current;
+    assignTrigger.current = null;
+    const panel = heading.current?.closest('[role="dialog"]');
+    if (!panel) {
+      return;
+    }
+    const usable = (element: Element | null): element is HTMLElement =>
+      element instanceof HTMLElement &&
+      element.isConnected &&
+      panel.contains(element) &&
+      !(element as HTMLButtonElement).disabled;
+    if (usable(document.activeElement)) {
+      return;
+    }
+    if (usable(trigger)) {
+      trigger.focus();
+    } else {
+      heading.current?.focus();
+    }
+  }, [assigning, heading]);
   const item = state.status === 'ready' ? state.item : null;
   const title = item
     ? panelTitle(item, t, formatters)
@@ -112,7 +144,7 @@ export function DetailPanel({
       >
         <DialogHeader className="flex-row items-start justify-between gap-4">
           <DialogTitle
-            ref={headingRef}
+            ref={heading}
             tabIndex={-1}
             className="text-lg leading-snug font-semibold break-words outline-none"
           >
@@ -136,7 +168,10 @@ export function DetailPanel({
           currentUserId={currentUserId}
           options={options}
           assigning={assigning}
-          onAssign={onAssign}
+          onAssign={(assigneeId) => {
+            assignTrigger.current = document.activeElement;
+            onAssign(assigneeId);
+          }}
           onDecide={onDecide}
         />
       </DialogContent>

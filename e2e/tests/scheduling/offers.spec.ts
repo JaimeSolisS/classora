@@ -1452,7 +1452,10 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
   await expect(item).toContainText(
     common.approvals.closeout.kinds.resubmission,
   );
-  await expect(item.getByRole('button')).toHaveCount(0);
+  // Only "Ver detalle" (M8-01b A3): no decision buttons.
+  await expect(item.getByRole('button')).toHaveText([
+    common.approvals.list.view,
+  ]);
   await item
     .getByRole('link', { name: common.approvals.closeout.review })
     .click();

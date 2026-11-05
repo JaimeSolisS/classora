@@ -185,6 +185,29 @@ describe('the per-type fields (B2)', () => {
       'and 1 more',
     ]);
     expect(fields['Request status']).toBe('Pending');
+    // No note on this exception: no Note row.
+    expect(fields).not.toHaveProperty('Note');
+  });
+
+  it("an availability change's exception note (QA D1)", () => {
+    const item = ITEMS_BY_TYPE['staff.availability_change']!;
+    const subject = item.subject as {
+      change: { exception: Record<string, unknown> };
+    };
+    const { fields } = rows({
+      ...item,
+      subject: {
+        ...item.subject,
+        change: {
+          ...subject.change,
+          exception: {
+            ...subject.change.exception,
+            note: 'Compromiso familiar',
+          },
+        },
+      },
+    });
+    expect(fields.Note).toBe('Compromiso familiar');
   });
 
   it('a session closeout', () => {
