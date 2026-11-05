@@ -221,6 +221,9 @@ type ApprovalStatusFilter = Literal[
     "open", "pending", "approved", "rejected", "changes_requested", "cancelled", "all"
 ]
 type ApprovalAssigneeFilter = Literal["any", "me", "unassigned"]
+type ApprovalSort = Literal["priority", "oldest", "newest"]
+"""The inbox orders (#118 E7): ``priority`` (the default: high first, then
+oldest first), ``oldest`` and ``newest`` (by creation); each ends on ``id``."""
 
 
 class AccountName(BaseModel):
@@ -262,6 +265,23 @@ class ApprovalRejectBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     reason: str | None = None
+
+
+class AssignApprovalBody(BaseModel):
+    """``POST …/assign`` (#118 A1): the new assignee (``null`` unassigns) and
+    the request's ``version`` as the caller last read it. Both are required."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    assignee_user_id: uuid.UUID | None
+    version: int
+
+
+class ApprovalAssigneeOptions(BaseModel):
+    """``GET …/assignee-options`` (#118 B1): the active users who hold the
+    request's review permission now, by display name then id."""
+
+    items: list[AccountName]
 
 
 class ApprovalRequestChangesBody(BaseModel):

@@ -38,6 +38,7 @@ from tests.integration.auth_support import (
     auth_client,
     cookie_header,
     create_user,
+    signed_headers,
 )
 from tests.integration.catalog_support import count_statements
 from tests.integration.conftest import reset_rate_limits, run_sql
@@ -164,6 +165,50 @@ def registration(url: str, client: TestClient) -> Any:
     reset_rate_limits(url)
     assert code_of(register(client, username=username)) == (202, None)
     return request_row(url, username)
+
+
+def assign(
+    client: TestClient,
+    cookie: Any,
+    approval_id: Any,
+    assignee_id: Any,
+    version: Any,
+) -> Any:
+    """``POST …/{approval_id}/assign`` (#118 A1)."""
+    client.cookies.clear()
+    return client.post(
+        f"{APPROVALS}/{approval_id}/assign",
+        headers=signed_headers(cookie),
+        json={
+            "assignee_user_id": str(assignee_id) if assignee_id else None,
+            "version": version,
+        },
+    )
+
+
+def assignee_options(client: TestClient, cookie: Any, approval_id: Any) -> Any:
+    client.cookies.clear()
+    return client.get(
+        f"{APPROVALS}/{approval_id}/assignee-options", headers=cookie_header(cookie)
+    )
+
+
+def assignee_of(url: str, approval_id: Any) -> Any:
+    [row] = run_sql(
+        url,
+        "SELECT assignee_user_id FROM approval_requests WHERE id = :id",
+        {"id": approval_id},
+    )
+    return row.assignee_user_id
+
+
+def assigned_notifications(url: str, user_id: Any) -> list[Any]:
+    return run_sql(
+        url,
+        "SELECT params FROM notifications WHERE recipient_user_id = :u"
+        " AND notification_type = 'administration.approval_assigned'",
+        {"u": user_id},
+    )
 
 
 def get(client: TestClient, cookie: Any, approval_id: Any) -> Any:
@@ -307,7 +352,9 @@ def test_open_creates_keeps_a_pending_one_and_reopens_a_decided_one(
     url = module_seeded_url
     subject = uuid.uuid7()
 
-    def open_(priority: str = "normal") -> uuid.UUID:
+    def open_(
+        priority: str = "normal", assignee_user_id: uuid.UUID | None = None
+    ) -> uuid.UUID:
         async def _open(session: AsyncSession) -> uuid.UUID:
             request = await administration.open_approval_request(
                 session,
@@ -315,6 +362,7 @@ def test_open_creates_keeps_a_pending_one_and_reopens_a_decided_one(
                 subject_id=subject,
                 requester_user_id=None,
                 priority=priority,
+                assignee_user_id=assignee_user_id,
             )
             return request.id
 
@@ -339,6 +387,12 @@ def test_open_creates_keeps_a_pending_one_and_reopens_a_decided_one(
         None,
     )
     assert row.version == 4
+    # #118 E4: an existing row keeps its assignee on a refresh and a reopen;
+    # the argument applies only on create.
+    assert code_of(assign(client, cookie, approval_id, owner.id, 4)) == OK
+    other = create_user(url, roles=(OWNER,))
+    assert open_(assignee_user_id=other.id) == approval_id  # pending refresh
+    assert assignee_of(url, approval_id) == owner.id
     reopened = get(client, cookie, approval_id).json()
     assert (reopened["priority"], reopened["allowed_actions"]) == (
         "normal",
@@ -353,6 +407,7 @@ def test_open_creates_keeps_a_pending_one_and_reopens_a_decided_one(
     decide(client, cookie, approval_id, "request-changes", {"reason": "Date?"})
     assert open_() == approval_id
     assert approval(url, approval_id).status == "pending"
+    assert assignee_of(url, approval_id) == owner.id  # reopened: kept
     assert approve(client, cookie, approval_id).json()["status"] == "approved"
     assert (
         len(
@@ -705,3 +760,351 @@ def test_a_page_takes_at_most_five_statements(
     }
     assert len(page.items) >= 30
     assert count <= 5
+
+
+# --- #118 A: assignment --------------------------------------------------------------
+
+CLOSED = (409, "approval_request_closed")
+CONFLICT = (409, "version_conflict")
+INELIGIBLE = (422, "approval_assignee_ineligible")
+
+
+def test_assign_reassign_and_unassign(module_seeded_url, client, owner, sample_type):
+    url = module_seeded_url
+    other = create_user(url, roles=(OWNER,))
+    approval_id = create_sample(url, owner, priority="high")
+    cookie = signed_in(client, owner.username)
+
+    assigned = assign(client, cookie, approval_id, other.id, 1)
+
+    assert code_of(assigned) == OK, assigned.text
+    body = assigned.json()
+    assert body["assignee"]["id"] == str(other.id)
+    assert (body["status"], body["priority"], body["version"]) == ("pending", "high", 2)
+    [update] = events(url, record_id=approval_id, action="update")
+    assert set(update.changes) == {"assignee_user_id"}
+    assert update.changes["assignee_user_id"] == {"old": None, "new": str(other.id)}
+    [notification] = assigned_notifications(url, other.id)
+    assert notification.params == {
+        "request_id": str(approval_id),
+        "request_type": SAMPLE,
+    }
+
+    # Reassign to self: no notification for anyone.
+    mine = assign(client, cookie, approval_id, owner.id, 2)
+    assert code_of(mine) == OK
+    assert mine.json()["assignee"]["id"] == str(owner.id)
+    assert assigned_notifications(url, owner.id) == []
+    # Unassign: none either.
+    unassigned = assign(client, cookie, approval_id, None, 3)
+    assert code_of(unassigned) == OK
+    assert (unassigned.json()["assignee"], unassigned.json()["version"]) == (None, 4)
+    assert len(assigned_notifications(url, other.id)) == 1
+    row = approval(url, approval_id)
+    assert (row.status, row.reason, row.resolved_at, row.resolved_by_user_id) == (
+        "pending",
+        None,
+        None,
+        None,
+    )
+    assert sample_type.calls == []
+
+
+def test_assigning_the_current_assignee_changes_nothing(
+    module_seeded_url, client, owner, sample_type
+):
+    url = module_seeded_url
+    other = create_user(url, roles=(OWNER,))
+    approval_id = create_sample(url, owner)
+    cookie = signed_in(client, owner.username)
+    assert code_of(assign(client, cookie, approval_id, other.id, 1)) == OK
+
+    again = assign(client, cookie, approval_id, other.id, 2)
+
+    assert code_of(again) == OK
+    assert again.json()["version"] == 2
+    assert len(events(url, record_id=approval_id, action="update")) == 1
+    assert len(assigned_notifications(url, other.id)) == 1
+    # Unassigning an unassigned request: the same.
+    nobody = create_sample(url, owner)
+    assert assign(client, cookie, nobody, None, 1).json()["version"] == 1
+    assert events(url, record_id=nobody, action="update") == []
+
+
+def test_the_assignment_order(module_seeded_url, client, owner, sample_type):
+    url = module_seeded_url
+    approval_id = create_sample(url, owner)
+    admin = create_user(url, roles=(ADMINISTRATOR,))
+    tutor = create_user(url, roles=(TUTOR,))
+    cookie = signed_in(client, owner.username)
+
+    # 422 on the body first.
+    client.cookies.clear()
+    for body in (
+        {"version": 1},
+        {"assignee_user_id": None},
+        {"assignee_user_id": None, "version": 1, "extra": 1},
+        {"assignee_user_id": "nope", "version": 1},
+    ):
+        response = client.post(
+            f"{APPROVALS}/{approval_id}/assign",
+            headers=signed_headers(cookie),
+            json=body,
+        )
+        assert code_of(response) == VALIDATION
+    # 404: missing, or hidden (an Administrator can't review the sample).
+    assert code_of(assign(client, cookie, uuid.uuid7(), owner.id, 1)) == NOT_FOUND
+    admin_cookie = signed_in(client, admin.username)
+    assert code_of(assign(client, admin_cookie, approval_id, admin.id, 99)) == (
+        NOT_FOUND
+    )
+    # 409 version_conflict before the closed and the eligibility checks.
+    assert code_of(assign(client, cookie, approval_id, tutor.id, 2)) == CONFLICT
+    # 422: not a holder of the review permission, unknown, or not active.
+    archived = create_user(url, roles=(OWNER,), state="archived")
+    for target in (tutor.id, admin.id, uuid.uuid7(), archived.id):
+        assert code_of(assign(client, cookie, approval_id, target, 1)) == INELIGIBLE
+    assert assignee_of(url, approval_id) is None
+    assert approval(url, approval_id).version == 1
+    assert events(url, record_id=approval_id, action="update") == []
+    for user in (tutor, admin, archived):
+        assert assigned_notifications(url, user.id) == []
+    # A delegated Administrator holds it: eligible.
+    delegated = create_user(
+        url, roles=(ADMINISTRATOR,), delegations=(SAMPLE_PERMISSION,)
+    )
+    assert code_of(assign(client, cookie, approval_id, delegated.id, 1)) == OK
+
+    # 409 approval_request_closed after the version check, before eligibility.
+    assert code_of(approve(client, cookie, approval_id)) == OK
+    version = approval(url, approval_id).version
+    assert code_of(assign(client, cookie, approval_id, tutor.id, version)) == CLOSED
+    assert code_of(assign(client, cookie, approval_id, None, version)) == CLOSED
+    assert code_of(assign(client, cookie, approval_id, None, version - 1)) == CONFLICT
+    # A decision keeps the assignee as history.
+    assert assignee_of(url, approval_id) == delegated.id
+
+
+@pytest.mark.parametrize("final", ["reject", "cancel"])
+def test_rejected_and_cancelled_requests_are_closed(
+    module_seeded_url, client, owner, sample_type, final
+):
+    url = module_seeded_url
+    approval_id = create_sample(url, owner, assignee=owner)
+    cookie = signed_in(client, owner.username)
+    if final == "reject":
+        response = decide(client, cookie, approval_id, "reject", {"reason": "No."})
+        assert code_of(response) == OK
+    else:
+
+        async def _cancel(session: AsyncSession) -> None:
+            await administration.cancel_approval_request(
+                session, request_id=approval_id, by_user_id=None
+            )
+
+        in_uow(url, _cancel)
+    version = approval(url, approval_id).version
+
+    assert code_of(assign(client, cookie, approval_id, None, version)) == CLOSED
+    assert assignee_of(url, approval_id) == owner.id
+
+
+def test_changes_requested_items_can_be_assigned_and_resubmitting_keeps_it(
+    module_seeded_url, client, owner, sample_type
+):
+    url = module_seeded_url
+    other = create_user(url, roles=(OWNER,))
+    approval_id = create_sample(url, owner)
+    cookie = signed_in(client, owner.username)
+    assert (
+        code_of(
+            decide(client, cookie, approval_id, "request-changes", {"reason": "More."})
+        )
+        == OK
+    )
+
+    version = approval(url, approval_id).version
+    assert code_of(assign(client, cookie, approval_id, other.id, version)) == OK
+
+    async def _resubmit(session: AsyncSession) -> None:
+        await administration.resubmit_approval_request(
+            session, request_id=approval_id, by_user_id=owner.id
+        )
+
+    in_uow(url, _resubmit)
+    assert approval(url, approval_id).status == "pending"
+    assert assignee_of(url, approval_id) == other.id
+
+
+def test_a_holder_of_the_review_permission_may_assign_others(
+    module_seeded_url, client, owner, sample_type
+):
+    # E2: no separate permission; a delegated Administrator assigns an Owner.
+    url = module_seeded_url
+    approval_id = create_sample(url, owner)
+    delegated = create_user(
+        url, roles=(ADMINISTRATOR,), delegations=(SAMPLE_PERMISSION,)
+    )
+    cookie = signed_in(client, delegated.username)
+
+    response = assign(client, cookie, approval_id, owner.id, 1)
+
+    assert code_of(response) == OK
+    [notification] = assigned_notifications(url, owner.id)
+    assert notification.params["request_id"] == str(approval_id)
+    [update] = events(url, record_id=approval_id, action="update")
+    assert update.actor_user_id == delegated.id
+
+
+def _assign_call(assignee_id: uuid.UUID) -> Any:
+    def call(own_client: TestClient, cookie: Any, approval_id: Any) -> Any:
+        return assign(own_client, cookie, approval_id, assignee_id, 1)
+
+    return call
+
+
+def test_two_concurrent_assignments_with_one_version_apply_once(
+    module_seeded_url, client, owner, sample_type
+):
+    url = module_seeded_url
+    first = create_user(url, roles=(OWNER,))
+    second = create_user(url, roles=(OWNER,))
+    approval_id = create_sample(url, owner)
+    cookie = signed_in(client, owner.username)
+
+    results = _race(
+        url, cookie, approval_id, (_assign_call(first.id), _assign_call(second.id))
+    )
+
+    assert sorted(results) == [OK, CONFLICT]
+    winner = first if results[0] == OK else second
+    loser = second if winner is first else first
+    assert assignee_of(url, approval_id) == winner.id
+    assert approval(url, approval_id).version == 2
+    assert len(events(url, record_id=approval_id, action="update")) == 1
+    assert len(assigned_notifications(url, winner.id)) == 1
+    assert assigned_notifications(url, loser.id) == []
+
+
+# --- #118 B: assignee options --------------------------------------------------------
+
+
+def test_the_assignee_options(module_seeded_url, client, owner, sample_type):
+    url = module_seeded_url
+    approval_id = create_sample(url, owner)
+    delegated = create_user(
+        url,
+        roles=(ADMINISTRATOR,),
+        delegations=(SAMPLE_PERMISSION,),
+        display_name="Aaa Delegated",
+    )
+    plain_admin = create_user(url, roles=(ADMINISTRATOR,))
+    archived = create_user(url, roles=(OWNER,), state="archived")
+    tutor = create_user(url, roles=(TUTOR,))
+    cookie = signed_in(client, owner.username)
+
+    response = assignee_options(client, cookie, approval_id)
+
+    assert code_of(response) == OK
+    items = response.json()["items"]
+    ids = [item["id"] for item in items]
+    assert {str(owner.id), str(delegated.id)} <= set(ids)
+    assert not {str(plain_admin.id), str(archived.id), str(tutor.id)} & set(ids)
+    assert set(items[0]) == {"id", "display_name"}
+    assert items == sorted(items, key=lambda i: (i["display_name"], i["id"]))
+    # Everyone listed can be assigned (B3).
+    version = 1
+    for item in items[:3]:
+        assert code_of(assign(client, cookie, approval_id, item["id"], version)) == OK
+        version = approval(url, approval_id).version
+    # Closed requests still answer (read only).
+    assert code_of(approve(client, cookie, approval_id)) == OK
+    assert code_of(assignee_options(client, cookie, approval_id)) == OK
+    # 404: missing, or hidden.
+    assert code_of(assignee_options(client, cookie, uuid.uuid7())) == NOT_FOUND
+    for user in (plain_admin, tutor):
+        other_cookie = signed_in(client, user.username)
+        assert code_of(assignee_options(client, other_cookie, approval_id)) == (
+            NOT_FOUND
+        )
+
+
+def test_the_assignee_options_take_at_most_four_statements(
+    module_seeded_url, owner, sample_type
+):
+    approval_id = create_sample(module_seeded_url, owner)
+    for _ in range(5):
+        create_user(module_seeded_url, roles=(OWNER,))
+    principal = Principal(
+        user_id=owner.id,
+        roles=frozenset({OWNER}),
+        permissions=ROLE_PERMISSIONS[OWNER],
+    )
+
+    count, options = count_statements(
+        module_seeded_url,
+        lambda session: administration.list_assignee_options(
+            session, principal=principal, request_id=approval_id
+        ),
+    )
+
+    assert len(options) >= 6
+    assert count <= 4
+
+
+# --- #118 C: sort and priority filter ------------------------------------------------
+
+
+def test_the_sorts_and_the_priority_filter(
+    module_seeded_url, client, clock, owner, sample_type
+):
+    url = module_seeded_url
+    run_sql(url, "DELETE FROM approval_requests WHERE request_type = :t", {"t": SAMPLE})
+    low = create_sample(url, owner, priority="low")
+    normal = create_sample(url, owner, assignee=owner)
+    high = create_sample(url, owner, priority="high")
+    high_2 = create_sample(url, owner, priority="high", assignee=owner)
+    changes = create_sample(url, owner)
+    cookie = signed_in(client, owner.username)
+    assert (
+        code_of(decide(client, cookie, changes, "request-changes", {"reason": "More."}))
+        == OK
+    )
+    # created_at is the transaction's time; space them out explicitly.
+    for index, approval_id in enumerate((low, normal, high, high_2, changes)):
+        run_sql(
+            url,
+            "UPDATE approval_requests SET created_at ="
+            " TIMESTAMPTZ '2031-01-01 00:00:00+00' + make_interval(mins => :m)"
+            " WHERE id = :id",
+            {"m": index, "id": approval_id},
+        )
+    ordered = [str(i) for i in (low, normal, high, high_2, changes)]
+
+    def ids(**params: Any) -> list[str]:
+        return listed_ids(client, cookie, request_type=SAMPLE, **params)
+
+    assert ids() == [str(high), str(high_2), str(normal), str(changes), str(low)]
+    assert ids(sort="priority") == ids()
+    assert ids(sort="oldest") == ordered
+    assert ids(sort="newest") == ordered[::-1]
+    assert ids(priority="high") == [str(high), str(high_2)]
+    assert ids(priority="high", sort="newest") == [str(high_2), str(high)]
+    assert ids(priority="normal") == [str(normal), str(changes)]
+    assert ids(priority="low") == [str(low)]
+    assert ids(priority="high", assignee="me") == [str(high_2)]
+    assert ids(priority="normal", status="changes_requested") == [str(changes)]
+    assert ids(priority="normal", status="pending", assignee="unassigned") == []
+    page = list_requests(
+        client, cookie, request_type=SAMPLE, priority="normal", sort="newest"
+    ).json()
+    assert (page["total"], [i["id"] for i in page["items"]]) == (
+        2,
+        [str(changes), str(normal)],
+    )
+    second = list_requests(
+        client, cookie, request_type=SAMPLE, sort="oldest", limit=2, offset=2
+    ).json()
+    assert (second["total"], [i["id"] for i in second["items"]]) == (5, ordered[2:4])
+    for bad in ({"sort": "status"}, {"priority": "urgent"}, {"sort": ""}):
+        assert code_of(list_requests(client, cookie, **bad)) == VALIDATION

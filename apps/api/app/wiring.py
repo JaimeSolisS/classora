@@ -30,16 +30,24 @@ notification types and the scheduling ``completed`` attendance unlock,
 types; #316: ``academics.progress_report_due``; #97:
 ``billing.payment_reminder``; #110: the ``payroll.period`` approval type,
 ``app.workflows.payroll_period_approval``, and
-``payroll.period_finalized``) are wired
+``payroll.period_finalized``; #118: the review-candidate resolver of the
+approval inbox, :func:`review_candidates`, and
+``administration.approval_assigned``) are wired
 here, by the API app factory
 (``app.main.build_app``), ``app.cli`` and ``app.worker``.
 """
+
+from collections.abc import Sequence
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.academics import service as academics_service
 from app.modules.administration import service as administration_service
 from app.modules.families import service as families_service
 from app.modules.identity.service import (
     REGISTRATION_APPROVAL_HANDLER,
+    AccountReference,
+    active_user_ids_with_permission,
     get_account_references,
 )
 from app.modules.scheduling import service as scheduling_service
@@ -64,6 +72,16 @@ from app.workflows.session_cancellation import on_session_cancelled
 from app.workflows.session_closeout import SESSION_CLOSEOUT_HANDLER
 from app.workflows.session_closeout_review import register_closeout_notifications
 from app.workflows.session_notes import register_note_notifications
+
+
+async def review_candidates(
+    session: AsyncSession, permission: str
+) -> Sequence[AccountReference]:
+    """The active holders of ``permission`` as account references (#118 B2:
+    who may be assigned an approval request); two statements."""
+    user_ids = await active_user_ids_with_permission(session, permission)
+    references = await get_account_references(session, user_ids)
+    return [references[user_id] for user_id in user_ids if user_id in references]
 
 
 def register_approval_wiring() -> None:
@@ -114,6 +132,8 @@ def register_approval_wiring() -> None:
     scheduling_service.register_change_request_notifications()
     scheduling_service.register_cancellation_step(on_session_cancelled)
     administration_service.register_account_reference_resolver(get_account_references)
+    administration_service.register_review_candidate_resolver(review_candidates)
+    administration_service.register_approval_notifications()
     families_service.register_tutor_assignment_source(
         scheduling_service.TUTOR_ASSIGNMENT_SOURCE
     )

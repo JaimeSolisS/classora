@@ -12,7 +12,10 @@
   actions (:func:`create_approval_request`, :func:`cancel_approval_request`,
   :func:`resubmit_approval_request`, :func:`approval_request_id_for_subject`,
   :func:`open_approval_request`),
-  reviewer decisions and reads, and :class:`ApprovalTransitionInvalidError`
+  reviewer decisions and reads, assignment (#118:
+  :func:`assign_approval_request`, :func:`list_assignee_options`, the
+  review-candidate resolver :func:`register_review_candidate_resolver` and
+  :func:`register_approval_notifications`), and :class:`ApprovalTransitionInvalidError`
   for a handler that finds its subject already decided (#44);
   implemented in :mod:`app.modules.administration.approvals`.
 - Notifications (#41): types and their params models
@@ -71,7 +74,16 @@ from app.modules.administration.approvals import (
     ApprovalRequestView as ApprovalRequestView,
 )
 from app.modules.administration.approvals import (
+    ReviewCandidateResolver as ReviewCandidateResolver,
+)
+from app.modules.administration.approvals import (
+    ReviewCandidateResolverMissingError as ReviewCandidateResolverMissingError,
+)
+from app.modules.administration.approvals import (
     approval_request_id_for_subject as approval_request_id_for_subject,
+)
+from app.modules.administration.approvals import (
+    assign_approval_request as assign_approval_request,
 )
 from app.modules.administration.approvals import (
     cancel_approval_request as cancel_approval_request,
@@ -89,6 +101,9 @@ from app.modules.administration.approvals import (
     list_approval_requests as list_approval_requests,
 )
 from app.modules.administration.approvals import (
+    list_assignee_options as list_assignee_options,
+)
+from app.modules.administration.approvals import (
     open_approval_request as open_approval_request,
 )
 from app.modules.administration.approvals import (
@@ -98,10 +113,19 @@ from app.modules.administration.approvals import (
     register_approval_handler as register_approval_handler,
 )
 from app.modules.administration.approvals import (
+    register_approval_notifications as register_approval_notifications,
+)
+from app.modules.administration.approvals import (
+    register_review_candidate_resolver as register_review_candidate_resolver,
+)
+from app.modules.administration.approvals import (
     registered_account_reference_resolver as registered_account_reference_resolver,
 )
 from app.modules.administration.approvals import (
     registered_approval_types as registered_approval_types,
+)
+from app.modules.administration.approvals import (
+    registered_review_candidate_resolver as registered_review_candidate_resolver,
 )
 from app.modules.administration.approvals import (
     resubmit_approval_request as resubmit_approval_request,

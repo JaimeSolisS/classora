@@ -99,6 +99,8 @@ Codes in use today:
 | `registration_already_decided` | 409 | Since #40 only the `identity.registration` approval handler's defensive check: approving or rejecting a registration whose own record was already decided, or whose account is no longer `pending` (for example archived meanwhile); the approval request stays `pending` (see Registration requests). |
 | `approval_transition_invalid` | 409 | The approval request's status doesn't allow the action: it was already approved, rejected or cancelled, or it waits for the requester's changes (see Approval requests). Of two concurrent decisions, the second gets this. |
 | `approval_action_unsupported` | 409 | `request-changes` on an approval type that doesn't support it (registrations don't; see Approval requests). |
+| `approval_request_closed` | 409 | `POST /api/v1/approval-requests/{id}/assign` on a request that is approved, rejected or cancelled: only open requests can be assigned (see Approval requests). |
+| `approval_assignee_ineligible` | 422 | `POST /api/v1/approval-requests/{id}/assign` with an assignee who is unknown, not `active`, or doesn't hold the request type's review permission now (see Approval requests). |
 | `user_not_active` | 409 | `POST /api/v1/password-resets` for a user who is not `active` (pending, suspended or archived). |
 | `last_active_owner` | 409 | Suspending or archiving the only active Owner, or taking the `owner` role from them (see User administration). |
 | `name_taken` | 409 | A catalog record (an education level, or a subject within its level), a classroom or a course template would get a name another record already has, ignoring case; inactive records count (see Academic catalog, Classrooms, Course templates). |
@@ -813,24 +815,28 @@ then `POST /api/v1/approval-requests/{id}/approve` or `…/reject`. The former
 Implemented by M3-04 (#40; spec §9 "central administrative approval inbox";
 architecture §4.1) in `apps/api/app/modules/administration/` (`models.py`,
 `approvals.py`, `approvals_router.py`), exported through
-`administration.service`. The full inbox UI (assignment, detail panels) is
-M8-01 (#118); the web app has a basic list at `/approvals`.
+`administration.service`. M8-01 (#118) added assignment, the assignee
+options, the `sort` and `priority` list parameters and the assignment
+notification. The web app lists the inbox at `/approvals`; its detail panel
+and assignment controls are M8-01b.
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
-| `GET /api/v1/approval-requests` | `authenticated()` | Query `status` (`open` by default = `pending` + `changes_requested`, one of the five statuses, or `all`), `request_type` (a registered type; anything else is `422`), `assignee` (`any` by default, `me`, `unassigned`), `limit`/`offset`. Only the types whose review permission the caller holds; a caller with none gets an empty page. Order: priority (`high`, `normal`, `low`), then `created_at`, then `id`. |
+| `GET /api/v1/approval-requests` | `authenticated()` | Query `status` (`open` by default = `pending` + `changes_requested`, one of the five statuses, or `all`), `request_type` (a registered type; anything else is `422`), `assignee` (`any` by default, `me`, `unassigned`), `priority` (`high`, `normal` or `low`; omitted = any), `sort` (below), `limit`/`offset`. The filters combine and `total` counts the filtered set. Only the types whose review permission the caller holds; a caller with none gets an empty page. `sort=priority` (the default): priority (`high`, `normal`, `low`), then `created_at`, then `id`; `sort=oldest`: `created_at`, `id`; `sort=newest`: `created_at DESC`, `id DESC`. An unknown value is `422`. |
 | `GET /api/v1/approval-requests/{request_id}` | `authenticated()` | The item; `404 not_found` when missing or not reviewable by the caller. |
 | `POST /api/v1/approval-requests/{request_id}/approve` | `authenticated()` | No body. `200` with the updated item. |
 | `POST /api/v1/approval-requests/{request_id}/reject` | `authenticated()` | Body `{reason?}`. `200` with the updated item. |
 | `POST /api/v1/approval-requests/{request_id}/request-changes` | `authenticated()` | Body `{reason}`. `200` with the updated item. |
+| `POST /api/v1/approval-requests/{request_id}/assign` | `authenticated()` | Body `{assignee_user_id, version}` (both required; `assignee_user_id: null` unassigns; unknown fields `422`). `200` with the updated item. Not `idempotent()`: `version` guards a resend. |
+| `GET /api/v1/approval-requests/{request_id}/assignee-options` | `authenticated()` | `{items: [{id, display_name}]}`: the active users who hold the request type's review permission now (through a role or an active delegation), the caller included when eligible, by `display_name` then `id`. Any status (read only); `404` as the detail. At most 4 statements. |
 
 - **Model** (`approval_requests`, versioned, audited): `request_type` (a
   dotted code a module registers in code, CHECKed format, at most 64
   characters), `subject_id` (the record in the owning module, no foreign
   key; **one approval request per `(request_type, subject_id)`**: a
   resubmission reuses it), `requester_user_id` (`NULL` for system-raised
-  items), `assignee_user_id` (`NULL` while unassigned; assignment is
-  M8-01), `status`, `priority` (`low`, `normal`, `high`), `resolved_at` and
+  items), `assignee_user_id` (`NULL` while unassigned; see Assignment),
+  `status`, `priority` (`low`, `normal`, `high`), `resolved_at` and
   `resolved_by_user_id` (set for the final states; a system cancel has no
   resolver), `reason` (at most 1000 characters; required for
   `changes_requested`).
@@ -867,10 +873,45 @@ M8-01 (#118); the web app has a basic list at `/approvals`.
 - **Audit:** the automatic `create` event when a request is raised, and an
   `update` event with `status`, `resolved_*` and `reason` on each transition
   (the actor is the reviewer). `404`, `409` and `422` write nothing.
-- **Types today:** `identity.registration` (see Registration requests),
-  `staff.qualification` (#44, see Tutor qualifications),
-  `scheduling.offer_reassignment` (#52, see Assignment offers) and
-  `scheduling.occurrence_conflict` (#53, see Class series).
+- **Assignment** (#118): anyone who holds a type's review permission may
+  assign, reassign or unassign that type's requests, to themselves or to any
+  **active** user who holds the same permission now (the users
+  `assignee-options` lists; there is no separate assign permission). Order:
+  `401` → `csrf_failed` / `privacy_notice_required` → body `422` → the row is
+  locked `FOR UPDATE` → `404 not_found` (as a decision) → `409
+  version_conflict` → `409 approval_request_closed` (only `pending` and
+  `changes_requested` can be assigned) → `422 approval_assignee_ineligible`
+  (unknown, not `active`, or without the review permission now) → the write.
+  Assigning the current assignee changes nothing (`200`, the same `version`,
+  no audit event, no notification). A real change sets `assignee_user_id`,
+  bumps `version` and writes the automatic `update` audit event (ids only).
+  Status, `reason`, `resolved_*` and `priority` never change, and the type's
+  handler is not called. Of two concurrent assignments with the same
+  `version`, one succeeds and the other gets `409 version_conflict`.
+  Decisions, cancels (also by the system) and resubmissions keep the
+  assignee as history. An assignee who later loses the permission or is
+  archived stays assigned until someone eligible reassigns the request.
+- **Reopening keeps the assignee** (#118 E4): `open_approval_request` on an
+  existing row (a pending refresh or a reopen of a decided one) leaves
+  `assignee_user_id` alone; its `assignee_user_id` argument applies only
+  when the request is created.
+- **Notification** (#118 E5): `administration.approval_assigned`
+  `{request_id, request_type}` (no names, no subject data) goes to the new
+  assignee, in the same transaction, when someone else assigns them. There is
+  none for self-assignment, unassignment, a no-op or the previous assignee.
+- **Priority** is set by each type's own rule and is read only (#118 E6).
+- **Types today** (pinned in `tests/unit/test_approvals.py::REGISTERED_TYPES`
+  and, with their flags, in `tests/integration/test_approval_inbox_types.py`):
+  `identity.registration` (see Registration requests), `staff.qualification`
+  (#44, see Tutor qualifications), `scheduling.occurrence_conflict` (#53, see
+  Class series), `scheduling.offer_reassignment` (#52, see Assignment
+  offers), `scheduling.session_request` (#59, #60),
+  `scheduling.change_request` (#62), `staff.availability_change` (#63),
+  `academics.session_closeout` (#77, #78), `academics.progress_report` (#83)
+  and `payroll.period` (#110). Five are decided on their own page
+  (`inbox_decisions = false`, no `allowed_actions` in the inbox): session
+  requests, change requests, closeouts, progress reports and payroll
+  periods.
 
 **Adding a type** (later issues: M4 offers, session and availability
 requests):
@@ -895,11 +936,19 @@ requests):
    to `APPROVAL_TYPE_LABELS`, a summary renderer in
    `features/approvals/summary.ts` and, when a rejection needs a reason, the
    type to `REJECT_REASON_REQUIRED`.
+5. Add the type and its `(review_permission, inbox_decisions,
+   supports_request_changes, reason_required_on_reject)` to `EXPECTED` in
+   `tests/integration/test_approval_inbox_types.py`, which checks that every
+   registered type is listed, hidden and assignable through the inbox.
 
 `administration` imports no other module: names come from the
 account-reference resolver that the composition roots register
-(`register_account_reference_resolver(identity.service.get_account_references)`);
-without one, building an item fails closed (`500`).
+(`register_account_reference_resolver(identity.service.get_account_references)`),
+and the assignable users from the review-candidate resolver
+(`register_review_candidate_resolver(app.wiring.review_candidates)`, composed
+from `identity.service.active_user_ids_with_permission` and
+`get_account_references`); without them, building an item, the assignee
+options and an assignment fail closed (`500`).
 
 ### Notifications
 
@@ -976,6 +1025,9 @@ first local date). See Tutor availability.
 `due_on` the earliest effective due date; to the logins of the family's
 active guardian profiles; plural on `count`, `open_total` shown as money;
 no link until the family portal pages, M6-17b #388).
+`administration.approval_assigned` `{request_id, request_type}` (#118, see
+Approval requests; to the new assignee when someone else assigned them; no
+names, no subject data; the web message and link come with M8-01b).
 
 **Adding a type** (later issues: #44 qualification decisions, M4 offers and
 reminders):

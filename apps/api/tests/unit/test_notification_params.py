@@ -190,6 +190,30 @@ def test_the_app_registers_the_payment_reminder():
     }
 
 
+def test_the_app_registers_the_approval_assigned_type():
+    # #118 E1: ids and the type code only; registering again is a no-op.
+    administration.unregister_notification_type("administration.approval_assigned")
+    build_app()
+    administration.register_approval_notifications()
+
+    assert (
+        "administration.approval_assigned"
+        in administration.registered_notification_types()
+    )
+    assert validated_params(
+        "administration.approval_assigned",
+        {
+            "request_id": "0190f5a0-0000-7000-8000-000000000001",
+            "request_type": "identity.registration",
+        },
+    ) == {
+        "request_id": "0190f5a0-0000-7000-8000-000000000001",
+        "request_type": "identity.registration",
+    }
+    with pytest.raises(InvalidNotificationParamsError):
+        validated_params("administration.approval_assigned", {"request_id": "x"})
+
+
 # --- The dev type (D1, D2) -----------------------------------------------------------
 
 

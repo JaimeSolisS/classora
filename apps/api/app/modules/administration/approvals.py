@@ -35,26 +35,43 @@ resolver that the composition roots register
 get_account_references``): ``administration`` imports no other module.
 Without one, building a list item fails closed (:class:`AccountResolverMissingError`).
 
+**Assignment** (#118; :func:`assign_approval_request`): anyone who may review
+a request's type may assign it, reassign it or unassign it, to any **active**
+user who holds the type's review permission now (the review-candidate
+resolver the composition roots register,
+:func:`register_review_candidate_resolver`; without one it fails closed with
+:class:`ReviewCandidateResolverMissingError`). Order: the row ``FOR UPDATE``
+→ ``404 not_found`` (as a decision) → ``409 version_conflict`` → ``409
+approval_request_closed`` (only ``pending`` and ``changes_requested`` can be
+assigned) → ``422 approval_assignee_ineligible`` → the write. Assigning the
+current assignee changes nothing. The new assignee gets an
+``administration.approval_assigned`` notification when someone else assigned
+them. Decisions, cancels, resubmits and reopens keep the assignee.
+
 Every function runs in the caller's Unit of Work and never commits.
 """
 
 import re
 import uuid
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Final, Protocol
 
+from pydantic import BaseModel
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
 from app.core.authz import PERMISSION_CODE_PATTERN, Principal, RecordNotFoundError
 from app.core.errors import AppError
+from app.core.models import ensure_version
 from app.core.pagination import OffsetPage, OffsetParams
 from app.modules.administration.errors import (
     ApprovalActionUnsupportedError,
+    ApprovalAssigneeIneligibleError,
     ApprovalReasonInvalidError,
+    ApprovalRequestClosedError,
     ApprovalTransitionInvalidError,
 )
 from app.modules.administration.models import (
@@ -73,11 +90,17 @@ from app.modules.administration.models import (
     REQUEST_TYPE_PATTERN,
     ApprovalRequest,
 )
+from app.modules.administration.notifications import (
+    create_notification,
+    register_notification_type,
+)
 from app.modules.administration.schemas import (
     AccountName,
     ApprovalAction,
     ApprovalAssigneeFilter,
+    ApprovalPriority,
     ApprovalRequestItem,
+    ApprovalSort,
     ApprovalStatusFilter,
 )
 
@@ -303,6 +326,78 @@ async def _account_names(
     }
 
 
+# --- Review candidates (#118 B2) -------------------------------------------------
+
+type ReviewCandidateResolver = Callable[
+    [AsyncSession, str], Awaitable[Sequence[AccountReferenceLike]]
+]
+"""The **active** users who hold a permission now (through a role or an
+active delegation), as account references, in a fixed number of
+statements."""
+
+
+class ReviewCandidateResolverMissingError(RuntimeError):
+    """No review-candidate resolver is registered: the assignee options and
+    the assignment's eligibility check fail closed (a ``500``)."""
+
+
+_candidate_resolver: ReviewCandidateResolver | None = None
+
+
+def register_review_candidate_resolver(
+    resolver: ReviewCandidateResolver | None,
+) -> None:
+    """Register the resolver for this process (``None`` unregisters it; tests
+    only). ``app.wiring.register_approval_wiring`` registers one composed from
+    ``identity.service.active_user_ids_with_permission`` and
+    ``get_account_references``."""
+    global _candidate_resolver
+    _candidate_resolver = resolver
+
+
+def registered_review_candidate_resolver() -> ReviewCandidateResolver | None:
+    """The registered resolver, or ``None``."""
+    return _candidate_resolver
+
+
+async def _review_candidates(
+    session: AsyncSession, permission: str
+) -> list[AccountName]:
+    """The assignable users for ``permission``, by display name then id. The
+    assignee options and the eligibility check both read this (B3)."""
+    resolver = _candidate_resolver
+    if resolver is None:
+        raise ReviewCandidateResolverMissingError(
+            "No review-candidate resolver is registered."
+        )
+    references = await resolver(session, permission)
+    return sorted(
+        (
+            AccountName(id=reference.id, display_name=reference.display_name)
+            for reference in references
+        ),
+        key=lambda name: (name.display_name, name.id),
+    )
+
+
+# --- The assignment notification (#118 E5) ---------------------------------------
+
+APPROVAL_ASSIGNED: Final = "administration.approval_assigned"
+
+
+class ApprovalAssignedParams(BaseModel):
+    """The params of ``administration.approval_assigned``: ids and the type
+    code only (no names, no subject data)."""
+
+    request_id: uuid.UUID
+    request_type: str
+
+
+def register_approval_notifications() -> None:
+    """Register ``administration.approval_assigned`` (again: a no-op)."""
+    register_notification_type(APPROVAL_ASSIGNED, ApprovalAssignedParams)
+
+
 # --- Creating and requester actions (B1) -----------------------------------------
 
 
@@ -357,8 +452,8 @@ async def open_approval_request(
     (``uq_approval_requests_request_type``), so:
 
     - none yet → :func:`create_approval_request`;
-    - one already ``pending`` → kept, with ``requester_user_id``,
-      ``priority`` and ``assignee_user_id`` refreshed;
+    - one already ``pending`` → kept, with ``requester_user_id`` and
+      ``priority`` refreshed;
     - one in any other status (decided, cancelled or ``changes_requested``)
       → **reopened**: back to ``pending`` with those fields refreshed and
       ``reason``, ``resolved_at`` and ``resolved_by_user_id`` cleared. This
@@ -366,6 +461,10 @@ async def open_approval_request(
       reviewer and requester actions); the earlier decision stays in the
       audit log (the flush writes the ``update`` event and bumps
       ``version``).
+
+    An existing row keeps its ``assignee_user_id`` (#118 E4): a returned or
+    resubmitted item goes back to whoever was handling it.
+    ``assignee_user_id`` is used only when the request is created.
 
     The row is locked ``FOR UPDATE`` first. ``ValueError`` as
     :func:`create_approval_request`. Creating a request sends no
@@ -393,7 +492,6 @@ async def open_approval_request(
         )
     request.requester_user_id = requester_user_id
     request.priority = priority
-    request.assignee_user_id = assignee_user_id
     if request.status != PENDING:
         request.status = PENDING
         request.reason = None
@@ -540,6 +638,70 @@ async def decide_approval_request(
     return item
 
 
+# --- Assignment (#118 A, B) ------------------------------------------------------
+
+
+def _reviewing_handler(
+    request: ApprovalRequest, principal: Principal
+) -> ApprovalHandler:
+    """The request's handler; ``404`` when its type is unregistered or the
+    caller may not review it (hidden looks like missing)."""
+    handler = _handlers.get(request.request_type)
+    if handler is None or not principal.has(handler.review_permission):
+        raise RecordNotFoundError()
+    return handler
+
+
+async def assign_approval_request(
+    session: AsyncSession,
+    *,
+    principal: Principal,
+    request_id: uuid.UUID,
+    assignee_user_id: uuid.UUID | None,
+    version: int,
+) -> ApprovalRequestItem:
+    """Assign, reassign or unassign (``None``) an open request, in the order
+    of the module docstring; returns the item. Never calls the handler, and
+    changes nothing but ``assignee_user_id`` (and so ``version``)."""
+    request = await _locked(session, request_id)
+    handler = _reviewing_handler(request, principal)
+    ensure_version(request, version)
+    if request.status not in OPEN_STATUSES:
+        raise ApprovalRequestClosedError()
+    if assignee_user_id is not None:
+        candidates = await _review_candidates(session, handler.review_permission)
+        if all(candidate.id != assignee_user_id for candidate in candidates):
+            raise ApprovalAssigneeIneligibleError()
+    if request.assignee_user_id != assignee_user_id:
+        request.assignee_user_id = assignee_user_id
+        await session.flush()
+        if assignee_user_id is not None and assignee_user_id != principal.user_id:
+            await create_notification(
+                session,
+                recipient_user_id=assignee_user_id,
+                notification_type=APPROVAL_ASSIGNED,
+                params=ApprovalAssignedParams(
+                    request_id=request.id, request_type=request.request_type
+                ),
+            )
+    [item] = await _items(session, [request])
+    return item
+
+
+async def list_assignee_options(
+    session: AsyncSession, *, principal: Principal, request_id: uuid.UUID
+) -> list[AccountName]:
+    """The users the request can be assigned to now (the caller included
+    when eligible), by display name then id; ``404`` as
+    :func:`get_approval_request`. Any status (it only reads); three
+    statements."""
+    request: ApprovalRequest | None = await session.get(ApprovalRequest, request_id)
+    if request is None:
+        raise RecordNotFoundError()
+    handler = _reviewing_handler(request, principal)
+    return await _review_candidates(session, handler.review_permission)
+
+
 # --- Reading (C1-C3) -------------------------------------------------------------
 
 
@@ -642,11 +804,21 @@ class ApprovalRequestFilters:
     status: ApprovalStatusFilter = "open"
     request_type: str | None = None
     assignee: ApprovalAssigneeFilter = "any"
+    priority: ApprovalPriority | None = None
+    sort: ApprovalSort = "priority"
 
 
 _PRIORITY_ORDER: Final = case(
     {HIGH: 0, NORMAL: 1, LOW: 2}, value=ApprovalRequest.priority, else_=3
 )
+_ORDERS: Final[Mapping[str, tuple[Any, ...]]] = MappingProxyType(
+    {
+        "priority": (_PRIORITY_ORDER, ApprovalRequest.created_at, ApprovalRequest.id),
+        "oldest": (ApprovalRequest.created_at, ApprovalRequest.id),
+        "newest": (ApprovalRequest.created_at.desc(), ApprovalRequest.id.desc()),
+    }
+)
+"""The list orders (#118 E7); each ends on ``id``, so paging is stable."""
 
 
 async def list_approval_requests(
@@ -656,10 +828,10 @@ async def list_approval_requests(
     filters: ApprovalRequestFilters,
     page: OffsetParams,
 ) -> OffsetPage[ApprovalRequestItem]:
-    """The requests of the types the caller may review, by priority (high
-    first), then oldest first. At most ``3 + types on the page`` statements
-    (the count, the page, the names, the summaries); none without any
-    reviewable type."""
+    """The requests of the types the caller may review, in ``filters.sort``
+    order (by default by priority, high first, then oldest first). At most
+    ``3 + types on the page`` statements (the count, the page, the names, the
+    summaries); none without any reviewable type."""
     types = _reviewable_types(principal)
     if filters.request_type is not None:
         types = [t for t in types if t == filters.request_type]
@@ -676,13 +848,13 @@ async def list_approval_requests(
         query = query.where(ApprovalRequest.assignee_user_id == principal.user_id)
     elif filters.assignee == "unassigned":
         query = query.where(ApprovalRequest.assignee_user_id.is_(None))
+    if filters.priority is not None:
+        query = query.where(ApprovalRequest.priority == filters.priority)
     total = await session.scalar(select(func.count()).select_from(query.subquery()))
     requests = list(
         (
             await session.scalars(
-                query.order_by(
-                    _PRIORITY_ORDER, ApprovalRequest.created_at, ApprovalRequest.id
-                )
+                query.order_by(*_ORDERS[filters.sort])
                 .limit(page.limit)
                 .offset(page.offset)
             )
@@ -703,34 +875,41 @@ async def get_approval_request(
     request: ApprovalRequest | None = await session.get(ApprovalRequest, request_id)
     if request is None:
         raise RecordNotFoundError()
-    handler = _handlers.get(request.request_type)
-    if handler is None or not principal.has(handler.review_permission):
-        raise RecordNotFoundError()
+    _reviewing_handler(request, principal)
     [item] = await _items(session, [request])
     return item
 
 
 __all__ = [
+    "APPROVAL_ASSIGNED",
     "OPEN_STATUSES",
     "TRANSITIONS",
     "AccountReferenceResolver",
     "AccountResolverMissingError",
+    "ApprovalAssignedParams",
     "ApprovalHandler",
     "ApprovalRequestFilters",
     "ApprovalRequestView",
+    "ReviewCandidateResolver",
+    "ReviewCandidateResolverMissingError",
     "allowed_actions",
     "approval_request_id_for_subject",
+    "assign_approval_request",
     "cancel_approval_request",
     "create_approval_request",
     "decide_approval_request",
     "ensure_transition",
     "get_approval_request",
     "list_approval_requests",
+    "list_assignee_options",
     "open_approval_request",
     "register_account_reference_resolver",
     "register_approval_handler",
+    "register_approval_notifications",
+    "register_review_candidate_resolver",
     "registered_account_reference_resolver",
     "registered_approval_types",
+    "registered_review_candidate_resolver",
     "resubmit_approval_request",
     "transition_allowed",
     "unregister_approval_handler",
