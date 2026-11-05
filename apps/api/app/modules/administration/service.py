@@ -47,16 +47,29 @@ position ``[occurred_at, id]`` of the last item of a page; the next page
 continues strictly after it, so events written meanwhile (always newer) never
 shift later pages. Every holder of ``audit.view`` sees the whole log: there is
 no record-level policy, and an unknown record or actor gives an empty page.
+
+#120 B1-B3: each item names its actor and the users its user-reference
+columns point to (``app.core.audit.user_reference_columns``: never a masked
+or excluded column), plus the record itself for ``users`` events, through
+the registered account-reference resolver in one call per page (a missing
+resolver fails closed). Masked values are never resolved, and ``details``
+are not read. :func:`list_audit_record_types` lists the audited tables.
 """
 
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import Select, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.audit import AuditEvent
+from app.core.audit import (
+    AuditEvent,
+    audited_table_names,
+    user_reference_columns,
+)
 from app.core.pagination import (
     CursorPage,
     CursorParams,
@@ -84,6 +97,9 @@ from app.modules.administration.approvals import (
 )
 from app.modules.administration.approvals import (
     ReviewCandidateResolverMissingError as ReviewCandidateResolverMissingError,
+)
+from app.modules.administration.approvals import (
+    _account_names,
 )
 from app.modules.administration.approvals import (
     approval_request_id_for_subject as approval_request_id_for_subject,
@@ -229,7 +245,11 @@ from app.modules.administration.scheduling_policy import (
 from app.modules.administration.scheduling_policy import (
     violates_booking_notice as violates_booking_notice,
 )
-from app.modules.administration.schemas import AuditChange, AuditEventListItem
+from app.modules.administration.schemas import (
+    AccountName,
+    AuditChange,
+    AuditEventListItem,
+)
 from app.modules.administration.settings import (
     TimeZoneDependency as TimeZoneDependency,
 )
@@ -295,11 +315,47 @@ def _filtered(filters: AuditEventFilters) -> Select[AuditEvent]:
     return query
 
 
-def _item(event: AuditEvent) -> AuditEventListItem:
+USERS_TABLE = "users"
+
+
+def _user_id(value: Any) -> uuid.UUID | None:
+    """``value`` as a user id when it is a UUID string, else ``None``."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        return None
+
+
+def _referenced_users(event: AuditEvent, columns: Iterable[str]) -> set[uuid.UUID]:
+    """The users ``event`` names: the ``old``/``new`` values of its
+    user-reference ``columns``, and the record of a ``users`` event."""
+    found: set[uuid.UUID] = set()
+    if event.record_type == USERS_TABLE and event.record_id is not None:
+        found.add(event.record_id)
+    for column in columns:
+        change = (event.changes or {}).get(column)
+        if not isinstance(change, dict):
+            continue
+        for side in ("old", "new"):
+            user_id = _user_id(change.get(side))
+            if user_id is not None:
+                found.add(user_id)
+    return found
+
+
+def _item(
+    event: AuditEvent,
+    referenced: set[uuid.UUID],
+    names: dict[uuid.UUID, AccountName],
+) -> AuditEventListItem:
+    actor = event.actor_user_id
     return AuditEventListItem(
         id=event.id,
         occurred_at=event.occurred_at,
-        actor_id=event.actor_user_id,
+        actor_id=actor,
+        actor=names.get(actor) if actor is not None else None,
         action=event.action,
         record_type=event.record_type,
         record_id=event.record_id,
@@ -310,13 +366,18 @@ def _item(event: AuditEvent) -> AuditEventListItem:
         ),
         details=event.details,
         request_id=event.request_id,
+        accounts=sorted(
+            (names[user_id] for user_id in referenced if user_id in names),
+            key=lambda account: account.id,
+        ),
     )
 
 
 async def list_audit_events(
     session: AsyncSession, filters: AuditEventFilters, page: CursorParams
 ) -> CursorPage[AuditEventListItem]:
-    """One page of matching events, newest first."""
+    """One page of matching events, newest first, with names (#120 B3: one
+    event ``SELECT`` and at most one resolver statement)."""
     query = _filtered(filters)
     if page.cursor is not None:
         when, identifier = _position(page.cursor)
@@ -327,9 +388,32 @@ async def list_audit_events(
         page.limit + 1
     )
     events = list((await session.scalars(query)).all())
-    items = [_item(event) for event in events]
+    columns: dict[str | None, frozenset[str]] = {None: frozenset()}
+    for event in events:
+        table = event.record_type
+        if table is not None and table not in columns:
+            columns[table] = user_reference_columns(table)
+    referenced = [
+        _referenced_users(event, columns[event.record_type]) for event in events
+    ]
+    names = await _account_names(
+        session,
+        [
+            *(event.actor_user_id for event in events),
+            *(user_id for ids in referenced for user_id in ids),
+        ],
+    )
+    items = [
+        _item(event, ids, names) for event, ids in zip(events, referenced, strict=True)
+    ]
     return build_cursor_page(
         items,
         limit=page.limit,
         key=lambda item: [item.occurred_at.isoformat(), str(item.id)],
     )
+
+
+def list_audit_record_types() -> list[str]:
+    """The audited table names, sorted (#120 B4): every mapped ``Audited``
+    model the process imported (all of them in the app)."""
+    return sorted(audited_table_names())

@@ -103,6 +103,8 @@ describe('instant → local values', () => {
     ['en', 'date', 'Oct 17, 2026'],
     ['en', 'time', '11:30 PM'],
     ['en', 'dateTime', 'Oct 17, 2026, 11:30 PM'],
+    ['es', 'dateTimeSeconds', '17 oct 2026, 23:30:00'],
+    ['en', 'dateTimeSeconds', 'Oct 17, 2026, 11:30:00 PM'],
   ] as const)('formats in %s with style %s', (language, style, expected) => {
     expect(
       formatInstant('2026-10-18T05:30:00Z', { timeZone: MX, language, style }),

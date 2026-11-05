@@ -39,6 +39,16 @@ from app.modules.administration.settings_models import (
 )
 
 
+class AccountName(BaseModel):
+    """A user named in an approval request or an audit event: the id and the
+    display name only."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: uuid.UUID
+    display_name: str
+
+
 class AuditChange(BaseModel):
     """One column's value before and after the change (null when there is none)."""
 
@@ -47,17 +57,32 @@ class AuditChange(BaseModel):
 
 
 class AuditEventListItem(BaseModel):
-    """One audit event; the actor and the record are given by id."""
+    """One audit event; the actor and the record are given by id.
+
+    #120 B1: ``actor`` names the actor (``null`` without one, or when the id
+    is unknown). ``accounts`` names the users whose ids are ``old``/``new``
+    values of the event's user-reference columns, plus the record itself
+    when ``record_type`` is ``users``; deduplicated, sorted by id, unknown
+    ids left out. Masked values stay ``"[masked]"`` and are never resolved.
+    """
 
     id: uuid.UUID
     occurred_at: datetime
     actor_id: uuid.UUID | None
+    actor: AccountName | None
     action: str
     record_type: str | None
     record_id: uuid.UUID | None
     changes: dict[str, AuditChange] | None
     details: dict[str, Any] | None
     request_id: str | None
+    accounts: list[AccountName]
+
+
+class AuditRecordTypeList(BaseModel):
+    """The audited table names, sorted (#120 B4)."""
+
+    items: list[str]
 
 
 # --- Business settings (#37) ---------------------------------------------------------
@@ -266,15 +291,6 @@ type ApprovalAssigneeFilter = Literal["any", "me", "unassigned"]
 type ApprovalSort = Literal["priority", "oldest", "newest"]
 """The inbox orders (#118 E7): ``priority`` (the default: high first, then
 oldest first), ``oldest`` and ``newest`` (by creation); each ends on ``id``."""
-
-
-class AccountName(BaseModel):
-    """A user named in an approval request: the id and the display name only."""
-
-    model_config = ConfigDict(frozen=True)
-
-    id: uuid.UUID
-    display_name: str
 
 
 class ApprovalRequestItem(BaseModel):

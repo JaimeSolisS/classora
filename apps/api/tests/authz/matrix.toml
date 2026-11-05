@@ -261,6 +261,14 @@ permission = "audit.view"
 allow = ["owner", "administrator"]
 
 [[route]]
+method = "GET"
+path = "/api/v1/audit-events/record-types"
+access = "permission"
+permission = "audit.view"
+allow = ["owner", "administrator"]
+# #120 B4: the audited table names (no record-level policy).
+
+[[route]]
 method = "POST"
 path = "/api/v1/auth/invitation/lookup"
 access = "public"

@@ -624,6 +624,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/audit-events/record-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Record Types
+         * @description The audited table names, sorted: the record types the log filters by.
+         */
+        get: operations["list_record_types_api_v1_audit_events_record_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/approval-requests": {
         parameters: {
             query?: never;
@@ -6571,7 +6591,8 @@ export interface components {
         };
         /**
          * AccountName
-         * @description A user named in an approval request: the id and the display name only.
+         * @description A user named in an approval request or an audit event: the id and the
+         *     display name only.
          */
         AccountName: {
             /**
@@ -7417,6 +7438,12 @@ export interface components {
         /**
          * AuditEventListItem
          * @description One audit event; the actor and the record are given by id.
+         *
+         *     #120 B1: ``actor`` names the actor (``null`` without one, or when the id
+         *     is unknown). ``accounts`` names the users whose ids are ``old``/``new``
+         *     values of the event's user-reference columns, plus the record itself
+         *     when ``record_type`` is ``users``; deduplicated, sorted by id, unknown
+         *     ids left out. Masked values stay ``"[masked]"`` and are never resolved.
          */
         AuditEventListItem: {
             /**
@@ -7431,6 +7458,7 @@ export interface components {
             occurred_at: string;
             /** Actor Id */
             actor_id: string | null;
+            actor: components["schemas"]["AccountName"] | null;
             /** Action */
             action: string;
             /** Record Type */
@@ -7447,6 +7475,16 @@ export interface components {
             } | null;
             /** Request Id */
             request_id: string | null;
+            /** Accounts */
+            accounts: components["schemas"]["AccountName"][];
+        };
+        /**
+         * AuditRecordTypeList
+         * @description The audited table names, sorted (#120 B4).
+         */
+        AuditRecordTypeList: {
+            /** Items */
+            items: string[];
         };
         /**
          * AutomaticCredit
@@ -24484,6 +24522,44 @@ export interface operations {
             };
             /** @description Validation Error */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_record_types_api_v1_audit_events_record_types_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditRecordTypeList"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
