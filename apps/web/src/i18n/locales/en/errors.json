@@ -483,5 +483,11 @@
   "payroll_payment_already_reversed": "This payment was already reversed. Check the list of payments.",
   "notification_type_unknown": "That notification type isn't in your list. Reload the page.",
   "notification_type_mandatory": "That notification is required and can't be turned off.",
-  "notification_type_duplicate": "A notification type appears twice in the change."
+  "notification_type_duplicate": "A notification type appears twice in the change.",
+  "import_too_large": "The file is too large (at most 2 MB).",
+  "import_file_invalid": "The CSV file couldn't be read.",
+  "import_too_many_rows": "The file has too many rows.",
+  "import_not_committable": "This import can no longer be imported.",
+  "import_nothing_to_commit": "No rows are ready to import.",
+  "import_not_discardable": "This import can no longer be discarded."
 }

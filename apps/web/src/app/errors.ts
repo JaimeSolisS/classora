@@ -534,6 +534,13 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['expense_template_ends_on_invalid', 'expense_template_ends_on_invalid'],
   ['expense_category_in_use', 'expense_category_in_use'],
   ['vendor_in_use', 'vendor_in_use'],
+  // Imports (#122; the page is M8-05b C4).
+  ['import_too_large', 'import_too_large'],
+  ['import_file_invalid', 'import_file_invalid'],
+  ['import_too_many_rows', 'import_too_many_rows'],
+  ['import_not_committable', 'import_not_committable'],
+  ['import_nothing_to_commit', 'import_nothing_to_commit'],
+  ['import_not_discardable', 'import_not_discardable'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

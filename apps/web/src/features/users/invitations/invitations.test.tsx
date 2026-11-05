@@ -168,7 +168,8 @@ describe('route and navigation (I1)', () => {
     const nav = [...app.container.querySelectorAll('header nav a')].map(
       (a) => a.textContent,
     );
-    expect(nav).toEqual(['Home', 'Invitations']);
+    // M8-05b E1: user.invite also shows "Imports", after Invitations.
+    expect(nav).toEqual(['Home', 'Invitations', 'Imports']);
   });
 
   it('a user without user.invite gets no navigation item and the forbidden page', async () => {

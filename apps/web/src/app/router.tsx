@@ -68,6 +68,7 @@ import {
   EXPENSE_VIEW_ACCESS,
 } from '@/features/finance/access';
 import { FINANCE_REPORT_ACCESS } from '@/features/reporting/access';
+import { IMPORTS_ACCESS } from '@/features/imports/access';
 import { MY_HISTORY_ACCESS } from '@/features/academics/history/access';
 import {
   ASSIGNMENT_FORM_ACCESS,
@@ -1176,6 +1177,25 @@ export const routes: RouteObject[] = [
               ).PaymentsSettingsPage,
             }),
             handle: { permission: 'settings.manage' },
+          },
+          // M8-05b A1 (#518): CSV imports, the history and new import, then
+          // one import's report (code-split), for holders of a permission of
+          // some import kind.
+          {
+            path: 'imports',
+            lazy: async () => ({
+              Component: (await import('@/features/imports/ImportsPage'))
+                .ImportsPage,
+            }),
+            handle: IMPORTS_ACCESS,
+          },
+          {
+            path: 'imports/:importId',
+            lazy: async () => ({
+              Component: (await import('@/features/imports/ImportDetailPage'))
+                .ImportDetailPage,
+            }),
+            handle: IMPORTS_ACCESS,
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

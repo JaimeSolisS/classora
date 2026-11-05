@@ -176,6 +176,8 @@ describe('route tree', () => {
       'reports/finance',
       'audit',
       'settings/payments',
+      'imports',
+      'imports/:importId',
       'account/password',
       'account/notifications',
       'privacy-notice',
@@ -503,14 +505,22 @@ describe('route tree', () => {
     expect(children[121]!.handle).toEqual({ permission: 'settings.manage' });
     expect(children[121]!.lazy).toBeTypeOf('function');
     expect(children[121]!.element).toBeUndefined();
-    expect(children[122]!.handle).toBeUndefined();
-    // M8-02b A1: any signed-in user, no permission, code-split.
-    expect(children[123]!.handle).toBeUndefined();
-    expect(children[123]!.lazy).toBeTypeOf('function');
-    expect(children[123]!.element).toBeUndefined();
-    // #174 G1: any signed-in user, no permission.
-    expect(children[124]!.id).toBe('privacy-notice');
+    // M8-05b A1: imports, any import kind's permission, code-split.
+    for (const index of [122, 123]) {
+      expect(children[index]!.handle).toEqual({
+        anyPermission: ['student.manage', 'user.invite'],
+      });
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
     expect(children[124]!.handle).toBeUndefined();
+    // M8-02b A1: any signed-in user, no permission, code-split.
+    expect(children[125]!.handle).toBeUndefined();
+    expect(children[125]!.lazy).toBeTypeOf('function');
+    expect(children[125]!.element).toBeUndefined();
+    // #174 G1: any signed-in user, no permission.
+    expect(children[126]!.id).toBe('privacy-notice');
+    expect(children[126]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

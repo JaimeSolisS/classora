@@ -201,3 +201,35 @@ describe('the audit log nav item (#120 D1)', () => {
     });
   });
 });
+
+// M8-05b A1, E1: "Imports" right after Invitations, for holders of a
+// permission of some import kind: an Owner, a Coordinator (students only);
+// Finance and a tutor never see it.
+describe('the imports nav item (M8-05b E1)', () => {
+  const OWNER = user(
+    ['owner'],
+    ['student.view', 'student.manage', 'user.invite', 'user.role.assign'],
+  );
+  const STUDENT_MANAGER = user(
+    ['academic_coordinator'],
+    ['student.view', 'student.manage'],
+  );
+
+  it.each([
+    ['an Owner', OWNER, true],
+    ['a Coordinator', STUDENT_MANAGER, true],
+    ['Finance', FINANCE, false],
+    ['a tutor-only user', TUTOR, false],
+  ] as const)('%s: %s', (_who, as, visible) => {
+    expect(shown(as).includes('/imports')).toBe(visible);
+  });
+
+  it('comes right after Invitations and is labelled in the common catalog', () => {
+    const paths = NAV_ITEMS.map((item) => item.to);
+    expect(paths.indexOf('/imports')).toBe(paths.indexOf('/invitations') + 1);
+    expect(NAV_ITEMS.find((item) => item.to === '/imports')).toMatchObject({
+      labelKey: 'nav.imports',
+      anyPermission: ['student.manage', 'user.invite'],
+    });
+  });
+});

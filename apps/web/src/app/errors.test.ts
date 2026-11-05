@@ -454,6 +454,13 @@ const API_CODES = [
   'expense_template_ends_on_invalid',
   'expense_category_in_use',
   'vendor_in_use',
+  // Imports (#122, M8-05b C4).
+  'import_too_large',
+  'import_file_invalid',
+  'import_too_many_rows',
+  'import_not_committable',
+  'import_nothing_to_commit',
+  'import_not_discardable',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

@@ -119,7 +119,13 @@ describe('route and navigation (I1)', () => {
     expect(main().querySelectorAll('h1')).toHaveLength(1);
     expect(main().querySelector('h1')?.textContent).toBe('Password resets');
     expect(document.title).toBe('Password resets · Classora');
-    expect(navItems()).toEqual(['Home', 'Invitations', 'Password resets']);
+    // M8-05b E1: user.invite also shows "Imports", after Invitations.
+    expect(navItems()).toEqual([
+      'Home',
+      'Invitations',
+      'Imports',
+      'Password resets',
+    ]);
   });
 
   it('without user.password_reset.issue: no item and the forbidden page', async () => {
