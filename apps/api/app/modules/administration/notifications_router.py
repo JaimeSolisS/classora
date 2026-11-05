@@ -10,6 +10,9 @@ a missing one.
 - ``POST /api/v1/notifications/{notification_id}/read``: idempotent.
 - ``POST /api/v1/notifications/read-all`` (``{up_to}``): the unread ones at
   or before ``up_to`` (all of them when it's null).
+- ``GET /api/v1/notifications/preferences`` and ``PATCH`` (#119): the
+  caller's catalogue of types and their own opt-outs
+  (:mod:`app.modules.administration.notification_preferences`).
 - ``GET /api/v1/notifications/stream``: the caller's live notifications as
   Server-Sent Events (#42; :mod:`app.modules.administration.live`). The
   request never refreshes the session's ``last_seen_at``
@@ -36,10 +39,12 @@ from app.core.errors import problem_response_doc
 from app.core.pagination import CursorPage, CursorPagination
 from app.core.sse import EVENT_STREAM, EventStreamResponse
 from app.core.uow import UnitOfWork, UnitOfWorkDep
-from app.modules.administration import live, notifications
+from app.modules.administration import live, notification_preferences, notifications
 from app.modules.administration.errors import STREAM_RETRY_AFTER_SECONDS
 from app.modules.administration.schemas import (
     NotificationItem,
+    NotificationPreferences,
+    NotificationPreferencesBody,
     NotificationReadAllBody,
     NotificationReadAllResult,
     NotificationUnreadCount,
@@ -96,6 +101,41 @@ async def unread_count(
         count=await notifications.unread_notification_count(
             uow.session, recipient_user_id=recipient.user_id
         )
+    )
+
+
+PREFERENCES_WRITE_RESPONSES: dict[int | str, dict[str, Any]] = {
+    **AUTH_RESPONSES,
+    **CSRF_RESPONSES,
+    422: problem_response_doc(
+        "The body is not valid (validation_error), or an item names a type twice"
+        " (notification_type_duplicate), a type outside the caller's catalogue"
+        " (notification_type_unknown) or turns a mandatory type off"
+        " (notification_type_mandatory); errors[].path names the item."
+    ),
+}
+
+
+@router.get("/preferences", responses=READ_RESPONSES)
+async def get_preferences(
+    recipient: Recipient, uow: UnitOfWorkDep
+) -> NotificationPreferences:
+    """The caller's notification types (those of their roles) and whether
+    each is on. Mandatory types are always on."""
+    return await notification_preferences.list_notification_preferences(
+        uow.session, principal=recipient
+    )
+
+
+@router.patch("/preferences", responses=PREFERENCES_WRITE_RESPONSES)
+async def update_preferences(
+    recipient: Recipient, body: NotificationPreferencesBody, uow: UnitOfWorkDep
+) -> NotificationPreferences:
+    """Turn the caller's optional notification types on or off (1 to 50, all
+    or none; sending the same change again changes nothing). Only future
+    notifications are affected."""
+    return await notification_preferences.update_notification_preferences(
+        uow.session, principal=recipient, body=body
     )
 
 

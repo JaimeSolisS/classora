@@ -2221,6 +2221,21 @@ access = "authenticated"
 # Every signed-in role lists its own notifications (#41 C1).
 
 [[route]]
+method = "GET"
+path = "/api/v1/notifications/preferences"
+access = "authenticated"
+# Every signed-in role reads its own catalogue (#119 C1, C4): no user id.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/notifications/preferences"
+access = "authenticated"
+json = { items = [{ notification_type = "test.not_registered", enabled = false }] }
+# Own rows only (#119 C4). The placeholder type is in no catalogue: 422
+# notification_type_unknown for every signed-in role (the 200 cases are in
+# tests/integration/test_notification_preferences.py).
+
+[[route]]
 method = "POST"
 path = "/api/v1/notifications/read-all"
 access = "authenticated"

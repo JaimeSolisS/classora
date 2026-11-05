@@ -9,6 +9,15 @@ through ``administration.service`` (ADR-0002).
 **Types** are registered in code, each with a Pydantic model of its params
 (:func:`register_notification_type`), usually where the module is wired
 (``app.wiring``). The code is dotted (``staff.qualification_approved``).
+Each type also says whether it is ``mandatory`` and which ``recipient_roles``
+(role codes, plain strings) can receive it (#119 A1): the preferences
+catalogue (:mod:`app.modules.administration.notification_preferences`) shows
+a user the types of their roles, a display filter only.
+
+**Preferences** (#119 D): a user may turn an optional type off (a
+``notification_opt_outs`` row). :func:`create_notification` then adds nothing
+for them, sends no ``NOTIFY`` and returns ``None``. Mandatory types skip the
+lookup and are always created. Not retroactive: existing notifications stay.
 
 **Creating** (:func:`create_notification`) happens inside the caller's
 transaction: the row is added and flushed, never committed, so the
@@ -34,6 +43,7 @@ import json
 import re
 import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final
 
@@ -55,6 +65,7 @@ from app.modules.administration.models import (
     NOTIFICATION_TYPE_MAX_LENGTH,
     NOTIFICATION_TYPE_PATTERN,
     Notification,
+    NotificationOptOut,
 )
 from app.modules.administration.schemas import NotificationItem
 
@@ -65,7 +76,23 @@ NOTIFICATION_CHANNEL: Final = "notifications"
 """The ``LISTEN``/``NOTIFY`` channel of new notifications (#42)."""
 
 _TYPE_RE: Final = re.compile(NOTIFICATION_TYPE_PATTERN)
-_types: dict[str, type[BaseModel]] = {}
+
+
+@dataclass(frozen=True)
+class NotificationTypeInfo:
+    """A registered type's flags (#119 A2)."""
+
+    mandatory: bool
+    recipient_roles: frozenset[str]
+
+
+@dataclass(frozen=True)
+class _Registered:
+    params_model: type[BaseModel]
+    info: NotificationTypeInfo
+
+
+_types: dict[str, _Registered] = {}
 
 
 class InvalidNotificationParamsError(ValueError):
@@ -76,21 +103,39 @@ class InvalidNotificationParamsError(ValueError):
 # --- Registry -------------------------------------------------------------------
 
 
-def register_notification_type(code: str, params_model: type[BaseModel]) -> None:
-    """Register a notification type and the model of its params.
+def register_notification_type(
+    code: str,
+    params_model: type[BaseModel],
+    *,
+    mandatory: bool = False,
+    recipient_roles: frozenset[str] = frozenset(),
+) -> None:
+    """Register a notification type, the model of its params and its flags
+    (#119 A1): ``mandatory`` types can't be turned off; ``recipient_roles``
+    are the role codes that can receive it (the preferences catalogue's
+    filter; empty: in no catalogue).
 
-    Registering the same model again changes nothing (every composition root
-    and every app build may register); another model for a registered code,
-    or a code that isn't dotted lowercase, raises ``ValueError``.
+    Registering the same model and flags again changes nothing (every
+    composition root and every app build may register); another model or
+    other flags for a registered code, or a code that isn't dotted lowercase,
+    raise ``ValueError``.
     """
     if len(code) > NOTIFICATION_TYPE_MAX_LENGTH or not _TYPE_RE.fullmatch(code):
         raise ValueError(f"invalid notification type code: {code!r}")
     if not (isinstance(params_model, type) and issubclass(params_model, BaseModel)):
         raise ValueError(f"{code}: the params model must be a Pydantic model")
+    entry = _Registered(
+        params_model,
+        NotificationTypeInfo(
+            mandatory=bool(mandatory), recipient_roles=frozenset(recipient_roles)
+        ),
+    )
     registered = _types.get(code)
-    if registered is not None and registered is not params_model:
+    if registered is not None and (
+        registered.params_model is not params_model or registered.info != entry.info
+    ):
         raise ValueError(f"notification type already registered: {code}")
-    _types[code] = params_model
+    _types[code] = entry
 
 
 def unregister_notification_type(code: str) -> None:
@@ -100,6 +145,12 @@ def unregister_notification_type(code: str) -> None:
 
 def registered_notification_types() -> frozenset[str]:
     return frozenset(_types)
+
+
+def notification_type_info(code: str) -> NotificationTypeInfo | None:
+    """A registered type's flags, or ``None`` for an unknown code (#119 A2)."""
+    registered = _types.get(code)
+    return None if registered is None else registered.info
 
 
 # --- Params ---------------------------------------------------------------------
@@ -125,9 +176,10 @@ def validated_params(
 ) -> dict[str, Any]:
     """The params as stored: validated by the type's model, then by the
     params rules. Raises ``ValueError`` for an unknown type or bad params."""
-    model = _types.get(notification_type)
-    if model is None:
+    registered = _types.get(notification_type)
+    if registered is None:
         raise ValueError(f"unknown notification type: {notification_type!r}")
+    model = registered.params_model
     raw = params.model_dump() if isinstance(params, BaseModel) else dict(params)
     try:
         data = model.model_validate(raw).model_dump(mode="json")
@@ -157,11 +209,22 @@ async def create_notification(
     recipient_user_id: uuid.UUID,
     notification_type: str,
     params: BaseModel | Mapping[str, Any],
-) -> uuid.UUID:
+) -> uuid.UUID | None:
     """Add one notification for ``recipient_user_id`` (in any account state:
     it waits until they can sign in) and flush. Never commits: it exists only
-    if the caller's transaction commits."""
+    if the caller's transaction commits.
+
+    The params are validated first (a bad call raises even when muted). For
+    an optional type, one ``SELECT`` looks for the recipient's opt-out row:
+    with one, nothing is added, no ``NOTIFY`` is sent and the result is
+    ``None`` (#119 D1). A mandatory type skips the lookup. Callers that count
+    notifications count only the non-``None`` results.
+    """
     data = validated_params(notification_type, params)
+    if not _types[notification_type].info.mandatory and await _opted_out(
+        session, recipient_user_id, notification_type
+    ):
+        return None
     notification = Notification(
         recipient_user_id=recipient_user_id,
         notification_type=notification_type,
@@ -178,6 +241,18 @@ async def create_notification(
         )
     )
     return notification.id
+
+
+async def _opted_out(
+    session: AsyncSession, user_id: uuid.UUID, notification_type: str
+) -> bool:
+    found = await session.scalar(
+        select(NotificationOptOut.id).where(
+            NotificationOptOut.user_id == user_id,
+            NotificationOptOut.notification_type == notification_type,
+        )
+    )
+    return found is not None
 
 
 def notify_payload(user_id: uuid.UUID, notification_id: uuid.UUID) -> str:

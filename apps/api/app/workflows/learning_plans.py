@@ -96,12 +96,12 @@ class LearningPlanNotificationParams(BaseModel):
 
 def register_learning_plan_notifications() -> None:
     """Register both types (again: a no-op); ``app.wiring`` calls it."""
-    administration.register_notification_type(
-        ACTIVATED_NOTIFICATION, LearningPlanNotificationParams
-    )
-    administration.register_notification_type(
-        COMPLETED_NOTIFICATION, LearningPlanNotificationParams
-    )
+    for code in (ACTIVATED_NOTIFICATION, COMPLETED_NOTIFICATION):
+        administration.register_notification_type(
+            code,
+            LearningPlanNotificationParams,
+            recipient_roles=frozenset({"student", "guardian"}),
+        )
 
 
 type FieldIssue = tuple[list[str | int], str, str]

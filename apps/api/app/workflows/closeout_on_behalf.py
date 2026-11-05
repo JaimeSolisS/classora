@@ -118,7 +118,9 @@ class CloseoutOnBehalfParams(BaseModel):
 def register_on_behalf_notifications() -> None:
     """Register the type (again: a no-op); ``app.wiring`` calls it."""
     administration.register_notification_type(
-        ON_BEHALF_NOTIFICATION, CloseoutOnBehalfParams
+        ON_BEHALF_NOTIFICATION,
+        CloseoutOnBehalfParams,
+        recipient_roles=frozenset({"tutor"}),
     )
 
 

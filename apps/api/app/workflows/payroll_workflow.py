@@ -117,7 +117,9 @@ class PeriodFinalizedParams(BaseModel):
 def register_payroll_notifications() -> None:
     """Register the type (again: a no-op); ``app.wiring`` calls it."""
     administration.register_notification_type(
-        FINALIZED_NOTIFICATION, PeriodFinalizedParams
+        FINALIZED_NOTIFICATION,
+        PeriodFinalizedParams,
+        recipient_roles=frozenset({"tutor"}),
     )
 
 

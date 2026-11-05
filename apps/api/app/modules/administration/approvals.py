@@ -393,9 +393,13 @@ class ApprovalAssignedParams(BaseModel):
     request_type: str
 
 
-def register_approval_notifications() -> None:
-    """Register ``administration.approval_assigned`` (again: a no-op)."""
-    register_notification_type(APPROVAL_ASSIGNED, ApprovalAssignedParams)
+def register_approval_notifications(recipient_roles: frozenset[str]) -> None:
+    """Register ``administration.approval_assigned`` (again: a no-op) for
+    ``recipient_roles``: the staff role codes, passed in by ``app.wiring`` so
+    this module imports no other (#119 A4)."""
+    register_notification_type(
+        APPROVAL_ASSIGNED, ApprovalAssignedParams, recipient_roles=recipient_roles
+    )
 
 
 # --- Creating and requester actions (B1) -----------------------------------------

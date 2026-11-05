@@ -18,6 +18,7 @@ from app.modules.administration.notifications_dev import (
     DEV_DEMO_TYPE,
     DevDemoParams,
 )
+from app.modules.identity.permissions import STAFF_ROLES
 
 SAMPLE = "test.sample_notice"
 
@@ -58,6 +59,52 @@ def test_a_registered_type_is_listed_and_registering_it_again_changes_nothing(
 def test_another_model_for_a_registered_code_raises(sample_type):
     with pytest.raises(ValueError, match="already registered"):
         administration.register_notification_type(SAMPLE, SecretParams)
+
+
+# --- Flags (#119 A1, A2) --------------------------------------------------------------
+
+
+def test_a_type_is_optional_for_no_role_by_default(sample_type):
+    assert administration.notification_type_info(SAMPLE) == (
+        administration.NotificationTypeInfo(
+            mandatory=False, recipient_roles=frozenset()
+        )
+    )
+    assert administration.notification_type_info("test.never_registered") is None
+
+
+def test_registering_again_with_the_same_flags_changes_nothing():
+    roles = frozenset({"tutor", "guardian"})
+    administration.register_notification_type(
+        SAMPLE, SampleParams, mandatory=True, recipient_roles=roles
+    )
+    try:
+        administration.register_notification_type(
+            SAMPLE, SampleParams, mandatory=True, recipient_roles=frozenset(roles)
+        )
+
+        info = administration.notification_type_info(SAMPLE)
+        assert info is not None
+        assert (info.mandatory, info.recipient_roles) == (True, roles)
+    finally:
+        administration.unregister_notification_type(SAMPLE)
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        {"mandatory": True},
+        {"recipient_roles": frozenset({"tutor"})},
+        {"mandatory": True, "recipient_roles": frozenset({"tutor"})},
+    ],
+)
+def test_other_flags_for_a_registered_code_raise(sample_type, flags):
+    with pytest.raises(ValueError, match="already registered"):
+        administration.register_notification_type(SAMPLE, SampleParams, **flags)
+
+    info = administration.notification_type_info(SAMPLE)
+    assert info is not None
+    assert (info.mandatory, info.recipient_roles) == (False, frozenset())
 
 
 @pytest.mark.parametrize(
@@ -194,7 +241,7 @@ def test_the_app_registers_the_approval_assigned_type():
     # #118 E1: ids and the type code only; registering again is a no-op.
     administration.unregister_notification_type("administration.approval_assigned")
     build_app()
-    administration.register_approval_notifications()
+    administration.register_approval_notifications(STAFF_ROLES)
 
     assert (
         "administration.approval_assigned"

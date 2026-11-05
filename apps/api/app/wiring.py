@@ -46,6 +46,7 @@ from app.modules.administration import service as administration_service
 from app.modules.families import service as families_service
 from app.modules.identity.service import (
     REGISTRATION_APPROVAL_HANDLER,
+    STAFF_ROLES,
     AccountReference,
     active_user_ids_with_permission,
     get_account_references,
@@ -133,7 +134,7 @@ def register_approval_wiring() -> None:
     scheduling_service.register_cancellation_step(on_session_cancelled)
     administration_service.register_account_reference_resolver(get_account_references)
     administration_service.register_review_candidate_resolver(review_candidates)
-    administration_service.register_approval_notifications()
+    administration_service.register_approval_notifications(STAFF_ROLES)
     families_service.register_tutor_assignment_source(
         scheduling_service.TUTOR_ASSIGNMENT_SOURCE
     )

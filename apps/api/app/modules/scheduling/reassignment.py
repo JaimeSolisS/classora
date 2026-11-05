@@ -56,7 +56,11 @@ from app.modules.scheduling.models import (
     ClassSessionReassignmentFlag,
 )
 from app.modules.scheduling.offer_flow import lock_sessions, withdraw_pending_offers
-from app.modules.scheduling.offer_records import SCHEDULE_ASSIGN, rfc3339
+from app.modules.scheduling.offer_records import (
+    SCHEDULE_ASSIGN,
+    SCHEDULE_ASSIGN_ROLES,
+    rfc3339,
+)
 from app.modules.scheduling.reassignment_rules import open_flag_condition
 from app.modules.scheduling.sessions import transition_class_session
 from app.modules.scheduling.states import SessionState
@@ -248,7 +252,9 @@ class ReassignmentNeededParams(BaseModel):
 def register_reassignment_notifications() -> None:
     """Register ``scheduling.reassignment_needed`` (again: a no-op)."""
     administration.register_notification_type(
-        REASSIGNMENT_NEEDED_NOTIFICATION, ReassignmentNeededParams
+        REASSIGNMENT_NEEDED_NOTIFICATION,
+        ReassignmentNeededParams,
+        recipient_roles=SCHEDULE_ASSIGN_ROLES,
     )
 
 

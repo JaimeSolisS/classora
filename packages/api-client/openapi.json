@@ -3009,6 +3009,108 @@
         }
       }
     },
+    "/api/v1/notifications/preferences": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Get Preferences",
+        "description": "The caller's notification types (those of their roles) and whether\neach is on. Mandatory types are always on.",
+        "operationId": "get_preferences_api_v1_notifications_preferences_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPreferences"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The privacy notice must be accepted first (privacy_notice_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Update Preferences",
+        "description": "Turn the caller's optional notification types on or off (1 to 50, all\nor none; sending the same change again changes nothing). Only future\nnotifications are affected.",
+        "operationId": "update_preferences_api_v1_notifications_preferences_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationPreferencesBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPreferences"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/notifications/stream": {
       "get": {
         "tags": [
@@ -50788,6 +50890,86 @@
         ],
         "title": "NotificationItem",
         "description": "One of the caller's notifications. The client renders the message from\n``notification_type`` and ``params``; ``read_at`` is null while unread."
+      },
+      "NotificationPreferenceChange": {
+        "properties": {
+          "notification_type": {
+            "type": "string",
+            "title": "Notification Type"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "notification_type",
+          "enabled"
+        ],
+        "title": "NotificationPreferenceChange"
+      },
+      "NotificationPreferenceItem": {
+        "properties": {
+          "notification_type": {
+            "type": "string",
+            "title": "Notification Type"
+          },
+          "mandatory": {
+            "type": "boolean",
+            "title": "Mandatory"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "notification_type",
+          "mandatory",
+          "enabled"
+        ],
+        "title": "NotificationPreferenceItem",
+        "description": "One type in the caller's catalogue. A mandatory type is always\n``enabled``."
+      },
+      "NotificationPreferences": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationPreferenceItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "NotificationPreferences",
+        "description": "The caller's catalogue: the types of their roles, by\n``notification_type``."
+      },
+      "NotificationPreferencesBody": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationPreferenceChange"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "NotificationPreferencesBody",
+        "description": "1 to 50 changes, applied all or none (set semantics: a resend changes\nnothing)."
       },
       "NotificationReadAllBody": {
         "properties": {

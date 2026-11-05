@@ -42,10 +42,12 @@ and students are still reminded while money is open; a charge stays with
 its account when a student changes family, so the account's family is
 told.
 
-**Preferences** (F7, N3): none are applied here. Spec §9's in-app
-notification preferences are #119 (M8-02), which should treat
-``billing.payment_reminder`` as optional and apply the preference in this
-module.
+**Preferences** (F7, N3; #119 D3): ``billing.payment_reminder`` is an
+optional type for ``guardian`` recipients. ``create_notification`` applies
+the preference: a guardian who turned it off gets nothing (``None``), and
+``notifications`` counts only the ones created. The ``charge_reminders`` row
+is still inserted when every recipient muted it, so that stage is never sent
+later, even after the guardian turns reminders back on (#119 E6).
 
 **Counts** (one info log line, counts only): ``sent_charges`` (rows
 inserted), ``notifications``, ``no_recipient``, ``nothing_due``,
@@ -102,9 +104,10 @@ class PaymentReminderParams(BaseModel):
 
 def register_reminder_notifications() -> None:
     """Register ``billing.payment_reminder`` (again: a no-op); ``app.wiring``
-    and the job call it. An ordinary type: #119 may let users turn it
-    off."""
-    administration.register_notification_type(PAYMENT_REMINDER, PaymentReminderParams)
+    and the job call it. Optional: a guardian may turn it off (#119)."""
+    administration.register_notification_type(
+        PAYMENT_REMINDER, PaymentReminderParams, recipient_roles=frozenset({"guardian"})
+    )
 
 
 @dataclass(frozen=True)
@@ -166,13 +169,14 @@ async def remind_account(
             due_on=min(c.due_date for c in charges),
         )
         for user_id in recipients:
-            await administration.create_notification(
+            created = await administration.create_notification(
                 session,
                 recipient_user_id=user_id,
                 notification_type=PAYMENT_REMINDER,
                 params=params,
             )
-            notifications += 1
+            if created is not None:  # None: the guardian muted the type (#119 D3)
+                notifications += 1
     return AccountRun("sent", sent_charges=len(inserted), notifications=notifications)
 
 

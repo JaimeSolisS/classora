@@ -66,6 +66,12 @@ OFFER_RECEIVED: Final = "scheduling.offer_received"
 OFFER_DECLINED: Final = "scheduling.offer_declined"
 OFFER_EXPIRED: Final = "scheduling.offer_expired"
 SCHEDULE_ASSIGN: Final = "schedule.assign"
+SCHEDULE_ASSIGN_ROLES: Final = frozenset(
+    {"owner", "administrator", "academic_coordinator"}
+)
+"""The roles granted ``schedule.assign`` (identity's role permissions): the
+recipients of the notifications to its holders, as the preferences
+catalogue's ``recipient_roles`` (#119 A3)."""
 """The identity catalog's assignment permission (repeated here: ADR-0002)."""
 SESSION_SCOPE: Final = OFFER_SCOPE_SESSION
 SERIES_SCOPE: Final = OFFER_SCOPE_SERIES
@@ -146,9 +152,13 @@ def substitution_params(
 
 def register_offer_notifications() -> None:
     """Register the three offer notification types (again: a no-op)."""
-    administration.register_notification_type(OFFER_RECEIVED, OfferReceivedParams)
+    administration.register_notification_type(
+        OFFER_RECEIVED, OfferReceivedParams, recipient_roles=frozenset({"tutor"})
+    )
     for code in (OFFER_DECLINED, OFFER_EXPIRED):
-        administration.register_notification_type(code, OfferClosedParams)
+        administration.register_notification_type(
+            code, OfferClosedParams, recipient_roles=SCHEDULE_ASSIGN_ROLES
+        )
 
 
 def rfc3339(value: datetime) -> str:

@@ -134,7 +134,10 @@ class OccurrenceSkippedClosureParams(BaseModel):
 def register_closure_notifications() -> None:
     """Register the notification type (again: a no-op)."""
     administration.register_notification_type(
-        OCCURRENCE_SKIPPED_CLOSURE, OccurrenceSkippedClosureParams
+        OCCURRENCE_SKIPPED_CLOSURE,
+        OccurrenceSkippedClosureParams,
+        mandatory=True,
+        recipient_roles=frozenset({"tutor", "student", "guardian"}),
     )
 
 

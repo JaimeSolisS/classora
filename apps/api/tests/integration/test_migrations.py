@@ -72,12 +72,13 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0085"
+HEAD = "0086"
 FINANCE_TABLES_0083 = frozenset({"expense_categories", "vendors"})
 EXPENSE_TABLES_0084 = frozenset(
     {"expenses", "expense_payments", "expense_payment_reversals", "expense_adjustments"}
 )
 TEMPLATES_0085 = "expense_templates"
+OPT_OUTS_0086 = "notification_opt_outs"
 PAY_RULES = "session_pay_rules"
 LINES = "payroll_lines"
 SALARY_LINE_COLUMNS = frozenset(
@@ -478,6 +479,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *FINANCE_TABLES_0083,
             *EXPENSE_TABLES_0084,
             TEMPLATES_0085,
+            OPT_OUTS_0086,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4904,9 +4906,22 @@ def _of_0085(diff: Any) -> bool:
     )
 
 
+def _of_0086(diff: Any) -> bool:
+    """A metadata difference that revision 0086 adds: the opt-out table and
+    its unique constraint (#119 B1). CHECKs are not compared."""
+    if diff[0] == "add_table":
+        return bool(diff[1].name == OPT_OUTS_0086)
+    return diff[0] == "add_index" and diff[1].table.name == OPT_OUTS_0086
+
+
+def _of_0085_on(diff: Any) -> bool:
+    """A metadata difference that revision 0085 or a later one adds."""
+    return _of_0085(diff) or _of_0086(diff)
+
+
 def _of_0084_on(diff: Any) -> bool:
     """A metadata difference that revision 0084 or a later one adds."""
-    return _of_0084(diff) or _of_0085(diff)
+    return _of_0084(diff) or _of_0085_on(diff)
 
 
 def _of_0083_on(diff: Any) -> bool:
@@ -16268,7 +16283,7 @@ def test_0084_adds_the_tables_and_downgrade_restores_0083(fresh_database_url):
     command.upgrade(config, "0084")
 
     assert version_nums(dsn) == ["0084"]
-    assert [d for d in metadata_diff(dsn) if not _of_0085(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0085_on(d)] == []
     assert public_tables(dsn) - tables == EXPENSE_TABLES_0084
     for table in EXPENSE_TABLES_0084:
         constraints = _constraints(dsn, table)
@@ -16639,7 +16654,7 @@ def test_0085_adds_the_table_and_columns_and_downgrade_restores_0084(
     command.upgrade(config, "0085")
 
     assert version_nums(dsn) == ["0085"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0086(d)] == []
     assert public_tables(dsn) - tables == {TEMPLATES_0085}
     constraints = _constraints(dsn, TEMPLATES_0085)
     assert set(constraints) == TEMPLATE_CONSTRAINTS_0085
@@ -16683,7 +16698,7 @@ def test_0085_adds_the_table_and_columns_and_downgrade_restores_0084(
         " WHERE proname = 'expense_templates_no_truncate'"
     )
     assert run_sql(dsn, guard)[0].n == 0
-    assert [d for d in metadata_diff(dsn) if not _of_0085(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0085_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -16871,3 +16886,103 @@ def test_0085_downgrade_refuses_while_a_template_exists(fresh_database_url):
     assert getattr(caught.value.orig, "sqlstate", None) == "55000"
     assert version_nums(dsn) == [HEAD]
     assert run_sql(dsn, "SELECT count(*) AS n FROM expense_templates")[0].n == 1
+
+
+# --- 0086: notification opt-outs (#119 B) -----
+
+
+def test_0086_adds_the_table_and_downgrade_restores_0085(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0085")
+    tables = public_tables(dsn)
+
+    command.upgrade(config, "0086")
+
+    assert version_nums(dsn) == ["0086"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == {OPT_OUTS_0086}
+    assert run_sql(dsn, f"SELECT count(*) AS n FROM {OPT_OUTS_0086}")[0].n == 0  # noqa: S608
+
+    command.downgrade(config, "0085")
+
+    assert version_nums(dsn) == ["0085"]
+    assert public_tables(dsn) == tables
+    assert [d for d in metadata_diff(dsn) if not _of_0086(d)] == []
+
+    command.upgrade(config, "head")
+
+    assert metadata_diff(dsn) == []
+
+
+def test_0086_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    table = OPT_OUTS_0086
+
+    # Not versioned (#119 B1): no version column.
+    standard = {k: v for k, v in STANDARD_COLUMNS.items() if k != "version"}
+    assert _columns(dsn, table) == {
+        **standard,
+        "user_id": ("uuid", "NO", None, None),
+        "notification_type": ("character varying", "NO", 64, None),
+    }
+    constraints = _constraints(dsn, table)
+    assert set(constraints) == {
+        f"pk_{table}",
+        f"fk_{table}_user_id_users",
+        f"ck_{table}_notification_type_format",
+        "uq_notification_opt_outs_user_type",
+    }
+    assert constraints[f"fk_{table}_user_id_users"].endswith("ON DELETE RESTRICT")
+    assert constraints["uq_notification_opt_outs_user_type"] == (
+        "UNIQUE (user_id, notification_type)"
+    )
+    assert set(_indexes(dsn, table)) == {
+        f"pk_{table}",
+        "uq_notification_opt_outs_user_type",
+    }
+
+
+@pytest.mark.parametrize(
+    ("notification_type", "sqlstate"),
+    [("billing", "23514"), ("Billing.Reminder", "23514"), ("a." + "b" * 63, "22001")],
+)
+def test_0086_rows_are_checked(fresh_database_url, notification_type, sqlstate):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    user_id = uuid.uuid4()
+    run_sql(dsn, USER_INSERT, {"id": user_id, "username": "opt.out.checks"})
+
+    with pytest.raises(DBAPIError) as caught:
+        run_sql(
+            dsn,
+            "INSERT INTO notification_opt_outs (user_id, notification_type)"
+            " VALUES (:u, :t)",
+            {"u": user_id, "t": notification_type},
+        )
+
+    assert getattr(caught.value.orig, "sqlstate", None) == sqlstate
+
+
+def test_0086_one_row_per_user_and_type_and_the_user_restricts(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    user_id = uuid.uuid4()
+    run_sql(dsn, USER_INSERT, {"id": user_id, "username": "opt.out.unique"})
+    insert = (
+        "INSERT INTO notification_opt_outs (user_id, notification_type)"
+        " VALUES (:u, 'billing.payment_reminder')"
+    )
+    run_sql(dsn, insert, {"u": user_id})
+
+    with pytest.raises(DBAPIError) as duplicate:
+        run_sql(dsn, insert, {"u": user_id})
+    with pytest.raises(DBAPIError) as restricted:
+        run_sql(dsn, "DELETE FROM users WHERE id = :u", {"u": user_id})
+    with pytest.raises(DBAPIError) as unknown:
+        run_sql(dsn, insert, {"u": uuid.uuid4()})
+
+    assert getattr(duplicate.value.orig, "sqlstate", None) == "23505"
+    assert getattr(restricted.value.orig, "sqlstate", None) == "23001"  # RESTRICT
+    assert getattr(unknown.value.orig, "sqlstate", None) == "23503"

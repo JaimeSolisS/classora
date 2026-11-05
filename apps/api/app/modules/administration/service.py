@@ -21,7 +21,13 @@
 - Notifications (#41): types and their params models
   (:func:`register_notification_type`), :func:`create_notification` inside
   the caller's transaction, and the recipient's reads and read state;
-  implemented in :mod:`app.modules.administration.notifications`.
+  implemented in :mod:`app.modules.administration.notifications`. #119: each
+  type's flags (``mandatory``, ``recipient_roles``;
+  :func:`notification_type_info`) and the caller's preferences
+  (:func:`list_notification_preferences`,
+  :func:`update_notification_preferences`, in
+  :mod:`app.modules.administration.notification_preferences`);
+  :func:`create_notification` returns ``None`` for a muted optional type.
 - The scheduling policy (#61): :func:`get_scheduling_policy` (the version
   in force at an instant), :func:`get_scheduling_policy_version` (one
   version by id, #62) and :func:`get_policy_version_and_approval_id` (a
@@ -136,8 +142,17 @@ from app.modules.administration.approvals import (
 from app.modules.administration.errors import (
     ApprovalTransitionInvalidError as ApprovalTransitionInvalidError,
 )
+from app.modules.administration.notification_preferences import (
+    list_notification_preferences as list_notification_preferences,
+)
+from app.modules.administration.notification_preferences import (
+    update_notification_preferences as update_notification_preferences,
+)
 from app.modules.administration.notifications import (
     InvalidNotificationParamsError as InvalidNotificationParamsError,
+)
+from app.modules.administration.notifications import (
+    NotificationTypeInfo as NotificationTypeInfo,
 )
 from app.modules.administration.notifications import (
     create_notification as create_notification,
@@ -153,6 +168,9 @@ from app.modules.administration.notifications import (
 )
 from app.modules.administration.notifications import (
     mark_notification_read as mark_notification_read,
+)
+from app.modules.administration.notifications import (
+    notification_type_info as notification_type_info,
 )
 from app.modules.administration.notifications import (
     register_notification_type as register_notification_type,

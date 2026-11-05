@@ -124,12 +124,17 @@ class AssignmentGradedParams(BaseModel):
 
 def register_assignment_notifications() -> None:
     """Register the three types (again: a no-op); ``app.wiring`` calls it."""
-    administration.register_notification_type(SET_NOTIFICATION, AssignmentSetParams)
+    family = frozenset({"student", "guardian"})
     administration.register_notification_type(
-        SUBMITTED_NOTIFICATION, AssignmentSubmittedParams
+        SET_NOTIFICATION, AssignmentSetParams, recipient_roles=family
     )
     administration.register_notification_type(
-        GRADED_NOTIFICATION, AssignmentGradedParams
+        SUBMITTED_NOTIFICATION,
+        AssignmentSubmittedParams,
+        recipient_roles=frozenset({"tutor"}),
+    )
+    administration.register_notification_type(
+        GRADED_NOTIFICATION, AssignmentGradedParams, recipient_roles=family
     )
 
 

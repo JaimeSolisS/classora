@@ -1,6 +1,9 @@
 """Typed administration errors with stable codes. None takes a submitted value
 or record data, so neither can reach a response."""
 
+from collections.abc import Sequence
+from typing import ClassVar
+
 from app.core.errors import AppError
 
 
@@ -106,6 +109,57 @@ class TooManyStreamsError(AppError):
     def __init__(self) -> None:
         super().__init__()
         self.headers = {"Retry-After": str(STREAM_RETRY_AFTER_SECONDS)}
+
+
+# --- Notification preferences (#119 C2) --------------------------------------------
+
+
+class _NotificationPreferenceError(AppError):
+    """A ``PATCH /api/v1/notifications/preferences`` item the service refuses:
+    one field error per offending item, on ``["body", "items", i,
+    "notification_type"]`` (never the submitted value)."""
+
+    status = 422
+    message: ClassVar[str] = ""
+
+    def __init__(self, indexes: Sequence[int]) -> None:
+        super().__init__(
+            errors=[
+                {
+                    "path": ["body", "items", index, "notification_type"],
+                    "code": self.code,
+                    "message": self.message,
+                }
+                for index in indexes
+            ]
+        )
+
+
+class NotificationTypeDuplicateError(_NotificationPreferenceError):
+    """The same type appears more than once in the body (each repeat after
+    the first is named)."""
+
+    code = "notification_type_duplicate"
+    detail = "A notification type appears more than once."
+    message = "This notification type is already in the list."
+
+
+class NotificationTypeUnknownError(_NotificationPreferenceError):
+    """The type isn't in the caller's catalogue: unregistered, ``dev.demo``
+    or not for the caller's roles (the response doesn't say which)."""
+
+    code = "notification_type_unknown"
+    detail = "A notification type isn't one you can change."
+    message = "Unknown notification type."
+
+
+class NotificationTypeMandatoryError(_NotificationPreferenceError):
+    """``enabled: false`` for a mandatory type (``enabled: true`` on one is a
+    no-op)."""
+
+    code = "notification_type_mandatory"
+    detail = "A mandatory notification type can't be turned off."
+    message = "This notification type can't be turned off."
 
 
 # --- Scheduling policy (#61) ---------------------------------------------------------
