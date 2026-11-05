@@ -1,4 +1,5 @@
-"""``GET /api/v1/audit-events``: the audit log for holders of ``audit.view``."""
+"""``GET /api/v1/audit-events``: the audit log for holders of ``audit.view``,
+and ``GET /api/v1/audit-events/record-types``: the audited tables (#120 B4)."""
 
 import uuid
 from typing import Annotated, Any
@@ -11,8 +12,15 @@ from app.core.authz import PERMISSION_RESPONSES, require
 from app.core.errors import problem_response_doc
 from app.core.pagination import CursorPage, CursorPagination
 from app.core.uow import UnitOfWorkDep
-from app.modules.administration.schemas import AuditEventListItem
-from app.modules.administration.service import AuditEventFilters, list_audit_events
+from app.modules.administration.schemas import (
+    AuditEventListItem,
+    AuditRecordTypeList,
+)
+from app.modules.administration.service import (
+    AuditEventFilters,
+    list_audit_events,
+    list_audit_record_types,
+)
 
 router = APIRouter(tags=["audit"])
 
@@ -86,3 +94,13 @@ async def list_events(
 ) -> CursorPage[AuditEventListItem]:
     """The audit log, newest first, filtered by record, actor and time range."""
     return await list_audit_events(uow.session, filters, page)
+
+
+@router.get(
+    "/api/v1/audit-events/record-types",
+    dependencies=[require("audit.view")],
+    responses=PERMISSION_RESPONSES,
+)
+async def list_record_types() -> AuditRecordTypeList:
+    """The audited table names, sorted: the record types the log filters by."""
+    return AuditRecordTypeList(items=list_audit_record_types())

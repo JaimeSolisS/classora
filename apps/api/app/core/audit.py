@@ -33,6 +33,10 @@ declarations (:func:`record_request_actor`), so the order of the route's
 dependencies does not matter; jobs and commands pass
 ``UnitOfWork(sessionmaker, actor_id=...)``. ``NULL`` means no signed-in user.
 
+**Reading.** :func:`audited_table_names` lists the audited tables and
+:func:`user_reference_columns` names a table's included columns that refer
+to a user (#120), so the audit log reader can show names instead of ids.
+
 **Bypass guard.** ORM ``insert``/``update``/``delete`` statements sent through
 ``Session.execute`` skip the flush hook, so they raise
 :class:`AuditBypassError` when they target an audited table. Raw ``text()``
@@ -485,6 +489,35 @@ def audited_table_names() -> frozenset[str]:
         mapper = inspect(cls, raiseerr=False)
         if mapper is not None and cls is not Audited:
             names.add(mapper.local_table.name)
+    return frozenset(names)
+
+
+USERS_ID: Final = "users.id"
+
+
+def user_reference_columns(table_name: str) -> frozenset[str]:
+    """The included columns of the audited table ``table_name`` whose foreign
+    key targets ``users.id`` (#120 B2), read from the SQLAlchemy metadata of
+    the mapped :class:`Audited` classes imported so far.
+
+    Never a masked (``__audit_mask__``) or excluded (``__audit_exclude__``)
+    column, nor one of the always-left-out ones. An unknown table gives none.
+    """
+    names: set[str] = set()
+    pending: list[type[Any]] = list(Audited.__subclasses__())
+    while pending:
+        cls = pending.pop()
+        pending.extend(cls.__subclasses__())
+        mapper = inspect(cls, raiseerr=False)
+        if mapper is None or mapper.local_table.name != table_name:
+            continue
+        hidden = ALWAYS_LEFT_OUT | cls.__audit_exclude__ | cls.__audit_mask__
+        for prop in mapper.column_attrs:
+            column = prop.columns[0]
+            if column.name in hidden:
+                continue
+            if any(fk.target_fullname == USERS_ID for fk in column.foreign_keys):
+                names.add(column.name)
     return frozenset(names)
 
 

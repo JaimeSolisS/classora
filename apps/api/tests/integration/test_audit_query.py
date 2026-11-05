@@ -1,4 +1,4 @@
-"""``GET /api/v1/audit-events`` (M2-04 F).
+"""``GET /api/v1/audit-events`` (M2-04 F) and the #120 names and record types.
 
 The real app on a migrated, seeded Testcontainers database; principals come
 from real users through the #21 harness (``principal_for``).
@@ -8,7 +8,7 @@ import asyncio
 import base64
 import uuid
 from collections.abc import Iterator
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -20,14 +20,31 @@ from app.core.authz import Principal, get_current_principal
 from app.core.config import get_settings
 from app.core.db import create_sessionmaker
 from app.core.errors import PROBLEM_JSON
+from app.core.money import Money, Rate
+from app.core.pagination import CursorParams
 from app.core.uow import UnitOfWork
 from app.main import build_app, lifespan
-from app.modules.identity.permissions import ADMINISTRATOR, OWNER, TUTOR
+from app.modules.administration import service as administration
+from app.modules.finance.models import Expense
+from app.modules.identity.permissions import (
+    ADMINISTRATOR,
+    FINANCE_STAFF,
+    OWNER,
+    ROLE_PERMISSIONS,
+    TUTOR,
+)
+from app.modules.identity.service import get_account_references
+from app.modules.payroll.models import CompensationRate
 from tests.authz.harness import Actor, principal_for
 from tests.factories.identity import factory_password_hash
+from tests.integration.auth_support import CreatedUser, create_user
+from tests.integration.catalog_support import count_statements
 from tests.integration.conftest import run_sql, settings_for, short_lived_engine
+from tests.integration.expense_support import category_of
+from tests.integration.lifecycle_support import in_uow
 
 PATH = "/api/v1/audit-events"
+RECORD_TYPES = "/api/v1/audit-events/record-types"
 
 
 def run[T](coroutine: Any) -> T:
@@ -131,12 +148,14 @@ def test_an_administrator_reads_the_whole_history(client, seeded_url, admin):
         "id",
         "occurred_at",
         "actor_id",
+        "actor",
         "action",
         "record_type",
         "record_id",
         "changes",
         "details",
         "request_id",
+        "accounts",
     }
     assert item["action"] == "create"
     assert item["record_type"] == "users"
@@ -150,12 +169,15 @@ def test_audit_view_holders_are_allowed(client, seeded_url, role):
     sign_in(client, run(_principal(seeded_url, role)))
 
     assert client.get(PATH).status_code == 200
+    assert client.get(RECORD_TYPES).status_code == 200
 
 
-def test_a_tutor_is_denied(client, seeded_url):
-    sign_in(client, run(_principal(seeded_url, TUTOR)))
+@pytest.mark.parametrize("role", [TUTOR, FINANCE_STAFF])
+@pytest.mark.parametrize("path", [PATH, RECORD_TYPES])
+def test_other_roles_are_denied(client, seeded_url, role, path):
+    sign_in(client, run(_principal(seeded_url, role)))
 
-    body = assert_problem(client.get(PATH), 403, "permission_denied")
+    body = assert_problem(client.get(path), 403, "permission_denied")
     assert "audit" not in body.get("detail", "")
 
 
@@ -167,6 +189,7 @@ def test_anonymous_gets_401_before_validation(client):
     assert_problem(
         client.get(PATH, params={"limit": 0}), 401, "authentication_required"
     )
+    assert_problem(client.get(RECORD_TYPES), 401, "authentication_required")
 
 
 def test_the_password_hash_never_appears(client, seeded_url):
@@ -276,6 +299,256 @@ def test_unknown_record_or_actor_gives_an_empty_page(client):
         response = client.get(PATH, params=params)
         assert response.status_code == 200
         assert response.json() == {"items": [], "next_cursor": None}
+
+
+# --- #120 B4: record types ------------------------------------------------------
+
+
+def test_record_types_are_the_audited_tables_sorted(client):
+    response = client.get(RECORD_TYPES)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert set(body) == {"items"}
+    items = body["items"]
+    assert items == sorted(items)
+    assert len(items) == len(set(items))
+    assert {"users", "approval_requests", "compensation_rates", "expenses"} <= set(
+        items
+    )
+    assert not {"roles", "notifications", "audit_events"} & set(items)
+
+
+# --- #120 B1-B3: names ------------------------------------------------------------
+
+
+def display_name(url: str, user_id: Any) -> str:
+    [row] = run_sql(
+        url, "SELECT display_name FROM users WHERE id = :id", {"id": user_id}
+    )
+    name: str = row.display_name
+    return name
+
+
+def account(url: str, user_id: Any) -> dict[str, str]:
+    return {"id": str(user_id), "display_name": display_name(url, user_id)}
+
+
+def test_the_actor_is_named_and_null_without_one(client, seeded_url, admin):
+    write(seeded_url, ["sample.by_admin"], actor=admin.user_id)
+    write(seeded_url, ["sample.by_nobody"])
+
+    items = {
+        i["action"]: i
+        for i in get_all(client)
+        if i["action"]
+        in {
+            "sample.by_admin",
+            "sample.by_nobody",
+        }
+    }
+
+    assert items["sample.by_admin"]["actor"] == account(seeded_url, admin.user_id)
+    assert items["sample.by_admin"]["actor_id"] == str(admin.user_id)
+    assert items["sample.by_nobody"]["actor"] is None
+    assert items["sample.by_nobody"]["actor_id"] is None
+    # Named events' details are never resolved (B2).
+    assert items["sample.by_admin"]["accounts"] == []
+
+
+def test_an_unknown_id_is_left_out(client, seeded_url, admin):
+    # The actor column is a foreign key, so an unknown actor only happens when
+    # the resolver does not know the id: the item keeps the id, no name.
+    write(seeded_url, ["sample.by_admin"], actor=admin.user_id)
+
+    async def nobody(session: Any, user_ids: Any) -> dict[Any, Any]:
+        return {}
+
+    administration.register_account_reference_resolver(nobody)
+    try:
+        items = get_all(client, actor_id=str(admin.user_id))
+        users = get_all(client, record_type="users", record_id=str(admin.user_id))
+    finally:
+        administration.register_account_reference_resolver(get_account_references)
+
+    [item] = items
+    assert item["actor_id"] == str(admin.user_id)
+    assert item["actor"] is None
+    assert users
+    assert all(i["accounts"] == [] for i in users)
+
+
+def test_a_missing_resolver_fails_closed(client, seeded_url):
+    administration.register_account_reference_resolver(None)
+    try:
+        response = client.get(PATH)
+    finally:
+        administration.register_account_reference_resolver(get_account_references)
+
+    assert response.status_code == 500
+
+
+def test_a_users_event_names_its_record(client, seeded_url, admin):
+    items = get_all(client, record_type="users", record_id=str(admin.user_id))
+
+    assert items
+    for item in items:
+        assert item["accounts"] == [account(seeded_url, admin.user_id)]
+
+
+def owner_principal(user: CreatedUser) -> Principal:
+    return Principal(
+        user_id=user.id,
+        roles=frozenset({OWNER}),
+        permissions=ROLE_PERMISSIONS[OWNER],
+    )
+
+
+def new_approval(url: str, requester: CreatedUser) -> uuid.UUID:
+    async def _create(session: Any) -> uuid.UUID:
+        request = await administration.create_approval_request(
+            session,
+            request_type="identity.registration",
+            subject_id=uuid.uuid7(),
+            requester_user_id=requester.id,
+        )
+        return request.id
+
+    return in_uow(url, _create)
+
+
+def assign_to(
+    url: str, by: CreatedUser, request_id: uuid.UUID, to: Any, version: int
+) -> None:
+    async def _assign(session: Any) -> None:
+        await administration.assign_approval_request(
+            session,
+            principal=owner_principal(by),
+            request_id=request_id,
+            assignee_user_id=to,
+            version=version,
+        )
+
+    in_uow(url, _assign, actor_id=by.id)
+
+
+def test_an_assignment_names_old_and_new_assignee(client, seeded_url):
+    url = seeded_url
+    owner = create_user(url, roles=(OWNER,))
+    first = create_user(url, roles=(OWNER,))
+    second = create_user(url, roles=(ADMINISTRATOR,))
+    request_id = new_approval(url, owner)
+
+    assign_to(url, owner, request_id, first.id, 1)
+    assign_to(url, owner, request_id, second.id, 2)
+    assign_to(url, owner, request_id, None, 3)
+
+    items = get_all(client, record_type="approval_requests", record_id=str(request_id))
+    updates = [i for i in items if i["action"] == "update"]
+    assert [i["changes"]["assignee_user_id"] for i in updates] == [
+        {"old": str(second.id), "new": None},
+        {"old": str(first.id), "new": str(second.id)},
+        {"old": None, "new": str(first.id)},
+    ]
+    by_id = lambda *users: sorted(  # noqa: E731
+        (account(url, user.id) for user in users), key=lambda a: a["id"]
+    )
+    assert [i["accounts"] for i in updates] == [
+        by_id(second),
+        by_id(first, second),
+        by_id(first),
+    ]
+    assert all(i["actor"] == account(url, owner.id) for i in updates)
+    [created] = [i for i in items if i["action"] == "create"]
+    assert created["accounts"] == [account(url, owner.id)]
+
+
+def masked_records(url: str) -> tuple[uuid.UUID, uuid.UUID, CreatedUser, CreatedUser]:
+    """A compensation rate and an expense (masked: ``rate``; ``amount`` and
+    ``description``), written through the ORM by a signed-in Owner."""
+    owner = create_user(url, roles=(OWNER,))
+    tutor = create_user(url, roles=(TUTOR,))
+    category = uuid.UUID(category_of(url))
+
+    async def _write(session: Any) -> tuple[uuid.UUID, uuid.UUID]:
+        rate = CompensationRate(
+            id=uuid.uuid7(),
+            tutor_user_id=tutor.id,
+            class_kind="individual",
+            effective_from=date(2026, 1, 1),
+            rate_model="per_hour",
+            rate=Rate("8246.1937"),
+        )
+        expense = Expense(
+            id=uuid.uuid7(),
+            category_id=category,
+            description="Secret rent 73951",
+            amount=Money("73951.37"),
+            incurred_on=date(2026, 1, 1),
+            due_on=date(2026, 1, 1),
+            created_by_user_id=owner.id,
+        )
+        session.add_all([rate, expense])
+        await session.flush()
+        return rate.id, expense.id
+
+    rate_id, expense_id = in_uow(url, _write, actor_id=owner.id)
+    return rate_id, expense_id, owner, tutor
+
+
+@pytest.mark.parametrize("role", [OWNER, ADMINISTRATOR])
+def test_masked_values_stay_masked_for_every_reader(client, seeded_url, role):
+    url = seeded_url
+    rate_id, expense_id, owner, tutor = masked_records(url)
+    sign_in(client, run(_principal(url, role)))
+
+    for record_type, record_id, masked, user_column, user in (
+        ("compensation_rates", rate_id, ("rate",), "tutor_user_id", tutor),
+        (
+            "expenses",
+            expense_id,
+            ("amount", "description"),
+            "created_by_user_id",
+            owner,
+        ),
+    ):
+        response = client.get(
+            PATH, params={"record_type": record_type, "record_id": str(record_id)}
+        )
+        assert response.status_code == 200, response.text
+        for secret in ("8246.1937", "73951.37", "Secret rent"):
+            assert secret not in response.text
+        [item] = response.json()["items"]
+        for column in masked:
+            # Masked on both sides, even the create's empty "old".
+            assert item["changes"][column] == {"old": "[masked]", "new": "[masked]"}
+        assert item["changes"][user_column]["new"] == str(user.id)
+        # Only the user-reference column is named, never a masked one.
+        assert item["accounts"] == [account(url, user.id)]
+        assert item["actor"] == account(url, owner.id)
+
+
+def test_a_page_takes_one_event_select_and_one_resolver_statement(
+    client, seeded_url, admin
+):
+    users = [create_user(seeded_url, roles=(OWNER,)) for _ in range(3)]
+    for user in users:
+        write(seeded_url, [f"sample.event_{c}" for c in "abcdefghij"], actor=user.id)
+
+    def count(limit: int) -> int:
+        statements, page = count_statements(
+            seeded_url,
+            lambda session: administration.list_audit_events(
+                session,
+                administration.AuditEventFilters(),
+                CursorParams(limit=limit, cursor=None),
+            ),
+        )
+        assert len(page.items) == limit
+        return statements
+
+    one, many = count(1), count(25)
+    assert one == many == 2
 
 
 # --- Paging -------------------------------------------------------------------
