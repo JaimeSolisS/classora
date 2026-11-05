@@ -33,6 +33,7 @@
     "invitations": "Invitaciones",
     "passwordResets": "Restablecer contraseñas",
     "approvals": "Aprobaciones",
+    "audit": "Auditoría",
     "catalog": "Catálogo",
     "settings": "Configuración",
     "billing": "Cobros",
@@ -556,6 +557,78 @@
       "preparedAt": "Preparado el"
     }
   },
+  "audit": {
+    "title": "Auditoría",
+    "intro": "Historial de cambios de solo lectura. Los valores sensibles de pagos y gastos aparecen ocultos.",
+    "filter": {
+      "label": "Filtros de auditoría",
+      "recordType": "Tipo de registro",
+      "allTypes": "Todos",
+      "recordId": "ID de registro",
+      "from": "Desde",
+      "to": "Hasta",
+      "person": "Persona",
+      "removePerson": "Quitar el filtro de persona: {{name}}",
+      "apply": "Aplicar filtros",
+      "clear": "Limpiar filtros",
+      "fixFirst": "Corrige los filtros para ver los eventos.",
+      "errors": {
+        "recordPair": "Indica el tipo y el ID del registro.",
+        "recordType": "El tipo de registro no es válido.",
+        "recordId": "El ID no es válido.",
+        "date": "La fecha no es válida.",
+        "dateOrder": "La fecha final debe ser igual o posterior a la inicial."
+      }
+    },
+    "list": {
+      "title": "Eventos",
+      "occurredAt": "Fecha y hora",
+      "person": "Persona",
+      "action": "Acción",
+      "record": "Registro",
+      "actions": "Acciones",
+      "system": "Sistema",
+      "unknownUser": "Usuario desconocido ({{id}})",
+      "empty": "No hay eventos con estos filtros.",
+      "loadMore": "Cargar más",
+      "loadingMore": "Cargando más eventos…",
+      "changed": "La lista cambió; vuelve a cargarla.",
+      "reload": "Volver a cargar",
+      "shown_one": "{{count}} evento mostrado",
+      "shown_many": "{{count}} eventos mostrados",
+      "shown_other": "{{count}} eventos mostrados"
+    },
+    "row": {
+      "viewChanges": "Ver cambios",
+      "viewChangesFor": "Ver cambios del evento de {{time}}",
+      "recordHistory": "Ver historial de este registro",
+      "recordHistoryFor": "Ver historial de este registro, evento de {{time}}",
+      "personActions": "Ver acciones de esta persona",
+      "personActionsFor": "Ver acciones de esta persona, evento de {{time}}"
+    },
+    "actions": {
+      "create": "Creación",
+      "update": "Modificación",
+      "delete": "Eliminación",
+      "soft_delete": "Archivado",
+      "restore": "Restauración"
+    },
+    "diff": {
+      "label": "Cambios del evento",
+      "changesCaption": "Valores antes y después",
+      "detailsCaption": "Datos del evento",
+      "field": "Campo",
+      "before": "Antes",
+      "after": "Después",
+      "key": "Dato",
+      "value": "Valor",
+      "none": "—",
+      "masked": "Oculto",
+      "maskedLabel": "Valor oculto en el registro de auditoría",
+      "empty": "Este evento no tiene más datos.",
+      "requestId": "ID de solicitud:"
+    }
+  },
   "users": {
     "title": "Usuarios",
     "list": {
@@ -584,7 +657,9 @@
       "pendingInvitation": "Invitación aún no utilizada",
       "pendingRequest": "Solicitud de cuenta en revisión",
       "notFound": "Este usuario no existe.",
-      "backToList": "Volver a usuarios"
+      "backToList": "Volver a usuarios",
+      "auditChanges": "Historial de cambios de esta cuenta",
+      "auditActions": "Acciones de esta persona"
     },
     "profile": {
       "title": "Perfil",

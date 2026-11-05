@@ -1156,6 +1156,14 @@ export const routes: RouteObject[] = [
             }),
             handle: FINANCE_REPORT_ACCESS,
           },
+          // M8-03 (#120) D2: the read-only audit log (code-split).
+          {
+            path: 'audit',
+            lazy: async () => ({
+              Component: (await import('@/features/audit/AuditPage')).AuditPage,
+            }),
+            handle: { permission: 'audit.view' },
+          },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },
           // M8-02b A1: any signed-in user's notification preferences

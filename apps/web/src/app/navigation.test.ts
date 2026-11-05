@@ -177,3 +177,27 @@ describe('the progress nav item (#322 A4)', () => {
     );
   });
 });
+
+// M8-03 (#120) A4, D1: "Audit log" after Approvals, for audit.view holders
+// only (Owner, Administrator); Finance and a tutor never see it.
+describe('the audit log nav item (#120 D1)', () => {
+  const AUDITOR = user(['administrator'], ['student.view', 'audit.view']);
+
+  it.each([
+    ['an audit.view holder', AUDITOR, true],
+    ['Finance', FINANCE, false],
+    ['a tutor-only user', TUTOR, false],
+    ['a Coordinator', COORDINATOR, false],
+  ] as const)('%s: %s', (_who, as, visible) => {
+    expect(shown(as).includes('/audit')).toBe(visible);
+  });
+
+  it('comes right after Approvals and is labelled in the common catalog', () => {
+    const paths = NAV_ITEMS.map((item) => item.to);
+    expect(paths.indexOf('/audit')).toBe(paths.indexOf('/approvals') + 1);
+    expect(NAV_ITEMS.find((item) => item.to === '/audit')).toMatchObject({
+      labelKey: 'nav.audit',
+      permission: 'audit.view',
+    });
+  });
+});

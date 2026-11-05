@@ -10,7 +10,7 @@ import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
 import { loginNoticeState } from '@/features/auth/loginNotice';
 import type { RoleCode } from '@/features/auth/session';
-import { useAuth } from '@/features/auth/useSession';
+import { useAuth, useCan } from '@/features/auth/useSession';
 import {
   issuePasswordReset,
   type PasswordResetIssued,
@@ -47,6 +47,8 @@ import { StateBadge } from './StateBadge';
 // never cached). A successful change replaces the cached detail with the
 // response and refreshes the list. Changing your own roles ends your session
 // on the server, so the app signs out locally and goes to /login (G4).
+// M8-03 (#120 D3): audit.view holders get two audit log links (changes to
+// this account, actions by this person).
 
 const LINK_CLASS =
   'font-medium underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring';
@@ -56,6 +58,7 @@ export function UserDetailPage() {
   const { userId = '' } = useParams();
   const queryClient = useQueryClient();
   const { session, signOutLocally } = useAuth();
+  const canAudit = useCan('audit.view');
   const key = userDetailKey(userId);
   const detail = useQuery({
     queryKey: key,
@@ -141,6 +144,7 @@ export function UserDetailPage() {
     <UserDetailView
       user={user}
       ownRecord={session.status === 'signedIn' && session.user.id === user.id}
+      auditLinks={canAudit}
       onSaveProfile={saveProfile}
       onSaveRoles={saveRoles}
       onSaveDelegations={saveDelegations}
@@ -154,6 +158,8 @@ interface UserDetailViewProps {
   user: UserDetail;
   /** The signed-in user's own record (#170 G4). */
   ownRecord?: boolean;
+  /** The two audit log links (M8-03 #120 D3): audit.view holders only. */
+  auditLinks?: boolean;
   onSaveProfile: (body: UserUpdate) => Promise<void>;
   onSaveRoles: (roles: RoleCode[]) => Promise<void>;
   onSaveDelegations: (permissions: DelegablePermission[]) => Promise<void>;
@@ -167,6 +173,7 @@ interface UserDetailViewProps {
 export function UserDetailView({
   user,
   ownRecord = false,
+  auditLinks = false,
   onSaveProfile,
   onSaveRoles,
   onSaveDelegations,
@@ -207,6 +214,26 @@ export function UserDetailView({
               : t('users.detail.noRoles')}
           </dd>
         </dl>
+        {auditLinks ? (
+          <ul className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            <li>
+              <Link
+                to={`/audit?record_type=users&record_id=${encodeURIComponent(user.id)}`}
+                className={`${LINK_CLASS} inline-flex min-h-11 items-center`}
+              >
+                {t('users.detail.auditChanges')}
+              </Link>
+            </li>
+            <li>
+              <Link
+                to={`/audit?actor_id=${encodeURIComponent(user.id)}`}
+                className={`${LINK_CLASS} inline-flex min-h-11 items-center`}
+              >
+                {t('users.detail.auditActions')}
+              </Link>
+            </li>
+          </ul>
+        ) : null}
       </div>
       {user.allowed_actions.edit ? (
         <ProfileForm user={user} onSubmit={onSaveProfile} onReload={onReload} />

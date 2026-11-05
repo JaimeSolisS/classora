@@ -470,8 +470,10 @@ unless a bullet says otherwise.
 **Audit and security**
 
 - Changes to records and security events (sign-ins, passwords,
-  invitations) are recorded in an audit log, which staff can read through
-  the API (there is no page for it yet).
+  invitations) are recorded in an audit log. Owners and Administrators
+  browse it on a read-only Audit log page, filtered by record, person and
+  date, with each change's before and after values and people shown by
+  name. Sensitive pay and expense values stay hidden for every reader.
 - Requests that change data are protected by an `Origin` check and a CSRF
   token, and the web app is served with a Content Security Policy and other
   security headers.
