@@ -16,6 +16,8 @@ export type ApprovalStatusFilter =
   components['schemas']['ApprovalStatusFilter'];
 export type ApprovalAssigneeFilter =
   components['schemas']['ApprovalAssigneeFilter'];
+export type ApprovalSort = components['schemas']['ApprovalSort'];
+export type AccountName = components['schemas']['AccountName'];
 
 /**
  * The permissions that review at least one approval type: the Approvals page
@@ -76,17 +78,32 @@ export const ASSIGNEE_FILTERS: readonly ApprovalAssigneeFilter[] = [
   'unassigned',
 ];
 
+/** The priority filter's choices (M8-01b A1): any, then high to low. */
+export const PRIORITY_FILTERS: readonly ApprovalPriority[] = [
+  'high',
+  'normal',
+  'low',
+];
+
+/** The sorts (#118; M8-01b A1), the API's default (priority) first. */
+export const SORTS: readonly ApprovalSort[] = ['priority', 'oldest', 'newest'];
+
 export interface ApprovalFilters {
   status: ApprovalStatusFilter;
   /** One type, or null for every type the user reviews. */
   type: string | null;
   assignee: ApprovalAssigneeFilter;
+  /** One priority, or null for any (M8-01b A1). */
+  priority: ApprovalPriority | null;
+  sort: ApprovalSort;
 }
 
 export const DEFAULT_FILTERS: ApprovalFilters = {
   status: 'open',
   type: null,
   assignee: 'any',
+  priority: null,
+  sort: 'priority',
 };
 
 export const APPROVALS_QUERY_KEY = ['approval-requests'] as const;
@@ -111,6 +128,8 @@ export function fetchApprovals(
             status: filters.status,
             assignee: filters.assignee,
             ...(filters.type ? { request_type: filters.type } : {}),
+            ...(filters.priority ? { priority: filters.priority } : {}),
+            sort: filters.sort,
             limit: APPROVALS_PAGE_SIZE,
             offset,
           },
@@ -118,6 +137,65 @@ export function fetchApprovals(
         signal,
       }),
     { signal },
+  );
+}
+
+/** The query key of one request (M8-01b B1), under the list's key so a
+ * list refresh refreshes the open panel too. */
+export function approvalKey(id: string) {
+  return [...APPROVALS_QUERY_KEY, 'detail', id] as const;
+}
+
+/** The query key of a request's assignee options (M8-01b C1). */
+export function assigneeOptionsKey(id: string) {
+  return [...APPROVALS_QUERY_KEY, 'assignee-options', id] as const;
+}
+
+/** `GET /approval-requests/{id}`: `404` when unknown or not reviewable. */
+export function fetchApproval(
+  id: string,
+  signal: AbortSignal,
+): Promise<ApprovalRequestItem> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/approval-requests/{request_id}', {
+        params: { path: { request_id: id } },
+        signal,
+      }),
+    { signal },
+  );
+}
+
+/** `GET …/assignee-options` (#118 B1): who can review the request now. */
+export function fetchAssigneeOptions(
+  id: string,
+  signal: AbortSignal,
+): Promise<AccountName[]> {
+  return apiCall(
+    () =>
+      api.GET('/api/v1/approval-requests/{request_id}/assignee-options', {
+        params: { path: { request_id: id } },
+        signal,
+      }),
+    { signal },
+  ).then((options) => options.items);
+}
+
+/**
+ * `POST …/assign` (#118 A1): `assigneeId` null unassigns. `version` is the
+ * one the panel shows, so a resend after a lost answer ends in `200` (the
+ * same assignee is a no-op) or `409 version_conflict` (M8-01b E3).
+ */
+export function assignApproval(
+  id: string,
+  assigneeId: string | null,
+  version: number,
+): Promise<ApprovalRequestItem> {
+  return apiCall(() =>
+    api.POST('/api/v1/approval-requests/{request_id}/assign', {
+      params: { path: { request_id: id } },
+      body: { assignee_user_id: assigneeId, version },
+    }),
   );
 }
 
@@ -155,9 +233,12 @@ export function decideApproval(
 
 /**
  * The types whose rejection needs a reason (the handler's
- * `reason_required_on_reject`).
+ * `reason_required_on_reject`; #118 F2's table, pinned in M8-01b E1).
  */
 export const REJECT_REASON_REQUIRED: ReadonlySet<string> = new Set<string>([
+  'academics.progress_report',
+  'academics.session_closeout',
+  'payroll.period',
   'staff.qualification',
   'scheduling.offer_reassignment',
   'scheduling.occurrence_conflict',

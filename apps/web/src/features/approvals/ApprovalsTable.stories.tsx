@@ -25,6 +25,7 @@ const meta = {
       page: { items: MIXED_ITEMS, total: 5, limit: 10, offset: 0 },
     },
     onDecide: fn(),
+    onOpen: fn(),
     onPage: fn(),
   },
 } satisfies Meta<typeof ApprovalsTable>;
@@ -137,9 +138,12 @@ export const SessionCloseoutRow: Story = {
         )}`,
       ),
     ).toBeVisible();
-    await expect(canvasElement.querySelectorAll('tbody button')).toHaveLength(
-      0,
-    );
+    // Only "View details" (M8-01b A3): no decision buttons.
+    await expect(
+      [...canvasElement.querySelectorAll('tbody button')].filter(
+        (button) => button.textContent !== i18n.t('approvals.list.view'),
+      ),
+    ).toHaveLength(0);
   },
 };
 
@@ -199,8 +203,11 @@ export const ProgressReportRow: Story = {
       'href',
       '/progress-reports/00000000-0000-4000-8000-000000000833',
     );
-    await expect(canvasElement.querySelectorAll('tbody button')).toHaveLength(
-      0,
-    );
+    // Only "View details" (M8-01b A3): no decision buttons.
+    await expect(
+      [...canvasElement.querySelectorAll('tbody button')].filter(
+        (button) => button.textContent !== i18n.t('approvals.list.view'),
+      ),
+    ).toHaveLength(0);
   },
 };

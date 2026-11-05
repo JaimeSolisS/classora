@@ -94,10 +94,13 @@ export const TOKEN_REDEMPTIONS_PER_RUN = 20;
  * adult student, #35), families/guardians.spec.ts 1 (createApprovedAccount
  * for the guardian, #36), tutors/qualifications.spec.ts 2
  * (createApprovedTutor, #44; createApprovedAccount for the guardian who
- * requests a session, #59) and scheduling/offers.spec.ts 1
- * (createApprovedTutor for the substitute, #55) = 8.
+ * requests a session, #59), scheduling/offers.spec.ts 1
+ * (createApprovedTutor for the substitute, #55) and
+ * approvals/inbox.spec.ts 2 (the requests it approves and rejects in the
+ * inbox, M8-01b G3) = 10, the whole hourly limit: a new spec must reuse an
+ * account or rebalance.
  */
-export const REGISTRATIONS_PER_RUN = 8;
+export const REGISTRATIONS_PER_RUN = 10;
 
 /** Records CSP violations from the first script on (the #24 listener). */
 export async function recordCspViolations(page: Page): Promise<void> {

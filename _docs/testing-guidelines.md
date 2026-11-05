@@ -575,6 +575,14 @@ which `ci-required` checks whenever the API changed.
     every run, no other test may use the name. With it the run sends 48
     login attempts (`LOGIN_ATTEMPTS_PER_RUN`) and 8 registration requests
     (`REGISTRATIONS_PER_RUN`).
+  - `e2e.inbox.older` and `e2e.inbox.newer`: the two Parent/Guardian
+    registration requests the demo Owner rejects and approves in the
+    approval inbox's detail panel in `e2e/tests/approvals/inbox.spec.ts`
+    (M8-01b). They are sent through the public API and never sign in (0
+    logins, 0 redemptions, 2 registrations). The same rules: created by that
+    test in every run, no other test may use the names. With them the run
+    sends 10 registration requests, the whole `registration.ip` hourly
+    limit (`REGISTRATIONS_PER_RUN`).
 - **Catalog data** (#32): names a spec creates (levels, subjects) carry a
   unique per-run suffix (for example `E2E Nivel <suffix>`), and specs never
   rename, reorder or deactivate the seeded levels (Primaria, Secundaria,

@@ -315,16 +315,21 @@ unless a bullet says otherwise.
 **Approvals**
 
 - The Approvals page is the shared list of requests waiting for a decision,
-  filtered by status, type and assignee. It holds account requests, tutor
+  filtered by status, type, assignee and priority and sorted by priority,
+  oldest or newest first. It holds account requests, tutor
   qualification requests, sessions to reassign after a tutor declined or
   didn't answer an offer, families' session requests (reviewed on their
   own page), families' and tutors' cancellation and reschedule requests
   (also reviewed on their own page), tutor availability changes that
   affect scheduled classes, tutors' session closeouts (reviewed on the
-  session page) and progress reports (reviewed on their own page);
-  staff approve or reject them (session closeouts and progress reports are
-  approved or sent back for changes on their own page, never rejected). Approving an account request
-  never enrolls anyone.
+  session page), progress reports (reviewed on their own page) and payroll
+  periods (decided on their own page). Staff open each request's details
+  panel (also from a link or a notification), assign or reassign it (the
+  new assignee is notified), and approve or reject it there or follow it to
+  its own page (session closeouts and progress reports are approved or sent
+  back for changes on their own page, never rejected). The whole inbox works
+  with the keyboard and a screen reader. Approving an account request never
+  enrolls anyone.
 
 **Billing**
 
