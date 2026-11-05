@@ -203,6 +203,8 @@ def test_production_app_has_no_demo_route(
         "/api/v1/exports/datasets",
         "/api/v1/exports/{export_id}",
         "/api/v1/exports/{export_id}/download",
+        "/api/v1/report-setups",
+        "/api/v1/report-setups/{setup_id}",
         "/api/v1/notifications",
         "/api/v1/notifications/preferences",
         "/api/v1/notifications/stream",

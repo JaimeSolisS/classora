@@ -314,8 +314,9 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - Add a read-only `reporting` module that owns saved report setups and dashboard widget preferences.
   - It runs read-only SQL across module tables and never writes to other modules.
   - Heavy exports run as worker jobs.
-  - #117 (M7-14) creates the module for the financial reports ahead of M8 (no saved setups yet; see `_docs/api.md` "Financial reports").
+  - #117 (M7-14) creates the module for the financial reports ahead of M8 (see `_docs/api.md` "Financial reports").
   - **Implementation note (M8-07, #124):** exports live in `reporting/exports/`. A dataset registry (`register_export_dataset`) maps each export to a staff list page and calls **that page's own service function** with the requester's principal (`families.service.list_students`, `scheduling.service.list_calendar_sessions`, `finance.service.list_expenses`), so it reads no other module's tables and its rows and fields are the page's. Its only writes are its own tables: `export_jobs` and `export_files` (the file's bytes for 24 hours; no file storage, §7.3). CSV and XLSX (`openpyxl`, ADR-0015 amendment); no PDF yet. See `_docs/api.md` Exports and `_docs/data-model.md` §21.
+  - **Implementation note (M8-08, #125):** the saved report setups are **export setups** (`reporting/setups/`, table `report_setups`): a name and one `ExportParameters`, owned by its creator and optionally shared with one staff role. Running one posts its parameters to `POST /api/v1/exports`, so every export check applies to the runner and there is one export path. Dashboard widget preferences remain M8-10 (#127), in their own table. See `_docs/api.md` Saved export setups and `_docs/data-model.md` §22.
 
 #### ISSUE-A3 — How audit events are captured (M)
 - **Spec:** §9 audit trail (actor, action, timestamp, prior/new values).

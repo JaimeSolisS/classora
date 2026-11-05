@@ -2793,6 +2793,43 @@ access = "authenticated"
 # #83 D2: as DELETE (the author), with a valid body.
 json = { version = 1 }
 
+# Saved export setups (#125 E1, E3): open to a staff role that may export
+# some dataset (as the exports), checked by the routes themselves, so tutors,
+# students and guardians get 403. A setup the caller may not see (another
+# user's private one, or one shared with a role or dataset the caller lacks)
+# is 404 for every role, the Owner included; a visible setup of another user
+# is 403 on PATCH and DELETE. Sharing and per-dataset cases:
+# tests/integration/test_report_setups_api.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/report-setups"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/report-setups"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+# An empty body gets 422 for every allowed role; nothing is saved.
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/report-setups/{setup_id}"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+# The placeholder id is no setup: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/report-setups/{setup_id}"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+# The placeholder id is no setup: 404 for the allowed roles (a valid body).
+json = { version = 1 }
+
 [[route]]
 method = "GET"
 path = "/api/v1/reports/finance/balances"

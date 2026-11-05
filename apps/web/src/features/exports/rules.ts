@@ -237,6 +237,9 @@ export function exportParameters(
     chosen.length === catalogue.length &&
     chosen.every((code, index) => code === catalogue[index]?.code);
   const groupBy = effectiveGroupBy(values, catalogue);
+  // The keys in the API model's order (dataset, format, columns, group_by,
+  // filters; each filter model's own order), so a saved setup's stored
+  // parameters and this body are the same JSON text (M8-08 D3).
   const common = {
     format: values.format,
     ...(isDefault ? {} : { columns: chosen }),
@@ -246,24 +249,24 @@ export function exportParameters(
     case 'class_sessions': {
       const s = values.sessions;
       return {
-        ...common,
         dataset: 'class_sessions',
+        ...common,
         filters: {
           from: s.from,
           to: s.to,
-          include_cancelled: s.includeCancelled,
           ...(s.tutor ? { tutor_user_id: s.tutor.id } : {}),
           ...(s.student ? { student_id: s.student.id } : {}),
           ...(s.classroom ? { classroom_id: s.classroom } : {}),
           ...(s.kind ? { kind: s.kind } : {}),
+          include_cancelled: s.includeCancelled,
         },
       } as ExportParameters;
     }
     case 'expenses': {
       const e = values.expenses;
       return {
-        ...common,
         dataset: 'expenses',
+        ...common,
         filters: {
           ...(e.statuses.length > 0
             ? {
@@ -280,8 +283,8 @@ export function exportParameters(
     case 'students': {
       const st = values.students;
       return {
-        ...common,
         dataset: 'students',
+        ...common,
         filters: {
           status: st.status,
           ...(st.educationLevel
@@ -291,6 +294,74 @@ export function exportParameters(
       } as ExportParameters;
     }
   }
+}
+
+/**
+ * M8-08 (#125 D2 "Cargar en el formulario"): the form values of saved
+ * parameters, the reverse of {@link exportParameters}. The stored columns
+ * come first, checked and in their order, then the others unchecked in
+ * catalogue order. The parameters hold only a tutor's or student's id, so
+ * the chosen person shows `personName`. `exportParameters` of the result
+ * gives the same body back.
+ */
+export function valuesFromParameters(
+  parameters: ExportParameters,
+  catalogue: readonly ExportColumn[],
+  today: LocalDate,
+  personName: string,
+): ExportFormValues {
+  const values = defaultValues(
+    parameters.dataset,
+    catalogue,
+    today,
+    parameters.format,
+  );
+  const known = catalogue.map((column) => column.code);
+  const chosen = (parameters.columns ?? known).filter((code: string) =>
+    known.includes(code),
+  );
+  values.columns = [
+    ...chosen.map((code: string) => ({ code, checked: true })),
+    ...known
+      .filter((code) => !chosen.includes(code))
+      .map((code) => ({ code, checked: false })),
+  ];
+  values.groupBy = parameters.group_by ?? '';
+  switch (parameters.dataset) {
+    case 'class_sessions': {
+      const f = parameters.filters;
+      values.sessions = {
+        from: f.from,
+        to: f.to,
+        tutor: f.tutor_user_id
+          ? { id: f.tutor_user_id, name: personName }
+          : null,
+        student: f.student_id ? { id: f.student_id, name: personName } : null,
+        classroom: f.classroom_id ?? '',
+        kind: f.kind ?? '',
+        includeCancelled: f.include_cancelled ?? false,
+      };
+      break;
+    }
+    case 'expenses': {
+      const f = parameters.filters;
+      values.expenses = {
+        incurredFrom: f?.incurred_from ?? '',
+        incurredTo: f?.incurred_to ?? '',
+        statuses: [...(f?.status ?? [])],
+      };
+      break;
+    }
+    case 'students': {
+      const f = parameters.filters;
+      values.students = {
+        status: f?.status ?? 'active',
+        educationLevel: f?.education_level_id ?? '',
+      };
+      break;
+    }
+  }
+  return values;
 }
 
 /** What the history shows for a job's file (C1, E2). */

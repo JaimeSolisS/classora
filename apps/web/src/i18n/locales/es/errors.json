@@ -493,5 +493,7 @@
   "export_range_invalid": "El rango de fechas no es válido: la fecha final no puede ser anterior a la inicial ni el rango pasar de un año.",
   "export_limit_reached": "Ya tienes 3 exportaciones en proceso. Espera a que termine una.",
   "export_not_ready": "Esta exportación todavía no tiene archivo.",
-  "export_expired": "Esta exportación caducó. Solicítala de nuevo."
+  "export_expired": "Esta exportación caducó. Solicítala de nuevo.",
+  "report_setup_limit_reached": "Ya tienes 50 configuraciones guardadas; elimina alguna.",
+  "report_setup_name_taken": "Ya tienes una configuración con este nombre."
 }

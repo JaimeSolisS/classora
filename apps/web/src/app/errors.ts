@@ -546,6 +546,9 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['export_limit_reached', 'export_limit_reached'],
   ['export_not_ready', 'export_not_ready'],
   ['export_expired', 'export_expired'],
+  // Saved export setups (#125 D4).
+  ['report_setup_limit_reached', 'report_setup_limit_reached'],
+  ['report_setup_name_taken', 'report_setup_name_taken'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

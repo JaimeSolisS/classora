@@ -24,6 +24,7 @@ import app.modules.finance.models  # noqa: F401
 import app.modules.identity.models  # noqa: F401
 import app.modules.payroll.models  # noqa: F401
 import app.modules.reporting.exports.models  # noqa: F401
+import app.modules.reporting.setups.models  # noqa: F401
 import app.modules.scheduling.models  # noqa: F401
 import app.modules.staff.models  # noqa: F401
 from app.core.models import Base

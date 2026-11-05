@@ -65,6 +65,18 @@ type Common = {
     history: Record<'download' | 'downloadFor', string>;
     status: Record<'queued' | 'ready', string>;
     announce: Record<'ready', string>;
+    // M8-08: saved setups.
+    setups: Record<
+      | 'save'
+      | 'saveNew'
+      | 'name'
+      | 'created'
+      | 'runFor'
+      | 'deleteFor'
+      | 'delete'
+      | 'deleted',
+      string
+    >;
   };
   // M8-05b E4: the imports page and report.
   imports: {

@@ -20,6 +20,7 @@ import {
   type ExportColumn,
   type ExportDataset,
   type ExportJob,
+  type ExportParameters,
 } from './api';
 import {
   defaultValues,
@@ -35,6 +36,8 @@ import {
   type ExportField,
   type ExportFormValues,
 } from './rules';
+import { SaveSetupDialog, type SetupFields } from './SaveSetupDialog';
+import { createSetup, updateSetup, type ReportSetup } from './setups';
 
 // "New export" (M8-07b B): the dataset (radio group), the format, the
 // columns (a checklist in catalogue order, all checked, reordered with
@@ -58,6 +61,17 @@ interface ExportFormProps {
   loaders?: ExportFormLoaders;
   /** Stories: the request instead of the API. */
   submit?: typeof requestExport;
+  /** M8-08 "Cargar en el formulario": the values of a saved setup. */
+  initialValues?: ExportFormValues;
+  /** The loaded setup, when it is the caller's own (D3 "Actualizar"). */
+  loadedSetup?: ReportSetup | null;
+  /** A setup was saved (`created`) or the loaded one updated. */
+  onSetupSaved?: (setup: ReportSetup, how: 'created' | 'updated') => void;
+  /** 409 version_conflict on "Actualizar": the page reloads the list. */
+  onSetupsStale?: () => void;
+  /** Stories: the setup calls instead of the API. */
+  saveSetup?: typeof createSetup;
+  changeSetup?: typeof updateSetup;
 }
 
 type FieldMessages = Partial<Record<ExportField, string>>;
@@ -89,6 +103,12 @@ export function ExportForm({
   onRequested,
   loaders = API_FORM_LOADERS,
   submit = requestExport,
+  initialValues,
+  loadedSetup = null,
+  onSetupSaved,
+  onSetupsStale,
+  saveSetup = createSetup,
+  changeSetup = updateSetup,
 }: ExportFormProps) {
   const { t } = useTranslation();
   const { t: tErrors } = useTranslation('errors');
@@ -115,9 +135,13 @@ export function ExportForm({
 
   const datasetOf = (code: ExportDatasetCode) =>
     datasets.find((dataset) => dataset.code === code) ?? datasets[0]!;
-  const [values, setValues] = useState<ExportFormValues>(() =>
-    defaultValues(initialDataset, datasetOf(initialDataset).columns, today),
+  const [values, setValues] = useState<ExportFormValues>(
+    () =>
+      initialValues ??
+      defaultValues(initialDataset, datasetOf(initialDataset).columns, today),
   );
+  // The body "Guardar configuración" saves (the request's own builder, D3).
+  const [saving, setSaving] = useState<ExportParameters | null>(null);
   const current = datasetOf(values.dataset);
   const catalogue = current.columns;
   const columnOf = (code: string): ExportColumn | undefined =>
@@ -214,13 +238,8 @@ export function ExportForm({
     element?.focus();
   }
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (submitting) {
-      return;
-    }
-    setFailure(null);
-    setLimitMax(null);
+  /** The client checks (B2): false, with the messages shown, when any fails. */
+  function checked(): boolean {
     const found = validate(values);
     const messages: FieldMessages = Object.fromEntries(
       Object.entries(found).map(([field, key]) => [
@@ -231,6 +250,75 @@ export function ExportForm({
     setErrors(messages);
     if (Object.keys(messages).length > 0) {
       focusFirst(messages);
+      return false;
+    }
+    return true;
+  }
+
+  /** A 422 at a filter goes to its field; false when none maps. */
+  function showFieldProblems(error: unknown): boolean {
+    if (!(error instanceof ApiError) || error.fieldErrors.length === 0) {
+      return false;
+    }
+    const mapped: FieldMessages = {};
+    for (const fieldError of error.fieldErrors) {
+      // `["body","filters",f]` (a request) or `["body","parameters",
+      // "filters",f]` (a saved setup, M8-08).
+      const at = fieldError.path.indexOf('filters');
+      const field =
+        at > 0
+          ? SERVER_FILTER_FIELDS[String(fieldError.path[at + 1])]
+          : undefined;
+      if (field && !mapped[field]) {
+        mapped[field] =
+          fieldError.code === 'export_range_invalid'
+            ? tErrors('export_range_invalid')
+            : t('exports.validation.invalid');
+      }
+    }
+    if (Object.keys(mapped).length === 0) {
+      return false;
+    }
+    setErrors(mapped);
+    focusFirst(mapped);
+    return true;
+  }
+
+  function onSaveSetup() {
+    setFailure(null);
+    setLimitMax(null);
+    if (checked()) {
+      setSaving(exportParameters(values, catalogue));
+    }
+  }
+
+  async function saveAs(fields: SetupFields) {
+    const setup = await saveSetup({
+      name: fields.name,
+      parameters: saving!,
+      shared_role: fields.sharedRole,
+    });
+    onSetupSaved?.(setup, 'created');
+  }
+
+  async function saveOver(fields: SetupFields) {
+    const setup = await changeSetup(loadedSetup!.id, {
+      version: loadedSetup!.version,
+      name: fields.name,
+      parameters: saving!,
+      shared_role: fields.sharedRole,
+    });
+    onSetupSaved?.(setup, 'updated');
+  }
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitting) {
+      return;
+    }
+    setFailure(null);
+    setLimitMax(null);
+    if (!checked()) {
       return;
     }
     setSubmitting(true);
@@ -242,27 +330,7 @@ export function ExportForm({
       if (error instanceof ApiError && error.code === 'export_limit_reached') {
         const max = error.problem?.details?.max;
         setLimitMax(typeof max === 'number' ? max : 3);
-      } else if (error instanceof ApiError && error.fieldErrors.length > 0) {
-        const mapped: FieldMessages = {};
-        for (const fieldError of error.fieldErrors) {
-          const field =
-            fieldError.path[1] === 'filters'
-              ? SERVER_FILTER_FIELDS[String(fieldError.path[2])]
-              : undefined;
-          if (field && !mapped[field]) {
-            mapped[field] =
-              fieldError.code === 'export_range_invalid'
-                ? tErrors('export_range_invalid')
-                : t('exports.validation.invalid');
-          }
-        }
-        if (Object.keys(mapped).length > 0) {
-          setErrors(mapped);
-          focusFirst(mapped);
-        } else {
-          setFailure({ error });
-        }
-      } else {
+      } else if (!showFieldProblems(error)) {
         setFailure({ error });
       }
     } finally {
@@ -556,214 +624,258 @@ export function ExportForm({
   const columnsMessage = errors.columns;
 
   return (
-    <form
-      noValidate
-      onSubmit={(event) => void onSubmit(event)}
-      className="flex min-w-0 flex-col gap-6"
-    >
-      <fieldset className="flex min-w-0 flex-col gap-1">
-        <legend className="mb-1 text-sm font-medium">
-          {t('exports.form.dataset')}
-        </legend>
-        <div className="flex flex-wrap gap-x-6">
-          {datasets.map((dataset) => (
-            <label
-              key={dataset.code}
-              htmlFor={`${ids.dataset}-${dataset.code}`}
-              className={OPTION_CLASS}
-            >
-              <input
-                id={`${ids.dataset}-${dataset.code}`}
-                type="radio"
-                name={ids.dataset}
-                value={dataset.code}
-                className={CHECK_CLASS}
-                checked={values.dataset === dataset.code}
-                onChange={() => chooseDataset(dataset.code)}
-              />
-              {t(`exports.datasets.${dataset.code}`)}
-            </label>
-          ))}
-        </div>
-        {current.personal ? (
-          <p id={ids.hint} className="text-sm text-muted-foreground">
-            {t('exports.form.personalHint')}
-          </p>
-        ) : null}
-      </fieldset>
-
-      <fieldset className="flex min-w-0 flex-col gap-1">
-        <legend className="mb-1 text-sm font-medium">
-          {t('exports.form.format')}
-        </legend>
-        <div className="flex flex-wrap gap-x-6">
-          {EXPORT_FORMATS.map((format) => (
-            <label
-              key={format}
-              htmlFor={`${ids.format}-${format}`}
-              className={OPTION_CLASS}
-            >
-              <input
-                id={`${ids.format}-${format}`}
-                type="radio"
-                name={ids.format}
-                value={format}
-                className={CHECK_CLASS}
-                checked={values.format === format}
-                onChange={() => update({ format })}
-              />
-              {t(`exports.formats.${format}`)}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-
-      <fieldset
-        id={ids.columns}
-        className="flex min-w-0 flex-col gap-2"
-        aria-describedby={
-          columnsMessage
-            ? `${ids.columnsHelp} ${errorId('columns')}`
-            : ids.columnsHelp
-        }
+    <>
+      <form
+        noValidate
+        onSubmit={(event) => void onSubmit(event)}
+        className="flex min-w-0 flex-col gap-6"
       >
-        <legend className="mb-1 text-sm font-medium">
-          {t('exports.form.columns')}
-        </legend>
-        <p id={ids.columnsHelp} className="text-sm text-muted-foreground">
-          {t('exports.form.columnsHelp')}
-        </p>
-        <ol className="flex max-w-xl flex-col divide-y divide-border rounded-md border border-border">
-          {values.columns.map((choice, index) => {
-            const label = columnOf(choice.code)?.label ?? choice.code;
-            const checkboxId = `${id}-column-${choice.code}`;
-            return (
-              <li
-                key={choice.code}
-                className="flex flex-wrap items-center gap-2 px-3 py-1"
-                data-column={choice.code}
+        <fieldset className="flex min-w-0 flex-col gap-1">
+          <legend className="mb-1 text-sm font-medium">
+            {t('exports.form.dataset')}
+          </legend>
+          <div className="flex flex-wrap gap-x-6">
+            {datasets.map((dataset) => (
+              <label
+                key={dataset.code}
+                htmlFor={`${ids.dataset}-${dataset.code}`}
+                className={OPTION_CLASS}
               >
-                <label
-                  htmlFor={checkboxId}
-                  className={cn(OPTION_CLASS, 'min-w-0 flex-1')}
+                <input
+                  id={`${ids.dataset}-${dataset.code}`}
+                  type="radio"
+                  name={ids.dataset}
+                  value={dataset.code}
+                  className={CHECK_CLASS}
+                  checked={values.dataset === dataset.code}
+                  onChange={() => chooseDataset(dataset.code)}
+                />
+                {t(`exports.datasets.${dataset.code}`)}
+              </label>
+            ))}
+          </div>
+          {current.personal ? (
+            <p id={ids.hint} className="text-sm text-muted-foreground">
+              {t('exports.form.personalHint')}
+            </p>
+          ) : null}
+        </fieldset>
+
+        <fieldset className="flex min-w-0 flex-col gap-1">
+          <legend className="mb-1 text-sm font-medium">
+            {t('exports.form.format')}
+          </legend>
+          <div className="flex flex-wrap gap-x-6">
+            {EXPORT_FORMATS.map((format) => (
+              <label
+                key={format}
+                htmlFor={`${ids.format}-${format}`}
+                className={OPTION_CLASS}
+              >
+                <input
+                  id={`${ids.format}-${format}`}
+                  type="radio"
+                  name={ids.format}
+                  value={format}
+                  className={CHECK_CLASS}
+                  checked={values.format === format}
+                  onChange={() => update({ format })}
+                />
+                {t(`exports.formats.${format}`)}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset
+          id={ids.columns}
+          className="flex min-w-0 flex-col gap-2"
+          aria-describedby={
+            columnsMessage
+              ? `${ids.columnsHelp} ${errorId('columns')}`
+              : ids.columnsHelp
+          }
+        >
+          <legend className="mb-1 text-sm font-medium">
+            {t('exports.form.columns')}
+          </legend>
+          <p id={ids.columnsHelp} className="text-sm text-muted-foreground">
+            {t('exports.form.columnsHelp')}
+          </p>
+          <ol className="flex max-w-xl flex-col divide-y divide-border rounded-md border border-border">
+            {values.columns.map((choice, index) => {
+              const label = columnOf(choice.code)?.label ?? choice.code;
+              const checkboxId = `${id}-column-${choice.code}`;
+              return (
+                <li
+                  key={choice.code}
+                  className="flex flex-wrap items-center gap-2 px-3 py-1"
+                  data-column={choice.code}
                 >
-                  <input
-                    id={checkboxId}
-                    type="checkbox"
-                    className={CHECK_CLASS}
-                    checked={choice.checked}
-                    aria-invalid={columnsMessage ? true : undefined}
-                    onChange={(event) =>
-                      toggleColumn(choice.code, event.target.checked)
-                    }
-                  />
-                  <span className="[overflow-wrap:anywhere]">{label}</span>
-                </label>
-                <span className="flex gap-2">
-                  <Button
-                    ref={(element) => {
-                      if (element) {
-                        moveButtons.current.set(`${choice.code}:up`, element);
-                      } else {
-                        moveButtons.current.delete(`${choice.code}:up`);
-                      }
-                    }}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="min-h-11 md:min-h-8"
-                    disabled={index === 0}
-                    aria-label={t('exports.form.moveUpFor', { column: label })}
-                    onClick={() => move(index, 'up')}
+                  <label
+                    htmlFor={checkboxId}
+                    className={cn(OPTION_CLASS, 'min-w-0 flex-1')}
                   >
-                    {t('exports.form.moveUp')}
-                  </Button>
-                  <Button
-                    ref={(element) => {
-                      if (element) {
-                        moveButtons.current.set(`${choice.code}:down`, element);
-                      } else {
-                        moveButtons.current.delete(`${choice.code}:down`);
+                    <input
+                      id={checkboxId}
+                      type="checkbox"
+                      className={CHECK_CLASS}
+                      checked={choice.checked}
+                      aria-invalid={columnsMessage ? true : undefined}
+                      onChange={(event) =>
+                        toggleColumn(choice.code, event.target.checked)
                       }
-                    }}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="min-h-11 md:min-h-8"
-                    disabled={index === values.columns.length - 1}
-                    aria-label={t('exports.form.moveDownFor', {
-                      column: label,
-                    })}
-                    onClick={() => move(index, 'down')}
-                  >
-                    {t('exports.form.moveDown')}
-                  </Button>
-                </span>
-              </li>
-            );
-          })}
-        </ol>
-        {columnsMessage ? (
-          <p id={errorId('columns')} className="text-sm text-destructive">
-            {columnsMessage}
+                    />
+                    <span className="[overflow-wrap:anywhere]">{label}</span>
+                  </label>
+                  <span className="flex gap-2">
+                    <Button
+                      ref={(element) => {
+                        if (element) {
+                          moveButtons.current.set(`${choice.code}:up`, element);
+                        } else {
+                          moveButtons.current.delete(`${choice.code}:up`);
+                        }
+                      }}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="min-h-11 md:min-h-8"
+                      disabled={index === 0}
+                      aria-label={t('exports.form.moveUpFor', {
+                        column: label,
+                      })}
+                      onClick={() => move(index, 'up')}
+                    >
+                      {t('exports.form.moveUp')}
+                    </Button>
+                    <Button
+                      ref={(element) => {
+                        if (element) {
+                          moveButtons.current.set(
+                            `${choice.code}:down`,
+                            element,
+                          );
+                        } else {
+                          moveButtons.current.delete(`${choice.code}:down`);
+                        }
+                      }}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="min-h-11 md:min-h-8"
+                      disabled={index === values.columns.length - 1}
+                      aria-label={t('exports.form.moveDownFor', {
+                        column: label,
+                      })}
+                      onClick={() => move(index, 'down')}
+                    >
+                      {t('exports.form.moveDown')}
+                    </Button>
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+          {columnsMessage ? (
+            <p id={errorId('columns')} className="text-sm text-destructive">
+              {columnsMessage}
+            </p>
+          ) : null}
+          <p role="status" aria-live="polite" className="sr-only">
+            {moved}
+          </p>
+        </fieldset>
+
+        <div className="flex max-w-xs flex-col gap-2">
+          <label htmlFor={ids.groupBy} className="text-sm font-medium">
+            {t('exports.form.groupBy')}
+          </label>
+          <select
+            id={ids.groupBy}
+            className={SELECT}
+            value={groupBy}
+            onChange={(event) => update({ groupBy: event.target.value })}
+          >
+            <option value="">{t('exports.form.noGrouping')}</option>
+            {groups.map((code) => (
+              <option key={code} value={code}>
+                {columnOf(code)?.label ?? code}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <fieldset className="flex min-w-0 flex-col gap-4 rounded-lg border border-border p-4">
+          <legend className="px-1 text-sm font-medium">
+            {t('exports.form.filters')}
+          </legend>
+          {values.dataset === 'class_sessions'
+            ? sessionFilters()
+            : values.dataset === 'expenses'
+              ? expenseFilters()
+              : studentFilters()}
+        </fieldset>
+
+        {limitMax !== null ? (
+          <p role="alert" className="text-sm text-destructive">
+            {t('exports.form.limitReached', { max: limitMax })}
           </p>
         ) : null}
-        <p role="status" aria-live="polite" className="sr-only">
-          {moved}
-        </p>
-      </fieldset>
+        {failure ? <ErrorAlert error={failure.error} /> : null}
 
-      <div className="flex max-w-xs flex-col gap-2">
-        <label htmlFor={ids.groupBy} className="text-sm font-medium">
-          {t('exports.form.groupBy')}
-        </label>
-        <select
-          id={ids.groupBy}
-          className={SELECT}
-          value={groupBy}
-          onChange={(event) => update({ groupBy: event.target.value })}
-        >
-          <option value="">{t('exports.form.noGrouping')}</option>
-          {groups.map((code) => (
-            <option key={code} value={code}>
-              {columnOf(code)?.label ?? code}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <fieldset className="flex min-w-0 flex-col gap-4 rounded-lg border border-border p-4">
-        <legend className="px-1 text-sm font-medium">
-          {t('exports.form.filters')}
-        </legend>
-        {values.dataset === 'class_sessions'
-          ? sessionFilters()
-          : values.dataset === 'expenses'
-            ? expenseFilters()
-            : studentFilters()}
-      </fieldset>
-
-      {limitMax !== null ? (
-        <p role="alert" className="text-sm text-destructive">
-          {t('exports.form.limitReached', { max: limitMax })}
-        </p>
-      ) : null}
-      {failure ? <ErrorAlert error={failure.error} /> : null}
-
-      <div>
-        <Button
-          type="submit"
-          className="min-h-11 md:min-h-9"
-          aria-describedby={current.personal ? ids.hint : undefined}
-          disabled={submitting}
-        >
-          {submitting ? (
-            <Spinner label={t('exports.form.submitting')} showLabel />
-          ) : (
-            t('exports.form.submit')
-          )}
-        </Button>
-      </div>
-    </form>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="submit"
+            className="min-h-11 md:min-h-9"
+            aria-describedby={current.personal ? ids.hint : undefined}
+            disabled={submitting}
+          >
+            {submitting ? (
+              <Spinner label={t('exports.form.submitting')} showLabel />
+            ) : (
+              t('exports.form.submit')
+            )}
+          </Button>
+          {onSetupSaved ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11 md:min-h-9"
+              disabled={submitting}
+              onClick={onSaveSetup}
+            >
+              {t('exports.setups.save')}
+            </Button>
+          ) : null}
+        </div>
+      </form>
+      <SaveSetupDialog
+        open={saving !== null}
+        title={t('exports.setups.saveTitle')}
+        description={t('exports.setups.saveDescription')}
+        initial={{
+          name: loadedSetup?.name ?? '',
+          sharedRole: loadedSetup?.shared_role ?? null,
+        }}
+        submitLabel={t('exports.setups.saveNew')}
+        onSubmit={saveAs}
+        alternative={
+          loadedSetup
+            ? {
+                label: t('exports.setups.update', { name: loadedSetup.name }),
+                onSubmit: saveOver,
+              }
+            : undefined
+        }
+        onStale={() => onSetupsStale?.()}
+        onRange={(error) => {
+          if (!showFieldProblems(error)) {
+            setFailure({ error });
+          }
+        }}
+        onClose={() => setSaving(null)}
+      />
+    </>
   );
 }
