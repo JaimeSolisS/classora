@@ -131,6 +131,13 @@ test('the Owner filters, sorts, assigns and decides in the detail panel with the
   });
   await expect(viewNewer).toBeVisible();
   await expect(viewOlder).toBeVisible();
+  // The list keeps showing the previous (priority, so oldest-first) result
+  // until the newest-first one arrives (keepPreviousData), with both rows in
+  // it: wait for the new order before measuring (#524).
+  await expect(main.locator('tbody tr')).toContainText([
+    summaryOf(NEWER),
+    summaryOf(OLDER),
+  ]);
   const [newerBox, olderBox] = [
     await viewNewer.boundingBox(),
     await viewOlder.boundingBox(),

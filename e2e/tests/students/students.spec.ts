@@ -168,8 +168,8 @@ test('managing a student profile, and a tutor who may not see it', async ({
   await expect(contacts.first()).toContainText('Luis Ñúñez');
   await expect(main.getByText('María Pérez')).toHaveCount(0);
 
-  // 4. Deactivate → confirm → Inactive. The default list hides the student;
-  // status "All" shows them as Inactive.
+  // 4. Deactivate → confirm → Inactive. Status "All" shows them as Inactive;
+  // the default (active) list hides them.
   await main
     .getByRole('button', { name: s.deactivate.action, exact: true })
     .click();
@@ -186,15 +186,24 @@ test('managing a student profile, and a tutor who may not see it', async ({
   await expect(
     main.getByRole('heading', { level: 1, name: s.title }),
   ).toBeVisible();
-  // Waits for the search result: the stale unfiltered list never holds this
-  // inactive student, so the row check alone would pass too early.
-  await expect(main.getByText(s.list.noResults)).toBeVisible();
-  await expect(ownRow).toHaveCount(0);
-  await main
-    .getByLabel(s.list.status, { exact: true })
-    .selectOption({ label: s.list.statusAll });
+  // The list keeps showing the previous result while the next one loads
+  // (keepPreviousData), so a bare "row absent" check could pass on a stale
+  // list that never held this student. Show it first (status "All"), then go
+  // Back to the default list: the row can only disappear once that list's
+  // own result is shown. (The search is fuzzy, so other specs' students with
+  // a similar suffix, e.g. imports.spec's, may match: only this row is
+  // asserted, not "no results", #524.)
+  const status = main.getByLabel(s.list.status, { exact: true });
+  await status.selectOption({ label: s.list.statusAll });
+  await expect(page).toHaveURL(
+    `/students?q=${encodeURIComponent(sfx)}&status=all`,
+  );
   await expect(ownRow).toHaveCount(1);
   await expect(ownRow).toContainText(s.status.inactive);
+  await page.goBack();
+  await expect(page).toHaveURL(`/students?q=${encodeURIComponent(sfx)}`);
+  await expect(status).toHaveValue('active');
+  await expect(ownRow).toHaveCount(0);
   expect(await cspViolations(page)).toEqual([]);
   expect(consoleErrors).toEqual([]);
 
