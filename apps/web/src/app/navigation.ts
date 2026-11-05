@@ -56,6 +56,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
     labelKey: 'nav.approvals',
     anyPermission: APPROVAL_REVIEW_PERMISSIONS,
   },
+  // The read-only audit log (M8-03 #120 D1): audit.view (Owner,
+  // Administrator), after Approvals.
+  { to: '/audit', labelKey: 'nav.audit', permission: 'audit.view' },
   {
     to: '/catalog/education-levels',
     labelKey: 'nav.catalog',

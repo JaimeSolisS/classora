@@ -37,7 +37,7 @@ export type LocalTime = string;
 /** An ISO 8601 instant with an offset or `Z`. */
 export type Instant = string;
 
-export type InstantStyle = 'date' | 'time' | 'dateTime';
+export type InstantStyle = 'date' | 'time' | 'dateTime' | 'dateTimeSeconds';
 export type LocalDateStyle = 'date' | 'long';
 
 /** date-fns locale for each UI language (the only mapping). */
@@ -48,6 +48,8 @@ const DATE_LOCALES: Record<Language, Locale> = { es, en: enUS };
 //       long "17 de octubre de 2026"
 //   en: date "Oct 17, 2026", time "11:30 PM",
 //       dateTime "Oct 17, 2026, 11:30 PM", long "October 17, 2026"
+//   dateTimeSeconds (the audit log, #120 C3): "17 oct 2026, 23:30:05",
+//       "Oct 17, 2026, 11:30:05 PM"
 const PATTERNS: Record<
   Language,
   Record<InstantStyle, string> & { long: string }
@@ -56,12 +58,14 @@ const PATTERNS: Record<
     date: 'd MMM yyyy',
     time: 'HH:mm',
     dateTime: 'd MMM yyyy, HH:mm',
+    dateTimeSeconds: 'd MMM yyyy, HH:mm:ss',
     long: "d 'de' MMMM 'de' yyyy",
   },
   en: {
     date: 'MMM d, yyyy',
     time: 'h:mm a',
     dateTime: 'MMM d, yyyy, h:mm a',
+    dateTimeSeconds: 'MMM d, yyyy, h:mm:ss a',
     long: 'MMMM d, yyyy',
   },
 };

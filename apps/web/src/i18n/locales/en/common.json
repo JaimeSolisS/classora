@@ -33,6 +33,7 @@
     "invitations": "Invitations",
     "passwordResets": "Password resets",
     "approvals": "Approvals",
+    "audit": "Audit log",
     "catalog": "Catalog",
     "settings": "Settings",
     "billing": "Billing",
@@ -550,6 +551,77 @@
       "preparedAt": "Prepared at"
     }
   },
+  "audit": {
+    "title": "Audit log",
+    "intro": "A read-only history of changes. Sensitive pay and expense values are hidden.",
+    "filter": {
+      "label": "Audit filters",
+      "recordType": "Record type",
+      "allTypes": "All",
+      "recordId": "Record ID",
+      "from": "From",
+      "to": "To",
+      "person": "Person",
+      "removePerson": "Remove the person filter: {{name}}",
+      "apply": "Apply filters",
+      "clear": "Clear filters",
+      "fixFirst": "Fix the filters to see the events.",
+      "errors": {
+        "recordPair": "Enter both the record type and the record ID.",
+        "recordType": "The record type is not valid.",
+        "recordId": "The ID is not valid.",
+        "date": "The date is not valid.",
+        "dateOrder": "The end date must be on or after the start date."
+      }
+    },
+    "list": {
+      "title": "Events",
+      "occurredAt": "Date and time",
+      "person": "Person",
+      "action": "Action",
+      "record": "Record",
+      "actions": "Actions",
+      "system": "System",
+      "unknownUser": "Unknown user ({{id}})",
+      "empty": "No events match these filters.",
+      "loadMore": "Load more",
+      "loadingMore": "Loading more events…",
+      "changed": "The list changed; load it again.",
+      "reload": "Load again",
+      "shown_one": "{{count}} event shown",
+      "shown_other": "{{count}} events shown"
+    },
+    "row": {
+      "viewChanges": "View changes",
+      "viewChangesFor": "View changes of the event at {{time}}",
+      "recordHistory": "View this record's history",
+      "recordHistoryFor": "View this record's history, event at {{time}}",
+      "personActions": "View this person's actions",
+      "personActionsFor": "View this person's actions, event at {{time}}"
+    },
+    "actions": {
+      "create": "Created",
+      "update": "Updated",
+      "delete": "Deleted",
+      "soft_delete": "Archived",
+      "restore": "Restored"
+    },
+    "diff": {
+      "label": "Event changes",
+      "changesCaption": "Values before and after",
+      "detailsCaption": "Event data",
+      "field": "Field",
+      "before": "Before",
+      "after": "After",
+      "key": "Key",
+      "value": "Value",
+      "none": "—",
+      "masked": "Hidden",
+      "maskedLabel": "Value hidden in the audit log",
+      "empty": "This event has no more data.",
+      "requestId": "Request ID:"
+    }
+  },
   "users": {
     "title": "Users",
     "list": {
@@ -578,7 +650,9 @@
       "pendingInvitation": "Invitation not redeemed yet",
       "pendingRequest": "Account request awaiting review",
       "notFound": "This user doesn't exist.",
-      "backToList": "Back to users"
+      "backToList": "Back to users",
+      "auditChanges": "Change history of this account",
+      "auditActions": "This person's actions"
     },
     "profile": {
       "title": "Profile",

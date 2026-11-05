@@ -2188,6 +2188,48 @@
         }
       }
     },
+    "/api/v1/audit-events/record-types": {
+      "get": {
+        "tags": [
+          "audit"
+        ],
+        "summary": "List Record Types",
+        "description": "The audited table names, sorted: the record types the log filters by.",
+        "operationId": "list_record_types_api_v1_audit_events_record_types_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditRecordTypeList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/approval-requests": {
       "get": {
         "tags": [
@@ -31838,7 +31880,7 @@
           "display_name"
         ],
         "title": "AccountName",
-        "description": "A user named in an approval request: the id and the display name only."
+        "description": "A user named in an approval request or an audit event: the id and the\ndisplay name only."
       },
       "AdjustmentItem": {
         "properties": {
@@ -33632,6 +33674,16 @@
             ],
             "title": "Actor Id"
           },
+          "actor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountName"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "action": {
             "type": "string",
             "title": "Action"
@@ -33695,6 +33747,13 @@
               }
             ],
             "title": "Request Id"
+          },
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/AccountName"
+            },
+            "type": "array",
+            "title": "Accounts"
           }
         },
         "type": "object",
@@ -33702,15 +33761,34 @@
           "id",
           "occurred_at",
           "actor_id",
+          "actor",
           "action",
           "record_type",
           "record_id",
           "changes",
           "details",
-          "request_id"
+          "request_id",
+          "accounts"
         ],
         "title": "AuditEventListItem",
-        "description": "One audit event; the actor and the record are given by id."
+        "description": "One audit event; the actor and the record are given by id.\n\n#120 B1: ``actor`` names the actor (``null`` without one, or when the id\nis unknown). ``accounts`` names the users whose ids are ``old``/``new``\nvalues of the event's user-reference columns, plus the record itself\nwhen ``record_type`` is ``users``; deduplicated, sorted by id, unknown\nids left out. Masked values stay ``\"[masked]\"`` and are never resolved."
+      },
+      "AuditRecordTypeList": {
+        "properties": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "AuditRecordTypeList",
+        "description": "The audited table names, sorted (#120 B4)."
       },
       "AutomaticCredit": {
         "properties": {
