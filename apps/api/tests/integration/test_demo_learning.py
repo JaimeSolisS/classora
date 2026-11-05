@@ -43,20 +43,23 @@ from tests.integration.demo_support import (
     DEMO_354_TABLE_COUNTS,
     DEV_LINES,
     EVALUATIONS_GENERATOR,
-    FIRST_RUN_LINES,
     FROZEN_NOW,
     GENERATOR_NAMES,
     HOMEWORK_GENERATOR,
     NEW_354_GENERATORS,
     NOTES_GENERATOR,
+    PAYROLL_GENERATORS,
     PROGRESS_REPORTS_GENERATOR,
+    REMINDERS_GENERATOR,
     RERUN_LINES,
     RERUN_REFERENCE_LINES,
     TABLE_COUNTS_THROUGH_353,
+    TABLE_COUNTS_THROUGH_420,
     UntouchedSession,
     count,
     demo_env,
     demo_table_counts,
+    first_run_lines,
     generators_through,
     migrate,
 )
@@ -143,13 +146,15 @@ def homework_rows(url: str) -> list[tuple[Any, ...]]:
 def test_a_first_run_writes_the_plans_and_homework(
     migrated_url, env_for, clock, capsys
 ):
-    # E2 on Wednesday 2026-11-04, 11:00 local.
+    # E2 on Wednesday 2026-11-04, 11:00 local. M7-demo G9: through
+    # billing.demo_reminders (L1 and N1 add S's classes and notifications).
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
+    generators = generators_through(REMINDERS_GENERATOR)
 
-    assert demo.main([]) == 0
+    assert demo.main([], generators=generators) == 0
 
-    assert capsys.readouterr().out.splitlines() == FIRST_RUN_LINES
+    assert capsys.readouterr().out.splitlines() == first_run_lines(generators)
     # The seed clock was restored.
     assert app_clock.now() == FROZEN_NOW
     labels = student_labels(migrated_url)
@@ -220,7 +225,10 @@ def test_a_first_run_writes_the_plans_and_homework(
         ("academics.progress_report_approved", "demo.student", 1),
         ("academics.progress_report_approved", "demo.tutor", 1),
     ]
-    assert demo_table_counts(migrated_url, ALL_TABLE_COUNTS) == ALL_TABLE_COUNTS
+    assert (
+        demo_table_counts(migrated_url, TABLE_COUNTS_THROUGH_420)
+        == TABLE_COUNTS_THROUGH_420
+    )
 
 
 @pytest.mark.parametrize(
@@ -234,24 +242,29 @@ def test_a_first_run_writes_the_plans_and_homework(
 def test_a_weekend_run_writes_the_same_counts(
     migrated_url, env_for, clock, capsys, now
 ):
-    # E3.
+    # E3. M7-demo G9: through billing.demo_reminders (the payroll weeks
+    # differ on a weekend; test_demo_payroll pins them).
     clock.set(now)
     env_for("local", migrated_url)
+    generators = generators_through(REMINDERS_GENERATOR)
 
-    assert demo.main([]) == 0
+    assert demo.main([], generators=generators) == 0
 
-    assert capsys.readouterr().out.splitlines() == FIRST_RUN_LINES
-    assert demo_table_counts(migrated_url, ALL_TABLE_COUNTS) == ALL_TABLE_COUNTS
+    assert capsys.readouterr().out.splitlines() == first_run_lines(generators)
+    assert (
+        demo_table_counts(migrated_url, TABLE_COUNTS_THROUGH_420)
+        == TABLE_COUNTS_THROUGH_420
+    )
     assert app_clock.now() == now
 
 
 def test_a_rerun_writes_nothing_even_days_later(migrated_url, env_for, clock, capsys):
-    # E4: every generator (25 since M6-demo) prints 0 rows.
+    # E4: every generator (31 since M7-demo) prints 0 rows.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
     assert demo.main([]) == 0
     capsys.readouterr()
-    assert len(GENERATOR_NAMES) == 28
+    assert len(GENERATOR_NAMES) == 31
 
     assert demo.main([]) == 0
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
@@ -294,8 +307,8 @@ def test_a_new_generator_writes_nothing_outside_local(generator, app_env):
 
 def test_the_354_generators_come_last():
     # A1.
-    assert GENERATOR_NAMES[-9:-6] == list(NEW_354_GENERATORS)
-    assert GENERATOR_NAMES[-10] == EVALUATIONS_GENERATOR
+    assert GENERATOR_NAMES[-12:-9] == list(NEW_354_GENERATORS)
+    assert GENERATOR_NAMES[-13] == EVALUATIONS_GENERATOR
     assert DEMO_354_TABLE_COUNTS["learning_plan_milestones"] == 7
 
 
@@ -318,7 +331,7 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
         *RERUN_REFERENCE_LINES,
         *(
             f"{name}: skipped ({STALE_SCHEDULE})"
-            if name in {*NEW_354_GENERATORS, *BILLING_GENERATORS}
+            if name in {*NEW_354_GENERATORS, *BILLING_GENERATORS, *PAYROLL_GENERATORS}
             else f"{name}: 0 rows"
             for name in GENERATOR_NAMES
         ),

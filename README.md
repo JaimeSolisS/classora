@@ -650,15 +650,26 @@ demo data:
   for the second family, a due-date offset and a manual charge whose payment
   was reversed. While the worker runs, it keeps charging new classes and
   sends payment reminders.
+- **Payroll** (local `make seed-demo` only; `make e2e` seeds without it):
+  payroll is on with weekly periods from about three weeks back.
+  `demo.tutor` is paid by the hour with a weekly punctuality bonus and a
+  one-time deduction; `demo.tutor2` has a weekly salary and a per-course rate
+  for the finished cohort. Every ended week is finalized with a payslip. The
+  last one carries a late-approved class and a manual adjustment, and the
+  current week holds an hours correction. `demo.tutor`'s first week is paid,
+  the second partly paid with one reversed payment, and `demo.tutor2` is
+  still unpaid, so "Mis pagos" and the Reports page have data.
 
 The dates stay those of the first run (a second run changes nothing), so reset
 with `docker compose down -v`, `make dev`, `make migrate` and `make seed-demo`
 to get a fresh schedule. A database seeded before the courses and requests,
 the classes held and results, the learning plans, homework and progress
-reports, or the billing data (charges, then payments and reminders) were
-added keeps its schedule and skips them
+reports, the billing data (charges, then payments and reminders) or the
+payroll data were added keeps its schedule and skips them
 (`make seed-demo` says
-so) until you reset the same way. The pending offer expires after the
+so) until you reset the same way. The payroll start date locks once payroll
+periods exist, so re-seeding payroll also needs a clean database
+(`docker compose down -v`). The pending offer expires after the
 scheduling policy's 48 hours and then also waits on Approvals. With classes scheduled, the
 center time zone can no longer be changed. `make bootstrap-owner` (below) is
 refused once any Owner exists, so locally use either the demo Owner or

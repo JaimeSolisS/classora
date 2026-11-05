@@ -1,5 +1,5 @@
 """Helpers for the ``make seed-demo`` generator tests (#23, #195, #299, #303,
-#353, #354, M6-demo #413, M6-demo-b #420).
+#353, #354, M6-demo #413, M6-demo-b #420, M7-demo #499).
 
 - :func:`migrate` and :func:`demo_env`: a fresh database at the Alembic head,
   and the environment of a ``demo.main`` run (each test module wraps them in
@@ -12,7 +12,9 @@
   #354 ones (:data:`DEMO_354_TABLE_COUNTS`, :data:`TABLE_COUNTS_THROUGH_354`)
   and the M6-demo billing ones (:data:`DEMO_BILLING_TABLE_COUNTS`,
   :data:`TABLE_COUNTS_THROUGH_413`) and the M6-demo-b ones
-  (:data:`DEMO_BILLING_MONEY_TABLE_COUNTS`, :data:`ALL_TABLE_COUNTS`).
+  (:data:`DEMO_BILLING_MONEY_TABLE_COUNTS`, :data:`TABLE_COUNTS_THROUGH_420`)
+  and the M7-demo payroll ones (:data:`DEMO_PAYROLL_TABLE_COUNTS`,
+  :data:`ALL_TABLE_COUNTS`).
 - Prefixes of the registered generators by name (:func:`generators_through`).
 """
 
@@ -122,6 +124,25 @@ DEMO_REMINDERS_ROWS = 13
 """M6-demo-b D: DC's due-date change, 10 ``charge_reminders`` rows of F1 (4
 ``due_soon``, 6 ``overdue``) and 2 ``billing.payment_reminder``
 notifications to ``demo.guardian`` (at ``FROZEN_NOW``)."""
+
+PAYROLL_SETUP_GENERATOR = "payroll.demo_setup"
+DEMO_PAYROLL_SETUP_ROWS = 9
+"""M7-demo B: 2 terms, 3 rates, 2 pay item types and 2 pay items (the
+``payroll_settings`` update isn't counted, A2)."""
+PAYROLL_PERIODS_GENERATOR = "payroll.demo_periods"
+DEMO_PAYROLL_PERIODS_ROWS = 73
+"""M7-demo C at :data:`FROZEN_NOW` (three ended weeks): L1 and N1 (2 sessions,
+2 participants, 2 offers, 2 offer sessions, 2 attendance rows, 2 closeouts, 2
+approvals), 8 approval requests (2 closeouts, 6 periods), 11 notifications (2
+offers received and 2 closeouts approved to ``demo.tutor``, 1 payment reminder
+to ``demo.guardian``, 6 periods finalized), 2 charges, their 2 discount lines
+and 2 ``charge_reminders`` rows (engineer D3), 8 periods, 18 lines, 2
+adjustments and 6 payslips."""
+PAYROLL_CORRECTIONS_GENERATOR = "payroll.demo_corrections"
+DEMO_PAYROLL_CORRECTIONS_ROWS = 9
+"""M7-demo D: H2's new approval and its correction, the
+``academics.closeout_corrected`` notification, the ``hours_correction`` and
+its line, PP1-PP3 and PP3's reversal."""
 
 DEMO_TABLE_COUNTS = {
     "subjects": 8,
@@ -306,6 +327,42 @@ DEMO_BILLING_MONEY_TABLE_COUNTS = {
 """The rows the M6-demo-b generators add to each table they count, and the
 cancellation's notifications, after a first run on a fresh database at
 :data:`FROZEN_NOW`."""
+DEMO_PAYROLL_TABLE_COUNTS = {
+    # payroll.demo_setup.
+    "tutor_pay_terms": 2,
+    "compensation_rates": 3,
+    "pay_item_types": 2,
+    "pay_items": 2,
+    # payroll.demo_periods: L1 and N1, their charges, the periods.
+    "class_sessions": 2,
+    "class_session_participants": 2,
+    "assignment_offers": 2,
+    "assignment_offer_sessions": 2,
+    "class_session_attendance": 2,
+    "session_closeouts": 2,
+    # L1's and N1's approvals, then H2's corrected revision.
+    "session_closeout_approvals": 2 + 1,
+    "session_closeout_corrections": 1,
+    # L1's and N1's review items and the six periods' approval items.
+    "approval_requests": 2 + 6,
+    "charges": 2,
+    "charge_discounts": 2,
+    # The reminder step for L1's and N1's charges (engineer D3).
+    "charge_reminders": 2,
+    "payroll_periods": 8,
+    # 18 period lines, then the hours correction's.
+    "payroll_lines": 18 + 1,
+    "payroll_adjustments": 2 + 1,
+    "payslips": 6,
+    "payroll_payments": 3,
+    "payroll_payment_reversals": 1,
+    # L1's and N1's offers and approvals to demo.tutor, their payment
+    # reminder to demo.guardian, the six periods finalized, then H2's
+    # correction to demo.tutor.
+    "notifications": 2 + 2 + 1 + 6 + 1,
+}
+"""The rows the M7-demo generators add to each table they count, after a first
+run on a fresh database at :data:`FROZEN_NOW` (several tables are shared)."""
 CX_NOTIFICATIONS = 3
 """CX's ``scheduling.session_cancelled`` notifications (in
 :data:`DEMO_BILLING_MONEY_TABLE_COUNTS`, not in a generator's rows)."""
@@ -339,9 +396,16 @@ TABLE_COUNTS_THROUGH_413 = _sum(TABLE_COUNTS_THROUGH_354, DEMO_BILLING_TABLE_COU
 """Every counted table of #299-#354 and M6-demo after a first run of the
 generators through ``billing.demo_charges`` (M6-demo-b H7)."""
 
-ALL_TABLE_COUNTS = _sum(TABLE_COUNTS_THROUGH_413, DEMO_BILLING_MONEY_TABLE_COUNTS)
+TABLE_COUNTS_THROUGH_420 = _sum(
+    TABLE_COUNTS_THROUGH_413, DEMO_BILLING_MONEY_TABLE_COUNTS
+)
 """Every counted table of #299-#354, M6-demo and M6-demo-b after a first run
-of every generator (at :data:`FROZEN_NOW`)."""
+of the generators through ``billing.demo_reminders`` (at :data:`FROZEN_NOW`;
+M7-demo G9)."""
+
+ALL_TABLE_COUNTS = _sum(TABLE_COUNTS_THROUGH_420, DEMO_PAYROLL_TABLE_COUNTS)
+"""Every counted table of #299-#354, M6-demo, M6-demo-b and M7-demo after a
+first run of every generator (at :data:`FROZEN_NOW`)."""
 
 FROZEN_NOW = datetime(2026, 11, 4, 17, 0, tzinfo=UTC)
 """A Wednesday, 11:00 in Mexico City (#299 E2), after the privacy notice's
@@ -382,6 +446,9 @@ GENERATOR_NAMES = [
     RECONCILIATION_GENERATOR,
     PAYMENTS_GENERATOR,
     REMINDERS_GENERATOR,
+    PAYROLL_SETUP_GENERATOR,
+    PAYROLL_PERIODS_GENERATOR,
+    PAYROLL_CORRECTIONS_GENERATOR,
 ]
 
 FIRST_RUN_LINES = [
@@ -407,6 +474,9 @@ FIRST_RUN_LINES = [
     f"{RECONCILIATION_GENERATOR}: {DEMO_RECONCILIATION_ROWS} rows",
     f"{PAYMENTS_GENERATOR}: {DEMO_PAYMENTS_ROWS} rows",
     f"{REMINDERS_GENERATOR}: {DEMO_REMINDERS_ROWS} rows",
+    f"{PAYROLL_SETUP_GENERATOR}: {DEMO_PAYROLL_SETUP_ROWS} rows",
+    f"{PAYROLL_PERIODS_GENERATOR}: {DEMO_PAYROLL_PERIODS_ROWS} rows",
+    f"{PAYROLL_CORRECTIONS_GENERATOR}: {DEMO_PAYROLL_CORRECTIONS_ROWS} rows",
 ]
 RERUN_LINES = [
     *RERUN_REFERENCE_LINES,
@@ -460,16 +530,27 @@ BILLING_420_GENERATORS = (
 BILLING_GENERATORS = (*BILLING_413_GENERATORS, *BILLING_420_GENERATORS)
 """The six billing generators (#413, #420); they also skip a stale #299
 schedule, billing set up by hand and ``--without-billing``."""
+PAYROLL_GENERATORS = (
+    PAYROLL_SETUP_GENERATOR,
+    PAYROLL_PERIODS_GENERATOR,
+    PAYROLL_CORRECTIONS_GENERATOR,
+)
+"""The M7-demo payroll generators (#499); they also skip a stale #299
+schedule, payroll set up by hand and ``--without-billing``."""
+FLAGGED_GENERATORS = (*BILLING_GENERATORS, *PAYROLL_GENERATORS)
+"""Every generator ``--without-billing`` skips (M7-demo E3)."""
 
 
 def generators_before_303() -> list[demo.DemoGenerator]:
     """The #299 run: every registered generator except the four #303 ones,
-    the four #353 ones, the three #354 ones and the six billing ones."""
+    the four #353 ones, the three #354 ones, the six billing ones and the
+    three payroll ones."""
     later = {
         *NEW_303_GENERATORS,
         *NEW_353_GENERATORS,
         *NEW_354_GENERATORS,
         *BILLING_GENERATORS,
+        *PAYROLL_GENERATORS,
     }
     return [g for g in demo.DEMO_GENERATORS if g.name not in later]
 

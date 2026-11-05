@@ -57,7 +57,8 @@ def test_the_generators_are_registered_in_order():
     # A1: then the held classes, the finished cohort, the notes and the
     # evaluations; #354 A1: then the learning plans, the homework and the
     # progress reports; M6-demo A1: then the billing prices, packages and
-    # charges; M6-demo-b A1: then the reconciliation, payments and reminders.
+    # charges; M6-demo-b A1: then the reconciliation, payments and reminders;
+    # M7-demo A1: then the payroll setup, periods and corrections.
     assert [g.name for g in demo.DEMO_GENERATORS] == GENERATOR_NAMES
     assert GENERATOR_NAMES == [
         "identity.demo_owner",
@@ -88,11 +89,15 @@ def test_the_generators_are_registered_in_order():
         "billing.demo_reconciliation",
         "billing.demo_payments",
         "billing.demo_reminders",
+        "payroll.demo_setup",
+        "payroll.demo_periods",
+        "payroll.demo_corrections",
     ]
 
 
 def test_local_creates_the_active_demo_owner(migrated_url, env_for, capsys, clock):
-    # The #299 frozen day: the M6-demo-b counts depend on the center's today.
+    # The #299 frozen day: the M6-demo-b and M7-demo counts depend on the
+    # center's today.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
 

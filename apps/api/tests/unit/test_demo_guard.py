@@ -1,5 +1,7 @@
-"""Demo-data command without a database (M1-17 C5): the production guard."""
+"""Demo-data command without a database (M1-17 C5): the production guard,
+and the payroll generators' skips without a session (M7-demo #499 E5)."""
 
+import asyncio
 import os
 import subprocess
 import sys
@@ -12,6 +14,13 @@ import pytest
 
 from tests.authz.csrf import origin_for
 from tests.factories import demo
+from tests.factories.base import GeneratorSkipped
+from tests.factories.demo_billing import WITHOUT_BILLING
+from tests.factories.demo_payroll import (
+    DemoPayrollCorrectionsGenerator,
+    DemoPayrollPeriodsGenerator,
+    DemoPayrollSetupGenerator,
+)
 
 API_ROOT = Path(__file__).resolve().parents[2]
 CLOSED_PORT_DSN = "postgresql://x:y@127.0.0.1:1/z"
@@ -113,7 +122,8 @@ def test_prod_refusal_as_a_process_returns_immediately():
 
 
 def test_the_billing_flag_is_documented_for_e2e(capsys):
-    # M6-demo A5: --without-billing names the E2E run that passes it.
+    # M6-demo A5, #499 A4: --without-billing names the E2E run that passes it
+    # and the billing, payroll and expense data it leaves out.
     with pytest.raises(SystemExit) as exit_info:
         demo.main(["--help"])
 
@@ -121,7 +131,8 @@ def test_the_billing_flag_is_documented_for_e2e(capsys):
     out = " ".join(capsys.readouterr().out.split())
     assert "--without-billing" in out
     assert "e2e/scripts/run.sh" in out
-    assert "E2E database keeps billing off" in out
+    assert "without the billing, payroll and expense demo data (E2E;" in out
+    assert "E2E database keeps them off" in out
 
 
 @pytest.mark.parametrize("app_env", ["local", "dev"])
@@ -146,3 +157,40 @@ def test_make_seed_demo_does_not_skip_billing_and_e2e_does():
         line for line in run_sh.splitlines() if "python -m tests.factories.demo" in line
     ]
     assert "--without-billing" in step
+
+
+class UntouchedSession:
+    """Fails the test if the generator uses the session."""
+
+    def __getattr__(self, name: str) -> object:
+        raise AssertionError(f"the session was used ({name})")
+
+
+PAYROLL_GENERATORS = [
+    DemoPayrollSetupGenerator,
+    DemoPayrollPeriodsGenerator,
+    DemoPayrollCorrectionsGenerator,
+]
+
+
+@pytest.mark.parametrize("app_env", ["dev", "prod", "staging"])
+@pytest.mark.parametrize("generator", PAYROLL_GENERATORS, ids=lambda g: g.name)
+def test_a_payroll_generator_writes_nothing_outside_local(generator, app_env):
+    # #499 E5: skipped without touching the session.
+    result = asyncio.run(
+        generator(app_env=lambda: app_env).generate(UntouchedSession())  # type: ignore[arg-type]
+    )
+
+    assert result == GeneratorSkipped(f"APP_ENV={app_env}; local only")
+
+
+@pytest.mark.parametrize("generator", PAYROLL_GENERATORS, ids=lambda g: g.name)
+def test_a_payroll_generator_writes_nothing_under_the_flag(generator):
+    # #499 E5, A4: --without-billing, without touching the session.
+    result = asyncio.run(
+        generator(app_env=lambda: "local", skipped=lambda: True).generate(
+            UntouchedSession()  # type: ignore[arg-type]
+        )
+    )
+
+    assert result == GeneratorSkipped(WITHOUT_BILLING)

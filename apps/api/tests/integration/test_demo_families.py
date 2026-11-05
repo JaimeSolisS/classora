@@ -201,7 +201,8 @@ async def _valid_consents(url: str, student_id: uuid.UUID) -> list[uuid.UUID]:
 
 
 def test_local_creates_the_three_demo_families(migrated_url, env_for, capsys, clock):
-    # The #299 frozen day: the M6-demo-b counts depend on the center's today.
+    # The #299 frozen day: the M6-demo-b and M7-demo counts depend on the
+    # center's today.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
 

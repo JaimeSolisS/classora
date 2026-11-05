@@ -22,16 +22,17 @@ Generates synthetic ``es_MX`` demo data for local and DEV databases:
    generated values.
 
 ``--without-billing`` (M6-demo E3; ``e2e/scripts/run.sh`` passes it, ``make
-seed-demo`` doesn't) makes the billing generators print ``skipped
-(--without-billing)`` without touching the database, so billing stays off in
-the E2E database.
+seed-demo`` doesn't) makes the billing and payroll generators (#499 E3) print
+``skipped (--without-billing)`` without touching the database, so billing and
+payroll stay off in the E2E database.
 
 The registered generators (#23, #195, #299, #303, #353, #354, M6-demo #413,
-M6-demo-b #420) write nothing on a rerun (``0 rows``), even on a later day:
-the #299, #303, #353, #354 and M6-demo data keep the dates of their first
-run. A future
-generator may add rows on a rerun unless its issue says otherwise. To start
-over, reset with ``docker compose down -v``, then ``make migrate`` and ``make
+M6-demo-b #420, M7-demo #499) write nothing on a rerun (``0 rows``), even on a
+later day: the #299, #303, #353, #354, M6-demo and M7-demo data keep the dates
+of their first run. A future generator may add rows on a rerun unless its
+issue says otherwise. The payroll start date locks once a payroll period
+exists (#106 E6), so the payroll data can't be moved either. To start over,
+reset with ``docker compose down -v``, then ``make migrate`` and ``make
 seed-demo``.
 
 Like ``make seed``, it connects directly to PostgreSQL (``DATABASE_DIRECT_URL``,
@@ -61,7 +62,7 @@ from app.seeds.runner import (
 )
 from app.seeds.upsert import UpsertResult
 from app.wiring import register_approval_wiring
-from tests.factories import demo_billing, demo_billing_money
+from tests.factories import demo_billing, demo_billing_money, demo_payroll
 from tests.factories.base import GeneratorSkipped, reseed
 from tests.factories.catalog import DemoCatalogGenerator
 from tests.factories.demo_academics import (
@@ -120,6 +121,9 @@ DEMO_GENERATORS: tuple[DemoGenerator, ...] = (
     demo_billing_money.DemoReconciliationGenerator(),
     demo_billing_money.DemoPaymentsGenerator(),
     demo_billing_money.DemoRemindersGenerator(),
+    demo_payroll.DemoPayrollSetupGenerator(),
+    demo_payroll.DemoPayrollPeriodsGenerator(),
+    demo_payroll.DemoPayrollCorrectionsGenerator(),
 )
 """Every demo generator, in order. Domain tasks append generators that use
 their factories (``persist`` / ``persist_batch``; never commit).
@@ -199,7 +203,24 @@ their factories (``persist`` / ``persist_batch``; never commit).
   reason, then the payment reminders the reminder job would send (to
   ``demo.guardian``), ``APP_ENV=local`` only. The six billing generators
   also skip a database whose #299 schedule is from an earlier day or whose
-  billing was set up by hand, and under ``--without-billing``."""
+  billing was set up by hand, and under ``--without-billing``.
+- ``payroll.demo_setup`` (M7-demo #499): ``demo.finance`` turns payroll on
+  from about three weeks back (weekly periods), gives ``demo.tutor`` hourly
+  and per-session rates, a weekly punctuality bonus and a one-time
+  deduction, and ``demo.tutor2`` a weekly salary and a per-course rate,
+  ``APP_ENV=local`` only.
+- ``payroll.demo_periods`` (M7-demo #499): two new ``demo.tutor`` classes
+  (one approved late, one a no-show) and their charges, then every ended
+  week of both tutors prepared by ``demo.finance`` and finalized by
+  ``demo.owner``, oldest first, each with its payslip; the last one also
+  carries a late approval and a manual adjustment, ``APP_ENV=local`` only.
+- ``payroll.demo_corrections`` (M7-demo #499): an hours correction in the
+  current week, then ``demo.tutor``'s first week paid, the second partly
+  paid with one payment reversed by ``demo.owner``; ``demo.tutor2`` stays
+  unpaid, ``APP_ENV=local`` only. The three payroll generators also skip a
+  database whose #299 schedule is from an earlier day or whose payroll was
+  set up by hand, and under ``--without-billing``. The payroll start date
+  locks once periods exist, so a re-seed needs a clean database."""
 
 
 @dataclass
@@ -278,8 +299,8 @@ def main(
     parser.add_argument(
         "--without-billing",
         action="store_true",
-        help="skip the billing demo data (e2e/scripts/run.sh passes it, so the"
-        " E2E database keeps billing off)",
+        help="without the billing, payroll and expense demo data (E2E;"
+        " e2e/scripts/run.sh passes it, so the E2E database keeps them off)",
     )
     args = parser.parse_args(argv)
 
