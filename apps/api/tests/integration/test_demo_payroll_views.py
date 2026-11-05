@@ -226,9 +226,14 @@ def test_what_each_account_sees(migrated_url, env_for, clock):
             ("manual", None, MANUAL_REASON),
         ]
         detail = _ok(get(client, cookie, f"{own}/earnings/{w2['id']}"))
-        assert sorted(
-            (p["reference"], p["reversed_on"]) for p in detail["payments"]
-        ) == [(PP2_REFERENCE, None), (PP3_REFERENCE, T)]
+        # The reversal row's timestamp comes from the database, not the frozen
+        # app clock (#499 E7: payroll payments run on the real clock), so its
+        # local date is the day the test runs, never before T.
+        reversed_on = {p["reference"]: p["reversed_on"] for p in detail["payments"]}
+        assert set(reversed_on) == {PP2_REFERENCE, PP3_REFERENCE}
+        assert reversed_on[PP2_REFERENCE] is None
+        assert reversed_on[PP3_REFERENCE] is not None
+        assert reversed_on[PP3_REFERENCE] >= T
         assert all("reason" not in p and "note" not in p for p in detail["payments"])
         other = f"/api/v1/payroll/tutors/{tutor2}/earnings"
         assert get(client, cookie, other).status_code == 404
