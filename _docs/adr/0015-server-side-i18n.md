@@ -10,7 +10,7 @@ Accepted
 
 ## Sign-off
 
-Owner: JaimeSolisS. Decision items E1–E13 and E15 (ADR-0006), or E14 (ADR-0015), taken as recommended (option (a) for each), owner-delegated, on 2026-10-27 (GitHub issue #86, M6-01). No amendments. The orchestrator's decision record explicitly approves the new runtime dependencies of E14 (Jinja2 and WeasyPrint, with the Debian Pango and font packages in the API image), installed by #98.
+Owner: JaimeSolisS. Decision items E1–E13 and E15 (ADR-0006), or E14 (ADR-0015), taken as recommended (option (a) for each), owner-delegated, on 2026-10-27 (GitHub issue #86, M6-01). Amended once (XLSX exports, #124, below; orchestrator-recommended, pending owner review). The orchestrator's decision record explicitly approves the new runtime dependencies of E14 (Jinja2 and WeasyPrint, with the Debian Pango and font packages in the API image), installed by #98.
 
 ## Context
 
@@ -95,12 +95,29 @@ Recorded by #383 (M6-13a, the infrastructure split of #98). The decision above i
 - **Code:** `app/core/i18n.py` (catalogs, `t`, `format_money`, `format_date`, `resolve_language`), `app/core/pdf.py` (the Jinja2 environment, WeasyPrint with a URL fetcher that refuses every URL) and the branded layout `app/templates/documents/base.html`.
 - gettext and Babel are not added.
 
+### Amendment: XLSX exports (#124, M8-07, 2026-11-05)
+
+Orchestrator-recommended, pending owner review (#124 E3 (a), owner-delegated). Spec §10 names openpyxl for XLSX reports; this amendment adds it.
+
+- **Pins:** runtime `openpyxl>=3.1.5,<4` (locked 3.1.5, released 2024-06-28) and dev `types-openpyxl>=3.1.5.20261017` (locked 3.1.5.20261017, for mypy strict). Licences and Python 3.14 support checked on PyPI and against the installed package metadata on 2026-11-05.
+- **New locked packages and licences:**
+
+  | Package | Version | Licence |
+  |---|---|---|
+  | openpyxl | 3.1.5 | MIT; pure Python (`py2.py3-none-any` wheel), `Requires-Python >=3.8`; no 3.14 classifier, but no compiled code, and the tests run on 3.14 |
+  | et-xmlfile | 2.0.0 | MIT; pure Python (an openpyxl dependency) |
+  | types-openpyxl (dev) | 3.1.5.20261017 | Apache-2.0; typeshed stubs |
+
+- **Use:** `app/modules/reporting/exports/render.py` writes one write-only worksheet **in memory**: openpyxl's worksheet writer uses a temporary file by default, and the renderer gives it a `BytesIO` instead, so an export never touches a disk (#124 F4; a unit test refuses any temporary file). Every text cell is an explicit string cell, and text starting with `=`, `+`, `-`, `@`, a tab or a CR is prefixed with `'` (formula injection).
+- **Not added:** PDF exports (a WeasyPrint table of 10,000 rows is a memory risk on the micro host; #124 E3) and `.xlsx` import (a #122 follow-up that this dependency unblocks).
+- The export catalogs follow this ADR: `app/i18n/locales/{es,en}/exports.json` (headers, dataset names, enum and boolean labels), in the language stored on the export job.
+
 ## Consequences
 
 - **#98 (M6-13)** adds the dependencies above (or splits them into an infrastructure issue), `app/core/i18n.py`, the catalogs and their parity test, and the receipt templates in es and en.
 - **M7 (payslips)** reuses the same templates, catalogs and formatting.
 - **M8-04 (#121)** adds an editable receipt message (data, frozen into receipt template and snapshot v2; see the clarification under PDFs), not editable template source.
-- **M8-07 (#124)** generates large PDF exports in the worker, with the same rendering stack.
+- **M8-07 (#124)** generates CSV and XLSX exports in the worker (amendment above), with the same catalogs and document-language rule; PDF exports are deferred.
 - One catalog format (JSON) for client and server; no extraction or compilation toolchain.
 - The language of an issued document never changes when the recipient changes their preference later, because it is stored on the record.
 - This ADR adds nothing to `pyproject.toml`, `uv.lock` or the Dockerfiles; #98 does.

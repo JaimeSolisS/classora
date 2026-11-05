@@ -1,0 +1,72 @@
+{
+  "datasets": {
+    "students": "Students",
+    "class_sessions": "Class sessions",
+    "expenses": "Expenses"
+  },
+  "columns": {
+    "students": {
+      "family_names": "Family names",
+      "given_names": "Given names",
+      "is_active": "Active",
+      "is_minor": "Minor",
+      "school_grade": "School grade",
+      "education_level": "Education level"
+    },
+    "class_sessions": {
+      "date": "Date",
+      "start_time": "Start",
+      "end_time": "End",
+      "duration_minutes": "Duration (minutes)",
+      "kind": "Class type",
+      "state": "Status",
+      "subject": "Subject",
+      "education_level": "Education level",
+      "tutor": "Tutor",
+      "classroom": "Room",
+      "students": "Students",
+      "series": "Weekly series"
+    },
+    "expenses": {
+      "incurred_on": "Expense date",
+      "due_on": "Due date",
+      "category": "Category",
+      "vendor": "Vendor",
+      "description": "Description",
+      "amount": "Amount",
+      "adjusted_amount": "Net amount",
+      "paid_amount": "Paid",
+      "open_amount": "Open",
+      "status": "Status",
+      "receipt_reference": "Receipt reference",
+      "template": "Recurring expense"
+    }
+  },
+  "values": {
+    "boolean": {
+      "true": "Yes",
+      "false": "No"
+    },
+    "session_kind": {
+      "individual": "Individual",
+      "group": "Group",
+      "course": "Course"
+    },
+    "session_state": {
+      "unassigned": "Unassigned",
+      "offered": "Offered",
+      "confirmed": "Confirmed",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "skipped_closure": "Skipped (closure)",
+      "conflict": "Conflict"
+    },
+    "expense_status": {
+      "unpaid": "Unpaid",
+      "partially_paid": "Partly paid",
+      "paid": "Paid",
+      "overdue": "Overdue",
+      "void": "Void"
+    }
+  }
+}

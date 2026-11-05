@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0089"
+HEAD = "0090"
 FINANCE_TABLES_0083 = frozenset({"expense_categories", "vendors"})
 EXPENSE_TABLES_0084 = frozenset(
     {"expenses", "expense_payments", "expense_payment_reversals", "expense_adjustments"}
@@ -81,6 +81,7 @@ TEMPLATES_0085 = "expense_templates"
 OPT_OUTS_0086 = "notification_opt_outs"
 MESSAGES_0087 = ("receipt_message_es", "receipt_message_en")
 IMPORT_TABLES_0088 = ("import_jobs", "import_rows")
+EXPORT_TABLES_0090 = ("export_jobs", "export_files")
 PAY_RULES = "session_pay_rules"
 LINES = "payroll_lines"
 SALARY_LINE_COLUMNS = frozenset(
@@ -483,6 +484,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             TEMPLATES_0085,
             OPT_OUTS_0086,
             *IMPORT_TABLES_0088,
+            *EXPORT_TABLES_0090,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4959,9 +4961,22 @@ def _of_0089(diff: Any) -> bool:
     return False
 
 
+def _of_0090(diff: Any) -> bool:
+    """A metadata difference that revision 0090 adds: the two export tables
+    and their indexes (#124 F1). CHECKs are not compared."""
+    if diff[0] == "add_table":
+        return bool(diff[1].name in EXPORT_TABLES_0090)
+    return diff[0] == "add_index" and diff[1].table.name in EXPORT_TABLES_0090
+
+
+def _of_0089_on(diff: Any) -> bool:
+    """A metadata difference that revision 0089 or a later one adds."""
+    return _of_0089(diff) or _of_0090(diff)
+
+
 def _of_0088_on(diff: Any) -> bool:
     """A metadata difference that revision 0088 or a later one adds."""
-    return _of_0088(diff) or _of_0089(diff)
+    return _of_0088(diff) or _of_0089_on(diff)
 
 
 def _of_0087_on(diff: Any) -> bool:
@@ -17193,7 +17208,7 @@ def test_0088_adds_the_tables_and_downgrade_restores_0087(fresh_database_url):
     command.upgrade(config, "0088")
 
     assert version_nums(dsn) == ["0088"]
-    assert [d for d in metadata_diff(dsn) if not _of_0089(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0089_on(d)] == []
     assert public_tables(dsn) - tables == set(IMPORT_TABLES_0088)
 
     command.downgrade(config, "0087")
@@ -17408,7 +17423,7 @@ def test_0089_adds_the_import_reference_and_downgrade_restores_0088(
     command.upgrade(config, "0089")
 
     assert version_nums(dsn) == ["0089"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0090(d)] == []
     assert set(_columns(dsn, "charges")) - columns == set(IMPORT_REF_0089)
     assert set(_constraints(dsn, "charges")) - constraints == {
         "fk_charges_import_job_id_import_jobs",
@@ -17426,7 +17441,7 @@ def test_0089_adds_the_import_reference_and_downgrade_restores_0088(
     assert set(_columns(dsn, "charges")) == columns
     assert set(_constraints(dsn, "charges")) == constraints
     assert set(_indexes(dsn, "charges")) == indexes
-    assert [d for d in metadata_diff(dsn) if not _of_0089(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0089_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -17545,3 +17560,180 @@ def test_0089_downgrade_refuses_while_imported_charges_exist(fresh_database_url)
 
     assert version_nums(dsn) == [HEAD]
     assert set(IMPORT_REF_0089) <= set(_columns(dsn, "charges"))
+
+
+# --- 0090: export jobs and their files (#124 F1) -----
+
+CHECKS_0090_JOBS = {
+    "ck_export_jobs_dataset_format",
+    "ck_export_jobs_format_valid",
+    "ck_export_jobs_status_valid",
+    "ck_export_jobs_language_valid",
+    "ck_export_jobs_parameters_object",
+    "ck_export_jobs_row_count_not_negative",
+    "ck_export_jobs_byte_size_not_negative",
+    "ck_export_jobs_error_code_valid",
+    "ck_export_jobs_error_code_iff_failed",
+    "ck_export_jobs_finished_when_ready",
+    "ck_export_jobs_file_name_not_blank",
+}
+
+
+def _user_0090(dsn: str) -> str:
+    user_id = str(uuid.uuid4())
+    run_sql(
+        dsn,
+        "INSERT INTO users (id, username, display_name, state)"
+        " VALUES (:i, :u, 'Exporter', 'active')",
+        {"i": user_id, "u": f"exporter-{user_id[:8]}"},
+    )
+    return user_id
+
+
+def _export_0090(dsn: str, user_id: str, **extra: Any) -> str:
+    parameters = extra.pop("parameters", '{"dataset": "expenses"}')
+    values = {
+        "requested_by_user_id": user_id,
+        "dataset": "expenses",
+        "format": "csv",
+        "language": "es",
+        "file_name": "classora-expenses-20261105-1000.csv",
+        **extra,
+    }
+    columns = ", ".join(values)
+    params = ", ".join(f":{name}" for name in values)
+    [row] = run_sql(
+        dsn,
+        f"INSERT INTO export_jobs ({columns}, parameters)"  # noqa: S608
+        f" VALUES ({params}, CAST(:p AS jsonb)) RETURNING id",
+        {**values, "p": parameters},
+    )
+    return str(row.id)
+
+
+def test_0090_adds_the_tables_and_downgrade_restores_0089(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0089")
+    tables = public_tables(dsn)
+
+    command.upgrade(config, "0090")
+
+    assert version_nums(dsn) == ["0090"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == set(EXPORT_TABLES_0090)
+
+    command.downgrade(config, "0089")
+
+    assert version_nums(dsn) == ["0089"]
+    assert public_tables(dsn) == tables
+    assert [d for d in metadata_diff(dsn) if not _of_0090(d)] == []
+
+    command.upgrade(config, "head")
+
+    assert metadata_diff(dsn) == []
+
+
+def test_0090_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    stamp = ("timestamp with time zone", "YES", None, None)
+    assert _columns(dsn, "export_jobs") == {
+        "id": STANDARD_COLUMNS["id"],
+        "created_at": STANDARD_COLUMNS["created_at"],
+        "updated_at": STANDARD_COLUMNS["updated_at"],
+        "requested_by_user_id": ("uuid", "NO", None, None),
+        "dataset": ("character varying", "NO", 32, None),
+        "format": ("character varying", "NO", 8, None),
+        "status": ("character varying", "NO", 16, "'queued'::character varying"),
+        "parameters": ("jsonb", "NO", None, None),
+        "language": ("character varying", "NO", 8, None),
+        "row_count": ("integer", "YES", None, None),
+        "byte_size": ("integer", "YES", None, None),
+        "file_name": ("character varying", "NO", 120, None),
+        "error_code": ("character varying", "YES", 32, None),
+        "finished_at": stamp,
+        "expires_at": stamp,
+    }
+    jobs = _constraints(dsn, "export_jobs")
+    assert set(jobs) == {
+        "pk_export_jobs",
+        "fk_export_jobs_requested_by_user_id_users",
+        *CHECKS_0090_JOBS,
+    }
+    assert jobs["fk_export_jobs_requested_by_user_id_users"].endswith(
+        "ON DELETE RESTRICT"
+    )
+    indexes = _indexes(dsn, "export_jobs")
+    assert set(indexes) == {
+        "pk_export_jobs",
+        "ix_export_jobs_requested_by_user_id_created_at",
+        "ix_export_jobs_queued",
+        "ix_export_jobs_ready_expires_at",
+    }
+    assert (
+        "(requested_by_user_id, created_at DESC)"
+        in (indexes["ix_export_jobs_requested_by_user_id_created_at"])
+    )
+    assert "WHERE" in indexes["ix_export_jobs_queued"]
+    assert "WHERE" in indexes["ix_export_jobs_ready_expires_at"]
+
+    assert _columns(dsn, "export_files") == {
+        "job_id": ("uuid", "NO", None, None),
+        "content": ("bytea", "NO", None, None),
+    }
+    files = _constraints(dsn, "export_files")
+    assert set(files) == {"pk_export_files", "fk_export_files_job_id_export_jobs"}
+    assert files["pk_export_files"] == "PRIMARY KEY (job_id)"
+    assert files["fk_export_files_job_id_export_jobs"].endswith("ON DELETE CASCADE")
+
+
+@pytest.mark.parametrize(
+    ("extra", "constraint"),
+    [
+        ({"dataset": "Expenses"}, "ck_export_jobs_dataset_format"),
+        ({"format": "pdf"}, "ck_export_jobs_format_valid"),
+        ({"status": "running"}, "ck_export_jobs_status_valid"),
+        ({"language": "fr"}, "ck_export_jobs_language_valid"),
+        ({"parameters": "[]"}, "ck_export_jobs_parameters_object"),
+        ({"row_count": -1}, "ck_export_jobs_row_count_not_negative"),
+        ({"byte_size": -1}, "ck_export_jobs_byte_size_not_negative"),
+        ({"status": "failed", "error_code": "boom"}, "ck_export_jobs_error_code_valid"),
+        ({"status": "failed"}, "ck_export_jobs_error_code_iff_failed"),
+        ({"error_code": "error"}, "ck_export_jobs_error_code_iff_failed"),
+        ({"status": "ready"}, "ck_export_jobs_finished_when_ready"),
+        ({"file_name": " "}, "ck_export_jobs_file_name_not_blank"),
+    ],
+)
+def test_0090_job_checks(fresh_database_url, extra, constraint):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    user_id = _user_0090(dsn)
+
+    with pytest.raises(IntegrityError) as caught:
+        _export_0090(dsn, user_id, **extra)
+
+    assert getattr(caught.value.orig, "sqlstate", None) == "23514"
+    assert constraint in str(caught.value.orig)
+
+
+def test_0090_files_cascade_with_their_job_and_users_restrict(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    user_id = _user_0090(dsn)
+    job_id = _export_0090(dsn, user_id)
+    run_sql(
+        dsn,
+        "INSERT INTO export_files (job_id, content) VALUES (:j, :c)",
+        {"j": job_id, "c": b"a,b\r\n"},
+    )
+
+    with pytest.raises(IntegrityError) as restricted:
+        run_sql(dsn, "DELETE FROM users WHERE id = :u", {"u": user_id})
+
+    assert getattr(restricted.value.orig, "sqlstate", None) == "23001"
+
+    run_sql(dsn, "DELETE FROM export_jobs WHERE id = :j", {"j": job_id})
+
+    assert run_sql(dsn, "SELECT count(*) AS n FROM export_files")[0].n == 0

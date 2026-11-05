@@ -97,6 +97,7 @@ from app.modules.identity.service import (
 )
 from app.modules.identity.user_admin_router import router as user_admin_router
 from app.modules.payroll.settings_router import router as payroll_settings_router
+from app.modules.reporting.exports.router import router as exports_router
 from app.modules.reporting.router import router as financial_reports_router
 from app.modules.scheduling.attendance_router import router as attendance_router
 from app.modules.scheduling.change_requests_router import (
@@ -318,6 +319,7 @@ def build_app(
     app.include_router(administration_router)
     app.include_router(approvals_router)
     app.include_router(imports_router)
+    app.include_router(exports_router)
     app.include_router(notifications_router)
     app.include_router(business_settings_router)
     app.include_router(scheduling_policies_router)

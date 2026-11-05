@@ -233,6 +233,7 @@ MODULE_TASKS = {
     "payroll:post_adjustments",
     "finance:generate_recurring_expenses",
     "administration:run_imports",
+    "reporting:run_exports",
 }
 
 
@@ -746,4 +747,54 @@ async def test_deferring_the_import_run_names_the_task_and_its_lock(caplog):
         )
     [record] = caplog.records
     assert record.message == "Deferring the import run failed"
+    assert record.error == "OSError"
+
+
+def test_the_export_run_runs_every_15_minutes():
+    # #124 D1: one queued job at a time; the request route shares the lock.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "reporting:run_exports"
+    ]
+    assert periodic.cron == "*/15 * * * *"
+    assert periodic.periodic_id == "reporting-run-exports"
+    assert periodic.configure_kwargs["queueing_lock"] == "reporting-run-exports"
+    assert app.tasks["reporting:run_exports"].queueing_lock == (
+        jobs.EXPORTS_QUEUEING_LOCK
+    )
+    assert jobs.EXPORTS_TASK == "reporting:run_exports"
+    assert jobs.task_parameter_types(app)["reporting:run_exports"] == {"timestamp": int}
+
+
+@pytest.mark.anyio
+async def test_deferring_the_export_run_names_the_task_and_its_lock(caplog):
+    # #124 B2: queued after the request; a queued run is a no-op; any other
+    # failure is logged and swallowed.
+    from procrastinate.exceptions import AlreadyEnqueued
+
+    app = _RecordingJobApp()
+    await jobs.defer_export_run(app)  # type: ignore[arg-type]
+
+    [(name, options)] = app.configured
+    assert name == "reporting:run_exports"
+    assert options == {
+        "allow_unknown": False,
+        "queueing_lock": "reporting-run-exports",
+    }
+    [call] = app.deferrer.calls
+    assert set(call) == {"timestamp"} and isinstance(call["timestamp"], int)
+
+    with caplog.at_level("ERROR", logger=jobs.__name__):
+        await jobs.defer_export_run(
+            _RecordingJobApp(AlreadyEnqueued("queued"))  # type: ignore[arg-type]
+        )
+        assert caplog.records == []
+        await jobs.defer_export_run(
+            _RecordingJobApp(OSError("unreachable"))  # type: ignore[arg-type]
+        )
+    [record] = caplog.records
+    assert record.message == "Deferring the export run failed"
     assert record.error == "OSError"

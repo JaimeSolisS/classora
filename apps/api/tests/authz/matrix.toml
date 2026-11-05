@@ -1583,6 +1583,51 @@ access = "authenticated"
 # cases are tested in tests/integration/test_evaluations.py.
 json = { version = 1, reason = "Matrix" }
 
+# Exports (#124 H1): open to a staff role holding some dataset's permission
+# (students: student.view; class_sessions: schedule.view; expenses:
+# expense.view), checked by the routes themselves, so tutors, students and
+# guardians get 403. Another user's export is 404 for every role, the Owner
+# included. Per-dataset cases (the Administrator's and Coordinator's 403 on an
+# expenses request, reauthentication for personal datasets):
+# tests/integration/test_exports_api.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/exports"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/exports"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+# An empty body gets 422 for every allowed role; nothing is queued. The
+# personal-dataset condition is tested in tests/integration/test_exports_api.py.
+json = {}
+reauth = "data.personal_export"
+reauth_conditional = true
+
+[[route]]
+method = "GET"
+path = "/api/v1/exports/datasets"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/exports/{export_id}"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+# The placeholder id is no export of the caller: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/exports/{export_id}/download"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+# The placeholder id is no export of the caller: 404 for the allowed roles.
+
 [[route]]
 method = "GET"
 path = "/api/v1/families"

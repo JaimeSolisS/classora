@@ -18,6 +18,8 @@ dependencies = [
     # Server-rendered PDFs (ADR-0015 E14, #98a): imported lazily by app/core/pdf.py.
     "weasyprint>=70.0,<71",
     "jinja2>=3.1.6,<4",
+    # XLSX exports (#124 E3; ADR-0015 amendment), written in the worker.
+    "openpyxl>=3.1.5,<4",
 ]
 
 [dependency-groups]
@@ -34,6 +36,8 @@ dev = [
     "types-python-dateutil>=2.9.0.20260807",
     # PDF text assertions in the tests (#98a P3).
     "pypdf>=6.20.1,<7",
+    # Type stubs for openpyxl (mypy strict; #124 E3).
+    "types-openpyxl>=3.1.5.20261017",
 ]
 
 [tool.uv]

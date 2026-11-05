@@ -3494,6 +3494,404 @@
         }
       }
     },
+    "/api/v1/exports/datasets": {
+      "get": {
+        "tags": [
+          "exports"
+        ],
+        "summary": "List Export Datasets",
+        "description": "The datasets the caller may export, in order, with their columns and\nlabels in the caller's language.",
+        "operationId": "list_export_datasets_api_v1_exports_datasets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportDatasetList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/exports": {
+      "post": {
+        "tags": [
+          "exports"
+        ],
+        "summary": "Request Export",
+        "description": "Ask for a CSV or Excel export of a list. It is built in the background\nfrom the same data the list page shows you; poll the export until it is\n`ready` (or `failed`), then download it within 24 hours. Exports that\nname people (`students`, `class_sessions`) need a recent password\nconfirmation.",
+        "operationId": "request_export_api_v1_exports_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/StudentsExportParameters"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ClassSessionsExportParameters"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ExpensesExportParameters"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "dataset",
+                  "mapping": {
+                    "students": "#/components/schemas/StudentsExportParameters",
+                    "class_sessions": "#/components/schemas/ClassSessionsExportParameters",
+                    "expenses": "#/components/schemas/ExpensesExportParameters"
+                  }
+                },
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportJobDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The caller already has 3 exports waiting (export_limit_reached; details.max).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "exports"
+        ],
+        "summary": "List Exports",
+        "description": "Your own exports, newest first.",
+        "operationId": "list_exports_api_v1_exports_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ExportJobStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPage_ExportJobDetail_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/exports/{export_id}": {
+      "get": {
+        "tags": [
+          "exports"
+        ],
+        "summary": "Get Export",
+        "description": "One of your exports.",
+        "operationId": "get_export_api_v1_exports__export_id__get",
+        "parameters": [
+          {
+            "name": "export_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Export Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportJobDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such export, or another user's (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/exports/{export_id}/download": {
+      "get": {
+        "tags": [
+          "exports"
+        ],
+        "summary": "Download Export",
+        "description": "Download one of your ready exports. Repeatable until it expires.",
+        "operationId": "download_export_api_v1_exports__export_id__download_get",
+        "parameters": [
+          {
+            "name": "export_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Export Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file as an attachment.",
+            "content": {
+              "text/csv; charset=utf-8": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such export, or another user's (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The export is queued or failed: there is no file (export_not_ready).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The file was deleted 24 hours after it was ready (export_expired).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "tags": [
@@ -39550,6 +39948,159 @@
         "title": "ClassSessionUpdated",
         "description": "The moved session and its warnings."
       },
+      "ClassSessionsColumn": {
+        "type": "string",
+        "enum": [
+          "date",
+          "start_time",
+          "end_time",
+          "duration_minutes",
+          "kind",
+          "state",
+          "subject",
+          "education_level",
+          "tutor",
+          "classroom",
+          "students",
+          "series"
+        ]
+      },
+      "ClassSessionsExportFilters": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date",
+            "title": "From",
+            "description": "The first local date."
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "title": "To",
+            "description": "The last local date (included)."
+          },
+          "tutor_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tutor User Id"
+          },
+          "student_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Student Id"
+          },
+          "classroom_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classroom Id"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionKindCode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "include_cancelled": {
+            "type": "boolean",
+            "title": "Include Cancelled",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "ClassSessionsExportFilters",
+        "description": "The calendar's filters (``ClassSessionRangeQuery``) with local dates:\n``from`` and ``to`` are required, ``from ≤ to``, at most 366 days."
+      },
+      "ClassSessionsExportParameters": {
+        "properties": {
+          "dataset": {
+            "type": "string",
+            "const": "class_sessions",
+            "title": "Dataset"
+          },
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          },
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ClassSessionsColumn"
+                },
+                "type": "array",
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columns"
+          },
+          "group_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassSessionsGroupable"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ClassSessionsExportFilters"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "dataset",
+          "format",
+          "filters"
+        ],
+        "title": "ClassSessionsExportParameters",
+        "description": "A ``class_sessions`` export."
+      },
+      "ClassSessionsGroupable": {
+        "type": "string",
+        "enum": [
+          "date",
+          "kind",
+          "state",
+          "subject",
+          "education_level",
+          "tutor",
+          "classroom"
+        ]
+      },
       "ClassType": {
         "type": "string",
         "enum": [
@@ -41782,6 +42333,19 @@
         "title": "CohortWithdrawal",
         "description": "Withdraw a student from a cohort (``POST\n/api/v1/cohorts/{id}/enrollments/{enrollment_id}/withdraw``, #66 D1):\nthe enrollment's ``version`` and an optional reason (trimmed, 1-1000:\n``reason_required`` for a blank one, ``reason_too_long``)."
       },
+      "ColumnKind": {
+        "type": "string",
+        "enum": [
+          "text",
+          "enum",
+          "boolean",
+          "integer",
+          "money",
+          "date",
+          "time",
+          "list"
+        ]
+      },
       "CompensationRateCreate": {
         "properties": {
           "class_kind": {
@@ -43782,6 +44346,14 @@
         ],
         "title": "CustomPriceUpdate",
         "description": "``PATCH /api/v1/billing/custom-prices/{id}`` (#95 E5): end (or\nre-open with ``null``) a custom price. ``expires_on`` is required; every\nother field is ``field_immutable`` (E7)."
+      },
+      "DateFilter": {
+        "type": "string",
+        "enum": [
+          "required",
+          "optional",
+          "none"
+        ]
       },
       "DecimalIn": {
         "type": "string",
@@ -47557,6 +48129,398 @@
         ],
         "title": "ExpenseTemplateUpdate",
         "description": "``PATCH /api/v1/finance/expense-templates/{id}`` (#116 C4). A missing\nfield (or ``null``) stays as it is, except ``vendor_id: null``, which\nremoves the vendor, and ``ends_on: null``, which clears the end. At least\none change (``no_changes``).\n``frequency`` and ``starts_on`` are unknown fields (#116 E4)."
+      },
+      "ExpensesColumn": {
+        "type": "string",
+        "enum": [
+          "incurred_on",
+          "due_on",
+          "category",
+          "vendor",
+          "description",
+          "amount",
+          "adjusted_amount",
+          "paid_amount",
+          "open_amount",
+          "status",
+          "receipt_reference",
+          "template"
+        ]
+      },
+      "ExpensesExportFilters": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ExpenseStatus"
+                },
+                "type": "array",
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id"
+          },
+          "incurred_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incurred From"
+          },
+          "incurred_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incurred To"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExpensesExportFilters",
+        "description": "The ``/finance/expenses`` filters an export can use (no text search)."
+      },
+      "ExpensesExportParameters": {
+        "properties": {
+          "dataset": {
+            "type": "string",
+            "const": "expenses",
+            "title": "Dataset"
+          },
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          },
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ExpensesColumn"
+                },
+                "type": "array",
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columns"
+          },
+          "group_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpensesGroupable"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ExpensesExportFilters"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "dataset",
+          "format"
+        ],
+        "title": "ExpensesExportParameters",
+        "description": "An ``expenses`` export."
+      },
+      "ExpensesGroupable": {
+        "type": "string",
+        "enum": [
+          "incurred_on",
+          "due_on",
+          "category",
+          "vendor",
+          "status",
+          "template"
+        ]
+      },
+      "ExportColumnItem": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ColumnKind"
+          },
+          "groupable": {
+            "type": "boolean",
+            "title": "Groupable"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "kind",
+          "groupable",
+          "label"
+        ],
+        "title": "ExportColumnItem",
+        "description": "One column of a dataset, with its label in the caller's language."
+      },
+      "ExportDatasetItem": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "The dataset's name in the caller's language."
+          },
+          "personal": {
+            "type": "boolean",
+            "title": "Personal",
+            "description": "Names people: requesting it needs a recent password confirmation (reauth_required)."
+          },
+          "date_filter": {
+            "$ref": "#/components/schemas/DateFilter",
+            "description": "Whether the filters take a date range: required, optional or none."
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ExportColumnItem"
+            },
+            "type": "array",
+            "title": "Columns"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "label",
+          "personal",
+          "date_filter",
+          "columns"
+        ],
+        "title": "ExportDatasetItem",
+        "description": "A dataset the caller may export (#124 B1)."
+      },
+      "ExportDatasetList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExportDatasetItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ExportDatasetList"
+      },
+      "ExportErrorCode": {
+        "type": "string",
+        "enum": [
+          "row_limit_exceeded",
+          "size_limit_exceeded",
+          "permission_lost",
+          "error"
+        ]
+      },
+      "ExportFormat": {
+        "type": "string",
+        "enum": [
+          "csv",
+          "xlsx"
+        ]
+      },
+      "ExportJobDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "dataset": {
+            "type": "string",
+            "title": "Dataset"
+          },
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExportJobStatus"
+          },
+          "parameters": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StudentsExportParameters"
+              },
+              {
+                "$ref": "#/components/schemas/ClassSessionsExportParameters"
+              },
+              {
+                "$ref": "#/components/schemas/ExpensesExportParameters"
+              }
+            ],
+            "title": "Parameters",
+            "description": "As sent, with the default columns filled in.",
+            "discriminator": {
+              "propertyName": "dataset",
+              "mapping": {
+                "class_sessions": "#/components/schemas/ClassSessionsExportParameters",
+                "expenses": "#/components/schemas/ExpensesExportParameters",
+                "students": "#/components/schemas/StudentsExportParameters"
+              }
+            }
+          },
+          "language": {
+            "$ref": "#/components/schemas/ExportLanguage",
+            "description": "The language of the headers and labels (the caller's stored language at request)."
+          },
+          "row_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Count"
+          },
+          "byte_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Byte Size"
+          },
+          "file_name": {
+            "type": "string",
+            "title": "File Name"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExportErrorCode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At",
+            "description": "When the file is deleted (24 hours after it is ready)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "dataset",
+          "format",
+          "status",
+          "parameters",
+          "language",
+          "row_count",
+          "byte_size",
+          "file_name",
+          "error_code",
+          "created_at",
+          "finished_at",
+          "expires_at"
+        ],
+        "title": "ExportJobDetail",
+        "description": "One export of the caller (#124 B3). No file bytes and no download URL:\nthe file is at ``/api/v1/exports/{id}/download`` while ``ready``."
+      },
+      "ExportJobStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "ready",
+          "failed",
+          "expired"
+        ]
+      },
+      "ExportLanguage": {
+        "type": "string",
+        "enum": [
+          "es",
+          "en"
+        ]
       },
       "FactsAssignments": {
         "properties": {
@@ -52760,6 +53724,37 @@
           "offset"
         ],
         "title": "OffsetPage[ExpenseItem]"
+      },
+      "OffsetPage_ExportJobDetail_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExportJobDetail"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[ExportJobDetail]"
       },
       "OffsetPage_FamilyListItem_": {
         "properties": {
@@ -65124,6 +66119,98 @@
         ],
         "title": "StudentUpdate",
         "description": "A change to a profile (``PATCH /api/v1/students/{student_id}``) with\nthe ``version`` the caller loaded. ``emergency_contacts``, when sent, is\nthe complete new list (contacts left out are removed)."
+      },
+      "StudentsColumn": {
+        "type": "string",
+        "enum": [
+          "family_names",
+          "given_names",
+          "is_active",
+          "is_minor",
+          "school_grade",
+          "education_level"
+        ]
+      },
+      "StudentsExportFilters": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/StudentStatus",
+            "default": "active"
+          },
+          "education_level_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Education Level Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "StudentsExportFilters",
+        "description": "The ``/students`` filters an export can use."
+      },
+      "StudentsExportParameters": {
+        "properties": {
+          "dataset": {
+            "type": "string",
+            "const": "students",
+            "title": "Dataset"
+          },
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          },
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/StudentsColumn"
+                },
+                "type": "array",
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columns"
+          },
+          "group_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudentsGroupable"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "filters": {
+            "$ref": "#/components/schemas/StudentsExportFilters"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "dataset",
+          "format"
+        ],
+        "title": "StudentsExportParameters",
+        "description": "A ``students`` export."
+      },
+      "StudentsGroupable": {
+        "type": "string",
+        "enum": [
+          "is_active",
+          "is_minor",
+          "school_grade",
+          "education_level"
+        ]
       },
       "SubjectCreate": {
         "properties": {

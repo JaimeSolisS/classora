@@ -58,7 +58,9 @@ the settings ``PATCH`` and the series materialization (#99 D9);
 :func:`defer_recurring_expenses` the trigger of
 ``finance:generate_recurring_expenses`` after a template create, reactivation
 or ``ends_on`` change (#116 E8); :func:`defer_import_run` the trigger of
-``administration:run_imports`` after an import commit request (#122 D1).
+``administration:run_imports`` after an import commit request (#122 D1);
+:func:`defer_export_run` the trigger of ``reporting:run_exports`` after an
+export request (#124 B2).
 """
 
 import functools
@@ -168,6 +170,13 @@ in batches and expires stale ones; also deferred after ``POST
 IMPORTS_QUEUEING_LOCK: Final = "administration-run-imports"
 """At most one queued ``administration:run_imports`` job (the periodic tick
 shares it)."""
+
+EXPORTS_TASK: Final = "reporting:run_exports"
+"""The 15-minute export run (#124 D1, D4): builds ``queued`` export jobs and
+purges expired files; also deferred after ``POST /api/v1/exports``."""
+EXPORTS_QUEUEING_LOCK: Final = "reporting-run-exports"
+"""At most one queued ``reporting:run_exports`` job (the periodic tick shares
+it)."""
 
 # Worker concurrency is fixed at 1 here; making it configurable and sizing it
 # (with the pools below and mem_limit) is M10-04 (ISSUE-I8).
@@ -316,7 +325,9 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     modules)
     are registered in every environment, as is the 15-minute import run
     ``administration:run_imports`` (#122, ``app/modules/administration/
-    imports/tasks.py``). The demo tasks
+    imports/tasks.py``) and the 15-minute export run
+    ``reporting:run_exports`` (#124, ``app/modules/reporting/tasks.py``).
+    The demo tasks
     (and the periodic demo) are registered only in :data:`DEMO_ENVIRONMENTS`.
     Does not open the connector.
     """
@@ -324,6 +335,7 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     from app.core import demo_jobs, idempotency_tasks, ratelimit_tasks
     from app.modules.administration.imports import tasks as import_tasks
     from app.modules.identity import tasks as identity_tasks
+    from app.modules.reporting import tasks as reporting_tasks
     from app.modules.scheduling import tasks as scheduling_tasks
     from app.workflows import (
         charge_reminder_tasks,
@@ -354,6 +366,7 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     payroll_adjustment_tasks.register(app)
     recurring_expense_tasks.register(app)
     import_tasks.register(app)
+    reporting_tasks.register(app)
     if app_env in DEMO_ENVIRONMENTS:
         demo_jobs.register(app)
     return app
@@ -546,4 +559,28 @@ async def defer_import_run(job_app: App) -> None:
         logger.error(
             "Deferring the import run failed",
             extra={"task_name": IMPORTS_TASK, "error": type(exc).__name__},
+        )
+
+
+async def defer_export_run(job_app: App) -> None:
+    """Queue one ``reporting:run_exports`` run now (#124 B2).
+
+    The same contract as :func:`defer_session_charges`: only after the Unit
+    of Work has committed (``POST /api/v1/exports`` adds it as a background
+    task); a run already queued is a no-op (``AlreadyEnqueued`` is ignored);
+    any other failure is logged and swallowed (the next 15-minute tick builds
+    the export).
+    """
+    try:
+        await job_app.configure_task(
+            EXPORTS_TASK,
+            allow_unknown=False,
+            queueing_lock=EXPORTS_QUEUEING_LOCK,
+        ).defer_async(timestamp=int(time.time()))
+    except AlreadyEnqueued:
+        return
+    except Exception as exc:  # noqa: BLE001 - the request must still answer 2xx
+        logger.error(
+            "Deferring the export run failed",
+            extra={"task_name": EXPORTS_TASK, "error": type(exc).__name__},
         )

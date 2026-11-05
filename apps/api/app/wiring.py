@@ -33,7 +33,8 @@ types; #316: ``academics.progress_report_due``; #97:
 ``payroll.period_finalized``; #118: the review-candidate resolver of the
 approval inbox, :func:`review_candidates`, and
 ``administration.approval_assigned``; #122: the ``students`` and ``tutors``
-import kinds; #123: the ``schedules`` and ``opening_balances`` import kinds)
+import kinds; #123: the ``schedules`` and ``opening_balances`` import kinds; #124: the
+three export datasets and ``reporting.export_ready``/``_failed``)
 are wired
 here, by the API app factory
 (``app.main.build_app``), ``app.cli`` and ``app.worker``.
@@ -55,6 +56,7 @@ from app.modules.identity.service import (
     active_user_ids_with_permission,
     get_account_references,
 )
+from app.modules.reporting.exports.service import register_export_wiring
 from app.modules.scheduling import service as scheduling_service
 from app.modules.staff.service import (
     QUALIFICATION_APPROVAL_HANDLER,
@@ -150,6 +152,7 @@ def register_approval_wiring() -> None:
     administration_service.register_import_kind(
         billing_service.OPENING_BALANCES_IMPORT_KIND
     )
+    register_export_wiring()
     administration_service.register_time_zone_dependency(
         scheduling_service.TIME_ZONE_DEPENDENCY, scheduling_service.has_class_sessions
     )

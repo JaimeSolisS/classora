@@ -63,6 +63,8 @@ PINNED: dict[str, tuple[bool, frozenset[str]]] = {
     "billing.payment_reminder": (OPTIONAL, frozenset({"guardian"})),
     "payroll.period_finalized": (OPTIONAL, T),
     "administration.approval_assigned": (OPTIONAL, S),
+    "reporting.export_ready": (OPTIONAL, S),
+    "reporting.export_failed": (OPTIONAL, S),
 }
 
 
@@ -91,8 +93,8 @@ def test_every_registered_type_has_the_pinned_flags():
     assert registered == PINNED
 
 
-def test_the_pin_has_40_types_7_of_them_mandatory():
-    assert len(PINNED) == 40
+def test_the_pin_has_42_types_7_of_them_mandatory():
+    assert len(PINNED) == 42
     assert sorted(code for code, (mandatory, _) in PINNED.items() if mandatory) == [
         "scheduling.occurrence_skipped_closure",
         "scheduling.series_cancelled",

@@ -121,6 +121,7 @@ from app.modules.payroll.models import (
     SessionPayRule,
     TutorPayTerms,
 )
+from app.modules.reporting.exports.models import ExportFile, ExportJob
 from app.modules.scheduling.models import (
     AssignmentOffer,
     AssignmentOfferSession,
@@ -224,6 +225,7 @@ def test_the_guard_scans_the_real_audited_models():
         ExpensePayment,
         ExpensePaymentReversal,
         ExpenseTemplate,
+        ExportJob,
         Family,
         FamilyGuardian,
         FamilyStudent,
@@ -289,6 +291,12 @@ def test_the_guard_scans_the_real_audited_models():
     assert not issubclass(ImportRow, Audited)
     assert "import_rows" not in audited_table_names()
     assert "import_jobs" in audited_table_names()
+    # #124 F2: the export file's bytes (a binary column, personal data that
+    # is purged after 24 hours) are never audited; the job is.
+    assert not issubclass(ExportFile, Audited)
+    assert "export_files" not in audited_table_names()
+    assert "export_jobs" in audited_table_names()
+    assert sensitive_column_problems(ExportJob) == []
     assert User.__audit_exclude__ == {"password_hash"}
     # The catalog (#32 A4) has no sensitive column: nothing excluded or masked.
     # Student profiles (#33 A5): no sensitive column either; personal fields

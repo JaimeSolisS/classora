@@ -342,6 +342,10 @@ Codes in use today:
 | `import_not_committable` | 409 | Committing an import that isn't `staged` or `failed` (see Imports). |
 | `import_nothing_to_commit` | 422 | Committing an import with no `ready` row (see Imports). |
 | `import_not_discardable` | 409 | Discarding an import that isn't `staged` or `failed` (see Imports). |
+| `export_range_invalid` | 422 | An export's date range is reversed (field error at the last date: `["body","filters","to"]` or `["body","filters","incurred_to"]`) or covers more than 366 days (at the first date) (see Exports). |
+| `export_limit_reached` | 409 | The caller already has 3 `queued` exports; `details.max` (see Exports). |
+| `export_not_ready` | 409 | Downloading an export that is `queued` or `failed` (see Exports). |
+| `export_expired` | 410 | Downloading an export whose file was deleted, or that is past its `expires_at` (see Exports). |
 | `report_range_invalid` | 422 | A financial report range with `from` after `to`, `to` after the center's today (field error at `["query","to"]`), or `to − from` of 366 days or more (at `["query","from"]`) (see Financial reports). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
@@ -1081,6 +1085,10 @@ no link until the family portal pages, M6-17b #388).
 Approval requests; to the new assignee when someone else assigned them; no
 names, no subject data; the web names the type's label and links to
 `/approvals?item=<request_id>`, M8-01b).
+`reporting.export_ready` `{export_id, dataset, format, row_count}` and
+`reporting.export_failed` `{export_id, dataset, error_code}` (#124, see
+Exports; optional, staff roles; to the requester only; no names or values;
+the web labels and messages arrive with M8-07b).
 
 **Adding a type** (later issues: #44 qualification decisions, M4 offers and
 reminders):
@@ -1567,6 +1575,125 @@ staging rows only while the import is open.
   `update`s by the committer, including the worker's); the created records'
   usual events with the committer as actor; a tutor's
   `identity.invitation_issued` (`reissued: false`, plus `import_job_id`).
+
+### Exports
+
+Implemented by M8-07 (#124; spec §8 exports; architecture §6, §7.3) in
+`apps/api/app/modules/reporting/exports/` and the task in
+`apps/api/app/modules/reporting/tasks.py`. A staff member asks for a CSV or
+Excel export of a list; a worker builds it **from the same service function
+as the list page**, with the requester's own access; the file is held in
+PostgreSQL for 24 hours, downloadable only by the requester, then deleted.
+**No file storage** (owner decision 2026-10-21): the bytes live in
+`export_files`, never on a disk, a bucket or a temporary file.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/exports/datasets` | `authenticated()` + may export some dataset | The datasets the caller may export, in order: `{items[{code, label, personal, date_filter, columns[{code, kind, groupable, label}]}]}`; labels in the caller's stored language. |
+| `POST /api/v1/exports` | same; `recent_auth_guard("data.personal_export")` | Body `ExportParameters`. `202` with `ExportJobDetail` (`status: "queued"`). |
+| `GET /api/v1/exports` | same | `?status=&limit=&offset=`. **The caller's own** exports, newest first. |
+| `GET /api/v1/exports/{export_id}` | same | `ExportJobDetail` of the caller's export. |
+| `GET /api/v1/exports/{export_id}/download` | same | The file, `Cache-Control: no-store`. |
+
+- **Datasets and who may export them** (#124 E2, E4; no permission of its
+  own): a **staff role** (Owner, Administrator, Academic coordinator,
+  Finance staff) **and** the list page's permission. Tutors, students and
+  guardians get `403 permission_denied` on every route, as does a staff
+  member who may export nothing.
+
+  | Dataset | Page and service | Permission | Personal | Date filter |
+  | ------- | ---------------- | ---------- | -------- | ----------- |
+  | `students` | `/students`, `families.service.list_students` | `student.view` | yes | none |
+  | `class_sessions` | the calendar, `scheduling.service.list_calendar_sessions` | `schedule.view` | yes | required |
+  | `expenses` | `/finance/expenses`, `finance.service.list_expenses` | `expense.view` (Owner, Finance) | no | optional |
+
+  Columns are fields the page's item already returns, flattened, so the
+  page's record filter and field set apply. `students`: `family_names`,
+  `given_names`, `is_active`, `is_minor`, `school_grade`, `education_level`
+  (no birthdate, no contact data); filters `status` (`active` default,
+  `inactive`, `all`) and `education_level_id`. `class_sessions`: `date`,
+  `start_time`, `end_time` (center-local), `duration_minutes`, `kind`,
+  `state`, `subject`, `education_level`, `tutor`, `classroom`, `students`
+  (display names joined with `"; "`), `series`; filters `from` and `to`
+  (local dates, both required, both included), `tutor_user_id`,
+  `student_id`, `classroom_id`, `kind`, `include_cancelled`; read in
+  windows of 45 days, a session seen in two windows kept once, by start then
+  id. `expenses`: `incurred_on`, `due_on`, `category` (a system category's
+  label in the job's language, as on the page), `vendor`, `description`,
+  `amount`, `adjusted_amount`, `paid_amount`, `open_amount`, `status`,
+  `receipt_reference`, `template`; filters `status` (a list),
+  `category_id`, `vendor_id`, `incurred_from`, `incurred_to`; newest
+  expense date first, figures as of the run's today.
+- **Body** (`ExportParameters`, a union on `dataset`, `extra="forbid"`):
+  `dataset`, `format` (`csv` or `xlsx`), `columns` (optional: an ordered,
+  duplicate-free subset of the dataset's columns, at least one; default
+  all, in catalogue order; the stored parameters have them filled in),
+  `group_by` (optional: a **groupable** column that is also selected; rows
+  are sorted by it, stably, nulls last, with no subtotal rows) and
+  `filters` (the dataset's). Saved setups (M8-08) store and replay this
+  model as is.
+- **Request order:** `401` → `403 csrf_failed` → `403
+  privacy_notice_required` → `403 permission_denied` (no dataset) → `422
+  validation_error` (the body: an unknown dataset or column, a repeated
+  column, a `group_by` not groupable or not selected) → `422
+  export_range_invalid` (a reversed range, or more than 366 days) → `403
+  permission_denied` (not that dataset) → `403 reauth_required` (a
+  **personal** dataset without a password confirmation in the last 5
+  minutes, `data.personal_export`) → `409 export_limit_reached` (3 `queued`
+  exports already; `details.max`) → `202`. No `Idempotency-Key`: the job is
+  the unit and the limit bounds repeats. The route queues
+  `reporting:run_exports` after the commit (also every 15 minutes).
+- **`ExportJobDetail`:** `id`, `dataset`, `format`, `status` (`queued`,
+  `ready`, `failed`, `expired`), `parameters` (as stored), `language` (the
+  caller's stored language at request, default `es`), `row_count`,
+  `byte_size`, `file_name` (`classora-<dataset>-<YYYYMMDD>-<HHMM>.<csv|xlsx>`,
+  the request time in the center's zone), `error_code`
+  (`row_limit_exceeded`, `size_limit_exceeded`, `permission_lost`, `error`
+  or `null`), `created_at`, `finished_at`, `expires_at`. No bytes and no
+  URL: the file is at `…/{id}/download`.
+- **Requester only:** another user's export is `404 not_found` on the
+  detail and the download, for every role, the Owner included; the list
+  shows only the caller's.
+- **Download order:** `401` → `403 privacy_notice_required` → `403
+  permission_denied` (no dataset) → `404` → `403 permission_denied` (the
+  caller may no longer export the job's dataset) → `409 export_not_ready`
+  (`queued` or `failed`) → `410 export_expired` (`expired`, or `ready` but
+  past `expires_at`) → `200`. `Content-Type` `text/csv; charset=utf-8` or
+  `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`,
+  `Content-Disposition: attachment; filename="<file_name>"`,
+  `Cache-Control: no-store`. Not reauthenticated and not audited;
+  repeatable until it expires.
+- **The worker** (`reporting:run_exports`): each `queued` job, oldest
+  first, in **one transaction** (`REPEATABLE READ`, the job `FOR UPDATE SKIP
+  LOCKED`, acting as the requester): the requester's access is loaded again
+  (`permission_lost` when they are no longer active or allowed), the rows
+  are read (more than **10,000** fails with `row_limit_exceeded`; never a
+  truncated file), grouped and rendered (over **16 MiB** fails with
+  `size_limit_exceeded`), the file is stored and the job becomes `ready`
+  with `expires_at` 24 hours later. An unexpected error rolls back and the
+  job becomes `failed` (`error`) in a new transaction; a crash leaves it
+  `queued` for the next run. Running it again changes nothing. The same task
+  deletes the file of every `ready` job past `expires_at` and marks it
+  `expired` (no actor).
+- **Files:** headers and enum and boolean values in the job's language
+  (server catalog `exports.json`); dates `YYYY-MM-DD`, times `HH:MM`
+  center-local, money a plain decimal with two places (`-150.00`), lists
+  joined with `"; "`, null empty. **CSV:** UTF-8 with a BOM, `,`, quoted as
+  needed, CRLF. **XLSX:** one sheet named with the dataset, the header row
+  frozen, real dates (`yyyy-mm-dd`), money (`#,##0.00`) and integers as
+  numbers, every other cell an explicit text cell. **Formula injection:**
+  a text cell starting with `=`, `+`, `-`, `@`, a tab or a CR gets a `'`
+  prefix in both formats (numbers, dates and money never do).
+- **Notifications** (optional, staff roles; `GET
+  /api/v1/notifications/preferences` lists them): `reporting.export_ready`
+  `{export_id, dataset, format, row_count}` and `reporting.export_failed`
+  `{export_id, dataset, error_code}`. No names or values.
+- **Personal data and audit:** `export_jobs` is audited (`create` by the
+  requester with the parameters, ids and codes only; the worker's `update`
+  by the requester; the purge's `update` with no actor). `export_files` is
+  not audited; the bytes never reach a log, a problem detail or a
+  notification. A database backup taken inside the 24-hour window contains
+  them.
 
 ### Scheduling policies
 
