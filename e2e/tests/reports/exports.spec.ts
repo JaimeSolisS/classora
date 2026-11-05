@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { cspViolations, recordCspViolations } from '../support/auth';
@@ -14,6 +15,12 @@ import { FIRST_RENDER_TIMEOUT_MS } from '../support/timeouts';
 // Owner's stored language). The export's own row is found by the id the
 // request returned, so earlier runs' exports never match; nothing named is
 // created, so no suffix is needed.
+//
+// M8-08 adds a saved setup on the same session (still 0 logins, 0
+// registrations): the Owner saves an expenses CSV setup under a name with a
+// UUID suffix, reloads, runs it from "Configuraciones guardadas", waits for
+// the export to be ready and deletes the setup (so reruns stay far below the
+// 50-setup limit).
 
 const TEST_TIMEOUT_MS = 120_000;
 const READY_TIMEOUT_MS = 60_000;
@@ -85,6 +92,87 @@ test('the Owner exports expenses as CSV and downloads the file', async ({
   const text = bytes.subarray(3).toString('utf8');
   const [header] = text.split('\r\n');
   expect(header).toBe(headers.join(','));
+
+  expect(await cspViolations(page)).toEqual([]);
+});
+
+test('the Owner saves an expenses setup, runs it after a reload and deletes it', async ({
+  page,
+}) => {
+  test.setTimeout(TEST_TIMEOUT_MS);
+  await recordCspViolations(page);
+  const main = page.getByRole('main');
+  const name = `E2E gastos ${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+
+  // 1. Expenses, CSV: save the setup.
+  await page.goto('/exports');
+  await main
+    .getByRole('radio', { name: labels.datasets.expenses, exact: true })
+    .check({ timeout: FIRST_RENDER_TIMEOUT_MS });
+  await main
+    .getByRole('button', { name: labels.setups.save, exact: true })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await dialog
+    .getByRole('textbox', { name: labels.setups.name, exact: true })
+    .fill(name);
+  const saved = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/v1/report-setups',
+  );
+  await dialog
+    .getByRole('button', { name: labels.setups.saveNew, exact: true })
+    .click();
+  const saveResponse = await saved;
+  expect(saveResponse.status()).toBe(201);
+  const setup = (await saveResponse.json()) as {
+    id: string;
+    parameters: unknown;
+  };
+  expect(setup.parameters).toEqual({
+    dataset: 'expenses',
+    format: 'csv',
+    filters: {},
+  });
+  await expect(main.locator('p[aria-live="polite"]').first()).toHaveText(
+    fill(labels.setups.created, { name }),
+  );
+
+  // 2. Reload: the setup is listed; run it.
+  await page.reload();
+  const item = main.locator(`li[data-setup-id="${setup.id}"]`);
+  await expect(item).toContainText(name, { timeout: FIRST_RENDER_TIMEOUT_MS });
+  const created = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/v1/exports',
+  );
+  await item
+    .getByRole('button', { name: fill(labels.setups.runFor, { name }) })
+    .click();
+  const response = await created;
+  expect(response.status()).toBe(202);
+  expect(response.request().postDataJSON()).toEqual(setup.parameters);
+  const job = (await response.json()) as { id: string };
+  await expect(main.locator(`tr[data-export-id="${job.id}"]`)).toHaveAttribute(
+    'data-export-status',
+    'ready',
+    { timeout: READY_TIMEOUT_MS },
+  );
+
+  // 3. Delete it (confirmed).
+  await item
+    .getByRole('button', { name: fill(labels.setups.deleteFor, { name }) })
+    .click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: labels.setups.delete, exact: true })
+    .click();
+  await expect(item).toHaveCount(0);
+  await expect(main.locator('p[aria-live="polite"]').first()).toHaveText(
+    fill(labels.setups.deleted, { name }),
+  );
 
   expect(await cspViolations(page)).toEqual([]);
 });

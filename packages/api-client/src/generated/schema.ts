@@ -994,6 +994,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/report-setups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Report Setups
+         * @description Your saved export setups, and those shared with one of your roles
+         *     whose data you may export, by name.
+         */
+        get: operations["list_report_setups_api_v1_report_setups_get"];
+        put?: never;
+        /**
+         * Create Report Setup
+         * @description Save an export's parameters under a name, optionally shared with one
+         *     staff role. You must be allowed to export its dataset.
+         */
+        post: operations["create_report_setup_api_v1_report_setups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/report-setups/{setup_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Report Setup
+         * @description Delete one of your setups. Only its creator may delete it.
+         */
+        delete: operations["delete_report_setup_api_v1_report_setups__setup_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Report Setup
+         * @description Rename, re-share (`shared_role: null` makes it private) or replace the
+         *     parameters of one of your setups. Only its creator may change it.
+         */
+        patch: operations["update_report_setup_api_v1_report_setups__setup_id__patch"];
+        trace?: never;
+    };
     "/api/v1/notifications": {
         parameters: {
             query?: never;
@@ -19877,6 +19928,79 @@ export interface components {
         ReportClassType: "individual" | "group" | "course" | "unallocated";
         /** @enum {string} */
         ReportKind: "weekly" | "monthly" | "on_demand";
+        /**
+         * ReportSetupCreate
+         * @description ``POST /api/v1/report-setups`` (#125 B3).
+         */
+        ReportSetupCreate: {
+            name: components["schemas"]["SetupName"];
+            /** Parameters */
+            parameters: components["schemas"]["StudentsExportParameters"] | components["schemas"]["ClassSessionsExportParameters"] | components["schemas"]["ExpensesExportParameters"];
+            shared_role?: components["schemas"]["SharedRole"] | null;
+        };
+        /**
+         * ReportSetupItem
+         * @description One saved export setup the caller may see (#125 B1).
+         */
+        ReportSetupItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Dataset */
+            dataset: string;
+            /**
+             * Parameters
+             * @description The export's parameters exactly as saved: post them unchanged to POST /api/v1/exports to run the setup.
+             */
+            parameters: components["schemas"]["StudentsExportParameters"] | components["schemas"]["ClassSessionsExportParameters"] | components["schemas"]["ExpensesExportParameters"];
+            /** @description The staff role the setup is shared with, or null (private). */
+            shared_role: components["schemas"]["SharedRole"] | null;
+            created_by: components["schemas"]["AccountName"];
+            /**
+             * Mine
+             * @description Whether the caller created it (and may edit it).
+             */
+            mine: boolean;
+            /**
+             * Can Run
+             * @description Whether the caller may export its dataset now. Running still applies every export check (reauthentication, the limit).
+             */
+            can_run: boolean;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ReportSetupList */
+        ReportSetupList: {
+            /** Items */
+            items: components["schemas"]["ReportSetupItem"][];
+        };
+        /**
+         * ReportSetupUpdate
+         * @description ``PATCH /api/v1/report-setups/{id}`` (#125 B4): the fields sent
+         *     change; ``shared_role: null`` unshares.
+         */
+        ReportSetupUpdate: {
+            /** Version */
+            version: number;
+            name?: components["schemas"]["SetupName"] | null;
+            /** Parameters */
+            parameters?: (components["schemas"]["StudentsExportParameters"] | components["schemas"]["ClassSessionsExportParameters"] | components["schemas"]["ExpensesExportParameters"]) | null;
+            shared_role?: components["schemas"]["SharedRole"] | null;
+        };
         /** @enum {string} */
         ReportStatus: "draft" | "submitted" | "changes_requested" | "approved_for_family" | "retracted";
         /** @enum {string} */
@@ -21443,6 +21567,9 @@ export interface components {
              */
             center_time_zone: string;
         };
+        SetupName: string;
+        /** @enum {string} */
+        SharedRole: "owner" | "administrator" | "academic_coordinator" | "finance_staff";
         /**
          * SlotSuggestionRequest
          * @description ``POST /api/v1/class-sessions/suggestions`` (#50 B1): the session's
@@ -26289,6 +26416,231 @@ export interface operations {
             };
             /** @description The file was deleted 24 hours after it was ready (export_expired). */
             410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_report_setups_api_v1_report_setups_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportSetupList"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_report_setup_api_v1_report_setups_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportSetupCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportSetupItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description You already have 50 setups (report_setup_limit_reached; details.max), or one with this name (report_setup_name_taken). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    delete_report_setup_api_v1_report_setups__setup_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setup_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such setup, or one the caller may not see: another user's private setup, or one shared with a role or a dataset the caller lacks (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    update_report_setup_api_v1_report_setups__setup_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setup_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportSetupUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportSetupItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such setup, or one the caller may not see: another user's private setup, or one shared with a role or a dataset the caller lacks (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The setup changed since it was read (version_conflict), or you have another setup with this name (report_setup_name_taken). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

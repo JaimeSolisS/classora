@@ -3892,6 +3892,277 @@
         }
       }
     },
+    "/api/v1/report-setups": {
+      "get": {
+        "tags": [
+          "report setups"
+        ],
+        "summary": "List Report Setups",
+        "description": "Your saved export setups, and those shared with one of your roles\nwhose data you may export, by name.",
+        "operationId": "list_report_setups_api_v1_report_setups_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportSetupList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "report setups"
+        ],
+        "summary": "Create Report Setup",
+        "description": "Save an export's parameters under a name, optionally shared with one\nstaff role. You must be allowed to export its dataset.",
+        "operationId": "create_report_setup_api_v1_report_setups_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportSetupCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportSetupItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "You already have 50 setups (report_setup_limit_reached; details.max), or one with this name (report_setup_name_taken).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/report-setups/{setup_id}": {
+      "patch": {
+        "tags": [
+          "report setups"
+        ],
+        "summary": "Update Report Setup",
+        "description": "Rename, re-share (`shared_role: null` makes it private) or replace the\nparameters of one of your setups. Only its creator may change it.",
+        "operationId": "update_report_setup_api_v1_report_setups__setup_id__patch",
+        "parameters": [
+          {
+            "name": "setup_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Setup Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportSetupUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportSetupItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such setup, or one the caller may not see: another user's private setup, or one shared with a role or a dataset the caller lacks (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The setup changed since it was read (version_conflict), or you have another setup with this name (report_setup_name_taken).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "report setups"
+        ],
+        "summary": "Delete Report Setup",
+        "description": "Delete one of your setups. Only its creator may delete it.",
+        "operationId": "delete_report_setup_api_v1_report_setups__setup_id__delete",
+        "parameters": [
+          {
+            "name": "setup_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Setup Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such setup, or one the caller may not see: another user's private setup, or one shared with a role or a dataset the caller lacks (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "tags": [
@@ -61677,6 +61948,228 @@
           "on_demand"
         ]
       },
+      "ReportSetupCreate": {
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/SetupName"
+          },
+          "parameters": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StudentsExportParameters"
+              },
+              {
+                "$ref": "#/components/schemas/ClassSessionsExportParameters"
+              },
+              {
+                "$ref": "#/components/schemas/ExpensesExportParameters"
+              }
+            ],
+            "title": "Parameters",
+            "discriminator": {
+              "propertyName": "dataset",
+              "mapping": {
+                "class_sessions": "#/components/schemas/ClassSessionsExportParameters",
+                "expenses": "#/components/schemas/ExpensesExportParameters",
+                "students": "#/components/schemas/StudentsExportParameters"
+              }
+            }
+          },
+          "shared_role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SharedRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "parameters"
+        ],
+        "title": "ReportSetupCreate",
+        "description": "``POST /api/v1/report-setups`` (#125 B3)."
+      },
+      "ReportSetupItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "dataset": {
+            "type": "string",
+            "title": "Dataset"
+          },
+          "parameters": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StudentsExportParameters"
+              },
+              {
+                "$ref": "#/components/schemas/ClassSessionsExportParameters"
+              },
+              {
+                "$ref": "#/components/schemas/ExpensesExportParameters"
+              }
+            ],
+            "title": "Parameters",
+            "description": "The export's parameters exactly as saved: post them unchanged to POST /api/v1/exports to run the setup.",
+            "discriminator": {
+              "propertyName": "dataset",
+              "mapping": {
+                "class_sessions": "#/components/schemas/ClassSessionsExportParameters",
+                "expenses": "#/components/schemas/ExpensesExportParameters",
+                "students": "#/components/schemas/StudentsExportParameters"
+              }
+            }
+          },
+          "shared_role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SharedRole"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The staff role the setup is shared with, or null (private)."
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/AccountName"
+          },
+          "mine": {
+            "type": "boolean",
+            "title": "Mine",
+            "description": "Whether the caller created it (and may edit it)."
+          },
+          "can_run": {
+            "type": "boolean",
+            "title": "Can Run",
+            "description": "Whether the caller may export its dataset now. Running still applies every export check (reauthentication, the limit)."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "dataset",
+          "parameters",
+          "shared_role",
+          "created_by",
+          "mine",
+          "can_run",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ReportSetupItem",
+        "description": "One saved export setup the caller may see (#125 B1)."
+      },
+      "ReportSetupList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReportSetupItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ReportSetupList"
+      },
+      "ReportSetupUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SetupName"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parameters": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/StudentsExportParameters"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ClassSessionsExportParameters"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ExpensesExportParameters"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "dataset",
+                  "mapping": {
+                    "class_sessions": "#/components/schemas/ClassSessionsExportParameters",
+                    "expenses": "#/components/schemas/ExpensesExportParameters",
+                    "students": "#/components/schemas/StudentsExportParameters"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parameters"
+          },
+          "shared_role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SharedRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "ReportSetupUpdate",
+        "description": "``PATCH /api/v1/report-setups/{id}`` (#125 B4): the fields sent\nchange; ``shared_role: null`` unshares."
+      },
       "ReportStatus": {
         "type": "string",
         "enum": [
@@ -64905,6 +65398,20 @@
         ],
         "title": "SessionUser",
         "description": "The signed-in user (``POST /auth/login``, ``GET /auth/me`` and\n``POST /auth/password``).\n\nHolds no password hash, session token or session id. ``csrf_token`` is\nthe session's CSRF token: the SPA keeps it in memory and sends it as\n``X-CSRF-Token`` on ``POST``, ``PUT``, ``PATCH`` and ``DELETE``."
+      },
+      "SetupName": {
+        "type": "string",
+        "maxLength": 80,
+        "minLength": 1
+      },
+      "SharedRole": {
+        "type": "string",
+        "enum": [
+          "owner",
+          "administrator",
+          "academic_coordinator",
+          "finance_staff"
+        ]
       },
       "SlotSuggestionRequest": {
         "properties": {

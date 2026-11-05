@@ -493,5 +493,7 @@
   "export_range_invalid": "The date range isn't valid: the end date can't be before the start date, and the range can't be longer than a year.",
   "export_limit_reached": "You already have 3 exports in progress. Wait for one to finish.",
   "export_not_ready": "This export doesn't have a file yet.",
-  "export_expired": "This export has expired. Request it again."
+  "export_expired": "This export has expired. Request it again.",
+  "report_setup_limit_reached": "You already have 50 saved setups; delete one first.",
+  "report_setup_name_taken": "You already have a setup with this name."
 }

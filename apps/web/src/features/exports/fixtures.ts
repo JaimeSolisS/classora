@@ -1,5 +1,6 @@
 import type { KnownDataset } from './ExportForm';
 import type { ExportJob, ExportJobPage } from './api';
+import type { ReportSetup } from './setups';
 
 // Stories and tests only: the #124 dataset catalogue (labels as the API
 // returns them for an English-speaking caller) and one export per status.
@@ -159,3 +160,61 @@ export function jobPage(
 ): ExportJobPage {
   return { items, total, limit: 20, offset: 0 };
 }
+
+// M8-08: saved setups (the caller is the Owner `TEST_USER` in the tests).
+export const SETUP_OWN: ReportSetup = {
+  id: '00000000-0000-4000-8000-0000000000a1',
+  name: 'Monthly expenses',
+  dataset: 'expenses',
+  parameters: {
+    dataset: 'expenses',
+    format: 'xlsx',
+    columns: ['vendor', 'amount', 'incurred_on', 'status'],
+    group_by: 'vendor',
+    filters: {
+      status: ['unpaid', 'paid'],
+      incurred_from: '2026-10-01',
+      incurred_to: '2026-10-31',
+    },
+  },
+  shared_role: 'finance_staff',
+  created_by: { id: 'user-owner', display_name: 'Olga Owner' },
+  mine: true,
+  can_run: true,
+  version: 3,
+  created_at: '2026-11-01T17:00:00Z',
+  updated_at: '2026-11-02T17:00:00Z',
+};
+
+export const SETUP_SHARED: ReportSetup = {
+  id: '00000000-0000-4000-8000-0000000000a2',
+  name: 'Active students',
+  dataset: 'students',
+  parameters: {
+    dataset: 'students',
+    format: 'csv',
+    filters: { status: 'active' },
+  },
+  shared_role: 'owner',
+  created_by: { id: 'user-coordinator', display_name: 'Carla Coordinator' },
+  mine: false,
+  can_run: true,
+  version: 1,
+  created_at: '2026-11-01T17:00:00Z',
+  updated_at: '2026-11-01T17:00:00Z',
+};
+
+export const SETUP_NOT_RUNNABLE: ReportSetup = {
+  ...SETUP_OWN,
+  id: '00000000-0000-4000-8000-0000000000a3',
+  name: 'Old sessions',
+  dataset: 'class_sessions',
+  parameters: {
+    dataset: 'class_sessions',
+    format: 'csv',
+    filters: { from: '2026-09-01', to: '2026-09-30', include_cancelled: false },
+  },
+  shared_role: null,
+  can_run: false,
+  version: 1,
+};

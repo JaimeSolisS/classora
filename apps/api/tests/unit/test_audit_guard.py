@@ -122,6 +122,7 @@ from app.modules.payroll.models import (
     TutorPayTerms,
 )
 from app.modules.reporting.exports.models import ExportFile, ExportJob
+from app.modules.reporting.setups.models import ReportSetup
 from app.modules.scheduling.models import (
     AssignmentOffer,
     AssignmentOfferSession,
@@ -257,6 +258,7 @@ def test_the_guard_scans_the_real_audited_models():
         Receipt,
         Refund,
         RegistrationRequest,
+        ReportSetup,
         SchedulingPolicy,
         ServicePrice,
         SessionCancellationDecision,
@@ -297,6 +299,8 @@ def test_the_guard_scans_the_real_audited_models():
     assert "export_files" not in audited_table_names()
     assert "export_jobs" in audited_table_names()
     assert sensitive_column_problems(ExportJob) == []
+    # #125 A2: a saved setup holds ids, codes and dates only.
+    assert sensitive_column_problems(ReportSetup) == []
     assert User.__audit_exclude__ == {"password_hash"}
     # The catalog (#32 A4) has no sensitive column: nothing excluded or masked.
     # Student profiles (#33 A5): no sensitive column either; personal fields

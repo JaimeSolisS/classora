@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0090"
+HEAD = "0091"
 FINANCE_TABLES_0083 = frozenset({"expense_categories", "vendors"})
 EXPENSE_TABLES_0084 = frozenset(
     {"expenses", "expense_payments", "expense_payment_reversals", "expense_adjustments"}
@@ -82,6 +82,7 @@ OPT_OUTS_0086 = "notification_opt_outs"
 MESSAGES_0087 = ("receipt_message_es", "receipt_message_en")
 IMPORT_TABLES_0088 = ("import_jobs", "import_rows")
 EXPORT_TABLES_0090 = ("export_jobs", "export_files")
+SETUPS_0091 = "report_setups"
 PAY_RULES = "session_pay_rules"
 LINES = "payroll_lines"
 SALARY_LINE_COLUMNS = frozenset(
@@ -485,6 +486,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             OPT_OUTS_0086,
             *IMPORT_TABLES_0088,
             *EXPORT_TABLES_0090,
+            SETUPS_0091,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4969,9 +4971,22 @@ def _of_0090(diff: Any) -> bool:
     return diff[0] == "add_index" and diff[1].table.name in EXPORT_TABLES_0090
 
 
+def _of_0091(diff: Any) -> bool:
+    """A metadata difference that revision 0091 adds: the setups table and
+    its indexes (#125 A1). CHECKs are not compared."""
+    if diff[0] == "add_table":
+        return bool(diff[1].name == SETUPS_0091)
+    return diff[0] == "add_index" and diff[1].table.name == SETUPS_0091
+
+
+def _of_0090_on(diff: Any) -> bool:
+    """A metadata difference that revision 0090 or a later one adds."""
+    return _of_0090(diff) or _of_0091(diff)
+
+
 def _of_0089_on(diff: Any) -> bool:
     """A metadata difference that revision 0089 or a later one adds."""
-    return _of_0089(diff) or _of_0090(diff)
+    return _of_0089(diff) or _of_0090_on(diff)
 
 
 def _of_0088_on(diff: Any) -> bool:
@@ -17423,7 +17438,7 @@ def test_0089_adds_the_import_reference_and_downgrade_restores_0088(
     command.upgrade(config, "0089")
 
     assert version_nums(dsn) == ["0089"]
-    assert [d for d in metadata_diff(dsn) if not _of_0090(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0090_on(d)] == []
     assert set(_columns(dsn, "charges")) - columns == set(IMPORT_REF_0089)
     assert set(_constraints(dsn, "charges")) - constraints == {
         "fk_charges_import_job_id_import_jobs",
@@ -17620,14 +17635,14 @@ def test_0090_adds_the_tables_and_downgrade_restores_0089(fresh_database_url):
     command.upgrade(config, "0090")
 
     assert version_nums(dsn) == ["0090"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0091(d)] == []
     assert public_tables(dsn) - tables == set(EXPORT_TABLES_0090)
 
     command.downgrade(config, "0089")
 
     assert version_nums(dsn) == ["0089"]
     assert public_tables(dsn) == tables
-    assert [d for d in metadata_diff(dsn) if not _of_0090(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0090_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -17737,3 +17752,143 @@ def test_0090_files_cascade_with_their_job_and_users_restrict(fresh_database_url
     run_sql(dsn, "DELETE FROM export_jobs WHERE id = :j", {"j": job_id})
 
     assert run_sql(dsn, "SELECT count(*) AS n FROM export_files")[0].n == 0
+
+
+# --- 0091: saved export setups (#125 A1) -----
+
+CHECKS_0091 = {
+    "ck_report_setups_name_trimmed",
+    "ck_report_setups_dataset_format",
+    "ck_report_setups_parameters_dataset",
+    "ck_report_setups_shared_role_valid",
+}
+
+
+def _setup_0091(dsn: str, user_id: str, **extra: Any) -> str:
+    parameters = extra.pop(
+        "parameters", '{"dataset": "expenses", "format": "csv", "filters": {}}'
+    )
+    values = {
+        "created_by_user_id": user_id,
+        "name": f"Setup {uuid.uuid4().hex[:8]}",
+        "dataset": "expenses",
+        **extra,
+    }
+    columns = ", ".join(values)
+    params = ", ".join(f":{name}" for name in values)
+    [row] = run_sql(
+        dsn,
+        f"INSERT INTO report_setups ({columns}, parameters)"  # noqa: S608
+        f" VALUES ({params}, CAST(:p AS jsonb)) RETURNING id",
+        {**values, "p": parameters},
+    )
+    return str(row.id)
+
+
+def test_0091_adds_the_table_and_downgrade_restores_0090(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0090")
+    tables = public_tables(dsn)
+
+    command.upgrade(config, "0091")
+
+    assert version_nums(dsn) == ["0091"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == {SETUPS_0091}
+
+    command.downgrade(config, "0090")
+
+    assert version_nums(dsn) == ["0090"]
+    assert public_tables(dsn) == tables
+    assert [d for d in metadata_diff(dsn) if not _of_0091(d)] == []
+
+    command.upgrade(config, "head")
+
+    assert metadata_diff(dsn) == []
+
+
+def test_0091_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    assert _columns(dsn, SETUPS_0091) == {
+        "id": STANDARD_COLUMNS["id"],
+        "created_at": STANDARD_COLUMNS["created_at"],
+        "updated_at": STANDARD_COLUMNS["updated_at"],
+        "created_by_user_id": ("uuid", "NO", None, None),
+        "name": ("text", "NO", None, None),
+        "dataset": ("text", "NO", None, None),
+        "parameters": ("jsonb", "NO", None, None),
+        "shared_role": ("text", "YES", None, None),
+        "version": ("integer", "NO", None, "1"),
+    }
+    constraints = _constraints(dsn, SETUPS_0091)
+    assert set(constraints) == {
+        "pk_report_setups",
+        "fk_report_setups_created_by_user_id_users",
+        *CHECKS_0091,
+    }
+    assert constraints["fk_report_setups_created_by_user_id_users"].endswith(
+        "ON DELETE RESTRICT"
+    )
+    indexes = _indexes(dsn, SETUPS_0091)
+    assert set(indexes) == {
+        "pk_report_setups",
+        "uq_report_setups_creator_name",
+        "ix_report_setups_shared_role",
+    }
+    assert "UNIQUE" in indexes["uq_report_setups_creator_name"]
+    assert (
+        "(created_by_user_id, lower(name))"
+        in (indexes["uq_report_setups_creator_name"])
+    )
+    assert "WHERE (shared_role IS NOT NULL)" in indexes["ix_report_setups_shared_role"]
+
+
+@pytest.mark.parametrize(
+    ("extra", "constraint"),
+    [
+        ({"name": ""}, "ck_report_setups_name_trimmed"),
+        ({"name": " Gastos"}, "ck_report_setups_name_trimmed"),
+        ({"name": "x" * 81}, "ck_report_setups_name_trimmed"),
+        ({"dataset": "Expenses"}, "ck_report_setups_dataset_format"),
+        ({"parameters": "[]"}, "ck_report_setups_parameters_dataset"),
+        (
+            {"parameters": '{"dataset": "students"}'},
+            "ck_report_setups_parameters_dataset",
+        ),
+        ({"parameters": '{"format": "csv"}'}, "ck_report_setups_parameters_dataset"),
+        ({"shared_role": "tutor"}, "ck_report_setups_shared_role_valid"),
+    ],
+)
+def test_0091_setup_checks(fresh_database_url, extra, constraint):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    user_id = _user_0090(dsn)
+
+    with pytest.raises(IntegrityError) as caught:
+        _setup_0091(dsn, user_id, **extra)
+
+    assert getattr(caught.value.orig, "sqlstate", None) == "23514"
+    assert constraint in str(caught.value.orig)
+
+
+def test_0091_names_are_unique_per_creator_and_users_restrict(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    user_id = _user_0090(dsn)
+    other_id = _user_0090(dsn)
+    _setup_0091(dsn, user_id, name="Gastos", shared_role="owner")
+    _setup_0091(dsn, other_id, name="Gastos")
+
+    with pytest.raises(IntegrityError) as taken:
+        _setup_0091(dsn, user_id, name="GASTOS")
+
+    assert getattr(taken.value.orig, "sqlstate", None) == "23505"
+    assert "uq_report_setups_creator_name" in str(taken.value.orig)
+
+    with pytest.raises(IntegrityError) as restricted:
+        run_sql(dsn, "DELETE FROM users WHERE id = :u", {"u": user_id})
+
+    assert getattr(restricted.value.orig, "sqlstate", None) == "23001"

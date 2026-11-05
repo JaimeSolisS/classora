@@ -480,7 +480,9 @@ unless a bullet says otherwise.
   background from the same list they can see (Exports). Exporting students
   or sessions asks for the password again. Each file is kept in the database
   for 24 hours, only its requester can download it, and a notification says
-  when it's ready; nothing goes to file storage.
+  when it's ready; nothing goes to file storage. Staff can save an export
+  setup under a name and share it with one staff role; running a saved setup
+  checks the runner's own access, as a new export does.
 
 **Notifications**
 
@@ -517,7 +519,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** the rest of billing, analytics, dashboards, PDF exports and saved report setups, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
+**Not built yet:** the rest of billing, analytics, dashboards, PDF exports, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 
 **Not in this version:** file uploads and documents (attachments, the shared

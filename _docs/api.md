@@ -346,6 +346,8 @@ Codes in use today:
 | `export_limit_reached` | 409 | The caller already has 3 `queued` exports; `details.max` (see Exports). |
 | `export_not_ready` | 409 | Downloading an export that is `queued` or `failed` (see Exports). |
 | `export_expired` | 410 | Downloading an export whose file was deleted, or that is past its `expires_at` (see Exports). |
+| `report_setup_limit_reached` | 409 | Saving a setup when the caller already has 50; `details.max` (see Saved export setups). |
+| `report_setup_name_taken` | 409 | The caller already has a setup with this name, compared case-insensitively (see Saved export setups). |
 | `report_range_invalid` | 422 | A financial report range with `from` after `to`, `to` after the center's today (field error at `["query","to"]`), or `to − from` of 366 days or more (at `["query","from"]`) (see Financial reports). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
@@ -1631,7 +1633,7 @@ PostgreSQL for 24 hours, downloadable only by the requester, then deleted.
   `group_by` (optional: a **groupable** column that is also selected; rows
   are sorted by it, stably, nulls last, with no subtotal rows) and
   `filters` (the dataset's). Saved setups (M8-08) store and replay this
-  model as is.
+  model as is (see Saved export setups).
 - **Request order:** `401` → `403 csrf_failed` → `403
   privacy_notice_required` → `403 permission_denied` (no dataset) → `422
   validation_error` (the body: an unknown dataset or column, a repeated
@@ -1694,6 +1696,68 @@ PostgreSQL for 24 hours, downloadable only by the requester, then deleted.
   not audited; the bytes never reach a log, a problem detail or a
   notification. A database backup taken inside the 24-hour window contains
   them.
+
+### Saved export setups
+
+Implemented by M8-08 (#125; spec §8 saved report setups; architecture
+ISSUE-A2) in `apps/api/app/modules/reporting/setups/`. A setup is a **name
+and one export's parameters** (the `ExportParameters` of `POST
+/api/v1/exports`, absolute dates included). Saved views of other pages and
+dashboard widgets are not setups (#125 E1).
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `GET /api/v1/report-setups` | `authenticated()` + may export some dataset | `{items: ReportSetupItem[]}`, by name (case-insensitive), then id. No pagination. |
+| `POST /api/v1/report-setups` | same | Body `{name, parameters, shared_role?}`. `201` with `ReportSetupItem`. |
+| `PATCH /api/v1/report-setups/{setup_id}` | same; the creator only | Body `{version, name?, parameters?, shared_role?}`. `200` with `ReportSetupItem`. |
+| `DELETE /api/v1/report-setups/{setup_id}` | same; the creator only | `204`. A hard delete (audited). |
+
+- **Running = `POST /api/v1/exports`** with the setup's `parameters`,
+  unchanged (#125 E4). There is no run route: every export check applies to
+  the **runner** at that moment (the dataset permission, the password
+  confirmation for `students` and `class_sessions`, the 3-queued limit, the
+  rows the runner may see), and the job and its file are the runner's.
+- **Stored as validated:** `parameters` is the validated `ExportParameters`
+  dumped as JSON, with omitted optional fields kept omitted (so the default
+  columns stay implicit). Responses return it exactly as stored, so posting
+  it to `/exports` validates to the same model as the original body. Dates
+  are absolute: a setup saved for March exports March again (#125 E2).
+- **`ReportSetupItem`:** `id`, `name`, `dataset`, `parameters`,
+  `shared_role` (`owner`, `administrator`, `academic_coordinator`,
+  `finance_staff` or `null`), `created_by` (`{id, display_name}`), `mine`,
+  `can_run` (whether the caller may export the dataset now), `version`,
+  `created_at`, `updated_at`.
+- **Who sees what** (#125 E3): the caller's own setups, always (`can_run`
+  may be `false` after losing a permission; they can still delete it); and
+  another user's setup only when its `shared_role` is one of the caller's
+  roles **and** the caller may export its dataset. Nothing else, for any
+  role, the Owner included. A setup the caller can't see is `404
+  not_found`; a visible setup of another user is `403 permission_denied` on
+  `PATCH` and `DELETE`. A deactivated creator's shared setups stay listed.
+  Tutors, students and guardians get `403 permission_denied` on every route.
+- **Save order (`POST`):** `401` → `403 csrf_failed` → `403
+  privacy_notice_required` → `403 permission_denied` (no dataset) → `422
+  validation_error` (the name, 1–80 characters after trimming; a
+  `shared_role` that isn't a staff role; any `ExportParameters` rule) →
+  `422 export_range_invalid` (the export's range check, its field at `["body","parameters","filters",<field>]`) → `403
+  permission_denied` (the caller may not export that dataset) → `409
+  report_setup_limit_reached` (50 per creator; `details.max`) → `409
+  report_setup_name_taken` (case-insensitive, per creator) → `201`. No
+  password confirmation (a setup holds no data) and no `Idempotency-Key`.
+- **Update order (`PATCH`):** as `POST` up to the body's `422
+  validation_error`, then `404 not_found` (not visible) → `403
+  permission_denied` (not the creator) → `422 export_range_invalid` → `403
+  permission_denied` (the creator may not export the resulting dataset;
+  also for a rename) → `409 version_conflict` → `409
+  report_setup_name_taken` → `200`. `shared_role: null` makes it private.
+  A body that changes nothing returns the setup unchanged (no new
+  version, no audit event).
+- **Delete order:** `401` → `403 csrf_failed` → `403
+  privacy_notice_required` → `403 permission_denied` (no dataset) → `404`
+  → `403` (not the creator) → `204`.
+- **Audit and personal data:** `report_setups` is audited (`create`,
+  `update`, `delete` by the creator). `parameters` hold ids, codes and dates
+  only; `name` is free text.
 
 ### Scheduling policies
 

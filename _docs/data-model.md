@@ -1684,3 +1684,20 @@ Indexes: `(requested_by_user_id, created_at DESC)` (the list), `created_at` wher
 **Retention of bytes (#124 E1, E11):** the file can contain personal data (students' names, many of them minors; tutors). It is readable only through `GET /api/v1/exports/{id}/download` by the requester, is deleted by `reporting:run_exports` once `expires_at` has passed, and never reaches a log line, a problem detail, a notification or an audit event. Backups taken inside the 24-hour window contain it (#129 retention).
 
 **Concurrency:** one transaction per job (`REPEATABLE READ`, the job `FOR UPDATE SKIP LOCKED`), so two runs never build a job twice; the request takes a per-user advisory lock to count the `queued` jobs (at most 3).
+
+## 22. Saved export setups (#125, M8-08)
+
+A `reporting` addition. Migration `0091_reporting_report_setups`; module `reporting.setups`. A setup is a name and one export's `ExportParameters`; running it posts them to `POST /api/v1/exports` under the runner's own checks, so it holds no rows and no file.
+
+### 22.1 `report_setups` (mutable, audited, versioned)
+
+| Column | Type | Notes |
+|---|---|---|
+| `created_by_user_id` | `UUID` → `users` RESTRICT | The creator: the only user who may change or delete it. |
+| `name` | `TEXT` | Trimmed, 1–80 characters (CHECK). Unique per creator, case-insensitive (`uq_report_setups_creator_name` on `(created_by_user_id, lower(name))`). Staff free text (#129 retention). |
+| `dataset` | `TEXT` | The export dataset's code; CHECK `^[a-z_]{3,32}$` (the #124 rule, so a new dataset needs no migration). |
+| `parameters` | `JSONB` | The validated `ExportParameters` dumped as JSON, omitted optional fields kept omitted: ids, codes and absolute dates only. CHECK: an object whose `dataset` equals the column. |
+| `shared_role` | `TEXT NULL` | `owner`, `administrator`, `academic_coordinator` or `finance_staff` (CHECK), or null (private). |
+| `version` | `INTEGER` | Optimistic version, from 1. |
+
+Indexes: the unique name index; `shared_role` where it is set (the list's shared part). Audit: automatic `create`, `update` and `delete` events by the creator. At most 50 setups per creator (application rule, under a per-user advisory lock). Any later change to an export dataset's columns or filters must migrate the stored `parameters` in the same change.
