@@ -500,6 +500,25 @@ class PaymentMethodUnavailableError(_FieldRuleError):
     detail = "Choose an active payment method."
 
 
+class PaymentMethodNotFoundError(AppError):
+    """No payment method has this code (#121 A2)."""
+
+    status = 404
+    code = "payment_method_not_found"
+    detail = "No such payment method."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class PaymentMethodLastActiveError(_Conflict):
+    """Deactivating the only active payment method (#121 A4): at least one
+    must stay active. Nothing is written."""
+
+    code = "payment_method_last_active"
+    detail = "At least one payment method must stay active."
+
+
 class ReceivedOnInFutureError(_FieldRuleError):
     """The payment is dated after the center's local today (#96 M5)."""
 

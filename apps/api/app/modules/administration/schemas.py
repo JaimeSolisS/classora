@@ -2,6 +2,7 @@
 business settings (#37), the approval requests (#40), the notifications
 (#41) and the scheduling policy (#61)."""
 
+import unicodedata
 import uuid
 import zoneinfo
 from datetime import datetime
@@ -9,6 +10,7 @@ from functools import cache
 from typing import Annotated, Any, Literal
 
 from pydantic import (
+    AfterValidator,
     AwareDatetime,
     BaseModel,
     BeforeValidator,
@@ -30,6 +32,7 @@ from app.modules.administration.settings_models import (
     NOTICE_HOURS_MAX,
     NOTICE_HOURS_MIN,
     PHONE_MAX_LENGTH,
+    RECEIPT_MESSAGE_MAX_LENGTH,
     RESPONSE_HOURS_MAX,
     RESPONSE_HOURS_MIN,
     TIME_ZONE_MAX_LENGTH,
@@ -135,6 +138,36 @@ OptionalAddress = Annotated[
     Annotated[str, StringConstraints(max_length=ADDRESS_MAX_LENGTH)] | None,
     BeforeValidator(_blank_to_none),
 ]
+
+
+def _normalize_message(value: Any) -> Any:
+    """CRLF and CR become LF, then trim; an empty message clears it."""
+    if isinstance(value, str):
+        value = value.replace("\r\n", "\n").replace("\r", "\n").strip()
+        return value or None
+    return value
+
+
+def _no_control_characters(value: str | None) -> str | None:
+    if value is not None and any(
+        char != "\n" and unicodedata.category(char) == "Cc" for char in value
+    ):
+        raise ValueError("Only line breaks are allowed as control characters.")
+    return value
+
+
+ReceiptMessage = Annotated[
+    Annotated[str, StringConstraints(max_length=RECEIPT_MESSAGE_MAX_LENGTH)] | None,
+    BeforeValidator(_normalize_message),
+    AfterValidator(_no_control_characters),
+    Field(
+        description="Plain text printed on new receipts in this language, at most"
+        " 500 characters; line breaks are kept. null (or an empty string) clears"
+        " it."
+    ),
+]
+"""A receipt message (#121 B2): trimmed, CRLF/CR as LF, at most 500
+characters, no control character other than LF; ``""`` → ``None``."""
 LocalTime = Annotated[
     str,
     StringConstraints(pattern=LOCAL_TIME_REGEX),
@@ -181,6 +214,12 @@ class BusinessSettingsDetail(BaseModel):
     address: str | None
     time_zone: str = Field(description="The center's IANA time zone.")
     operating_hours: list[OperatingHoursItem]
+    receipt_message_es: str | None = Field(
+        description="The message printed on new Spanish receipts (null: none)."
+    )
+    receipt_message_en: str | None = Field(
+        description="The message printed on new English receipts (null: none)."
+    )
     version: int
     updated_at: datetime
 
@@ -188,7 +227,8 @@ class BusinessSettingsDetail(BaseModel):
 class BusinessSettingsUpdate(BaseModel):
     """A change to the settings (``PATCH /api/v1/business-settings``) with the
     ``version`` the caller loaded. Fields not sent stay unchanged; ``null``
-    (or an empty string) clears a contact field; ``null`` is ``422`` for
+    (or an empty string) clears a contact field or a receipt message (#121
+    B2: it only changes receipts issued afterwards); ``null`` is ``422`` for
     ``center_name``, ``time_zone`` and ``operating_hours``.
     ``operating_hours``, when sent, replaces the whole week (0 to 7 entries,
     one per weekday)."""
@@ -211,6 +251,8 @@ class BusinessSettingsUpdate(BaseModel):
     operating_hours: (
         Annotated[list[OperatingHoursItem], Field(max_length=LAST_WEEKDAY)] | None
     ) = None
+    receipt_message_es: ReceiptMessage = None
+    receipt_message_en: ReceiptMessage = None
 
     _fields_not_null = field_validator("center_name", "time_zone", "operating_hours")(
         _not_null

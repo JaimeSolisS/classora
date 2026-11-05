@@ -45,6 +45,15 @@ remainder, **oldest payment first** (``received_on``, ``created_at``,
 
 There is no "un-allocate": an allocation ends only by a release (a #100
 reversal or a negative adjustment, #90 E5).
+
+**Payment methods** (#96 B6; #121 A). :func:`payment_methods_list` and
+:func:`active_payment_method` read them; :func:`set_payment_method_active`
+activates or deactivates one (the only edit: no create, rename or delete,
+ADR-0006 E12). It locks every ``payment_methods`` row ``FOR UPDATE`` in
+``code`` order before it counts the active ones, so two concurrent
+deactivations can't leave none active. Recording paths read the flag without
+a lock (#96): a payment racing a deactivation may still use the method,
+which stays referenced and labelled.
 """
 
 import uuid
@@ -55,8 +64,10 @@ from sqlalchemy import func, outerjoin, select, type_coerce
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import current_actor_id
+from app.core.models import ensure_version
 from app.core.money import Money, MoneyType
 from app.core.pagination import OffsetParams
+from app.core.reauth import RecentAuthGuard
 from app.modules.billing.balances import (
     _refunded,
     _released,
@@ -71,6 +82,8 @@ from app.modules.billing.errors import (
     AllocationExceedsOpenError,
     InsufficientAccountCreditError,
     NothingToAllocateError,
+    PaymentMethodLastActiveError,
+    PaymentMethodNotFoundError,
 )
 from app.modules.billing.ledger import lock_billing_account
 from app.modules.billing.models import (
@@ -335,9 +348,60 @@ async def allocate_account_credit(
 async def payment_methods_list(session: AsyncSession) -> list[PaymentMethodRow]:
     """Every payment method, by ``code`` (one statement, no lock)."""
     rows = await session.execute(
-        select(PaymentMethod.code, PaymentMethod.is_active).order_by(PaymentMethod.code)
+        select(
+            PaymentMethod.code, PaymentMethod.is_active, PaymentMethod.version
+        ).order_by(PaymentMethod.code)
     )
-    return [PaymentMethodRow(code=row.code, is_active=row.is_active) for row in rows]
+    return [
+        PaymentMethodRow(code=row.code, is_active=row.is_active, version=row.version)
+        for row in rows
+    ]
+
+
+async def set_payment_method_active(
+    session: AsyncSession,
+    code: str,
+    *,
+    is_active: bool,
+    version: int,
+    guard: RecentAuthGuard,
+) -> PaymentMethodRow:
+    """Activate or deactivate the method ``code`` (#121 A2-A4).
+
+    Every method row is locked ``FOR UPDATE`` in ``code`` order first. Then:
+    ``404 payment_method_not_found`` → ``403 reauth_required`` (only when
+    ``is_active`` differs from the stored value) → ``409
+    version_conflict`` → ``409 payment_method_last_active`` (deactivating
+    the only active method). Sending the stored value with the current
+    version changes nothing (no version bump, no audit event). A change is
+    one audited ``update`` (``record_id``: the code's UUIDv5). Never
+    commits.
+    """
+    methods = (
+        await session.scalars(
+            select(PaymentMethod)
+            .order_by(PaymentMethod.code)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).all()
+    method = next((m for m in methods if m.code == code), None)
+    if method is None:
+        raise PaymentMethodNotFoundError()
+    changes = is_active != method.is_active
+    if changes:
+        guard.ensure()
+    ensure_version(method, version)
+    if changes:
+        if not is_active and not any(
+            m.is_active for m in methods if m.code != method.code
+        ):
+            raise PaymentMethodLastActiveError()
+        method.is_active = is_active
+        await session.flush()
+    return PaymentMethodRow(
+        code=method.code, is_active=method.is_active, version=method.version
+    )
 
 
 async def active_payment_method(session: AsyncSession, code: str) -> bool:

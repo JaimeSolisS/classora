@@ -10,7 +10,8 @@ stored response with the same receipt. The order (P4):
    family; its allocations (``payment_allocations`` at this moment, with
    their charges); the family name and the students' names
    (``families.service``); the business settings
-   (``administration.service``); the language (P5, below);
+   (``administration.service``, with the receipt messages, #121 B4); the
+   language (P5, below);
 2. ``issued_at = clock.now()``; the number's year is its year in the
    center's time zone (B2);
 3. :func:`app.core.numbering.next_number` for ``R`` and that year: the
@@ -26,28 +27,42 @@ a stored ``user_preferences.language``; otherwise ``es``. It is stored and
 every download renders in it, whoever downloads (ADR-0015: the language of
 an issued document never changes).
 
-**Snapshot** (P6): :class:`ReceiptSnapshotV1` (``"v": 1``), validated on
-write and on read; money as strings. It holds the center (name, address,
-phone, email), the family (id, name), ``payer_name``, the payment (id,
-amount, ``received_on``, method code, reference), ``issued_on`` (the
-center-local date of ``issued_at``), the allocations at payment time
-(charge and student ids, the student's name, the charge's language-neutral
-``kind``, dates, minutes and manual description, the amount) and the totals
-(``allocated_total``, ``unallocated``). Labels are built at render time
-from those fields and the catalog (:func:`allocation_label`). No staff
-``note`` and no actor names (#364 D4). Later changes (settings, names,
-credit allocations, adjustments that release an allocation) never change a
-row: ``receipts`` is append-only.
+**Snapshot** (P6): :class:`ReceiptSnapshotV2` (``"v": 2``, #121 B4) for every
+new receipt; :class:`ReceiptSnapshotV1` (``"v": 1``) on the receipts issued
+before #121. Both are validated on write and on read (:func:`parse_snapshot`,
+discriminated on ``v``); money as strings. v1 holds the center (name, address,
+phone, email), the family (id, name), ``payer_name``, the payment (id, amount,
+``received_on``, method code, reference), ``issued_on`` (the center-local date
+of ``issued_at``), the allocations at payment time (charge and student ids,
+the student's name, the charge's language-neutral ``kind``, dates, minutes and
+manual description, the amount) and the totals (``allocated_total``,
+``unallocated``). Labels are built at render time from those fields and the
+catalog (:func:`allocation_label`). v2 adds ``message``: the business-settings
+receipt message in the receipt's own language (``receipt_message_es`` or
+``_en``), as it was when issued, or ``None`` when that language has none (no
+fallback to the other language, #121 E6). No staff ``note`` and no actor names
+(#364 D4). Later changes (settings, names, credit allocations, adjustments
+that release an allocation) never change a row: ``receipts`` is append-only.
 
 **Templates are versioned** (P8). A receipt stores ``template_version``
 (:data:`RECEIPT_TEMPLATE_VERSION` when issued) and is always rendered with
 that version's template (:func:`template_for`; an unknown version is a
-programming error, a logged ``500``). Version ``N`` is the directory
-``app/templates/receipts/vN/`` plus the catalog keys ``receipts.vN.*``. The
-rule: a wording or layout change that would alter what an issued receipt
-says creates ``v(N+1)`` (a new directory and new keys) and leaves ``vN``
-intact; styling-only fixes may edit ``vN``. M8-04 (#121) builds editable
-templates on top of this (new versions, rendered in a sandbox).
+programming error, a logged ``500``). Template version ``N`` renders
+snapshot ``vN``; a pair that doesn't match is a programming error too
+(:class:`ReceiptSnapshotMismatchError`, a logged ``500``). Version ``N`` is
+the directory ``app/templates/receipts/vN/`` plus the catalog keys
+``receipts.vN.*`` (v2 reuses the frozen ``receipts.v1.*`` keys and adds
+none). The rule: a wording or layout change that would alter what an issued
+receipt says creates ``v(N+1)`` (a new directory and new keys) and leaves
+``vN`` intact; styling-only fixes may edit ``vN``.
+
+**Templates stay code-owned** (#121 E4; ADR-0015). Staff never author
+template source: the only editable part is the receipt message, which is
+*data*. It reaches the template only through the context, is autoescaped
+like every other value (``{{ 7*7 }}`` prints literally) and keeps its line
+breaks (CSS ``white-space: pre-line``), so no sandboxed environment is
+needed. v2 (#121) is v1 plus that message block before the notice; v1
+receipts render exactly as before.
 
 **Rendering** (:func:`render_receipt_document`) is synchronous and
 CPU-bound (``app.core.pdf``): routes call it through
@@ -60,10 +75,10 @@ import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Final, Literal
+from typing import Annotated, Any, Final, Literal, Self
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -85,10 +100,13 @@ from app.modules.identity import service as identity
 RECEIPT_SERIES: Final = "R"
 """The ``number_series`` code of receipts."""
 
-RECEIPT_TEMPLATE_VERSION: Final = 1
-"""The template version new receipts are issued with (P8)."""
+RECEIPT_TEMPLATE_VERSION: Final = 2
+"""The template version new receipts are issued with (P8; 2 since #121)."""
 
-RECEIPT_TEMPLATES: Final[Mapping[int, str]] = {1: "receipts/v1/receipt.html"}
+RECEIPT_TEMPLATES: Final[Mapping[int, str]] = {
+    1: "receipts/v1/receipt.html",
+    2: "receipts/v2/receipt.html",
+}
 """Each template version's template, under ``app/templates/``."""
 
 type ChargeKind = Literal[
@@ -107,6 +125,11 @@ class ReceiptAlreadyIssuedError(ValueError):
 
 class UnknownReceiptTemplateError(LookupError):
     """A receipt names a template version with no template (D4; a ``500``)."""
+
+
+class ReceiptSnapshotMismatchError(ValueError):
+    """A receipt's snapshot ``v`` is not its ``template_version`` (#121 B4;
+    a programming error, a logged ``500``)."""
 
 
 # --- The snapshot (P6) ---------------------------------------------------------------
@@ -153,10 +176,9 @@ class SnapshotTotals(_Frozen):
     unallocated: Money
 
 
-class ReceiptSnapshotV1(_Frozen):
-    """What a receipt shows, frozen at payment time (#98 P6, C5)."""
+class _SnapshotBody(_Frozen):
+    """The fields every snapshot version has (#98 P6, C5)."""
 
-    v: Literal[1]
     center: SnapshotCenter
     family: SnapshotFamily
     payer_name: str | None
@@ -166,7 +188,7 @@ class ReceiptSnapshotV1(_Frozen):
     totals: SnapshotTotals
 
     @model_validator(mode="after")
-    def _totals_add_up(self) -> ReceiptSnapshotV1:
+    def _totals_add_up(self) -> Self:
         allocated = Money.total(line.amount for line in self.allocations)
         if self.totals.allocated_total != allocated:
             raise ValueError("allocated_total is not the sum of the allocations")
@@ -177,10 +199,33 @@ class ReceiptSnapshotV1(_Frozen):
         return self
 
 
-def parse_snapshot(data: Mapping[str, Any]) -> ReceiptSnapshotV1:
-    """A stored snapshot, validated (C5 "on read"); an unknown ``v`` or a
-    malformed one is a :class:`pydantic.ValidationError`."""
-    return ReceiptSnapshotV1.model_validate(data)
+class ReceiptSnapshotV1(_SnapshotBody):
+    """What a receipt shows, frozen at payment time (#98 P6, C5): receipts
+    issued before #121."""
+
+    v: Literal[1]
+
+
+class ReceiptSnapshotV2(_SnapshotBody):
+    """v1 plus the center's receipt message in the receipt's language, as
+    it was when issued (``None``: that language had none; #121 B4, E6)."""
+
+    v: Literal[2]
+    message: str | None
+
+
+type ReceiptSnapshot = ReceiptSnapshotV1 | ReceiptSnapshotV2
+"""A stored snapshot of any version."""
+
+_SNAPSHOT: Final[TypeAdapter[ReceiptSnapshotV1 | ReceiptSnapshotV2]] = TypeAdapter(
+    Annotated[ReceiptSnapshotV1 | ReceiptSnapshotV2, Field(discriminator="v")]
+)
+
+
+def parse_snapshot(data: Mapping[str, Any]) -> ReceiptSnapshot:
+    """A stored snapshot of either version, validated (C5 "on read"); an
+    unknown ``v`` or a malformed one is a :class:`pydantic.ValidationError`."""
+    return _SNAPSHOT.validate_python(data)
 
 
 def receipt_number(year: int, value: int) -> str:
@@ -261,11 +306,17 @@ async def issue_receipt(session: AsyncSession, payment_id: uuid.UUID) -> IssuedR
     )
     settings = await administration.get_business_settings(session)
     language = await receipt_language(session, family_id)
+    # E6: the receipt's own language only, never the other one.
+    message = {
+        "es": settings.receipt_message_es,
+        "en": settings.receipt_message_en,
+    }[language]
     issued_at = clock.now()
     local = issued_at.astimezone(ZoneInfo(settings.time_zone))
     allocated = Money.total(line["amount"] for line in lines)
-    snapshot = ReceiptSnapshotV1(
-        v=1,
+    snapshot = ReceiptSnapshotV2(
+        v=RECEIPT_TEMPLATE_VERSION,
+        message=message,
         center=SnapshotCenter(
             name=settings.center_name,
             address=settings.address,
@@ -429,9 +480,15 @@ def _language(stored: StoredReceipt) -> i18n.Language:
 
 
 def receipt_context(stored: StoredReceipt) -> dict[str, object]:
-    """The template context of a stored receipt (the snapshot validated)."""
+    """The template context of a stored receipt (the snapshot validated;
+    its ``v`` must be the receipt's ``template_version``)."""
     lang = _language(stored)
     snapshot = parse_snapshot(stored.snapshot)
+    if snapshot.v != stored.template_version:
+        raise ReceiptSnapshotMismatchError(
+            f"receipt {stored.id}: snapshot v{snapshot.v} with template"
+            f" version {stored.template_version}"
+        )
     lines: Sequence[dict[str, object]] = [
         {
             "student": line.student_name,
@@ -459,6 +516,9 @@ def receipt_context(stored: StoredReceipt) -> dict[str, object]:
             "reversed_on": stored.reversed_on,
         },
         "lines": lines,
+        "message": snapshot.message
+        if isinstance(snapshot, ReceiptSnapshotV2)
+        else None,
     }
 
 

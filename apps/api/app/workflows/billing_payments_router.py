@@ -16,6 +16,16 @@ E6, E8, E12).
   ``GET …/payments/{payment_id}`` (``authenticated()`` + the #364 record
   policy; ``note`` and the actor ids ``null`` for a guardian).
 - ``GET /api/v1/billing/payment-methods`` (``billing.view``).
+- ``PATCH /api/v1/billing/payment-methods/{code}`` (#121 A2;
+  ``settings.manage``, Owners and Administrators, with
+  ``recent_auth_guard("settings.payment_methods_or_time_zone")``, ADR-0007
+  D10): activate or deactivate a method. Check order: ``401`` → ``403
+  csrf_failed`` → ``403 privacy_notice_required`` → ``403
+  permission_denied`` → ``422`` → ``404 payment_method_not_found`` → ``403
+  reauth_required`` (only when ``is_active`` changes) → ``409
+  version_conflict`` → ``409 payment_method_last_active``. Not idempotent:
+  the ``version`` guards a retry. No create, rename or delete (ADR-0006
+  E12, #121 E5).
 """
 
 import uuid
@@ -33,8 +43,13 @@ from app.core.authz import (
 from app.core.errors import problem_response_doc
 from app.core.idempotency import IDEMPOTENCY_RESPONSES, IdempotentRequest, idempotent
 from app.core.pagination import OffsetPage, OffsetPagination
+from app.core.reauth import REAUTH_RESPONSES, RecentAuthGuard, recent_auth_guard
 from app.core.uow import UnitOfWorkDep
-from app.modules.billing.schemas import CreditAllocationCreate, PaymentCreate
+from app.modules.billing.schemas import (
+    CreditAllocationCreate,
+    PaymentCreate,
+    PaymentMethodUpdate,
+)
 from app.workflows import billing_payments
 from app.workflows.billing_payment_schemas import (
     CreditAllocated,
@@ -46,6 +61,12 @@ from app.workflows.billing_payment_schemas import (
 
 BILLING_VIEW: Final = "billing.view"
 PAYMENT_RECORD: Final = "payment.record"
+SETTINGS_MANAGE: Final = "settings.manage"
+PAYMENT_METHODS_ACTION: Final = "settings.payment_methods_or_time_zone"
+
+PaymentMethodsGuard = Annotated[
+    RecentAuthGuard, recent_auth_guard(PAYMENT_METHODS_ACTION)
+]
 
 router = APIRouter(tags=["billing"])
 
@@ -200,3 +221,39 @@ async def list_payment_methods(
     """Every payment method by code, with whether it is active. Offer only
     the active ones; labels come from the client catalogs."""
     return await billing_payments.list_payment_methods(uow.session)
+
+
+@router.patch(
+    "/api/v1/billing/payment-methods/{code}",
+    responses={
+        **REAUTH_RESPONSES,
+        404: problem_response_doc("No such payment method (payment_method_not_found)."),
+        409: problem_response_doc(
+            "The method changed since it was loaded (version_conflict); reload"
+            " and retry. Or it is the only active method and can't be"
+            " deactivated (payment_method_last_active)."
+        ),
+        422: problem_response_doc(
+            "The body is not valid: a missing or non-boolean is_active, a"
+            " missing version or one below 1, or an unknown field"
+            " (validation_error)."
+        ),
+    },
+)
+async def update_payment_method(
+    principal: Annotated[Principal, require(SETTINGS_MANAGE)],
+    guard: PaymentMethodsGuard,
+    code: str,
+    body: PaymentMethodUpdate,
+    uow: UnitOfWorkDep,
+) -> PaymentMethodItem:
+    """Activate or deactivate a payment method. Changing `is_active` needs
+    a password reauthentication in the last 5 minutes (`403
+    reauth_required`); sending the current value with the current version
+    changes nothing. The last active method can't be deactivated. A
+    deactivated method can't be used for new payments, refunds, corrections,
+    withdrawal settlements, payroll or expense payments; recorded ones keep
+    it."""
+    return await billing_payments.update_payment_method(
+        uow.session, code, body, guard=guard
+    )

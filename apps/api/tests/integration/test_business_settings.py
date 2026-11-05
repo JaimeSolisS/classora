@@ -1,4 +1,5 @@
-"""Business settings over HTTP and through the service (#37 B, C, D, E, F).
+"""Business settings over HTTP and through the service (#37 B, C, D, E, F;
+the receipt messages, #121 B2-B3).
 
 The settings record is a singleton: the tests of this module share one
 seeded database, and an autouse fixture puts the record back to the
@@ -70,6 +71,8 @@ DEFAULTS = {
     "address": None,
     "time_zone": DEFAULT_ZONE,
     "operating_hours": DEFAULT_HOURS,
+    "receipt_message_es": None,
+    "receipt_message_en": None,
     "version": 1,
 }
 
@@ -84,7 +87,8 @@ def restore_defaults(url: str) -> None:
         url,
         "UPDATE business_settings SET center_name = 'Classora',"
         " contact_phone = NULL, contact_email = NULL, address = NULL,"
-        " time_zone = :zone, version = 1",
+        " time_zone = :zone, receipt_message_es = NULL,"
+        " receipt_message_en = NULL, version = 1",
         {"zone": DEFAULT_ZONE},
     )
     run_sql(url, "DELETE FROM operating_hours")
@@ -100,7 +104,7 @@ def stored(url: str) -> dict[str, Any]:
     [row] = run_sql(
         url,
         "SELECT center_name, contact_phone, contact_email, address, time_zone,"
-        " version FROM business_settings",
+        " receipt_message_es, receipt_message_en, version FROM business_settings",
     )
     hours = run_sql(
         url,
@@ -340,6 +344,12 @@ INVALID_BODIES: dict[str, dict[str, Any]] = {
         "version": 1,
         "operating_hours": [entry(1 + i % 7, "09:00", "10:00") for i in range(8)],
     },
+    # #121 B2: the receipt messages.
+    "long_message_es": {"version": 1, "receipt_message_es": "x" * 501},
+    "long_message_en": {"version": 1, "receipt_message_en": "y" * 501},
+    "tab_in_message": {"version": 1, "receipt_message_es": "Hola\tmundo"},
+    "nul_in_message": {"version": 1, "receipt_message_en": "Hi\x00there"},
+    "number_message": {"version": 1, "receipt_message_es": 5},
 }
 
 
@@ -735,3 +745,184 @@ def test_the_students_api_uses_the_center_zone(clock, module_seeded_url, client,
         client.get(ME, headers=cookie_header(cookie)).json()["center_time_zone"]
         == KIRITIMATI
     )
+
+
+# --- #121 B2-B3: the receipt messages -------------------------------------------------
+
+MESSAGE_ES = "Gracias por su pago.\nCentro de tutorías Classora."
+MESSAGE_EN = "Thank you for your payment."
+
+
+def test_the_receipt_messages_round_trip_without_reauthentication(
+    module_seeded_url, client, owner, cookie, counter
+):
+    response = patch(
+        client,
+        cookie,
+        SETTINGS,
+        {
+            "version": 1,
+            "receipt_message_es": "  Gracias por su pago.\r\nCentro de tutorías"
+            " Classora.\r\n ",
+            "receipt_message_en": MESSAGE_EN,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    expected = {
+        **DEFAULTS,
+        "receipt_message_es": MESSAGE_ES,
+        "receipt_message_en": MESSAGE_EN,
+        "version": 2,
+    }
+    assert without_updated_at(response.json()) == expected
+    assert stored(module_seeded_url) == expected
+    client.cookies.clear()
+    read = client.get(SETTINGS, headers=cookie_header(cookie))
+    assert without_updated_at(read.json()) == expected
+    # B3: one update event, the old and new values, nothing masked.
+    [event] = counter.new()
+    assert (event.record_type, event.action) == ("business_settings", "update")
+    assert event.changes == {
+        "receipt_message_es": {"old": None, "new": MESSAGE_ES},
+        "receipt_message_en": {"old": None, "new": MESSAGE_EN},
+    }
+    assert event.actor_user_id == owner.id
+
+
+@pytest.mark.parametrize("cleared", [None, "", "  \r\n "])
+def test_a_message_is_cleared_with_null_or_blank(
+    module_seeded_url, client, cookie, counter, cleared
+):
+    set_messages = patch(
+        client,
+        cookie,
+        SETTINGS,
+        {"version": 1, "receipt_message_es": "A", "receipt_message_en": "B"},
+    )
+    assert set_messages.status_code == 200, set_messages.text
+
+    response = patch(
+        client, cookie, SETTINGS, {"version": 2, "receipt_message_es": cleared}
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["receipt_message_es"] is None
+    # A field not sent stays unchanged.
+    assert response.json()["receipt_message_en"] == "B"
+    assert stored(module_seeded_url)["version"] == 3
+    last = counter.new()[-1]
+    assert last.changes == {"receipt_message_es": {"old": "A", "new": None}}
+
+
+def test_sending_the_stored_messages_writes_nothing(
+    module_seeded_url, client, cookie, counter
+):
+    first = patch(
+        client, cookie, SETTINGS, {"version": 1, "receipt_message_es": MESSAGE_ES}
+    )
+    assert first.status_code == 200, first.text
+    before = stored(module_seeded_url)
+
+    response = patch(
+        client,
+        cookie,
+        SETTINGS,
+        {
+            "version": 2,
+            "receipt_message_es": f" {MESSAGE_ES.replace(chr(10), chr(13) + chr(10))} ",
+            "receipt_message_en": None,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert stored(module_seeded_url) == before
+    assert len(counter.new()) == 1
+
+
+def test_a_message_change_with_a_stale_version_is_409(
+    module_seeded_url, client, cookie, counter
+):
+    response = patch(
+        client, cookie, SETTINGS, {"version": 4, "receipt_message_es": "Hola"}
+    )
+
+    assert code_of(response) == (409, "version_conflict")
+    assert stored(module_seeded_url) == DEFAULTS
+    assert counter.new() == []
+
+
+def test_a_message_field_error_names_the_field(client, cookie):
+    response = patch(
+        client, cookie, SETTINGS, {"version": 1, "receipt_message_en": "z" * 501}
+    )
+
+    assert code_of(response) == (422, "validation_error")
+    assert [e["path"] for e in response.json()["errors"]] == [
+        ["body", "receipt_message_en"]
+    ]
+
+
+def test_a_message_with_a_zone_change_still_needs_reauthentication(
+    module_seeded_url, client, cookie, counter
+):
+    response = patch(
+        client,
+        cookie,
+        SETTINGS,
+        {
+            "version": 1,
+            "receipt_message_es": "Hola",
+            "time_zone": "America/Cancun",
+        },
+    )
+
+    assert code_of(response) == (403, "reauth_required")
+    assert stored(module_seeded_url) == DEFAULTS
+    assert counter.new() == []
+
+
+@pytest.mark.parametrize(
+    "role", [ACADEMIC_COORDINATOR, FINANCE_STAFF, TUTOR, STUDENT, GUARDIAN]
+)
+def test_only_owners_and_administrators_change_the_messages(
+    module_seeded_url, client, counter, role
+):
+    person = create_user(module_seeded_url, roles=(role,))
+    other = sign_in(client, person.username)
+
+    response = patch(
+        client, other, SETTINGS, {"version": 1, "receipt_message_es": "Hola"}
+    )
+
+    assert code_of(response) == (403, "permission_denied")
+    assert stored(module_seeded_url) == DEFAULTS
+    assert counter.new() == []
+
+
+def test_an_administrator_changes_the_messages(module_seeded_url, client):
+    admin = create_user(module_seeded_url, roles=(ADMINISTRATOR,))
+    admin_cookie = sign_in(client, admin.username)
+
+    response = patch(
+        client, admin_cookie, SETTINGS, {"version": 1, "receipt_message_en": "Hi"}
+    )
+
+    assert response.status_code == 200, response.text
+    assert stored(module_seeded_url)["receipt_message_en"] == "Hi"
+
+
+@pytest.mark.parametrize("role", [GUARDIAN, STUDENT, TUTOR])
+def test_every_signed_in_user_reads_the_messages(module_seeded_url, client, role):
+    run_sql(
+        module_seeded_url,
+        "UPDATE business_settings SET receipt_message_es = :m",
+        {"m": MESSAGE_ES},
+    )
+    person = create_user(module_seeded_url, roles=(role,))
+
+    response = get(client, sign_in(client, person.username), SETTINGS)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["receipt_message_es"] == MESSAGE_ES
+    assert response.json()["receipt_message_en"] is None

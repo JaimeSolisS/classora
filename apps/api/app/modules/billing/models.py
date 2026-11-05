@@ -113,8 +113,8 @@ singleton (mutable config, versioned) holding the billing start floor
 one per payment (``payment_id`` UNIQUE), numbered ``R-YYYY-NNNNNN``
 (``number`` UNIQUE) from the core ``number_series`` (``app.core.numbering``),
 with its language, template version and frozen ``snapshot``
-(``billing.receipts.ReceiptSnapshotV1``); the composite foreign key keeps it
-on its payment's account (I4).
+(``billing.receipts.ReceiptSnapshotV2``; ``V1`` before #121); the composite
+foreign key keeps it on its payment's account (I4).
 
 **Withdrawals** (#101; data-model §3.23): ``withdrawals`` (append-only,
 audited): one settlement of exactly one group enrollment, cohort enrollment
@@ -1455,7 +1455,9 @@ class Receipt(Audited, Model):
     """The receipt of one payment, issued in the payment's transaction (#98
     A2; data-model §3.21; ADR-0006 E13). Append-only (migration 0068's
     ``receipts_append_only()`` triggers, SQLSTATE 42501). ``snapshot`` is a
-    ``billing.receipts.ReceiptSnapshotV1`` (``"v": 1``); the PDF is built
+    ``billing.receipts.ReceiptSnapshotV2`` (``"v": 2``, with the receipt
+    message, #121) or, issued before #121, a ``ReceiptSnapshotV1`` (``"v":
+    1``); its ``v`` is the ``template_version``. The PDF is built
     from the row alone, plus the payment's reversal (if any) for the banner.
     ``language`` and ``template_version`` never change."""
 

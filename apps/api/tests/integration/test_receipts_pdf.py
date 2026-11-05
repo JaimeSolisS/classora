@@ -9,11 +9,16 @@ text assertions with pypdf, not byte snapshots).
   literally, and nothing is fetched;
 - E4: a staff member whose UI language is ``en`` downloads an ``es``
   receipt in Spanish.
+- #121 B5/B6: template v2 prints the snapshot's message (es and en) before
+  the notice, with its line breaks and as literal text (``{{ 7*7 }}``,
+  markup); without a message it reads like v1. The v1 tests above stay as
+  they were (``template_version=1``).
 
 These render PDFs: WeasyPrint needs Pango (the API image and CI; not the
 owner's Mac, #383 D6). Text is compared without whitespace, because pypdf
 may split kerned words (#98a D5)."""
 
+import io
 import time
 import uuid
 from collections.abc import Iterator
@@ -21,6 +26,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 import pytest
+from pypdf import PdfReader
 
 from app.core.money import Money
 from app.modules.billing import service as billing
@@ -63,7 +69,10 @@ def _stored(
     allocated: str = "1000.00",
     payer_name: str | None = None,
     reversed_on: date | None = None,
+    message: str | None | bool = False,
 ) -> billing.StoredReceipt:
+    """A v1 receipt; ``message`` (a string or ``None``, not ``False``) makes
+    it a v2 receipt with that message (#121)."""
     lines = [_line()] if lines is None else lines
     unallocated = str(Money(amount) - Money(allocated))
     snapshot = {
@@ -87,13 +96,17 @@ def _stored(
         "allocations": lines,
         "totals": {"allocated_total": allocated, "unallocated": unallocated},
     }
+    version = 1
+    if message is not False:
+        snapshot.update(v=2, message=message)
+        version = 2
     return billing.StoredReceipt(
         id=uuid.uuid4(),
         number="R-2031-000123",
         payment_id=uuid.uuid4(),
         issued_at=datetime(2031, 3, 10, 18, 0, tzinfo=UTC),
         language=lang,
-        template_version=1,
+        template_version=version,
         snapshot=snapshot,
         reversed_on=reversed_on,
     )
@@ -206,6 +219,55 @@ def test_the_reversed_banner():
     text = compact(rs.pdf_text(rendered.data))
     assert compact("REVERSED on April 2, 2031") in text
     assert compact("R-2031-000123") in text
+
+
+# --- #121 B5/B6: template v2 and its message ----------------------------------------
+
+V2_MESSAGES = {
+    "es": "Gracias por su pago.\nCentro de Tutorías Aurora.",
+    "en": "Thank you for your payment.\nAurora Tutoring Center.",
+}
+
+
+@pytest.mark.parametrize("lang", ["es", "en"])
+def test_v2_prints_the_message_in_the_receipts_language(lang):
+    rendered = billing.render_receipt_document(_stored(lang, message=V2_MESSAGES[lang]))
+
+    assert rendered.page_count == 1
+    assert rendered.refused_urls == ()
+    text = compact(rs.pdf_text(rendered.data))
+    first, second = (compact(part) for part in V2_MESSAGES[lang].split("\n"))
+    assert first in text
+    assert second in text
+    # The message sits before the notice.
+    assert text.index(second) < text.index(compact(EXPECTED[lang][3]))
+    # Its line break is kept: the two parts are on separate text lines.
+    reader = PdfReader(io.BytesIO(rendered.data))
+    page_text = reader.pages[0].extract_text() or ""
+    lines = [compact(line) for line in page_text.split("\n")]
+    assert any(first in line and second not in line for line in lines), lines
+    assert not any(first + second in line for line in lines), lines
+    for expected in [EXPECTED[lang][i] for i in (0, 1, 2, 4, 5, 6)]:
+        assert compact(expected) in text, expected
+
+
+def test_the_message_prints_literally():
+    message = "{{ 7*7 }} <b>negrita</b> & {% raw %}"
+    rendered = billing.render_receipt_document(_stored("es", message=message))
+
+    text = compact(rs.pdf_text(rendered.data))
+    assert compact(message) in text
+    assert rendered.refused_urls == ()
+
+
+@pytest.mark.parametrize("lang", ["es", "en"])
+def test_v2_without_a_message_reads_like_v1(lang):
+    v1 = compact(rs.pdf_text(billing.render_receipt_document(_stored(lang)).data))
+    v2 = compact(
+        rs.pdf_text(billing.render_receipt_document(_stored(lang, message=None)).data)
+    )
+
+    assert v2 == v1
 
 
 # --- E4: through the route, the stored language wins ---------------------------------

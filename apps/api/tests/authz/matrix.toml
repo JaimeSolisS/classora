@@ -610,6 +610,21 @@ allow = ["owner", "administrator", "finance_staff"]
 # #96 C5 (M8): the payment methods, for the record-payment form.
 
 [[route]]
+method = "PATCH"
+path = "/api/v1/billing/payment-methods/{code}"
+access = "permission"
+permission = "settings.manage"
+allow = ["owner", "administrator"]
+# #121 A2: a no-op (the stored is_active with version 1: 200, or 409
+# version_conflict once a test of this database changed the method); nothing
+# changes. The reauthentication condition (is_active changes) is tested in
+# tests/integration/test_payment_methods_settings.py.
+path_params = { code = "other" }
+json = { is_active = true, version = 1 }
+reauth = "settings.payment_methods_or_time_zone"
+reauth_conditional = true
+
+[[route]]
 method = "GET"
 path = "/api/v1/billing/service-prices"
 access = "permission"

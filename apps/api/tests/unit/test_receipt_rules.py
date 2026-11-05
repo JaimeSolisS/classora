@@ -1,8 +1,8 @@
 """Receipt rules without a database or Pango (#98 J2; B1, B2, C5, D4, E1,
-E3, P6, P8): the snapshot model, the label of each charge kind, the
-template-version selector, number formatting and overflow, the
-``next_number`` argument checks and the receipt HTML (escaping, no staff
-data)."""
+E3, P6, P8; #121 B4, B6): the snapshot models (v1 and v2), the label of
+each charge kind, the template-version selector and the snapshot-version
+match, number formatting and overflow, the ``next_number`` argument checks
+and the receipt HTML (escaping, no staff data, the v2 message)."""
 
 import asyncio
 import uuid
@@ -20,7 +20,9 @@ from app.modules.billing.models import CHARGE_KINDS, RECEIPT_LANGUAGES
 from app.modules.billing.receipts import (
     RECEIPT_TEMPLATE_VERSION,
     RECEIPT_TEMPLATES,
+    ReceiptSnapshotMismatchError,
     ReceiptSnapshotV1,
+    ReceiptSnapshotV2,
     SnapshotAllocation,
     StoredReceipt,
     UnknownReceiptTemplateError,
@@ -90,6 +92,16 @@ def _stored(snapshot: dict[str, Any] | None = None, **overrides: Any) -> StoredR
     return StoredReceipt(**values)
 
 
+def _snapshot_v2(message: str | None = "Gracias por su pago.", **overrides: Any):
+    return _snapshot(v=2, message=message, **overrides)
+
+
+def _stored_v2(
+    message: str | None = "Gracias por su pago.", **overrides: Any
+) -> StoredReceipt:
+    return _stored(_snapshot_v2(message), template_version=2, **overrides)
+
+
 # --- The snapshot (C5, P6) -----------------------------------------------------------
 
 
@@ -108,7 +120,9 @@ def test_the_snapshot_round_trips_through_json_with_money_as_strings():
 @pytest.mark.parametrize(
     "overrides",
     [
-        {"v": 2},
+        {"v": 3},
+        {"v": 2},  # v2 needs its message (null for none)
+        {"message": "v1 has no message"},
         {"totals": {"allocated_total": "90.00", "unallocated": "60.00"}},
         {"totals": {"allocated_total": "100.00", "unallocated": "40.00"}},
         {
@@ -123,6 +137,32 @@ def test_the_snapshot_round_trips_through_json_with_money_as_strings():
 def test_a_malformed_snapshot_is_refused(overrides):
     with pytest.raises(ValidationError):
         parse_snapshot(_snapshot(**overrides))
+
+
+@pytest.mark.parametrize("message", ["Gracias.\nVuelva pronto.", None])
+def test_a_v2_snapshot_round_trips_with_its_message(message):
+    parsed = parse_snapshot(_snapshot_v2(message))
+
+    assert isinstance(parsed, ReceiptSnapshotV2)
+    assert parsed.message == message
+    dumped = parsed.model_dump(mode="json")
+    assert (dumped["v"], dumped["message"]) == (2, message)
+    assert parse_snapshot(dumped) == parsed
+
+
+def test_a_v1_snapshot_parses_as_v1():
+    parsed = parse_snapshot(_snapshot())
+
+    assert isinstance(parsed, ReceiptSnapshotV1)
+    assert parsed.v == 1
+    assert not hasattr(parsed, "message")
+
+
+def test_a_v2_snapshot_checks_its_totals_too():
+    with pytest.raises(ValidationError):
+        parse_snapshot(
+            _snapshot_v2(totals={"allocated_total": "90.00", "unallocated": "60.00"})
+        )
 
 
 def test_the_snapshot_kinds_are_the_charge_kinds():
@@ -197,11 +237,30 @@ def test_every_charge_kind_has_a_label():
 
 
 def test_the_stored_version_picks_the_template():
-    assert RECEIPT_TEMPLATE_VERSION == 1
+    # New receipts are v2 since #121 (B4); v1 receipts keep their template.
+    assert RECEIPT_TEMPLATE_VERSION == 2
     assert template_for(1) == RECEIPT_TEMPLATES[1] == "receipts/v1/receipt.html"
+    assert template_for(2) == RECEIPT_TEMPLATES[2] == "receipts/v2/receipt.html"
+    assert set(RECEIPT_TEMPLATES) == {1, 2}
 
 
-@pytest.mark.parametrize("version", [0, 2, 99])
+@pytest.mark.parametrize(
+    ("template_version", "snapshot"),
+    [(1, _snapshot_v2()), (2, _snapshot())],
+    ids=["v1_template_v2_snapshot", "v2_template_v1_snapshot"],
+)
+def test_a_template_and_snapshot_version_mismatch_is_an_error(
+    template_version, snapshot
+):
+    stored = _stored(snapshot, template_version=template_version)
+
+    with pytest.raises(ReceiptSnapshotMismatchError):
+        receipt_html(stored)
+    with pytest.raises(ReceiptSnapshotMismatchError):
+        receipts.receipt_context(stored)
+
+
+@pytest.mark.parametrize("version", [0, 3, 99])
 def test_an_unknown_template_version_is_an_error(version):
     with pytest.raises(UnknownReceiptTemplateError):
         template_for(version)
@@ -302,3 +361,63 @@ def test_the_snapshot_model_is_frozen():
 
     with pytest.raises(ValidationError):
         parsed.payer_name = "otro"  # type: ignore[misc]
+
+
+# --- The v2 message (#121 B6) --------------------------------------------------------
+
+
+def test_v2_prints_the_message_before_the_notice():
+    html = receipt_html(_stored_v2("Gracias por su pago."))
+
+    message = html.index('<p class="message">Gracias por su pago.</p>')
+    assert message < html.index("Este recibo no es un comprobante fiscal (CFDI).")
+    assert "white-space: pre-line" in html
+
+
+def test_the_v2_context_carries_the_message():
+    assert receipts.receipt_context(_stored_v2("Hola"))["message"] == "Hola"
+    assert receipts.receipt_context(_stored_v2(None))["message"] is None
+    assert receipts.receipt_context(_stored())["message"] is None
+
+
+def test_v2_without_a_message_has_no_message_block():
+    html = receipt_html(_stored_v2(None))
+
+    assert 'class="message"' not in html
+    assert "Este recibo no es un comprobante fiscal (CFDI)." in html
+
+
+def test_the_message_is_data_never_template_source():
+    html = receipt_html(_stored_v2("{{ 7*7 }} <b>x</b> {% if true %}y{% endif %}"))
+
+    assert (
+        '<p class="message">{{ 7*7 }} &lt;b&gt;x&lt;/b&gt;'
+        " {% if true %}y{% endif %}</p>"
+    ) in html
+    assert "49" not in html
+    assert "<b>x</b>" not in html
+
+
+def test_the_message_keeps_its_line_breaks():
+    html = receipt_html(_stored_v2("Línea uno\nLínea dos"))
+
+    assert '<p class="message">Línea uno\nLínea dos</p>' in html
+
+
+def test_v2_is_v1_plus_the_message():
+    """Same snapshot fields, same text: v2 only adds the message block (and
+    its style) to v1 (B6)."""
+    v1 = receipt_html(_stored())
+    v2 = receipt_html(_stored_v2(None))
+
+    def body(html: str) -> str:
+        return " ".join(html[html.index("<body") :].split())
+
+    assert body(v1) == body(v2)
+
+
+def test_v1_receipts_render_as_before_and_ignore_a_message():
+    html = receipt_html(_stored())
+
+    assert 'class="message"' not in html
+    assert "white-space: pre-line" not in html

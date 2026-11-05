@@ -35,6 +35,7 @@ Resolves architecture §10 **ISSUE-X1** (server-rendered text language) in [`../
 
 - HTML templates rendered with **Jinja2**, with autoescape on and `StrictUndefined`, then converted to PDF with **WeasyPrint**.
 - Templates are code-owned. When M8-04 makes templates editable, it must render them with Jinja2's **sandboxed** environment.
+- Clarification (#121, 2026-11-05; #121 E4 (a), orchestrator-recommended, pending owner review): M8-04 does **not** make template source editable. Templates stay code-owned; the editable part is a per-language **receipt message** (`business_settings.receipt_message_es`/`_en`, plain text), which is *data*: it reaches the code-owned template `receipts/v2/receipt.html` only through the context, autoescaped like every other value, so no sandboxed environment is needed. The sandbox rule above still applies if staff-authored template source is ever rendered.
 
 ### Server message catalogs
 
@@ -98,7 +99,7 @@ Recorded by #383 (M6-13a, the infrastructure split of #98). The decision above i
 
 - **#98 (M6-13)** adds the dependencies above (or splits them into an infrastructure issue), `app/core/i18n.py`, the catalogs and their parity test, and the receipt templates in es and en.
 - **M7 (payslips)** reuses the same templates, catalogs and formatting.
-- **M8-04 (#121)** makes receipt templates editable, with the sandboxed Jinja2 environment.
+- **M8-04 (#121)** adds an editable receipt message (data, frozen into receipt template and snapshot v2; see the clarification under PDFs), not editable template source.
 - **M8-07 (#124)** generates large PDF exports in the worker, with the same rendering stack.
 - One catalog format (JSON) for client and server; no extraction or compilation toolchain.
 - The language of an issued document never changes when the recipient changes their preference later, because it is stored on the record.

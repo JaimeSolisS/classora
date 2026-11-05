@@ -23,6 +23,8 @@ export const SETTINGS: BusinessSettings = {
   address: null,
   time_zone: 'America/Mexico_City',
   operating_hours: DEFAULT_HOURS,
+  receipt_message_es: null,
+  receipt_message_en: null,
   version: 1,
   updated_at: '2026-10-19T12:00:00Z',
 };

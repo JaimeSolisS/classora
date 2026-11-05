@@ -1,11 +1,15 @@
 """Business settings tables (#37; spec §9, §16; ADR-0004).
 
 - ``business_settings``: the center's one settings record: its name and
-  contact details and the **center time zone** (default
-  ``America/Mexico_City``). At most one row exists: ``singleton`` is always
-  true (CHECK) and unique. Migration 0020 inserts the row, so it exists in
-  every database built by migration; nothing else ever inserts or deletes it.
-  Versioned (optimistic concurrency, architecture §4.4).
+  contact details, the **center time zone** (default ``America/Mexico_City``)
+  and the optional **receipt message** per language (#121 B1:
+  ``receipt_message_es``/``receipt_message_en``, plain text of at most 500
+  characters, trimmed and never blank; ``NULL`` = none), which new receipts
+  freeze into their snapshot (``billing.receipts``, template v2). At most one
+  row exists: ``singleton`` is always true (CHECK) and unique. Migration 0020
+  inserts the row, so it exists in every database built by migration; nothing
+  else ever inserts or deletes it. Versioned (optimistic concurrency,
+  architecture §4.4).
 - ``operating_hours``: one opening interval per ISO weekday (1 = Monday …
   7 = Sunday), local wall-clock ``TIME`` values without seconds. A weekday
   without a row is closed. Not versioned: it is edited only through the
@@ -51,6 +55,7 @@ EMAIL_MAX_LENGTH: Final = 254
 PHONE_MAX_LENGTH: Final = 32
 ADDRESS_MAX_LENGTH: Final = 300
 TIME_ZONE_MAX_LENGTH: Final = 64
+RECEIPT_MESSAGE_MAX_LENGTH: Final = 500
 
 EMAIL_PATTERN: Final = r"^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$"
 PHONE_PATTERN: Final = r"^\+?[0-9][0-9 ().-]{5,30}[0-9]$"
@@ -76,6 +81,20 @@ class BusinessSettings(Audited, VersionedMixin, Model):
         CheckConstraint(f"contact_email ~ '{EMAIL_PATTERN}'", name="email_format"),
         CheckConstraint(f"contact_phone ~ '{PHONE_PATTERN}'", name="phone_format"),
         CheckConstraint("address = btrim(address)", name="address_trimmed"),
+        CheckConstraint(
+            "receipt_message_es = btrim(receipt_message_es)",
+            name="receipt_message_es_trimmed",
+        ),
+        CheckConstraint(
+            "receipt_message_es ~ '[^[:space:]]'", name="receipt_message_es_not_blank"
+        ),
+        CheckConstraint(
+            "receipt_message_en = btrim(receipt_message_en)",
+            name="receipt_message_en_trimmed",
+        ),
+        CheckConstraint(
+            "receipt_message_en ~ '[^[:space:]]'", name="receipt_message_en_not_blank"
+        ),
     )
 
     singleton: Mapped[bool] = mapped_column(
@@ -94,6 +113,12 @@ class BusinessSettings(Audited, VersionedMixin, Model):
     time_zone: Mapped[str] = mapped_column(
         String(TIME_ZONE_MAX_LENGTH),
         server_default=DEFAULT_CENTER_TIME_ZONE,
+    )
+    receipt_message_es: Mapped[str | None] = mapped_column(
+        String(RECEIPT_MESSAGE_MAX_LENGTH), nullable=True
+    )
+    receipt_message_en: Mapped[str | None] = mapped_column(
+        String(RECEIPT_MESSAGE_MAX_LENGTH), nullable=True
     )
 
 

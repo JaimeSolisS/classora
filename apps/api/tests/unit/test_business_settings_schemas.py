@@ -1,5 +1,6 @@
-"""Business settings: request bodies, contact patterns and the time-zone
-dependency registry (#37 C2-C4, D2). Pure, no database."""
+"""Business settings: request bodies, contact patterns, the receipt
+messages and the time-zone dependency registry (#37 C2-C4, D2; #121 B2).
+Pure, no database."""
 
 import re
 
@@ -98,6 +99,96 @@ def test_valid_contact_values_are_trimmed():
     assert body.contact_email == "hola@classora.mx"
     assert body.contact_phone == "+52 (55) 1234-5678"
     assert body.address == "Av. Reforma 1, CDMX"
+
+
+# --- #121 B2: the receipt messages ----------------------------------------------------
+
+MESSAGES = ("receipt_message_es", "receipt_message_en")
+
+
+@pytest.mark.parametrize("field", MESSAGES)
+@pytest.mark.parametrize("value", [None, "", "   ", "\r\n\n "])
+def test_null_or_blank_clears_a_receipt_message(field, value):
+    body = BusinessSettingsUpdate.model_validate({"version": 1, field: value})
+
+    assert field in body.model_fields_set
+    assert getattr(body, field) is None
+
+
+def test_messages_are_not_sent_by_default():
+    body = BusinessSettingsUpdate.model_validate({"version": 1})
+
+    assert not set(MESSAGES) & body.model_fields_set
+
+
+@pytest.mark.parametrize("field", MESSAGES)
+def test_a_message_is_trimmed_and_line_breaks_become_lf(field):
+    body = BusinessSettingsUpdate.model_validate(
+        {"version": 1, field: "  Gracias.\r\nVuelva pronto.\rAdiós\n\n "}
+    )
+
+    assert getattr(body, field) == "Gracias.\nVuelva pronto.\nAdiós"
+
+
+@pytest.mark.parametrize("field", MESSAGES)
+def test_a_message_has_at_most_500_characters_after_normalizing(field):
+    longest = "ñ" * 499 + "!"
+    assert (
+        getattr(
+            BusinessSettingsUpdate.model_validate({"version": 1, field: longest}), field
+        )
+        == longest
+    )
+    # CRLF counts as one character once normalized; the trimmed ends don't count.
+    crlf = "a\r\n" * 249 + "bc"
+    assert (
+        len(
+            getattr(
+                BusinessSettingsUpdate.model_validate({"version": 1, field: crlf}),
+                field,
+            )
+        )
+        == 500
+    )
+    assert (
+        getattr(
+            BusinessSettingsUpdate.model_validate(
+                {"version": 1, field: f"  {longest}  "}
+            ),
+            field,
+        )
+        == longest
+    )
+    assert errors_of({"version": 1, field: "x" * 501}) == [
+        ((field,), "string_too_long")
+    ]
+
+
+@pytest.mark.parametrize("field", MESSAGES)
+@pytest.mark.parametrize("char", ["\t", "\x00", "\x07", "\x1b", "\x7f", "\x85"])
+def test_a_control_character_other_than_lf_is_refused(field, char):
+    assert locs({"version": 1, field: f"Hola{char}mundo"}) == [(field,)]
+
+
+@pytest.mark.parametrize("field", MESSAGES)
+def test_template_syntax_is_plain_text(field):
+    body = BusinessSettingsUpdate.model_validate(
+        {"version": 1, field: "{{ 7*7 }} <b>x</b>"}
+    )
+
+    assert getattr(body, field) == "{{ 7*7 }} <b>x</b>"
+
+
+@pytest.mark.parametrize("field", MESSAGES)
+def test_a_message_must_be_text(field):
+    assert locs({"version": 1, field: 7}) == [(field,)]
+
+
+def test_the_message_limit_is_the_columns():
+    for name in MESSAGES:
+        column = settings_models.BusinessSettings.__table__.c[name]
+        assert column.type.length == settings_models.RECEIPT_MESSAGE_MAX_LENGTH == 500
+        assert column.nullable
 
 
 def test_the_contact_patterns_are_identitys():

@@ -70,6 +70,8 @@ Overview. "Creating issue" is the issue whose migration creates the table. Wheth
 
 Referenced tables of earlier domains: `families`, `family_students`, `family_guardians`, `guardians`, `students`, `users`, `class_sessions`, `class_session_participants`, `class_groups`, `group_enrollments`, `course_cohorts`, `cohort_enrollments`, `subjects`, `education_levels`, `business_settings`, `user_preferences`, `audit_events`.
 
+`business_settings` (#37) gains two columns in migration 0087 (#121 B1): `receipt_message_es` and `receipt_message_en`, `VARCHAR(500) NULL` (plain text; `NULL` = no message), each with CHECKs `ck_business_settings_receipt_message_<lang>_trimmed` (`= btrim(...)`) and `…_not_blank` (`~ '[^[:space:]]'`). Edited through `PATCH /api/v1/business-settings` (`settings.manage`, no reauthentication; audited as the existing `business_settings` `update`). New receipts freeze the message of their language into snapshot v2 (§3.21).
+
 ### 3.1 `billing_accounts`
 
 One billing account per family (E4). Created on first use (`billing.service.ensure_billing_account`, #90 E4): a `SELECT` by `family_id`, and if there is none an ORM insert inside a savepoint; a violation of `uq_billing_accounts_family_id` (a concurrent first use) rolls the savepoint back, with its audit event, and the row is read again. The table is `Audited`, and the audit guard refuses ORM `INSERT … ON CONFLICT` on audited tables.
@@ -107,7 +109,7 @@ The demo seed chooses its own date.
 
 ### 3.3 `payment_methods`
 
-Billing-owned reference table (E12), created and seeded with `cash`, `transfer` and `other` by #90's migration (0061), because `payments` and `refunds` reference it; #96 is its first user. Labels come from the client catalogs. M8-04 (#121) adds editing behind reauthentication. The table has no `id`; its audit events use a UUIDv5 of `code` as `record_id` (`PaymentMethod.id`).
+Billing-owned reference table (E12), created and seeded with `cash`, `transfer` and `other` by #90's migration (0061), because `payments` and `refunds` reference it; #96 is its first user. Labels come from the client catalogs. M8-04 (#121) adds editing behind reauthentication: activate and deactivate only (see below). The table has no `id`; its audit events use a UUIDv5 of `code` as `record_id` (`PaymentMethod.id`).
 
 | Column | Type | Null | Check / note |
 |---|---|---|---|
@@ -116,6 +118,8 @@ Billing-owned reference table (E12), created and seeded with `cash`, `transfer` 
 | `version` | INTEGER | no | |
 
 A method is never deleted once used (`payments` and `refunds` reference it with `RESTRICT`).
+
+**Editing (#121 A, E5).** `PATCH /api/v1/billing/payment-methods/{code}` `{is_active, version}` (`settings.manage` plus reauthentication `settings.payment_methods_or_time_zone`, only when `is_active` changes) through `billing.service.set_payment_method_active`. It locks every `payment_methods` row `FOR UPDATE` in `code` order before counting the active ones, so the last active method can't be deactivated (`409 payment_method_last_active`), even by two concurrent requests. There is no create, rename or delete. A deactivated method is refused by every recording path (payments, refunds, corrections, withdrawal settlements, payroll and expense payments: `payment_method_unavailable`); recorded rows keep it and still render it. Each change is one automatic `update` audit event.
 
 ### 3.4 `service_prices`
 
@@ -591,7 +595,7 @@ One receipt per payment, issued in the payment's transaction (E13). The row is a
 | `template_version` | SMALLINT | no | `> 0` |
 | `snapshot` | JSONB | no | center name, address and contact (business settings); family name and payer; amount and method; allocations as charge ids, amounts and structured labels |
 
-Later changes to settings, templates (M8-04) or allocations don't change the row. A reversed payment's receipt keeps its number; the PDF shows a "reversed" banner from the `payment_reversals` row. Payments recorded before #98 merges get no receipt (no backfill).
+Later changes to settings (including the receipt message, #121) or allocations don't change the row. A reversed payment's receipt keeps its number; the PDF shows a "reversed" banner from the `payment_reversals` row. Payments recorded before #98 merges get no receipt (no backfill).
 
 **Implemented by #98, migration 0068** (`billing.models.Receipt`, `app/modules/billing/receipts.py`):
 
@@ -599,6 +603,7 @@ Later changes to settings, templates (M8-04) or allocations don't change the row
 - **Issued** inside `billing.service.record_payment`, as its last step (P4): the snapshot inputs are read first, then `number_series` (§3.25), then the insert. A second receipt for one payment is refused.
 - **Snapshot v1** (`ReceiptSnapshotV1`, `"v": 1`, validated on write and on read; money as strings): `center {name, address, phone, email}` (business settings at issue); `family {id, name}`; `payer_name` (null → the PDF shows the family name); `payment {id, amount, received_on, method_code, reference}`; `issued_on` (the center-local date of `issued_at`); `allocations [{charge_id, student_id, student_name, kind, service_date, service_period_end, scheduled_minutes, description, amount}]` (the payment's allocations at that moment, oldest first); `totals {allocated_total, unallocated}`. Labels are built at render time from `kind`, the dates, the minutes and the manual description (ADR-0015 language-neutral data). No staff note, no actor names; no subject, group or product names (a later snapshot v2 may add them).
 - **Language (P5):** the stored `user_preferences.language` of the first receipt recipient (an active guardian profile with a login in `family_guardians`, by `family_guardians.created_at, id`) that has one; otherwise `es`. Every download renders in it.
+- **Snapshot v2 (#121 B4, migration 0087):** every receipt issued after #121 is `template_version = 2` with `ReceiptSnapshotV2` (`"v": 2`): v1's fields plus `message` (the business-settings `receipt_message_es` or `receipt_message_en` of the receipt's own language when it was issued, `null` when that language has none; no fallback). `parse_snapshot` reads both versions (discriminated on `v`); a snapshot `v` that differs from `template_version` is a `500`. v1 receipts render unchanged.
 - **Template versions (P8):** `template_version` picks `app/templates/receipts/v<N>/receipt.html` and the catalog keys `receipts.v<N>.*`; an unknown version is a `500`. A wording or layout change that would alter what an issued receipt says creates a new version and leaves the old one intact; styling-only fixes may edit the current one.
 - **No backfill:** payments recorded before 0068 keep `receipt: null` on the reads.
 

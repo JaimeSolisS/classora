@@ -145,6 +145,9 @@ the workflow ``app.workflows.billing_payments``). For other modules:
   :class:`NothingToAllocateError` (``409``).
 - The pure :func:`plan_allocations` and :func:`split_across_payments`.
 - :func:`payment_methods_list`, :func:`active_payment_method`,
+  :func:`set_payment_method_active` (#121: activate or deactivate, under a
+  lock of every method row; :class:`PaymentMethodNotFoundError`,
+  :class:`PaymentMethodLastActiveError`),
   :func:`list_payments`, :func:`get_payment` (the reads; the record policy
   and the guardian redaction live in the workflow) and the unexecuted
   :func:`payment_remainder_column` (the one remainder expression: #100's
@@ -222,7 +225,9 @@ For other modules:
   :func:`render_receipt_document` (CPU-bound: call them through
   ``anyio.to_thread.run_sync`` after the read transaction). Rendering uses
   the stored ``template_version`` (:func:`template_for`; unknown →
-  :class:`UnknownReceiptTemplateError`) and ``language``.
+  :class:`UnknownReceiptTemplateError`) and ``language``. New receipts are
+  template and snapshot v2, with the center's receipt message in their
+  language frozen in (#121 B4).
 
 **Schedule reconciliation** (#99; :mod:`~app.modules.billing.cancellation_rules`,
 :mod:`~app.modules.billing.reconciliation`; the workflow
@@ -448,6 +453,12 @@ from app.modules.billing.errors import (
 )
 from app.modules.billing.errors import PaymentHasRefundsError as PaymentHasRefundsError
 from app.modules.billing.errors import (
+    PaymentMethodLastActiveError as PaymentMethodLastActiveError,
+)
+from app.modules.billing.errors import (
+    PaymentMethodNotFoundError as PaymentMethodNotFoundError,
+)
+from app.modules.billing.errors import (
     PaymentMethodUnavailableError as PaymentMethodUnavailableError,
 )
 from app.modules.billing.errors import PaymentReversedError as PaymentReversedError
@@ -635,6 +646,9 @@ from app.modules.billing.payments import (
 from app.modules.billing.payments import payment_refunds as payment_refunds
 from app.modules.billing.payments import plan_allocations as plan_allocations
 from app.modules.billing.payments import record_payment as record_payment
+from app.modules.billing.payments import (
+    set_payment_method_active as set_payment_method_active,
+)
 from app.modules.billing.payments import (
     split_across_payments as split_across_payments,
 )

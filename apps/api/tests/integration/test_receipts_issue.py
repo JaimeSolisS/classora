@@ -15,10 +15,15 @@ C1-C7, D1-D3; E13, P4-P6).
 - D2: raw ``UPDATE``/``DELETE`` → SQLSTATE 42501.
 - D3: a reversal adds the "ANULADO" banner with its local date; the number
   and the row stay the same.
+- #121 B4/B5: new receipts are template and snapshot v2 with the business
+  settings' receipt message of their own language frozen in (no fallback to
+  the other language); a message change or clear affects only receipts
+  issued afterwards, and a v1 receipt renders as before.
 
-The D1 and D3 downloads render PDFs (WeasyPrint: Pango in the API image
+The D1, D3 and B5 downloads render PDFs (WeasyPrint: Pango in the API image
 and CI). The clock is frozen at noon on 2031-03-10 (center zone)."""
 
+import json
 import uuid
 from collections.abc import Iterator
 from typing import Any
@@ -31,7 +36,7 @@ from app.core.i18n import format_date
 from app.core.money import Money
 from app.modules.billing import service as billing
 from app.modules.billing.models import Payment
-from app.modules.billing.receipts import parse_snapshot
+from app.modules.billing.receipts import ReceiptSnapshotV2, parse_snapshot
 from app.modules.billing.schemas import AdjustmentDraft
 from app.modules.identity.permissions import FINANCE_STAFF, GUARDIAN
 from tests.conftest import FrozenClock, frozen_clock
@@ -103,7 +108,8 @@ def test_a_recorded_payment_has_exactly_one_receipt(
     assert body["receipt"] == {"id": str(row.id), "number": row.number}
     assert body["payment"]["receipt"] == body["receipt"]
     assert row.number == rs.receipt_number_text(2031, before + 1)
-    assert (row.language, row.template_version) == ("es", 1)
+    # #121 B4: new receipts are template version 2.
+    assert (row.language, row.template_version) == ("es", 2)
     assert row.issued_at == ps.NOW
     assert str(row.payment_id) == payment_id
     listed = get(client, staff, ps.account_path(fam, "/payments")).json()["items"]
@@ -204,7 +210,9 @@ def test_the_snapshot_holds_the_payment_as_it_was(module_seeded_url, client, sta
 
     snapshot = parse_snapshot(row.snapshot)
 
-    assert snapshot.v == 1
+    assert snapshot.v == 2
+    assert isinstance(snapshot, ReceiptSnapshotV2)
+    assert snapshot.message is None  # no receipt message set
     assert snapshot.center.model_dump() == {
         "name": center.center_name,
         "address": center.address,
@@ -481,3 +489,169 @@ def test_a_reversed_payment_shows_the_banner_and_keeps_its_number(
     assert compact(f"ANULADO el {format_date('es', local)}") in after
     assert compact(row.number) in after
     assert rs.receipt_of_payment(url, row.payment_id)._mapping == row._mapping
+
+
+# --- #121 B4/B5: the receipt message ------------------------------------------------
+
+
+def _set_messages(url: str, es: str | None, en: str | None) -> None:
+    run_sql(
+        url,
+        "UPDATE business_settings SET receipt_message_es = :es,"
+        " receipt_message_en = :en",
+        {"es": es, "en": en},
+    )
+
+
+@pytest.fixture
+def messages(module_seeded_url: str) -> Iterator[Any]:
+    """Sets the receipt messages for one test; clears them afterwards."""
+    yield lambda es, en: _set_messages(module_seeded_url, es, en)
+    _set_messages(module_seeded_url, None, None)
+
+
+def _message_of(url: str, payment_id: str) -> tuple[int, int, str | None]:
+    row = rs.receipt_of_payment(url, payment_id)
+    snapshot = parse_snapshot(row.snapshot)
+    assert isinstance(snapshot, ReceiptSnapshotV2)
+    return row.template_version, snapshot.v, snapshot.message
+
+
+def test_a_new_receipt_freezes_the_message_of_its_language(
+    module_seeded_url, client, staff, messages
+):
+    url = module_seeded_url
+    messages("Gracias por su pago.\nVuelva pronto.", "Thank you for your payment.")
+    spanish = _family_with(url, (_guardian_user(url, "es"), True))
+    english = _family_with(url, (_guardian_user(url, "en"), True))
+
+    es_body = created(ps.pay(client, staff, spanish, ps.payment_body("10.00", "none")))
+    en_body = created(ps.pay(client, staff, english, ps.payment_body("10.00", "none")))
+
+    assert _message_of(url, es_body["payment"]["id"]) == (
+        2,
+        2,
+        "Gracias por su pago.\nVuelva pronto.",
+    )
+    assert _message_of(url, en_body["payment"]["id"]) == (
+        2,
+        2,
+        "Thank you for your payment.",
+    )
+
+
+@pytest.mark.parametrize(
+    ("es", "en", "guardian", "expected"),
+    [
+        (None, "Thank you.", "es", None),
+        ("Gracias.", None, "en", None),
+        ("Gracias.", None, None, "Gracias."),  # no stored language: es
+    ],
+    ids=["es-receipt-only-en-message", "en-receipt-only-es-message", "default-es"],
+)
+def test_a_receipt_never_takes_the_other_languages_message(
+    module_seeded_url, client, staff, messages, es, en, guardian, expected
+):
+    url = module_seeded_url
+    messages(es, en)
+    fam = _family_with(url, (_guardian_user(url, guardian), True))
+
+    body = created(ps.pay(client, staff, fam, ps.payment_body("10.00", "none")))
+
+    assert _message_of(url, body["payment"]["id"])[2] == expected
+
+
+def test_only_later_receipts_print_a_changed_message(
+    module_seeded_url, client, staff, messages
+):
+    url = module_seeded_url
+
+    def pay_and_read() -> tuple[str, str]:
+        body = created(ps.pay(client, staff, fam, ps.payment_body("10.00", "none")))
+        receipt_id = body["receipt"]["id"]
+        return receipt_id, compact(_download_text(client, staff, fam, receipt_id))
+
+    fam, _ = ps.family(url)
+    messages("Mensaje A del centro", None)
+    first, first_text = pay_and_read()
+    assert compact("Mensaje A del centro") in first_text
+
+    messages("Mensaje B del centro", None)
+    second, second_text = pay_and_read()
+    first_after_b = compact(_download_text(client, staff, fam, first))
+
+    messages(None, None)
+    _third, third_text = pay_and_read()
+    first_after_clear = compact(_download_text(client, staff, fam, first))
+    second_after_clear = compact(_download_text(client, staff, fam, second))
+
+    assert first_after_b == first_after_clear == first_text
+    assert compact("Mensaje B") not in first_after_clear
+    assert compact("Mensaje B del centro") in second_text
+    assert second_after_clear == second_text
+    assert compact("Mensaje A") not in second_text
+    for old in ("Mensaje A", "Mensaje B"):
+        assert compact(old) not in third_text
+    assert compact("Este recibo no es un comprobante fiscal (CFDI).") in third_text
+
+
+def test_a_v1_receipt_renders_as_before_with_a_message_set(
+    module_seeded_url, client, staff, messages
+):
+    """A receipt issued before #121 (template and snapshot v1, inserted as
+    #98 wrote them) ignores the current message (B5)."""
+    url = module_seeded_url
+
+    async def _old(session: AsyncSession) -> tuple[uuid.UUID, dict[str, Any]]:
+        recorder = await factories.staff_user_id(session)
+        family_id, _ = await factories.family_with_students(session, 1)
+        account = await factories.billing_account(session, family_id)
+        paid = await factories.payment(session, account, "40.00", recorded_by=recorder)
+        return family_id, {
+            "id": paid.id,
+            "account": account,
+            "received_on": paid.received_on.isoformat(),
+            "method": paid.payment_method_code,
+        }
+
+    fam, paid = in_uow(url, _old)
+    [family] = run_sql(url, "SELECT name FROM families WHERE id = :f", {"f": fam})
+    snapshot = {
+        "v": 1,
+        "center": {
+            "name": "Centro Previo",
+            "address": None,
+            "phone": None,
+            "email": None,
+        },
+        "family": {"id": str(fam), "name": family.name},
+        "payer_name": None,
+        "payment": {
+            "id": str(paid["id"]),
+            "amount": "40.00",
+            "received_on": paid["received_on"],
+            "method_code": paid["method"],
+            "reference": None,
+        },
+        "issued_on": paid["received_on"],
+        "allocations": [],
+        "totals": {"allocated_total": "0.00", "unallocated": "40.00"},
+    }
+    [receipt] = run_sql(
+        url,
+        "INSERT INTO receipts (number, payment_id, billing_account_id, issued_at,"
+        " language, template_version, snapshot) VALUES ('R-2030-000121', :p, :a,"
+        " now(), 'es', 1, CAST(:s AS jsonb)) RETURNING id",
+        {"p": paid["id"], "a": paid["account"], "s": json.dumps(snapshot)},
+    )
+    before = compact(_download_text(client, staff, fam, str(receipt.id)))
+    messages("Mensaje nuevo del centro", "New center message")
+
+    after = compact(_download_text(client, staff, fam, str(receipt.id)))
+
+    assert after == before
+    assert compact("Mensaje nuevo") not in after
+    for expected in ("R-2030-000121", "Centro Previo", "$40.00"):
+        assert compact(expected) in after
+    assert compact("Este recibo no es un comprobante fiscal (CFDI).") in after
+    assert rs.receipt_of_payment(url, paid["id"]).template_version == 1

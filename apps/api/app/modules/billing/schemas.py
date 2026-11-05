@@ -1244,6 +1244,16 @@ def _lines_total(lines: list[AllocationLineBody] | None) -> Decimal:
     return sum((line.amount.amount for line in lines or ()), Decimal(0))
 
 
+class PaymentMethodUpdate(BaseModel):
+    """``PATCH /api/v1/billing/payment-methods/{code}`` (#121 A2): activate
+    or deactivate a method, with the ``version`` the caller loaded."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    is_active: bool
+    version: int = Field(ge=1)
+
+
 class PaymentCreate(BaseModel):
     """``POST /api/v1/families/{family_id}/billing-account/payments`` (#96
     C1, M5). ``amount`` above zero (``amount_not_positive``; ``money_*``);
@@ -1449,10 +1459,11 @@ class CreditAllocation:
 
 @dataclass(frozen=True)
 class PaymentMethodRow:
-    """A ``payment_methods`` row (#96 B6)."""
+    """A ``payment_methods`` row (#96 B6; ``version`` since #121 A1)."""
 
     code: str
     is_active: bool
+    version: int
 
 
 @dataclass(frozen=True)

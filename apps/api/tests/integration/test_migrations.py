@@ -72,13 +72,14 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0086"
+HEAD = "0087"
 FINANCE_TABLES_0083 = frozenset({"expense_categories", "vendors"})
 EXPENSE_TABLES_0084 = frozenset(
     {"expenses", "expense_payments", "expense_payment_reversals", "expense_adjustments"}
 )
 TEMPLATES_0085 = "expense_templates"
 OPT_OUTS_0086 = "notification_opt_outs"
+MESSAGES_0087 = ("receipt_message_es", "receipt_message_en")
 PAY_RULES = "session_pay_rules"
 LINES = "payroll_lines"
 SALARY_LINE_COLUMNS = frozenset(
@@ -2270,6 +2271,9 @@ def test_business_settings_columns_and_constraints(fresh_database_url):
             64,
             "'America/Mexico_City'::character varying",
         ),
+        # #121 B1 (0087).
+        "receipt_message_es": ("character varying", "YES", 500, None),
+        "receipt_message_en": ("character varying", "YES", 500, None),
     }
     constraints = _constraints(fresh_database_url, "business_settings")
     assert set(constraints) == {
@@ -2281,6 +2285,7 @@ def test_business_settings_columns_and_constraints(fresh_database_url):
         "ck_business_settings_email_format",
         "ck_business_settings_phone_format",
         "ck_business_settings_address_trimmed",
+        *CHECKS_0087,
     }
     assert set(_indexes(fresh_database_url, "business_settings")) == {
         "pk_business_settings",
@@ -4914,9 +4919,24 @@ def _of_0086(diff: Any) -> bool:
     return diff[0] == "add_index" and diff[1].table.name == OPT_OUTS_0086
 
 
+def _of_0087(diff: Any) -> bool:
+    """A metadata difference that revision 0087 adds: the two receipt-message
+    columns of ``business_settings`` (#121 B1). CHECKs are not compared."""
+    return bool(
+        diff[0] == "add_column"
+        and diff[2] == "business_settings"
+        and diff[3].name in MESSAGES_0087
+    )
+
+
+def _of_0086_on(diff: Any) -> bool:
+    """A metadata difference that revision 0086 or a later one adds."""
+    return _of_0086(diff) or _of_0087(diff)
+
+
 def _of_0085_on(diff: Any) -> bool:
     """A metadata difference that revision 0085 or a later one adds."""
-    return _of_0085(diff) or _of_0086(diff)
+    return _of_0085(diff) or _of_0086_on(diff)
 
 
 def _of_0084_on(diff: Any) -> bool:
@@ -16654,7 +16674,7 @@ def test_0085_adds_the_table_and_columns_and_downgrade_restores_0084(
     command.upgrade(config, "0085")
 
     assert version_nums(dsn) == ["0085"]
-    assert [d for d in metadata_diff(dsn) if not _of_0086(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0086_on(d)] == []
     assert public_tables(dsn) - tables == {TEMPLATES_0085}
     constraints = _constraints(dsn, TEMPLATES_0085)
     assert set(constraints) == TEMPLATE_CONSTRAINTS_0085
@@ -16900,7 +16920,7 @@ def test_0086_adds_the_table_and_downgrade_restores_0085(fresh_database_url):
     command.upgrade(config, "0086")
 
     assert version_nums(dsn) == ["0086"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0087(d)] == []
     assert public_tables(dsn) - tables == {OPT_OUTS_0086}
     assert run_sql(dsn, f"SELECT count(*) AS n FROM {OPT_OUTS_0086}")[0].n == 0  # noqa: S608
 
@@ -16908,7 +16928,7 @@ def test_0086_adds_the_table_and_downgrade_restores_0085(fresh_database_url):
 
     assert version_nums(dsn) == ["0085"]
     assert public_tables(dsn) == tables
-    assert [d for d in metadata_diff(dsn) if not _of_0086(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0086_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -16986,3 +17006,90 @@ def test_0086_one_row_per_user_and_type_and_the_user_restricts(fresh_database_ur
     assert getattr(duplicate.value.orig, "sqlstate", None) == "23505"
     assert getattr(restricted.value.orig, "sqlstate", None) == "23001"  # RESTRICT
     assert getattr(unknown.value.orig, "sqlstate", None) == "23503"
+
+
+# --- 0087: the receipt message (#121 B1) -----
+
+CHECKS_0087 = {
+    f"ck_business_settings_{column}_{rule}"
+    for column in MESSAGES_0087
+    for rule in ("trimmed", "not_blank")
+}
+
+
+def test_0087_adds_the_message_columns_and_downgrade_restores_0086(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0086")
+    columns = _columns(dsn, "business_settings")
+    constraints = set(_constraints(dsn, "business_settings"))
+
+    command.upgrade(config, "0087")
+
+    assert version_nums(dsn) == ["0087"]
+    assert metadata_diff(dsn) == []
+    added = _columns(dsn, "business_settings")
+    assert {k: v for k, v in added.items() if k not in columns} == {
+        "receipt_message_es": ("character varying", "YES", 500, None),
+        "receipt_message_en": ("character varying", "YES", 500, None),
+    }
+    after = _constraints(dsn, "business_settings")
+    assert set(after) - constraints == CHECKS_0087
+    for column in MESSAGES_0087:
+        trimmed = after[f"ck_business_settings_{column}_trimmed"]
+        assert f"btrim(({column})::text)" in trimmed
+        assert "[^[:space:]]" in after[f"ck_business_settings_{column}_not_blank"]
+    [row] = run_sql(
+        dsn, "SELECT receipt_message_es, receipt_message_en FROM business_settings"
+    )
+    assert (row.receipt_message_es, row.receipt_message_en) == (None, None)
+
+    command.downgrade(config, "0086")
+
+    assert version_nums(dsn) == ["0086"]
+    assert _columns(dsn, "business_settings") == columns
+    assert set(_constraints(dsn, "business_settings")) == constraints
+    assert [d for d in metadata_diff(dsn) if not _of_0087(d)] == []
+
+    command.upgrade(config, "head")
+
+    assert metadata_diff(dsn) == []
+
+
+@pytest.mark.parametrize("column", MESSAGES_0087)
+@pytest.mark.parametrize(
+    ("value", "sqlstate"),
+    [
+        (" Hola", "23514"),
+        ("Hola ", "23514"),
+        ("   ", "23514"),
+        ("", "23514"),
+        ("x" * 501, "22001"),
+    ],
+    ids=["leading_space", "trailing_space", "blank", "empty", "too_long"],
+)
+def test_0087_messages_are_checked(fresh_database_url, column, value, sqlstate):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    with pytest.raises(DBAPIError) as caught:
+        run_sql(dsn, f"UPDATE business_settings SET {column} = :v", {"v": value})  # noqa: S608
+
+    assert getattr(caught.value.orig, "sqlstate", None) == sqlstate
+
+
+@pytest.mark.parametrize("column", MESSAGES_0087)
+def test_0087_a_message_may_be_null_or_multiline_text(fresh_database_url, column):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    prefix = "Gracias por su pago.\nVuelva pronto."
+    text = prefix + "x" * (500 - len(prefix))
+
+    run_sql(dsn, f"UPDATE business_settings SET {column} = :v", {"v": text})  # noqa: S608
+    run_sql(dsn, f"UPDATE business_settings SET {column} = NULL")  # noqa: S608
+
+    [row] = run_sql(dsn, f"SELECT {column} AS message FROM business_settings")  # noqa: S608
+    assert row.message is None
+    assert len(text) == 500
