@@ -378,8 +378,26 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   (for example "Monday opening time"). A closing time not after the opening
   time is an error on the closing field. "Saved." is a polite status.
 - **`SettingsTabs`** (`features/settings`, #61): the Settings area's tab
-  bar, the `CatalogTabs` pattern ("General", "Scheduling policies"); M8-04
-  adds its groups as more tabs.
+  bar, the `CatalogTabs` pattern, with three groups: "General",
+  "Scheduling policies" and "Payments and receipts" (M8-04b). Settings that
+  live in their own areas (academic periods, prices, billing settings,
+  packages) are linked from General's **`MoreSettingsLinks`** ("More
+  settings"): each link shows only when its route would open for the user
+  (`canAccess`), with a one-line description as its `aria-describedby`; with
+  no link visible the section isn't rendered.
+- **`PaymentMethodsCard`** (`features/settings`, M8-04b): a bordered card
+  (`h2` region) listing each payment method with a `CatalogStatusBadge` and
+  one outline button whose accessible name names the method ("Deactivate
+  Cash"). Deactivating asks first in a `ConfirmDialog`; the request may then
+  open the reauthentication dialog through `apiCall`. While a request runs
+  every button refuses clicks with `aria-disabled` (focus stays put) and the
+  pressed one is `aria-busy`. The last active method's button is `disabled`,
+  with the reason as its description. Results are a polite status.
+- **`ReceiptMessageCard`** (`features/settings`, M8-04b): one textarea per
+  receipt language, each described by the card's help text and a live
+  character count ("12 of 500 characters", destructive past the limit).
+  Save stays disabled until a message differs from the stored one (compared
+  as the API normalizes it: trimmed, CRLF as LF).
 - **`SchedulingPolicyForm`** (`features/settings`, #61): number inputs whose
   labels carry the unit ("Cancellation notice (hours)"), three makeup
   checkboxes and a "Takes effect" radio group ("Immediately" or "From

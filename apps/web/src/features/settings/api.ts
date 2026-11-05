@@ -59,3 +59,23 @@ export async function deletePolicy(policyId: string): Promise<void> {
     }),
   );
 }
+
+// The payment method calls (#121 A, M8-04b B): the list is the billing one
+// (PAYMENT_METHODS_KEY, shared by the payment, refund, withdrawal, payroll
+// and expense dialogs); activating or deactivating sends `version`. A
+// change needs a recent password confirmation: apiCall opens the #28 dialog
+// on 403 reauth_required and retries once.
+
+export type PaymentMethodUpdate = components['schemas']['PaymentMethodUpdate'];
+
+export function updatePaymentMethod(
+  code: string,
+  body: PaymentMethodUpdate,
+): Promise<components['schemas']['PaymentMethodItem']> {
+  return apiCall(() =>
+    api.PATCH('/api/v1/billing/payment-methods/{code}', {
+      params: { path: { code } },
+      body,
+    }),
+  );
+}

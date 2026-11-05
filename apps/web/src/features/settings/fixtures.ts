@@ -1,3 +1,4 @@
+import type { PaymentMethod } from '@/features/billing/accounts/api';
 import type {
   BusinessSettings,
   OperatingHoursItem,
@@ -39,6 +40,35 @@ export const SETTINGS_ELSEWHERE: BusinessSettings = {
   time_zone: 'America/Bogota',
   version: 4,
 };
+
+/** Both receipt messages set (M8-04b C). */
+export const SETTINGS_WITH_MESSAGES: BusinessSettings = {
+  ...SETTINGS,
+  receipt_message_es: 'Gracias por su pago.\nHorario de caja: 9 a 14 h.',
+  receipt_message_en: 'Thank you for your payment.',
+  version: 3,
+};
+
+// Payment method lists (M8-04b B): the three seeded methods by code.
+
+export const METHODS_ALL_ACTIVE: PaymentMethod[] = [
+  { code: 'cash', is_active: true, version: 1 },
+  { code: 'other', is_active: true, version: 1 },
+  { code: 'transfer', is_active: true, version: 1 },
+];
+
+export const METHODS_ONE_INACTIVE: PaymentMethod[] = [
+  { code: 'cash', is_active: true, version: 1 },
+  { code: 'other', is_active: false, version: 2 },
+  { code: 'transfer', is_active: true, version: 1 },
+];
+
+/** Only cash is active: its button is disabled. */
+export const METHODS_LAST_ACTIVE: PaymentMethod[] = [
+  { code: 'cash', is_active: true, version: 1 },
+  { code: 'other', is_active: false, version: 2 },
+  { code: 'transfer', is_active: false, version: 2 },
+];
 
 // Scheduling policy bodies (#61): version 1 of migration 0030, an upcoming
 // version with a 12-hour cancellation notice and an earlier one.

@@ -333,6 +333,9 @@ const API_CODES = [
   'insufficient_account_credit',
   'nothing_to_allocate',
   'payment_method_unavailable',
+  // M8-04b B4: payment-method editing (#121 A2).
+  'payment_method_last_active',
+  'payment_method_not_found',
   'received_on_in_future',
   // #382 E1: due dates (#97).
   'charge_settled',

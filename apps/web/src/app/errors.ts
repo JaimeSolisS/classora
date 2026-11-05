@@ -394,6 +394,9 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['insufficient_account_credit', 'insufficient_account_credit'],
   ['nothing_to_allocate', 'nothing_to_allocate'],
   ['payment_method_unavailable', 'payment_method_unavailable'],
+  // Payment-method editing (#121 A2; the page is M8-04b B4).
+  ['payment_method_last_active', 'payment_method_last_active'],
+  ['payment_method_not_found', 'payment_method_not_found'],
   ['received_on_in_future', 'received_on_in_future'],
   // Due dates (#97, #382 E1).
   ['charge_settled', 'charge_settled'],
