@@ -1,9 +1,11 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { Input } from '@/components/ui/input';
+import { useCan } from '@/features/auth/useSession';
+import { LINK_BUTTON_CLASS } from '@/features/imports/styles';
 import { USER_STATES } from '@/features/users/admin/api';
 import { fetchTutors, tutorsListKey } from './api';
 import { listParams, SEARCH_MAX_LENGTH } from './rules';
@@ -23,6 +25,7 @@ const SELECT_CLASS =
 export function TutorsPage() {
   const { t } = useTranslation();
   useDocumentTitle(t('tutors.title'));
+  const canInvite = useCan('user.invite');
   const id = useId();
   const ids = {
     title: `${id}-title`,
@@ -103,9 +106,17 @@ export function TutorsPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <h1 id={ids.title} className="text-2xl font-semibold">
-        {t('tutors.title')}
-      </h1>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 id={ids.title} className="text-2xl font-semibold">
+          {t('tutors.title')}
+        </h1>
+        {canInvite ? (
+          // M8-05b A2: the CSV import of tutors (pending invitations).
+          <Link to="/imports?kind=tutors" className={LINK_BUTTON_CLASS}>
+            {t('imports.importLink')}
+          </Link>
+        ) : null}
+      </div>
       <div
         role="search"
         className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"

@@ -51,6 +51,23 @@ type Common = {
     expenses: string;
     // M7-14b E3: the financial reports.
     reports: string;
+    // M8-05b E4: CSV imports.
+    imports: string;
+  };
+  // M8-05b E4: the imports page and report.
+  imports: {
+    status: Record<'staged' | 'committing' | 'committed', string>;
+    rowStatus: Record<'ready' | 'created', string>;
+    kinds: Record<'students' | 'tutors', string>;
+    form: Record<'kind' | 'file' | 'submit', string>;
+    detail: Record<
+      | 'commit_other'
+      | 'commitConfirm'
+      | 'commitTitle_other'
+      | 'doneAnnouncement',
+      string
+    >;
+    rows: Record<'openStudent' | 'lineNumber', string>;
   };
   // M7-11b F3: expense categories and vendors.
   finance: {

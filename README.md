@@ -456,6 +456,16 @@ unless a bullet says otherwise.
   any range up to a year, plus today's receivables, payables and deferred
   revenue (Reports).
 
+**Imports**
+
+- CSV import of students and tutors with a validation report and an explicit
+  commit: staff and academic coordinators (students only) choose a CSV saved
+  as UTF-8 (or download a template), review each row's errors, warnings and
+  duplicates, then import the valid rows in the background and follow the
+  result; past imports are listed with their outcome (Imports). Imported
+  tutors get pending invitations, whose links come from the Invitations page.
+  The file itself is never stored.
+
 **Notifications**
 
 - A bell in the header shows how many notifications are unread and opens a

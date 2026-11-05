@@ -121,9 +121,15 @@ export function StudentsPage() {
           {t('students.title')}
         </h1>
         {canManage ? (
-          <Link to="/students/new" className={LINK_BUTTON_CLASS}>
-            {t('students.add')}
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {/* M8-05b A2: the CSV import of students. */}
+            <Link to="/imports?kind=students" className={LINK_BUTTON_CLASS}>
+              {t('imports.importLink')}
+            </Link>
+            <Link to="/students/new" className={LINK_BUTTON_CLASS}>
+              {t('students.add')}
+            </Link>
+          </div>
         ) : null}
       </div>
       <div

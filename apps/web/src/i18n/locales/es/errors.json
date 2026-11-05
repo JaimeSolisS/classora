@@ -483,5 +483,11 @@
   "payroll_payment_already_reversed": "Este pago ya se había revertido. Revisa la lista de pagos.",
   "notification_type_unknown": "Ese tipo de notificación no está en tu lista. Recarga la página.",
   "notification_type_mandatory": "Esa notificación es obligatoria y no se puede desactivar.",
-  "notification_type_duplicate": "Un tipo de notificación aparece dos veces en el cambio."
+  "notification_type_duplicate": "Un tipo de notificación aparece dos veces en el cambio.",
+  "import_too_large": "El archivo es demasiado grande (máximo 2 MB).",
+  "import_file_invalid": "No se pudo leer el archivo CSV.",
+  "import_too_many_rows": "El archivo tiene demasiadas filas.",
+  "import_not_committable": "Esta importación ya no se puede importar.",
+  "import_nothing_to_commit": "No hay filas listas para importar.",
+  "import_not_discardable": "Esta importación ya no se puede descartar."
 }
