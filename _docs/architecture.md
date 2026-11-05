@@ -758,6 +758,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - A worker parses the rows into a staging table and produces a per-row validation report.
   - An admin reviews the report and **commits** it. The commit runs as one transaction per batch, with natural-key deduplication.
   - Financial imports post as ordinary ledger entries with an import reference.
+- **Implementation note (M8-05, #122):** CSV only (UTF-8, `,` or `;`; `.xlsx` waits for an approved spreadsheet dependency). The browser sends the file's text in a JSON body (at most 2 MiB); the API parses and validates it **in the request** (no worker step, no stored file) into `import_rows` staging rows with a per-row report, in a fixed number of statements. `POST …/commit` marks the job `committing` and queues `administration:run_imports` (also every 15 minutes), which commits the ready rows in batches of 100, one transaction per batch, as the committer, under a per-kind advisory lock, re-checking natural-key duplicates per batch; a failed batch rolls back and the job can be retried. Staged values are cleared on commit and deleted on discard or 7-day expiry. Kinds (`students`, `tutors`; #123 schedules and opening balances) live in their owning modules and register with `administration.service.register_import_kind`. See `_docs/api.md` Imports and `_docs/data-model.md` §20.
 
 #### ISSUE-L2 — Retention vs immutability (A; spec §14, §18.9)
 - **Resolution — PROPOSED:**

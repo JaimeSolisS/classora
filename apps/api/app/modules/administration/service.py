@@ -38,6 +38,12 @@
   :mod:`app.modules.administration.policy_versions` and
   :mod:`app.modules.administration.scheduling_policy`. Consumers import these
   names from here, never the model.
+- The import pipeline's kinds registry (#122 A1, A2): other modules
+  implement :class:`ImportKind` (with :class:`ImportColumn`,
+  :class:`RowResult`, :class:`RowIssue`, :class:`ImportRowRef` and
+  :class:`CommitOutcome`) and the composition roots register it with
+  :func:`register_import_kind`; implemented in
+  :mod:`app.modules.administration.imports`.
 - Reading the audit log, below.
 
 **Audit log** (spec §9; architecture §4.4 cursor pagination).
@@ -157,6 +163,33 @@ from app.modules.administration.approvals import (
 )
 from app.modules.administration.errors import (
     ApprovalTransitionInvalidError as ApprovalTransitionInvalidError,
+)
+from app.modules.administration.imports.registry import (
+    DEFAULT_BATCH_SIZE as DEFAULT_BATCH_SIZE,
+)
+from app.modules.administration.imports.registry import (
+    CommitOutcome as CommitOutcome,
+)
+from app.modules.administration.imports.registry import (
+    ImportColumn as ImportColumn,
+)
+from app.modules.administration.imports.registry import (
+    ImportKind as ImportKind,
+)
+from app.modules.administration.imports.registry import (
+    ImportRowRef as ImportRowRef,
+)
+from app.modules.administration.imports.registry import (
+    RowIssue as RowIssue,
+)
+from app.modules.administration.imports.registry import (
+    RowResult as RowResult,
+)
+from app.modules.administration.imports.registry import (
+    register_import_kind as register_import_kind,
+)
+from app.modules.administration.imports.registry import (
+    registered_import_kinds as registered_import_kinds,
 )
 from app.modules.administration.notification_preferences import (
     list_notification_preferences as list_notification_preferences,

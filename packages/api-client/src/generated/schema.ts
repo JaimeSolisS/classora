@@ -795,6 +795,116 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Imports
+         * @description The imports of the kinds the caller may import, newest first.
+         */
+        get: operations["list_imports_api_v1_imports_get"];
+        put?: never;
+        /**
+         * Create Import
+         * @description Stage a CSV: every row gets `ready`, `duplicate` or `error` with codes,
+         *     and nothing is created until the import is committed. The file's text is
+         *     never stored. `403` when the caller may not import that kind.
+         */
+        post: operations["create_import_api_v1_imports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/{import_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Import
+         * @description One import with its counts.
+         */
+        get: operations["get_import_api_v1_imports__import_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/{import_id}/rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Import Rows
+         * @description An import's rows in file order, with their codes. `values` is shown
+         *     while the import is staged, committing or failed, and `null` after.
+         */
+        get: operations["list_import_rows_api_v1_imports__import_id__rows_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/{import_id}/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Commit Import
+         * @description Import the ready rows. The work runs in the background in batches of
+         *     rows; poll the import until it is `committed` or `failed`. A failed
+         *     import can be committed again: it resumes with the rows left.
+         */
+        post: operations["commit_import_api_v1_imports__import_id__commit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/{import_id}/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discard Import
+         * @description Drop a staged or failed import and its staged rows. Records a failed
+         *     import already created stay.
+         */
+        post: operations["discard_import_api_v1_imports__import_id__discard_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications": {
         parameters: {
             query?: never;
@@ -14798,6 +14908,108 @@ export interface components {
             entry_ids: string[];
         };
         /**
+         * ImportCounts
+         * @description The rows by status. ``ready`` counts rows still waiting to be
+         *     imported; ``created``, ``skipped`` and ``failed`` the commit's
+         *     outcomes.
+         */
+        ImportCounts: {
+            /** Total */
+            total: number;
+            /** Ready */
+            ready: number;
+            /** Duplicate */
+            duplicate: number;
+            /** Error */
+            error: number;
+            /** Created */
+            created: number;
+            /** Skipped */
+            skipped: number;
+            /** Failed */
+            failed: number;
+        };
+        /**
+         * ImportJobDetail
+         * @description One import job. ``expires_at`` is set while the job is ``staged`` or
+         *     ``failed``: its last change plus 7 days, when it expires with its staged
+         *     rows.
+         */
+        ImportJobDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            status: components["schemas"]["ImportJobStatus"];
+            /** File Name */
+            file_name: string | null;
+            /**
+             * Ignored Columns
+             * @description Header names the kind doesn't read (lower case).
+             */
+            ignored_columns: string[];
+            counts: components["schemas"]["ImportCounts"];
+            created_by: components["schemas"]["AccountName"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            committed_by: components["schemas"]["AccountName"] | null;
+            /** Committed At */
+            committed_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /** Version */
+            version: number;
+        };
+        /** @enum {string} */
+        ImportJobStatus: "staged" | "committing" | "committed" | "failed" | "discarded" | "expired";
+        /**
+         * ImportRowIssue
+         * @description An error or warning: the column (``null`` for the whole row) and a
+         *     stable code. Never a value.
+         */
+        ImportRowIssue: {
+            /** Column */
+            column: string | null;
+            /** Code */
+            code: string;
+        };
+        /**
+         * ImportRowItem
+         * @description One staged row, by its file line. ``values`` holds the cells of the
+         *     kind's columns while the job is open; ``null`` after commit.
+         */
+        ImportRowItem: {
+            /** Row Number */
+            row_number: number;
+            status: components["schemas"]["ImportRowStatus"];
+            /** Values */
+            values: {
+                [key: string]: string;
+            } | null;
+            /** Errors */
+            errors: components["schemas"]["ImportRowIssue"][];
+            /** Warnings */
+            warnings: components["schemas"]["ImportRowIssue"][];
+            /** Record Id */
+            record_id: string | null;
+        };
+        /** @enum {string} */
+        ImportRowStatus: "ready" | "duplicate" | "error" | "created" | "skipped" | "failed";
+        /**
+         * ImportVersion
+         * @description The job version the caller loaded (commit and discard).
+         */
+        ImportVersion: {
+            /** Version */
+            version: number;
+        };
+        /**
          * InvitationCreate
          * @description Invite one person for one role (``POST /api/v1/invitations``).
          */
@@ -15875,6 +16087,28 @@ export interface components {
         OffsetPage_GuardianListItem_: {
             /** Items */
             items: components["schemas"]["GuardianListItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** OffsetPage[ImportJobDetail] */
+        OffsetPage_ImportJobDetail_: {
+            /** Items */
+            items: components["schemas"]["ImportJobDetail"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** OffsetPage[ImportRowItem] */
+        OffsetPage_ImportRowItem_: {
+            /** Items */
+            items: components["schemas"]["ImportRowItem"][];
             /** Total */
             total: number;
             /** Limit */
@@ -25069,6 +25303,396 @@ export interface operations {
                 };
             };
             /** @description The request changed since it was read (version_conflict), or it is approved, rejected or cancelled (approval_request_closed). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_imports_api_v1_imports_get: {
+        parameters: {
+            query?: {
+                kind?: string | null;
+                status?: components["schemas"]["ImportJobStatus"] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_ImportJobDetail_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    create_import_api_v1_imports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Kind
+                     * @description A registered import kind: students or tutors.
+                     */
+                    kind: string;
+                    /**
+                     * File Name
+                     * @description The file's name, for the history (optional).
+                     */
+                    file_name?: string | null;
+                    /**
+                     * Csv
+                     * @description The file's text. The first line is the header.
+                     */
+                    csv: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportJobDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The body is over 2 MiB (import_too_large; details.max_bytes). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_import_api_v1_imports__import_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                import_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportJobDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such import, or one of a kind the caller may not import (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_import_rows_api_v1_imports__import_id__rows_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["ImportRowStatus"] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                import_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_ImportRowItem_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such import, or one of a kind the caller may not import (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    commit_import_api_v1_imports__import_id__commit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                import_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportVersion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportJobDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such import, or one of a kind the caller may not import (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The import changed since it was loaded (version_conflict); reload and retry; the import is not staged or failed (import_not_committable). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    discard_import_api_v1_imports__import_id__discard_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                import_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportVersion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportJobDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such import, or one of a kind the caller may not import (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The import changed since it was loaded (version_conflict); reload and retry; the import is not staged or failed (import_not_discardable). */
             409: {
                 headers: {
                     [name: string]: unknown;

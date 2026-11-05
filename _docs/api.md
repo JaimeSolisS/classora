@@ -53,7 +53,7 @@ architecture §4.3 step 7); implemented by M1-09 in `apps/api/app/core/errors.py
 | `detail`     | no     | A fixed, safe sentence. Never built from submitted values. |
 | `errors`     | no     | Field errors (422): a list of `{path, code, message}`. |
 | `conflicts`  | no     | Scheduling conflicts (`409 scheduling_conflict`, ADR-0005): a list of `{code, severity, details}`, `severity` `hard` or `soft` (see Class sessions). |
-| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10), `already_enrolled` `{enrollment_id}` (M4-11); `closeout_attendance_incomplete` `{missing_student_ids: [ids]}` (a list of ids, M5-10) and `session_not_closable` `{state}` (M5-10); `closeout_review_route_required` `{review_path}` (M5-11); `progress_report_exists` `{report_id}` and `progress_report_review_route_required` `{review_path}` (M5-16); `progress_report_schedule_exists` `{schedule_id}` (M5-16c); `service_price_exists` `{service_price_id}` (M6-04); `makeup_already_scheduled` `{class_session_id}` (M7-04a). Never record data. |
+| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10), `already_enrolled` `{enrollment_id}` (M4-11); `closeout_attendance_incomplete` `{missing_student_ids: [ids]}` (a list of ids, M5-10) and `session_not_closable` `{state}` (M5-10); `closeout_review_route_required` `{review_path}` (M5-11); `progress_report_exists` `{report_id}` and `progress_report_review_route_required` `{review_path}` (M5-16); `progress_report_schedule_exists` `{schedule_id}` (M5-16c); `service_price_exists` `{service_price_id}` (M6-04); `makeup_already_scheduled` `{class_session_id}` (M7-04a); `import_too_large` `{max_bytes}`, `import_file_invalid` `{reason, line?, columns?, max?}` and `import_too_many_rows` `{max}` (M8-05). Never record data. |
 
 - A field error's `path` is the location as a list of strings and integers
   (for example `["body", "items", 0, "amount"]`), `code` is the Pydantic error
@@ -336,6 +336,12 @@ Codes in use today:
 | `expense_template_starts_on_invalid` | 422 | A template's `starts_on` is more than 31 days before or 366 days after the center's today; the field error is on `["body","starts_on"]`. |
 | `expense_template_ends_on_invalid` | 422 | A template's `ends_on` is before `starts_on` or before a period it already generated; the field error is on `["body","ends_on"]`. |
 | `expense_category_in_use` / `vendor_in_use` | 409 | Deactivating an expense category or vendor that an active, not ended recurring template uses. `details.template_count` only (see Expense categories and vendors). |
+| `import_too_large` | 413 | `POST /api/v1/imports` with a body over 2 MiB (by `Content-Length` or while it streams). `details.max_bytes` (see Imports). |
+| `import_file_invalid` | 422 | The CSV of `POST /api/v1/imports` can't be read: `details.reason` is `encoding`, `empty`, `malformed` (with `details.line`), `duplicate_column`, `missing_columns` (with `details.columns`, the kind's required columns that are absent) or `too_many_columns` (with `details.max`). No job is created; never a cell value (see Imports). |
+| `import_too_many_rows` | 422 | The CSV has more than 1,000 data rows; `details.max` (see Imports). |
+| `import_not_committable` | 409 | Committing an import that isn't `staged` or `failed` (see Imports). |
+| `import_nothing_to_commit` | 422 | Committing an import with no `ready` row (see Imports). |
+| `import_not_discardable` | 409 | Discarding an import that isn't `staged` or `failed` (see Imports). |
 | `report_range_invalid` | 422 | A financial report range with `from` after `to`, `to` after the center's today (field error at `["query","to"]`), or `to − from` of 366 days or more (at `["query","from"]`) (see Financial reports). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
@@ -1392,6 +1398,119 @@ operating hours and the **center time zone**.
   fields; `operating_hours` `create`/`update`/`delete` per weekday. An
   hours-only change writes only `operating_hours` events. `403`, `409`,
   `422` and a body that changes nothing write no event.
+
+### Imports
+
+Implemented by M8-05 (#122; spec §9 imports; architecture ISSUE-L1) in
+`apps/api/app/modules/administration/imports/`. An administrator imports
+records from a CSV: the API parses it into a per-row report, the admin
+reviews it and commits it explicitly, and a worker creates the records in
+batches. **No file is stored** (owner decision 2026-10-21): the browser
+reads the file and sends its text in a JSON body; the parsed values live in
+staging rows only while the import is open.
+
+| Route | Access | Notes |
+| ----- | ------ | ----- |
+| `POST /api/v1/imports` | `authenticated()` + may import some kind | Body `{kind, file_name?, csv}` (`application/json`, at most 2 MiB). `201` with `ImportJobDetail` (`status: "staged"`). |
+| `GET /api/v1/imports` | same | `?kind=&status=&limit=&offset=`. The jobs of the kinds the caller may import, newest first. |
+| `GET /api/v1/imports/{import_id}` | same | `ImportJobDetail`. |
+| `GET /api/v1/imports/{import_id}/rows` | same | `?status=&limit=&offset=`. `ImportRowItem`s in file order. |
+| `POST /api/v1/imports/{import_id}/commit` | same | Body `{version}`. `202` with `ImportJobDetail` (`status: "committing"`). |
+| `POST /api/v1/imports/{import_id}/discard` | same | Body `{version}`. `200` with `ImportJobDetail` (`status: "discarded"`). |
+
+- **Kinds and who may import them** (#122 E5; no import permission of its
+  own): `students` needs `student.manage` (Owner, Administrator, Academic
+  coordinator); `tutors` needs `user.invite` and the authority to assign
+  `tutor` (Owner, Administrator). A caller who may import no kind gets `403
+  permission_denied` on every route. A job of a kind the caller may not
+  import is `404 not_found`, the same as an unknown id, and the list leaves
+  it out. Modules register more kinds with
+  `administration.service.register_import_kind` (#123: schedules and
+  opening balances).
+- **Body** (`ImportJobCreate`, `extra="forbid"`): `kind` (a registered
+  code), `file_name` (optional, trimmed, at most 255 characters, for the
+  history) and `csv` (the file's text). The route reads the body itself, so
+  its size is capped before anything is parsed; OpenAPI documents the body.
+- **Create order:** `401` → `403 csrf_failed` → `403
+  privacy_notice_required` → `403 permission_denied` (no kind) → `413
+  import_too_large` (over 2 MiB, by `Content-Length` and again while the body
+  streams) → `422 validation_error` (an unknown `kind` is a field error on
+  `["body","kind"]`, code `import_kind_unknown`) → `403 permission_denied`
+  (not that kind) → `422 import_file_invalid` / `import_too_many_rows` →
+  `201`. A refused file creates nothing.
+- **CSV:** UTF-8 (a leading BOM is dropped; text with a replacement
+  character, a lone surrogate or a NUL is `encoding`: save from Excel as
+  "CSV UTF-8"). The delimiter is `;` when the header line has more `;` than
+  `,`, else `,`; quotes follow RFC 4180. Header names are matched trimmed and
+  case-insensitive; unknown ones are ignored and listed in
+  `ignored_columns`. Blank lines are skipped. At most 1,000 data rows and 30
+  columns; a cell over 1,000 characters after trimming is the row error
+  `too_long`. A row's `row_number` is the file line it starts on (the header
+  is line 1). `.xlsx` is not accepted (#122 E2).
+- **Row report:** each row is `ready`, `duplicate` or `error`, with `errors`
+  and `warnings` as `[{column, code}]` (`column` `null` for the whole row).
+  Codes: `required`, `invalid`, `too_long`, `invalid_date`, `future_date`,
+  `invalid_email`, `invalid_phone`, `education_level_unknown`,
+  `username_invalid`, `username_taken`; a `duplicate` row carries the warning
+  `duplicate_existing` (a record has its natural key) or
+  `duplicate_in_file` (an earlier ready row has it). Duplicates are skipped,
+  never updated; error rows are never imported. No code carries a value.
+- **`students` columns:** `given_names`\*, `family_names`\*, `birthdate`\*
+  (`YYYY-MM-DD` or `DD/MM/YYYY`, not after the center's today), `email`,
+  `phone`, `school_name`, `school_grade`, `education_level` (an **active**
+  level's name, any case), `contact_name`\*, `contact_relationship`\*,
+  `contact_phone`\*, and `contact2_name`, `contact2_relationship`,
+  `contact2_phone` (all three or none). The rules are `POST
+  /api/v1/students`'s. Natural key: `f_unaccent(lower(given_names))`,
+  `f_unaccent(lower(family_names))` and `birthdate`. No guardians, families,
+  logins or enrollments.
+- **`tutors` columns:** `username`\* (normalized like an invitation's),
+  `display_name`\*, `email`, `phone`. An existing user with the username who
+  has the `tutor` role is `duplicate_existing`; any other existing user is
+  `username_taken`. A committed row creates what `POST /api/v1/invitations`
+  creates (a pending user with the `tutor` role and an invitation token, plus
+  the email and phone); the link is never returned or stored: the admin gets
+  it with **Reissue** on the Invitations page.
+- **`ImportJobDetail`:** `id`, `kind`, `status` (`staged`, `committing`,
+  `committed`, `failed`, `discarded`, `expired`), `file_name`,
+  `ignored_columns`, `counts {total, ready, duplicate, error, created,
+  skipped, failed}` (`ready` counts the rows still to import), `created_by`
+  and `committed_by` (`{id, display_name}`), `created_at`, `committed_at`,
+  `expires_at` (while `staged` or `failed`: the last change plus 7 days),
+  `version`.
+- **`ImportRowItem`:** `row_number`, `status` (also `created`, `skipped`,
+  `failed` after a commit), `values` (`{column: text}` while the job is
+  `staged`, `committing` or `failed`; `null` after), `errors`, `warnings`,
+  `record_id` (the created record).
+- **Commit:** order `422` (body) → `404` → `409 version_conflict` → `409
+  import_not_committable` (not `staged` or `failed`) → `422
+  import_nothing_to_commit` (no `ready` row) → `committing` with the
+  committer, `202`. The route then queues `administration:run_imports`
+  (also every 15 minutes). The task commits the ready rows in batches of 100
+  (a kind may use another size), **one transaction per batch**, acting as
+  the committer (the created records' audit events name them), under a
+  per-kind advisory lock, re-checking duplicates and validity first: a row
+  becomes `created` (with `record_id`), `skipped` (`duplicate_existing`) or
+  `failed` (a code, for example `education_level_unavailable` when the level
+  was deactivated after staging, or `username_taken`). When no ready row is
+  left the job is `committed` and every row's `values` is cleared. If a
+  batch fails unexpectedly it rolls back and the job becomes `failed`; the
+  committed batches stay, and committing the job again resumes. Importing
+  the same file again stages every imported row as `duplicate`. Poll the
+  job until it is `committed` or `failed`.
+- **Discard:** `{version}`; only `staged` or `failed` (`409
+  import_not_discardable`); deletes the staged rows. Records a failed job
+  already created stay.
+- **Expiry:** a `staged` or `failed` job unchanged for 7 days becomes
+  `expired` and its rows are deleted (the same task).
+- **Personal data:** staged values are readable only through these routes
+  and never reach a log, problem detail or audit event; `import_rows` is not
+  audited. Cell text is stored as text and never evaluated (`=HYPERLINK(…)`
+  imports literally; exports must escape it).
+- **Audit:** automatic `import_jobs` events (`create` by the importer;
+  `update`s by the committer, including the worker's); the created records'
+  usual events with the committer as actor; a tutor's
+  `identity.invitation_issued` (`reissued: false`, plus `import_job_id`).
 
 ### Scheduling policies
 

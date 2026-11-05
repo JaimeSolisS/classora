@@ -1610,3 +1610,37 @@ Each M7 issue, the ADR-0017 decision items it relies on, and the tables it creat
 | #115 M7-12 Expenses | E12 (`expense.view`, `expense.manage`), E16 (payment rows, adjustments, derived status, `receipt_reference` and note for `expense.view` holders, no file); X1, X3 | `expenses`, `expense_payments`, `expense_payment_reversals`, `expense_adjustments` |
 | #116 M7-13 Recurring templates | E17 (natural key `(expense_template_id, period_start)`, future-only edits, `finance:generate_recurring_expenses`); X2 | `expense_templates`, `expenses` |
 | #117 M7-14 Financial reports | E12 (`finance.report.view`: Owner and Finance only, seeded by `make seed`, not delegable), E18, ADR-0006 E7 (accrual), E5 and E13 (cash); #117 E3–E10 | **no table, no migration**: the `reporting` module reads `charges`, `charge_adjustments`, `payments`, `payment_reversals`, `payment_allocations`, `allocation_releases`, `refunds`, `charge_due_date_changes`, `packages`, `package_credit_transactions`, `tuition_plans`, `service_prices`, `class_sessions`, `class_series`, `cohort_enrollments`, `payroll_periods`, `payroll_lines`, `payroll_adjustments`, `payroll_payments`, `payroll_payment_reversals`, `expenses`, `expense_payments`, `expense_payment_reversals`, `expense_adjustments`, `expense_categories`, `vendors` (never `payslips` or `expense_templates`) |
+
+## 20. Import tables (#122, M8-05)
+
+An administration addition outside the billing, payroll and expense domains, documented here because #122 asked for it (the import pipeline of architecture ISSUE-L1). Migration `0088_administration_imports`; module `administration.imports`. The CSV text itself is **never stored** (#122 E1, owner decision 2026-10-21 "no uploads"): the request is parsed in memory and only the parsed rows below are kept, while the import is open.
+
+### 20.1 `import_jobs` (mutable, audited, versioned)
+
+| Column | Type | Notes |
+|---|---|---|
+| `kind` | `VARCHAR(32)` | A registered import kind's code (`students`, `tutors`; #123 adds `schedules`, `opening_balances`). CHECK `^[a-z_]{3,32}$`; no database enum. |
+| `status` | `VARCHAR(20)` | `staged → committing → committed`; `committing → failed → committing` (retry); `staged`/`failed` → `discarded` (by hand) or `expired` (7 days after the last change). CHECK on the six values. |
+| `file_name` | `VARCHAR(255) NULL` | The uploaded file's name, trimmed, not blank. Staff text. |
+| `ignored_columns` | `TEXT[]` | Header names the kind doesn't read (lower case). |
+| `total_rows`, `ready_rows`, `duplicate_rows`, `error_rows`, `created_rows`, `skipped_rows`, `failed_rows` | `INTEGER` | A snapshot of the rows' statuses, refreshed by every change; CHECK `>= 0`. Kept after the rows are deleted. |
+| `created_by_user_id` | `UUID` → `users` RESTRICT | The importer. |
+| `committed_by_user_id` | `UUID NULL` → `users` RESTRICT | The committer; required from `committing` on. The worker acts as this user. |
+| `committed_at` | `TIMESTAMPTZ NULL` | Set exactly when `committed`. |
+
+Indexes: `(kind, created_at DESC)` (the list) and `status` where `staged`, `committing` or `failed` (the task). Audit: automatic events only; the row holds ids, codes, counts, the file name and the ignored header names, never a staged value.
+
+### 20.2 `import_rows` (transient, not audited)
+
+| Column | Type | Notes |
+|---|---|---|
+| `job_id` | `UUID` → `import_jobs` **CASCADE** | Part of the primary key `(job_id, row_number)`. |
+| `row_number` | `INTEGER` | The file line the row starts on (header = 1). |
+| `status` | `VARCHAR(16)` | `ready`, `duplicate`, `error` at staging; `created`, `skipped`, `failed` after the commit. |
+| `values` | `JSONB NULL` | `{column: text}` of the kind's columns while the job is open; `NULL` once it is committed. CHECK: an object or `NULL`. |
+| `errors`, `warnings` | `JSONB` | Arrays of `{column, code}`; codes only, never a value. |
+| `record_id` | `UUID NULL` | The created record (no foreign key: it lives in the kind's module). Set exactly when `created`. |
+
+**Retention of values (#122 E9):** staged values are personal data (student names, birthdates, contacts; tutor contact data). They are readable only through the import routes, cleared when the job is committed, deleted with the rows when it is discarded, and deleted with the rows when a `staged` or `failed` job expires after 7 days (`administration:run_imports`). They never reach a log line, a problem detail or an audit event. Backups taken while an import is open contain them (#129 retention).
+
+**Concurrency:** the commit runs one transaction per batch of ready rows, with the job row `FOR UPDATE` and a `pg_advisory_xact_lock` per kind, so two imports of one kind never race a natural key. Records an import creates have no natural-key constraint of their own (students may be homonyms); a manual create racing a commit can still duplicate (accepted, #122).

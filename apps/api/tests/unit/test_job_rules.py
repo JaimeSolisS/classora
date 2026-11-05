@@ -232,6 +232,7 @@ MODULE_TASKS = {
     "payroll:open_periods",
     "payroll:post_adjustments",
     "finance:generate_recurring_expenses",
+    "administration:run_imports",
 }
 
 
@@ -694,3 +695,55 @@ def test_app_never_applies_the_procrastinate_schema():
     ]
 
     assert offenders == []
+
+
+def test_the_import_run_runs_every_15_minutes():
+    # #122 D2: one queued job at a time; the commit route shares the lock.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "administration:run_imports"
+    ]
+    assert periodic.cron == "*/15 * * * *"
+    assert periodic.periodic_id == "administration-run-imports"
+    assert periodic.configure_kwargs["queueing_lock"] == "administration-run-imports"
+    assert app.tasks["administration:run_imports"].queueing_lock == (
+        jobs.IMPORTS_QUEUEING_LOCK
+    )
+    assert jobs.IMPORTS_TASK == "administration:run_imports"
+    assert jobs.task_parameter_types(app)["administration:run_imports"] == {
+        "timestamp": int
+    }
+
+
+@pytest.mark.anyio
+async def test_deferring_the_import_run_names_the_task_and_its_lock(caplog):
+    # #122 D1: queued after the commit; a queued run is a no-op; any other
+    # failure is logged and swallowed.
+    from procrastinate.exceptions import AlreadyEnqueued
+
+    app = _RecordingJobApp()
+    await jobs.defer_import_run(app)  # type: ignore[arg-type]
+
+    [(name, options)] = app.configured
+    assert name == "administration:run_imports"
+    assert options == {
+        "allow_unknown": False,
+        "queueing_lock": "administration-run-imports",
+    }
+    [call] = app.deferrer.calls
+    assert set(call) == {"timestamp"} and isinstance(call["timestamp"], int)
+
+    with caplog.at_level("ERROR", logger=jobs.__name__):
+        await jobs.defer_import_run(
+            _RecordingJobApp(AlreadyEnqueued("queued"))  # type: ignore[arg-type]
+        )
+        assert caplog.records == []
+        await jobs.defer_import_run(
+            _RecordingJobApp(OSError("unreachable"))  # type: ignore[arg-type]
+        )
+    [record] = caplog.records
+    assert record.message == "Deferring the import run failed"
+    assert record.error == "OSError"

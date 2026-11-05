@@ -30,6 +30,7 @@ from app.modules.academics.models import (
     SessionCloseout,
     SessionNote,
 )
+from app.modules.administration.imports.models import ImportJob, ImportRow
 from app.modules.administration.models import ApprovalRequest
 from app.modules.administration.settings_models import (
     BusinessSettings,
@@ -228,6 +229,7 @@ def test_the_guard_scans_the_real_audited_models():
         FamilyStudent,
         GroupEnrollment,
         Guardian,
+        ImportJob,
         LearningPlan,
         LearningPlanMilestone,
         LearningPlanObjective,
@@ -282,6 +284,11 @@ def test_the_guard_scans_the_real_audited_models():
         Withdrawal,
     ]
     assert AuditedThing in audited_classes(TestBase)
+    # #122 E9: the staged rows hold personal data that is purged; they are
+    # never audited (the job and the created records are).
+    assert not issubclass(ImportRow, Audited)
+    assert "import_rows" not in audited_table_names()
+    assert "import_jobs" in audited_table_names()
     assert User.__audit_exclude__ == {"password_hash"}
     # The catalog (#32 A4) has no sensitive column: nothing excluded or masked.
     # Student profiles (#33 A5): no sensitive column either; personal fields

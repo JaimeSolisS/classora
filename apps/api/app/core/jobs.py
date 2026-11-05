@@ -57,7 +57,8 @@ after the settings ``PATCH`` and the tuition plan writes (#93 E1);
 the settings ``PATCH`` and the series materialization (#99 D9);
 :func:`defer_recurring_expenses` the trigger of
 ``finance:generate_recurring_expenses`` after a template create, reactivation
-or ``ends_on`` change (#116 E8).
+or ``ends_on`` change (#116 E8); :func:`defer_import_run` the trigger of
+``administration:run_imports`` after an import commit request (#122 D1).
 """
 
 import functools
@@ -159,6 +160,14 @@ create, reactivation or ``ends_on`` change (#116 E8)."""
 RECURRING_EXPENSES_QUEUEING_LOCK: Final = "finance-generate-recurring-expenses"
 """At most one queued ``finance:generate_recurring_expenses`` job (the
 periodic tick shares it)."""
+
+IMPORTS_TASK: Final = "administration:run_imports"
+"""The 15-minute import run (#122 D2, E2): commits ``committing`` import jobs
+in batches and expires stale ones; also deferred after ``POST
+/api/v1/imports/{id}/commit``."""
+IMPORTS_QUEUEING_LOCK: Final = "administration-run-imports"
+"""At most one queued ``administration:run_imports`` job (the periodic tick
+shares it)."""
 
 # Worker concurrency is fixed at 1 here; making it configurable and sizing it
 # (with the pools below and mem_limit) is M10-04 (ISSUE-I8).
@@ -305,12 +314,15 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     ``app/workflows/payroll_adjustment_tasks.py`` and
     ``app/workflows/recurring_expense_tasks.py`` because they compose
     modules)
-    are registered in every environment. The demo tasks
+    are registered in every environment, as is the 15-minute import run
+    ``administration:run_imports`` (#122, ``app/modules/administration/
+    imports/tasks.py``). The demo tasks
     (and the periodic demo) are registered only in :data:`DEMO_ENVIRONMENTS`.
     Does not open the connector.
     """
     # Imported here: task modules import this module for ids_only.
     from app.core import demo_jobs, idempotency_tasks, ratelimit_tasks
+    from app.modules.administration.imports import tasks as import_tasks
     from app.modules.identity import tasks as identity_tasks
     from app.modules.scheduling import tasks as scheduling_tasks
     from app.workflows import (
@@ -341,6 +353,7 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     payroll_period_tasks.register(app)
     payroll_adjustment_tasks.register(app)
     recurring_expense_tasks.register(app)
+    import_tasks.register(app)
     if app_env in DEMO_ENVIRONMENTS:
         demo_jobs.register(app)
     return app
@@ -509,4 +522,28 @@ async def defer_recurring_expenses(job_app: App) -> None:
         logger.error(
             "Deferring the recurring expenses failed",
             extra={"task_name": RECURRING_EXPENSES_TASK, "error": type(exc).__name__},
+        )
+
+
+async def defer_import_run(job_app: App) -> None:
+    """Queue one ``administration:run_imports`` run now (#122 D1).
+
+    The same contract as :func:`defer_session_charges`: only after the Unit
+    of Work has committed (``POST /api/v1/imports/{id}/commit`` adds it as a
+    background task); a run already queued is a no-op (``AlreadyEnqueued``
+    is ignored); any other failure is logged and swallowed (the next
+    15-minute tick commits the job).
+    """
+    try:
+        await job_app.configure_task(
+            IMPORTS_TASK,
+            allow_unknown=False,
+            queueing_lock=IMPORTS_QUEUEING_LOCK,
+        ).defer_async(timestamp=int(time.time()))
+    except AlreadyEnqueued:
+        return
+    except Exception as exc:  # noqa: BLE001 - the write must still answer 2xx
+        logger.error(
+            "Deferring the import run failed",
+            extra={"task_name": IMPORTS_TASK, "error": type(exc).__name__},
         )
