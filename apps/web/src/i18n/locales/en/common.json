@@ -32,6 +32,7 @@
     "users": "Users",
     "invitations": "Invitations",
     "imports": "Imports",
+    "exports": "Exports",
     "passwordResets": "Password resets",
     "approvals": "Approvals",
     "audit": "Audit log",
@@ -819,6 +820,113 @@
       "amount_not_positive": "The amount must be more than 0.",
       "date_out_of_range": "The date is outside the allowed range.",
       "unknown": "Invalid value ({{code}})."
+    }
+  },
+  "exports": {
+    "title": "Exports",
+    "intro": "Download lists as CSV or Excel. Each file is kept for 24 hours and only you can download it.",
+    "exportLink": "Export",
+    "noDatasets": "There is no data you can export.",
+    "datasets": {
+      "students": "Students",
+      "class_sessions": "Classes",
+      "expenses": "Expenses"
+    },
+    "formats": {
+      "csv": "CSV",
+      "xlsx": "Excel"
+    },
+    "form": {
+      "title": "New export",
+      "dataset": "Data",
+      "format": "Format",
+      "personalHint": "Requires confirming your password: this data names people.",
+      "columns": "Columns",
+      "columnsHelp": "Check the columns you want and order them with Up and Down.",
+      "moveUp": "Up",
+      "moveDown": "Down",
+      "moveUpFor": "Move {{column}} up",
+      "moveDownFor": "Move {{column}} down",
+      "moved": "{{column}}: position {{position}} of {{total}}.",
+      "groupBy": "Group by",
+      "noGrouping": "No grouping",
+      "filters": "Filters",
+      "from": "From",
+      "to": "To",
+      "incurredFrom": "Expenses from",
+      "incurredTo": "Expenses to",
+      "tutor": "Tutor",
+      "student": "Student",
+      "chosen": "{{field}}: {{name}}",
+      "clearChoice": "Remove {{field}}",
+      "classroom": "Classroom",
+      "allClassrooms": "All classrooms",
+      "kind": "Class type",
+      "allKinds": "All types",
+      "kinds": {
+        "individual": "Individual",
+        "group": "Group",
+        "course": "Course"
+      },
+      "includeCancelled": "Include cancelled",
+      "statuses": "Statuses",
+      "statusesHelp": "With none checked, every status is exported.",
+      "studentStatus": "Status",
+      "studentStatuses": {
+        "active": "Active",
+        "inactive": "Inactive",
+        "all": "All"
+      },
+      "educationLevel": "Education level",
+      "allLevels": "All levels",
+      "optionsFailed": "The options couldn't be loaded.",
+      "submit": "Request export",
+      "submitting": "Requesting…",
+      "requested": "{{dataset}} export requested. We'll let you know when it's ready.",
+      "limitReached": "You already have {{max}} exports in progress. Wait for one to finish."
+    },
+    "validation": {
+      "required": "Choose a date.",
+      "rangeReversed": "The end date must be on or after the start date.",
+      "rangeTooLong": "The range can't be longer than 366 days.",
+      "noColumns": "Choose at least one column.",
+      "invalid": "Check this field."
+    },
+    "history": {
+      "title": "My exports",
+      "empty": "You haven't requested any exports yet.",
+      "pagination": "Export pages",
+      "dataset": "Data",
+      "format": "Format",
+      "requestedAt": "Requested",
+      "status": "Status",
+      "rows": "Rows",
+      "size": "Size",
+      "expiresAt": "Expires",
+      "file": "File",
+      "download": "Download",
+      "downloadFor": "Download {{file}}",
+      "expiresInHours": "expires in {{hours}} h",
+      "expiresInMinutes": "expires in {{minutes}} min",
+      "pending": "Being prepared",
+      "expired": "Expired",
+      "failure": {
+        "row_limit_exceeded": "More than 10,000 rows: narrow the range or the filters.",
+        "size_limit_exceeded": "The file is over 16 MB: remove columns or narrow the filters.",
+        "permission_lost": "You no longer have access to this data.",
+        "error": "It couldn't be created. Request it again."
+      }
+    },
+    "status": {
+      "queued": "In progress",
+      "ready": "Ready",
+      "failed": "Failed",
+      "expired": "Expired"
+    },
+    "announce": {
+      "ready": "The {{dataset}} export is ready.",
+      "failed": "The {{dataset}} export failed.",
+      "stillRunning": "Still in progress; you'll get a notification."
     }
   },
   "users": {
@@ -1958,7 +2066,9 @@
       "billing_payment_reminder_overdue_followup_one": "Reminder: {{count}} charge of {{open_total}} is still unpaid since {{due_on}}.",
       "billing_payment_reminder_overdue_followup_other": "Reminder: {{count}} charges totalling {{open_total}} are still unpaid, the first since {{due_on}}.",
       "payroll_period_finalized": "Your pay for {{starts_on}} – {{ends_on}} is finalized.",
-      "administration_approval_assigned": "A request was assigned to you: {{request_type}}"
+      "administration_approval_assigned": "A request was assigned to you: {{request_type}}",
+      "reporting_export_ready": "Your {{dataset}} export is ready. Download it from Exports within 24 hours.",
+      "reporting_export_failed": "Your {{dataset}} export couldn't be created. See why in Exports."
     },
     "preferences": {
       "title": "Notification preferences",
@@ -1982,6 +2092,7 @@
         "billing": "Billing",
         "payroll": "Payroll",
         "administration": "Administration",
+        "reporting": "Exports",
         "other": "Other"
       },
       "types": {
@@ -2024,7 +2135,9 @@
         "scheduling_occurrence_skipped_closure": "Class skipped for a center closure",
         "billing_payment_reminder": "Payment reminders",
         "payroll_period_finalized": "Payroll period finalized",
-        "administration_approval_assigned": "Request assigned to you for review"
+        "administration_approval_assigned": "Request assigned to you for review",
+        "reporting_export_ready": "An export is ready",
+        "reporting_export_failed": "An export failed"
       }
     }
   },

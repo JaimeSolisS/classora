@@ -249,3 +249,34 @@ describe('the imports nav item (M8-05b E1)', () => {
     });
   });
 });
+
+// M8-07b A1, E1: "Exports" right after Imports, for any staff role (the
+// API's exporter rule, #124 A4): Owner, Administrator, Coordinator and
+// Finance; never a tutor, a student or a guardian.
+describe('the exports nav item (M8-07b E1)', () => {
+  it.each([
+    ['an Owner', user(['owner'], ['student.view']), true],
+    ['an Administrator', user(['administrator'], ['schedule.view']), true],
+    ['a Coordinator', COORDINATOR, true],
+    ['Finance', FINANCE, true],
+    ['a tutor', TUTOR, false],
+    ['a student', STUDENT, false],
+    ['a guardian', GUARDIAN, false],
+  ] as const)('%s: %s', (_who, as, visible) => {
+    expect(shown(as).includes('/exports')).toBe(visible);
+  });
+
+  it('comes right after Imports and is labelled in the common catalog', () => {
+    const paths = NAV_ITEMS.map((item) => item.to);
+    expect(paths.indexOf('/exports')).toBe(paths.indexOf('/imports') + 1);
+    expect(NAV_ITEMS.find((item) => item.to === '/exports')).toMatchObject({
+      labelKey: 'nav.exports',
+      anyRole: [
+        'owner',
+        'administrator',
+        'academic_coordinator',
+        'finance_staff',
+      ],
+    });
+  });
+});

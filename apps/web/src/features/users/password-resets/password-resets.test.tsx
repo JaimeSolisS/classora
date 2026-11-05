@@ -119,11 +119,13 @@ describe('route and navigation (I1)', () => {
     expect(main().querySelectorAll('h1')).toHaveLength(1);
     expect(main().querySelector('h1')?.textContent).toBe('Password resets');
     expect(document.title).toBe('Password resets · Classora');
-    // M8-05b E1: user.invite also shows "Imports", after Invitations.
+    // M8-05b E1: user.invite also shows "Imports", after Invitations;
+    // M8-07b E1: an Owner also sees "Exports", after Imports.
     expect(navItems()).toEqual([
       'Home',
       'Invitations',
       'Imports',
+      'Exports',
       'Password resets',
     ]);
   });
@@ -133,7 +135,8 @@ describe('route and navigation (I1)', () => {
 
     app = await renderApp('/password-resets');
 
-    expect(navItems()).toEqual(['Home', 'Users']);
+    // M8-07b E1: an Owner also sees "Exports".
+    expect(navItems()).toEqual(['Home', 'Users', 'Exports']);
     expect(main().querySelector('h1')?.textContent).toBe(
       "You don't have access to this page",
     );

@@ -5,6 +5,7 @@ import { BILLING_ACCESS } from '@/features/billing/access';
 import { EXPENSE_CONFIGURE_ACCESS } from '@/features/finance/access';
 import { FINANCE_REPORT_ACCESS } from '@/features/reporting/access';
 import { IMPORTS_ACCESS } from '@/features/imports/access';
+import { EXPORTS_ACCESS } from '@/features/exports/access';
 import { CHANGE_REQUESTS_ACCESS } from '@/features/change-requests/access';
 import { FAMILY_BILLING_ACCESS } from '@/features/family-portal/billing/access';
 import { SESSION_REQUESTS_ACCESS } from '@/features/family-portal/requests/access';
@@ -49,6 +50,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
   // CSV imports (M8-05b E1): holders of a permission of some import kind,
   // after Invitations. The page lists only the kinds they may import.
   { to: '/imports', labelKey: 'nav.imports', ...IMPORTS_ACCESS },
+  // CSV/Excel exports (M8-07b E1): any staff role, after Imports. The page
+  // offers only the datasets the user may export.
+  { to: '/exports', labelKey: 'nav.exports', ...EXPORTS_ACCESS },
   {
     to: '/password-resets',
     labelKey: 'nav.passwordResets',

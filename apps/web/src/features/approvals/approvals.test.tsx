@@ -153,7 +153,8 @@ describe('route and navigation (F1, F2)', () => {
     const nav = [...app.container.querySelectorAll('header nav a')].map(
       (a) => a.textContent,
     );
-    expect(nav).toEqual(['Home', 'Approvals']);
+    // M8-07b E1: an Owner also sees "Exports" (after Imports).
+    expect(nav).toEqual(['Home', 'Exports', 'Approvals']);
     const url = lastListUrl(api);
     expect(url.searchParams.get('status')).toBe('open');
     expect(url.searchParams.get('assignee')).toBe('any');
@@ -168,7 +169,8 @@ describe('route and navigation (F1, F2)', () => {
     const nav = [...app.container.querySelectorAll('header nav a')].map(
       (a) => a.textContent,
     );
-    expect(nav).toEqual(['Home', 'Users']);
+    // M8-07b E1: an Owner also sees "Exports".
+    expect(nav).toEqual(['Home', 'Users', 'Exports']);
     expect(main().querySelector('h1')?.textContent).toBe(
       "You don't have access to this page",
     );

@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router';
 import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { useCenterTimeZone } from '@/features/auth/useCenterTimeZone';
 import { useCan } from '@/features/auth/useSession';
+import { ExportLink } from '@/features/exports/ExportLink';
 import { todayInZone } from '@/lib/time';
 import {
   fetchOverdueCloseouts,
@@ -78,7 +79,11 @@ export function CalendarPage() {
         <h1 className="text-2xl font-semibold">
           {t('scheduling.calendar.title')}
         </h1>
-        {canReviewHours ? <OverdueLink /> : null}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 empty:hidden">
+          {canReviewHours ? <OverdueLink /> : null}
+          {/* M8-07b A3: the class sessions export. */}
+          <ExportLink dataset="class_sessions" />
+        </div>
       </div>
       <ScheduleCalendar
         state={state}

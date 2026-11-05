@@ -489,5 +489,9 @@
   "import_too_many_rows": "The file has too many rows.",
   "import_not_committable": "This import can no longer be imported.",
   "import_nothing_to_commit": "No rows are ready to import.",
-  "import_not_discardable": "This import can no longer be discarded."
+  "import_not_discardable": "This import can no longer be discarded.",
+  "export_range_invalid": "The date range isn't valid: the end date can't be before the start date, and the range can't be longer than a year.",
+  "export_limit_reached": "You already have 3 exports in progress. Wait for one to finish.",
+  "export_not_ready": "This export doesn't have a file yet.",
+  "export_expired": "This export has expired. Request it again."
 }

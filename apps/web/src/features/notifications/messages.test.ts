@@ -907,3 +907,44 @@ describe('the approval assigned notification (M8-01b C3)', () => {
     expect(link({}, recipient)).toBe('/approvals');
   });
 });
+
+// M8-07b D1: the requester's export finished or failed. The message names
+// the dataset (never an id or a value) and there is no record link: the
+// file is on the Exports page.
+describe('the export notifications (M8-07b D1)', () => {
+  const message = (lng: 'es' | 'en', type: string, dataset: string) =>
+    notificationMessage(i18n.getFixedT(lng), i18n, {
+      notification_type: type,
+      params: {
+        export_id: '00000000-0000-4000-8000-0000000000e1',
+        dataset,
+        format: 'csv',
+        row_count: 12,
+        error_code: 'row_limit_exceeded',
+      },
+    });
+
+  it("names the dataset in both languages, never the export's id", () => {
+    expect(message('es', 'reporting.export_ready', 'students')).toBe(
+      'Tu exportación de Alumnos está lista. Descárgala en Exportaciones en las próximas 24 horas.',
+    );
+    expect(message('en', 'reporting.export_ready', 'expenses')).toBe(
+      'Your Expenses export is ready. Download it from Exports within 24 hours.',
+    );
+    expect(message('es', 'reporting.export_failed', 'class_sessions')).toBe(
+      'Tu exportación de Clases no se pudo generar. Revisa el motivo en Exportaciones.',
+    );
+    expect(message('en', 'reporting.export_failed', 'expenses')).not.toContain(
+      '0000',
+    );
+    // An unknown dataset shows its code.
+    expect(message('en', 'reporting.export_ready', 'payroll')).toBe(
+      'Your payroll export is ready. Download it from Exports within 24 hours.',
+    );
+  });
+
+  it('has no record link', () => {
+    expect(NOTIFICATION_LINKS['reporting.export_ready']).toBeUndefined();
+    expect(NOTIFICATION_LINKS['reporting.export_failed']).toBeUndefined();
+  });
+});

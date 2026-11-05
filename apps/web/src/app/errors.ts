@@ -541,6 +541,11 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['import_not_committable', 'import_not_committable'],
   ['import_nothing_to_commit', 'import_nothing_to_commit'],
   ['import_not_discardable', 'import_not_discardable'],
+  // Exports (#124; the page is M8-07b B2, B3).
+  ['export_range_invalid', 'export_range_invalid'],
+  ['export_limit_reached', 'export_limit_reached'],
+  ['export_not_ready', 'export_not_ready'],
+  ['export_expired', 'export_expired'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

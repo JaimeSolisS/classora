@@ -461,6 +461,11 @@ const API_CODES = [
   'import_not_committable',
   'import_nothing_to_commit',
   'import_not_discardable',
+  // Exports (#124, M8-07b B2, B3).
+  'export_range_invalid',
+  'export_limit_reached',
+  'export_not_ready',
+  'export_expired',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

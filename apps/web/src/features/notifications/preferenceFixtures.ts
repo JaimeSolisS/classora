@@ -42,6 +42,8 @@ const STAFF = new Set<string>([
   'scheduling.offer_expired',
   'scheduling.reassignment_needed',
   'administration.approval_assigned',
+  'reporting.export_ready',
+  'reporting.export_failed',
 ]);
 
 function inAudience(code: string, audience: Audience): boolean {
