@@ -905,6 +905,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/exports/datasets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Export Datasets
+         * @description The datasets the caller may export, in order, with their columns and
+         *     labels in the caller's language.
+         */
+        get: operations["list_export_datasets_api_v1_exports_datasets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Exports
+         * @description Your own exports, newest first.
+         */
+        get: operations["list_exports_api_v1_exports_get"];
+        put?: never;
+        /**
+         * Request Export
+         * @description Ask for a CSV or Excel export of a list. It is built in the background
+         *     from the same data the list page shows you; poll the export until it is
+         *     `ready` (or `failed`), then download it within 24 hours. Exports that
+         *     name people (`students`, `class_sessions`) need a recent password
+         *     confirmation.
+         */
+        post: operations["request_export_api_v1_exports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exports/{export_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Export
+         * @description One of your exports.
+         */
+        get: operations["get_export_api_v1_exports__export_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exports/{export_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Export
+         * @description Download one of your ready exports. Repeatable until it expires.
+         */
+        get: operations["download_export_api_v1_exports__export_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications": {
         parameters: {
             query?: never;
@@ -10023,6 +10112,57 @@ export interface components {
             warnings: components["schemas"]["SchedulingWarning"][];
         };
         /** @enum {string} */
+        ClassSessionsColumn: "date" | "start_time" | "end_time" | "duration_minutes" | "kind" | "state" | "subject" | "education_level" | "tutor" | "classroom" | "students" | "series";
+        /**
+         * ClassSessionsExportFilters
+         * @description The calendar's filters (``ClassSessionRangeQuery``) with local dates:
+         *     ``from`` and ``to`` are required, ``from ≤ to``, at most 366 days.
+         */
+        ClassSessionsExportFilters: {
+            /**
+             * From
+             * Format: date
+             * @description The first local date.
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             * @description The last local date (included).
+             */
+            to: string;
+            /** Tutor User Id */
+            tutor_user_id?: string | null;
+            /** Student Id */
+            student_id?: string | null;
+            /** Classroom Id */
+            classroom_id?: string | null;
+            kind?: components["schemas"]["SessionKindCode"] | null;
+            /**
+             * Include Cancelled
+             * @default false
+             */
+            include_cancelled: boolean;
+        };
+        /**
+         * ClassSessionsExportParameters
+         * @description A ``class_sessions`` export.
+         */
+        ClassSessionsExportParameters: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            dataset: "class_sessions";
+            format: components["schemas"]["ExportFormat"];
+            /** Columns */
+            columns?: components["schemas"]["ClassSessionsColumn"][] | null;
+            group_by?: components["schemas"]["ClassSessionsGroupable"] | null;
+            filters: components["schemas"]["ClassSessionsExportFilters"];
+        };
+        /** @enum {string} */
+        ClassSessionsGroupable: "date" | "kind" | "state" | "subject" | "education_level" | "tutor" | "classroom";
+        /** @enum {string} */
         ClassType: "individual" | "group" | "course";
         /**
          * ClassroomCreate
@@ -11155,6 +11295,8 @@ export interface components {
              */
             reason?: string | null;
         };
+        /** @enum {string} */
+        ColumnKind: "text" | "enum" | "boolean" | "integer" | "money" | "date" | "time" | "list";
         /**
          * CompensationRateCreate
          * @description ``POST /api/v1/payroll/tutors/{id}/rates``. ``rate_model`` and ``rate``
@@ -11964,6 +12106,8 @@ export interface components {
             /** Expires On */
             expires_on: string | null;
         };
+        /** @enum {string} */
+        DateFilter: "required" | "optional" | "none";
         /**
          * Format: decimal
          * @example 7.50
@@ -13708,6 +13852,132 @@ export interface components {
              */
             is_active?: boolean | null;
         };
+        /** @enum {string} */
+        ExpensesColumn: "incurred_on" | "due_on" | "category" | "vendor" | "description" | "amount" | "adjusted_amount" | "paid_amount" | "open_amount" | "status" | "receipt_reference" | "template";
+        /**
+         * ExpensesExportFilters
+         * @description The ``/finance/expenses`` filters an export can use (no text search).
+         */
+        ExpensesExportFilters: {
+            /** Status */
+            status?: components["schemas"]["ExpenseStatus"][] | null;
+            /** Category Id */
+            category_id?: string | null;
+            /** Vendor Id */
+            vendor_id?: string | null;
+            /** Incurred From */
+            incurred_from?: string | null;
+            /** Incurred To */
+            incurred_to?: string | null;
+        };
+        /**
+         * ExpensesExportParameters
+         * @description An ``expenses`` export.
+         */
+        ExpensesExportParameters: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            dataset: "expenses";
+            format: components["schemas"]["ExportFormat"];
+            /** Columns */
+            columns?: components["schemas"]["ExpensesColumn"][] | null;
+            group_by?: components["schemas"]["ExpensesGroupable"] | null;
+            filters?: components["schemas"]["ExpensesExportFilters"];
+        };
+        /** @enum {string} */
+        ExpensesGroupable: "incurred_on" | "due_on" | "category" | "vendor" | "status" | "template";
+        /**
+         * ExportColumnItem
+         * @description One column of a dataset, with its label in the caller's language.
+         */
+        ExportColumnItem: {
+            /** Code */
+            code: string;
+            kind: components["schemas"]["ColumnKind"];
+            /** Groupable */
+            groupable: boolean;
+            /** Label */
+            label: string;
+        };
+        /**
+         * ExportDatasetItem
+         * @description A dataset the caller may export (#124 B1).
+         */
+        ExportDatasetItem: {
+            /** Code */
+            code: string;
+            /**
+             * Label
+             * @description The dataset's name in the caller's language.
+             */
+            label: string;
+            /**
+             * Personal
+             * @description Names people: requesting it needs a recent password confirmation (reauth_required).
+             */
+            personal: boolean;
+            /** @description Whether the filters take a date range: required, optional or none. */
+            date_filter: components["schemas"]["DateFilter"];
+            /** Columns */
+            columns: components["schemas"]["ExportColumnItem"][];
+        };
+        /** ExportDatasetList */
+        ExportDatasetList: {
+            /** Items */
+            items: components["schemas"]["ExportDatasetItem"][];
+        };
+        /** @enum {string} */
+        ExportErrorCode: "row_limit_exceeded" | "size_limit_exceeded" | "permission_lost" | "error";
+        /** @enum {string} */
+        ExportFormat: "csv" | "xlsx";
+        /**
+         * ExportJobDetail
+         * @description One export of the caller (#124 B3). No file bytes and no download URL:
+         *     the file is at ``/api/v1/exports/{id}/download`` while ``ready``.
+         */
+        ExportJobDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Dataset */
+            dataset: string;
+            format: components["schemas"]["ExportFormat"];
+            status: components["schemas"]["ExportJobStatus"];
+            /**
+             * Parameters
+             * @description As sent, with the default columns filled in.
+             */
+            parameters: components["schemas"]["StudentsExportParameters"] | components["schemas"]["ClassSessionsExportParameters"] | components["schemas"]["ExpensesExportParameters"];
+            /** @description The language of the headers and labels (the caller's stored language at request). */
+            language: components["schemas"]["ExportLanguage"];
+            /** Row Count */
+            row_count: number | null;
+            /** Byte Size */
+            byte_size: number | null;
+            /** File Name */
+            file_name: string;
+            error_code: components["schemas"]["ExportErrorCode"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Expires At
+             * @description When the file is deleted (24 hours after it is ready).
+             */
+            expires_at: string | null;
+        };
+        /** @enum {string} */
+        ExportJobStatus: "queued" | "ready" | "failed" | "expired";
+        /** @enum {string} */
+        ExportLanguage: "es" | "en";
         /** FactsAssignments */
         FactsAssignments: {
             /** Count */
@@ -16065,6 +16335,17 @@ export interface components {
         OffsetPage_ExpenseItem_: {
             /** Items */
             items: components["schemas"]["ExpenseItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** OffsetPage[ExportJobDetail] */
+        OffsetPage_ExportJobDetail_: {
+            /** Items */
+            items: components["schemas"]["ExportJobDetail"][];
             /** Total */
             total: number;
             /** Limit */
@@ -21665,6 +21946,36 @@ export interface components {
             /** Emergency Contacts */
             emergency_contacts?: components["schemas"]["EmergencyContactUpdate"][] | null;
         };
+        /** @enum {string} */
+        StudentsColumn: "family_names" | "given_names" | "is_active" | "is_minor" | "school_grade" | "education_level";
+        /**
+         * StudentsExportFilters
+         * @description The ``/students`` filters an export can use.
+         */
+        StudentsExportFilters: {
+            /** @default active */
+            status: components["schemas"]["StudentStatus"];
+            /** Education Level Id */
+            education_level_id?: string | null;
+        };
+        /**
+         * StudentsExportParameters
+         * @description A ``students`` export.
+         */
+        StudentsExportParameters: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            dataset: "students";
+            format: components["schemas"]["ExportFormat"];
+            /** Columns */
+            columns?: components["schemas"]["StudentsColumn"][] | null;
+            group_by?: components["schemas"]["StudentsGroupable"] | null;
+            filters?: components["schemas"]["StudentsExportFilters"];
+        };
+        /** @enum {string} */
+        StudentsGroupable: "is_active" | "is_minor" | "school_grade" | "education_level";
         /**
          * SubjectCreate
          * @description A new subject of the level in the path. It starts active.
@@ -25694,6 +26005,290 @@ export interface operations {
             };
             /** @description The import changed since it was loaded (version_conflict); reload and retry; the import is not staged or failed (import_not_discardable). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_export_datasets_api_v1_exports_datasets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportDatasetList"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_exports_api_v1_exports_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["ExportJobStatus"] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffsetPage_ExportJobDetail_"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    request_export_api_v1_exports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudentsExportParameters"] | components["schemas"]["ClassSessionsExportParameters"] | components["schemas"]["ExpensesExportParameters"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportJobDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); a failed Origin or X-CSRF-Token check (csrf_failed); the privacy notice must be accepted first (privacy_notice_required); or the session needs a recent password reauthentication (reauth_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The caller already has 3 exports waiting (export_limit_reached; details.max). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_export_api_v1_exports__export_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                export_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportJobDetail"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such export, or another user's (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    download_export_api_v1_exports__export_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                export_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file as an attachment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv; charset=utf-8": string;
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such export, or another user's (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The export is queued or failed: there is no file (export_not_ready). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The file was deleted 24 hours after it was ready (export_expired). */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -1652,3 +1652,35 @@ Indexes: `(kind, created_at DESC)` (the list) and `status` where `staged`, `comm
 **Retention of values (#122 E9):** staged values are personal data (student names, birthdates, contacts; tutor contact data). They are readable only through the import routes, cleared when the job is committed, deleted with the rows when it is discarded, and deleted with the rows when a `staged` or `failed` job expires after 7 days (`administration:run_imports`). They never reach a log line, a problem detail or an audit event. Backups taken while an import is open contain them (#129 retention).
 
 **Concurrency:** the commit runs one transaction per batch of ready rows, with the job row `FOR UPDATE` and a `pg_advisory_xact_lock` per kind, so two imports of one kind never race a natural key. Records an import creates have no natural-key constraint of their own (students may be homonyms); a manual create racing a commit can still duplicate (accepted, #122).
+
+## 21. Export tables (#124, M8-07)
+
+A `reporting` addition, documented here next to the import tables. Migration `0090_reporting_exports`; module `reporting.exports`. An export is built by the worker from a staff list page's own service function; the finished file's bytes are held in `export_files` for **24 hours** and then deleted (#124 E1, owner decision 2026-10-21 "no file storage": no bucket, no disk path, no temporary file). The job's metadata is kept.
+
+### 21.1 `export_jobs` (mutable, audited)
+
+| Column | Type | Notes |
+|---|---|---|
+| `requested_by_user_id` | `UUID` → `users` RESTRICT | The requester: the only user who can read or download the job. The worker acts as this user. |
+| `dataset` | `VARCHAR(32)` | A registered dataset's code (`students`, `class_sessions`, `expenses`). CHECK `^[a-z_]{3,32}$`; no database enum, so a new dataset needs no migration. |
+| `format` | `VARCHAR(8)` | `csv` or `xlsx` (CHECK). |
+| `status` | `VARCHAR(16)` | `queued → ready | failed`, `ready → expired` (the purge, 24 hours after `finished_at`). CHECK on the four values; no `running` status (#124 E8). |
+| `parameters` | `JSONB` | The normalized `ExportParameters` (dataset, format, columns, group_by, filters): ids and codes only. CHECK: an object. |
+| `language` | `VARCHAR(8)` | `es` or `en`: the requester's stored language at request (headers and labels). |
+| `row_count`, `byte_size` | `INTEGER NULL` | Set when `ready`; CHECK `>= 0`. |
+| `file_name` | `VARCHAR(120)` | `classora-<dataset>-<YYYYMMDD>-<HHMM>.<format>`; not blank. |
+| `error_code` | `VARCHAR(32) NULL` | `row_limit_exceeded`, `size_limit_exceeded`, `permission_lost` or `error`; set exactly when `failed` (CHECK). |
+| `finished_at`, `expires_at` | `TIMESTAMPTZ NULL` | Required for `ready` and `expired` (CHECK); `expires_at = finished_at + 24 h`. `finished_at` is also set on `failed`. |
+
+Indexes: `(requested_by_user_id, created_at DESC)` (the list), `created_at` where `queued` (the task) and `expires_at` where `ready` (the purge). Audit: automatic events only (`create` by the requester; the worker's `update` by the requester; the purge's `update` with no actor). The row never holds a value of the file.
+
+### 21.2 `export_files` (transient, not audited)
+
+| Column | Type | Notes |
+|---|---|---|
+| `job_id` | `UUID` → `export_jobs` **CASCADE** | Primary key: at most one file per job. |
+| `content` | `BYTEA` | The CSV or XLSX bytes, at most 16 MiB. |
+
+**Retention of bytes (#124 E1, E11):** the file can contain personal data (students' names, many of them minors; tutors). It is readable only through `GET /api/v1/exports/{id}/download` by the requester, is deleted by `reporting:run_exports` once `expires_at` has passed, and never reaches a log line, a problem detail, a notification or an audit event. Backups taken inside the 24-hour window contain it (#129 retention).
+
+**Concurrency:** one transaction per job (`REPEATABLE READ`, the job `FOR UPDATE SKIP LOCKED`), so two runs never build a job twice; the request takes a per-user advisory lock to count the `queued` jobs (at most 3).

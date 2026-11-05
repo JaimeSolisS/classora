@@ -134,6 +134,7 @@ from app.modules.families import logins, search
 from app.modules.families.ages import is_minor
 from app.modules.families.assignments import (
     TutorAssignmentSource,
+    get_tutor_assignment_source,
     register_tutor_assignment_source,
 )
 from app.modules.families.errors import (
@@ -221,6 +222,7 @@ __all__ = [
     "get_family",
     "get_guardian",
     "get_student",
+    "get_tutor_assignment_source",
     "guardian_has_academic_access",
     "is_minor",
     "link_guardian",
