@@ -63,6 +63,32 @@ class ApprovalReasonInvalidError(AppError):
         )
 
 
+class ApprovalRequestClosedError(AppError):
+    """The request is ``approved``, ``rejected`` or ``cancelled``: only an open
+    request can be assigned (#118 E3). Names neither the request nor its
+    status."""
+
+    status = 409
+    code = "approval_request_closed"
+    detail = "This request is already closed, so it can't be assigned."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class ApprovalAssigneeIneligibleError(AppError):
+    """The chosen assignee is unknown, not active, or doesn't hold the
+    request type's review permission now (#118 E2). Says nothing about which
+    of these, nor about the user."""
+
+    status = 422
+    code = "approval_assignee_ineligible"
+    detail = "This person can't be assigned to the request."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
 # --- Live notifications (#42) ------------------------------------------------------
 
 STREAM_RETRY_AFTER_SECONDS = 30

@@ -7,11 +7,14 @@ not_found`` for a request the caller may not review, exactly as for a missing
 one.
 
 - ``GET /api/v1/approval-requests``: filtered by ``status`` (``open`` by
-  default: ``pending`` and ``changes_requested``), ``request_type`` and
-  ``assignee``; by priority (high first), then oldest first.
+  default: ``pending`` and ``changes_requested``), ``request_type``,
+  ``assignee`` and ``priority`` (#118); ordered by ``sort``: ``priority``
+  (the default: high first, then oldest first), ``oldest`` or ``newest``.
 - ``GET /api/v1/approval-requests/{request_id}``.
 - ``POST …/{request_id}/approve`` (no body), ``POST …/reject`` (``{reason?}``)
   and ``POST …/request-changes`` (``{reason}``).
+- ``POST …/{request_id}/assign`` (``{assignee_user_id | null, version}``)
+  and ``GET …/{request_id}/assignee-options`` (#118).
 
 Decision order: ``401`` → ``csrf_failed`` / ``privacy_notice_required`` →
 ``422`` (the body) → ``404`` → for a type decided on its own page that says
@@ -20,6 +23,11 @@ whatever the request's status → ``409 approval_action_unsupported`` → ``409
 approval_transition_invalid`` → ``422`` on ``reason`` → the type's own errors
 (for example ``409 guardian_consent_required`` from a registration). The
 decisions pass ``via_inbox=True``; no other caller does.
+
+Assignment order: ``401`` → ``csrf_failed`` / ``privacy_notice_required`` →
+``422`` (the body) → ``404`` → ``409 version_conflict`` → ``409
+approval_request_closed`` → ``422 approval_assignee_ineligible``. Not
+``idempotent()``: it posts no ledger row, and ``version`` guards a resend.
 """
 
 import uuid
@@ -40,10 +48,14 @@ from app.core.uow import UnitOfWorkDep
 from app.modules.administration import approvals
 from app.modules.administration.schemas import (
     ApprovalAssigneeFilter,
+    ApprovalAssigneeOptions,
+    ApprovalPriority,
     ApprovalRejectBody,
     ApprovalRequestChangesBody,
     ApprovalRequestItem,
+    ApprovalSort,
     ApprovalStatusFilter,
+    AssignApprovalBody,
 )
 
 router = APIRouter(prefix="/api/v1/approval-requests", tags=["approvals"])
@@ -103,6 +115,20 @@ LIST_RESPONSES: dict[int | str, dict[str, Any]] = {
     ),
 }
 DETAIL_RESPONSES: dict[int | str, dict[str, Any]] = {**LIST_RESPONSES, 404: NOT_FOUND}
+ASSIGN_RESPONSES: dict[int | str, dict[str, Any]] = {
+    **AUTH_RESPONSES,
+    **CSRF_RESPONSES,
+    404: NOT_FOUND,
+    409: problem_response_doc(
+        "The request changed since it was read (version_conflict), or it is"
+        " approved, rejected or cancelled (approval_request_closed)."
+    ),
+    422: problem_response_doc(
+        "The body is not valid (validation_error), or the assignee is unknown,"
+        " not active or doesn't hold the type's review permission now"
+        " (approval_assignee_ineligible)."
+    ),
+}
 
 Viewer = Annotated[Principal, authenticated()]
 
@@ -112,8 +138,8 @@ Viewer = Annotated[Principal, authenticated()]
     responses={
         **LIST_RESPONSES,
         422: problem_response_doc(
-            "An unknown status, type or assignee filter, or a limit or offset"
-            " out of range (validation_error)."
+            "An unknown status, type, assignee or priority filter, an unknown"
+            " sort, or a limit or offset out of range (validation_error)."
         ),
     },
 )
@@ -133,14 +159,30 @@ async def list_approval_requests(
         ApprovalAssigneeFilter,
         Query(description="any (the default), me or unassigned."),
     ] = "any",
+    priority: Annotated[
+        ApprovalPriority | None,
+        Query(description="high, normal or low; omitted for any."),
+    ] = None,
+    sort: Annotated[
+        ApprovalSort,
+        Query(
+            description="priority (the default: high first, then oldest first),"
+            " oldest or newest."
+        ),
+    ] = "priority",
 ) -> OffsetPage[ApprovalRequestItem]:
-    """The approval requests of the types the caller may review, by priority
-    (high first), then oldest first. Empty for a caller who reviews none."""
+    """The approval requests of the types the caller may review, in ``sort``
+    order (by default by priority, high first, then oldest first). Empty for
+    a caller who reviews none."""
     return await approvals.list_approval_requests(
         uow.session,
         principal=principal,
         filters=approvals.ApprovalRequestFilters(
-            status=status, request_type=request_type, assignee=assignee
+            status=status,
+            request_type=request_type,
+            assignee=assignee,
+            priority=priority,
+            sort=sort,
         ),
         page=page,
     )
@@ -207,4 +249,38 @@ async def request_changes_approval_request(
         action="request_changes",
         reason=body.reason if body is not None else None,
         via_inbox=True,
+    )
+
+
+@router.get("/{request_id}/assignee-options", responses=DETAIL_RESPONSES)
+async def list_assignee_options(
+    principal: Viewer, request_id: uuid.UUID, uow: UnitOfWorkDep
+) -> ApprovalAssigneeOptions:
+    """The users the request can be assigned to now: the active holders of
+    its type's review permission (the caller included when eligible), by
+    display name. Works for closed requests too."""
+    return ApprovalAssigneeOptions(
+        items=await approvals.list_assignee_options(
+            uow.session, principal=principal, request_id=request_id
+        )
+    )
+
+
+@router.post("/{request_id}/assign", responses=ASSIGN_RESPONSES)
+async def assign_approval_request(
+    principal: Viewer,
+    request_id: uuid.UUID,
+    body: AssignApprovalBody,
+    uow: UnitOfWorkDep,
+) -> ApprovalRequestItem:
+    """Assign an open request to an eligible reviewer, reassign it, or
+    unassign it (``assignee_user_id: null``). Assigning the current assignee
+    changes nothing. The new assignee is notified when someone else assigned
+    them."""
+    return await approvals.assign_approval_request(
+        uow.session,
+        principal=principal,
+        request_id=request_id,
+        assignee_user_id=body.assignee_user_id,
+        version=body.version,
     )

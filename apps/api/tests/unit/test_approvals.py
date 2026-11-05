@@ -19,8 +19,10 @@ from app.modules.administration.models import APPROVAL_STATUSES
 from app.modules.administration.service import (
     register_account_reference_resolver,
     register_approval_handler,
+    register_review_candidate_resolver,
     registered_account_reference_resolver,
     registered_approval_types,
+    registered_review_candidate_resolver,
     unregister_approval_handler,
 )
 from app.modules.identity.service import (
@@ -34,6 +36,8 @@ from app.modules.scheduling.service import (
     SESSION_REQUEST_APPROVAL_HANDLER,
 )
 from app.modules.staff.service import QUALIFICATION_APPROVAL_HANDLER
+from app.wiring import review_candidates
+from app.workflows.payroll_period_approval import PAYROLL_PERIOD_HANDLER
 from app.workflows.progress_report_approval import PROGRESS_REPORT_HANDLER
 from app.workflows.session_closeout import SESSION_CLOSEOUT_HANDLER
 
@@ -212,6 +216,13 @@ def test_build_app_registers_exactly_the_real_types():
     assert report.supports_request_changes is True
     assert report.reason_required_on_reject is True
     assert report.inbox_decisions is False
+    # #110 G, #118 F2: payroll periods; decided on the payroll period page.
+    payroll = PAYROLL_PERIOD_HANDLER
+    assert payroll.request_type == "payroll.period"
+    assert payroll.review_permission == "payroll.finalize"
+    assert payroll.supports_request_changes is False
+    assert payroll.reason_required_on_reject is True
+    assert payroll.inbox_decisions is False
 
 
 def test_build_app_registers_the_account_reference_resolver():
@@ -222,6 +233,27 @@ def test_build_app_registers_the_account_reference_resolver():
         assert registered_account_reference_resolver() is get_account_references
     finally:
         register_account_reference_resolver(get_account_references)
+
+
+def test_build_app_registers_the_review_candidate_resolver():
+    # #118 B2: administration imports no module; the assignee options and the
+    # assignment's eligibility check read the resolver build_app registers.
+    register_review_candidate_resolver(None)
+    try:
+        build_app()
+        assert registered_review_candidate_resolver() is review_candidates
+    finally:
+        register_review_candidate_resolver(review_candidates)
+
+
+@pytest.mark.anyio
+async def test_without_a_review_candidate_resolver_assignment_fails_closed():
+    register_review_candidate_resolver(None)
+    try:
+        with pytest.raises(approvals.ReviewCandidateResolverMissingError):
+            await approvals._review_candidates(None, "registration.review")  # type: ignore[arg-type]
+    finally:
+        register_review_candidate_resolver(review_candidates)
 
 
 @pytest.mark.anyio
@@ -249,9 +281,11 @@ def test_the_cli_and_the_worker_register_the_wiring():
         for request_type in REGISTERED_TYPES:
             unregister_approval_handler(request_type)
         register_account_reference_resolver(None)
+        register_review_candidate_resolver(None)
         run()
         assert registered_approval_types() == REGISTERED_TYPES
         assert registered_account_reference_resolver() is get_account_references
+        assert registered_review_candidate_resolver() is review_candidates
 
 
 # --- #312 B7: the opt-in inbox route hook ----------------------------------------

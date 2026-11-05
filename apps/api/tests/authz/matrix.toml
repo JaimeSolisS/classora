@@ -146,6 +146,20 @@ access = "authenticated"
 
 [[route]]
 method = "POST"
+path = "/api/v1/approval-requests/{request_id}/assign"
+access = "authenticated"
+json = { assignee_user_id = "00000000-0000-7000-8000-000000000001", version = 1 }
+# #118 A2: the placeholder id is no request: 404 for every signed-in role
+# (after the body's 422; the assignee check comes after the 404).
+
+[[route]]
+method = "GET"
+path = "/api/v1/approval-requests/{request_id}/assignee-options"
+access = "authenticated"
+# #118 B1: the placeholder id is no request: 404 for every signed-in role.
+
+[[route]]
+method = "POST"
 path = "/api/v1/approval-requests/{request_id}/reject"
 access = "authenticated"
 # The placeholder id is no request: 404 for every signed-in role.

@@ -2194,7 +2194,7 @@
           "approvals"
         ],
         "summary": "List Approval Requests",
-        "description": "The approval requests of the types the caller may review, by priority\n(high first), then oldest first. Empty for a caller who reviews none.",
+        "description": "The approval requests of the types the caller may review, in ``sort``\norder (by default by priority, high first, then oldest first). Empty for\na caller who reviews none.",
         "operationId": "list_approval_requests_api_v1_approval_requests_get",
         "parameters": [
           {
@@ -2218,6 +2218,35 @@
               "default": "any"
             },
             "description": "any (the default), me or unassigned."
+          },
+          {
+            "name": "priority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ApprovalPriority"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "high, normal or low; omitted for any.",
+              "title": "Priority"
+            },
+            "description": "high, normal or low; omitted for any."
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ApprovalSort",
+              "description": "priority (the default: high first, then oldest first), oldest or newest.",
+              "default": "priority"
+            },
+            "description": "priority (the default: high first, then oldest first), oldest or newest."
           },
           {
             "name": "limit",
@@ -2645,6 +2674,174 @@
           },
           "409": {
             "description": "The request's status doesn't allow the action (approval_transition_invalid), its type doesn't support it (approval_action_unsupported), or the type's own check refused it (for a registration: registration_already_decided, guardian_consent_required, student_profile_required). A type decided on its own page answers its own 409 first: a session closeout always answers closeout_review_route_required with details.review_path, whatever its status.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/approval-requests/{request_id}/assignee-options": {
+      "get": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "List Assignee Options",
+        "description": "The users the request can be assigned to now: the active holders of\nits type's review permission (the caller included when eligible), by\ndisplay name. Works for closed requests too.",
+        "operationId": "list_assignee_options_api_v1_approval_requests__request_id__assignee_options_get",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalAssigneeOptions"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The privacy notice must be accepted first (privacy_notice_required).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such approval request, or one the caller may not review (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/approval-requests/{request_id}/assign": {
+      "post": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "Assign Approval Request",
+        "description": "Assign an open request to an eligible reviewer, reassign it, or\nunassign it (``assignee_user_id: null``). Assigning the current assignee\nchanges nothing. The new assignee is notified when someone else assigned\nthem.",
+        "operationId": "assign_approval_request_api_v1_approval_requests__request_id__assign_post",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignApprovalBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalRequestItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such approval request, or one the caller may not review (not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request changed since it was read (version_conflict), or it is approved, rejected or cancelled (approval_request_closed).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -31743,6 +31940,23 @@
           "unassigned"
         ]
       },
+      "ApprovalAssigneeOptions": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AccountName"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ApprovalAssigneeOptions",
+        "description": "``GET …/assignee-options`` (#118 B1): the active users who hold the\nrequest's review permission now, by display name then id."
+      },
       "ApprovalPriority": {
         "type": "string",
         "enum": [
@@ -31900,6 +32114,14 @@
         "title": "ApprovalRequestItem",
         "description": "One approval request as a reviewer sees it.\n\n``subject`` is the type's own display data (for ``identity.registration``:\n``username``, ``display_name`` and ``requested_role``); never a secret.\n``allowed_actions`` are the decisions the request takes now (from its\nstatus and its type)."
       },
+      "ApprovalSort": {
+        "type": "string",
+        "enum": [
+          "priority",
+          "oldest",
+          "newest"
+        ]
+      },
       "ApprovalStatus": {
         "type": "string",
         "enum": [
@@ -32021,6 +32243,34 @@
           "items"
         ],
         "title": "AssessmentsCompletion"
+      },
+      "AssignApprovalBody": {
+        "properties": {
+          "assignee_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee User Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "assignee_user_id",
+          "version"
+        ],
+        "title": "AssignApprovalBody",
+        "description": "``POST …/assign`` (#118 A1): the new assignee (``null`` unassigns) and\nthe request's ``version`` as the caller last read it. Both are required."
       },
       "AssignmentCounts": {
         "properties": {

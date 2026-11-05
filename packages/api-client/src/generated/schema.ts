@@ -633,8 +633,9 @@ export interface paths {
         };
         /**
          * List Approval Requests
-         * @description The approval requests of the types the caller may review, by priority
-         *     (high first), then oldest first. Empty for a caller who reviews none.
+         * @description The approval requests of the types the caller may review, in ``sort``
+         *     order (by default by priority, high first, then oldest first). Empty for
+         *     a caller who reviews none.
          */
         get: operations["list_approval_requests_api_v1_approval_requests_get"];
         put?: never;
@@ -723,6 +724,51 @@ export interface paths {
          *     type supports it.
          */
         post: operations["request_changes_approval_request_api_v1_approval_requests__request_id__request_changes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approval-requests/{request_id}/assignee-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Assignee Options
+         * @description The users the request can be assigned to now: the active holders of
+         *     its type's review permission (the caller included when eligible), by
+         *     display name. Works for closed requests too.
+         */
+        get: operations["list_assignee_options_api_v1_approval_requests__request_id__assignee_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approval-requests/{request_id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assign Approval Request
+         * @description Assign an open request to an eligible reviewer, reassign it, or
+         *     unassign it (``assignee_user_id: null``). Assigning the current assignee
+         *     changes nothing. The new assignee is notified when someone else assigned
+         *     them.
+         */
+        post: operations["assign_approval_request_api_v1_approval_requests__request_id__assign_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6621,6 +6667,15 @@ export interface components {
         ApprovalAction: "approve" | "reject" | "request_changes";
         /** @enum {string} */
         ApprovalAssigneeFilter: "any" | "me" | "unassigned";
+        /**
+         * ApprovalAssigneeOptions
+         * @description ``GET …/assignee-options`` (#118 B1): the active users who hold the
+         *     request's review permission now, by display name then id.
+         */
+        ApprovalAssigneeOptions: {
+            /** Items */
+            items: components["schemas"]["AccountName"][];
+        };
         /** @enum {string} */
         ApprovalPriority: "low" | "normal" | "high";
         /**
@@ -6683,6 +6738,8 @@ export interface components {
             version: number;
         };
         /** @enum {string} */
+        ApprovalSort: "priority" | "oldest" | "newest";
+        /** @enum {string} */
         ApprovalStatus: "pending" | "approved" | "rejected" | "changes_requested" | "cancelled";
         /** @enum {string} */
         ApprovalStatusFilter: "open" | "pending" | "approved" | "rejected" | "changes_requested" | "cancelled" | "all";
@@ -6716,6 +6773,17 @@ export interface components {
             status: components["schemas"]["CriterionStatus"];
             /** Items */
             items: components["schemas"]["AssessmentCompletionItem"][];
+        };
+        /**
+         * AssignApprovalBody
+         * @description ``POST …/assign`` (#118 A1): the new assignee (``null`` unassigns) and
+         *     the request's ``version`` as the caller last read it. Both are required.
+         */
+        AssignApprovalBody: {
+            /** Assignee User Id */
+            assignee_user_id: string | null;
+            /** Version */
+            version: number;
         };
         /** AssignmentCounts */
         AssignmentCounts: {
@@ -24367,6 +24435,10 @@ export interface operations {
                 status?: components["schemas"]["ApprovalStatusFilter"];
                 /** @description any (the default), me or unassigned. */
                 assignee?: components["schemas"]["ApprovalAssigneeFilter"];
+                /** @description high, normal or low; omitted for any. */
+                priority?: components["schemas"]["ApprovalPriority"] | null;
+                /** @description priority (the default: high first, then oldest first), oldest or newest. */
+                sort?: components["schemas"]["ApprovalSort"];
                 limit?: number;
                 offset?: number;
                 /** @description One registered type, for example identity.registration. */
@@ -24664,6 +24736,135 @@ export interface operations {
                 };
             };
             /** @description The request's status doesn't allow the action (approval_transition_invalid), its type doesn't support it (approval_action_unsupported), or the type's own check refused it (for a registration: registration_already_decided, guardian_consent_required, student_profile_required). A type decided on its own page answers its own 409 first: a session closeout always answers closeout_review_route_required with details.review_path, whatever its status. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_assignee_options_api_v1_approval_requests__request_id__assignee_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalAssigneeOptions"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The privacy notice must be accepted first (privacy_notice_required). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such approval request, or one the caller may not review (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    assign_approval_request_api_v1_approval_requests__request_id__assign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignApprovalBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalRequestItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The request could not be verified (csrf_failed): the Origin or the X-CSRF-Token check failed. On a signed-in route that is not notice-exempt, also privacy_notice_required: the user must accept the current privacy notice first. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such approval request, or one the caller may not review (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The request changed since it was read (version_conflict), or it is approved, rejected or cancelled (approval_request_closed). */
             409: {
                 headers: {
                     [name: string]: unknown;

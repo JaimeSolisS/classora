@@ -60,6 +60,8 @@ def test_export_runs_without_configuration(no_configuration, tmp_path):
         "/api/v1/approval-requests",
         "/api/v1/approval-requests/{request_id}",
         "/api/v1/approval-requests/{request_id}/approve",
+        "/api/v1/approval-requests/{request_id}/assign",
+        "/api/v1/approval-requests/{request_id}/assignee-options",
         "/api/v1/approval-requests/{request_id}/reject",
         "/api/v1/approval-requests/{request_id}/request-changes",
         "/api/v1/audit-events",
