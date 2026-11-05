@@ -32,7 +32,8 @@ types; #316: ``academics.progress_report_due``; #97:
 ``app.workflows.payroll_period_approval``, and
 ``payroll.period_finalized``; #118: the review-candidate resolver of the
 approval inbox, :func:`review_candidates`, and
-``administration.approval_assigned``) are wired
+``administration.approval_assigned``; #122: the ``students`` and ``tutors``
+import kinds) are wired
 here, by the API app factory
 (``app.main.build_app``), ``app.cli`` and ``app.worker``.
 """
@@ -47,6 +48,7 @@ from app.modules.families import service as families_service
 from app.modules.identity.service import (
     REGISTRATION_APPROVAL_HANDLER,
     STAFF_ROLES,
+    TUTORS_IMPORT_KIND,
     AccountReference,
     active_user_ids_with_permission,
     get_account_references,
@@ -87,8 +89,8 @@ async def review_candidates(
 
 def register_approval_wiring() -> None:
     """Every approval type's handler, the modules' notification types, the
-    account-reference resolver, the time-zone dependency checks and the
-    availability impact source.
+    account-reference resolver, the import kinds, the time-zone dependency
+    checks and the availability impact source.
     Registering again changes nothing."""
     administration_service.register_approval_handler(REGISTRATION_APPROVAL_HANDLER)
     administration_service.register_approval_handler(QUALIFICATION_APPROVAL_HANDLER)
@@ -138,6 +140,8 @@ def register_approval_wiring() -> None:
     families_service.register_tutor_assignment_source(
         scheduling_service.TUTOR_ASSIGNMENT_SOURCE
     )
+    administration_service.register_import_kind(families_service.STUDENTS_IMPORT_KIND)
+    administration_service.register_import_kind(TUTORS_IMPORT_KIND)
     administration_service.register_time_zone_dependency(
         scheduling_service.TIME_ZONE_DEPENDENCY, scheduling_service.has_class_sessions
     )

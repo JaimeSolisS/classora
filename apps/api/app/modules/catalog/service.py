@@ -27,7 +27,8 @@ existing reference to a deactivated one stays valid and is still shown
 :func:`get_level_for_reference` and :func:`education_level_references` give
 the id, name and active flag of levels a record points at (#33: one row,
 optionally locked ``FOR SHARE``, or one statement for a page of records);
-:func:`get_subject_for_reference` and :func:`subject_references` do the same
+:func:`active_level_ids_by_name` finds active levels by name (#122 student
+imports); :func:`get_subject_for_reference` and :func:`subject_references` do the same
 for subjects, with their level (#44 tutor qualifications);
 :func:`subject_name_columns` is an unexecuted ``(id, name)`` select another
 module joins (#80); :func:`subject_sort_columns` and
@@ -313,6 +314,24 @@ async def education_level_references(
         select(EducationLevel).where(EducationLevel.id.in_(set(level_ids)))
     )
     return {level.id: _reference(level) for level in levels}
+
+
+async def active_level_ids_by_name(
+    session: AsyncSession, names: Collection[str]
+) -> dict[str, uuid.UUID]:
+    """The **active** levels whose ``lower(name)`` is one of ``names`` (given
+    in lower case), as ``{lower(name): id}``, in one statement; none when
+    ``names`` is empty (#122 B5: the student import matches levels by
+    name). Names are unique ignoring case."""
+    if not names:
+        return {}
+    rows = await session.execute(
+        select(func.lower(EducationLevel.name), EducationLevel.id).where(
+            EducationLevel.is_active.is_(True),
+            func.lower(EducationLevel.name).in_(set(names)),
+        )
+    )
+    return {name: level_id for name, level_id in rows}
 
 
 def _subject_reference(subject: Subject, level: EducationLevel) -> SubjectReference:

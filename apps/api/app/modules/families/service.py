@@ -90,6 +90,12 @@ profile is linked to the student and who have academic access (a minor on
 ``today``, or an adult who gave **that** guardian
 ``guardian_academic_access``). No other access check.
 
+**Imports** (#122): :data:`STUDENTS_IMPORT_KIND` (``families/imports.py``),
+which the composition roots register with
+``administration.service.register_import_kind``; its rows are created by
+:func:`create_imported_student` (:func:`create_student` without a
+principal).
+
 **Ages:** :func:`is_minor` (re-exported from ``ages``) with
 ``administration.service.center_today(session)`` (the center's time zone
 setting, #37); #35 uses both.
@@ -139,6 +145,7 @@ from app.modules.families.facts import (
     load_access_facts,
     own_student_id,
 )
+from app.modules.families.imports import STUDENTS_IMPORT_KIND
 from app.modules.families.models import (
     ConsentRecord,
     Guardian,
@@ -187,7 +194,9 @@ __all__ = [
     "add_family_student",
     "create_family",
     "create_guardian",
+    "create_imported_student",
     "create_student",
+    "STUDENTS_IMPORT_KIND",
     "families_of_students",
     "family_of_student",
     "family_billing_recipients",
@@ -761,6 +770,31 @@ async def create_student(
     the inserts.
     """
     today = await administration.center_today(session)
+    student, level, contacts = await _insert_student(session, body, today)
+    access = _access(principal, student, StudentAccessFacts(), today)
+    return _detail(
+        student,
+        level=level,
+        access=access or "limited",
+        contacts=contacts,
+        guardians=[] if sees_student_guardians(principal) else None,
+        today=today,
+    )
+
+
+async def create_imported_student(
+    session: AsyncSession, body: StudentCreate, *, today: date
+) -> uuid.UUID:
+    """:func:`create_student` without a principal (#122 D5: a student import
+    row, committed by the worker as the committer): the same checks and
+    inserts, in the same order. Returns the new student's id."""
+    student, _, _ = await _insert_student(session, body, today)
+    return student.id
+
+
+async def _insert_student(
+    session: AsyncSession, body: StudentCreate, today: date
+) -> tuple[Student, EducationLevelReference | None, list[StudentEmergencyContact]]:
     _ensure_not_in_future(body.birthdate, today)
     level = None
     if body.education_level_id is not None:
@@ -790,15 +824,7 @@ async def create_student(
     ]
     session.add_all(contacts)
     await session.flush()
-    access = _access(principal, student, StudentAccessFacts(), today)
-    return _detail(
-        student,
-        level=level,
-        access=access or "limited",
-        contacts=contacts,
-        guardians=[] if sees_student_guardians(principal) else None,
-        today=today,
-    )
+    return student, level, contacts
 
 
 PROFILE_FIELDS: Final = (

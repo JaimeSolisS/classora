@@ -13,6 +13,7 @@ import app.core.idempotency_models  # noqa: F401  (idempotency_keys)
 import app.core.numbering_models  # noqa: F401  (number_series)
 import app.core.ratelimit_models  # noqa: F401  (rate_limit_counters)
 import app.modules.academics.models  # noqa: F401
+import app.modules.administration.imports.models  # noqa: F401
 import app.modules.administration.models  # noqa: F401
 import app.modules.administration.settings_models  # noqa: F401
 import app.modules.billing.models  # noqa: F401

@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0087"
+HEAD = "0088"
 FINANCE_TABLES_0083 = frozenset({"expense_categories", "vendors"})
 EXPENSE_TABLES_0084 = frozenset(
     {"expenses", "expense_payments", "expense_payment_reversals", "expense_adjustments"}
@@ -80,6 +80,7 @@ EXPENSE_TABLES_0084 = frozenset(
 TEMPLATES_0085 = "expense_templates"
 OPT_OUTS_0086 = "notification_opt_outs"
 MESSAGES_0087 = ("receipt_message_es", "receipt_message_en")
+IMPORT_TABLES_0088 = ("import_jobs", "import_rows")
 PAY_RULES = "session_pay_rules"
 LINES = "payroll_lines"
 SALARY_LINE_COLUMNS = frozenset(
@@ -481,6 +482,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *EXPENSE_TABLES_0084,
             TEMPLATES_0085,
             OPT_OUTS_0086,
+            *IMPORT_TABLES_0088,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4929,9 +4931,22 @@ def _of_0087(diff: Any) -> bool:
     )
 
 
+def _of_0088(diff: Any) -> bool:
+    """A metadata difference that revision 0088 adds: the two import tables
+    and their indexes (#122 F1). CHECKs are not compared."""
+    if diff[0] == "add_table":
+        return bool(diff[1].name in IMPORT_TABLES_0088)
+    return diff[0] == "add_index" and diff[1].table.name in IMPORT_TABLES_0088
+
+
+def _of_0087_on(diff: Any) -> bool:
+    """A metadata difference that revision 0087 or a later one adds."""
+    return _of_0087(diff) or _of_0088(diff)
+
+
 def _of_0086_on(diff: Any) -> bool:
     """A metadata difference that revision 0086 or a later one adds."""
-    return _of_0086(diff) or _of_0087(diff)
+    return _of_0086(diff) or _of_0087_on(diff)
 
 
 def _of_0085_on(diff: Any) -> bool:
@@ -16920,7 +16935,7 @@ def test_0086_adds_the_table_and_downgrade_restores_0085(fresh_database_url):
     command.upgrade(config, "0086")
 
     assert version_nums(dsn) == ["0086"]
-    assert [d for d in metadata_diff(dsn) if not _of_0087(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0087_on(d)] == []
     assert public_tables(dsn) - tables == {OPT_OUTS_0086}
     assert run_sql(dsn, f"SELECT count(*) AS n FROM {OPT_OUTS_0086}")[0].n == 0  # noqa: S608
 
@@ -17029,7 +17044,7 @@ def test_0087_adds_the_message_columns_and_downgrade_restores_0086(
     command.upgrade(config, "0087")
 
     assert version_nums(dsn) == ["0087"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0088(d)] == []
     added = _columns(dsn, "business_settings")
     assert {k: v for k, v in added.items() if k not in columns} == {
         "receipt_message_es": ("character varying", "YES", 500, None),
@@ -17051,7 +17066,7 @@ def test_0087_adds_the_message_columns_and_downgrade_restores_0086(
     assert version_nums(dsn) == ["0086"]
     assert _columns(dsn, "business_settings") == columns
     assert set(_constraints(dsn, "business_settings")) == constraints
-    assert [d for d in metadata_diff(dsn) if not _of_0087(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0087_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -17093,3 +17108,208 @@ def test_0087_a_message_may_be_null_or_multiline_text(fresh_database_url, column
     [row] = run_sql(dsn, f"SELECT {column} AS message FROM business_settings")  # noqa: S608
     assert row.message is None
     assert len(text) == 500
+
+
+# --- 0088: import jobs and staged rows (#122 F1) -----
+
+CHECKS_0088_JOBS = {
+    "ck_import_jobs_kind_format",
+    "ck_import_jobs_status_valid",
+    "ck_import_jobs_file_name_trimmed",
+    "ck_import_jobs_file_name_not_blank",
+    "ck_import_jobs_committed_at_iff_committed",
+    "ck_import_jobs_committer_when_committing",
+    *(
+        f"ck_import_jobs_{name}_rows_not_negative"
+        for name in (
+            "total",
+            "ready",
+            "duplicate",
+            "error",
+            "created",
+            "skipped",
+            "failed",
+        )
+    ),
+}
+
+
+def _user_0088(dsn: str) -> str:
+    user_id = str(uuid.uuid4())
+    run_sql(
+        dsn,
+        "INSERT INTO users (id, username, display_name, state)"
+        " VALUES (:i, :u, 'Importer', 'active')",
+        {"i": user_id, "u": f"importer-{user_id[:8]}"},
+    )
+    return user_id
+
+
+def _job_0088(dsn: str, user_id: str, **extra: Any) -> str:
+    values = {"kind": "students", "created_by_user_id": user_id, **extra}
+    columns = ", ".join(values)
+    params = ", ".join(f":{name}" for name in values)
+    [row] = run_sql(
+        dsn,
+        f"INSERT INTO import_jobs ({columns}) VALUES ({params}) RETURNING id",  # noqa: S608
+        values,
+    )
+    return str(row.id)
+
+
+def test_0088_adds_the_tables_and_downgrade_restores_0087(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0087")
+    tables = public_tables(dsn)
+
+    command.upgrade(config, "0088")
+
+    assert version_nums(dsn) == ["0088"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == set(IMPORT_TABLES_0088)
+
+    command.downgrade(config, "0087")
+
+    assert version_nums(dsn) == ["0087"]
+    assert public_tables(dsn) == tables
+    assert [d for d in metadata_diff(dsn) if not _of_0088(d)] == []
+
+    command.upgrade(config, "head")
+
+    assert metadata_diff(dsn) == []
+
+
+def test_0088_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    count = ("integer", "NO", None, "0")
+    assert _columns(dsn, "import_jobs") == {
+        **STANDARD_COLUMNS,
+        "kind": ("character varying", "NO", 32, None),
+        "status": ("character varying", "NO", 20, "'staged'::character varying"),
+        "file_name": ("character varying", "YES", 255, None),
+        "ignored_columns": ("ARRAY", "NO", None, "'{}'::text[]"),
+        "total_rows": count,
+        "ready_rows": count,
+        "duplicate_rows": count,
+        "error_rows": count,
+        "created_rows": count,
+        "skipped_rows": count,
+        "failed_rows": count,
+        "created_by_user_id": ("uuid", "NO", None, None),
+        "committed_by_user_id": ("uuid", "YES", None, None),
+        "committed_at": ("timestamp with time zone", "YES", None, None),
+    }
+    jobs = _constraints(dsn, "import_jobs")
+    assert set(jobs) == {
+        "pk_import_jobs",
+        "fk_import_jobs_created_by_user_id_users",
+        "fk_import_jobs_committed_by_user_id_users",
+        *CHECKS_0088_JOBS,
+    }
+    for fk in ("created_by_user_id", "committed_by_user_id"):
+        assert jobs[f"fk_import_jobs_{fk}_users"].endswith("ON DELETE RESTRICT")
+    indexes = _indexes(dsn, "import_jobs")
+    assert set(indexes) == {
+        "pk_import_jobs",
+        "ix_import_jobs_kind_created_at",
+        "ix_import_jobs_open_status",
+    }
+    assert "(kind, created_at DESC)" in indexes["ix_import_jobs_kind_created_at"]
+    assert "WHERE" in indexes["ix_import_jobs_open_status"]
+
+    assert _columns(dsn, "import_rows") == {
+        "job_id": ("uuid", "NO", None, None),
+        "row_number": ("integer", "NO", None, None),
+        "status": ("character varying", "NO", 16, None),
+        "values": ("jsonb", "YES", None, None),
+        "errors": ("jsonb", "NO", None, "'[]'::jsonb"),
+        "warnings": ("jsonb", "NO", None, "'[]'::jsonb"),
+        "record_id": ("uuid", "YES", None, None),
+    }
+    rows = _constraints(dsn, "import_rows")
+    assert set(rows) == {
+        "pk_import_rows",
+        "fk_import_rows_job_id_import_jobs",
+        "ck_import_rows_row_number_positive",
+        "ck_import_rows_status_valid",
+        "ck_import_rows_values_object",
+        "ck_import_rows_errors_array",
+        "ck_import_rows_warnings_array",
+        "ck_import_rows_record_iff_created",
+    }
+    assert rows["pk_import_rows"] == "PRIMARY KEY (job_id, row_number)"
+    assert rows["fk_import_rows_job_id_import_jobs"].endswith("ON DELETE CASCADE")
+
+
+@pytest.mark.parametrize(
+    ("extra", "constraint"),
+    [
+        ({"kind": "Students"}, "ck_import_jobs_kind_format"),
+        ({"status": "done"}, "ck_import_jobs_status_valid"),
+        ({"file_name": " a.csv"}, "ck_import_jobs_file_name_trimmed"),
+        ({"file_name": ""}, "ck_import_jobs_file_name_not_blank"),
+        ({"ready_rows": -1}, "ck_import_jobs_ready_rows_not_negative"),
+        ({"status": "committing"}, "ck_import_jobs_committer_when_committing"),
+    ],
+)
+def test_0088_job_checks(fresh_database_url, extra, constraint):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    user_id = _user_0088(dsn)
+
+    with pytest.raises(IntegrityError) as caught:
+        _job_0088(dsn, user_id, **extra)
+
+    assert getattr(caught.value.orig, "sqlstate", None) == "23514"
+    assert constraint in str(caught.value.orig)
+
+
+def test_0088_committed_needs_committed_at(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    user_id = _user_0088(dsn)
+
+    with pytest.raises(IntegrityError) as caught:
+        _job_0088(dsn, user_id, status="committed", committed_by_user_id=user_id)
+
+    assert "ck_import_jobs_committed_at_iff_committed" in str(caught.value.orig)
+
+
+def test_0088_rows_cascade_with_their_job_and_users_restrict(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    user_id = _user_0088(dsn)
+    job_id = _job_0088(dsn, user_id)
+    run_sql(
+        dsn,
+        'INSERT INTO import_rows (job_id, row_number, status, "values")'
+        " VALUES (:j, 2, 'ready', CAST(:v AS jsonb))",
+        {"j": job_id, "v": '{"given_names": "Ana"}'},
+    )
+    with pytest.raises(IntegrityError) as created:
+        run_sql(
+            dsn,
+            "INSERT INTO import_rows (job_id, row_number, status)"
+            " VALUES (:j, 3, 'created')",
+            {"j": job_id},
+        )
+    with pytest.raises(IntegrityError) as not_object:
+        run_sql(
+            dsn,
+            'INSERT INTO import_rows (job_id, row_number, status, "values")'
+            " VALUES (:j, 4, 'ready', CAST('[]' AS jsonb))",
+            {"j": job_id},
+        )
+    with pytest.raises(IntegrityError) as restricted:
+        run_sql(dsn, "DELETE FROM users WHERE id = :u", {"u": user_id})
+
+    assert "ck_import_rows_record_iff_created" in str(created.value.orig)
+    assert "ck_import_rows_values_object" in str(not_object.value.orig)
+    assert getattr(restricted.value.orig, "sqlstate", None) == "23001"
+
+    run_sql(dsn, "DELETE FROM import_jobs WHERE id = :j", {"j": job_id})
+
+    assert run_sql(dsn, "SELECT count(*) AS n FROM import_rows")[0].n == 0

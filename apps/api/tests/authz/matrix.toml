@@ -2134,6 +2134,58 @@ allow = ["owner", "administrator"]
 # An empty body (no version) gets 422 for the allowed roles.
 json = {}
 
+# Imports (#122 G1): open to any kind's importer. Students need
+# student.manage (Owner, Administrator, Academic coordinator); tutors need
+# user.invite and may assign tutor (Owner, Administrator). The route checks
+# it itself, so the rest get 403. Per-kind cases (the Coordinator's 403 on a
+# tutors import and 404 on a tutors job):
+# tests/integration/test_imports_pipeline.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/imports"
+access = "authenticated"
+deny = ["finance_staff", "tutor", "student", "guardian"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/imports"
+access = "authenticated"
+deny = ["finance_staff", "tutor", "student", "guardian"]
+# An empty file gets 422 import_file_invalid for the allowed roles; nothing
+# is written.
+json = { kind = "students", csv = "" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/imports/{import_id}"
+access = "authenticated"
+deny = ["finance_staff", "tutor", "student", "guardian"]
+# The placeholder id is no import: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/imports/{import_id}/commit"
+access = "authenticated"
+deny = ["finance_staff", "tutor", "student", "guardian"]
+json = { version = 1 }
+# The placeholder id is no import: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/imports/{import_id}/discard"
+access = "authenticated"
+deny = ["finance_staff", "tutor", "student", "guardian"]
+json = { version = 1 }
+# The placeholder id is no import: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/imports/{import_id}/rows"
+access = "authenticated"
+deny = ["finance_staff", "tutor", "student", "guardian"]
+# The placeholder id is no import: 404 for the allowed roles.
+
 [[route]]
 method = "GET"
 path = "/api/v1/invitations"

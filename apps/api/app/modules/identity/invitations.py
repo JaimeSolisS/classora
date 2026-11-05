@@ -99,18 +99,22 @@ def _record_issued(
     token: tokens.IssuedToken,
     *,
     reissued: bool,
+    import_job_id: uuid.UUID | None = None,
 ) -> None:
+    details: dict[str, object] = {
+        "link_id": token.id,
+        "roles": sorted(roles),
+        "expires_at": token.expires_at,
+        "reissued": reissued,
+    }
+    if import_job_id is not None:
+        details["import_job_id"] = import_job_id
     record_audit_event(
         session,
         action=INVITATION_ISSUED_EVENT,
         record_type=User.__tablename__,
         record_id=user_id,
-        details={
-            "link_id": token.id,
-            "roles": sorted(roles),
-            "expires_at": token.expires_at,
-            "reissued": reissued,
-        },
+        details=details,
     )
 
 
@@ -161,6 +165,56 @@ async def create_invitation(
     )
     _record_issued(session, user.id, [role], token, reissued=False)
     return _issued(user, [role], token, app_origin)
+
+
+async def create_imported_invitation(
+    session: AsyncSession,
+    *,
+    username: str,
+    display_name: str,
+    email: str | None,
+    phone: str | None,
+    role: str,
+    issued_by: uuid.UUID,
+    import_job_id: uuid.UUID,
+) -> uuid.UUID:
+    """What :func:`create_invitation` creates, for one import row (#122 D5,
+    E7): a pending user with ``role``, ``email`` and ``phone``, and an
+    invitation token whose raw value is discarded (the admin gets a link with
+    Reissue). ``identity.invitation_issued`` is written as for a manual
+    invitation (``reissued: false``) plus ``import_job_id``. The caller
+    checked the authority (the import kind's ``may_import``; ``role`` is
+    never a staff role here, so no reauthentication) and normalized
+    ``username``. ``409 username_taken`` when any user has it. Returns the
+    user's id.
+    """
+    if role in STAFF_ROLES:
+        raise ValueError("imports never invite a staff role")
+    if await _username_taken(session, username):
+        raise UsernameTakenError()
+    user = User(
+        id=uuid.uuid7(),
+        username=username,
+        display_name=display_name,
+        state=PENDING,
+        email=email,
+        phone=phone,
+    )
+    try:
+        async with session.begin_nested():
+            session.add(user)
+    except IntegrityError as exc:
+        if _USERNAME_UNIQUE in str(exc.orig):
+            raise UsernameTakenError() from None
+        raise
+    await service.add_user_role(session, user_id=user.id, role=role)
+    token = await tokens.issue_account_token(
+        session, user_id=user.id, kind=tokens.INVITATION, issued_by=issued_by
+    )
+    _record_issued(
+        session, user.id, [role], token, reissued=False, import_job_id=import_job_id
+    )
+    return user.id
 
 
 def _has_invitation_token() -> object:

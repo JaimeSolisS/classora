@@ -7,6 +7,9 @@
   :func:`resolve_permissions` (pure), :func:`may_assign_role`, the role codes
   and :data:`STAFF_ROLES` (D4; ``permissions.py``).
 - Delegation: :func:`grant_delegation` and :func:`revoke_delegation`.
+- Imports (#122): :data:`TUTORS_IMPORT_KIND` (``imports.py``; rows created
+  by ``invitations.create_imported_invitation``), registered by the
+  composition roots with ``administration.service.register_import_kind``.
 - Self-registration approvals (#40 D2): :data:`REGISTRATION_APPROVAL_HANDLER`
   (type :data:`REGISTRATION_APPROVAL_TYPE`), registered by the composition
   roots with ``administration.service.register_approval_handler``.
@@ -103,6 +106,7 @@ from app.modules.identity.errors import (
     UnknownRoleError,
     UsernameInvalidError,
 )
+from app.modules.identity.imports import TUTORS_IMPORT_KIND
 from app.modules.identity.members import (
     get_role_member,
     list_role_members,
@@ -171,6 +175,7 @@ __all__ = [
     "ROLE_CODES",
     "STAFF_ROLES",
     "THEMES",
+    "TUTORS_IMPORT_KIND",
     "UNSET",
     "DelegationForbiddenError",
     "DelegationTargetInvalidError",
