@@ -223,6 +223,7 @@ function ConnectedBell() {
         onMarkAll={() => void onMarkAll()}
         markingAll={markingAll}
         actionError={actionError}
+        onOpenPreferences={() => setOpen(false)}
       />
     </NotificationBellView>
   );

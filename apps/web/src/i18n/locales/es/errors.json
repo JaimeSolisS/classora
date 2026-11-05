@@ -478,5 +478,8 @@
   "payroll_period_not_finalized": "Este periodo no está finalizado, así que no admite pagos.",
   "payroll_payment_duplicate": "Ya hay un pago registrado con este método y referencia en este periodo. Revisa la lista de pagos.",
   "payroll_payment_exceeds_balance": "Este pago es mayor que lo que queda por pagar de este periodo.",
-  "payroll_payment_already_reversed": "Este pago ya se había revertido. Revisa la lista de pagos."
+  "payroll_payment_already_reversed": "Este pago ya se había revertido. Revisa la lista de pagos.",
+  "notification_type_unknown": "Ese tipo de notificación no está en tu lista. Recarga la página.",
+  "notification_type_mandatory": "Esa notificación es obligatoria y no se puede desactivar.",
+  "notification_type_duplicate": "Un tipo de notificación aparece dos veces en el cambio."
 }
