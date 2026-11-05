@@ -20,8 +20,8 @@ session is no longer recent.
   declaration (``require(...)`` or ``authenticated()``) and pass
   :data:`REAUTH_RESPONSES`.
 - :func:`recent_auth_guard` for an action that is sensitive only for some
-  request bodies (a staff-role invitation, a settings change touching payment
-  methods or the time zone, a user-state change to suspended or archived). It
+  request bodies (a staff-role invitation, a payment-method activation change
+  or a time-zone change, a user-state change to suspended or archived). It
   yields a :class:`RecentAuthGuard`; the handler or service calls
   :meth:`RecentAuthGuard.ensure` only when the condition holds.
 
@@ -168,7 +168,9 @@ _ACTIONS: Final = (
     ),
     SensitiveAction(
         "settings.payment_methods_or_time_zone",
-        "Change the payment methods or the time zone in the business settings.",
+        "Activate or deactivate a payment method (PATCH"
+        " /billing/payment-methods/{code}), or change the time zone in the"
+        " business settings.",
         "business-settings changes to payment methods or time zone",
         "#37 (time zone), M8-04 (payment methods)",
     ),

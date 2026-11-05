@@ -203,6 +203,7 @@ Clarification (#104, 2026-10-31): `payroll.prepare` is not in the code; #107 see
 - A billing-owned reference table `payment_methods (code, is_active)`, seeded with `cash`, `transfer` and `other`, with labels from the client catalogs. #96 reads it.
 - M8-04 (#121) adds editing, behind the reauthentication ADR-0007 D10 already lists ("business-settings changes to payment methods").
 - A method is never deleted once used.
+- Clarification (#121, 2026-11-05; #121 E5 (a), orchestrator-recommended, pending owner review): "editing" means **activating and deactivating** the seeded methods (`PATCH /api/v1/billing/payment-methods/{code}`, `settings.manage` plus reauthentication `settings.payment_methods_or_time_zone`); the last active method can't be deactivated. No create, rename or delete: custom methods would need a label column and change every method label (receipts, payslips, the web forms) and are a follow-up candidate.
 
 ### Receipt numbering and contents (E13 (a), ISSUE-F5)
 

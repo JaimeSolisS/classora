@@ -32,6 +32,9 @@ the same ``404``). A caller without ``billing.view`` gets ``note``,
 per page (the guardian's own family, the family, the account, the page;
 the reversal is joined into the page), the detail at most six (#100: its
 refunds).
+
+**Payment methods** (C5; #121 A): the list, and
+:func:`update_payment_method` (``billing.set_payment_method_active``).
 """
 
 import uuid
@@ -40,9 +43,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Principal, RecordNotFoundError
 from app.core.pagination import OffsetPage, OffsetParams
+from app.core.reauth import RecentAuthGuard
 from app.modules.administration import service as administration
 from app.modules.billing import service as billing
-from app.modules.billing.schemas import CreditAllocationCreate, PaymentCreate
+from app.modules.billing.schemas import (
+    CreditAllocationCreate,
+    PaymentCreate,
+    PaymentMethodUpdate,
+)
 from app.modules.families import service as families
 from app.workflows.billing_accounts import _visible_family, sees_every_account
 from app.workflows.billing_payment_schemas import (
@@ -274,6 +282,23 @@ async def list_payment_methods(session: AsyncSession) -> list[PaymentMethodItem]
     """``GET /api/v1/billing/payment-methods`` (C5): every method by
     code."""
     return [
-        PaymentMethodItem(code=row.code, is_active=row.is_active)
+        PaymentMethodItem(code=row.code, is_active=row.is_active, version=row.version)
         for row in await billing.payment_methods_list(session)
     ]
+
+
+async def update_payment_method(
+    session: AsyncSession,
+    code: str,
+    body: PaymentMethodUpdate,
+    *,
+    guard: RecentAuthGuard,
+) -> PaymentMethodItem:
+    """``PATCH /api/v1/billing/payment-methods/{code}`` (#121 A2): activate
+    or deactivate the method (``billing.set_payment_method_active``)."""
+    row = await billing.set_payment_method_active(
+        session, code, is_active=body.is_active, version=body.version, guard=guard
+    )
+    return PaymentMethodItem(
+        code=row.code, is_active=row.is_active, version=row.version
+    )

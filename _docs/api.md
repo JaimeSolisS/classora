@@ -298,6 +298,8 @@ Codes in use today:
 | `consent_not_applicable` | 422 | `student_login` for an adult or `guardian_academic_access` for a minor; the field error is on `["body","scope"]`. |
 | `consent_already_given` | 409 | An active consent for the same student, guardian and scope already exists. |
 | `consent_already_revoked` | 409 | Revoking a consent that was already revoked. |
+| `payment_method_not_found` | 404 | `PATCH /billing/payment-methods/{code}` names no method (see Payments and allocations). |
+| `payment_method_last_active` | 409 | Deactivating the only active payment method; at least one stays active, nothing changes (see Payments and allocations). |
 | `tz_change_requires_migration` | 409 | A business-settings change of the center time zone while scheduled data exists (see Business settings); nothing changes. The body never names the data. |
 | `invalid_effective_from` | 422 | A new scheduling policy version, cancellation billing rule version or session pay rule version whose `effective_from` (now when omitted, on the first two) is in the past or not later than every existing version (of the event, on a pay rule); nothing is created (see Scheduling policies, Cancellation billing rules and Session pay rules). |
 | `policy_version_in_effect` | 409 | Deleting a scheduling policy version or a cancellation billing rule version that is in force or in the past; only an upcoming version can be deleted (see Scheduling policies and Cancellation billing rules). |
@@ -1316,8 +1318,8 @@ operating hours and the **center time zone**.
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
-| `GET /api/v1/business-settings` | `authenticated()` | `BusinessSettingsDetail`: `center_name`, `contact_phone`, `contact_email`, `address`, `time_zone`, `operating_hours` (`[{weekday, opens_at, closes_at}]` by weekday, times `HH:MM`), `version`, `updated_at`. Every role reads it: nothing in it is personal data. |
-| `PATCH /api/v1/business-settings` | `require("settings.manage")` + `recent_auth_guard("settings.payment_methods_or_time_zone")` | Body `{version, center_name?, contact_phone?, contact_email?, address?, time_zone?, operating_hours?}`. |
+| `GET /api/v1/business-settings` | `authenticated()` | `BusinessSettingsDetail`: `center_name`, `contact_phone`, `contact_email`, `address`, `time_zone`, `operating_hours` (`[{weekday, opens_at, closes_at}]` by weekday, times `HH:MM`), `receipt_message_es`, `receipt_message_en` (#121; `null` = none), `version`, `updated_at`. Every role reads it: nothing in it is personal data. |
+| `PATCH /api/v1/business-settings` | `require("settings.manage")` + `recent_auth_guard("settings.payment_methods_or_time_zone")` | Body `{version, center_name?, contact_phone?, contact_email?, address?, time_zone?, operating_hours?, receipt_message_es?, receipt_message_en?}`. |
 
 - **Singleton:** exactly one row, inserted by migration 0020 (`Classora`, no
   contact details, `America/Mexico_City`, `version` 1) with the default hours
@@ -1331,6 +1333,15 @@ operating hours and the **center time zone**.
   characters) are trimmed; `null` or `""` clears them. `time_zone` is any
   IANA key in the system zone data (`zoneinfo`); the web app offers Mexico's
   zones; `null` is `422`.
+- **Receipt messages (#121 B2):** `receipt_message_es` and
+  `receipt_message_en`, plain text printed on **new** receipts of that
+  language (frozen into the receipt's snapshot v2; issued receipts never
+  change, and a receipt never falls back to the other language's message).
+  The value is trimmed, CRLF and CR become LF, and `null` or `""` clears it.
+  Over 500 characters after normalizing, or a control character other than
+  LF, is `422` on the field. Changing a message needs **no**
+  reauthentication. The text is data, never template source: it is
+  autoescaped and keeps its line breaks.
 - **Operating hours:** local wall-clock times in the center's zone, one
   interval per ISO weekday (1 = Monday … 7 = Sunday); a weekday that isn't
   listed is **closed**. `operating_hours`, when sent, **replaces the whole
@@ -1340,8 +1351,9 @@ operating hours and the **center time zone**.
   supported (closures are a separate record, M3-02).
 - **Reauthentication:** a `time_zone` that **differs** from the stored one
   needs a recent reauthentication (`403 reauth_required`, ADR-0007 D10;
-  sensitive action `settings.payment_methods_or_time_zone`, which M8-04 also
-  applies to payment methods). Sending the current zone needs none.
+  sensitive action `settings.payment_methods_or_time_zone`, which #121 also
+  applies to payment methods). Sending the current zone needs none. A
+  request that changes the zone and a receipt message still needs it.
 - **Check order:** `401` → `403 csrf_failed` → `403 privacy_notice_required`
   → `403 permission_denied` → `422` → `403 reauth_required` (time-zone
   change only) → `409 version_conflict` (the row is locked `FOR UPDATE`) →
@@ -6415,7 +6427,25 @@ are M6-11b (#379).
 | `POST /api/v1/families/{family_id}/billing-account/allocations` | `require("payment.record")` + `Idempotency-Key` | Body `CreditAllocationCreate`. `201` with `CreditAllocated`. |
 | `GET /api/v1/families/{family_id}/billing-account/payments` | `authenticated()` + record policy | Offset pagination. Items are `PaymentItem`, newest `received_on` first (then entry time, id). At most four statements per page. |
 | `GET /api/v1/families/{family_id}/billing-account/payments/{payment_id}` | `authenticated()` + record policy | `PaymentDetail`; a payment of another family is `404 not_found`. |
-| `GET /api/v1/billing/payment-methods` | `require("billing.view")` | `[{code, is_active}]` by code (no pagination). Offer the active ones; labels come from the client catalogs (`billing.paymentMethods.<code>`). |
+| `GET /api/v1/billing/payment-methods` | `require("billing.view")` | `[{code, is_active, version}]` by code (no pagination). Offer the active ones; labels come from the client catalogs (`billing.paymentMethods.<code>`). |
+| `PATCH /api/v1/billing/payment-methods/{code}` | `require("settings.manage")` + `recent_auth_guard("settings.payment_methods_or_time_zone")` | #121 A2. Body `{is_active, version}` (`extra="forbid"`). `200` with the updated `{code, is_active, version}`. |
+
+**Payment-method editing (#121 A, ADR-0006 E12).** Owners and Administrators
+activate or deactivate the seeded methods (`cash`, `transfer`, `other`);
+there is no create, rename or delete. Check order: `401` → `403
+csrf_failed` → `403 privacy_notice_required` → `403 permission_denied` →
+`422` → `404 payment_method_not_found` → `403 reauth_required` (only when
+`is_active` differs from the stored value) → `409 version_conflict` → `409
+payment_method_last_active`. Sending the stored value with the current
+version is a no-op (`200`, no reauthentication, no new version, no audit
+event). The service locks every method row `FOR UPDATE` in `code` order
+before counting the active ones, so the last active method can't be
+deactivated even by two concurrent requests. A deactivated method is
+refused by new payments, refunds, corrections, withdrawal settlements,
+payroll and expense payments with each route's existing
+`payment_method_unavailable`; recorded rows and receipts keep it.
+Reactivating restores it. Each change writes one automatic `update` event
+on `payment_methods` (`record_id`: the code's UUIDv5; `changes.is_active`).
 
 `payment.record` (Owners, Administrators and Finance Staff; not
 delegable; seeded by `make seed`) needs **no reauthentication**: a mistake

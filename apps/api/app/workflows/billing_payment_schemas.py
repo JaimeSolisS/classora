@@ -20,10 +20,12 @@ from app.core.money import Money
 
 class PaymentMethodItem(BaseModel):
     """A payment method (#96 M8). Labels come from the client catalogs
-    (``billing.paymentMethods.<code>``); only active ones are offered."""
+    (``billing.paymentMethods.<code>``); only active ones are offered.
+    ``version`` (#121 A1) is what ``PATCH …/payment-methods/{code}`` needs."""
 
     code: str
     is_active: bool
+    version: int
 
 
 class ReceiptReference(BaseModel):

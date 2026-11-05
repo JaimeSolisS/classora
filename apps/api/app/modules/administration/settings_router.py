@@ -5,7 +5,8 @@
 - ``PATCH /api/v1/business-settings``: ``require("settings.manage")``
   (Owners and Administrators), with
   ``recent_auth_guard("settings.payment_methods_or_time_zone")``: changing
-  the time zone needs a recent reauthentication (ADR-0007 D10).
+  the time zone needs a recent reauthentication (ADR-0007 D10); the receipt
+  messages (#121 B2) don't.
 
 Check order of the ``PATCH``: ``401`` → ``csrf_failed`` →
 ``permission_denied`` → ``422`` → ``403 reauth_required`` (time-zone change
@@ -39,8 +40,8 @@ async def get_business_settings(
     principal: Annotated[Principal, authenticated()],
     uow: UnitOfWorkDep,
 ) -> BusinessSettingsDetail:
-    """The center's name, contact details, time zone and weekly operating
-    hours. A weekday that is not listed is closed."""
+    """The center's name, contact details, time zone, weekly operating
+    hours and receipt messages. A weekday that is not listed is closed."""
     return await service.get_business_settings(uow.session)
 
 
@@ -57,8 +58,9 @@ async def get_business_settings(
             "The body is not valid: a missing version, a blank or too long"
             " name, a malformed email or phone, an unknown time zone, a null"
             " name, time zone or hours, a repeated weekday, an HH:MM time"
-            " out of range, a closing time not after the opening time, or an"
-            " unknown field (validation_error)."
+            " out of range, a closing time not after the opening time, a"
+            " receipt message over 500 characters or with a control character"
+            " other than a line break, or an unknown field (validation_error)."
         ),
     },
 )
@@ -72,5 +74,7 @@ async def update_business_settings(
     ``operating_hours`` replaces the whole week. Changing ``time_zone``
     needs a password reauthentication in the last 5 minutes (``403
     reauth_required``) and is refused once classes are scheduled (``409
-    tz_change_requires_migration``); sending the current zone needs none."""
+    tz_change_requires_migration``); sending the current zone needs none.
+    A receipt message (trimmed; line breaks kept) needs no
+    reauthentication and only changes receipts issued afterwards."""
     return await service.update_business_settings(uow.session, body, guard=guard)

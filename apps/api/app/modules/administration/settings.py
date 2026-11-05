@@ -1,8 +1,10 @@
 """The center's business settings (#37; spec §9, §16; ADR-0004).
 
 One record (``business_settings``, inserted by migration 0020) with the
-center name, contact details and the **center time zone**, plus the weekly
-operating hours (``operating_hours``, one interval per open weekday).
+center name, contact details, the **center time zone** and the receipt
+message per language (#121 B2; frozen into each new receipt by
+``billing.receipts``, so a change affects only later receipts), plus the
+weekly operating hours (``operating_hours``, one interval per open weekday).
 
 **Reads** (every signed-in user): :func:`get_business_settings`, two
 statements. Other modules read the zone with :func:`get_center_time_zone`
@@ -10,8 +12,9 @@ and "today" with :func:`center_today` (today's date in the center's zone,
 from ``app.core.clock.now()``). The zone is cached in ``session.info`` for
 the Unit of Work, so a request reads it at most once.
 
-**Writes** (``settings.manage``): :func:`update_business_settings`. Order
-after the body's ``422``: a time-zone change (a sent ``time_zone`` that
+**Writes** (``settings.manage``): :func:`update_business_settings`. A
+receipt-message change needs no reauthentication. Order after the body's
+``422``: a time-zone change (a sent ``time_zone`` that
 differs from the stored one) needs a recent reauthentication (``403
 reauth_required``, ADR-0007 D10) → the row is locked ``FOR UPDATE`` and its
 ``version`` checked (``409 version_conflict``) → for a time-zone change, every
@@ -66,6 +69,7 @@ ZONE_INFO_KEY: Final = "classora.center_time_zone"
 """``session.info`` key of the cached center time zone."""
 
 CONTACT_FIELDS: Final = ("center_name", "contact_phone", "contact_email", "address")
+RECEIPT_MESSAGE_FIELDS: Final = ("receipt_message_es", "receipt_message_en")
 
 _dependencies: dict[str, TimeZoneDependency] = {}
 
@@ -122,6 +126,8 @@ def _detail(
             )
             for row in sorted(hours, key=lambda row: row.weekday)
         ],
+        receipt_message_es=settings.receipt_message_es,
+        receipt_message_en=settings.receipt_message_en,
         version=settings.version,
         updated_at=settings.updated_at,
     )
@@ -250,7 +256,7 @@ async def update_business_settings(
     ensure_version(settings, body.version)
     changes: dict[str, Any] = {
         name: getattr(body, name)
-        for name in (*CONTACT_FIELDS, "time_zone")
+        for name in (*CONTACT_FIELDS, *RECEIPT_MESSAGE_FIELDS, "time_zone")
         if name in sent and getattr(body, name) != getattr(settings, name)
     }
     if "time_zone" in changes:
