@@ -286,7 +286,11 @@
       "status": "Status",
       "type": "Type",
       "allTypes": "All types",
-      "assignee": "Assigned to"
+      "assignee": "Assigned to",
+      "priority": "Priority",
+      "allPriorities": "All",
+      "sort": "Sort",
+      "clear": "Clear filters"
     },
     "status": {
       "open": "Open",
@@ -356,7 +360,12 @@
       "pagination": "Pages",
       "previous": "Previous",
       "next": "Next",
-      "range": "{{from}}–{{to}} of {{total}}"
+      "range": "{{from}}–{{to}} of {{total}}",
+      "assignee": "Assigned to",
+      "view": "View details",
+      "viewFor": "View details of {{summary}}",
+      "count_one": "{{count}} request",
+      "count_other": "{{count}} requests"
     },
     "actions": {
       "approve": "Approve",
@@ -437,6 +446,108 @@
       "review": "Review",
       "reviewFor": "Review the progress report for {{student}}",
       "openQueue": "Open the review queue"
+    },
+    "sort": {
+      "priority": "Priority (default)",
+      "oldest": "Oldest first",
+      "newest": "Newest first"
+    },
+    "panel": {
+      "genericTitle": "Request details",
+      "title": "{{type}}: {{summary}}",
+      "close": "Close",
+      "notFound": "This request doesn't exist or you can't review it.",
+      "status": "Status",
+      "priority": "Priority",
+      "createdAt": "Submitted",
+      "requester": "Requested by",
+      "assignee": "Assigned to",
+      "resolvedAt": "Resolved",
+      "resolvedBy": "Resolved by",
+      "reason": "Reason",
+      "details": "Details",
+      "unknownType": "Type: {{type}}",
+      "noDetails": "No more data.",
+      "assignment": "Assignment",
+      "reviewOnPage": "Review on its page",
+      "reloaded": "The request changed; it was reloaded.",
+      "stale": "The request changed and couldn't be reloaded; what you see may be out of date. Close and reopen the details.",
+      "ineligible": "That person can no longer review this type of request."
+    },
+    "assign": {
+      "toMe": "Assign to me",
+      "toLabel": "Assign to…",
+      "choose": "Choose a person",
+      "submit": "Assign",
+      "remove": "Remove assignment",
+      "loadingOptions": "Loading the people who can review it…",
+      "assignedTo": "Assigned to {{name}}",
+      "unassigned": "Unassigned"
+    },
+    "details": {
+      "displayName": "Name",
+      "username": "Username",
+      "requestedRole": "Requested role",
+      "tutor": "Tutor",
+      "subject": "Subject",
+      "level": "Level",
+      "when": "Date and time",
+      "endsAt": "Ends",
+      "duration": "Duration",
+      "minutesValue": "{{minutes}} min",
+      "offerOutcome": "Offer outcome",
+      "offerOutcomes": {
+        "declined": "Declined by the tutor",
+        "expired": "Expired without an answer"
+      },
+      "offerKind": "Offer kind",
+      "offerKinds": {
+        "assignment": "Assignment",
+        "substitution": "Substitution"
+      },
+      "series": "Series",
+      "seriesFrom": "Weekly from {{date}}",
+      "occurrenceCount": "Sessions",
+      "sessionState": "Session state",
+      "originalTutor": "Still taught by",
+      "declineNote": "Tutor's note",
+      "students": "Students",
+      "student": "Student",
+      "conflicts": "Conflicts",
+      "requestedBy": "Requested by",
+      "note": "Note",
+      "requestStatus": "Request status",
+      "changeKind": "Change kind",
+      "initiatedBy": "Initiated by",
+      "initiators": {
+        "family": "The family",
+        "tutor": "The tutor"
+      },
+      "proposedStart": "Proposed new time",
+      "classification": "Classification",
+      "change": "Change",
+      "affectedCount": "Affected classes",
+      "changeStatuses": {
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "cancelled": "Withdrawn"
+      },
+      "reviewKind": "Review",
+      "sessionKind": "Class type",
+      "scheduledMinutes": "Scheduled length",
+      "actualMinutes": "Actual length",
+      "participants": "Students in the class",
+      "approvedMinutes": "Currently approved",
+      "onBehalfBy": "Submitted on the tutor's behalf by",
+      "reportKind": "Report type",
+      "period": "Period",
+      "periodValue": "{{start}} – {{end}}",
+      "allSubjects": "All subjects",
+      "author": "Author",
+      "submittedAt": "Submitted",
+      "preparedBy": "Prepared by",
+      "preparedAt": "Prepared at"
     }
   },
   "users": {
@@ -1526,7 +1637,8 @@
       "billing_payment_reminder_overdue_other": "{{count}} charges totalling {{open_total}} are overdue, the first since {{due_on}}.",
       "billing_payment_reminder_overdue_followup_one": "Reminder: {{count}} charge of {{open_total}} is still unpaid since {{due_on}}.",
       "billing_payment_reminder_overdue_followup_other": "Reminder: {{count}} charges totalling {{open_total}} are still unpaid, the first since {{due_on}}.",
-      "payroll_period_finalized": "Your pay for {{starts_on}} – {{ends_on}} is finalized."
+      "payroll_period_finalized": "Your pay for {{starts_on}} – {{ends_on}} is finalized.",
+      "administration_approval_assigned": "A request was assigned to you: {{request_type}}"
     }
   },
   "scheduling": {

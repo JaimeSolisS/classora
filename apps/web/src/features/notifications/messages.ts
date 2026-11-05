@@ -18,6 +18,7 @@ import {
   rosterPath,
 } from '@/features/assignments/api';
 import { familyBillingPath } from '@/features/family-portal/billing/access';
+import { APPROVAL_TYPE_LABELS } from '@/features/approvals/api';
 import type { NotificationItem } from './api';
 
 // A notification is `{notification_type, params}` (ISSUE-X1): its message is
@@ -97,6 +98,7 @@ const MONEY = /^-?\d{1,12}(\.\d{1,2})?$/;
 function values(
   params: NotificationItem['params'],
   i18n: I18n,
+  t: TFunction,
   formatInstant?: (instant: string) => string,
 ): Record<string, unknown> {
   const language = toLanguage(i18n.resolvedLanguage);
@@ -118,6 +120,11 @@ function values(
           LOCAL_DATE.test(value)
         ) {
           return [name, formatLocalDate(value, { language })];
+        }
+        if (name === 'request_type' && typeof value === 'string') {
+          // M8-01b C3: an approval type's label; an unknown type its code.
+          const key = APPROVAL_TYPE_LABELS[value];
+          return [name, key ? t(key) : value];
         }
         if (
           MONEY_PARAMS.has(name) &&
@@ -176,7 +183,7 @@ export function notificationMessage(
   // A dynamic key: the typed t() can't check it, i18n.exists() did.
   return (t as unknown as (key: string, options: object) => string)(
     key,
-    values(item.params, i18n, formatInstant),
+    values(item.params, i18n, t, formatInstant),
   );
 }
 
@@ -402,6 +409,15 @@ function finalizedPeriod(params: NotificationItem['params']): string {
     : '/my-pay';
 }
 
+/** The request's detail panel in the approval inbox (M8-01b C3); the
+ * inbox without a usable id. */
+function assignedApproval(params: NotificationItem['params']): string {
+  const id = params.request_id;
+  return typeof id === 'string' && id
+    ? `/approvals?item=${encodeURIComponent(id)}`
+    : '/approvals';
+}
+
 /** The voided evaluation's page (#308 F2); home without an id. */
 function voidedEvaluation(params: NotificationItem['params']): string {
   const id = params.evaluation_id;
@@ -492,6 +508,9 @@ export const NOTIFICATION_LINKS: Readonly<
   // #110b F3, M7-10b A3: the tutor's finalized period opens its page
   // under My pay; without a usable id, My pay.
   'payroll.period_finalized': finalizedPeriod,
+  // M8-01b C3: a request someone else assigned to the reader opens its
+  // detail panel.
+  'administration.approval_assigned': assignedApproval,
 };
 
 /** The bell's badge text: the count, or "99+" above 99. */

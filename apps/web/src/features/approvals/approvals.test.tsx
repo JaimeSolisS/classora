@@ -204,6 +204,7 @@ describe('the list (F3)', () => {
       'Submitted',
       'Priority',
       'Status',
+      'Assigned to',
       'Actions',
     ]);
     const cells = (row: Element) =>
@@ -223,8 +224,13 @@ describe('the list (F3)', () => {
       'finance.refund',
       'System',
     ]);
-    expect(cells(second!).slice(4, 6)).toEqual(['High', 'Changes requested']);
-    expect(second!.querySelectorAll('button')).toHaveLength(1);
+    expect(cells(second!).slice(4, 7)).toEqual([
+      'High',
+      'Changes requested',
+      'Unassigned',
+    ]);
+    // "View details" (M8-01b A3) and the one allowed action.
+    expect(second!.querySelectorAll('button')).toHaveLength(2);
   });
 
   it('the filters go to the query and the URL', async () => {
@@ -522,7 +528,7 @@ describe('session closeouts (#77 G4)', () => {
     );
     expect(
       [...main().querySelectorAll('tbody button')].map((b) => b.textContent),
-    ).toEqual([]);
+    ).toEqual(['View details']);
   });
 
   it('marks an on-behalf submission as text, with the same link (#301b E4)', async () => {
@@ -569,7 +575,7 @@ describe('progress reports (#315 A5)', () => {
     );
     expect(
       [...main().querySelectorAll('tbody button')].map((b) => b.textContent),
-    ).toEqual([]);
+    ).toEqual(['View details']);
   });
 
   it('links to the review queue without a report id', async () => {

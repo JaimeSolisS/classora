@@ -225,3 +225,150 @@ export const PROGRESS_REPORT: ApprovalRequestItem = {
   allowed_actions: [],
   version: 1,
 };
+
+// M8-01b G1: one item of each remaining type, as the API summarizes it, for
+// the detail panel's per-type fields.
+
+/** #44: a tutor's qualification request. */
+export const QUALIFICATION: ApprovalRequestItem = {
+  ...PENDING_REGISTRATION,
+  id: '00000000-0000-4000-8000-000000000b01',
+  request_type: 'staff.qualification',
+  requester: {
+    id: '00000000-0000-4000-8000-0000000000b1',
+    display_name: 'Carmen Ruiz',
+  },
+  subject: {
+    tutor_display_name: 'Carmen Ruiz',
+    subject_name: 'Física',
+    education_level_name: 'Preparatoria',
+  },
+};
+
+/** #52, #55: a substitute declined an offer. */
+export const OFFER_REASSIGNMENT: ApprovalRequestItem = {
+  ...PENDING_REGISTRATION,
+  id: '00000000-0000-4000-8000-000000000b02',
+  request_type: 'scheduling.offer_reassignment',
+  requester: null,
+  subject: {
+    class_session_id: '00000000-0000-4000-8000-000000000b12',
+    subject_name: 'Química',
+    starts_at: '2031-04-07T16:00:00Z',
+    tutor_name: 'Luis Gómez',
+    outcome: 'declined',
+    decline_note: 'Tengo otra clase.',
+    session_state: 'confirmed',
+    class_series_id: null,
+    from_date: null,
+    occurrence_count: null,
+    kind: 'substitution',
+    original_tutor_name: 'Carmen Ruiz',
+  },
+  allowed_actions: ['approve', 'reject'],
+};
+
+/** #53: a generated series occurrence in conflict. */
+export const OCCURRENCE_CONFLICT: ApprovalRequestItem = {
+  ...PENDING_REGISTRATION,
+  id: '00000000-0000-4000-8000-000000000b03',
+  request_type: 'scheduling.occurrence_conflict',
+  requester: null,
+  subject: {
+    class_session_id: '00000000-0000-4000-8000-000000000b13',
+    series_id: '00000000-0000-4000-8000-000000000b23',
+    starts_at: '2031-04-08T16:00:00Z',
+    subject_name: 'Matemáticas',
+    student_display_names: ['Ana López', 'Beto Ruiz'],
+    tutor_display_name: 'Carmen Ruiz',
+    conflict_codes: ['tutor_inactive'],
+  },
+  allowed_actions: ['approve', 'reject'],
+};
+
+/** #59, #60: a family's session request, reviewed on its page. */
+export const SESSION_REQUEST: ApprovalRequestItem = {
+  ...PENDING_REGISTRATION,
+  id: '00000000-0000-4000-8000-000000000b04',
+  request_type: 'scheduling.session_request',
+  requester: {
+    id: '00000000-0000-4000-8000-000000000b14',
+    display_name: 'Rosa Díaz',
+  },
+  subject: {
+    student_name: 'Ana López',
+    subject_name: 'Matemáticas',
+    education_level_name: 'Secundaria',
+    starts_at: '2031-04-09T16:00:00Z',
+    ends_at: '2031-04-09T17:00:00Z',
+    duration_minutes: 60,
+    requested_by: 'Rosa Díaz',
+    note: 'Por la tarde, por favor.',
+    status: 'pending',
+    session_request_id: '00000000-0000-4000-8000-000000000b24',
+    class_session_id: null,
+  },
+  allowed_actions: [],
+};
+
+/** #62: a family's reschedule request, reviewed on its page. */
+export const CHANGE_REQUEST: ApprovalRequestItem = {
+  ...PENDING_REGISTRATION,
+  id: '00000000-0000-4000-8000-000000000b05',
+  request_type: 'scheduling.change_request',
+  requester: {
+    id: '00000000-0000-4000-8000-000000000b14',
+    display_name: 'Rosa Díaz',
+  },
+  subject: {
+    change_request_id: '00000000-0000-4000-8000-000000000b25',
+    kind: 'reschedule',
+    initiated_by: 'family',
+    student_name: 'Ana López',
+    subject_name: 'Matemáticas',
+    education_level_name: 'Secundaria',
+    starts_at: '2031-04-10T16:00:00Z',
+    proposed_starts_at: '2031-04-11T16:00:00Z',
+    classification: 'on_time',
+    status: 'pending',
+    class_session_id: '00000000-0000-4000-8000-000000000b15',
+  },
+  allowed_actions: [],
+};
+
+/** #110: a prepared payroll period, decided on its page. */
+export const PAYROLL_PERIOD: ApprovalRequestItem = {
+  ...PENDING_REGISTRATION,
+  id: '00000000-0000-4000-8000-000000000b06',
+  request_type: 'payroll.period',
+  requester: {
+    id: '00000000-0000-4000-8000-000000000b16',
+    display_name: 'Laura Méndez',
+  },
+  subject: {
+    period_id: '00000000-0000-4000-8000-000000000b26',
+    tutor: {
+      id: '00000000-0000-4000-8000-0000000000b1',
+      display_name: 'Carmen Ruiz',
+    },
+    starts_on: '2031-03-31',
+    ends_on: '2031-04-06',
+    prepared_by: { display_name: 'Laura Méndez' },
+    prepared_at: '2031-04-07T15:00:00Z',
+  },
+  allowed_actions: [],
+};
+
+/** One item of each known type (M8-01b G1), by type. */
+export const ITEMS_BY_TYPE: Readonly<Record<string, ApprovalRequestItem>> = {
+  'identity.registration': PENDING_REGISTRATION,
+  'staff.qualification': QUALIFICATION,
+  'scheduling.offer_reassignment': OFFER_REASSIGNMENT,
+  'scheduling.occurrence_conflict': OCCURRENCE_CONFLICT,
+  'scheduling.session_request': SESSION_REQUEST,
+  'scheduling.change_request': CHANGE_REQUEST,
+  'staff.availability_change': AVAILABILITY_CHANGE,
+  'academics.session_closeout': SESSION_CLOSEOUT,
+  'academics.progress_report': PROGRESS_REPORT,
+  'payroll.period': PAYROLL_PERIOD,
+};

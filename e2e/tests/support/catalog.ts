@@ -1074,10 +1074,18 @@ type Common = {
       reject: string;
       rejectFor: string;
     };
+    // M8-01b G3: the full inbox.
+    filter: Record<'type' | 'assignee' | 'sort', string>;
+    status: Record<'approved' | 'rejected', string>;
+    types: { identity_registration: string };
+    list: { view: string; viewFor: string };
+    panel: { title: string };
+    assign: { toMe: string; assignedTo: string };
     summary: {
       qualification: string;
       reassignmentDeclined: string;
       sessionRequest: string;
+      registration: string;
     };
     reassignment: { openSession: string };
     closeout: {
@@ -1089,7 +1097,12 @@ type Common = {
     availabilityChange: { affectedTitle: string };
     // #315 H3: the inbox link of a progress report.
     progressReport: { reviewFor: string };
-    dialog: { reasonRequiredLabel: string };
+    dialog: {
+      reasonRequiredLabel: string;
+      reasonOptionalLabel: string;
+      approveTitle: string;
+      rejectTitle: string;
+    };
     done: { approved: string; rejected: string };
   };
   invite: {

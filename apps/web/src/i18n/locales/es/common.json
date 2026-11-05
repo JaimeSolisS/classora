@@ -286,7 +286,11 @@
       "status": "Estado",
       "type": "Tipo",
       "allTypes": "Todos los tipos",
-      "assignee": "Asignadas a"
+      "assignee": "Asignadas a",
+      "priority": "Prioridad",
+      "allPriorities": "Todas",
+      "sort": "Ordenar",
+      "clear": "Limpiar filtros"
     },
     "status": {
       "open": "Abiertas",
@@ -360,7 +364,13 @@
       "pagination": "Páginas",
       "previous": "Anterior",
       "next": "Siguiente",
-      "range": "{{from}}–{{to}} de {{total}}"
+      "range": "{{from}}–{{to}} de {{total}}",
+      "assignee": "Asignada a",
+      "view": "Ver detalle",
+      "viewFor": "Ver detalle de {{summary}}",
+      "count_one": "{{count}} solicitud",
+      "count_many": "{{count}} solicitudes",
+      "count_other": "{{count}} solicitudes"
     },
     "actions": {
       "approve": "Aprobar",
@@ -442,6 +452,108 @@
       "review": "Revisar",
       "reviewFor": "Revisar el informe de progreso de {{student}}",
       "openQueue": "Abrir la cola de revisión"
+    },
+    "sort": {
+      "priority": "Prioridad (predeterminado)",
+      "oldest": "Más antiguas primero",
+      "newest": "Más recientes primero"
+    },
+    "panel": {
+      "genericTitle": "Detalle de la solicitud",
+      "title": "{{type}}: {{summary}}",
+      "close": "Cerrar",
+      "notFound": "Esta solicitud no existe o no puedes revisarla.",
+      "status": "Estado",
+      "priority": "Prioridad",
+      "createdAt": "Enviada",
+      "requester": "Solicitada por",
+      "assignee": "Asignada a",
+      "resolvedAt": "Resuelta",
+      "resolvedBy": "Resuelta por",
+      "reason": "Motivo",
+      "details": "Detalles",
+      "unknownType": "Tipo: {{type}}",
+      "noDetails": "Sin más datos.",
+      "assignment": "Asignación",
+      "reviewOnPage": "Revisar en su página",
+      "reloaded": "La solicitud cambió; se recargó.",
+      "stale": "La solicitud cambió y no se pudo recargar; los datos mostrados pueden estar desactualizados. Cierra y vuelve a abrir el detalle.",
+      "ineligible": "Esa persona ya no puede revisar este tipo de solicitud."
+    },
+    "assign": {
+      "toMe": "Asignarme",
+      "toLabel": "Asignar a…",
+      "choose": "Elige a una persona",
+      "submit": "Asignar",
+      "remove": "Quitar asignación",
+      "loadingOptions": "Cargando a las personas que pueden revisarla…",
+      "assignedTo": "Asignada a {{name}}",
+      "unassigned": "Sin asignar"
+    },
+    "details": {
+      "displayName": "Nombre",
+      "username": "Usuario",
+      "requestedRole": "Rol solicitado",
+      "tutor": "Tutor",
+      "subject": "Materia",
+      "level": "Nivel",
+      "when": "Fecha y hora",
+      "endsAt": "Termina",
+      "duration": "Duración",
+      "minutesValue": "{{minutes}} min",
+      "offerOutcome": "Resultado de la oferta",
+      "offerOutcomes": {
+        "declined": "Rechazada por el tutor",
+        "expired": "Vencida sin respuesta"
+      },
+      "offerKind": "Tipo de oferta",
+      "offerKinds": {
+        "assignment": "Asignación",
+        "substitution": "Suplencia"
+      },
+      "series": "Serie",
+      "seriesFrom": "Semanal desde el {{date}}",
+      "occurrenceCount": "Sesiones",
+      "sessionState": "Estado de la sesión",
+      "originalTutor": "La sigue impartiendo",
+      "declineNote": "Nota del tutor",
+      "students": "Estudiantes",
+      "student": "Estudiante",
+      "conflicts": "Conflictos",
+      "requestedBy": "Solicitada por",
+      "note": "Nota",
+      "requestStatus": "Estado de la solicitud",
+      "changeKind": "Tipo de cambio",
+      "initiatedBy": "Iniciada por",
+      "initiators": {
+        "family": "La familia",
+        "tutor": "El tutor"
+      },
+      "proposedStart": "Nueva fecha propuesta",
+      "classification": "Clasificación",
+      "change": "Cambio",
+      "affectedCount": "Clases afectadas",
+      "changeStatuses": {
+        "pending": "Pendiente",
+        "approved": "Aprobado",
+        "rejected": "Rechazado",
+        "cancelled": "Retirado"
+      },
+      "reviewKind": "Revisión",
+      "sessionKind": "Tipo de clase",
+      "scheduledMinutes": "Duración programada",
+      "actualMinutes": "Duración real",
+      "participants": "Estudiantes en la clase",
+      "approvedMinutes": "Aprobado vigente",
+      "onBehalfBy": "Enviado en nombre del tutor por",
+      "reportKind": "Tipo de informe",
+      "period": "Periodo",
+      "periodValue": "{{start}} – {{end}}",
+      "allSubjects": "Todas las materias",
+      "author": "Autor",
+      "submittedAt": "Enviado",
+      "preparedBy": "Preparó",
+      "preparedAt": "Preparado el"
     }
   },
   "users": {
@@ -1538,7 +1650,8 @@
       "billing_payment_reminder_overdue_followup_one": "Recordatorio: {{count}} cargo por {{open_total}} sigue pendiente desde el {{due_on}}.",
       "billing_payment_reminder_overdue_followup_many": "Recordatorio: {{count}} cargos por {{open_total}} siguen pendientes; el primero desde el {{due_on}}.",
       "billing_payment_reminder_overdue_followup_other": "Recordatorio: {{count}} cargos por {{open_total}} siguen pendientes; el primero desde el {{due_on}}.",
-      "payroll_period_finalized": "Tu pago del {{starts_on}} al {{ends_on}} quedó finalizado."
+      "payroll_period_finalized": "Tu pago del {{starts_on}} al {{ends_on}} quedó finalizado.",
+      "administration_approval_assigned": "Te asignaron una solicitud: {{request_type}}"
     }
   },
   "scheduling": {

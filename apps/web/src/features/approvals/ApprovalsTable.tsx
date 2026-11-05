@@ -34,9 +34,20 @@ import {
 } from './summary';
 
 // The approval requests (#40 F3): type, a per-type summary, requester,
-// submitted at, priority and status (as text), and a button per allowed
-// action. Previous/next pages and the empty, loading and error states.
-// Presentational: the page passes the query state and the actions.
+// submitted at, priority, status (as text) and assignee (M8-01b A3), a
+// "View details" button (named with the summary, so unique per row) and a
+// button per allowed action. Below sm the rows are cards (D3: nothing
+// scrolls sideways at 320 px; one DOM, so no control is repeated). Previous/next pages and the empty, loading
+// and error states. Presentational: the page passes the query state and the
+// actions.
+
+// Below sm each row is a card (D3): the cells stack, each with its column's
+// name before it (from `data-label`; the header row stays for screen
+// readers only).
+const CARD_ROW =
+  'max-sm:flex max-sm:flex-col max-sm:gap-1 max-sm:rounded-lg max-sm:border max-sm:border-border max-sm:p-4';
+const CARD_CELL =
+  'max-sm:block max-sm:px-0 max-sm:py-1 max-sm:whitespace-normal max-sm:break-words max-sm:before:block max-sm:before:text-xs max-sm:before:font-medium max-sm:before:text-muted-foreground max-sm:before:content-[attr(data-label)]';
 
 export type ApprovalsState =
   | { status: 'loading' }
@@ -47,12 +58,15 @@ interface ApprovalsTableProps {
   state: ApprovalsState;
   /** Opens the decision dialog for a row. */
   onDecide: (item: ApprovalRequestItem, action: ApprovalAction) => void;
+  /** Opens the detail panel of a row; `trigger` gets focus back. */
+  onOpen: (item: ApprovalRequestItem, trigger: HTMLElement) => void;
   onPage: (offset: number) => void;
 }
 
 export function ApprovalsTable({
   state,
   onDecide,
+  onOpen,
   onPage,
 }: ApprovalsTableProps) {
   const { t } = useTranslation();
@@ -69,16 +83,10 @@ export function ApprovalsTable({
     content = <p>{t('approvals.list.empty')}</p>;
   } else {
     const { items, total, limit, offset } = state.page;
-    const actionable = items.some(
-      (item) =>
-        item.allowed_actions.length > 0 ||
-        itemReviewLink(item) !== null ||
-        progressReportReviewLink(item) !== null,
-    );
     content = (
       <>
-        <Table aria-labelledby={titleId}>
-          <TableHeader>
+        <Table aria-labelledby={titleId} className="max-sm:block">
+          <TableHeader className="max-sm:sr-only">
             <TableRow>
               <TableHead scope="col">{t('approvals.list.type')}</TableHead>
               <TableHead scope="col">{t('approvals.list.request')}</TableHead>
@@ -88,35 +96,62 @@ export function ApprovalsTable({
               </TableHead>
               <TableHead scope="col">{t('approvals.list.priority')}</TableHead>
               <TableHead scope="col">{t('approvals.list.status')}</TableHead>
-              {actionable ? (
-                <TableHead scope="col">{t('approvals.list.actions')}</TableHead>
-              ) : null}
+              <TableHead scope="col">{t('approvals.list.assignee')}</TableHead>
+              <TableHead scope="col">{t('approvals.list.actions')}</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody className="max-sm:flex max-sm:flex-col max-sm:gap-3 max-sm:[&_tr:last-child]:border">
             {items.map((item) => (
-              <TableRow key={item.id}>
-                <TableCell>{typeLabel(item.request_type, t)}</TableCell>
-                <TableCell className="whitespace-normal">
+              <TableRow key={item.id} className={CARD_ROW}>
+                <TableCell
+                  className={CARD_CELL}
+                  data-label={t('approvals.list.type')}
+                >
+                  {typeLabel(item.request_type, t)}
+                </TableCell>
+                <TableCell
+                  className={`whitespace-normal ${CARD_CELL}`}
+                  data-label={t('approvals.list.request')}
+                >
                   <RequestSummary item={item} />
                 </TableCell>
-                <TableCell>
+                <TableCell
+                  className={CARD_CELL}
+                  data-label={t('approvals.list.requester')}
+                >
                   {item.requester?.display_name ?? t('approvals.list.system')}
                 </TableCell>
-                <TableCell>
+                <TableCell
+                  className={CARD_CELL}
+                  data-label={t('approvals.list.submittedAt')}
+                >
                   {formatInstant(item.created_at, 'dateTime')}
                 </TableCell>
-                <TableCell>
+                <TableCell
+                  className={CARD_CELL}
+                  data-label={t('approvals.list.priority')}
+                >
                   <Badge>{t(`approvals.priority.${item.priority}`)}</Badge>
                 </TableCell>
-                <TableCell>
+                <TableCell
+                  className={CARD_CELL}
+                  data-label={t('approvals.list.status')}
+                >
                   <Badge>{t(`approvals.status.${item.status}`)}</Badge>
                 </TableCell>
-                {actionable ? (
-                  <TableCell>
+                <TableCell
+                  className={CARD_CELL}
+                  data-label={t('approvals.list.assignee')}
+                >
+                  {item.assignee?.display_name ??
+                    t('approvals.assignee.unassigned')}
+                </TableCell>
+                <TableCell className={CARD_CELL}>
+                  <div className="flex flex-wrap gap-2">
+                    <ViewButton item={item} onOpen={onOpen} />
                     <ActionButtons item={item} onDecide={onDecide} />
-                  </TableCell>
-                ) : null}
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -128,7 +163,7 @@ export function ApprovalsTable({
           <Button
             type="button"
             variant="outline"
-            size="sm"
+            className="min-h-11"
             disabled={offset === 0}
             onClick={() => onPage(Math.max(0, offset - limit))}
           >
@@ -144,7 +179,7 @@ export function ApprovalsTable({
           <Button
             type="button"
             variant="outline"
-            size="sm"
+            className="min-h-11"
             disabled={offset + items.length >= total}
             onClick={() => onPage(offset + limit)}
           >
@@ -240,6 +275,35 @@ function RequestSummary({ item }: { item: ApprovalRequestItem }) {
   );
 }
 
+/** "View details" (M8-01b A3), named with the row's summary. */
+function ViewButton({
+  item,
+  onOpen,
+}: {
+  item: ApprovalRequestItem;
+  onOpen: (item: ApprovalRequestItem, trigger: HTMLElement) => void;
+}) {
+  const { t } = useTranslation();
+  const { formatInstant, formatLocalDate } = useFormatters();
+  const summary = approvalSummary(
+    item,
+    t,
+    (instant) => formatInstant(instant, 'dateTime'),
+    (localDate) => formatLocalDate(localDate),
+  );
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      className="min-h-11"
+      aria-label={t('approvals.list.viewFor', { summary })}
+      onClick={(event) => onOpen(item, event.currentTarget)}
+    >
+      {t('approvals.list.view')}
+    </Button>
+  );
+}
+
 function ActionButtons({
   item,
   onDecide,
@@ -268,7 +332,7 @@ function ActionButtons({
                 student: report.student,
               })
         }
-        className="inline-flex h-8 items-center rounded-md border border-border px-3 text-sm font-medium underline-offset-4 outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring"
+        className="inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm font-medium underline-offset-4 outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring"
       >
         {report.queue
           ? t('approvals.progressReport.openQueue')
@@ -284,7 +348,7 @@ function ActionButtons({
       <Link
         to={review}
         aria-label={t('approvals.sessionRequest.reviewFor', { name })}
-        className="inline-flex h-8 items-center rounded-md border border-border px-3 text-sm font-medium underline-offset-4 outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring"
+        className="inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm font-medium underline-offset-4 outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring"
       >
         {t('approvals.sessionRequest.review')}
       </Link>
@@ -296,7 +360,7 @@ function ActionButtons({
         <Button
           key={action}
           type="button"
-          size="sm"
+          className="min-h-11"
           variant={action === 'approve' ? 'default' : 'outline'}
           aria-label={t(namedActionLabelKey(item.request_type, action), {
             name,
