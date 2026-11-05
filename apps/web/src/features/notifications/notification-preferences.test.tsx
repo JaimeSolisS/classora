@@ -154,7 +154,7 @@ describe('the page (A1, B1, B2)', () => {
     stub({ [GET]: catalogue(OWNER_CATALOGUE) });
     await openPage();
 
-    expect(headings()).toEqual(['Schedule', 'Administration']);
+    expect(headings()).toEqual(['Schedule', 'Administration', 'Exports']);
     expect(main().textContent).not.toContain(
       "Notices about changes to your classes can't be turned off.",
     );
@@ -353,7 +353,12 @@ describe('saving (B5, E2)', () => {
     });
     await openPage();
 
-    expect(headings()).toEqual(['Schedule', 'Administration', 'Other']);
+    expect(headings()).toEqual([
+      'Schedule',
+      'Administration',
+      'Exports',
+      'Other',
+    ]);
     expect(groupLabels('Other')).toEqual([
       'Other notification type security.new_sign_in',
     ]);
@@ -430,6 +435,8 @@ describe('the type pin (D1)', () => {
     'administration.approval_assigned',
     'billing.payment_reminder',
     'payroll.period_finalized',
+    'reporting.export_failed',
+    'reporting.export_ready',
     'scheduling.change_request_approved',
     'scheduling.change_request_rejected',
     'scheduling.occurrence_skipped_closure',
@@ -452,8 +459,8 @@ describe('the type pin (D1)', () => {
     'staff.qualification_revoked',
   ];
 
-  it('lists the 40 API types, each once', () => {
-    expect(API_TYPES).toHaveLength(40);
+  it('lists the 42 API types, each once', () => {
+    expect(API_TYPES).toHaveLength(42);
     expect([...NOTIFICATION_PREFERENCE_TYPES].sort()).toEqual(API_TYPES);
   });
 

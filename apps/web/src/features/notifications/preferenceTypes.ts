@@ -46,6 +46,9 @@ export const NOTIFICATION_PREFERENCE_TYPES = [
   'billing.payment_reminder',
   'payroll.period_finalized',
   'administration.approval_assigned',
+  // M8-07b D1 (#124 E9): the requester's export finished or failed.
+  'reporting.export_ready',
+  'reporting.export_failed',
 ] as const;
 
 /** The groups, in page order (B2); a code with another prefix goes to "other". */
@@ -56,6 +59,8 @@ export const PREFERENCE_GROUPS = [
   'billing',
   'payroll',
   'administration',
+  // M8-07b D1: the export notifications.
+  'reporting',
 ] as const;
 
 export type PreferenceGroupCode = (typeof PREFERENCE_GROUPS)[number] | 'other';

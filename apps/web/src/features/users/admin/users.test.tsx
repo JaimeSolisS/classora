@@ -214,7 +214,8 @@ describe('the /users route and navigation (J1, J4)', () => {
 
     app = await renderApp('/users');
 
-    expect(navItems()).toEqual(['Home']);
+    // M8-07b E1: an Owner also sees "Exports".
+    expect(navItems()).toEqual(['Home', 'Exports']);
     expect(main().querySelector('h1')?.textContent).toBe(
       "You don't have access to this page",
     );

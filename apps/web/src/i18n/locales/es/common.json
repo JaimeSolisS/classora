@@ -32,6 +32,7 @@
     "users": "Usuarios",
     "invitations": "Invitaciones",
     "imports": "Importaciones",
+    "exports": "Exportaciones",
     "passwordResets": "Restablecer contraseñas",
     "approvals": "Aprobaciones",
     "audit": "Auditoría",
@@ -830,6 +831,113 @@
       "amount_not_positive": "El importe debe ser mayor que 0.",
       "date_out_of_range": "La fecha está fuera del rango permitido.",
       "unknown": "Valor no válido ({{code}})."
+    }
+  },
+  "exports": {
+    "title": "Exportaciones",
+    "intro": "Descarga listas en CSV o Excel. Cada archivo se conserva 24 horas y solo tú puedes descargarlo.",
+    "exportLink": "Exportar",
+    "noDatasets": "No hay datos que puedas exportar.",
+    "datasets": {
+      "students": "Alumnos",
+      "class_sessions": "Clases",
+      "expenses": "Gastos"
+    },
+    "formats": {
+      "csv": "CSV",
+      "xlsx": "Excel"
+    },
+    "form": {
+      "title": "Nueva exportación",
+      "dataset": "Datos",
+      "format": "Formato",
+      "personalHint": "Requiere confirmar tu contraseña: estos datos nombran a personas.",
+      "columns": "Columnas",
+      "columnsHelp": "Marca las columnas que quieres y ordénalas con Subir y Bajar.",
+      "moveUp": "Subir",
+      "moveDown": "Bajar",
+      "moveUpFor": "Subir {{column}}",
+      "moveDownFor": "Bajar {{column}}",
+      "moved": "{{column}}: posición {{position}} de {{total}}.",
+      "groupBy": "Agrupar por",
+      "noGrouping": "Sin agrupar",
+      "filters": "Filtros",
+      "from": "Desde",
+      "to": "Hasta",
+      "incurredFrom": "Gastos desde",
+      "incurredTo": "Gastos hasta",
+      "tutor": "Tutor",
+      "student": "Alumno",
+      "chosen": "{{field}}: {{name}}",
+      "clearChoice": "Quitar {{field}}",
+      "classroom": "Aula",
+      "allClassrooms": "Todas las aulas",
+      "kind": "Tipo de clase",
+      "allKinds": "Todos los tipos",
+      "kinds": {
+        "individual": "Individual",
+        "group": "Grupal",
+        "course": "Curso"
+      },
+      "includeCancelled": "Incluir canceladas",
+      "statuses": "Estados",
+      "statusesHelp": "Sin marcar ninguno se exportan todos.",
+      "studentStatus": "Estado",
+      "studentStatuses": {
+        "active": "Activos",
+        "inactive": "Inactivos",
+        "all": "Todos"
+      },
+      "educationLevel": "Nivel educativo",
+      "allLevels": "Todos los niveles",
+      "optionsFailed": "No se pudieron cargar las opciones.",
+      "submit": "Solicitar exportación",
+      "submitting": "Solicitando…",
+      "requested": "Exportación de {{dataset}} solicitada. Te avisaremos cuando esté lista.",
+      "limitReached": "Ya tienes {{max}} exportaciones en proceso. Espera a que termine una."
+    },
+    "validation": {
+      "required": "Elige una fecha.",
+      "rangeReversed": "La fecha final debe ser igual o posterior a la inicial.",
+      "rangeTooLong": "El rango no puede pasar de 366 días.",
+      "noColumns": "Elige al menos una columna.",
+      "invalid": "Revisa este campo."
+    },
+    "history": {
+      "title": "Mis exportaciones",
+      "empty": "Aún no has solicitado exportaciones.",
+      "pagination": "Páginas de exportaciones",
+      "dataset": "Datos",
+      "format": "Formato",
+      "requestedAt": "Solicitada",
+      "status": "Estado",
+      "rows": "Filas",
+      "size": "Tamaño",
+      "expiresAt": "Caduca",
+      "file": "Archivo",
+      "download": "Descargar",
+      "downloadFor": "Descargar {{file}}",
+      "expiresInHours": "caduca en {{hours}} h",
+      "expiresInMinutes": "caduca en {{minutes}} min",
+      "pending": "En preparación",
+      "expired": "Caducada",
+      "failure": {
+        "row_limit_exceeded": "Más de 10 000 filas: acota el rango o los filtros.",
+        "size_limit_exceeded": "El archivo pasa de 16 MB: quita columnas o acota los filtros.",
+        "permission_lost": "Ya no tienes acceso a estos datos.",
+        "error": "No se pudo generar. Vuelve a solicitarla."
+      }
+    },
+    "status": {
+      "queued": "En proceso",
+      "ready": "Lista",
+      "failed": "Falló",
+      "expired": "Caducada"
+    },
+    "announce": {
+      "ready": "La exportación de {{dataset}} está lista.",
+      "failed": "La exportación de {{dataset}} falló.",
+      "stillRunning": "Sigue en proceso; recibirás una notificación."
     }
   },
   "users": {
@@ -1976,7 +2084,9 @@
       "billing_payment_reminder_overdue_followup_many": "Recordatorio: {{count}} cargos por {{open_total}} siguen pendientes; el primero desde el {{due_on}}.",
       "billing_payment_reminder_overdue_followup_other": "Recordatorio: {{count}} cargos por {{open_total}} siguen pendientes; el primero desde el {{due_on}}.",
       "payroll_period_finalized": "Tu pago del {{starts_on}} al {{ends_on}} quedó finalizado.",
-      "administration_approval_assigned": "Te asignaron una solicitud: {{request_type}}"
+      "administration_approval_assigned": "Te asignaron una solicitud: {{request_type}}",
+      "reporting_export_ready": "Tu exportación de {{dataset}} está lista. Descárgala en Exportaciones en las próximas 24 horas.",
+      "reporting_export_failed": "Tu exportación de {{dataset}} no se pudo generar. Revisa el motivo en Exportaciones."
     },
     "preferences": {
       "title": "Preferencias de notificaciones",
@@ -2000,6 +2110,7 @@
         "billing": "Cobranza",
         "payroll": "Nómina",
         "administration": "Administración",
+        "reporting": "Exportaciones",
         "other": "Otras"
       },
       "types": {
@@ -2042,7 +2153,9 @@
         "scheduling_occurrence_skipped_closure": "Clase omitida por cierre del centro",
         "billing_payment_reminder": "Recordatorios de pago",
         "payroll_period_finalized": "Periodo de nómina finalizado",
-        "administration_approval_assigned": "Solicitud asignada a ti para revisión"
+        "administration_approval_assigned": "Solicitud asignada a ti para revisión",
+        "reporting_export_ready": "Una exportación está lista",
+        "reporting_export_failed": "Una exportación falló"
       }
     }
   },

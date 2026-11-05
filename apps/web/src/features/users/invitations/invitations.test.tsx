@@ -168,8 +168,9 @@ describe('route and navigation (I1)', () => {
     const nav = [...app.container.querySelectorAll('header nav a')].map(
       (a) => a.textContent,
     );
-    // M8-05b E1: user.invite also shows "Imports", after Invitations.
-    expect(nav).toEqual(['Home', 'Invitations', 'Imports']);
+    // M8-05b E1: user.invite also shows "Imports", after Invitations;
+    // M8-07b E1: an Owner also sees "Exports".
+    expect(nav).toEqual(['Home', 'Invitations', 'Imports', 'Exports']);
   });
 
   it('a user without user.invite gets no navigation item and the forbidden page', async () => {
@@ -180,7 +181,8 @@ describe('route and navigation (I1)', () => {
     const nav = [...app.container.querySelectorAll('header nav a')].map(
       (a) => a.textContent,
     );
-    expect(nav).toEqual(['Home', 'Users']);
+    // M8-07b E1: an Owner also sees "Exports".
+    expect(nav).toEqual(['Home', 'Users', 'Exports']);
     expect(main().querySelector('h1')?.textContent).toBe(
       "You don't have access to this page",
     );

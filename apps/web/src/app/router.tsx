@@ -69,6 +69,7 @@ import {
 } from '@/features/finance/access';
 import { FINANCE_REPORT_ACCESS } from '@/features/reporting/access';
 import { IMPORTS_ACCESS } from '@/features/imports/access';
+import { EXPORTS_ACCESS } from '@/features/exports/access';
 import { MY_HISTORY_ACCESS } from '@/features/academics/history/access';
 import {
   ASSIGNMENT_FORM_ACCESS,
@@ -1196,6 +1197,16 @@ export const routes: RouteObject[] = [
                 .ImportDetailPage,
             }),
             handle: IMPORTS_ACCESS,
+          },
+          // M8-07b A1 (#526): CSV/Excel exports, the request form and the
+          // caller's history (code-split), for any staff role.
+          {
+            path: 'exports',
+            lazy: async () => ({
+              Component: (await import('@/features/exports/ExportsPage'))
+                .ExportsPage,
+            }),
+            handle: EXPORTS_ACCESS,
           },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },

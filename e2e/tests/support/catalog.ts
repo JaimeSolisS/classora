@@ -53,6 +53,18 @@ type Common = {
     reports: string;
     // M8-05b E4: CSV imports.
     imports: string;
+    // M8-07b E4: CSV/Excel exports.
+    exports: string;
+  };
+  // M8-07b E4: the exports page.
+  exports: {
+    title: string;
+    datasets: Record<'students' | 'class_sessions' | 'expenses', string>;
+    formats: Record<'csv' | 'xlsx', string>;
+    form: Record<'submit' | 'requested', string>;
+    history: Record<'download' | 'downloadFor', string>;
+    status: Record<'queued' | 'ready', string>;
+    announce: Record<'ready', string>;
   };
   // M8-05b E4: the imports page and report.
   imports: {

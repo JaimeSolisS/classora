@@ -1,5 +1,5 @@
 import { Repeat } from 'lucide-react';
-import { useId } from 'react';
+import { useId, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
@@ -84,6 +84,8 @@ export interface ExpensesViewProps {
   addBlocked?: boolean;
   onAdd: () => void;
   announcement?: string;
+  /** M8-07b A3: the page's "Export" link, when the user may export. */
+  exportLink?: ReactNode;
 }
 
 const L = 'finance.expenses';
@@ -149,6 +151,7 @@ export function ExpensesView({
   addBlocked = false,
   onAdd,
   announcement = '',
+  exportLink = null,
 }: ExpensesViewProps) {
   const { t, i18n } = useTranslation();
   const { formatLocalDate, formatMoney } = useFormatters();
@@ -206,7 +209,10 @@ export function ExpensesView({
           <h1 id={ids.title} className="text-2xl font-semibold">
             {t(`${L}.title`)}
           </h1>
-          {canAdd ? addButton : null}
+          <div className="flex flex-wrap items-center gap-2 empty:hidden">
+            {exportLink}
+            {canAdd ? addButton : null}
+          </div>
         </div>
         <p className="text-sm text-muted-foreground">{t(`${L}.intro`)}</p>
         <div

@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router';
 import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { Input } from '@/components/ui/input';
 import { useCan } from '@/features/auth/useSession';
+import { ExportLink } from '@/features/exports/ExportLink';
 import {
   ACTIVE_LEVELS_QUERY_KEY,
   fetchActiveLevels,
@@ -120,17 +121,21 @@ export function StudentsPage() {
         <h1 id={ids.title} className="text-2xl font-semibold">
           {t('students.title')}
         </h1>
-        {canManage ? (
-          <div className="flex flex-wrap gap-2">
-            {/* M8-05b A2: the CSV import of students. */}
-            <Link to="/imports?kind=students" className={LINK_BUTTON_CLASS}>
-              {t('imports.importLink')}
-            </Link>
-            <Link to="/students/new" className={LINK_BUTTON_CLASS}>
-              {t('students.add')}
-            </Link>
-          </div>
-        ) : null}
+        <div className="flex flex-wrap gap-2 empty:hidden">
+          {/* M8-07b A3: the students export, for those who may export it. */}
+          <ExportLink dataset="students" />
+          {canManage ? (
+            <>
+              {/* M8-05b A2: the CSV import of students. */}
+              <Link to="/imports?kind=students" className={LINK_BUTTON_CLASS}>
+                {t('imports.importLink')}
+              </Link>
+              <Link to="/students/new" className={LINK_BUTTON_CLASS}>
+                {t('students.add')}
+              </Link>
+            </>
+          ) : null}
+        </div>
       </div>
       <div
         role="search"

@@ -489,5 +489,9 @@
   "import_too_many_rows": "El archivo tiene demasiadas filas.",
   "import_not_committable": "Esta importación ya no se puede importar.",
   "import_nothing_to_commit": "No hay filas listas para importar.",
-  "import_not_discardable": "Esta importación ya no se puede descartar."
+  "import_not_discardable": "Esta importación ya no se puede descartar.",
+  "export_range_invalid": "El rango de fechas no es válido: la fecha final no puede ser anterior a la inicial ni el rango pasar de un año.",
+  "export_limit_reached": "Ya tienes 3 exportaciones en proceso. Espera a que termine una.",
+  "export_not_ready": "Esta exportación todavía no tiene archivo.",
+  "export_expired": "Esta exportación caducó. Solicítala de nuevo."
 }

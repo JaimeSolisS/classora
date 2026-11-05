@@ -472,6 +472,16 @@ unless a bullet says otherwise.
   charge on the family's account and is never posted twice. Payments and
   credit balances aren't imported. The file itself is never stored.
 
+**Exports**
+
+- CSV and Excel exports of students, class sessions and expenses: staff
+  choose the columns, their order, an optional grouping and the filters (a
+  date range for sessions and expenses), and the file is built in the
+  background from the same list they can see (Exports). Exporting students
+  or sessions asks for the password again. Each file is kept in the database
+  for 24 hours, only its requester can download it, and a notification says
+  when it's ready; nothing goes to file storage.
+
 **Notifications**
 
 - A bell in the header shows how many notifications are unread and opens a
@@ -507,7 +517,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** the rest of billing, analytics, dashboards and report exports, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
+**Not built yet:** the rest of billing, analytics, dashboards, PDF exports and saved report setups, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 
 **Not in this version:** file uploads and documents (attachments, the shared

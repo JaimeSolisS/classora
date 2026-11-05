@@ -19,6 +19,7 @@ import {
 } from '@/features/assignments/api';
 import { familyBillingPath } from '@/features/family-portal/billing/access';
 import { APPROVAL_TYPE_LABELS } from '@/features/approvals/api';
+import { isExportDataset } from '@/features/exports/access';
 import type { NotificationItem } from './api';
 
 // A notification is `{notification_type, params}` (ISSUE-X1): its message is
@@ -125,6 +126,13 @@ function values(
           // M8-01b C3: an approval type's label; an unknown type its code.
           const key = APPROVAL_TYPE_LABELS[value];
           return [name, key ? t(key) : value];
+        }
+        if (name === 'dataset' && typeof value === 'string') {
+          // M8-07b D1: an export's dataset name; an unknown one its code.
+          return [
+            name,
+            isExportDataset(value) ? t(`exports.datasets.${value}`) : value,
+          ];
         }
         if (
           MONEY_PARAMS.has(name) &&

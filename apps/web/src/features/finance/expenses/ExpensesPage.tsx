@@ -9,6 +9,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 import { ApiError } from '@/app/api';
 import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { ForbiddenPage } from '@/features/auth/ForbiddenPage';
+import { ExportLink } from '@/features/exports/ExportLink';
 import { useCenterTimeZone } from '@/features/auth/useCenterTimeZone';
 import { useSession } from '@/features/auth/useSession';
 import type { AttemptFailure } from '@/features/billing/accounts/rules';
@@ -283,6 +284,7 @@ export function ExpensesPage() {
           setCreating(true);
         }}
         announcement={announcement}
+        exportLink={<ExportLink dataset="expenses" />}
       />
       {can.manage ? (
         <NewExpenseDialog
