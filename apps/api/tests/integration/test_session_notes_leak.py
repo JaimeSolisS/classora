@@ -1269,6 +1269,9 @@ PATH_PARAMS: dict[str, Callable[[LeakWorld], list[str]]] = {
     # routes are staff-only, PATCH /progress-report-schedules/{id} isn't a
     # GET); mapped so a future GET route is still walked.
     "schedule_id": _unknown,
+    # #122: the import routes deny every family role (403 before any lookup;
+    # no kind permission), so an unknown id walks them.
+    "import_id": _unknown,
 }
 """Every path parameter name of a family-reachable ``GET`` route → the
 values to try. A missing name fails ``test_every_path_parameter_is_mapped``."""
