@@ -478,5 +478,8 @@
   "payroll_period_not_finalized": "This period isn't finalized, so it can't take payments.",
   "payroll_payment_duplicate": "A payment with this method and reference is already recorded on this period. Check the list of payments.",
   "payroll_payment_exceeds_balance": "This payment is more than what is left to pay for this period.",
-  "payroll_payment_already_reversed": "This payment was already reversed. Check the list of payments."
+  "payroll_payment_already_reversed": "This payment was already reversed. Check the list of payments.",
+  "notification_type_unknown": "That notification type isn't in your list. Reload the page.",
+  "notification_type_mandatory": "That notification is required and can't be turned off.",
+  "notification_type_duplicate": "A notification type appears twice in the change."
 }
