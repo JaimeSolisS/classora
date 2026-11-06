@@ -1,6 +1,6 @@
 """Demo-data command without a database (M1-17 C5): the production guard,
-and the payroll and M7-demo-b generators' skips without a session (M7-demo
-#499 E5, M7-demo-b #501 F5)."""
+and the payroll, M7-demo-b and M8-demo generators' skips without a session
+(M7-demo #499 E5, M7-demo-b #501 F5, M8-demo #539 A2/A3)."""
 
 import asyncio
 import os
@@ -16,6 +16,13 @@ import pytest
 from tests.authz.csrf import origin_for
 from tests.factories import demo
 from tests.factories.base import GeneratorSkipped
+from tests.factories.demo_admin import (
+    DemoAdminGenerator,
+    DemoDeletedGenerator,
+    DemoImportsGenerator,
+    DemoReceiptMessageGenerator,
+    DemoSetupsGenerator,
+)
 from tests.factories.demo_billing import WITHOUT_BILLING
 from tests.factories.demo_finance import (
     DemoFinanceExpensesGenerator,
@@ -129,8 +136,8 @@ def test_prod_refusal_as_a_process_returns_immediately():
 
 
 def test_the_billing_flag_is_documented_for_e2e(capsys):
-    # M6-demo A5, #499 A4: --without-billing names the E2E run that passes it
-    # and the billing, payroll and expense data it leaves out.
+    # M6-demo A5, #499 A4, #539 E1: --without-billing names the E2E run that
+    # passes it and the billing, payroll, expense and M8 data it leaves out.
     with pytest.raises(SystemExit) as exit_info:
         demo.main(["--help"])
 
@@ -138,7 +145,10 @@ def test_the_billing_flag_is_documented_for_e2e(capsys):
     out = " ".join(capsys.readouterr().out.split())
     assert "--without-billing" in out
     assert "e2e/scripts/run.sh" in out
-    assert "without the billing, payroll and expense demo data (E2E;" in out
+    assert (
+        "without the billing, payroll, expense and M8 administration demo data"
+        " (E2E;" in out
+    )
     assert "E2E database keeps them off" in out
 
 
@@ -182,6 +192,12 @@ PAYROLL_GENERATORS = [
     DemoFinanceSetupGenerator,
     DemoFinanceTemplatesGenerator,
     DemoFinanceExpensesGenerator,
+    # M8-demo #539 A2, A3: the five M8 generators.
+    DemoReceiptMessageGenerator,
+    DemoAdminGenerator,
+    DemoImportsGenerator,
+    DemoSetupsGenerator,
+    DemoDeletedGenerator,
 ]
 
 
