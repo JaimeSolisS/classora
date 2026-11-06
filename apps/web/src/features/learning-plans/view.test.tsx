@@ -402,6 +402,9 @@ describe('dialogs (C5)', () => {
     await click(buttonNamed(main(), 'Delete draft'));
     const dialog = openDialog()!;
     expect(dialog.textContent).toContain('Delete this draft?');
+    expect(dialog.textContent).toContain(
+      'You can restore it for 30 days from Recently deleted.',
+    );
     await click(buttonNamed(dialog, 'Delete draft'));
     expect(urls).toHaveLength(1);
     expect(urls[0]!.searchParams.get('version')).toBe('3');

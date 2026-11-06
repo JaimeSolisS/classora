@@ -20,6 +20,7 @@ import {
   MY_PROGRESS_REPORTS_ACCESS,
   PROGRESS_REPORT_WORK_ACCESS,
 } from '@/features/progress-reports/access';
+import { RECENTLY_DELETED_ACCESS } from '@/features/recently-deleted/access';
 import {
   ASSIGNMENT_WORK_ACCESS,
   MY_HOMEWORK_ACCESS,
@@ -151,6 +152,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
     to: '/progress-reports',
     labelKey: 'nav.progressReports',
     ...PROGRESS_REPORT_WORK_ACCESS,
+  },
+  // Recently deleted (M8-12 #129 D1): the users who can delete an eligible
+  // record (tutors, learning_plan.manage holders), after the tutor's
+  // academic items. The API lists only the caller's own records.
+  {
+    to: '/recently-deleted',
+    labelKey: 'nav.recentlyDeleted',
+    ...RECENTLY_DELETED_ACCESS,
   },
   // Tutor reports (#315 A2): students and guardians read the approved
   // reports (a different label, so a tutor who is also a guardian can tell

@@ -429,7 +429,7 @@ describe('access (G1) and labels (G7)', () => {
 
   it('has an es and en label for every classified task, without a raw colon', () => {
     // The API's RETRYABLE_TASKS | NON_RETRYABLE_TASKS (tests/unit/test_job_rules.py).
-    expect(LABELLED_TASKS).toHaveLength(20);
+    expect(LABELLED_TASKS).toHaveLength(21);
     for (const task of LABELLED_TASKS) {
       const key = taskLabelKey(task);
       expect(key).not.toContain(':');

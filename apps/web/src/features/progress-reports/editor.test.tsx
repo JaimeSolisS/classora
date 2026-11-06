@@ -270,7 +270,10 @@ describe('delete (C4)', () => {
     await click(button('Delete report'));
     const dialog = openDialog()!;
     expect(dialog.textContent).toContain('Delete this report?');
-    expect(dialog.textContent).toContain("This can't be undone.");
+    expect(dialog.textContent).toContain(
+      'You can restore it for 30 days from Recently deleted.',
+    );
+    expect(dialog.textContent).not.toContain("can't be undone");
     expect(dialog.textContent).not.toContain('withdrawn');
     await click(buttonNamed(dialog, 'Delete'));
     expect(urls[0]!.searchParams.get('version')).toBe('1');

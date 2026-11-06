@@ -13793,6 +13793,150 @@
         }
       }
     },
+    "/api/v1/deleted-records": {
+      "get": {
+        "tags": [
+          "deleted-records"
+        ],
+        "summary": "List Deleted Records",
+        "description": "The records you deleted in the last 30 days and may still restore,\nnewest first (at most 100): notes, evaluation drafts, learning plan\ndrafts, homework and progress reports. No content, only what names\nthem.",
+        "operationId": "list_deleted_records_api_v1_deleted_records_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedRecordList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deleted-records/{kind}/{record_id}/restore": {
+      "post": {
+        "tags": [
+          "deleted-records"
+        ],
+        "summary": "Restore Deleted Record",
+        "description": "Restore a record you deleted: it is back exactly as it was (internal\nor draft), with a new version. Nobody is notified.",
+        "operationId": "restore_deleted_record_api_v1_deleted_records__kind___record_id__restore_post",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DeletedRecordKind"
+            }
+          },
+          {
+            "name": "record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Record Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeletedRecordRestore"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoredRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The kind's own delete check fails now (for example note_read_only, evaluation_read_only, plan_subject_not_assigned, assignment_read_only, progress_report_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such deleted record, it isn't one you deleted, or its 30 days have passed (not_found); also the kind's own 404 when you no longer relate to its student.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The record changed since it was listed (version_conflict), or a live record already takes its place (deleted_record_restore_conflict).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/evaluation-templates": {
       "get": {
         "tags": [
@@ -45897,6 +46041,142 @@
           "user.admin_role.assign"
         ]
       },
+      "DeletedRecordItem": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/DeletedRecordKind"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Send it back to restore the record."
+          },
+          "student": {
+            "$ref": "#/components/schemas/DeletedRecordStudent"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "The assignment's or plan's title, or the evaluation template's name; null for notes and progress reports."
+          },
+          "reference_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Reference Date",
+            "description": "The note's class date (center time), the evaluation date, the plan's start, the due date, or the report's period start (its creation date for an on-demand report)."
+          },
+          "deleted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Deleted At"
+          },
+          "restorable_until": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Restorable Until",
+            "description": "After this instant the record can't be restored; a daily job then removes it for good."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "id",
+          "version",
+          "student",
+          "title",
+          "reference_date",
+          "deleted_at",
+          "restorable_until"
+        ],
+        "title": "DeletedRecordItem",
+        "description": "One record the caller deleted and may still restore."
+      },
+      "DeletedRecordKind": {
+        "type": "string",
+        "enum": [
+          "session_note",
+          "evaluation",
+          "learning_plan",
+          "assignment",
+          "progress_report"
+        ],
+        "title": "DeletedRecordKind",
+        "description": "The eligible kinds (#129 E2): the models with ``SoftDeleteMixin``."
+      },
+      "DeletedRecordList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DeletedRecordItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "description": "Only the 100 most recent are listed."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "title": "DeletedRecordList",
+        "description": "`GET /api/v1/deleted-records` (B1): newest deletion first."
+      },
+      "DeletedRecordRestore": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The record's version, as listed."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "DeletedRecordRestore",
+        "description": "`POST /api/v1/deleted-records/{kind}/{id}/restore` (B2)."
+      },
+      "DeletedRecordStudent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "DeletedRecordStudent",
+        "description": "The record's student (an assignment's first recipient by name)."
+      },
       "DiscountAssignmentCreate": {
         "properties": {
           "student_id": {
@@ -63562,6 +63842,31 @@
           "not_met",
           "pending"
         ]
+      },
+      "RestoredRecord": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/DeletedRecordKind"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "id",
+          "version"
+        ],
+        "title": "RestoredRecord",
+        "description": "The restored record: live again, with its new version."
       },
       "RevenueTrend": {
         "properties": {

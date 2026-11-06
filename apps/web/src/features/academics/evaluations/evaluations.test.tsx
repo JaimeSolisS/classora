@@ -791,6 +791,9 @@ describe('one evaluation (C4-C7)', () => {
       await click(buttonNamed(main(), 'Delete draft'));
       await settleUntil(() => openDialog());
       expect(openDialog()!.textContent).toContain('Delete this draft?');
+      expect(openDialog()!.textContent).toContain(
+        'You can restore it for 30 days from Recently deleted.',
+      );
       await click(buttonNamed(openDialog()!, 'Delete draft'));
       await settleUntil(() =>
         app!

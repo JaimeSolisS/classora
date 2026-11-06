@@ -272,6 +272,8 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['progress_report_closed', 'progress_report_closed'],
   ['progress_report_exists', 'progress_report_exists'],
   ['progress_report_author_not_current', 'progress_report_author_not_current'],
+  // Recently deleted records (#129 B4).
+  ['deleted_record_restore_conflict', 'deleted_record_restore_conflict'],
   [
     'progress_report_review_route_required',
     'progress_report_review_route_required',

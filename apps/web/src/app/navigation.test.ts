@@ -344,3 +344,37 @@ describe('the reports nav item (M8-09b A1)', () => {
     });
   });
 });
+
+// M8-12 (#129) D1: "Recently deleted" for the users who can delete an
+// eligible record (tutors, learning_plan.manage holders), right after the
+// tutor's academic items; never Finance or the family roles.
+describe('the recently deleted nav item (#129 D1)', () => {
+  const PLAN_MANAGER = user(
+    ['academic_coordinator'],
+    ['student.view', 'learning_plan.manage'],
+  );
+
+  it.each([
+    ['a tutor', TUTOR, true],
+    ['a learning_plan.manage holder', PLAN_MANAGER, true],
+    ['a Coordinator without learning_plan.manage', COORDINATOR, false],
+    ['Finance', FINANCE, false],
+    ['a guardian', GUARDIAN, false],
+    ['a student', STUDENT, false],
+  ] as const)('%s: %s', (_who, as, visible) => {
+    expect(shown(as).includes('/recently-deleted')).toBe(visible);
+  });
+
+  it('comes right after Progress reports and is labelled in the common catalog', () => {
+    const paths = NAV_ITEMS.map((item) => item.to);
+    expect(paths.indexOf('/recently-deleted')).toBe(
+      paths.indexOf('/progress-reports') + 1,
+    );
+    expect(
+      NAV_ITEMS.find((item) => item.to === '/recently-deleted'),
+    ).toMatchObject({
+      labelKey: 'nav.recentlyDeleted',
+      anyOf: [{ role: 'tutor' }, { permission: 'learning_plan.manage' }],
+    });
+  });
+});

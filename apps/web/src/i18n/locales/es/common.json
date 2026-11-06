@@ -37,6 +37,7 @@
     "approvals": "Aprobaciones",
     "audit": "Auditoría",
     "jobs": "Tareas fallidas",
+    "recentlyDeleted": "Eliminados recientemente",
     "catalog": "Catálogo",
     "settings": "Configuración",
     "billing": "Cobros",
@@ -732,7 +733,8 @@
         "generate_recurring_expenses": "Gastos recurrentes"
       },
       "administration": {
-        "run_imports": "Importaciones"
+        "run_imports": "Importaciones",
+        "run_retention": "Retención de datos"
       },
       "reporting": {
         "run_exports": "Exportaciones"
@@ -4195,7 +4197,7 @@
     },
     "deleteDialog": {
       "title": "¿Eliminar esta nota?",
-      "description": "Desaparece de todas las listas.",
+      "description": "Desaparece de todas las listas. Podrás restaurarla durante 30 días en Eliminados recientemente.",
       "confirm": "Eliminar nota",
       "deleting": "Eliminando…",
       "cancel": "Cancelar"
@@ -4421,7 +4423,7 @@
       },
       "delete": {
         "title": "¿Eliminar este borrador?",
-        "description": "Se eliminan el borrador y sus calificaciones. No se puede deshacer.",
+        "description": "Se eliminan el borrador y sus calificaciones. Podrás restaurarlo durante 30 días en Eliminados recientemente.",
         "confirm": "Eliminar borrador",
         "busy": "Eliminando…"
       },
@@ -4625,7 +4627,7 @@
     },
     "delete": {
       "title": "¿Eliminar este borrador?",
-      "description": "El borrador desaparece de todas las listas. No se puede deshacer.",
+      "description": "El borrador desaparece de todas las listas. Podrás restaurarlo durante 30 días en Eliminados recientemente.",
       "confirm": "Eliminar borrador"
     },
     "notices": {
@@ -4895,7 +4897,7 @@
     },
     "delete": {
       "title": "¿Eliminar esta tarea?",
-      "description": "Los alumnos y tutores familiares ya no la verán.",
+      "description": "Los alumnos y tutores familiares ya no la verán. Podrás restaurarla durante 30 días en Eliminados recientemente.",
       "confirm": "Eliminar tarea"
     },
     "grade": {
@@ -5088,7 +5090,7 @@
     },
     "delete": {
       "title": "¿Eliminar este informe?",
-      "description": "No se puede deshacer.",
+      "description": "Podrás restaurarlo durante 30 días en Eliminados recientemente.",
       "withdrawn": "La solicitud de revisión se retira.",
       "confirm": "Eliminar"
     },
@@ -8772,6 +8774,41 @@
       "empty": "Aún no hay movimientos.",
       "more": "Cargar más",
       "loading": "Cargando…"
+    }
+  },
+  "recentlyDeleted": {
+    "title": "Eliminados recientemente",
+    "intro": "Lo que eliminaste en los últimos 30 días: notas, borradores de evaluaciones y planes, tareas e informes de progreso. Puedes restaurarlo durante 30 días; después se borra para siempre.",
+    "empty": "No tienes registros eliminados en los últimos 30 días.",
+    "onlyRecent": "Se muestran solo los 100 eliminados más recientes.",
+    "listTitle": "Registros eliminados",
+    "columns": {
+      "kind": "Tipo",
+      "record": "Registro",
+      "student": "Estudiante",
+      "deleted": "Eliminado",
+      "available": "Disponible hasta",
+      "actions": "Acciones"
+    },
+    "kinds": {
+      "session_note": "Nota de clase",
+      "evaluation": "Evaluación",
+      "learning_plan": "Plan de aprendizaje",
+      "assignment": "Tarea",
+      "progress_report": "Informe de progreso"
+    },
+    "untitled": "{{kind}} del {{date}}",
+    "deletedOn": "Eliminado el {{date}}",
+    "availableUntil": "Disponible hasta el {{date}}",
+    "restore": {
+      "action": "Restaurar",
+      "actionFor": "Restaurar {{kind}}: {{record}}",
+      "busy": "Restaurando…",
+      "done": "{{record}} se restauró.",
+      "open": "Abrir",
+      "openFor": "Abrir {{record}}",
+      "notFound": "Este registro ya no se puede restaurar. Actualizamos la lista.",
+      "conflict": "Ya hay un registro vigente en su lugar, así que este no se puede restaurar. Actualizamos la lista."
     }
   }
 }
