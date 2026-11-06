@@ -217,6 +217,7 @@ Codes in use today:
 | `progress_report_under_review` / `progress_report_not_submitted` / `progress_report_closed` | 409 | Changing a submitted report; deciding a report that isn't waiting for review; changing an approved report or touching a retracted one. |
 | `progress_report_exists` | 409 | A second live weekly or monthly report of the same author, student, period and subject; `details.report_id` names the existing one. |
 | `progress_report_author_not_current` | 409 | Sending a report back to an author who no longer teaches the student (approve or retract it instead). |
+| `deleted_record_restore_conflict` | 409 | Restoring a deleted record that a live record now replaces (today: another live weekly or monthly progress report of the same student, author, period and subject; #129). |
 | `progress_report_review_route_required` | 409 | A generic inbox decision on a progress report; `details.review_path` is its review page. |
 | `period_invalid` / `period_in_future` | 422 | A progress report period that isn't a Monday-Sunday week, a calendar month or an on-demand period of at most 366 days (on `period_start` or `period_end`), or that starts after the center's today. |
 | `progress_report_schedule_exists` | 409 | Adding or reactivating a report schedule when the tutor already has an active one of that cadence for the student and subject; `details.schedule_id` names it (see Report schedules). |
@@ -8847,6 +8848,40 @@ Retry semantics:
   sweeper over `committing` imports.
 - Out of scope: aborted and stalled (`doing`) jobs, and per-item failures
   inside a run (caught, logged and retried by the next tick).
+
+### Recently deleted records
+
+#129 (M8-12; spec §9 soft delete and recovery; #129 E1–E7,
+orchestrator-recommended, pending owner review). The five academic kinds
+that soft-delete (`session_note`, `evaluation`, `learning_plan`,
+`assignment`, `progress_report`; pinned by
+`tests/unit/test_soft_delete_eligibility.py`) can be restored by the user
+who deleted them for `DELETED_RECORD_RECOVERY_DAYS = 30` days; the daily
+retention job then removes them for good (`_docs/data-model.md`
+"Retention and deletion"). Master data is deactivated, never deleted; money,
+payroll, expenses, attendance, audit and consent are never eligible.
+Workflow `app/workflows/deleted_records.py`, rows
+`app/modules/academics/deleted_records.py`.
+
+| Route | Guard | Notes |
+|---|---|---|
+| `GET /api/v1/deleted-records` | `authenticated()` | `{items, has_more}`: the caller's **restorable** records (they deleted it, `now < deleted_at + 30 days`, and the kind's existing delete check passes on it as if it were live), newest `deleted_at` first, at most 100. At most seven statements whatever the count. Anyone else (students, guardians, Finance) gets `{items: [], has_more: false}`. |
+| `POST /api/v1/deleted-records/{kind}/{record_id}/restore` | `authenticated()`, CSRF | Body `{version}`. One Unit of Work, the row `FOR UPDATE`: `422` unknown kind → `404 not_found` (unknown, live, deleted by someone else, or past the window) → `409 version_conflict` → the kind's own delete check and codes (`403 note_read_only`, `evaluation_read_only`, `plan_subject_not_assigned`, `plan_read_only`, `assignment_read_only`, `progress_report_read_only`, …, or its `404`) → `409 deleted_record_restore_conflict` (a live report holds the period) → `deleted_at` and `deleted_by_user_id` cleared, version + 1, the automatic `restore` audit event. `200 {kind, id, version}`. A second restore is `404`. Nothing is notified. |
+
+`DeletedRecordItem` has exactly: `kind`, `id`, `version`, `student {id,
+display_name}` (an assignment's first recipient by name), `title` (the
+assignment's or plan's title, or the evaluation template's name; `null` for
+notes and reports), `reference_date` (the note's class date in the center
+zone, `evaluated_on`, the plan's `starts_on`, `due_on`, or the report's
+`period_start`; its creation date for an on-demand report), `deleted_at` and
+`restorable_until`. Never a body, narrative, score or feedback.
+
+Restore semantics: the record is back exactly as it was (an `internal` note,
+a draft, an assignment with nothing submitted, a `draft` or
+`changes_requested` report). A restored assignment reappears for its
+recipients with no new `assignment_set`. Deleting a `changes_requested`
+report cancels its inbox item; after a restore, its next submit opens that
+item again (`pending`).
 
 ### Response headers
 
