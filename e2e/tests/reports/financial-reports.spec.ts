@@ -4,7 +4,7 @@ import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
 
 // The financial reports page (M7-14b E3), on the demo Owner's shared
-// session: 0 logins, 0 redemptions, 0 registrations (LOGIN_ATTEMPTS_PER_RUN
+// session (reached from Reports through the sub-navigation, M8-09b E3): 0 logins, 0 redemptions, 0 registrations (LOGIN_ATTEMPTS_PER_RUN
 // stays 50/50) and no password step. The shared E2E database isn't empty,
 // so no amount is asserted; #117's integration tests and the Vitest oracle
 // fixtures cover the figures.
@@ -30,11 +30,17 @@ test('the Owner reads the profitability and the balances, by basis and range', a
     '[data-report-class-table] tbody tr[data-class-type]',
   );
 
-  // 1. From the nav: the accrual report for this month, and the balances.
+  // 1. From the nav (Reports opens the KPIs) and the sub-navigation: the
+  // accrual report for this month, and the balances.
   await page.goto('/');
   await page
     .getByRole('banner')
     .getByRole('link', { name: common.nav.reports, exact: true })
+    .click();
+  await expect(page).toHaveURL('/reports/kpis');
+  await main
+    .getByRole('navigation', { name: labels.subnav.label })
+    .getByRole('link', { name: labels.subnav.finance, exact: true })
     .click();
   await expect(page).toHaveURL('/reports/finance');
   await expect(

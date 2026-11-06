@@ -455,7 +455,10 @@ unless a bullet says otherwise.
   by individual tutoring, group tutoring and courses, operating expenses by
   category and vendor, and the net result, on an accrual or cash basis for
   any range up to a year, plus today's receivables, payables and deferred
-  revenue (Reports).
+  revenue (Reports → Financial report).
+- KPIs: revenue and result per month, unpaid balances and payroll, course
+  profitability, room utilization, student retention and tutor performance,
+  each for the roles that see its data (Reports → KPIs).
 
 **Imports**
 
@@ -519,7 +522,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** the rest of billing, analytics, dashboards, PDF exports, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
+**Not built yet:** the rest of billing, dashboards, PDF exports, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 
 **Not in this version:** file uploads and documents (attachments, the shared

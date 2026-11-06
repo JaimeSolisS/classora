@@ -280,3 +280,41 @@ describe('the exports nav item (M8-07b E1)', () => {
     });
   });
 });
+
+// M8-09b A1: "Reports" opens the KPIs, so it shows for holders of
+// finance.report.view or schedule.view (Owner, Finance, Administrator,
+// Coordinator) and never for a tutor, student or guardian.
+describe('the reports nav item (M8-09b A1)', () => {
+  const OWNER = user(
+    ['owner'],
+    ['finance.report.view', 'schedule.view', 'tutor.view'],
+  );
+  const FINANCE_STAFF = user(['finance_staff'], ['finance.report.view']);
+  const ADMIN = user(
+    ['administrator'],
+    ['user.view', 'schedule.view', 'tutor.view'],
+  );
+  const SCHEDULER = user(
+    ['academic_coordinator'],
+    ['schedule.view', 'tutor.view'],
+  );
+
+  it.each([
+    ['the Owner', OWNER, true],
+    ['Finance', FINANCE_STAFF, true],
+    ['an Administrator', ADMIN, true],
+    ['a Coordinator', SCHEDULER, true],
+    ['a tutor', TUTOR, false],
+    ['a student', STUDENT, false],
+    ['a guardian', GUARDIAN, false],
+  ] as const)('%s: %s', (_who, as, visible) => {
+    expect(shown(as).includes('/reports')).toBe(visible);
+  });
+
+  it('needs either permission', () => {
+    expect(NAV_ITEMS.find((item) => item.to === '/reports')).toMatchObject({
+      labelKey: 'nav.reports',
+      anyPermission: ['finance.report.view', 'schedule.view'],
+    });
+  });
+});

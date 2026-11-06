@@ -3,7 +3,8 @@ import type { ReportBasis } from './api';
 
 // The report's range and basis (M7-14b E2, B1): presets plus a custom
 // range, all in the URL (`basis`, `from`, `to`). With no `from`/`to` the
-// range is "Este mes" on the anchor date, which is the center's today from
+// range is the page's default preset ("Este mes" for the financial report,
+// "Últimos 3 meses" for the KPIs, M8-09b B1) on the anchor date, which is the center's today from
 // the last response (the session's center zone before the first one), so
 // the default and the presets re-anchor once the API answers. The client
 // bounds mirror the server's (#117 E2): `from ≤ to ≤ today`, at most 366
@@ -29,7 +30,7 @@ export interface DateRange {
 
 export interface ReportParams extends DateRange {
   basis: ReportBasis;
-  /** `from`/`to` came from the URL (else the "Este mes" default). */
+  /** `from`/`to` came from the URL (else the default preset). */
   custom: boolean;
 }
 
@@ -83,6 +84,7 @@ export function activePreset(range: DateRange, today: string): Preset | null {
 export function reportParams(
   search: URLSearchParams,
   today: string,
+  defaultPreset: Preset = 'thisMonth',
 ): ReportParams {
   const basisParam = search.get('basis');
   const basis = BASES.find((item) => item === basisParam) ?? DEFAULT_BASIS;
@@ -91,7 +93,7 @@ export function reportParams(
   if (isLocalDate(from) && isLocalDate(to)) {
     return { basis, from, to, custom: true };
   }
-  return { basis, ...presetRange('thisMonth', today), custom: false };
+  return { basis, ...presetRange(defaultPreset, today), custom: false };
 }
 
 /** Whole days from `from` to `to` (`to − from`). */

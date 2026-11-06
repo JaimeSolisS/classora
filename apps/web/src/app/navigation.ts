@@ -3,7 +3,7 @@ import { APPROVAL_REVIEW_PERMISSIONS } from '@/features/approvals/api';
 import type { AccessRequirement } from '@/features/auth/access';
 import { BILLING_ACCESS } from '@/features/billing/access';
 import { EXPENSE_CONFIGURE_ACCESS } from '@/features/finance/access';
-import { FINANCE_REPORT_ACCESS } from '@/features/reporting/access';
+import { KPI_PAGE_ACCESS } from '@/features/reporting/access';
 import { IMPORTS_ACCESS } from '@/features/imports/access';
 import { EXPORTS_ACCESS } from '@/features/exports/access';
 import { CHANGE_REQUESTS_ACCESS } from '@/features/change-requests/access';
@@ -83,9 +83,10 @@ export const NAV_ITEMS: readonly NavItem[] = [
   // Expenses (M7-11b A2): expense.configure holders (Owner, Administrator,
   // Finance Staff), after Payroll. /expenses opens the first tab they may open.
   { to: '/expenses', labelKey: 'nav.expenses', ...EXPENSE_CONFIGURE_ACCESS },
-  // Reports (M7-14b A1): finance.report.view holders (Owner, Finance
-  // Staff), after Expenses. /reports opens the financial report.
-  { to: '/reports', labelKey: 'nav.reports', ...FINANCE_REPORT_ACCESS },
+  // Reports (M7-14b A1, M8-09b A1): holders of finance.report.view or
+  // schedule.view (Owner, Finance Staff, Administrator, Coordinator), after
+  // Expenses. /reports opens the KPIs.
+  { to: '/reports', labelKey: 'nav.reports', ...KPI_PAGE_ACCESS },
   // Every role holds student.view; the API filters the list (#33 I1).
   { to: '/students', labelKey: 'nav.students', permission: 'student.view' },
   // Guardians see their own profile only (#34 I1).

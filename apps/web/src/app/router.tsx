@@ -67,7 +67,10 @@ import {
   EXPENSE_CONFIGURE_ACCESS,
   EXPENSE_VIEW_ACCESS,
 } from '@/features/finance/access';
-import { FINANCE_REPORT_ACCESS } from '@/features/reporting/access';
+import {
+  FINANCE_REPORT_ACCESS,
+  KPI_PAGE_ACCESS,
+} from '@/features/reporting/access';
 import { IMPORTS_ACCESS } from '@/features/imports/access';
 import { EXPORTS_ACCESS } from '@/features/exports/access';
 import { MY_HISTORY_ACCESS } from '@/features/academics/history/access';
@@ -1142,12 +1145,20 @@ export const routes: RouteObject[] = [
             }),
             handle: EXPENSE_CONFIGURE_ACCESS,
           },
-          // M7-14b A2: the financial reports, finance.report.view holders.
-          // /reports opens the financial report (room for M8 reports).
+          // M8-09b A2: the reports area. /reports opens the KPIs (code-split,
+          // finance.report.view or schedule.view); the financial report
+          // (M7-14b A2) stays finance.report.view only.
           {
             path: 'reports',
-            element: <Navigate to="/reports/finance" replace />,
-            handle: FINANCE_REPORT_ACCESS,
+            element: <Navigate to="/reports/kpis" replace />,
+            handle: KPI_PAGE_ACCESS,
+          },
+          {
+            path: 'reports/kpis',
+            lazy: async () => ({
+              Component: (await import('@/features/reporting/KpiPage')).KpiPage,
+            }),
+            handle: KPI_PAGE_ACCESS,
           },
           {
             path: 'reports/finance',

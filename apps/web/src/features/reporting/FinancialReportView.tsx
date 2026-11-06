@@ -5,8 +5,10 @@ import { BalancesView, type BalanceLinks } from './BalancesSection';
 import type { ReportState } from './parts';
 import { ProfitabilityView } from './ProfitabilitySection';
 import { RangeControl, type RangeControlProps } from './RangeControl';
+import { ReportsSubnav } from './ReportsSubnav';
 
-// /reports/finance (M7-14b), without any query: the title, then
+// /reports/finance (M7-14b), without any query: the reports sub-navigation
+// (M8-09b A3), the title, then
 // "Rentabilidad" (the controls and the figures for the range and basis) and
 // "Saldos" (today's balances), each with its own loading, error and
 // out-of-date states.
@@ -28,6 +30,7 @@ export function FinancialReportView({
   const ids = { profitability: useId(), balances: useId() };
   return (
     <div className="flex min-w-0 flex-col gap-8" data-financial-report>
+      <ReportsSubnav />
       <div className="flex min-w-0 flex-col gap-2">
         <h1 className="text-2xl font-semibold">{t('reports.title')}</h1>
         <p className="text-sm text-muted-foreground">{t('reports.intro')}</p>
