@@ -5838,6 +5838,122 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports/kpis/revenue-trend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Revenue Trend
+         * @description K1: revenue, direct tutor cost (the payroll KPI), gross profit,
+         *     operating expenses and the net result per center-local month of the
+         *     range (clipped to it, zeros included) and in total. Each month equals
+         *     `GET /reports/finance/profitability` over that month's part of the range
+         *     on the same basis, and the totals equal it over the whole range, with
+         *     every #117 rule (accrual restatement included).
+         */
+        get: operations["get_revenue_trend_api_v1_reports_kpis_revenue_trend_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/kpis/course-profitability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Course Profitability
+         * @description K2 (accrual, no overhead): the course-class revenue and direct tutor
+         *     cost of the range per cohort, plus what can't be tied to a cohort
+         *     (`not_attributed`). The sum is the accrual report's `course` row.
+         */
+        get: operations["get_course_profitability_api_v1_reports_kpis_course_profitability_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/kpis/room-utilization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Room Utilization
+         * @description K4: each active room's available minutes (operating hours ∩ the
+         *     room's windows, closure days excluded, wall-clock) and used minutes (the
+         *     scheduled minutes of its confirmed or completed sessions that have
+         *     started), with the percentage (it may exceed 100.00).
+         */
+        get: operations["get_room_utilization_api_v1_reports_kpis_room_utilization_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/kpis/student-retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Student Retention
+         * @description K5: students active in the range (at least one confirmed or completed
+         *     session that has started) against the window of the same length just
+         *     before it: retained, new, lost and the retention percentage, plus the
+         *     active students per month. Counts only.
+         */
+        get: operations["get_student_retention_api_v1_reports_kpis_student_retention_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/kpis/tutor-performance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Tutor Performance
+         * @description K6 per current tutor (a substitute is credited) and K7 center-wide
+         *     (`totals`): sessions, completed, pending closeout, cancelled after
+         *     confirmation, scheduled minutes, distinct students and attendance with
+         *     the #84 percentage. No money, grade or ranking.
+         */
+        get: operations["get_tutor_performance_api_v1_reports_kpis_tutor_performance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/overdue-accounts": {
         parameters: {
             query?: never;
@@ -6881,6 +6997,57 @@ export interface components {
             /** Display Name */
             display_name: string;
         };
+        /** ActiveMonth */
+        ActiveMonth: {
+            /**
+             * Month
+             * @description YYYY-MM.
+             * @example 2031-03
+             */
+            month: string;
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            /** Active Students */
+            active_students: number;
+        };
+        /** ActivityFigures */
+        ActivityFigures: {
+            /**
+             * Sessions
+             * @description In-scope sessions.
+             */
+            sessions: number;
+            /** Completed */
+            completed: number;
+            /**
+             * Pending Closeout
+             * @description Confirmed sessions that have ended.
+             */
+            pending_closeout: number;
+            /**
+             * Cancelled
+             * @description Cancelled after a confirmation.
+             */
+            cancelled: number;
+            /** Scheduled Minutes */
+            scheduled_minutes: number;
+            /**
+             * Students
+             * @description Distinct participants of in-scope sessions.
+             */
+            students: number;
+            attendance: components["schemas"]["AttendanceCounts"];
+            /** @description (present + late) / (present + late + absent) × 100 (#84). */
+            attendance_percent: components["schemas"]["KpiPercent"] | null;
+        };
         /**
          * AdjustmentItem
          * @description One adjustment of a charge: a credit is negative, a debit positive.
@@ -7631,6 +7798,17 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** AttendanceCounts */
+        AttendanceCounts: {
+            /** Present */
+            present: number;
+            /** Late */
+            late: number;
+            /** Absent */
+            absent: number;
+            /** Not Recorded */
+            not_recorded: number;
         };
         /**
          * AttendanceItem
@@ -11148,6 +11326,29 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** CohortProfitability */
+        CohortProfitability: {
+            /**
+             * Revenue
+             * Format: decimal
+             * @example 1250.00
+             */
+            revenue: string;
+            /**
+             * Direct Tutor Cost
+             * Format: decimal
+             * @example 1250.00
+             */
+            direct_tutor_cost: string;
+            /**
+             * Gross Profit
+             * Format: decimal
+             * @description revenue - direct_tutor_cost.
+             * @example 1250.00
+             */
+            gross_profit: string;
+            cohort: components["schemas"]["CohortRef"];
+        };
         /**
          * CohortRecurrence
          * @description The cohort's weekly rule (#65 D1, E3): the weekdays and the interval
@@ -11169,6 +11370,16 @@ export interface components {
              * @default 1
              */
             interval: number;
+        };
+        /** CohortRef */
+        CohortRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
         };
         /**
          * CohortSessionItem
@@ -11627,6 +11838,60 @@ export interface components {
             required_module_ids: string[];
             /** Required Assessment Ids */
             required_assessment_ids: string[];
+        };
+        /** CourseFigures */
+        CourseFigures: {
+            /**
+             * Revenue
+             * Format: decimal
+             * @example 1250.00
+             */
+            revenue: string;
+            /**
+             * Direct Tutor Cost
+             * Format: decimal
+             * @example 1250.00
+             */
+            direct_tutor_cost: string;
+            /**
+             * Gross Profit
+             * Format: decimal
+             * @description revenue - direct_tutor_cost.
+             * @example 1250.00
+             */
+            gross_profit: string;
+        };
+        /**
+         * CourseProfitability
+         * @description ``GET /api/v1/reports/kpis/course-profitability`` (K2, accrual, no
+         *     overhead): ``Σ cohorts + not_attributed = total`` = #117's ``course``
+         *     row.
+         */
+        CourseProfitability: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            /**
+             * Today
+             * Format: date
+             * @description The center's today when it was computed.
+             */
+            today: string;
+            /**
+             * Cohorts
+             * @description Cohorts with a non-zero revenue or cost in the range, by gross_profit descending, then cohort id.
+             */
+            cohorts: components["schemas"]["CohortProfitability"][];
+            /** @description Course-class revenue and cost tied to no cohort. */
+            not_attributed: components["schemas"]["CourseFigures"];
+            total: components["schemas"]["CourseFigures"];
         };
         /**
          * CourseTemplateAssessment
@@ -15454,6 +15719,11 @@ export interface components {
             /** Token */
             token: string;
         };
+        /**
+         * Format: decimal
+         * @example 66.67
+         */
+        KpiPercent: string;
         /** @enum {string} */
         Language: "es" | "en";
         /**
@@ -20005,10 +20275,81 @@ export interface components {
         ReportStatus: "draft" | "submitted" | "changes_requested" | "approved_for_family" | "retracted";
         /** @enum {string} */
         RequirementStatus: "met" | "not_met" | "pending";
+        /**
+         * RevenueTrend
+         * @description ``GET /api/v1/reports/kpis/revenue-trend`` (K1): each month equals
+         *     #117 ``profitability`` over that month's part of the range; ``totals``
+         *     equals it over the whole range.
+         */
+        RevenueTrend: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            basis: components["schemas"]["ReportBasis"];
+            /**
+             * Today
+             * Format: date
+             * @description The center's today when it was computed.
+             */
+            today: string;
+            /**
+             * Months
+             * @description Oldest first, zeros included.
+             */
+            months: components["schemas"]["TrendMonth"][];
+            totals: components["schemas"]["TrendFigures"];
+        };
         /** @enum {string} */
         RevocationCause: "revoked" | "guardian_unlinked";
         /** @enum {string} */
         RoleCode: "academic_coordinator" | "administrator" | "finance_staff" | "guardian" | "owner" | "student" | "tutor";
+        /** RoomRef */
+        RoomRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * RoomUtilization
+         * @description ``GET /api/v1/reports/kpis/room-utilization`` (K4): active rooms, by
+         *     name (case-insensitive), then id.
+         */
+        RoomUtilization: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            /** Rooms */
+            rooms: components["schemas"]["RoomUtilizationRow"][];
+            total: components["schemas"]["UtilizationFigures"];
+        };
+        /** RoomUtilizationRow */
+        RoomUtilizationRow: {
+            /** Available Minutes */
+            available_minutes: number;
+            /** Used Minutes */
+            used_minutes: number;
+            /** @description used / available × 100 (may exceed 100.00); null when nothing is available. */
+            utilization_percent: components["schemas"]["KpiPercent"] | null;
+            room: components["schemas"]["RoomRef"];
+        };
         /**
          * RosterEntry
          * @description One recipient's row in the working view.
@@ -22009,6 +22350,49 @@ export interface components {
             homework: components["schemas"]["ProgressHomework"];
             plans: components["schemas"]["ProgressPlans"];
         };
+        /**
+         * StudentRetention
+         * @description ``GET /api/v1/reports/kpis/student-retention`` (K5): counts only.
+         */
+        StudentRetention: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            /**
+             * Previous From
+             * Format: date
+             */
+            previous_from: string;
+            /**
+             * Previous To
+             * Format: date
+             */
+            previous_to: string;
+            /** Active Previous */
+            active_previous: number;
+            /** Active Current */
+            active_current: number;
+            /** Retained */
+            retained: number;
+            /** New */
+            new: number;
+            /** Lost */
+            lost: number;
+            /** @description retained / active_previous × 100; null with no previous activity. */
+            retention_percent: components["schemas"]["KpiPercent"] | null;
+            /**
+             * Months
+             * @description The range's months, oldest first.
+             */
+            months: components["schemas"]["ActiveMonth"][];
+        };
         /** @enum {string} */
         StudentStatus: "active" | "inactive" | "all";
         /**
@@ -22339,6 +22723,96 @@ export interface components {
         Text: string | null;
         /** @enum {string} */
         Theme: "light" | "dark" | "system";
+        /**
+         * TrendFigures
+         * @description #117 ``profitability`` figures of a range (K1).
+         */
+        TrendFigures: {
+            /**
+             * Revenue Total
+             * Format: decimal
+             * @example 1250.00
+             */
+            revenue_total: string;
+            /**
+             * Direct Tutor Cost Total
+             * Format: decimal
+             * @description The payroll KPI: finalized payroll (accrual) or unreversed payroll payments (cash).
+             * @example 1250.00
+             */
+            direct_tutor_cost_total: string;
+            /**
+             * Gross Profit
+             * Format: decimal
+             * @example 1250.00
+             */
+            gross_profit: string;
+            /**
+             * Operating Expenses Total
+             * Format: decimal
+             * @example 1250.00
+             */
+            operating_expenses_total: string;
+            /**
+             * Net Result
+             * Format: decimal
+             * @example 1250.00
+             */
+            net_result: string;
+        };
+        /**
+         * TrendMonth
+         * @description One center-local month clipped to the range.
+         */
+        TrendMonth: {
+            /**
+             * Revenue Total
+             * Format: decimal
+             * @example 1250.00
+             */
+            revenue_total: string;
+            /**
+             * Direct Tutor Cost Total
+             * Format: decimal
+             * @description The payroll KPI: finalized payroll (accrual) or unreversed payroll payments (cash).
+             * @example 1250.00
+             */
+            direct_tutor_cost_total: string;
+            /**
+             * Gross Profit
+             * Format: decimal
+             * @example 1250.00
+             */
+            gross_profit: string;
+            /**
+             * Operating Expenses Total
+             * Format: decimal
+             * @example 1250.00
+             */
+            operating_expenses_total: string;
+            /**
+             * Net Result
+             * Format: decimal
+             * @example 1250.00
+             */
+            net_result: string;
+            /**
+             * Month
+             * @description YYYY-MM.
+             * @example 2031-01
+             */
+            month: string;
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+        };
         /**
          * TuitionPauseCreate
          * @description ``POST /api/v1/billing/tuition-plans/{id}/pauses`` (#93 D7).
@@ -22724,6 +23198,68 @@ export interface components {
         TutorOptions: {
             /** Items */
             items: components["schemas"]["TutorOption"][];
+        };
+        /**
+         * TutorPerformance
+         * @description ``GET /api/v1/reports/kpis/tutor-performance`` (K6; ``totals`` is K7,
+         *     center activity): per current tutor, by display name
+         *     (case-insensitive), then id.
+         */
+        TutorPerformance: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            /** Tutors */
+            tutors: components["schemas"]["TutorPerformanceRow"][];
+            totals: components["schemas"]["ActivityFigures"];
+        };
+        /** TutorPerformanceRow */
+        TutorPerformanceRow: {
+            /**
+             * Sessions
+             * @description In-scope sessions.
+             */
+            sessions: number;
+            /** Completed */
+            completed: number;
+            /**
+             * Pending Closeout
+             * @description Confirmed sessions that have ended.
+             */
+            pending_closeout: number;
+            /**
+             * Cancelled
+             * @description Cancelled after a confirmation.
+             */
+            cancelled: number;
+            /** Scheduled Minutes */
+            scheduled_minutes: number;
+            /**
+             * Students
+             * @description Distinct participants of in-scope sessions.
+             */
+            students: number;
+            attendance: components["schemas"]["AttendanceCounts"];
+            /** @description (present + late) / (present + late + absent) × 100 (#84). */
+            attendance_percent: components["schemas"]["KpiPercent"] | null;
+            tutor: components["schemas"]["TutorRef"];
+        };
+        /** TutorRef */
+        TutorRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
         };
         /**
          * TutorRosterItem
@@ -23213,6 +23749,15 @@ export interface components {
             email?: string | null;
             /** Phone */
             phone?: string | null;
+        };
+        /** UtilizationFigures */
+        UtilizationFigures: {
+            /** Available Minutes */
+            available_minutes: number;
+            /** Used Minutes */
+            used_minutes: number;
+            /** @description used / available × 100 (may exceed 100.00); null when nothing is available. */
+            utilization_percent: components["schemas"]["KpiPercent"] | null;
         };
         /**
          * VendorAmount
@@ -43592,6 +44137,268 @@ export interface operations {
             };
             /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_revenue_trend_api_v1_reports_kpis_revenue_trend_get: {
+        parameters: {
+            query: {
+                /** @description accrual or cash. */
+                basis: components["schemas"]["ReportBasis"];
+                /** @description First local date, inclusive. */
+                from: string;
+                /** @description Last local date, inclusive. */
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevenueTrend"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_course_profitability_api_v1_reports_kpis_course_profitability_get: {
+        parameters: {
+            query: {
+                /** @description First local date, inclusive. */
+                from: string;
+                /** @description Last local date, inclusive. */
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseProfitability"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_room_utilization_api_v1_reports_kpis_room_utilization_get: {
+        parameters: {
+            query: {
+                /** @description First local date, inclusive. */
+                from: string;
+                /** @description Last local date, inclusive. */
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomUtilization"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_student_retention_api_v1_reports_kpis_student_retention_get: {
+        parameters: {
+            query: {
+                /** @description First local date, inclusive. */
+                from: string;
+                /** @description Last local date, inclusive. */
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentRetention"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_tutor_performance_api_v1_reports_kpis_tutor_performance_get: {
+        parameters: {
+            query: {
+                /** @description First local date, inclusive. */
+                from: string;
+                /** @description Last local date, inclusive. */
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorPerformance"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

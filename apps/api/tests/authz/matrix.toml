@@ -2848,6 +2848,57 @@ allow = ["owner", "finance_staff"]
 query = { basis = "accrual", from = "2026-01-01", to = "2026-01-31" }
 # #117 B1. Range rules and figures: tests/integration/test_reporting_finance_*.
 
+# Analytics KPIs (#126 E3): each gated like the page its rows come from, no new
+# permission. Range rules and figures: tests/integration/test_reporting_kpis_*.
+
+[[route]]
+method = "GET"
+path = "/api/v1/reports/kpis/course-profitability"
+access = "permission"
+permission = "finance.report.view"
+allow = ["owner", "finance_staff"]
+query = { from = "2026-01-01", to = "2026-01-31" }
+# K2 (money): as the financial report; an Administrator with payroll.finalize
+# delegated still gets 403.
+
+[[route]]
+method = "GET"
+path = "/api/v1/reports/kpis/revenue-trend"
+access = "permission"
+permission = "finance.report.view"
+allow = ["owner", "finance_staff"]
+query = { basis = "accrual", from = "2026-01-01", to = "2026-01-31" }
+# K1 (money).
+
+[[route]]
+method = "GET"
+path = "/api/v1/reports/kpis/room-utilization"
+access = "permission"
+permission = "schedule.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+query = { from = "2026-01-01", to = "2026-01-31" }
+# K4: minutes and room names only.
+
+[[route]]
+method = "GET"
+path = "/api/v1/reports/kpis/student-retention"
+access = "permission"
+permission = "schedule.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+query = { from = "2026-01-01", to = "2026-01-31" }
+# K5: counts only.
+
+[[route]]
+method = "GET"
+path = "/api/v1/reports/kpis/tutor-performance"
+access = "permission"
+permission = "schedule.view"
+allow = ["owner", "administrator", "academic_coordinator"]
+query = { from = "2026-01-01", to = "2026-01-31" }
+# K6/K7: schedule.view (the access rule) and tutor.view (checked by the
+# route's dependency before the query), so Finance Staff, who lack tutor.view,
+# get 403 permission_denied, as from the tutor directory.
+
 [[route]]
 method = "GET"
 path = "/api/v1/schedule/family-students"

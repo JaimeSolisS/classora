@@ -98,6 +98,7 @@ from app.modules.identity.service import (
 from app.modules.identity.user_admin_router import router as user_admin_router
 from app.modules.payroll.settings_router import router as payroll_settings_router
 from app.modules.reporting.exports.router import router as exports_router
+from app.modules.reporting.kpis_router import router as kpi_reports_router
 from app.modules.reporting.router import router as financial_reports_router
 from app.modules.reporting.setups.router import router as report_setups_router
 from app.modules.scheduling.attendance_router import router as attendance_router
@@ -382,6 +383,7 @@ def build_app(
     app.include_router(expenses_router)
     app.include_router(expense_templates_router)
     app.include_router(financial_reports_router)
+    app.include_router(kpi_reports_router)
     app.include_router(billing_overdue_router)
     app.include_router(billing_settings_router)
     app.include_router(cancellation_rules_router)

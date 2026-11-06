@@ -29,7 +29,16 @@ from datetime import date, datetime
 from typing import Any, Final
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Numeric, case, cast, func, literal, select
+from sqlalchemy import (
+    Date,
+    Numeric,
+    case,
+    cast,
+    func,
+    literal,
+    select,
+    union_all,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -107,6 +116,9 @@ class RevenueEntry:
     class_type: ClassType
     bucket: DeferredBucket
     amount: Money
+    cohort_id: uuid.UUID | None = None
+    """The cohort the part is attributed to (#126 K2): a ``cohort_enrollment``
+    charge's enrollment cohort, else the charge's class session's cohort."""
 
 
 @dataclass(frozen=True)
@@ -116,6 +128,9 @@ class CostEntry:
     on: date
     class_type: ClassType
     amount: Money
+    cohort_id: uuid.UUID | None = None
+    """The cohort the line is attributed to (#126 K2): its session's cohort,
+    else its adjustment's session's, else its origin line's session's."""
 
 
 @dataclass(frozen=True)
@@ -125,12 +140,18 @@ class ExpenseGroup:
     category: ExpenseCategoryRef
     vendor: VendorRef | None
     amount: Money
+    month: date | None = None
+    """The first of the month the sum belongs to (#126 K1), when grouped by
+    month."""
 
 
 def revenue_entries(
-    class_type: ClassType, bucket: DeferredBucket, shares: Iterable[Share]
+    class_type: ClassType,
+    bucket: DeferredBucket,
+    shares: Iterable[Share],
+    cohort_id: uuid.UUID | None = None,
 ) -> list[RevenueEntry]:
-    return [RevenueEntry(s.on, class_type, bucket, s.amount) for s in shares]
+    return [RevenueEntry(s.on, class_type, bucket, s.amount, cohort_id) for s in shares]
 
 
 def _within(on: date | None, start: date, end: date) -> bool:
@@ -298,6 +319,7 @@ async def _charge_revenue(session: AsyncSession, zone: ZoneInfo) -> list[Revenue
                 charges.c.last_adjusted_at,
                 ClassSession.starts_at.label("session_starts_at"),
                 ClassSession.kind.label("session_kind"),
+                ClassSession.cohort_id.label("session_cohort_id"),
                 ServicePrice.class_type.label("tuition_class_type"),
                 Package.units_granted,
                 Package.expires_on,
@@ -369,7 +391,10 @@ async def _charge_revenue(session: AsyncSession, zone: ZoneInfo) -> list[Revenue
                 service_date=row.service_date,
                 session_on=session_on,
             )
-        entries.extend(revenue_entries(class_type, bucket, shares))
+        cohort_id = (
+            row.cohort_id if row.kind == "cohort_enrollment" else row.session_cohort_id
+        )
+        entries.extend(revenue_entries(class_type, bucket, shares, cohort_id))
     return entries
 
 
@@ -434,8 +459,11 @@ async def _cost_entries(
     session: AsyncSession, start: date | None = None, end: date | None = None
 ) -> list[CostEntry]:
     """The lines of finalized periods dated within ``[start, end]`` (all when
-    not given). Never ``payslips`` (PM-NOTES #113). One statement."""
+    not given), each with its cohort (#126 K2, outer joins on ids: one row per
+    line). Never ``payslips`` (PM-NOTES #113). One statement."""
     origin = aliased(PayrollLine)
+    line_session = aliased(ClassSession)
+    origin_session = aliased(ClassSession)
     on = _cost_date().label("on")
     query = (
         select(
@@ -448,6 +476,9 @@ async def _cost_entries(
             origin.kind.label("origin_kind"),
             origin.class_kind.label("origin_class_kind"),
             ClassSession.kind.label("session_kind"),
+            func.coalesce(
+                line_session.cohort_id, ClassSession.cohort_id, origin_session.cohort_id
+            ).label("cohort_id"),
         )
         .join(PayrollPeriod, PayrollPeriod.id == PayrollLine.payroll_period_id)
         .outerjoin(
@@ -455,6 +486,8 @@ async def _cost_entries(
         )
         .outerjoin(origin, origin.id == PayrollAdjustment.origin_line_id)
         .outerjoin(ClassSession, ClassSession.id == PayrollAdjustment.class_session_id)
+        .outerjoin(line_session, line_session.id == PayrollLine.class_session_id)
+        .outerjoin(origin_session, origin_session.id == origin.class_session_id)
         .where(PayrollPeriod.status == FINALIZED)
     )
     if start is not None and end is not None:
@@ -473,6 +506,7 @@ async def _cost_entries(
                 adjustment_session_kind=row.session_kind,
             ),
             amount=Money(row.amount),
+            cohort_id=row.cohort_id,
         )
         for row in rows
     ]
@@ -507,40 +541,65 @@ def _label_columns() -> tuple[Any, ...]:
     )
 
 
+def _month_of(column: Any) -> Any:
+    """The first of ``column``'s month (a date column, SQL)."""
+    return cast(func.date_trunc("month", column), Date).label("month")
+
+
+def _expense_groups(rows: Iterable[Any], by_month: bool) -> list[ExpenseGroup]:
+    return [
+        ExpenseGroup(
+            *_expense_refs(row),
+            amount=Money(row.amount),
+            month=row.month if by_month else None,
+        )
+        for row in rows
+    ]
+
+
 async def _accrual_expenses(
-    session: AsyncSession, start: date, end: date, today: date
+    session: AsyncSession,
+    start: date,
+    end: date,
+    today: date,
+    *,
+    by_month: bool = False,
 ) -> list[ExpenseGroup]:
     """Expenses incurred in the range at their current net (void: ``0.00``),
-    by category and vendor with their current rows. One statement."""
+    by category and vendor with their current rows, and by the month of
+    ``incurred_on`` when ``by_month`` (#126 K1). One statement."""
     figures = finance.expense_figures(today)
     labels = _label_columns()
+    keys = (*labels, _month_of(figures.c.incurred_on)) if by_month else labels
     rows = await session.execute(
-        select(*labels, money_sum(figures.c.net).label("amount"))
+        select(*keys, money_sum(figures.c.net).label("amount"))
         .select_from(figures)
         .join(ExpenseCategory, ExpenseCategory.id == figures.c.category_id)
         .outerjoin(Vendor, Vendor.id == figures.c.vendor_id)
         .where(figures.c.incurred_on.between(start, end))
-        .group_by(*labels)
+        .group_by(*keys)
     )
-    return [ExpenseGroup(*_expense_refs(row), amount=Money(row.amount)) for row in rows]
+    return _expense_groups(rows, by_month)
 
 
 async def _cash_expenses(
-    session: AsyncSession, start: date, end: date
+    session: AsyncSession, start: date, end: date, *, by_month: bool = False
 ) -> list[ExpenseGroup]:
     """Unreversed expense payments paid in the range, by the expense's
-    category and vendor. One statement."""
+    category and vendor, and by the month of ``paid_on`` when ``by_month``
+    (#126 K1). One statement."""
     labels = _label_columns()
+    keys = (*labels, _month_of(ExpensePayment.paid_on)) if by_month else labels
     rows = await session.execute(
-        select(*labels, money_sum(ExpensePayment.amount).label("amount"))
+        select(*keys, money_sum(ExpensePayment.amount).label("amount"))
         .select_from(ExpensePayment)
         .join(Expense, Expense.id == ExpensePayment.expense_id)
         .join(ExpenseCategory, ExpenseCategory.id == Expense.category_id)
         .outerjoin(Vendor, Vendor.id == Expense.vendor_id)
         .where(finance.unreversed(), ExpensePayment.paid_on.between(start, end))
-        .group_by(*labels)
+        .group_by(*keys)
     )
-    return [ExpenseGroup(*_expense_refs(row), amount=Money(row.amount)) for row in rows]
+    return _expense_groups(rows, by_month)
 
 
 async def _cash_sums(
@@ -574,6 +633,58 @@ async def _cash_sums(
         )
     ).one()
     return _money(row.received) - _money(row.refunded), _money(row.payroll_paid)
+
+
+@dataclass(frozen=True)
+class CashMonth:
+    """One month's cash sums (#126 K1): payments received minus refunds paid
+    out, and payroll paid."""
+
+    month: date
+    revenue: Money
+    payroll_paid: Money
+
+
+async def _cash_sums_by_month(
+    session: AsyncSession, start: date, end: date
+) -> dict[date, CashMonth]:
+    """:func:`_cash_sums` by month (the first of each month that has any
+    row): unreversed payments by ``received_on``, refunds by
+    ``refunded_on``, unreversed payroll payments by ``paid_on``, the same
+    predicates. One statement (``UNION ALL`` grouped by source and month)."""
+    sources = (
+        ("received", Payment.received_on, Payment.amount, billing.unreversed_payment()),
+        ("refunded", Refund.refunded_on, Refund.amount, None),
+        (
+            "payroll_paid",
+            PayrollPayment.paid_on,
+            PayrollPayment.amount,
+            payroll.unreversed_payment(),
+        ),
+    )
+    parts = []
+    for source, on, amount, condition in sources:
+        month = cast(func.date_trunc("month", on), Date)
+        query = select(
+            literal(source).label("source"),
+            month.label("month"),
+            money_sum(amount).label("amount"),
+        ).where(on.between(start, end))
+        if condition is not None:
+            query = query.where(condition)
+        parts.append(query.group_by(month))
+    sums: defaultdict[date, dict[str, Money]] = defaultdict(dict)
+    for row in await session.execute(union_all(*parts)):
+        sums[row.month][row.source] = _money(row.amount)
+    zero = Money.zero()
+    return {
+        month: CashMonth(
+            month=month,
+            revenue=found.get("received", zero) - found.get("refunded", zero),
+            payroll_paid=found.get("payroll_paid", zero),
+        )
+        for month, found in sums.items()
+    }
 
 
 async def _zone_and_today(session: AsyncSession) -> tuple[ZoneInfo, date]:
