@@ -85,6 +85,7 @@ def test_the_generators_are_registered_in_order():
         "academics.demo_learning_plans",
         "academics.demo_homework",
         "academics.demo_progress_reports",
+        "administration.demo_receipt_message",
         "billing.demo_pricing",
         "billing.demo_packages",
         "billing.demo_charges",
@@ -98,6 +99,10 @@ def test_the_generators_are_registered_in_order():
         "finance.demo_setup",
         "finance.demo_templates",
         "finance.demo_expenses",
+        "administration.demo_admin",
+        "administration.demo_imports",
+        "reporting.demo_setups",
+        "academics.demo_deleted",
     ]
 
 

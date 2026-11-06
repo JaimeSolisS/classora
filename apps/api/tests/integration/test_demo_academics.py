@@ -34,6 +34,7 @@ from tests.integration.auth_support import auth_client
 from tests.integration.catalog_support import get
 from tests.integration.conftest import run_sql
 from tests.integration.demo_support import (
+    ADMIN_GENERATORS,
     ALL_TABLE_COUNTS,
     BILLING_GENERATORS,
     CHANGES_GENERATOR,
@@ -259,12 +260,12 @@ def test_a_weekend_run_writes_the_same_counts(
 
 
 def test_a_rerun_writes_nothing_even_days_later(migrated_url, env_for, clock, capsys):
-    # F4: every generator (31 since M7-demo) prints 0 rows.
+    # F4: every generator (40 since M8-demo) prints 0 rows.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
     assert demo.main([]) == 0
     capsys.readouterr()
-    assert len(GENERATOR_NAMES) == 35
+    assert len(GENERATOR_NAMES) == 40
 
     assert demo.main([]) == 0
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
@@ -330,6 +331,7 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
                 *BILLING_GENERATORS,
                 *PAYROLL_GENERATORS,
                 *FINANCE_GENERATORS,
+                *ADMIN_GENERATORS,
             }
             else f"{name}: 0 rows"
             for name in GENERATOR_NAMES
@@ -341,7 +343,8 @@ def test_a_schedule_from_an_earlier_day_is_skipped(
 
 
 def test_the_353_counts_cover_its_new_tables():
-    assert GENERATOR_NAMES[-20:-16] == list(NEW_353_GENERATORS)
+    after = GENERATOR_NAMES.index(CHANGES_GENERATOR) + 1
+    assert GENERATOR_NAMES[after : after + 4] == list(NEW_353_GENERATORS)
     assert DEMO_353_TABLE_COUNTS["session_closeouts"] == 9
     assert DEMO_353_TABLE_COUNTS["evaluations"] == 9
 

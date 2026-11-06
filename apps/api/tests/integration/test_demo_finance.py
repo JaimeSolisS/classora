@@ -62,6 +62,7 @@ from tests.factories.identity import (
 from tests.integration.billing_invariants.checks import Catalogue
 from tests.integration.conftest import run_sql, settings_for, short_lived_engine
 from tests.integration.demo_support import (
+    ADMIN_GENERATORS,
     ALL_TABLE_COUNTS,
     DEMO_FINANCE_EXPENSES_ROWS,
     DEMO_FINANCE_SETUP_ROWS,
@@ -80,9 +81,11 @@ from tests.integration.demo_support import (
     SEEDED_CATEGORIES,
     TABLE_COUNTS_THROUGH_354,
     TABLE_COUNTS_THROUGH_499,
+    TABLE_COUNTS_THROUGH_501,
     count,
     demo_env,
     demo_table_counts,
+    first_run_lines,
     generators_through,
     migrate,
 )
@@ -156,6 +159,13 @@ def _fresh_finance(
     ]
 
 
+def _finance_lines(lines: list[str]) -> list[str]:
+    """The four #501 lines of a run's output, by generator name (the M8-demo
+    generators come after them)."""
+    by_name = {line.split(":")[0]: line for line in lines}
+    return [by_name[name] for name in FINANCE_GENERATORS]
+
+
 def _line(name: str, rows: int | str) -> str:
     return f"{name}: {rows} rows" if isinstance(rows, int) else f"{name}: {rows}"
 
@@ -225,7 +235,7 @@ def test_a_first_run_writes_the_finance_data(migrated_url, env_for, clock, capsy
 
     assert demo.main([], generators=generators) == 0
 
-    assert capsys.readouterr().out.splitlines() == FIRST_RUN_LINES
+    assert capsys.readouterr().out.splitlines() == first_run_lines(generators)
     assert app_clock.now() == FROZEN_NOW
     fee, _, templates, expenses = generators[-4:]
 
@@ -430,7 +440,10 @@ def test_a_first_run_writes_the_finance_data(migrated_url, env_for, clock, capsy
     assert actors[("expense_payment_reversals", "create")] == {"demo.owner"}
     assert actors[("expense_adjustments", "create")] == {"demo.finance"}
     assert actors[("service_prices", "create")] == {"demo.finance"}
-    assert demo_table_counts(migrated_url, ALL_TABLE_COUNTS) == ALL_TABLE_COUNTS
+    assert (
+        demo_table_counts(migrated_url, TABLE_COUNTS_THROUGH_501)
+        == TABLE_COUNTS_THROUGH_501
+    )
 
 
 def test_the_jobs_do_nothing_after_the_seed_and_a_rerun_writes_nothing(
@@ -480,7 +493,7 @@ def test_a_weekend_run(migrated_url, env_for, clock, capsys, now):
     assert demo.main([]) == 0
 
     lines = capsys.readouterr().out.splitlines()
-    assert lines[-4:] == [
+    assert _finance_lines(lines) == [
         _line(FINANCE_GENERATORS[0], DEMO_PAST_COHORT_FEE_ROWS),
         _line(FINANCE_GENERATORS[1], DEMO_FINANCE_SETUP_ROWS),
         _line(FINANCE_GENERATORS[2], WEEKEND_TEMPLATES_ROWS),
@@ -526,7 +539,7 @@ def test_without_billing_leaves_the_finance_data_out(
         else line
         for line in FIRST_RUN_LINES
     ]
-    assert lines[-4:] == [
+    assert _finance_lines(lines) == [
         f"{name}: skipped ({WITHOUT_BILLING})" for name in FINANCE_GENERATORS
     ]
     _no_finance_data(migrated_url)
@@ -539,11 +552,14 @@ def test_without_billing_leaves_the_finance_data_out(
 
 def test_the_finance_generators_come_last():
     # A1.
-    assert len(GENERATOR_NAMES) == 35
+    assert len(GENERATOR_NAMES) == 40
     assert [g.name for g in demo.DEMO_GENERATORS] == GENERATOR_NAMES
-    assert GENERATOR_NAMES[-4:] == list(FINANCE_GENERATORS)
-    assert GENERATOR_NAMES[-5] == PAYROLL_CORRECTIONS_GENERATOR
-    assert FLAGGED_GENERATORS[-4:] == FINANCE_GENERATORS
+    # M8-demo E7: the four M8 generators come after them.
+    after = GENERATOR_NAMES.index(PAYROLL_CORRECTIONS_GENERATOR) + 1
+    assert GENERATOR_NAMES[after : after + 4] == list(FINANCE_GENERATORS)
+    assert GENERATOR_NAMES[after + 4 :] == list(ADMIN_GENERATORS[1:])
+    after = FLAGGED_GENERATORS.index(PAYROLL_CORRECTIONS_GENERATOR) + 1
+    assert FLAGGED_GENERATORS[after : after + 4] == FINANCE_GENERATORS
     assert (
         sum(DEMO_FINANCE_TABLE_COUNTS.values()) - SEEDED_CATEGORIES
         == DEMO_PAST_COHORT_FEE_ROWS
@@ -572,7 +588,8 @@ def test_data_from_an_earlier_day_is_skipped(migrated_url, env_for, clock, capsy
         *RERUN_REFERENCE_LINES,
         *(
             f"{name}: skipped ({STALE_SCHEDULE})"
-            if name in FINANCE_GENERATORS
+            # The receipt message ran with the prefix (0 rows on the rerun).
+            if name in {*FINANCE_GENERATORS, *ADMIN_GENERATORS[1:]}
             else f"{name}: 0 rows"
             for name in GENERATOR_NAMES
         ),
@@ -639,7 +656,7 @@ def test_expenses_set_up_by_hand_are_skipped(
 
     assert demo.main([]) == 0
 
-    assert capsys.readouterr().out.splitlines()[-4:] == [
+    assert _finance_lines(capsys.readouterr().out.splitlines()) == [
         _line(FINANCE_GENERATORS[0], DEMO_PAST_COHORT_FEE_ROWS),
         *(f"{name}: skipped ({FINANCE_CONFIGURED})" for name in FINANCE_GENERATORS[1:]),
     ]
@@ -670,7 +687,7 @@ def test_billing_set_up_by_hand_skips_the_cohort_fee(
 
     assert demo.main([]) == 0
 
-    assert capsys.readouterr().out.splitlines()[-4:] == [
+    assert _finance_lines(capsys.readouterr().out.splitlines()) == [
         f"{FINANCE_GENERATORS[0]}: skipped ({BILLING_CONFIGURED})",
         _line(FINANCE_GENERATORS[1], DEMO_FINANCE_SETUP_ROWS),
         _line(FINANCE_GENERATORS[2], DEMO_FINANCE_TEMPLATES_ROWS),

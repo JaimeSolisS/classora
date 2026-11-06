@@ -28,7 +28,13 @@ from tests.factories.demo_finance import FURNITURE, STATIONERY, VENDORS
 from tests.integration.auth_support import auth_client, signed_headers
 from tests.integration.catalog_support import get
 from tests.integration.conftest import run_sql, short_lived_engine
-from tests.integration.demo_support import FROZEN_NOW, demo_env, migrate
+from tests.integration.demo_support import (
+    FINANCE_EXPENSES_GENERATOR,
+    FROZEN_NOW,
+    demo_env,
+    generators_through,
+    migrate,
+)
 from tests.integration.invitation_support import REAUTHENTICATE
 from tests.integration.test_demo_payroll_views import (
     ACCRUAL_PAYROLL,
@@ -300,7 +306,10 @@ async def _owner_reads(url: str, start: date, end: date) -> dict[str, Money]:
 def test_the_reports_on_the_demo_data(migrated_url, env_for, clock):
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
-    assert demo.main([]) == 0
+    # M8-demo E4: through finance.demo_expenses (the opening balances would
+    # move CHARGE_NET and the unallocated revenue).
+    generators = generators_through(FINANCE_EXPENSES_GENERATOR)
+    assert demo.main([], generators=generators) == 0
     refs = _refs(migrated_url)
     [admin] = run_sql(
         migrated_url, "SELECT id FROM users WHERE username = 'demo.admin'"

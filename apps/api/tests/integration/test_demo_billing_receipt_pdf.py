@@ -1,6 +1,8 @@
 """The M6-demo-b receipts as PDFs (E8): ``demo.guardian`` downloads PY1's
 receipt and ``demo.finance`` the reversed PY3's, after a whole run on the
-#299 frozen day.
+#299 frozen day. PY1's carries M8-demo's receipt message (#539 D8: the
+prefix through ``billing.demo_charges`` includes
+``administration.demo_receipt_message``).
 
 It renders with WeasyPrint, so it needs Pango: on the owner's Mac it is not
 run natively ("cannot load library" there is expected, BRIEF #383 D6); the
@@ -12,6 +14,7 @@ from typing import Any
 import pytest
 
 from tests.factories import demo
+from tests.factories.demo_admin import RECEIPT_MESSAGE_ES
 from tests.factories.demo_billing_money import (
     DemoPaymentsGenerator,
     DemoReconciliationGenerator,
@@ -78,6 +81,7 @@ def test_the_demo_receipts_download(migrated_url, env_for, clock):
         text = _compact(pdf_text(response.content))
         assert _compact(py1.number) in text
         assert _compact("$1,500.00") in text
+        assert _compact(RECEIPT_MESSAGE_ES) in text
 
         cookie = signed_in(client, "demo.finance")
         response = download(client, cookie, families["F2"], py3.id)

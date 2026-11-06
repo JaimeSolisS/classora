@@ -137,6 +137,7 @@ def test_registered_command_applies_the_registered_reference_seeds(
         "academics.demo_learning_plans: 18 rows",
         "academics.demo_homework: 16 rows",
         "academics.demo_progress_reports: 9 rows",
+        "administration.demo_receipt_message: 0 rows",
         "billing.demo_pricing: 22 rows",
         "billing.demo_packages: 21 rows",
         "billing.demo_charges: 97 rows",
@@ -150,6 +151,10 @@ def test_registered_command_applies_the_registered_reference_seeds(
         "finance.demo_setup: 5 rows",
         "finance.demo_templates: 18 rows",
         "finance.demo_expenses: 20 rows",
+        "administration.demo_admin: 2 rows",
+        "administration.demo_imports: 35 rows",
+        "reporting.demo_setups: 2 rows",
+        "academics.demo_deleted: 3 rows",
     ]
 
 
