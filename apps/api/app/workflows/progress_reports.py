@@ -630,11 +630,21 @@ async def submit_report(
             requester_user_id=report.author_user_id,
         )
     else:
-        await administration.resubmit_approval_request(
-            session,
-            request_id=await _request_id(session, report.id),
-            by_user_id=principal.user_id,
-        )
+        try:
+            await administration.resubmit_approval_request(
+                session,
+                request_id=await _request_id(session, report.id),
+                by_user_id=principal.user_id,
+            )
+        except administration.ApprovalTransitionInvalidError:
+            # A report sent back, deleted (which cancelled its inbox item)
+            # and restored (#129 B2): the item opens again.
+            await administration.open_approval_request(
+                session,
+                request_type=PROGRESS_REPORT_TYPE,
+                subject_id=report.id,
+                requester_user_id=report.author_user_id,
+            )
     record_audit_event(
         session,
         action=SUBMITTED_EVENT,

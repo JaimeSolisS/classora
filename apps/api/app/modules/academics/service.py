@@ -138,6 +138,7 @@ Every function runs in the caller's Unit of Work and never commits.
 """
 
 from app.modules.academics import assignment_rules as assignment_rules
+from app.modules.academics import deleted_records as deleted_records
 from app.modules.academics import evaluation_rules as evaluation_rules
 from app.modules.academics import learning_plan_rules as learning_plan_rules
 from app.modules.academics import note_rules as note_rules
@@ -340,6 +341,9 @@ from app.modules.academics.errors import (
 )
 from app.modules.academics.errors import (
     CloseoutWithTutorError as CloseoutWithTutorError,
+)
+from app.modules.academics.errors import (
+    DeletedRecordRestoreConflictError as DeletedRecordRestoreConflictError,
 )
 from app.modules.academics.errors import (
     EvaluationAuthorOnlyError as EvaluationAuthorOnlyError,

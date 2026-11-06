@@ -99,6 +99,24 @@ async def subject_ids_for_tutor_student(
     return frozenset(found)
 
 
+async def subjects_by_student_for_tutor(
+    session: AsyncSession, tutor_user_id: uuid.UUID, *, now: datetime
+) -> dict[uuid.UUID, frozenset[uuid.UUID]]:
+    """Every student of ``tutor_user_id``'s current assignments at ``now``
+    with :func:`subject_ids_for_tutor_student`'s subjects for them (#129
+    B1: the recently deleted list checks many records at once). Its keys
+    are exactly :func:`student_ids_for_tutor`. One statement."""
+    rows = await session.execute(
+        _assignments(
+            ClassSessionParticipant.student_id, ClassSession.subject_id, now=now
+        ).where(ClassSession.tutor_user_id == tutor_user_id)
+    )
+    found: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for student_id, subject_id in rows:
+        found.setdefault(student_id, set()).add(subject_id)
+    return {student: frozenset(subjects) for student, subjects in found.items()}
+
+
 async def current_tutor_subjects_for_student(
     session: AsyncSession, student_id: uuid.UUID, *, now: datetime
 ) -> dict[uuid.UUID, frozenset[uuid.UUID]]:

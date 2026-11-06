@@ -28,6 +28,9 @@
   :func:`update_notification_preferences`, in
   :mod:`app.modules.administration.notification_preferences`);
   :func:`create_notification` returns ``None`` for a muted optional type.
+- The retention job (#129): :class:`RetentionRule` and
+  :func:`register_retention_rule` (``app.wiring`` registers the modules'
+  rules); implemented in :mod:`app.modules.administration.retention`.
 - The scheduling policy (#61): :func:`get_scheduling_policy` (the version
   in force at an instant), :func:`get_scheduling_policy_version` (one
   version by id, #62) and :func:`get_policy_version_and_approval_id` (a
@@ -256,6 +259,10 @@ from app.modules.administration.policy_versions import (
 )
 from app.modules.administration.policy_versions import (
     get_scheduling_policy_version as get_scheduling_policy_version,
+)
+from app.modules.administration.retention import RetentionRule as RetentionRule
+from app.modules.administration.retention import (
+    register_retention_rule as register_retention_rule,
 )
 from app.modules.administration.scheduling_policy import (
     ChangeInitiator as ChangeInitiator,

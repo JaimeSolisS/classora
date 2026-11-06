@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0093"
+HEAD = "0094"
 FINANCE_TABLES_0083 = frozenset({"expense_categories", "vendors"})
 EXPENSE_TABLES_0084 = frozenset(
     {"expenses", "expense_payments", "expense_payment_reversals", "expense_adjustments"}
@@ -18203,3 +18203,55 @@ def test_0093_deleting_a_job_cascades_to_its_failure(fresh_database_url):
     with pytest.raises(IntegrityError) as missing:
         _failure_0093(dsn, deleted + 1000)
     assert getattr(missing.value.orig, "sqlstate", None) == "23503"
+
+
+# --- 0094: purgeable progress reports (#129 C3) -----
+
+
+def test_0094_allows_deleting_only_soft_deleted_reports(fresh_database_url):
+    """0094 lets the retention job delete a soft-deleted report; a live one
+    is still refused (42501), before 0094 and after its downgrade too."""
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0093")
+    values = _report_values(dsn)
+    now = datetime.now(UTC)
+    [live] = run_sql(dsn, REPORT_INSERT, values)
+    deleted_values = values | {
+        "start": date(2031, 3, 10),
+        "end": date(2031, 3, 16),
+        "deleted_at": now,
+        "deleted_by": values["u"],
+    }
+    [first] = run_sql(dsn, REPORT_INSERT, deleted_values)
+    with pytest.raises(DBAPIError, match="never deleted"):
+        run_sql(dsn, "DELETE FROM progress_reports WHERE id = :id", {"id": first.id})
+
+    command.upgrade(config, "0094")
+
+    assert version_nums(dsn) == ["0094"]
+    assert metadata_diff(dsn) == []
+    run_sql(dsn, "DELETE FROM progress_reports WHERE id = :id", {"id": first.id})
+    assert not run_sql(
+        dsn, "SELECT 1 FROM progress_reports WHERE id = :id", {"id": first.id}
+    )
+    with pytest.raises(DBAPIError, match="never deleted") as raised:
+        run_sql(dsn, "DELETE FROM progress_reports WHERE id = :id", {"id": live.id})
+    assert _sqlstate(raised.value) == "42501"
+    # The UPDATE rules are unchanged: a draft still changes freely.
+    run_sql(
+        dsn,
+        "UPDATE progress_reports SET summary = 'Otro' WHERE id = :id",
+        {"id": live.id},
+    )
+
+    command.downgrade(config, "0093")
+
+    assert version_nums(dsn) == ["0093"]
+    [second] = run_sql(dsn, REPORT_INSERT, deleted_values)
+    with pytest.raises(DBAPIError, match="never deleted"):
+        run_sql(dsn, "DELETE FROM progress_reports WHERE id = :id", {"id": second.id})
+
+    command.upgrade(config, "head")
+
+    assert metadata_diff(dsn) == []

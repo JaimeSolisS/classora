@@ -1110,9 +1110,10 @@ class ProgressReport(Audited, SoftDeleteMixin, VersionedMixin, Model):
     the review: ``draft`` → ``submitted`` → ``changes_requested`` |
     ``approved_for_family`` (the only status families ever see) →
     ``retracted`` (final). Once ``approved_at`` is set a trigger refuses
-    any change to the content and the approval (42501), and every
-    ``DELETE``. A soft delete is allowed in ``draft`` and
-    ``changes_requested``. Its audit diffs are its edit history (spec
+    any change to the content and the approval (42501); it refuses the
+    ``DELETE`` of a live row (the retention job hard-deletes soft-deleted
+    rows, #129 C3, migration 0094). A soft delete is allowed in ``draft``
+    and ``changes_requested``. Its audit diffs are its edit history (spec
     §9)."""
 
     __tablename__ = "progress_reports"
