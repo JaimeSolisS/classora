@@ -22,14 +22,16 @@ Generates synthetic ``es_MX`` demo data for local and DEV databases:
    generated values.
 
 ``--without-billing`` (M6-demo E3; ``e2e/scripts/run.sh`` passes it, ``make
-seed-demo`` doesn't) makes the billing, payroll (#499 E3) and expense (#501)
-generators print ``skipped (--without-billing)`` without touching the
-database, so billing, payroll and expenses stay off in the E2E database.
+seed-demo`` doesn't) makes the billing, payroll (#499 E3), expense (#501)
+and M8 administration (#539 E1) generators print ``skipped
+(--without-billing)`` without touching the database, so billing, payroll,
+expenses and the M8 administration data stay off in the E2E database.
 
 The registered generators (#23, #195, #299, #303, #353, #354, M6-demo #413,
-M6-demo-b #420, M7-demo #499, M7-demo-b #501) write nothing on a rerun (``0
-rows``), even on a later day: the #299, #303, #353, #354, M6-demo, M7-demo and
-M7-demo-b data keep the dates of their first run. A future generator may add
+M6-demo-b #420, M7-demo #499, M7-demo-b #501, M8-demo #539) write nothing on
+a rerun (``0 rows``), even on a later day: the #299, #303, #353, #354,
+M6-demo, M7-demo, M7-demo-b and M8-demo data keep the dates of their first
+run. A future generator may add
 rows on a rerun unless its issue says otherwise. The payroll start date locks
 once a payroll period exists (#106 E6), so the payroll data can't be moved
 either. To start over, reset with ``docker compose down -v``, then ``make
@@ -63,6 +65,7 @@ from app.seeds.runner import (
 from app.seeds.upsert import UpsertResult
 from app.wiring import register_approval_wiring
 from tests.factories import (
+    demo_admin,
     demo_billing,
     demo_billing_money,
     demo_finance,
@@ -120,6 +123,7 @@ DEMO_GENERATORS: tuple[DemoGenerator, ...] = (
     DemoLearningPlansGenerator(),
     DemoHomeworkGenerator(),
     DemoProgressReportsGenerator(),
+    demo_admin.DemoReceiptMessageGenerator(),
     demo_billing.DemoPricingGenerator(),
     demo_billing.DemoPackagesGenerator(),
     demo_billing.DemoChargesGenerator(),
@@ -133,6 +137,10 @@ DEMO_GENERATORS: tuple[DemoGenerator, ...] = (
     demo_finance.DemoFinanceSetupGenerator(),
     demo_finance.DemoFinanceTemplatesGenerator(),
     demo_finance.DemoFinanceExpensesGenerator(),
+    demo_admin.DemoAdminGenerator(),
+    demo_admin.DemoImportsGenerator(),
+    demo_admin.DemoSetupsGenerator(),
+    demo_admin.DemoDeletedGenerator(),
 )
 """Every demo generator, in order. Domain tasks append generators that use
 their factories (``persist`` / ``persist_batch``; never commit).
@@ -190,6 +198,9 @@ their factories (``persist`` / ``persist_batch``; never commit).
   review and a draft) and ``demo.coordinator``'s weekly report schedule,
   ``APP_ENV=local`` only. The three #354 generators also skip a database
   whose #299 schedule is from an earlier day.
+- ``administration.demo_receipt_message`` (M8-demo #539): ``demo.owner``
+  sets the receipt message (Spanish and English) before any receipt is
+  issued, ``APP_ENV=local`` only.
 - ``billing.demo_pricing`` (M6-demo #413): ``demo.finance`` turns billing on
   from about three weeks back and creates catalog prices (one with a change
   next month), a sibling discount, a scholarship and two package products,
@@ -248,7 +259,25 @@ their factories (``persist`` / ``persist_batch``; never commit).
   ``APP_ENV=local`` only. The four #501 generators also skip a database
   whose #299 schedule is from an earlier day, and under
   ``--without-billing``; the cohort fee skips billing set up by hand and the
-  three finance generators expenses set up by hand."""
+  three finance generators expenses set up by hand.
+- ``administration.demo_admin`` (M8-demo #539): ``demo.coordinator`` mutes
+  the assignment notice, then ``demo.owner`` assigns ``demo.tutor``'s
+  pending qualification item to ``demo.admin`` (notified) and R2's review
+  item to ``demo.coordinator``, ``APP_ENV=local`` only.
+- ``administration.demo_imports`` (M8-demo #539): ``demo.admin``'s
+  students (with a duplicate), tutors (left staged) and schedules (one
+  conflict; the series is offered to ``demo.tutor``) imports, and
+  ``demo.finance``'s opening balances for the third family, committed in
+  this Unit of Work, ``APP_ENV=local`` only.
+- ``reporting.demo_setups`` (M8-demo #539): ``demo.finance``'s expenses
+  setup shared with the Owner role and ``demo.admin``'s private students
+  setup, ``APP_ENV=local`` only.
+- ``academics.demo_deleted`` (M8-demo #539): ``demo.tutor`` creates a
+  learning-plan draft and deletes it, ``APP_ENV=local`` only. The five M8
+  generators also skip a database whose #299 schedule is from an earlier
+  day, and under ``--without-billing``; the receipt message skips a message
+  set by hand. No audit event is written by hand, and no export, dashboard
+  layout, job, job failure or retention run is seeded."""
 
 
 @dataclass
@@ -327,8 +356,9 @@ def main(
     parser.add_argument(
         "--without-billing",
         action="store_true",
-        help="without the billing, payroll and expense demo data (E2E;"
-        " e2e/scripts/run.sh passes it, so the E2E database keeps them off)",
+        help="without the billing, payroll, expense and M8 administration demo"
+        " data (E2E; e2e/scripts/run.sh passes it, so the E2E database keeps"
+        " them off)",
     )
     args = parser.parse_args(argv)
 

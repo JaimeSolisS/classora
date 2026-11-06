@@ -49,7 +49,9 @@ from tests.factories.demo_payroll import (
 from tests.factories.identity import DemoPrerequisiteMissingError, demo_principal
 from tests.integration.conftest import run_sql, settings_for, short_lived_engine
 from tests.integration.demo_support import (
+    ADMIN_GENERATORS,
     ALL_TABLE_COUNTS,
+    DEMO_ADMIN_TABLE_COUNTS,
     DEMO_PAYROLL_CORRECTIONS_ROWS,
     DEMO_PAYROLL_PERIODS_ROWS,
     DEMO_PAYROLL_SETUP_ROWS,
@@ -635,25 +637,21 @@ def test_dev_writes_no_payroll_data(migrated_url, env_for, capsys):
 
 
 def test_without_billing_leaves_payroll_off(migrated_url, env_for, clock, capsys):
-    # E5, E3: the E2E seed. The three payroll generators skip (and the four
-    # M7-demo-b ones after them); L1 and N1 don't exist and H2 keeps 55
-    # minutes.
+    # E5, E3: the E2E seed. The three payroll generators skip (and the
+    # other flagged ones: billing, M7-demo-b and M8-demo); L1 and N1 don't
+    # exist and H2 keeps 55 minutes.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
 
     assert demo.main(["--without-billing"]) == 0
 
     lines = capsys.readouterr().out.splitlines()
-    assert lines[-7:-4] == [
-        f"{name}: skipped ({WITHOUT_BILLING})" for name in PAYROLL_GENERATORS
+    flagged = len(FLAGGED_GENERATORS)
+    assert set(PAYROLL_GENERATORS) <= set(FLAGGED_GENERATORS)
+    assert lines[-flagged:] == [
+        f"{name}: skipped ({WITHOUT_BILLING})" for name in FLAGGED_GENERATORS
     ]
-    assert lines[-13:-7] == [
-        f"{name}: skipped ({WITHOUT_BILLING})" for name in FLAGGED_GENERATORS[:6]
-    ]
-    assert lines[-4:] == [
-        f"{name}: skipped ({WITHOUT_BILLING})" for name in FLAGGED_GENERATORS[-4:]
-    ]
-    assert lines[:-13] == first_run_lines(
+    assert lines[:-flagged] == first_run_lines(
         generators_through("academics.demo_progress_reports")
     )
     _no_payroll_data(migrated_url)
@@ -674,10 +672,11 @@ def test_without_billing_leaves_payroll_off(migrated_url, env_for, clock, capsys
 
 def test_the_payroll_generators_come_last():
     # A1.
-    assert len(GENERATOR_NAMES) == 35
-    assert GENERATOR_NAMES[-7:-4] == list(PAYROLL_GENERATORS)
-    assert GENERATOR_NAMES[-8] == REMINDERS_GENERATOR
-    assert FLAGGED_GENERATORS[-7:-4] == PAYROLL_GENERATORS
+    assert len(GENERATOR_NAMES) == 40
+    after = GENERATOR_NAMES.index(REMINDERS_GENERATOR) + 1
+    assert GENERATOR_NAMES[after : after + 3] == list(PAYROLL_GENERATORS)
+    after = FLAGGED_GENERATORS.index(REMINDERS_GENERATOR) + 1
+    assert FLAGGED_GENERATORS[after : after + 3] == PAYROLL_GENERATORS
     assert (
         sum(DEMO_PAYROLL_TABLE_COUNTS.values())
         == DEMO_PAYROLL_SETUP_ROWS
@@ -704,7 +703,7 @@ def test_billing_from_an_earlier_day_is_skipped(migrated_url, env_for, clock, ca
         *RERUN_REFERENCE_LINES,
         *(
             f"{name}: skipped ({STALE_SCHEDULE})"
-            if name in {*PAYROLL_GENERATORS, *FINANCE_GENERATORS}
+            if name in {*PAYROLL_GENERATORS, *FINANCE_GENERATORS, *ADMIN_GENERATORS[1:]}
             else f"{name}: 0 rows"
             for name in GENERATOR_NAMES
         ),
@@ -745,7 +744,10 @@ def test_payroll_set_up_by_hand_is_skipped(
 
     assert demo.main([]) == 0
 
-    assert capsys.readouterr().out.splitlines()[-7:-4] == [
+    by_name = {
+        line.split(":")[0]: line for line in capsys.readouterr().out.splitlines()
+    }
+    assert [by_name[name] for name in PAYROLL_GENERATORS] == [
         f"{name}: skipped ({PAYROLL_CONFIGURED})" for name in PAYROLL_GENERATORS
     ]
     for table in PAYROLL_TABLES:
@@ -755,6 +757,8 @@ def test_payroll_set_up_by_hand_is_skipped(
     assert (
         count(migrated_url, "class_sessions")
         == TABLE_COUNTS_THROUGH_420["class_sessions"]
+        # M8-demo: the imported series still seeds.
+        + DEMO_ADMIN_TABLE_COUNTS["class_sessions"]
     )
 
 

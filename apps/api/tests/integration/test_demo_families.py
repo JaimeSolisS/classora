@@ -53,8 +53,9 @@ TABLES = (
 )
 SEEDED_COUNTS = {
     "families": 3,
-    "students": 5,
-    "student_emergency_contacts": 5,
+    # And M8-demo's two imported students (no family), each with a contact.
+    "students": 5 + 2,
+    "student_emergency_contacts": 5 + 2,
     "guardians": 4,
     "student_guardians": 7,
     "family_students": 5,

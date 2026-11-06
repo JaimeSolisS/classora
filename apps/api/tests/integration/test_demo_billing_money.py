@@ -54,6 +54,7 @@ from tests.factories.identity import DemoPrerequisiteMissingError
 from tests.integration.billing_invariants.checks import Catalogue
 from tests.integration.conftest import run_sql, settings_for, short_lived_engine
 from tests.integration.demo_support import (
+    ADMIN_GENERATORS,
     ALL_TABLE_COUNTS,
     BILLING_420_GENERATORS,
     BILLING_GENERATORS,
@@ -513,9 +514,9 @@ def test_a_new_generator_writes_nothing_under_the_flag(generator):
 
 def test_the_money_generators_come_last():
     # A1.
-    assert len(GENERATOR_NAMES) == 35
-    assert GENERATOR_NAMES[-10:-7] == list(BILLING_420_GENERATORS)
-    assert GENERATOR_NAMES[-11] == CHARGES_GENERATOR
+    assert len(GENERATOR_NAMES) == 40
+    after = GENERATOR_NAMES.index(CHARGES_GENERATOR) + 1
+    assert GENERATOR_NAMES[after : after + 3] == list(BILLING_420_GENERATORS)
     assert BILLING_GENERATORS[-3:] == BILLING_420_GENERATORS
     assert (
         sum(DEMO_BILLING_MONEY_TABLE_COUNTS.values()) - CX_NOTIFICATIONS
@@ -541,7 +542,13 @@ def test_part_1_from_an_earlier_day_is_skipped(migrated_url, env_for, clock, cap
         *(
             f"{name}: skipped ({STALE_SCHEDULE})"
             if name
-            in {*BILLING_420_GENERATORS, *PAYROLL_GENERATORS, *FINANCE_GENERATORS}
+            in {
+                *BILLING_420_GENERATORS,
+                *PAYROLL_GENERATORS,
+                *FINANCE_GENERATORS,
+                # The receipt message ran with part 1 (0 rows on the rerun).
+                *ADMIN_GENERATORS[1:],
+            }
             else f"{name}: 0 rows"
             for name in GENERATOR_NAMES
         ),
@@ -551,9 +558,10 @@ def test_part_1_from_an_earlier_day_is_skipped(migrated_url, env_for, clock, cap
 
 
 def _rest(capsys: Any) -> list[str]:
-    """The three M6-demo-b lines (before the three payroll ones and the four
-    M7-demo-b ones)."""
-    return capsys.readouterr().out.splitlines()[-10:-7]
+    """The three M6-demo-b lines, by generator name."""
+    lines = capsys.readouterr().out.splitlines()
+    by_name = {line.split(":")[0]: line for line in lines}
+    return [by_name[name] for name in BILLING_420_GENERATORS]
 
 
 async def _cancel_cx_by_hand(url: str) -> None:
@@ -724,19 +732,20 @@ async def _refused_in_a_session(url: str) -> None:
 
 def test_without_billing_keeps_cx_confirmed(migrated_url, env_for, clock, capsys):
     # E5, A5: the E2E seed; the six billing generators skip, and the three
-    # payroll ones (M7-demo E3) and the four M7-demo-b ones.
+    # payroll ones (M7-demo E3), the four M7-demo-b ones and the five M8 ones.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
 
     assert demo.main(["--without-billing"]) == 0
 
     lines = capsys.readouterr().out.splitlines()
-    assert lines[-13:] == [
+    flagged = len(FLAGGED_GENERATORS)
+    assert lines[-flagged:] == [
         f"{name}: skipped ({WITHOUT_BILLING})" for name in FLAGGED_GENERATORS
     ]
     assert _cx(migrated_url).state == "confirmed"
     _no_money_data(migrated_url)
     assert (
         first_run_lines(generators_through("academics.demo_progress_reports"))
-        == lines[:-13]
+        == lines[:-flagged]
     )

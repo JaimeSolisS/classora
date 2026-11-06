@@ -154,7 +154,8 @@ def session_rows(url: str) -> list[tuple[Any, ...]]:
         (
             r.kind,
             r.state,
-            tuple(sorted(labels[student] for student in r.students)),
+            # M8-demo's imported series is for F3's student (unlabelled).
+            tuple(sorted(labels.get(student, "F3") for student in r.students)),
             r.subject,
             r.username,
             r.room,

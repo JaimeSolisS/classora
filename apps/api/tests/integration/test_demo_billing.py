@@ -50,6 +50,7 @@ from tests.factories.identity import DemoPrerequisiteMissingError
 from tests.integration.billing_invariants.checks import Catalogue
 from tests.integration.conftest import run_sql, settings_for, short_lived_engine
 from tests.integration.demo_support import (
+    ADMIN_GENERATORS,
     ALL_TABLE_COUNTS,
     BILLING_413_GENERATORS,
     BILLING_GENERATORS,
@@ -477,12 +478,12 @@ def test_a_weekend_run_writes_the_same_counts(
 
 
 def test_a_rerun_writes_nothing_even_days_later(migrated_url, env_for, clock, capsys):
-    # E4: every generator (35 since M7-demo-b) prints 0 rows.
+    # E4: every generator (40 since M8-demo) prints 0 rows.
     clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
     assert demo.main([]) == 0
     capsys.readouterr()
-    assert len(GENERATOR_NAMES) == 35
+    assert len(GENERATOR_NAMES) == 40
 
     assert demo.main([]) == 0
     assert capsys.readouterr().out.splitlines() == RERUN_LINES
@@ -535,7 +536,8 @@ def test_without_billing_leaves_billing_off(migrated_url, env_for, clock, capsys
     # The flag doesn't outlive the run.
     capsys.readouterr()
     assert demo.main([]) == 0
-    assert capsys.readouterr().out.splitlines()[-13:] == FIRST_RUN_LINES[-13:]
+    flagged = len(FLAGGED_GENERATORS)
+    assert capsys.readouterr().out.splitlines()[-flagged:] == FIRST_RUN_LINES[-flagged:]
 
 
 NEW_GENERATORS = [DemoPricingGenerator, DemoPackagesGenerator, DemoChargesGenerator]
@@ -566,8 +568,10 @@ def test_a_new_generator_writes_nothing_under_the_flag(generator):
 
 def test_the_billing_generators_come_last():
     # A1.
-    assert GENERATOR_NAMES[-13:-10] == list(BILLING_413_GENERATORS)
-    assert GENERATOR_NAMES[-14] == PROGRESS_REPORTS_GENERATOR
+    # M8-demo E3: the receipt message sits between them.
+    after = GENERATOR_NAMES.index(PROGRESS_REPORTS_GENERATOR) + 1
+    assert GENERATOR_NAMES[after] == ADMIN_GENERATORS[0]
+    assert GENERATOR_NAMES[after + 1 : after + 4] == list(BILLING_413_GENERATORS)
     assert sum(DEMO_BILLING_TABLE_COUNTS.values()) == 22 + 21 + 97
 
 
@@ -635,13 +639,17 @@ def test_billing_set_up_by_hand_is_skipped(
     assert demo.main([]) == 0
 
     # The payroll generators still seed (M7-demo edge case), and so do the
-    # finance ones (M7-demo-b; the cohort fee skips for billing), so the
-    # billing lines are the six before them.
+    # finance ones (M7-demo-b; the cohort fee skips for billing) and the M8
+    # ones; the lines are read by generator name.
     lines = capsys.readouterr().out.splitlines()
-    assert lines[-13:-7] == [
+    by_name = {line.split(":")[0]: line for line in lines}
+    assert [by_name[name] for name in BILLING_GENERATORS] == [
         f"{name}: skipped ({BILLING_CONFIGURED})" for name in BILLING_GENERATORS
     ]
-    assert lines[-4] == f"{FINANCE_GENERATORS[0]}: skipped ({BILLING_CONFIGURED})"
+    assert (
+        by_name[FINANCE_GENERATORS[0]]
+        == f"{FINANCE_GENERATORS[0]}: skipped ({BILLING_CONFIGURED})"
+    )
     assert count(migrated_url, "service_prices") == prices
     for table in BILLING_TABLES[2:]:
         assert count(migrated_url, table) == 0, table

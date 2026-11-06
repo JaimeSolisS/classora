@@ -730,13 +730,41 @@ demo data:
   the Reports page shows the demo's revenue, tutor cost, expenses and
   balances; group tutoring shows only deferred revenue, because its classes
   are still upcoming.
+- **Administration and reports** (local `make seed-demo` only; `make e2e`
+  seeds without it):
+  - Approvals: `demo.tutor`'s pending qualification is assigned to
+    `demo.admin`, who gets a notification, and the waiting progress report to
+    `demo.coordinator`, who muted assignment notices (Notificaciones →
+    Preferencias de notificaciones); the other items stay unassigned.
+  - The receipt message (Configuración → Pagos y recibos) is set in Spanish
+    and English and printed on the demo receipts.
+  - Importaciones: a committed students import with one duplicate row, a
+    tutors import still waiting to be committed (it expires after 7 days), a
+    schedules import with one conflict whose series waits in `demo.tutor`'s
+    My offers (the offer expires after 48 hours and then waits on
+    Approvals), and opening balances imported by `demo.finance` for the third
+    family.
+  - Exportaciones → Configuraciones guardadas: `demo.finance`'s expenses
+    setup, shared with the Owner, and `demo.admin`'s private students setup.
+  - Signing in as `demo.owner`, `demo.finance`, `demo.admin` or
+    `demo.coordinator` opens the dashboard on Inicio, where «Personalizar»
+    shows, hides and reorders the widgets each role may see.
+  - Reportes → Indicadores shows each account the indicators its role allows.
+    The demo has about three weeks of history, so on «Últimos 3 meses» every
+    active student counts as new; a two-week custom range ending today shows
+    retained and new students (no student is lost yet).
+  - Tareas fallidas (Owner and Administrator) is normally empty: the demo
+    seeds no jobs.
+  - Eliminados recientemente: `demo.tutor` deleted one learning-plan draft,
+    restorable for 30 days.
 
 The dates stay those of the first run (a second run changes nothing), so reset
 with `docker compose down -v`, `make dev`, `make migrate` and `make seed-demo`
 to get a fresh schedule. A database seeded before the courses and requests,
 the classes held and results, the learning plans, homework and progress
 reports, the billing data (charges, then payments and reminders), the
-payroll data or the expense data were added keeps its schedule and skips them
+payroll data, the expense data or the administration data were added keeps
+its schedule and skips them
 (`make seed-demo` says
 so) until you reset the same way. The payroll start date locks once payroll
 periods exist, so re-seeding payroll also needs a clean database

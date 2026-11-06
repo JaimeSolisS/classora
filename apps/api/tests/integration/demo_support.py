@@ -1,5 +1,6 @@
 """Helpers for the ``make seed-demo`` generator tests (#23, #195, #299, #303,
-#353, #354, M6-demo #413, M6-demo-b #420, M7-demo #499, M7-demo-b #501).
+#353, #354, M6-demo #413, M6-demo-b #420, M7-demo #499, M7-demo-b #501,
+M8-demo #539).
 
 - :func:`migrate` and :func:`demo_env`: a fresh database at the Alembic head,
   and the environment of a ``demo.main`` run (each test module wraps them in
@@ -15,7 +16,8 @@
   (:data:`DEMO_BILLING_MONEY_TABLE_COUNTS`, :data:`TABLE_COUNTS_THROUGH_420`)
   and the M7-demo payroll ones (:data:`DEMO_PAYROLL_TABLE_COUNTS`,
   :data:`TABLE_COUNTS_THROUGH_499`) and the M7-demo-b ones
-  (:data:`DEMO_FINANCE_TABLE_COUNTS`, :data:`ALL_TABLE_COUNTS`).
+  (:data:`DEMO_FINANCE_TABLE_COUNTS`, :data:`TABLE_COUNTS_THROUGH_501`) and
+  the M8-demo ones (:data:`DEMO_ADMIN_TABLE_COUNTS`, :data:`ALL_TABLE_COUNTS`).
 - Prefixes of the registered generators by name (:func:`generators_through`).
 """
 
@@ -161,6 +163,29 @@ FINANCE_EXPENSES_GENERATOR = "finance.demo_expenses"
 DEMO_FINANCE_EXPENSES_ROWS = 20
 """M7-demo-b E: X1-X9, 8 payments, X5's reversal and 2 adjustments (the
 deactivations aren't counted, A2)."""
+
+RECEIPT_MESSAGE_GENERATOR = "administration.demo_receipt_message"
+DEMO_RECEIPT_MESSAGE_ROWS = 0
+"""M8-demo G1: the receipt message is an update of the settings row (not
+counted, as #501's rename)."""
+ADMIN_GENERATOR = "administration.demo_admin"
+DEMO_ADMIN_ROWS = 2
+"""M8-demo G2: ``demo.coordinator``'s opt-out and ``demo.admin``'s
+``administration.approval_assigned`` notification (the two assignments are
+updates; the coordinator's notice is muted)."""
+IMPORTS_GENERATOR = "administration.demo_imports"
+DEMO_IMPORTS_ROWS = 35
+"""M8-demo G3: 4 import jobs and their 9 rows (3 students, 2 tutors, 2
+schedules, 2 balances), 2 students and their 2 emergency contacts, the
+imported series (1 series, 1 participant, 4 sessions, 4 session
+participants, 1 offer, 4 offer sessions and ``demo.tutor``'s
+``scheduling.offer_received``) and 2 opening-balance charges."""
+SETUPS_GENERATOR = "reporting.demo_setups"
+DEMO_SETUPS_ROWS = 2
+"""M8-demo G4: the two saved setups."""
+DELETED_GENERATOR = "academics.demo_deleted"
+DEMO_DELETED_ROWS = 3
+"""M8-demo G5: the deleted draft, its objective and its milestone."""
 
 DEMO_TABLE_COUNTS = {
     "subjects": 8,
@@ -404,6 +429,44 @@ DEMO_FINANCE_TABLE_COUNTS = {
 """The rows the M7-demo-b generators add to each table they count, after a
 first run on a fresh database at :data:`FROZEN_NOW` (``expense_categories``
 also holds the :data:`SEEDED_CATEGORIES`)."""
+IMPORTED_STUDENT_ROWS = 2 + 2
+"""The two imported students and their emergency contacts (in
+:data:`DEMO_IMPORTS_ROWS`, not in :data:`DEMO_ADMIN_TABLE_COUNTS`: the
+``students`` table also holds the #195 families' students)."""
+DEMO_ADMIN_TABLE_COUNTS = {
+    # administration.demo_admin: the mute and demo.admin's notice; then the
+    # imported series' offer to demo.tutor (administration.demo_imports).
+    "notification_opt_outs": 1,
+    "notifications": 1 + 1,
+    # administration.demo_imports: students (3 rows), tutors (2, staged),
+    # schedules (2) and opening balances (2).
+    "import_jobs": 4,
+    "import_rows": 3 + 2 + 2 + 2,
+    "class_series": 1,
+    "class_series_participants": 1,
+    "class_sessions": 4,
+    "class_session_participants": 4,
+    "assignment_offers": 1,
+    "assignment_offer_sessions": 4,
+    "charges": 2,
+    # reporting.demo_setups, then academics.demo_deleted.
+    "report_setups": 2,
+    "learning_plans": 1,
+    "learning_plan_objectives": 1,
+    "learning_plan_milestones": 1,
+}
+"""The rows the M8-demo generators add to each table they count, after a
+first run on a fresh database at :data:`FROZEN_NOW` (the imported students
+are :data:`IMPORTED_STUDENT_ROWS`)."""
+SEEDED_NOTHING_TABLES = (
+    "export_jobs",
+    "export_files",
+    "dashboard_layouts",
+    "job_failures",
+    "procrastinate_jobs",
+)
+"""The M8 tables the demo never writes (M8-demo B6): no export, dashboard
+layout, job or job failure."""
 CX_NOTIFICATIONS = 3
 """CX's ``scheduling.session_cancelled`` notifications (in
 :data:`DEMO_BILLING_MONEY_TABLE_COUNTS`, not in a generator's rows)."""
@@ -449,9 +512,15 @@ TABLE_COUNTS_THROUGH_499 = _sum(TABLE_COUNTS_THROUGH_420, DEMO_PAYROLL_TABLE_COU
 first run of the generators through ``payroll.demo_corrections`` (at
 :data:`FROZEN_NOW`; M7-demo-b G10)."""
 
-ALL_TABLE_COUNTS = _sum(TABLE_COUNTS_THROUGH_499, DEMO_FINANCE_TABLE_COUNTS)
+TABLE_COUNTS_THROUGH_501 = _sum(TABLE_COUNTS_THROUGH_499, DEMO_FINANCE_TABLE_COUNTS)
 """Every counted table of #299-#354, M6-demo, M6-demo-b, M7-demo and
-M7-demo-b after a first run of every generator (at :data:`FROZEN_NOW`)."""
+M7-demo-b after a first run of the generators through
+``finance.demo_expenses`` (at :data:`FROZEN_NOW`; M8-demo E1). The receipt
+message adds no row."""
+
+ALL_TABLE_COUNTS = _sum(TABLE_COUNTS_THROUGH_501, DEMO_ADMIN_TABLE_COUNTS)
+"""Every counted table of #299-#354, M6-demo, M6-demo-b, M7-demo, M7-demo-b
+and M8-demo after a first run of every generator (at :data:`FROZEN_NOW`)."""
 
 FROZEN_NOW = datetime(2026, 11, 4, 17, 0, tzinfo=UTC)
 """A Wednesday, 11:00 in Mexico City (#299 E2), after the privacy notice's
@@ -486,6 +555,7 @@ GENERATOR_NAMES = [
     LEARNING_PLANS_GENERATOR,
     HOMEWORK_GENERATOR,
     PROGRESS_REPORTS_GENERATOR,
+    RECEIPT_MESSAGE_GENERATOR,
     PRICING_GENERATOR,
     PACKAGES_GENERATOR,
     CHARGES_GENERATOR,
@@ -499,6 +569,10 @@ GENERATOR_NAMES = [
     FINANCE_SETUP_GENERATOR,
     FINANCE_TEMPLATES_GENERATOR,
     FINANCE_EXPENSES_GENERATOR,
+    ADMIN_GENERATOR,
+    IMPORTS_GENERATOR,
+    SETUPS_GENERATOR,
+    DELETED_GENERATOR,
 ]
 
 FIRST_RUN_LINES = [
@@ -518,6 +592,7 @@ FIRST_RUN_LINES = [
     f"{LEARNING_PLANS_GENERATOR}: {DEMO_LEARNING_PLANS_ROWS} rows",
     f"{HOMEWORK_GENERATOR}: {DEMO_HOMEWORK_ROWS} rows",
     f"{PROGRESS_REPORTS_GENERATOR}: {DEMO_PROGRESS_REPORTS_ROWS} rows",
+    f"{RECEIPT_MESSAGE_GENERATOR}: {DEMO_RECEIPT_MESSAGE_ROWS} rows",
     f"{PRICING_GENERATOR}: {DEMO_PRICING_ROWS} rows",
     f"{PACKAGES_GENERATOR}: {DEMO_PACKAGES_ROWS} rows",
     f"{CHARGES_GENERATOR}: {DEMO_CHARGES_ROWS} rows",
@@ -531,6 +606,10 @@ FIRST_RUN_LINES = [
     f"{FINANCE_SETUP_GENERATOR}: {DEMO_FINANCE_SETUP_ROWS} rows",
     f"{FINANCE_TEMPLATES_GENERATOR}: {DEMO_FINANCE_TEMPLATES_ROWS} rows",
     f"{FINANCE_EXPENSES_GENERATOR}: {DEMO_FINANCE_EXPENSES_ROWS} rows",
+    f"{ADMIN_GENERATOR}: {DEMO_ADMIN_ROWS} rows",
+    f"{IMPORTS_GENERATOR}: {DEMO_IMPORTS_ROWS} rows",
+    f"{SETUPS_GENERATOR}: {DEMO_SETUPS_ROWS} rows",
+    f"{DELETED_GENERATOR}: {DEMO_DELETED_ROWS} rows",
 ]
 RERUN_LINES = [
     *RERUN_REFERENCE_LINES,
@@ -600,15 +679,33 @@ FINANCE_GENERATORS = (
 """The M7-demo-b generators (#501): the cohort fee and the three finance ones;
 they also skip a stale #299 schedule, billing or expenses set up by hand and
 ``--without-billing``."""
-FLAGGED_GENERATORS = (*BILLING_GENERATORS, *PAYROLL_GENERATORS, *FINANCE_GENERATORS)
-"""Every generator ``--without-billing`` skips (M7-demo E3, M7-demo-b G9)."""
+ADMIN_GENERATORS = (
+    RECEIPT_MESSAGE_GENERATOR,
+    ADMIN_GENERATOR,
+    IMPORTS_GENERATOR,
+    SETUPS_GENERATOR,
+    DELETED_GENERATOR,
+)
+"""The M8-demo generators (#539), in registry order: the receipt message
+before ``billing.demo_pricing`` (E3), the other four last; they also skip a
+stale #299 schedule and ``--without-billing``."""
+FLAGGED_GENERATORS = (
+    RECEIPT_MESSAGE_GENERATOR,
+    *BILLING_GENERATORS,
+    *PAYROLL_GENERATORS,
+    *FINANCE_GENERATORS,
+    *ADMIN_GENERATORS[1:],
+)
+"""Every generator ``--without-billing`` skips (M7-demo E3, M7-demo-b G9,
+M8-demo A2), in registry order (they are the last 18)."""
 
 
 def generators_before_303() -> list[demo.DemoGenerator]:
     """The #299 run: every registered generator except the four #303 ones,
     the four #353 ones, the three #354 ones, the six billing ones, the
-    three payroll ones and the four #501 ones."""
+    three payroll ones, the four #501 ones and the five M8-demo ones."""
     later = {
+        *ADMIN_GENERATORS,
         *NEW_303_GENERATORS,
         *NEW_353_GENERATORS,
         *NEW_354_GENERATORS,
