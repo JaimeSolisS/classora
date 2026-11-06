@@ -20,7 +20,7 @@ type Common = {
       | 'cancel'
       | 'reset',
       string
-    >;
+    > & { announcements: Record<'start' | 'over', string> };
   };
   theme: {
     label: string;

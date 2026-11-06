@@ -139,21 +139,30 @@ function DialogBody({
   const positionOf = (id: UniqueIdentifier | undefined) =>
     items.findIndex((item) => item.widget === id) + 1;
   const L = 'dashboard.dialog.announcements';
+  const justLifted = useRef(false);
   const announcements: Announcements = {
-    onDragStart: ({ active }) =>
-      t(`${L}.start`, {
+    onDragStart: ({ active }) => {
+      justLifted.current = true;
+      return t(`${L}.start`, {
         title: titleOf(active.id),
         position: positionOf(active.id),
         total,
-      }),
-    onDragOver: ({ active, over }) =>
-      over
+      });
+    },
+    // Right after the lift dnd-kit reports the item over itself: keep the
+    // start message (later moves back to the start are still announced).
+    onDragOver: ({ active, over }) => {
+      const first = justLifted.current;
+      justLifted.current = false;
+      if (first && over?.id === active.id) return undefined;
+      return over
         ? t(`${L}.over`, {
             title: titleOf(active.id),
             position: positionOf(over.id),
             total,
           })
-        : t(`${L}.outside`, { title: titleOf(active.id) }),
+        : t(`${L}.outside`, { title: titleOf(active.id) });
+    },
     onDragEnd: ({ active, over }) =>
       over
         ? t(`${L}.end`, {
@@ -416,7 +425,9 @@ function SortableRow({
       ref={setNodeRef}
       style={style}
       className={cn(
-        'flex min-w-0 items-center gap-2 rounded-md border border-border bg-card p-2',
+        // E3: below ~375 px the move buttons wrap, together, to a second
+        // line, so a row fits the dialog down to 320 px.
+        'flex min-w-0 flex-wrap items-center gap-2 rounded-md border border-border bg-card p-2',
         isDragging && 'relative z-10 shadow-md',
       )}
       data-dashboard-row={item.widget}
@@ -432,7 +443,7 @@ function SortableRow({
       >
         <GripVertical aria-hidden="true" className="size-5" />
       </button>
-      <div className="flex min-w-0 flex-1 items-center gap-3">
+      <div className="flex min-w-28 flex-1 basis-0 items-center gap-3">
         <Checkbox
           id={checkboxId}
           checked={item.visible}
@@ -441,31 +452,33 @@ function SortableRow({
         />
         <label
           htmlFor={checkboxId}
-          className="min-w-0 py-2 text-sm font-medium break-words"
+          className="min-w-0 py-2 text-sm font-medium wrap-anywhere"
         >
           {title}
         </label>
       </div>
-      <button
-        type="button"
-        className={ICON_BUTTON}
-        aria-label={t('dashboard.dialog.moveUp', { title })}
-        disabled={first}
-        onClick={() => onMove('up')}
-        data-move="up"
-      >
-        <ChevronUp aria-hidden="true" className="size-5" />
-      </button>
-      <button
-        type="button"
-        className={ICON_BUTTON}
-        aria-label={t('dashboard.dialog.moveDown', { title })}
-        disabled={last}
-        onClick={() => onMove('down')}
-        data-move="down"
-      >
-        <ChevronDown aria-hidden="true" className="size-5" />
-      </button>
+      <div className="ml-auto flex shrink-0 gap-2" data-move-buttons>
+        <button
+          type="button"
+          className={ICON_BUTTON}
+          aria-label={t('dashboard.dialog.moveUp', { title })}
+          disabled={first}
+          onClick={() => onMove('up')}
+          data-move="up"
+        >
+          <ChevronUp aria-hidden="true" className="size-5" />
+        </button>
+        <button
+          type="button"
+          className={ICON_BUTTON}
+          aria-label={t('dashboard.dialog.moveDown', { title })}
+          disabled={last}
+          onClick={() => onMove('down')}
+          data-move="down"
+        >
+          <ChevronDown aria-hidden="true" className="size-5" />
+        </button>
+      </div>
     </li>
   );
 }

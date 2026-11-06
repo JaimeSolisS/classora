@@ -269,3 +269,62 @@ export const Dialog: Story = {
     ).toBeEnabled();
   },
 };
+
+const ALL_ENTRIES = (): DialogEntry[] =>
+  WIDGETS.map((widget) => ({
+    widget: widget.code,
+    visible: true,
+    title: i18n.t(widget.titleKey),
+  }));
+
+/** E3 (#127 QA D1): at 320 px every row fits; no horizontal scroll. */
+export const DialogNarrow: Story = {
+  name: 'Customize dialog (320 px)',
+  parameters: {
+    viewport: {
+      options: {
+        narrow320: {
+          name: 'Narrow (320 px)',
+          styles: { width: '320px', height: '640px' },
+          type: 'mobile',
+        },
+      },
+    },
+  },
+  globals: { viewport: { value: 'narrow320' } },
+  render: () => (
+    <StoryRouter
+      path="/"
+      routes={[
+        {
+          path: '*',
+          element: (
+            <CustomizeDialog
+              open
+              entries={ALL_ENTRIES()}
+              onClose={fn()}
+              onSave={fn(() => Promise.resolve())}
+              onReset={fn(() => Promise.resolve())}
+              onUnavailable={fn(() => Promise.resolve(ALL_ENTRIES()))}
+            />
+          ),
+        },
+      ]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const view = canvasElement.ownerDocument.defaultView!;
+    await expect(view.innerWidth).toBe(320);
+    const body = within(canvasElement.ownerDocument.body);
+    const dialog = await body.findByRole('dialog', {
+      name: i18n.t('dashboard.dialog.title'),
+    });
+    await expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
+    const box = dialog.getBoundingClientRect();
+    for (const control of within(dialog).getAllByRole('button')) {
+      const rect = control.getBoundingClientRect();
+      await expect(rect.left).toBeGreaterThanOrEqual(box.left);
+      await expect(rect.right).toBeLessThanOrEqual(box.right);
+    }
+  },
+};

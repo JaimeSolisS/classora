@@ -101,10 +101,20 @@ test('the Owner customizes the home dashboard and it persists', async ({
     const handle = dialog.getByRole('button', {
       name: fill(dialogText.reorder, { title: TITLES.room_utilization }),
     });
+    // dnd-kit's live region (localized) says when each step has landed:
+    // drop only once it reports the new position (#127 QA D2).
+    const liveRegion = dialog.locator('[id^="DndLiveRegion"]');
+    const title = TITLES.room_utilization;
     await handle.focus();
     await page.keyboard.press('Space');
     await expect(handle).toHaveAttribute('aria-pressed', 'true');
+    await expect(liveRegion).toHaveText(
+      fill(dialogText.announcements.start, { title, position: 4, total: 6 }),
+    );
     await page.keyboard.press('ArrowUp');
+    await expect(liveRegion).toHaveText(
+      fill(dialogText.announcements.over, { title, position: 3, total: 6 }),
+    );
     await page.keyboard.press('Space');
     await expect(handle).not.toHaveAttribute('aria-pressed', 'true');
     await expect
