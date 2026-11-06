@@ -57,7 +57,7 @@ function contractEnums(): Map<string, string[]> {
 }
 
 function exists(key: string, language: string): boolean {
-  const [ns, name] = key.startsWith('errors:')
+  const [ns, name]: ['common' | 'errors', string] = key.startsWith('errors:')
     ? ['errors', key.slice('errors:'.length)]
     : ['common', key];
   if (i18n.exists(name, { lng: language, ns })) {

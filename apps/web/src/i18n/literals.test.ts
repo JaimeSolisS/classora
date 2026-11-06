@@ -16,9 +16,11 @@ const sources = import.meta.glob<string>(['../**/*.ts', '../**/*.tsx'], {
 });
 
 function scan(source: string, fileName = 'x.tsx'): Omit<Finding, 'file'>[] {
-  return findHardcodedText(source, fileName).map(
-    ({ file: _file, ...rest }) => rest,
-  );
+  return findHardcodedText(source, fileName).map((finding) => {
+    const rest: Partial<Finding> = { ...finding };
+    delete rest.file;
+    return rest as Omit<Finding, 'file'>;
+  });
 }
 
 describe('findHardcodedText', () => {

@@ -26,9 +26,13 @@ type Inventory = Record<
   | 'problem_codes',
   string[]
 >;
-const codes = inventory as Inventory;
+const codes: Inventory = inventory;
 
-function exists(key: string, language: string, ns = 'common'): boolean {
+function exists(
+  key: string,
+  language: string,
+  ns: 'common' | 'errors' = 'common',
+): boolean {
   return i18n.exists(key, { lng: language, ns });
 }
 
