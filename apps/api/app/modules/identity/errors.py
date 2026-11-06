@@ -30,6 +30,7 @@ class PasswordPolicyError(AppError):
 
     status = 422
     code = "password_invalid"
+    abstract_problem = True
 
 
 class PasswordTooShortError(PasswordPolicyError):

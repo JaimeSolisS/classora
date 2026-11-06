@@ -3,9 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "//": "Typed client for the Classora API. openapi.json and src/generated/ are written by `make api-client`; never edit them by hand. No build step: consumers import the TypeScript source.",
+  "//": "Typed client for the Classora API. openapi.json, i18n-inventory.json and src/generated/ are written by `make api-client`; never edit them by hand. No build step: consumers import the TypeScript source.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./openapi.json": "./openapi.json",
+    "./i18n-inventory.json": "./i18n-inventory.json"
   },
   "scripts": {
     "generate": "node scripts/generate.mjs",

@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 
 // UI text read from the web app's own translation files, so tests never
 // repeat a string. The configured locale is es-MX → the `es` catalogs; the
-// English test reads `en`.
+// English tests (preferences, session, privacy, i18n/languages.spec.ts)
+// read `en`.
 
 type Common = {
   apiStatus: { live: string };
@@ -29,6 +30,8 @@ type Common = {
   language: { label: string; options: Record<'es' | 'en', string> };
   notFound: { title: string };
   nav: {
+    // #130 E1: the header navigation's accessible name.
+    label: string;
     home: string;
     users: string;
     invitations: string;

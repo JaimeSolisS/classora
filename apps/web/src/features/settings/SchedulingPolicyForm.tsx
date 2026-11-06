@@ -10,6 +10,7 @@ import {
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '@/app/api';
+import { codeMessageKey } from '@/app/errors';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
@@ -118,7 +119,11 @@ export function SchedulingPolicyForm({
         for (const fieldError of caught.fieldErrors) {
           const mapped = SERVER_FIELDS[String(fieldError.path[1])];
           if (mapped) {
-            setFieldError(mapped, { message: fieldError.message });
+            // The code's catalog message, never the API's English text
+            // (#130 D3).
+            setFieldError(mapped, {
+              message: `errors:${codeMessageKey(fieldError.code) ?? 'validation_error'}`,
+            });
             first ??= mapped;
           }
         }
@@ -142,9 +147,11 @@ export function SchedulingPolicyForm({
     });
   }
 
-  /** A catalog message, or a server message as it came. */
+  /** A catalog message: a form rule's or a server code's (`errors:`). */
   const message = (key: string | undefined) =>
-    key?.startsWith('settings.') ? t(key as PolicyMessageKey) : key;
+    key?.startsWith('settings.') || key?.startsWith('errors:')
+      ? t(key as PolicyMessageKey)
+      : key;
   const isConflict =
     error instanceof ApiError && error.code === 'version_conflict';
 

@@ -189,6 +189,9 @@ from app.modules.administration.imports.registry import (
     RowResult as RowResult,
 )
 from app.modules.administration.imports.registry import (
+    declared_row_code as declared_row_code,
+)
+from app.modules.administration.imports.registry import (
     register_import_kind as register_import_kind,
 )
 from app.modules.administration.imports.registry import (

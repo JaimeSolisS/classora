@@ -86,6 +86,7 @@ from app.modules.administration.imports.registry import (
     ImportRowRef,
     RowIssue,
     RowResult,
+    declared_row_code,
     import_kind,
     importable_kinds,
 )
@@ -475,7 +476,8 @@ async def _commit_one(
         outcome = await kind.commit_row(session, values, ref, actor_user_id)
     except AppError as exc:
         await savepoint.rollback()
-        return CommitOutcome.failed(exc.code)
+        # A refusal without a row label (#130 B1) shows as ``invalid``.
+        return CommitOutcome.failed(declared_row_code(exc.code))
     except BaseException:
         await savepoint.rollback()
         raise

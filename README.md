@@ -963,11 +963,13 @@ The web app calls the API through `@classora/api-client`
 document. After any API change, regenerate it and commit the result:
 
 ```bash
-make api-client        # export packages/api-client/openapi.json, then regenerate the client types
+make api-client        # export openapi.json and the i18n code inventory (i18n-inventory.json), then regenerate the client types
 make check-api-client  # regenerate and fail if packages/api-client differs from the commit (CI drift check)
 ```
 
-Both need uv and Node 24, but not Docker, a database or `.env`. API conventions
+Both need uv and Node 24, but not Docker, a database or `.env`. The web's
+tests require a Spanish and English label for every code in
+`i18n-inventory.json`. API conventions
 (paths, Problem Details errors, pagination, versions) are in
 [`_docs/api.md`](_docs/api.md).
 

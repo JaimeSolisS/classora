@@ -77,7 +77,10 @@ architecture §4.3 step 7); implemented by M1-09 in `apps/api/app/core/errors.py
       detail = "The thing does not exist."
   ```
 
-Codes in use today:
+Codes in use today (the full, generated list of every Problem code, field
+code, notification type, job task and import row code is
+`packages/api-client/i18n-inventory.json`, written by `make api-client`; the
+web labels each one, #130):
 
 | Code | Status | Source |
 | ---- | ------ | ------ |

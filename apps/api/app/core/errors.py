@@ -43,6 +43,15 @@ PROBLEM_JSON = "application/problem+json"
 INTERNAL_ERROR_DETAIL = "An unexpected error occurred."
 PROBLEM_DETAILS_REF = "#/components/schemas/ProblemDetails"
 
+CORE_PROBLEM_CODES: frozenset[str] = frozenset(
+    {"internal_error", "validation_error", "not_found", "method_not_allowed"}
+)
+"""The codes the core sends without an :class:`AppError` subclass: the
+handlers below (``internal_error``, ``validation_error``) and the router's
+own ``404``/``405`` (:func:`status_code_name`). Listed in the generated i18n
+inventory (``app.core.i18n_inventory``, #130 B1); pinned in
+``tests/unit/test_errors.py``."""
+
 
 @with_config(ConfigDict(extra="forbid"))
 class FieldError(TypedDict):
@@ -90,6 +99,9 @@ class AppError(Exception):
     detail: str | None = None
     headers: Mapping[str, str] | None = None
     """Extra response headers (for example ``Retry-After`` on a ``429``)."""
+    abstract_problem: ClassVar[bool] = False
+    """``True`` on a base that is never raised itself (its subclasses are):
+    its ``code`` is left out of the i18n inventory (#130 B1)."""
 
     def __init__(
         self,

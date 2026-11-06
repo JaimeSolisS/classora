@@ -251,7 +251,9 @@ def _field_issues(error: AppError) -> list[administration.RowIssue]:
         path = [str(part) for part in item["path"] if part != "body"]
         name = path[-1] if path else ""
         column = _REFERENCE_COLUMNS.get(name, _RULE_COLUMNS.get(name))
-        issues.append(administration.RowIssue(column, item["code"]))
+        # A rule code without a row label (#130 B1) shows as ``invalid``.
+        code = administration.declared_row_code(item["code"])
+        issues.append(administration.RowIssue(column, code))
     return issues
 
 
