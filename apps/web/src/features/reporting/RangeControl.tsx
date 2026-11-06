@@ -13,13 +13,55 @@ import {
   type RangeField,
 } from './rules';
 
+const L = 'reports.profitability';
+
 // The report's controls (M7-14b B1, E2): the basis switch, the presets and
 // the custom range. A broken bound shows next to the field it names, from
-// the client check or the server's `422 report_range_invalid`.
+// the client check or the server's `422 report_range_invalid`. The KPI page
+// (M8-09b B2) shows the range only: its basis switch sits on K1, so the
+// switch is its own component and shows here only with `basis`.
 
-export interface RangeControlProps {
+export function BasisSwitch({
+  basis,
+  onBasis,
+}: {
   basis: ReportBasis;
   onBasis: (basis: ReportBasis) => void;
+}) {
+  const { t } = useTranslation();
+  const labelId = useId();
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <span id={labelId} className="text-sm font-medium">
+        {t(`${L}.basis.label`)}
+      </span>
+      <div
+        role="group"
+        aria-labelledby={labelId}
+        className="flex flex-wrap gap-2"
+        data-report-basis
+      >
+        {BASES.map((item) => (
+          <Button
+            key={item}
+            type="button"
+            variant={item === basis ? 'default' : 'outline'}
+            aria-pressed={item === basis}
+            className="min-h-11 md:min-h-9"
+            onClick={() => onBasis(item)}
+          >
+            {t(`${L}.basis.${item}`)}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export interface RangeControlProps {
+  /** With `onBasis`, the basis switch shows first. */
+  basis?: ReportBasis;
+  onBasis?: (basis: ReportBasis) => void;
   /** The dates as typed (the URL's until the user edits them). */
   draft: DateRange;
   onDate: (field: RangeField, value: string) => void;
@@ -31,8 +73,6 @@ export interface RangeControlProps {
   /** A translated message next to the field it names, or null. */
   error: { field: RangeField; message: string } | null;
 }
-
-const L = 'reports.profitability';
 
 export function RangeControl({
   basis,
@@ -47,7 +87,6 @@ export function RangeControl({
   const { t } = useTranslation();
   const id = useId();
   const ids = {
-    basis: `${id}-basis`,
     presets: `${id}-presets`,
     from: `${id}-from`,
     to: `${id}-to`,
@@ -64,30 +103,9 @@ export function RangeControl({
       className="flex min-w-0 flex-col gap-4"
       data-report-controls
     >
-      <div className="flex min-w-0 flex-col gap-2">
-        <span id={ids.basis} className="text-sm font-medium">
-          {t(`${L}.basis.label`)}
-        </span>
-        <div
-          role="group"
-          aria-labelledby={ids.basis}
-          className="flex flex-wrap gap-2"
-          data-report-basis
-        >
-          {BASES.map((item) => (
-            <Button
-              key={item}
-              type="button"
-              variant={item === basis ? 'default' : 'outline'}
-              aria-pressed={item === basis}
-              className="min-h-11 md:min-h-9"
-              onClick={() => onBasis(item)}
-            >
-              {t(`${L}.basis.${item}`)}
-            </Button>
-          ))}
-        </div>
-      </div>
+      {basis && onBasis ? (
+        <BasisSwitch basis={basis} onBasis={onBasis} />
+      ) : null}
       <div className="flex min-w-0 flex-col gap-2">
         <span id={ids.presets} className="text-sm font-medium">
           {t(`${L}.presets.label`)}

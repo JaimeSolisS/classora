@@ -8415,6 +8415,111 @@
         "other": "Otros",
         "total": "Total"
       }
+    },
+    "subnav": {
+      "label": "Reportes",
+      "kpis": "Indicadores",
+      "finance": "Reporte financiero"
+    },
+    "kpis": {
+      "title": "Indicadores",
+      "intro": "Los indicadores del centro en un periodo. Cada sección se muestra solo a quien puede ver sus datos.",
+      "rangeShown": "Indicadores del {{from}} al {{to}}",
+      "empty": "Sin actividad en este periodo",
+      "percent": "{{value}} %",
+      "noPercent": "—",
+      "noData": "Sin datos",
+      "partial": "(parcial)",
+      "partialRange": "del {{from}} al {{to}}",
+      "revenueTrend": {
+        "title": "Ingresos y resultado por mes",
+        "caption": "Ingresos y resultado por mes",
+        "chartCaption": "Ingresos, costo de tutores y gastos por mes, con el resultado neto",
+        "chartTable": "Datos del gráfico de ingresos y resultado por mes",
+        "totals": "Totales",
+        "columns": {
+          "month": "Mes",
+          "revenue": "Ingresos",
+          "cost": "Costo directo de tutores",
+          "grossProfit": "Utilidad bruta",
+          "expenses": "Gastos operativos",
+          "net": "Resultado neto"
+        },
+        "series": {
+          "revenue": "Ingresos",
+          "cost": "Costo directo de tutores",
+          "expenses": "Gastos operativos",
+          "net": "Resultado neto",
+          "negative": "Resultado negativo"
+        }
+      },
+      "balances": {
+        "title": "Saldos pendientes y nómina por pagar",
+        "note": "Al día de hoy",
+        "payrollUnpaid": "Nómina por pagar"
+      },
+      "courseProfitability": {
+        "title": "Rentabilidad por curso",
+        "caption": "Rentabilidad por cohorte",
+        "notAttributed": "Sin cohorte asignada",
+        "total": "Total",
+        "note": "Solo base devengada; sin gastos generales (spec). El total coincide con la fila «Cursos» del reporte financiero.",
+        "columns": {
+          "cohort": "Cohorte",
+          "revenue": "Ingresos",
+          "cost": "Costo directo",
+          "grossProfit": "Utilidad bruta"
+        }
+      },
+      "rooms": {
+        "title": "Ocupación de salones",
+        "caption": "Ocupación por salón",
+        "total": "Total",
+        "noSchedule": "Sin horario disponible",
+        "over100": "Incluye clases fuera del horario del salón",
+        "columns": {
+          "room": "Salón",
+          "available": "Minutos disponibles",
+          "used": "Minutos usados",
+          "percent": "Ocupación %"
+        }
+      },
+      "retention": {
+        "title": "Retención de alumnos",
+        "previousWindow": "Periodo anterior: del {{from}} al {{to}}",
+        "noPrevious": "Sin actividad en el periodo anterior",
+        "chartCaption": "Alumnos activos por mes",
+        "chartTable": "Datos del gráfico de alumnos activos por mes",
+        "series": "Alumnos activos",
+        "note": "Un alumno es activo si tuvo al menos una clase confirmada o completada en el periodo, asistiera o no.",
+        "columns": {
+          "month": "Mes"
+        },
+        "tiles": {
+          "active_previous": "Activos en el periodo anterior",
+          "active_current": "Activos ahora",
+          "retained": "Retenidos",
+          "new": "Nuevos",
+          "lost": "Perdidos",
+          "retention_percent": "Retención %"
+        }
+      },
+      "tutors": {
+        "title": "Desempeño de tutores y actividad del centro",
+        "caption": "Desempeño por tutor",
+        "center": "Centro",
+        "note": "Canceladas: solo clases que habían sido confirmadas. Una sustitución cuenta para quien la impartió.",
+        "columns": {
+          "tutor": "Tutor",
+          "sessions": "Sesiones",
+          "completed": "Completadas",
+          "pending": "Pendientes de cierre",
+          "cancelled": "Canceladas",
+          "hours": "Horas",
+          "students": "Alumnos",
+          "attendance": "Asistencia %"
+        }
+      }
     }
   },
   "familyBilling": {

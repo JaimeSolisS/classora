@@ -51,12 +51,24 @@ const FINANCE = user(
   ['finance.report.view', 'expense.view'],
 );
 const REPORTS_ONLY = user(['finance_staff'], ['finance.report.view']);
-const ADMIN = user(['administrator'], ['user.view', 'expense.configure']);
+const ADMIN = user(
+  ['administrator'],
+  ['user.view', 'expense.configure', 'schedule.view', 'tutor.view'],
+);
 const ADMIN_FINALIZE = user(
   ['administrator'],
-  ['user.view', 'expense.configure', 'payroll.finalize'],
+  [
+    'user.view',
+    'expense.configure',
+    'schedule.view',
+    'tutor.view',
+    'payroll.finalize',
+  ],
 );
-const COORDINATOR = user(['academic_coordinator'], ['schedule.view']);
+const COORDINATOR = user(
+  ['academic_coordinator'],
+  ['schedule.view', 'tutor.view'],
+);
 const TUTOR = user(['tutor'], ['tutor.view']);
 const STUDENT = user(['student'], ['student.view']);
 const GUARDIAN = user(['guardian'], ['student.view', 'guardian.view']);
@@ -187,12 +199,13 @@ describe('rules (E2)', () => {
 });
 
 describe('nav and routes (A1, A2)', () => {
+  // M8-09b A1: Reports opens the KPIs, so schedule.view holders see it too.
   it.each([
     ['the Owner', OWNER, true],
     ['Finance Staff', FINANCE, true],
-    ['an Administrator', ADMIN, false],
-    ['an Administrator with payroll.finalize', ADMIN_FINALIZE, false],
-    ['a Coordinator', COORDINATOR, false],
+    ['an Administrator', ADMIN, true],
+    ['an Administrator with payroll.finalize', ADMIN_FINALIZE, true],
+    ['a Coordinator', COORDINATOR, true],
     ['a tutor', TUTOR, false],
     ['a student', STUDENT, false],
     ['a guardian', GUARDIAN, false],
@@ -215,31 +228,45 @@ describe('nav and routes (A1, A2)', () => {
   });
 
   it.each([
-    ['an Administrator', ADMIN],
-    ['an Administrator with payroll.finalize', ADMIN_FINALIZE],
-    ['a Coordinator', COORDINATOR],
-    ['a tutor', TUTOR],
-    ['a student', STUDENT],
-    ['a guardian', GUARDIAN],
-  ] as const)('%s is forbidden with no report request', async (_who, as) => {
-    for (const path of ['/reports', '/reports/finance']) {
-      const api = stub(as);
-      await open(path);
-      expect(h1()).toBe("You don't have access to this page");
-      expect(
-        api.requests.filter((r) => r.path.startsWith('/api/v1/reports')),
-      ).toEqual([]);
-      app!.unmount();
-      app = undefined;
-    }
-  });
+    ['an Administrator', ADMIN, ['/reports/finance']],
+    [
+      'an Administrator with payroll.finalize',
+      ADMIN_FINALIZE,
+      ['/reports/finance'],
+    ],
+    ['a Coordinator', COORDINATOR, ['/reports/finance']],
+    ['a tutor', TUTOR, ['/reports', '/reports/finance']],
+    ['a student', STUDENT, ['/reports', '/reports/finance']],
+    ['a guardian', GUARDIAN, ['/reports', '/reports/finance']],
+  ] as const)(
+    '%s is forbidden with no report request',
+    async (_who, as, paths) => {
+      for (const path of paths) {
+        const api = stub(as);
+        await open(path);
+        expect(h1()).toBe("You don't have access to this page");
+        expect(
+          api.requests.filter((r) => r.path.startsWith('/api/v1/reports')),
+        ).toEqual([]);
+        app!.unmount();
+        app = undefined;
+      }
+    },
+  );
 
-  it('/reports opens the financial report', async () => {
+  it('shows the reports sub-navigation, the financial report current', async () => {
+    applyLanguage('es');
     stub();
-    await open('/reports');
-    await settleUntil(() => h1() === 'Financial reports');
-    expect(app!.router.state.location.pathname).toBe('/reports/finance');
-    expect(document.title).toContain('Financial reports');
+    await open();
+    await loaded();
+    const links = [
+      ...main().querySelectorAll<HTMLAnchorElement>('[data-reports-subnav] a'),
+    ];
+    expect(links.map((a) => [a.getAttribute('href'), a.textContent])).toEqual([
+      ['/reports/kpis', 'Indicadores'],
+      ['/reports/finance', 'Reporte financiero'],
+    ]);
+    expect(links[1]!.getAttribute('aria-current')).toBe('page');
   });
 
   it.each([[PROFITABILITY], [BALANCES_ROUTE]])(

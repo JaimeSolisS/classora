@@ -167,12 +167,24 @@ type Common = {
       dialog: Record<'addTitle' | 'name' | 'contact', string>;
     };
   };
-  // M7-14b E3: the financial reports.
+  // M7-14b E3: the financial reports; M8-09b E3: the KPIs and the
+  // reports sub-navigation.
   reports: {
     title: string;
+    subnav: Record<'label' | 'kpis' | 'finance', string>;
+    kpis: {
+      title: string;
+      revenueTrend: { title: string };
+      balances: { title: string };
+      courseProfitability: { title: string };
+      rooms: { title: string };
+      retention: { title: string };
+      tutors: { title: string };
+    };
     profitability: {
       title: string;
       basis: Record<'accrual' | 'cash', string>;
+      presets: Record<'lastMonth' | 'last3Months', string>;
       range: {
         from: string;
         to: string;

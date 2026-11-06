@@ -8282,6 +8282,111 @@
         "other": "Other",
         "total": "Total"
       }
+    },
+    "subnav": {
+      "label": "Reports",
+      "kpis": "KPIs",
+      "finance": "Financial report"
+    },
+    "kpis": {
+      "title": "KPIs",
+      "intro": "The center's indicators over a period. Each section shows only to people who may see its data.",
+      "rangeShown": "KPIs from {{from}} to {{to}}",
+      "empty": "No activity in this period",
+      "percent": "{{value}}%",
+      "noPercent": "—",
+      "noData": "No data",
+      "partial": "(partial)",
+      "partialRange": "from {{from}} to {{to}}",
+      "revenueTrend": {
+        "title": "Revenue and result by month",
+        "caption": "Revenue and result by month",
+        "chartCaption": "Revenue, tutor cost and expenses by month, with the net result",
+        "chartTable": "Data of the revenue and result by month chart",
+        "totals": "Totals",
+        "columns": {
+          "month": "Month",
+          "revenue": "Revenue",
+          "cost": "Direct tutor cost",
+          "grossProfit": "Gross profit",
+          "expenses": "Operating expenses",
+          "net": "Net result"
+        },
+        "series": {
+          "revenue": "Revenue",
+          "cost": "Direct tutor cost",
+          "expenses": "Operating expenses",
+          "net": "Net result",
+          "negative": "Negative result"
+        }
+      },
+      "balances": {
+        "title": "Unpaid balances and payroll",
+        "note": "As of today",
+        "payrollUnpaid": "Unpaid payroll"
+      },
+      "courseProfitability": {
+        "title": "Profitability by course",
+        "caption": "Profitability by cohort",
+        "notAttributed": "No cohort assigned",
+        "total": "Total",
+        "note": "Accrual basis only; no overhead (spec). The total matches the financial report's “Courses” row.",
+        "columns": {
+          "cohort": "Cohort",
+          "revenue": "Revenue",
+          "cost": "Direct cost",
+          "grossProfit": "Gross profit"
+        }
+      },
+      "rooms": {
+        "title": "Room utilization",
+        "caption": "Utilization by room",
+        "total": "Total",
+        "noSchedule": "No schedule available",
+        "over100": "Includes classes outside the room's hours",
+        "columns": {
+          "room": "Room",
+          "available": "Minutes available",
+          "used": "Minutes used",
+          "percent": "Utilization %"
+        }
+      },
+      "retention": {
+        "title": "Student retention",
+        "previousWindow": "Previous period: {{from}} to {{to}}",
+        "noPrevious": "No activity in the previous period",
+        "chartCaption": "Active students by month",
+        "chartTable": "Data of the active students by month chart",
+        "series": "Active students",
+        "note": "A student is active with at least one confirmed or completed class in the period, whether they attended or not.",
+        "columns": {
+          "month": "Month"
+        },
+        "tiles": {
+          "active_previous": "Active in the previous period",
+          "active_current": "Active now",
+          "retained": "Retained",
+          "new": "New",
+          "lost": "Lost",
+          "retention_percent": "Retention %"
+        }
+      },
+      "tutors": {
+        "title": "Tutor performance and center activity",
+        "caption": "Performance by tutor",
+        "center": "Center",
+        "note": "Cancelled: only classes that had been confirmed. A substitution counts for the tutor who taught it.",
+        "columns": {
+          "tutor": "Tutor",
+          "sessions": "Sessions",
+          "completed": "Completed",
+          "pending": "Pending closeout",
+          "cancelled": "Cancelled",
+          "hours": "Hours",
+          "students": "Students",
+          "attendance": "Attendance %"
+        }
+      }
     }
   },
   "familyBilling": {

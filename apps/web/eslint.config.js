@@ -10,7 +10,7 @@ const ZOD_MESSAGE = "Import `z` from '@/lib/forms' (CSP-safe settings).";
 const ZOD_PATH = { name: 'zod', message: ZOD_MESSAGE };
 const ZOD_PATTERN = { group: ['zod/*'], message: ZOD_MESSAGE };
 const RECHARTS_MESSAGE =
-  'Recharts is imported only under src/features/progress/charts/ (lazy route chunks, #322 A3).';
+  'Recharts is imported only under src/features/progress/charts/ and src/features/reporting/kpis/charts/ (lazy route chunks, #322 A3, M8-09b E3).';
 const RECHARTS_PATH = { name: 'recharts', message: RECHARTS_MESSAGE };
 const RECHARTS_PATTERN = { group: ['recharts/*'], message: RECHARTS_MESSAGE };
 
@@ -59,13 +59,18 @@ export default defineConfig([
   },
   // Forms (#28): Zod is imported only through src/lib/forms.ts, which turns
   // off its eval probe that the Content Security Policy would report.
-  // Charts (#322 A3): Recharts is imported only under
-  // src/features/progress/charts/, which only the two lazy progress pages
-  // use, so it stays out of the entry chunk. (One rule per file set: a later
-  // no-restricted-imports entry replaces an earlier one.)
+  // Charts (#322 A3, M8-09b E3): Recharts is imported only under
+  // src/features/progress/charts/ and src/features/reporting/kpis/charts/,
+  // which only lazy route pages use, so it stays out of the entry chunk.
+  // (One rule per file set: a later no-restricted-imports entry replaces an
+  // earlier one.)
   {
     files: ['src/**/*.{ts,tsx}'],
-    ignores: ['src/lib/forms.ts', 'src/features/progress/charts/**'],
+    ignores: [
+      'src/lib/forms.ts',
+      'src/features/progress/charts/**',
+      'src/features/reporting/kpis/charts/**',
+    ],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -77,7 +82,10 @@ export default defineConfig([
     },
   },
   {
-    files: ['src/features/progress/charts/**/*.{ts,tsx}'],
+    files: [
+      'src/features/progress/charts/**/*.{ts,tsx}',
+      'src/features/reporting/kpis/charts/**/*.{ts,tsx}',
+    ],
     rules: {
       'no-restricted-imports': [
         'error',

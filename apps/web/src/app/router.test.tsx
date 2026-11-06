@@ -173,6 +173,7 @@ describe('route tree', () => {
       'expenses/categories',
       'expenses/vendors',
       'reports',
+      'reports/kpis',
       'reports/finance',
       'audit',
       'settings/payments',
@@ -490,25 +491,31 @@ describe('route tree', () => {
       expect(children[index]!.lazy).toBeTypeOf('function');
       expect(children[index]!.element).toBeUndefined();
     }
-    // M7-14b A2: /reports redirects to the financial report (code-split),
-    // both finance.report.view.
-    const reports = { permission: 'finance.report.view' };
-    expect(children[118]!.handle).toEqual(reports);
+    // M8-09b A2: /reports redirects to the KPIs (code-split), both for
+    // finance.report.view or schedule.view; the financial report (M7-14b
+    // A2, code-split) stays finance.report.view.
+    const kpis = { anyPermission: ['finance.report.view', 'schedule.view'] };
+    expect(children[118]!.handle).toEqual(kpis);
     expect(children[118]!.element).toBeDefined();
-    expect(children[119]!.handle).toEqual(reports);
+    expect(children[119]!.handle).toEqual(kpis);
     expect(children[119]!.lazy).toBeTypeOf('function');
     expect(children[119]!.element).toBeUndefined();
-    // M8-03 (#120) D2: audit.view, code-split.
-    expect(children[120]!.handle).toEqual({ permission: 'audit.view' });
+    expect(children[120]!.handle).toEqual({
+      permission: 'finance.report.view',
+    });
     expect(children[120]!.lazy).toBeTypeOf('function');
     expect(children[120]!.element).toBeUndefined();
-    // M8-04b A1: the Payments and receipts tab, settings.manage, code-split.
-    expect(children[121]!.handle).toEqual({ permission: 'settings.manage' });
+    // M8-03 (#120) D2: audit.view, code-split.
+    expect(children[121]!.handle).toEqual({ permission: 'audit.view' });
     expect(children[121]!.lazy).toBeTypeOf('function');
     expect(children[121]!.element).toBeUndefined();
+    // M8-04b A1: the Payments and receipts tab, settings.manage, code-split.
+    expect(children[122]!.handle).toEqual({ permission: 'settings.manage' });
+    expect(children[122]!.lazy).toBeTypeOf('function');
+    expect(children[122]!.element).toBeUndefined();
     // M8-05b A1: imports, any import kind's permission (#123 F1 adds
     // schedule.manage and billing.manage), code-split.
-    for (const index of [122, 123]) {
+    for (const index of [123, 124]) {
       expect(children[index]!.handle).toEqual({
         anyPermission: [
           'student.manage',
@@ -521,7 +528,7 @@ describe('route tree', () => {
       expect(children[index]!.element).toBeUndefined();
     }
     // M8-07b A1: exports, any staff role, code-split.
-    expect(children[124]!.handle).toEqual({
+    expect(children[125]!.handle).toEqual({
       anyRole: [
         'owner',
         'administrator',
@@ -529,16 +536,16 @@ describe('route tree', () => {
         'finance_staff',
       ],
     });
-    expect(children[124]!.lazy).toBeTypeOf('function');
-    expect(children[124]!.element).toBeUndefined();
-    expect(children[125]!.handle).toBeUndefined();
-    // M8-02b A1: any signed-in user, no permission, code-split.
+    expect(children[125]!.lazy).toBeTypeOf('function');
+    expect(children[125]!.element).toBeUndefined();
     expect(children[126]!.handle).toBeUndefined();
-    expect(children[126]!.lazy).toBeTypeOf('function');
-    expect(children[126]!.element).toBeUndefined();
-    // #174 G1: any signed-in user, no permission.
-    expect(children[127]!.id).toBe('privacy-notice');
+    // M8-02b A1: any signed-in user, no permission, code-split.
     expect(children[127]!.handle).toBeUndefined();
+    expect(children[127]!.lazy).toBeTypeOf('function');
+    expect(children[127]!.element).toBeUndefined();
+    // #174 G1: any signed-in user, no permission.
+    expect(children[128]!.id).toBe('privacy-notice');
+    expect(children[128]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,
