@@ -696,7 +696,9 @@ which `ci-required` checks whenever the API changed.
 - No retries: a test that fails once is a failure. `test.only` fails the run in
   CI (`forbidOnly`).
 - The time zone (`America/Mexico_City`) and the locale (`es-MX`) are fixed in
-  `e2e/playwright.config.ts`. M1-15 adds the per-language runs.
+  `e2e/playwright.config.ts`. Each UI language is walked by
+  `e2e/tests/i18n/languages.spec.ts` (Translation guards below); other specs
+  stay `es-MX`.
 - Viewports: desktop Chromium only. A task that names "mobile viewport" adds a
   project.
 - A new route gets an axe scan (next section). A spec that switches the
@@ -727,6 +729,27 @@ which `ci-required` checks whenever the API changed.
   logs in `e2e/test-results/`. Open a trace from the repository root with
   `corepack pnpm --filter @classora/e2e exec playwright show-trace test-results/<test>/trace.zip`
   (the command runs in `e2e/`, so the path is relative to `e2e/`).
+
+## Translation guards
+
+Every screen, error, notification, label and document is complete in Spanish
+and English (#130). These guards fail CI when it isn't; each failure message
+lists every gap by area, language and code.
+
+| Guard | What it checks | How to fix a failure |
+| --- | --- | --- |
+| Catalog parity (`apps/web/src/i18n/check.test.ts`, `apps/api/tests/unit/test_i18n_catalogs.py`) | es and en have the same namespaces, keys, plural families and placeholders; no repeated key | Add the key to the other language. |
+| The i18n inventory (`packages/api-client/i18n-inventory.json`, `apps/api/tests/unit/test_i18n_inventory.py`, `apps/web/src/i18n/inventory.test.ts`) | Every Problem code, field-error code, notification type, job task and import row code the API can send has an es and en label through the UI's own key builder | Run `make api-client` and commit the inventory, then add the label (`ERROR_CODE_KEYS` in `src/app/errors.ts` and both `errors.json` for a code). A code the field scan can't resolve goes in `DYNAMIC_FIELD_CODE_SITES` (`app/core/i18n_inventory.py`) with the codes it can send. Local-only codes go in `LOCAL_ONLY_CODES`, Pydantic's own codes in `GENERIC_FIELD_CODES`. |
+| Enum classification (`apps/web/src/i18n/enumLabels.test.ts`) | Every enum of `openapi.json` (named schemas and inline component-property enums) is in exactly one of `ENUM_LABELS` (with the UI's key builder) and `UNLABELLED_ENUMS` (with a reason), and every labelled value has an es and en label | Classify the new enum, or add the value's label. |
+| Hard-coded text (`apps/web/src/i18n/literals.test.ts`) | No JSX text, no literal `aria-label`/`title`/`placeholder`/`alt`/`label`-type attribute, no literal `announce`/`setAnnouncement`/`useDocumentTitle`/`toast*` text in production TS/TSX | Use `t()`. A justified exception goes in `LITERAL_ALLOWLIST` (`src/i18n/literals.ts`) with its reason; the list starts empty. |
+| Formatting (`apps/web/eslint.config.js` time guard) | No `toLocaleString`/`toLocaleDateString`/`toLocaleTimeString` | Use `src/lib/money.ts` or `src/lib/time.ts`. |
+| Server key usage (`apps/api/tests/unit/test_i18n_catalogs.py`) | Every literal key in a template or a `t()`/`message()` call exists in es and en; every computed key site is pinned in `DYNAMIC_KEY_SITES` with the keys it can build | Add the key, or pin the new site with the enum or constant its values come from. |
+| Each language end to end (`e2e/tests/i18n/languages.spec.ts`) | Every Owner nav page, one student and one family detail page, and the login page, in es and en: `html[lang]`, the `h1`, the nav labels, no `{{` and no raw key, no `[i18n] missing key` log (the dev-only `missingKeyHandler`, `src/i18n/index.ts`) | Add the missing key. English is shown by rewriting only `preferences.language` in that context's `GET /api/v1/auth/me` (0 logins; a preferences `PATCH` fails the test). |
+
+Pinned-list sweep: a new Problem code, field code, notification type,
+Procrastinate task, import row code or API enum (or enum value) gets es and
+en labels or an explicit classification. Run `make api-client` and
+`pnpm vitest run --project unit --maxWorkers=2 src/i18n src/app/errors.test.ts`.
 
 ## Accessibility tests
 

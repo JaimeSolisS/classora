@@ -112,6 +112,19 @@ Orchestrator-recommended, pending owner review (#124 E3 (a), owner-delegated). S
 - **Not added:** PDF exports (a WeasyPrint table of 10,000 rows is a memory risk on the micro host; #124 E3) and `.xlsx` import (a #122 follow-up that this dependency unblocks).
 - The export catalogs follow this ADR: `app/i18n/locales/{es,en}/exports.json` (headers, dataset names, enum and boolean labels), in the language stored on the export job.
 
+### Implementation note: translation guards (#130, M8-13, 2026-11-06)
+
+The decision is unchanged. Codes stay client-translated: the API sends stable
+codes and the web's catalogs label them. `app/core/i18n_inventory.py` lists
+every code the app can send (Problem codes, field-error codes, notification
+types, job tasks, import row codes); `make api-client` writes it to
+`packages/api-client/i18n-inventory.json`, CI's `check-api-client` keeps it
+current, and the web's `src/i18n/inventory.test.ts` requires an es and en
+label for each. On the server, `tests/unit/test_i18n_catalogs.py` checks that
+every key a template or a `t()`/`message()` call names exists in both
+languages (computed keys are pinned in `DYNAMIC_KEY_SITES`). The other guards
+are listed in `_docs/testing-guidelines.md` (Translation guards).
+
 ## Consequences
 
 - **#98 (M6-13)** adds the dependencies above (or splits them into an infrastructure issue), `app/core/i18n.py`, the catalogs and their parity test, and the receipt templates in es and en.
