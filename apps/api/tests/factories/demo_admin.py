@@ -119,6 +119,7 @@ from tests.factories.demo_academics import DEMO_COORDINATOR_USERNAME
 from tests.factories.demo_billing import (
     DEMO_FINANCE_USERNAME,
     _early_skip,
+    _pricing_ran,
     _settings_app_env,
     billing_skipped,
     billing_students,
@@ -704,7 +705,8 @@ class ImportedJobs:
     students: uuid.UUID
     tutors: uuid.UUID
     schedules: uuid.UUID
-    balances: uuid.UUID
+    balances: uuid.UUID | None
+    """``None`` when billing was set up by hand (no opening balances)."""
 
 
 class DemoImportsGenerator(_Generator):
@@ -714,8 +716,10 @@ class DemoImportsGenerator(_Generator):
     weekly series for F3's student with ``demo.tutor``, which gets a pending
     offer, and a row at ``U1``'s time: ``failed`` ``scheduling_conflict``;
     committed); ``demo.finance`` imports two opening-balance charges for F3's
-    student (committed). The commits run ``commit_next_batch`` in this Unit
-    of Work (E2): no Procrastinate row.
+    student (committed), only when ``billing.demo_pricing`` ran: with billing
+    set up by hand the demo writes no billing data (M6-demo G6), so that job
+    is left out. The commits run ``commit_next_batch`` in this Unit of Work
+    (E2): no Procrastinate row.
 
     Writes nothing outside ``APP_ENV=local`` or under ``--without-billing``
     (skipped), and nothing (0 rows) once a job with a demo file name exists.
@@ -749,6 +753,7 @@ class DemoImportsGenerator(_Generator):
         duplicate = await _student_name(session, students["A"])
         f3 = await _student_name(session, students["F3"])
         conflict = await booked_slot(session, tutor_id, self.name)
+        demo_billing = await _pricing_ran(session, self.name)
         plan = await self._plan_for(session)
         before = await count_rows(session, DEMO_IMPORTS_TABLES)
 
@@ -774,8 +779,16 @@ class DemoImportsGenerator(_Generator):
             SCHEDULES_FILE,
             plan.schedules_csv(f3, conflict),
         )
-        balances_job = await _committed(
-            session, finance, balances_kind.KIND, BALANCES_FILE, plan.balances_csv(f3)
+        balances_job = (
+            await _committed(
+                session,
+                finance,
+                balances_kind.KIND,
+                BALANCES_FILE,
+                plan.balances_csv(f3),
+            )
+            if demo_billing
+            else None
         )
         self.jobs = ImportedJobs(
             students=students_job,
