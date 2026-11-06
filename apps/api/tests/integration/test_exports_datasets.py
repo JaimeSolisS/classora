@@ -37,6 +37,7 @@ from tests.integration.expense_support import new_vendor
 from tests.integration.export_support import (
     Actor,
     actor,
+    center_today,
     new_expense,
     read,
     requested,
@@ -440,7 +441,8 @@ def test_expense_filters_reach_the_list(module_seeded_url, client):
     who = actor(module_seeded_url, client, "finance_staff")
     vendor = new_vendor(module_seeded_url)
     new_expense(client, who, module_seeded_url, vendor)
-    yesterday = date.today() - timedelta(days=1)
+    today = center_today(module_seeded_url)
+    yesterday = today - timedelta(days=1)
 
     def count(**filters: Any) -> int:
         return len(
@@ -455,7 +457,7 @@ def test_expense_filters_reach_the_list(module_seeded_url, client):
     assert count() == 1
     assert count(status=["paid"]) == 0
     assert count(incurred_from=yesterday, incurred_to=yesterday) == 1
-    assert count(incurred_from=date.today()) == 0
+    assert count(incurred_from=today) == 0
 
 
 def test_too_many_expenses_raise_the_row_limit(module_seeded_url, client):

@@ -12,11 +12,13 @@ import io
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Any, Final
 
 from fastapi.testclient import TestClient
 from httpx import Response
 
+from app.modules.administration import service as administration
 from app.modules.reporting.tasks import ExportRunResult, run_exports
 from tests.integration.auth_support import (
     CreatedUser,
@@ -27,6 +29,7 @@ from tests.integration.auth_support import (
 from tests.integration.catalog_support import get
 from tests.integration.conftest import run_sql, settings_for
 from tests.integration.invitation_support import reauthenticate, sign_in
+from tests.integration.lifecycle_support import in_uow
 
 EXPORTS: Final = "/api/v1/exports"
 DATASETS: Final = f"{EXPORTS}/datasets"
@@ -181,15 +184,21 @@ def unique(prefix: str = "Exp") -> str:
     return f"{prefix}{letters}"
 
 
+def center_today(url: str) -> date:
+    """Today in the center's time zone (the business setting), as the app's
+    date rules (overdue, date filters) see it; never ``date.today()``, which
+    is the runner's date (UTC on CI) (#530)."""
+    return in_uow(url, administration.center_today)
+
+
 def new_expense(
     client: TestClient, who: Actor, url: str, vendor: str, **change: Any
 ) -> str:
-    """An expense of ``vendor`` (rent category), incurred yesterday."""
-    from datetime import date, timedelta
-
+    """An expense of ``vendor`` (rent category), incurred and due yesterday
+    in the center's time zone (so it is overdue)."""
     from tests.integration.expense_support import category_of, created, expense_body
 
-    day = (date.today() - timedelta(days=1)).isoformat()
+    day = (center_today(url) - timedelta(days=1)).isoformat()
     body = expense_body(
         category_of(url), vendor_id=vendor, incurred_on=day, due_on=day, **change
     )
