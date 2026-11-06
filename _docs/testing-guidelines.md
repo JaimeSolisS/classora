@@ -479,7 +479,10 @@ which `ci-required` checks whenever the API changed.
   in the E2E database (#105) and specs never set `payroll_starts_on`. The
   expense demo data and the finished cohort's fees (#501) honour it too and
   are not in the E2E database either, so specs keep creating their own
-  categories, vendors, expenses and templates.
+  categories, vendors, expenses and templates. The M8 administration demo
+  data (#118-#129, M8-demo #539: approval assignments, a muted notice type,
+  the receipt message, imports, saved setups and a deleted draft) honours
+  the flag as well and is not in the E2E database.
 - Tests do not depend on each other or on the order they run in, and they
   pass with Playwright's parallel workers. Data a test changes is created by
   that test, with a unique per-test suffix. Tests never depend on a
