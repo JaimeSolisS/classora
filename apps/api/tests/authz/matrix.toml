@@ -2830,6 +2830,31 @@ deny = ["tutor", "student", "guardian"]
 # The placeholder id is no setup: 404 for the allowed roles (a valid body).
 json = { version = 1 }
 
+# The dashboard layout (#127 C): each caller's own layout, open to anyone with
+# an available KPI widget (finance.report.view or schedule.view); the route
+# denies the others itself. Checks and figures:
+# tests/integration/test_dashboard_layouts_api.py.
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/reports/dashboard/layout"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/reports/dashboard/layout"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+
+[[route]]
+method = "PUT"
+path = "/api/v1/reports/dashboard/layout"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+# A widget every staff role has: 200 for the allowed roles.
+json = { widgets = [{ widget = "room_utilization", visible = true }] }
+
 [[route]]
 method = "GET"
 path = "/api/v1/reports/finance/balances"

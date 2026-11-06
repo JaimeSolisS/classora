@@ -19,8 +19,10 @@ shell (layout with navigation, a 404 page and
 central error handling), a TanStack Query data layer, a typed API client
 generated from the API's OpenAPI document, a design system foundation
 (central design tokens, Tailwind CSS, shadcn/ui components catalogued in
-Storybook), FullCalendar for the staff calendar and Recharts for progress
-charts. Its home page only shows whether the API is live.
+Storybook), FullCalendar for the staff calendar, Recharts for progress and
+KPI charts, and dnd-kit for reordering dashboard widgets. Staff land on a KPI
+dashboard; for the other roles the home page only shows whether the API is
+live.
 
 No email is sent: invitations and password resets produce a one-time link
 that staff hand over in person or by phone. The privacy notice text is a
@@ -459,6 +461,9 @@ unless a bullet says otherwise.
 - KPIs: revenue and result per month, unpaid balances and payroll, course
   profitability, room utilization, student retention and tutor performance,
   each for the roles that see its data (Reports → KPIs).
+- Customizable dashboard: staff land on a home dashboard with the KPI widgets
+  their role may see; each user shows, hides and reorders them (mouse,
+  keyboard or buttons), saved per user.
 
 **Imports**
 
@@ -522,7 +527,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** the rest of billing, dashboards, PDF exports, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
+**Not built yet:** the rest of billing, PDF exports, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 
 **Not in this version:** file uploads and documents (attachments, the shared

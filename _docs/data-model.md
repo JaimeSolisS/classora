@@ -1701,3 +1701,16 @@ A `reporting` addition. Migration `0091_reporting_report_setups`; module `report
 | `version` | `INTEGER` | Optimistic version, from 1. |
 
 Indexes: the unique name index; `shared_role` where it is set (the list's shared part). Audit: automatic `create`, `update` and `delete` events by the creator. At most 50 setups per creator (application rule, under a per-user advisory lock). Any later change to an export dataset's columns or filters must migrate the stored `parameters` in the same change.
+
+## 23. Dashboard layouts (#127, M8-10)
+
+A `reporting` addition. Migration `0092_reporting_dashboard_layouts`; module `reporting.dashboard`. The staff home dashboard's per-user layout: which KPI widgets a user shows and in which order. No row means the role default (every widget the user's permissions allow, shown, in the registry order). See `_docs/api.md` Dashboard layout.
+
+### 23.1 `dashboard_layouts` (mutable, not audited, not versioned)
+
+| Column | Type | Notes |
+|---|---|---|
+| `user_id` | `UUID` → `users` RESTRICT, **unique** | The owner of the layout: one row per user who customized. |
+| `widgets` | `JSONB` | The saved `[{widget, visible}]` in display order, as sent (after validation). CHECK `jsonb_typeof(widgets) = 'array' AND jsonb_array_length(widgets) BETWEEN 1 AND 20`. Widget codes and booleans only, never a figure. |
+
+No other index than the key and the unique `user_id`. Not `Audited` and no `version`: a per-user UI preference, like `user_preferences` (#36) and `notification_opt_outs` (#119); the last write wins. Entries that are no longer available (a lost permission, a widget removed in a later release) are ignored on read and dropped on the next save, so no migration is needed for a catalog change. The row stays when the user is deactivated or anonymized (RESTRICT, as `user_preferences`; #129 decides deletion).

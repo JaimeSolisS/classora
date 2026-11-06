@@ -1045,6 +1045,37 @@ export interface paths {
         patch: operations["update_report_setup_api_v1_report_setups__setup_id__patch"];
         trace?: never;
     };
+    "/api/v1/reports/dashboard/layout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Dashboard Layout
+         * @description Your dashboard layout: exactly the widgets you may see (each one's KPI
+         *     route permission), in your saved order, or the role default (every
+         *     available widget, shown, in the catalog order).
+         */
+        get: operations["get_dashboard_layout_api_v1_reports_dashboard_layout_get"];
+        /**
+         * Put Dashboard Layout
+         * @description Save your dashboard layout: the widgets in order, each shown or
+         *     hidden. Available widgets you leave out come back, shown, at the end.
+         */
+        put: operations["put_dashboard_layout_api_v1_reports_dashboard_layout_put"];
+        post?: never;
+        /**
+         * Delete Dashboard Layout
+         * @description Reset your dashboard to the role default.
+         */
+        delete: operations["delete_dashboard_layout_api_v1_reports_dashboard_layout_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications": {
         parameters: {
             query?: never;
@@ -12421,6 +12452,44 @@ export interface components {
             version: number;
             /** Expires On */
             expires_on: string | null;
+        };
+        /**
+         * DashboardLayoutResponse
+         * @description The caller's effective dashboard layout (#127 C1): exactly the widgets
+         *     available to them, each once, in their order. Never a KPI figure: each
+         *     widget reads its own KPI route.
+         */
+        DashboardLayoutResponse: {
+            /** Widgets */
+            widgets: components["schemas"]["DashboardWidget"][];
+            /**
+             * Customized
+             * @description Whether the caller saved a layout (false: the role default).
+             */
+            customized: boolean;
+        };
+        /**
+         * DashboardLayoutUpdate
+         * @description ``PUT /api/v1/reports/dashboard/layout`` (#127 C3).
+         */
+        DashboardLayoutUpdate: {
+            /**
+             * Widgets
+             * @description The widgets in display order, each once, 1-20. Available widgets left out are appended, shown, at the end.
+             */
+            widgets: components["schemas"]["DashboardWidget"][];
+        };
+        /**
+         * DashboardWidget
+         * @description One widget of the layout, in display order.
+         */
+        DashboardWidget: {
+            widget: components["schemas"]["WidgetCode"];
+            /**
+             * Visible
+             * @description Whether the dashboard shows it.
+             */
+            visible: boolean;
         };
         /** @enum {string} */
         DateFilter: "required" | "optional" | "none";
@@ -23862,6 +23931,8 @@ export interface components {
              */
             windows: components["schemas"]["AvailabilityWindow"][];
         };
+        /** @enum {string} */
+        WidgetCode: "revenue_trend" | "balances" | "course_profitability" | "room_utilization" | "student_retention" | "tutor_performance";
         /**
          * WithdrawalConfirmed
          * @description ``201`` of a confirm (#101 C2): the withdrawal, the package
@@ -27195,6 +27266,131 @@ export interface operations {
             };
             /** @description Validation Error */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    get_dashboard_layout_api_v1_reports_dashboard_layout_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardLayoutResponse"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    put_dashboard_layout_api_v1_reports_dashboard_layout_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardLayoutUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardLayoutResponse"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    delete_dashboard_layout_api_v1_reports_dashboard_layout_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

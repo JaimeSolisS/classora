@@ -429,6 +429,7 @@ def test_production_app_has_no_demo_route(
         "/api/v1/finance/expenses/{expense_id}/payments",
         "/api/v1/finance/vendors",
         "/api/v1/finance/vendors/{vendor_id}",
+        "/api/v1/reports/dashboard/layout",
         "/api/v1/reports/finance/balances",
         "/api/v1/reports/finance/profitability",
         "/api/v1/reports/kpis/revenue-trend",

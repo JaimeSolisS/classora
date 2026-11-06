@@ -212,7 +212,7 @@ Decision: → ISSUE-A3 (accepted on issue #22).
 - **TanStack Query** for server state and caching. **Zustand** for UI-only state. React Hook Form + Zod for forms.
 - Tailwind + shadcn/ui, central design tokens, Storybook, light/dark/system themes with preferences stored in the database.
 - FullCalendar v7 standard views (MIT; no premium resource views) → ADR-0005. Daily/weekly/monthly; drag-and-drop validated by the server.
-- Recharts and TanStack Table for analytics; pinned `recharts` 3.10.1, added by #322 (lazy route chunk only). Customizable dashboards → ISSUE-X3.
+- Recharts and TanStack Table for analytics; pinned `recharts` 3.10.1, added by #322 (lazy route chunk only). Customizable dashboards: `dnd-kit` (`@dnd-kit/core` 6.3.1, `@dnd-kit/sortable` 10.0.0, `@dnd-kit/utilities` 3.2.2, exact pins), added by #127 (lazy dialog chunk only; ISSUE-X3).
 - Centralized error handling, safe retries, skeleton states. **No optimistic updates on financial mutations.**
 - Layouts adapt by role: desktop-first admin, mobile-friendly tutor, student and guardian views. Target is WCAG 2.2 AA.
 
@@ -273,7 +273,7 @@ Open point: → ISSUE-I7.
 ## 10. Issues: ambiguities, contradictions and missing details
 
 **Legend.** Type: **C** = contradiction, **A** = ambiguity, **M** = missing implementation detail.  
-Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Accepted so far: ISSUE-G1 (in part); ISSUE-D7 (ADR-0001); ISSUE-D1, ISSUE-J1 and ISSUE-J2 (ADR-0003); ISSUE-D2 and ISSUE-D3 (ADR-0004); ISSUE-X4 (issue #12); ISSUE-A1 and ISSUE-A2 (ADR-0002); ISSUE-A3 (issue #22); ISSUE-D6 names part (issue #33); ISSUE-G2, ISSUE-S1, ISSUE-S2, ISSUE-S4, ISSUE-S5, ISSUE-S6 and ISSUE-S7 (ADR-0007); ISSUE-S3 (ADR-0008); ISSUE-D4, ISSUE-D6 `btree_gist` part, ISSUE-SC1, ISSUE-SC2, ISSUE-SC3 and ISSUE-X2 (ADR-0005); ISSUE-F7 `teaching_hours.approve` part (issue #77), closeout review part (issue #78) and progress report review part (issue #83); ISSUE-F1, ISSUE-F2, ISSUE-F3, ISSUE-F4, ISSUE-F5, ISSUE-F6, ISSUE-F7 `payment.record` and `payroll.*` parts, and ISSUE-J4 (ADR-0006); ISSUE-X1 (ADR-0015).  
+Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Accepted so far: ISSUE-G1 (in part); ISSUE-D7 (ADR-0001); ISSUE-D1, ISSUE-J1 and ISSUE-J2 (ADR-0003); ISSUE-D2 and ISSUE-D3 (ADR-0004); ISSUE-X4 (issue #12); ISSUE-A1 and ISSUE-A2 (ADR-0002); ISSUE-A3 (issue #22); ISSUE-D6 names part (issue #33); ISSUE-G2, ISSUE-S1, ISSUE-S2, ISSUE-S4, ISSUE-S5, ISSUE-S6 and ISSUE-S7 (ADR-0007); ISSUE-S3 (ADR-0008); ISSUE-D4, ISSUE-D6 `btree_gist` part, ISSUE-SC1, ISSUE-SC2, ISSUE-SC3 and ISSUE-X2 (ADR-0005); ISSUE-F7 `teaching_hours.approve` part (issue #77), closeout review part (issue #78) and progress report review part (issue #83); ISSUE-F1, ISSUE-F2, ISSUE-F3, ISSUE-F4, ISSUE-F5, ISSUE-F6, ISSUE-F7 `payment.record` and `payroll.*` parts, and ISSUE-J4 (ADR-0006); ISSUE-X1 (ADR-0015); ISSUE-X3 (issue #127, orchestrator-recommended, pending owner review).  
 "Spec" references point to `_docs/spec.md` sections.
 
 ### 10.1 Governance and documentation
@@ -318,6 +318,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - **Implementation note (M8-07, #124):** exports live in `reporting/exports/`. A dataset registry (`register_export_dataset`) maps each export to a staff list page and calls **that page's own service function** with the requester's principal (`families.service.list_students`, `scheduling.service.list_calendar_sessions`, `finance.service.list_expenses`), so it reads no other module's tables and its rows and fields are the page's. Its only writes are its own tables: `export_jobs` and `export_files` (the file's bytes for 24 hours; no file storage, §7.3). CSV and XLSX (`openpyxl`, ADR-0015 amendment); no PDF yet. See `_docs/api.md` Exports and `_docs/data-model.md` §21.
   - **Implementation note (M8-08, #125):** the saved report setups are **export setups** (`reporting/setups/`, table `report_setups`): a name and one `ExportParameters`, owned by its creator and optionally shared with one staff role. Running one posts its parameters to `POST /api/v1/exports`, so every export check applies to the runner and there is one export path. Dashboard widget preferences remain M8-10 (#127), in their own table. See `_docs/api.md` Saved export setups and `_docs/data-model.md` §22.
   - **Implementation note (M8-09, #126):** the analytics KPIs are read-only routes in `reporting` (`kpis.py`, the pure `kpi_rules.py`, `kpis_router.py`) under `/api/v1/reports/kpis/`. They store nothing: no table, migration, index, cache or materialized view; every figure is computed live, within a pinned statement count and a measured volume budget. The money KPIs reuse #117's loaders and pure assembly in `reporting/finance.py`, so a revenue-trend month equals the financial report for that month. Definitions, worked examples and the budget: `_docs/kpis.md`. Dashboard widget preferences remain M8-10 (#127), in their own table.
+  - **Implementation note (M8-10, #127):** the dashboard widget preferences are `reporting/dashboard/`, table `dashboard_layouts`: **one row per user** who customized (`user_id` unique, `ON DELETE RESTRICT`), `widgets` a JSONB array of `{widget, visible}` in display order. It is a per-user preference, **not audited** and not versioned (last write wins), like `user_preferences` (#36). A widget registry maps each widget to its KPI route's permission constants (pinned by a unit test); the effective layout is recomputed on every read, so a lost permission drops a widget at once. Widget data comes only from the KPI routes. See `_docs/api.md` Dashboard layout and `_docs/data-model.md` §23.
 
 #### ISSUE-A3 — How audit events are captured (M)
 - **Spec:** §9 audit trail (actor, action, timestamp, prior/new values).
@@ -743,7 +744,10 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 #### ISSUE-X3 — Dashboard drag-and-drop (M)
 - **Spec:** §8 "drag/reorder widgets".
 - **Problem:** No library for drag-and-drop is listed.
-- **Resolution — PROPOSED:** Use `dnd-kit`, which is accessible and supports keyboard sorting as WCAG requires. It is a supporting library and needs approval. Widget layout is stored per user in `reporting` (ISSUE-A2).
+- **Resolution — ACCEPTED** (orchestrator-recommended on #127, owner-delegated, pending owner review): `dnd-kit`, which is accessible and supports keyboard sorting as WCAG requires.
+  - Pins (exact, MIT, peer `react >=16.8`): `@dnd-kit/core` 6.3.1, `@dnd-kit/sortable` 10.0.0, `@dnd-kit/utilities` 3.2.2.
+  - Lazy dialog chunk only (the dashboard's "Personalizar" dialog), with the pointer, touch and keyboard sensors and localized screen-reader instructions and announcements. "Subir"/"Bajar" buttons on every row are the WCAG 2.2 SC 2.5.7 single-pointer alternative.
+  - Widget layout is stored per user in `reporting` (ISSUE-A2, `dashboard_layouts`).
 
 #### ISSUE-X4 — OpenAPI client generator and drift check (M)
 - **Resolution — ACCEPTED** (human decision on GitHub issue #12, M1-12, 2026-10-17, owner JaimeSolisS; no ADR). Option (a) as proposed below; conventions in [`_docs/api.md`](api.md):

@@ -6,6 +6,22 @@ import { readFileSync } from 'node:fs';
 
 type Common = {
   apiStatus: { live: string };
+  // M8-10 (#127): the staff dashboard on the home page.
+  dashboard: {
+    title: string;
+    customize: string;
+    dialog: Record<
+      | 'title'
+      | 'reorder'
+      | 'show'
+      | 'moveUp'
+      | 'moveDown'
+      | 'save'
+      | 'cancel'
+      | 'reset',
+      string
+    >;
+  };
   theme: {
     label: string;
     options: Record<'light' | 'dark' | 'system', string>;

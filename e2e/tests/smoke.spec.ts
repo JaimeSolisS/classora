@@ -17,8 +17,13 @@ test('the app shell loads without errors', async ({ page }) => {
 
   await expect(page.getByRole('main')).toBeVisible();
   await expect(page).toHaveTitle('Classora');
-  // The home page's own API call has finished (and succeeded).
-  await expect(page.getByRole('status')).toHaveText(common.apiStatus.live);
+  // The Owner's home page is the dashboard (M8-10 D1): its layout loaded.
+  await expect(
+    page
+      .getByRole('main')
+      .getByRole('heading', { level: 1, name: common.dashboard.title }),
+  ).toBeVisible();
+  await expect(page.locator('[data-dashboard-widgets]')).toBeVisible();
   expect(errors).toEqual([]);
 });
 

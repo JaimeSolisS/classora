@@ -51,9 +51,10 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # classrooms and classroom_availability_windows in catalog, M3-03;
     # approval_requests, M3-04; notifications, M3-05 (notification_opt_outs,
     # M8-02); import_jobs and import_rows, M8-05; export_jobs and
-    # export_files in reporting, M8-07; report_setups, M8-08; tutor_profiles in
-    # staff, M3-07; tutor_qualifications in staff, M3-08;
-    # tutor_availability_settings, _windows and _exceptions in staff, M3-09;
+    # export_files in reporting, M8-07; report_setups, M8-08;
+    # dashboard_layouts, M8-10; tutor_profiles in staff, M3-07;
+    # tutor_qualifications in staff, M3-08; tutor_availability_settings,
+    # _windows and _exceptions in staff, M3-09;
     # tutor_preferred_classrooms in staff, M3-09b), then scheduling
     # (class_sessions and class_session_participants, M4-02;
     # scheduling_policies in administration, M4-16; class_session_overrides,
@@ -98,6 +99,7 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "export_jobs",
         "export_files",
         "report_setups",
+        "dashboard_layouts",
         "academic_periods",
         "closures",
         "classrooms",

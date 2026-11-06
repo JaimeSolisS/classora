@@ -469,6 +469,8 @@ const API_CODES = [
   // Saved export setups (#125 D4).
   'report_setup_limit_reached',
   'report_setup_name_taken',
+  // Dashboard layout (#127 E2).
+  'dashboard_widget_unavailable',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

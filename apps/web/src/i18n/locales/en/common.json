@@ -8389,6 +8389,38 @@
       }
     }
   },
+  "dashboard": {
+    "title": "Dashboard",
+    "intro": "The KPIs you may see. Choose which to show, and in which order, with “Customize”.",
+    "customize": "Customize",
+    "loading": "Loading the dashboard…",
+    "layoutError": "Your dashboard settings couldn't be loaded",
+    "layoutErrorDetail": "Showing the default widgets.",
+    "empty": "No widgets are shown",
+    "emptyHint": "Use “Customize” to show some.",
+    "dialog": {
+      "title": "Customize the dashboard",
+      "description": "Choose which widgets to show and put them in order: drag them, use the keyboard, or the Move up and Move down buttons.",
+      "listLabel": "Dashboard widgets, in order",
+      "reorder": "Reorder “{{title}}”",
+      "show": "Show “{{title}}”",
+      "moveUp": "Move “{{title}}” up",
+      "moveDown": "Move “{{title}}” down",
+      "position": "“{{title}}”, position {{position}} of {{total}}",
+      "save": "Save",
+      "cancel": "Cancel",
+      "reset": "Restore default",
+      "permissionsChanged": "Your permissions changed; check the dashboard",
+      "instructions": "To reorder, press Space or Enter to pick up the widget, move it with the up and down arrow keys, and press Space or Enter to drop it. Press Escape to cancel.",
+      "announcements": {
+        "start": "Picked up “{{title}}”, position {{position}} of {{total}}.",
+        "over": "“{{title}}” moved to position {{position}} of {{total}}.",
+        "outside": "“{{title}}” is outside the list.",
+        "end": "Dropped “{{title}}” at position {{position}} of {{total}}.",
+        "cancel": "Move cancelled. “{{title}}” returned to position {{position}} of {{total}}."
+      }
+    }
+  },
   "familyBilling": {
     "title": "Family billing — {{name}}",
     "fallbackTitle": "Family billing",

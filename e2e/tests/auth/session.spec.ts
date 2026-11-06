@@ -217,7 +217,12 @@ test.describe('the login page', () => {
     await page.goto('/login');
     await signInThroughTheForm(page);
     await expect(page).toHaveURL('/');
-    await expect(page.getByRole('status')).toHaveText(common.apiStatus.live);
+    // The Owner lands on the dashboard (M8-10 D1).
+    await expect(
+      page
+        .getByRole('main')
+        .getByRole('heading', { level: 1, name: common.dashboard.title }),
+    ).toBeVisible();
     // A second history entry under the guard.
     await page.goto('/e2e-after-login');
     await expect(

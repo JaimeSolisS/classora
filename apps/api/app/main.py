@@ -97,6 +97,7 @@ from app.modules.identity.service import (
 )
 from app.modules.identity.user_admin_router import router as user_admin_router
 from app.modules.payroll.settings_router import router as payroll_settings_router
+from app.modules.reporting.dashboard.router import router as dashboard_router
 from app.modules.reporting.exports.router import router as exports_router
 from app.modules.reporting.kpis_router import router as kpi_reports_router
 from app.modules.reporting.router import router as financial_reports_router
@@ -323,6 +324,7 @@ def build_app(
     app.include_router(imports_router)
     app.include_router(exports_router)
     app.include_router(report_setups_router)
+    app.include_router(dashboard_router)
     app.include_router(notifications_router)
     app.include_router(business_settings_router)
     app.include_router(scheduling_policies_router)
