@@ -2265,6 +2265,30 @@ reauth = "user.invitation.staff_role"
 reauth_conditional = true
 
 [[route]]
+method = "GET"
+path = "/api/v1/jobs"
+access = "permission"
+permission = "jobs.manage"
+allow = ["owner", "administrator"]
+# #128 D1, E3: failed background jobs (no record-level policy).
+
+[[route]]
+method = "GET"
+path = "/api/v1/jobs/tasks"
+access = "permission"
+permission = "jobs.manage"
+allow = ["owner", "administrator"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/jobs/{job_id}/retry"
+access = "permission"
+permission = "jobs.manage"
+allow = ["owner", "administrator"]
+# The placeholder id 1 is no failed job: 404 for the allowed roles. No
+# reauthentication and no Idempotency-Key (#128 E5).
+
+[[route]]
 method = "PATCH"
 path = "/api/v1/learning-plan-milestones/{milestone_id}"
 access = "authenticated"

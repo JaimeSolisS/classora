@@ -61,23 +61,36 @@ or ``ends_on`` change (#116 E8); :func:`defer_import_run` the trigger of
 ``administration:run_imports`` after an import commit request (#122 D1);
 :func:`defer_export_run` the trigger of ``reporting:run_exports`` after an
 export request (#124 B2).
+
+**Failed jobs** (#128; architecture ISSUE-J3): Procrastinate stores no error
+text, so the worker middleware :func:`record_job_failure` writes the
+sanitized error of every failed run to ``job_failures``
+(:func:`sanitize_job_error`: class name, application code, SQLSTATE; never
+the message, traceback or arguments). Every registered task is classified in
+:data:`RETRYABLE_TASKS` or :data:`NON_RETRYABLE_TASKS`; only a retryable one
+can be retried from ``POST /api/v1/jobs/{job_id}/retry``.
 """
 
 import functools
 import inspect
 import logging
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any, Final, get_type_hints
 
 from fastapi import Request
-from procrastinate import App, PsycopgConnector
-from procrastinate.exceptions import AlreadyEnqueued
+from procrastinate import App, JobContext, PsycopgConnector
+from procrastinate.exceptions import AlreadyEnqueued, JobAborted
+from procrastinate.middleware import AsyncCallNext
+from procrastinate.worker import Worker
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.config import AppEnv, Settings
 from app.core.db import async_direct_database_url, create_direct_engine
+from app.core.errors import AppError
+from app.core.job_failures import ERROR_CLASS_MAX_LENGTH, TASK_NAME_MAX_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +190,150 @@ purges expired files; also deferred after ``POST /api/v1/exports``."""
 EXPORTS_QUEUEING_LOCK: Final = "reporting-run-exports"
 """At most one queued ``reporting:run_exports`` job (the periodic tick shares
 it)."""
+
+# --- Retry classification (#128 C1, E2) --------------------------------------------
+
+RETRYABLE_TASKS: Final[frozenset[str]] = frozenset(
+    {
+        # Every production task is a periodic sweeper whose only argument is
+        # Procrastinate's ``timestamp`` (which none of them reads). Each run
+        # recomputes its work from committed state, runs each item in its own
+        # Unit of Work, and writes idempotently on a natural key or a status
+        # guard, so a retry is the same as the next tick, only earlier (#128
+        # E2 table):
+        "identity:purge_auth_sessions",  # deletes expired rows
+        "idempotency:purge_keys",  # deletes expired rows
+        "ratelimit:purge_counters",  # deletes expired rows
+        "scheduling:expire_offers",  # status guard: pending past respond_by
+        MATERIALIZE_SERIES_TASK,  # series horizon + existing occurrences
+        "academics:create_progress_report_placeholders",  # per-schedule key
+        SESSION_CHARGES_TASK,  # uq_charges_session_student + anti-join
+        ENROLLMENT_CHARGES_TASK,  # natural keys per enrollment kind
+        TUITION_CHARGES_TASK,  # uq_charges_tuition_period
+        PACKAGE_EXPIRY_TASK,  # natural key package_id (already_expired)
+        CHARGE_REMINDERS_TASK,  # ON CONFLICT (charge_id, stage) DO NOTHING
+        SCHEDULE_RECONCILIATION_TASK,  # decisions per (session, student)
+        PAYROLL_OPEN_PERIODS_TASK,  # a rerun leaves the same periods (#106)
+        PAYROLL_POST_ADJUSTMENTS_TASK,  # keys approval:<id> / cancellation:<id>
+        RECURRING_EXPENSES_TASK,  # uq_expenses_template_period
+        # Re-runs the sweeper over ``committing`` import jobs only (per-batch
+        # dedup, an advisory lock per kind, the job status). It never resumes
+        # a business-level ``failed`` import: that stays ``POST
+        # /api/v1/imports/{id}/commit`` with the kind's permission (#128 C3).
+        IMPORTS_TASK,
+        # Builds ``queued`` exports only (``FOR UPDATE SKIP LOCKED``); a
+        # business-level ``failed`` export stays failed (#128 C3).
+        EXPORTS_TASK,
+        # Local/dev demo tasks: they only log (``demo:fail`` raises on purpose).
+        "demo:succeed",
+        "demo:fail",
+        "demo:periodic",
+    }
+)
+"""Tasks an administrator may retry (#128 C1).
+
+A task is retryable only if (1) its arguments are only ``timestamp`` or ids,
+(2) it recomputes its work from committed state, and (3) its writes are
+idempotent on a natural key or a status guard. A retry re-runs the whole
+task; it never replays one business item. Every registered task must be in
+exactly one of :data:`RETRYABLE_TASKS` and :data:`NON_RETRYABLE_TASKS`
+(pinned in ``tests/unit/test_job_rules.py``)."""
+
+NON_RETRYABLE_TASKS: Final[frozenset[str]] = frozenset()
+"""Tasks that must never be retried from the failed jobs page (#128 C1):
+one whose arguments carry intent (an amount, a list, an item to replay) or
+that writes without a natural key. None today."""
+
+# --- Failure capture (#128 A1, A2) -------------------------------------------------
+
+ERROR_CODE_PATTERN: Final = re.compile(r"[a-z][a-z0-9_]{0,63}")
+SQLSTATE_PATTERN: Final = re.compile(r"[0-9A-Z]{5}")
+
+RECORD_JOB_FAILURE_QUERY: Final = """
+INSERT INTO job_failures (job_id, task_name, error_class, error_code, sqlstate)
+VALUES (%(job_id)s, %(task_name)s, %(error_class)s, %(error_code)s, %(sqlstate)s)
+ON CONFLICT (job_id) DO UPDATE SET
+    task_name = EXCLUDED.task_name,
+    error_class = EXCLUDED.error_class,
+    error_code = EXCLUDED.error_code,
+    sqlstate = EXCLUDED.sqlstate,
+    failed_at = now()
+"""
+
+
+def _sqlstate_of(exc: BaseException) -> str | None:
+    for candidate in (exc, getattr(exc, "orig", None), exc.__cause__):
+        if candidate is None:
+            continue
+        for attribute in ("sqlstate", "pgcode"):
+            value = getattr(candidate, attribute, None)
+            if isinstance(value, str) and SQLSTATE_PATTERN.fullmatch(value):
+                return value
+    return None
+
+
+def sanitize_job_error(exc: BaseException) -> tuple[str, str | None, str | None]:
+    """``(error_class, error_code, sqlstate)`` of a failed run (#128 A2).
+
+    - ``error_class``: ``type(exc).__qualname__``, at most 200 characters;
+    - ``error_code``: ``exc.code`` when ``exc`` is an
+      :class:`app.core.errors.AppError` and the code is a ``str`` matching
+      ``^[a-z][a-z0-9_]{0,63}$``, else ``None`` (SQLAlchemy errors carry a
+      ``code`` too: a documentation link id such as ``gkpj``, not an
+      application code);
+    - ``sqlstate``: the first five-character ``[0-9A-Z]{5}`` ``sqlstate`` or
+      ``pgcode`` on ``exc``, ``exc.orig`` or ``exc.__cause__``, else ``None``.
+
+    Never reads ``str(exc)``, ``exc.args`` or the traceback: driver messages
+    quote key values (#128 E1).
+    """
+    error_class = type(exc).__qualname__[:ERROR_CLASS_MAX_LENGTH]
+    code = exc.code if isinstance(exc, AppError) else None
+    error_code = (
+        code if isinstance(code, str) and ERROR_CODE_PATTERN.fullmatch(code) else None
+    )
+    return error_class, error_code, _sqlstate_of(exc)
+
+
+async def record_job_failure(
+    call_next: AsyncCallNext, context: JobContext, worker: Worker
+) -> Any:
+    """Worker middleware: record a failed run in ``job_failures`` (#128 A1).
+
+    Passed as ``worker_middleware`` by :func:`app.worker.worker_options`. On
+    an exception other than ``JobAborted`` (or a cancellation, which is not
+    an ``Exception``) it upserts the job's row through the worker's own
+    connector (the latest failure wins), then re-raises the **original**
+    exception unchanged, so Procrastinate's status, retry strategy and
+    logging are untouched. If the insert fails, its error class and the job
+    id are logged at ``ERROR`` and the original exception is still raised.
+
+    A ``TaskNotFound`` is raised before worker middleware runs, so it is
+    never recorded (#128 A3).
+    """
+    try:
+        return await call_next()
+    except JobAborted:
+        raise
+    except Exception as exc:
+        job_id = context.job.id
+        try:
+            error_class, error_code, sqlstate = sanitize_job_error(exc)
+            await worker.app.connector.execute_query_async(
+                RECORD_JOB_FAILURE_QUERY,
+                job_id=job_id,
+                task_name=context.job.task_name[:TASK_NAME_MAX_LENGTH],
+                error_class=error_class,
+                error_code=error_code,
+                sqlstate=sqlstate,
+            )
+        except Exception as insert_error:  # noqa: BLE001 - never mask the run's error
+            logger.error(
+                "Recording the job failure failed",
+                extra={"job_id": job_id, "error": type(insert_error).__name__},
+            )
+        raise
+
 
 # Worker concurrency is fixed at 1 here; making it configurable and sizing it
 # (with the pools below and mem_limit) is M10-04 (ISSUE-I8).

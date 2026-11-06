@@ -383,6 +383,8 @@ def test_the_guard_scans_the_real_audited_models():
     assert "user_preferences" not in audited_table_names()
     # #127 A2: a dashboard layout is a per-user preference too.
     assert "dashboard_layouts" not in audited_table_names()
+    # #128 B1: job failures are core bookkeeping; the retry is audited.
+    assert "job_failures" not in audited_table_names()
     # #78 A2: approval revisions and staff corrections are append-only; their
     # named events are their record (the #76 E3 pattern).
     assert (

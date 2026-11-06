@@ -905,6 +905,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Jobs
+         * @description Background jobs that failed at least once (by default, those still
+         *     `failed`), newest failure first. The error is its class, application code
+         *     and SQLSTATE only; job arguments are never shown.
+         */
+        get: operations["list_jobs_api_v1_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/jobs/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tasks
+         * @description The registered background tasks, sorted, and whether each may be
+         *     retried.
+         */
+        get: operations["list_tasks_api_v1_jobs_tasks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Job
+         * @description Put a failed job back in the queue (the same job, one more attempt).
+         *     The task re-checks everything pending, so a retry never duplicates
+         *     charges or records. The worker picks it up on its next poll.
+         */
+        post: operations["retry_job_api_v1_jobs__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/exports/datasets": {
         parameters: {
             query?: never;
@@ -12312,6 +12377,13 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** CursorPage[FailedJobItem] */
+        CursorPage_FailedJobItem_: {
+            /** Items */
+            items: components["schemas"]["FailedJobItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** CursorPage[FamilyLearningNote] */
         CursorPage_FamilyLearningNote_: {
             /** Items */
@@ -14459,6 +14531,63 @@ export interface components {
             end: string;
         };
         /**
+         * FailedJobItem
+         * @description A background job that failed at least once (#128 D2, E4).
+         *
+         *     Never the job's arguments, lock, queueing lock, worker or schedule, nor
+         *     an error message or traceback: the error is its class name, application
+         *     code and SQLSTATE only.
+         */
+        FailedJobItem: {
+            /** Id */
+            id: number;
+            /** Task Name */
+            task_name: string;
+            /** Queue Name */
+            queue_name: string;
+            status: components["schemas"]["JobStatus"];
+            /** Attempts */
+            attempts: number;
+            /**
+             * Error Class
+             * @description The exception class name; null when unknown (failed before failures were recorded).
+             */
+            error_class: string | null;
+            /**
+             * Error Code
+             * @description The application error code, if any.
+             */
+            error_code: string | null;
+            /**
+             * Sqlstate
+             * @description The database SQLSTATE, if any.
+             */
+            sqlstate: string | null;
+            /**
+             * Deferred At
+             * @description When the job was first queued.
+             */
+            deferred_at: string | null;
+            /**
+             * Failed At
+             * Format: date-time
+             * @description The latest failure.
+             */
+            failed_at: string;
+            /**
+             * Retried Count
+             * @description How many times it was retried by hand.
+             */
+            retried_count: number;
+            /** Last Retried At */
+            last_retried_at: string | null;
+            /**
+             * Retryable
+             * @description The task may be retried and the job is `failed` now.
+             */
+            retryable: boolean;
+        };
+        /**
          * FamilyCreate
          * @description A new family (``POST /api/v1/families``): active, with no members.
          */
@@ -15787,6 +15916,28 @@ export interface components {
         InvitationTokenRequest: {
             /** Token */
             token: string;
+        };
+        /** @enum {string} */
+        JobStatus: "todo" | "doing" | "succeeded" | "failed" | "cancelled" | "aborted";
+        /** @enum {string} */
+        JobStatusFilter: "failed" | "todo" | "doing" | "succeeded" | "cancelled" | "aborted" | "any";
+        /**
+         * JobTaskItem
+         * @description A registered background task (#128 D3).
+         */
+        JobTaskItem: {
+            /** Task Name */
+            task_name: string;
+            /** Retryable */
+            retryable: boolean;
+        };
+        /**
+         * JobTaskList
+         * @description The registered tasks, sorted by name (no ``builtin:`` task).
+         */
+        JobTaskList: {
+            /** Items */
+            items: components["schemas"]["JobTaskItem"][];
         };
         /**
          * Format: decimal
@@ -18948,7 +19099,7 @@ export interface components {
         /** @enum {string} */
         PeriodType: "school_year" | "semester" | "term";
         /** @enum {string} */
-        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "billing.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "expense.configure" | "expense.manage" | "expense.view" | "family.manage" | "finance.refund.approve" | "finance.report.view" | "guardian.view" | "learning_plan.manage" | "payment.record" | "payroll.finalize" | "payroll.manage" | "payroll.payment.record" | "payroll.prepare" | "payroll.view" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
+        PermissionCode: "academic_note.review" | "assignment.review" | "attendance.correct" | "audit.view" | "billing.manage" | "billing.view" | "catalog.manage" | "consent.record" | "course.manage" | "course.view" | "evaluation.manage" | "expense.configure" | "expense.manage" | "expense.view" | "family.manage" | "finance.refund.approve" | "finance.report.view" | "guardian.view" | "jobs.manage" | "learning_plan.manage" | "payment.record" | "payroll.finalize" | "payroll.manage" | "payroll.payment.record" | "payroll.prepare" | "payroll.view" | "progress_report.review" | "qualification.review" | "registration.review" | "schedule.assign" | "schedule.manage" | "schedule.override" | "schedule.view" | "settings.manage" | "student.manage" | "student.view" | "teaching_hours.approve" | "tutor.manage" | "tutor.view" | "user.admin_role.assign" | "user.delegation.manage" | "user.invite" | "user.manage" | "user.owner_role.assign" | "user.password_reset.issue" | "user.role.assign" | "user.view";
         /** @enum {string} */
         PlanAction: "activate" | "complete" | "discontinue";
         /** @enum {string} */
@@ -26747,6 +26898,178 @@ export interface operations {
                 };
             };
             /** @description The import changed since it was loaded (version_conflict); reload and retry; the import is not staged or failed (import_not_discardable). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_jobs_api_v1_jobs_get: {
+        parameters: {
+            query?: {
+                /** @description A task name. */
+                task?: string | null;
+                /** @description The job's current status, or `any`. */
+                status?: components["schemas"]["JobStatusFilter"];
+                /** @description Failed at or after (inclusive). */
+                from?: string | null;
+                /** @description Failed before (exclusive). */
+                to?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CursorPage_FailedJobItem_"];
+                };
+            };
+            /** @description The pagination cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_tasks_api_v1_jobs_tasks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobTaskList"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    retry_job_api_v1_jobs__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FailedJobItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such job, or one that never failed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The task can't be retried (job_not_retryable); the job isn't failed (job_not_failed); a queued run of the task already covers it (job_already_queued). */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -15,6 +15,7 @@ from pydantic import SecretStr
 from app import worker
 from app.core import jobs
 from app.core.config import Settings
+from app.core.errors import AppError
 from app.main import create_app
 from tests.authz.csrf import origin_for
 
@@ -662,6 +663,157 @@ def test_worker_runs_one_job_at_a_time_and_handles_its_own_signals():
     assert options["concurrency"] == 1
     assert options["name"] == "classora-worker"
     assert options["install_signal_handlers"] is False
+    # #128 A1: every failed run's sanitized error goes to job_failures.
+    assert options["worker_middleware"] == [jobs.record_job_failure]
+    assert set(options) == {
+        "name",
+        "concurrency",
+        "shutdown_graceful_timeout",
+        "install_signal_handlers",
+        "worker_middleware",
+    }
+
+
+# --- #128 C2 retry classification ---------------------------------------------------
+
+
+@pytest.mark.parametrize("app_env", ["local", "prod"])
+def test_every_registered_task_is_classified_for_retry_exactly_once(app_env):
+    # A new task must be added to RETRYABLE_TASKS or NON_RETRYABLE_TASKS
+    # (app/core/jobs.py); the assertion names it.
+    app = jobs.create_job_app(jobs.worker_connector(settings()), app_env=app_env)
+
+    assert jobs.RETRYABLE_TASKS.isdisjoint(jobs.NON_RETRYABLE_TASKS)
+    unclassified = {
+        name
+        for name in jobs.task_parameter_types(app)
+        if name not in jobs.RETRYABLE_TASKS | jobs.NON_RETRYABLE_TASKS
+    }
+    assert unclassified == set()
+
+
+def test_the_retry_classification_names_only_registered_tasks():
+    app = jobs.create_job_app(jobs.worker_connector(settings()), app_env="local")
+
+    assert jobs.RETRYABLE_TASKS | jobs.NON_RETRYABLE_TASKS == set(
+        jobs.task_parameter_types(app)
+    )
+    # #128 C1: today every task is a retryable sweeper.
+    assert jobs.NON_RETRYABLE_TASKS == frozenset()
+    assert jobs.RETRYABLE_TASKS == DEMO_TASKS | MODULE_TASKS
+
+
+# --- #128 A1 failure-capture middleware ---------------------------------------------
+
+
+class _FakeConnector:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error
+        self.calls: list[tuple[str, dict[str, object]]] = []
+
+    async def execute_query_async(self, query: str, **arguments: object) -> None:
+        self.calls.append((query, arguments))
+        if self.error is not None:
+            raise self.error
+
+
+class _FakeJob:
+    id = 41
+    task_name = "billing:post_session_charges"
+
+
+class _FakeContext:
+    job = _FakeJob()
+
+
+class _FakeWorker:
+    def __init__(self, connector: _FakeConnector) -> None:
+        self.app = type("FakeApp", (), {"connector": connector})()
+
+
+class _AppFailure(AppError):
+    status = 409
+    code = "charge_posting_failed"
+    detail = "The run failed."
+
+
+@pytest.mark.anyio
+async def test_the_middleware_records_the_failure_and_reraises_the_original():
+    connector = _FakeConnector()
+    original = _AppFailure(detail="Ana López ana@example.com")
+
+    async def call_next() -> None:
+        raise original
+
+    with pytest.raises(_AppFailure) as raised:
+        await jobs.record_job_failure(
+            call_next,
+            _FakeContext(),  # type: ignore[arg-type]
+            _FakeWorker(connector),  # type: ignore[arg-type]
+        )
+
+    assert raised.value is original
+    [(query, arguments)] = connector.calls
+    assert "ON CONFLICT (job_id) DO UPDATE" in query
+    assert arguments == {
+        "job_id": 41,
+        "task_name": "billing:post_session_charges",
+        "error_class": "_AppFailure",
+        "error_code": "charge_posting_failed",
+        "sqlstate": None,
+    }
+
+
+@pytest.mark.anyio
+async def test_the_middleware_still_reraises_when_the_insert_fails(caplog):
+    connector = _FakeConnector(OSError("db down at host secret-host"))
+    original = RuntimeError("run failed")
+
+    async def call_next() -> None:
+        raise original
+
+    with caplog.at_level("ERROR", logger=jobs.__name__):
+        with pytest.raises(RuntimeError) as raised:
+            await jobs.record_job_failure(
+                call_next,
+                _FakeContext(),  # type: ignore[arg-type]
+                _FakeWorker(connector),  # type: ignore[arg-type]
+            )
+
+    assert raised.value is original
+    [record] = caplog.records
+    assert record.message == "Recording the job failure failed"
+    assert record.error == "OSError"
+    assert record.job_id == 41
+    assert "secret-host" not in caplog.text
+
+
+@pytest.mark.anyio
+async def test_the_middleware_passes_results_and_aborts_through_untouched():
+    from procrastinate.exceptions import JobAborted
+
+    connector = _FakeConnector()
+
+    async def succeeds() -> str:
+        return "done"
+
+    async def aborted() -> None:
+        raise JobAborted()
+
+    result = await jobs.record_job_failure(
+        succeeds,
+        _FakeContext(),  # type: ignore[arg-type]
+        _FakeWorker(connector),  # type: ignore[arg-type]
+    )
+    with pytest.raises(JobAborted):
+        await jobs.record_job_failure(
+            aborted,
+            _FakeContext(),  # type: ignore[arg-type]
+            _FakeWorker(connector),  # type: ignore[arg-type]
+        )
+
+    assert result == "done"
+    assert connector.calls == []
 
 
 def test_worker_rejects_unknown_arguments(monkeypatch, capsys):

@@ -496,5 +496,8 @@
   "export_expired": "Esta exportación caducó. Solicítala de nuevo.",
   "report_setup_limit_reached": "Ya tienes 50 configuraciones guardadas; elimina alguna.",
   "report_setup_name_taken": "Ya tienes una configuración con este nombre.",
-  "dashboard_widget_unavailable": "Uno de los widgets ya no está disponible para ti."
+  "dashboard_widget_unavailable": "Uno de los widgets ya no está disponible para ti.",
+  "job_not_retryable": "Esta tarea no se puede reintentar.",
+  "job_not_failed": "Esta tarea ya no está fallida.",
+  "job_already_queued": "Ya hay una ejecución en cola que cubrirá este trabajo."
 }

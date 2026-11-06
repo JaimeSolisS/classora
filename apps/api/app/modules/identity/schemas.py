@@ -53,6 +53,7 @@ type PermissionCode = Literal[
     "finance.refund.approve",
     "finance.report.view",
     "guardian.view",
+    "jobs.manage",
     "learning_plan.manage",
     "payment.record",
     "payroll.finalize",

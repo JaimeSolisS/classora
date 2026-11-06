@@ -76,8 +76,9 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
     # _snapshots, M4-19; course_cohorts, M4-20; cohort_enrollments, M4-21);
     # audit_events
     # (M2-04) and
-    # rate_limit_counters (M2-09) and idempotency_keys (M6-03) are shared
-    # infrastructure; billing (service_prices and price_versions, M6-04;
+    # rate_limit_counters (M2-09), idempotency_keys (M6-03) and job_failures
+    # (M8-11) are shared infrastructure; billing (service_prices and
+    # price_versions, M6-04;
     # billing_accounts, payment_methods, charges, charge_adjustments,
     # payments, payment_reversals, payment_allocations, allocation_releases
     # and refunds, M6-05; billing_settings, M6-06; custom_prices,
@@ -150,6 +151,7 @@ def test_app_metadata_holds_only_the_registered_domain_tables():
         "auth_sessions",
         "rate_limit_counters",
         "idempotency_keys",
+        "job_failures",
         "service_prices",
         "price_versions",
         "billing_accounts",

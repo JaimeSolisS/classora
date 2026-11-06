@@ -117,6 +117,9 @@ EXPECTED = {
     # #117 (ADR-0017 E12): financial reports; no Administrator, even with
     # payroll.finalize delegated.
     "finance.report.view": {OWNER, FINANCE_STAFF},
+    # #128 E3 (ISSUE-J3): failed background jobs, view and retry; not
+    # delegable.
+    "jobs.manage": {OWNER, ADMINISTRATOR},
 }
 
 
@@ -130,8 +133,8 @@ def test_catalog_matches_the_approved_table():
     }
 
     assert by_permission == EXPECTED
-    assert len(PERMISSIONS) == 46
-    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 116
+    assert len(PERMISSIONS) == 47
+    assert sum(len(codes) for codes in ROLE_PERMISSIONS.values()) == 118
 
 
 def test_every_code_has_the_dotted_form():

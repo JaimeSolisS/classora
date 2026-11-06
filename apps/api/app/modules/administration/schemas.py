@@ -1,6 +1,6 @@
 """Administration request and response bodies: the audit log (#22), the
 business settings (#37), the approval requests (#40), the notifications
-(#41) and the scheduling policy (#61)."""
+(#41), the scheduling policy (#61) and the failed jobs (#128)."""
 
 import unicodedata
 import uuid
@@ -83,6 +83,58 @@ class AuditRecordTypeList(BaseModel):
     """The audited table names, sorted (#120 B4)."""
 
     items: list[str]
+
+
+# --- Failed jobs (#128) ---------------------------------------------------------
+
+type JobStatus = Literal["todo", "doing", "succeeded", "failed", "cancelled", "aborted"]
+"""Procrastinate's job statuses."""
+type JobStatusFilter = Literal[
+    "failed", "todo", "doing", "succeeded", "cancelled", "aborted", "any"
+]
+"""The list's ``status`` filter: one status, or ``any`` (#128 D1)."""
+
+
+class FailedJobItem(BaseModel):
+    """A background job that failed at least once (#128 D2, E4).
+
+    Never the job's arguments, lock, queueing lock, worker or schedule, nor
+    an error message or traceback: the error is its class name, application
+    code and SQLSTATE only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    task_name: str
+    queue_name: str
+    status: JobStatus
+    attempts: int
+    error_class: str | None = Field(
+        description="The exception class name; null when unknown (failed before"
+        " failures were recorded)."
+    )
+    error_code: str | None = Field(description="The application error code, if any.")
+    sqlstate: str | None = Field(description="The database SQLSTATE, if any.")
+    deferred_at: datetime | None = Field(description="When the job was first queued.")
+    failed_at: datetime = Field(description="The latest failure.")
+    retried_count: int = Field(description="How many times it was retried by hand.")
+    last_retried_at: datetime | None
+    retryable: bool = Field(
+        description="The task may be retried and the job is `failed` now."
+    )
+
+
+class JobTaskItem(BaseModel):
+    """A registered background task (#128 D3)."""
+
+    task_name: str
+    retryable: bool
+
+
+class JobTaskList(BaseModel):
+    """The registered tasks, sorted by name (no ``builtin:`` task)."""
+
+    items: list[JobTaskItem]
 
 
 # --- Business settings (#37) ---------------------------------------------------------

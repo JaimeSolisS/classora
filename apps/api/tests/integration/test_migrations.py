@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0092"
+HEAD = "0093"
 FINANCE_TABLES_0083 = frozenset({"expense_categories", "vendors"})
 EXPENSE_TABLES_0084 = frozenset(
     {"expenses", "expense_payments", "expense_payment_reversals", "expense_adjustments"}
@@ -84,6 +84,7 @@ IMPORT_TABLES_0088 = ("import_jobs", "import_rows")
 EXPORT_TABLES_0090 = ("export_jobs", "export_files")
 SETUPS_0091 = "report_setups"
 LAYOUTS_0092 = "dashboard_layouts"
+FAILURES_0093 = "job_failures"
 PAY_RULES = "session_pay_rules"
 LINES = "payroll_lines"
 SALARY_LINE_COLUMNS = frozenset(
@@ -489,6 +490,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *EXPORT_TABLES_0090,
             SETUPS_0091,
             LAYOUTS_0092,
+            FAILURES_0093,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4990,9 +4992,23 @@ def _of_0092(diff: Any) -> bool:
     return diff[0] == "add_index" and diff[1].table.name == LAYOUTS_0092
 
 
+def _of_0093(diff: Any) -> bool:
+    """A metadata difference that revision 0093 adds: the job failures table
+    and its indexes (#128 B1; its foreign key comes with it). CHECKs are not
+    compared."""
+    if diff[0] == "add_table":
+        return bool(diff[1].name == FAILURES_0093)
+    return diff[0] == "add_index" and diff[1].table.name == FAILURES_0093
+
+
+def _of_0092_on(diff: Any) -> bool:
+    """A metadata difference that revision 0092 or a later one adds."""
+    return _of_0092(diff) or _of_0093(diff)
+
+
 def _of_0091_on(diff: Any) -> bool:
     """A metadata difference that revision 0091 or a later one adds."""
-    return _of_0091(diff) or _of_0092(diff)
+    return _of_0091(diff) or _of_0092_on(diff)
 
 
 def _of_0090_on(diff: Any) -> bool:
@@ -17810,7 +17826,7 @@ def test_0091_adds_the_table_and_downgrade_restores_0090(fresh_database_url):
     command.upgrade(config, "0091")
 
     assert version_nums(dsn) == ["0091"]
-    assert [d for d in metadata_diff(dsn) if not _of_0092(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0092_on(d)] == []
     assert public_tables(dsn) - tables == {SETUPS_0091}
 
     command.downgrade(config, "0090")
@@ -17931,14 +17947,14 @@ def test_0092_adds_the_table_and_downgrade_restores_0091(fresh_database_url):
     command.upgrade(config, "0092")
 
     assert version_nums(dsn) == ["0092"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0093(d)] == []
     assert public_tables(dsn) - tables == {LAYOUTS_0092}
 
     command.downgrade(config, "0091")
 
     assert version_nums(dsn) == ["0091"]
     assert public_tables(dsn) == tables
-    assert [d for d in metadata_diff(dsn) if not _of_0092(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0092_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -18013,3 +18029,177 @@ def test_0092_dashboard_layout_one_row_per_user_and_users_restrict(
         run_sql(dsn, "DELETE FROM users WHERE id = :u", {"u": user_id})
 
     assert getattr(restricted.value.orig, "sqlstate", None) == "23001"
+
+
+# --- 0093: job failures (#128 B1, B2) -----
+
+
+def _job_0093(
+    dsn: str, task: str = "billing:post_session_charges", *, status: str = "todo"
+) -> int:
+    [row] = run_sql(
+        dsn,
+        "INSERT INTO procrastinate_jobs (queue_name, task_name, status)"
+        " VALUES ('default', :t, CAST(:s AS procrastinate_job_status)) RETURNING id",
+        {"t": task, "s": status},
+    )
+    return int(row.id)
+
+
+def _fail_0093(dsn: str, job_id: int) -> None:
+    """todo → doing → failed, so Procrastinate's trigger writes the events."""
+    for status in ("doing", "failed"):
+        run_sql(
+            dsn,
+            "UPDATE procrastinate_jobs"
+            " SET status = CAST(:s AS procrastinate_job_status) WHERE id = :j",
+            {"s": status, "j": job_id},
+        )
+
+
+def _failure_0093(dsn: str, job_id: int, **values: Any) -> None:
+    columns = {"job_id": job_id, "task_name": "billing:post_session_charges", **values}
+    names = ", ".join(columns)
+    params = ", ".join(f":{name}" for name in columns)
+    run_sql(
+        dsn,
+        f"INSERT INTO job_failures ({names}) VALUES ({params})",  # noqa: S608
+        columns,
+    )
+
+
+def test_0093_adds_the_table_and_downgrade_restores_0092(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0092")
+    tables = public_tables(dsn)
+
+    command.upgrade(config, "0093")
+
+    assert version_nums(dsn) == ["0093"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == {FAILURES_0093}
+
+    command.downgrade(config, "0092")
+
+    assert version_nums(dsn) == ["0092"]
+    assert public_tables(dsn) == tables
+    assert [d for d in metadata_diff(dsn) if not _of_0093(d)] == []
+
+    command.upgrade(config, "head")
+
+    assert metadata_diff(dsn) == []
+
+
+def test_0093_backfills_one_row_per_failed_job(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0092")
+    with_event = _job_0093(dsn, "billing:post_session_charges")
+    _fail_0093(dsn, with_event)
+    without_event = _job_0093(dsn, "payroll:open_periods", status="failed")
+    _job_0093(dsn, "billing:expire_packages", status="succeeded")
+    _job_0093(dsn, "billing:expire_packages")
+    [event] = run_sql(
+        dsn,
+        "SELECT max(at) AS at FROM procrastinate_events"
+        " WHERE job_id = :j AND type = 'failed'",
+        {"j": with_event},
+    )
+
+    command.upgrade(config, "0093")
+
+    rows = run_sql(
+        dsn,
+        "SELECT job_id, task_name, error_class, error_code, sqlstate, failed_at,"
+        " now() AS now FROM job_failures ORDER BY job_id",
+    )
+    assert [(r.job_id, r.task_name) for r in rows] == [
+        (with_event, "billing:post_session_charges"),
+        (without_event, "payroll:open_periods"),
+    ]
+    assert all(
+        (r.error_class, r.error_code, r.sqlstate) == (None, None, None) for r in rows
+    )
+    assert rows[0].failed_at == event.at
+    # No failed event: the migration's now().
+    assert rows[1].failed_at <= rows[1].now
+
+
+def test_0093_job_failure_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    assert _columns(dsn, FAILURES_0093) == {
+        "job_id": ("bigint", "NO", None, None),
+        "task_name": ("character varying", "NO", 128, None),
+        "error_class": ("text", "YES", None, None),
+        "error_code": ("text", "YES", None, None),
+        "sqlstate": ("text", "YES", None, None),
+        "failed_at": ("timestamp with time zone", "NO", None, "now()"),
+    }
+    constraints = _constraints(dsn, FAILURES_0093)
+    assert set(constraints) == {
+        "pk_job_failures",
+        "fk_job_failures_job_id_procrastinate_jobs",
+        "ck_job_failures_error_class_length",
+        "ck_job_failures_error_code_format",
+        "ck_job_failures_sqlstate_format",
+    }
+    assert constraints["fk_job_failures_job_id_procrastinate_jobs"] == (
+        "FOREIGN KEY (job_id) REFERENCES procrastinate_jobs(id) ON DELETE CASCADE"
+    )
+    indexes = _indexes(dsn, FAILURES_0093)
+    assert set(indexes) == {
+        "pk_job_failures",
+        "ix_job_failures_failed_at_job_id",
+        "ix_job_failures_task_name_failed_at",
+    }
+    assert indexes["ix_job_failures_failed_at_job_id"].endswith(
+        "(failed_at DESC, job_id DESC)"
+    )
+    assert indexes["ix_job_failures_task_name_failed_at"].endswith(
+        "(task_name, failed_at DESC)"
+    )
+
+
+@pytest.mark.parametrize(
+    ("values", "constraint"),
+    [
+        ({"error_class": "E" * 201}, "ck_job_failures_error_class_length"),
+        ({"error_code": "Not_A_Code"}, "ck_job_failures_error_code_format"),
+        ({"error_code": "ana@example.com"}, "ck_job_failures_error_code_format"),
+        ({"error_code": "a" * 65}, "ck_job_failures_error_code_format"),
+        ({"sqlstate": "2350"}, "ck_job_failures_sqlstate_format"),
+        ({"sqlstate": "23505x"}, "ck_job_failures_sqlstate_format"),
+        ({"sqlstate": "ab123"}, "ck_job_failures_sqlstate_format"),
+    ],
+)
+def test_0093_job_failure_checks(fresh_database_url, values, constraint):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    job_id = _job_0093(dsn)
+
+    with pytest.raises(IntegrityError) as caught:
+        _failure_0093(dsn, job_id, **values)
+
+    assert getattr(caught.value.orig, "sqlstate", None) == "23514"
+    assert constraint in str(caught.value.orig)
+
+
+def test_0093_deleting_a_job_cascades_to_its_failure(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    kept, deleted = _job_0093(dsn), _job_0093(dsn)
+    _failure_0093(
+        dsn, kept, error_class="E" * 200, error_code="a" * 64, sqlstate="23505"
+    )
+    _failure_0093(dsn, deleted, error_class="RuntimeError")
+
+    run_sql(dsn, "DELETE FROM procrastinate_jobs WHERE id = :j", {"j": deleted})
+
+    rows = run_sql(dsn, "SELECT job_id FROM job_failures")
+    assert [r.job_id for r in rows] == [kept]
+    with pytest.raises(IntegrityError) as missing:
+        _failure_0093(dsn, deleted + 1000)
+    assert getattr(missing.value.orig, "sqlstate", None) == "23503"
