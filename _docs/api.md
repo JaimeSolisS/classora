@@ -348,7 +348,7 @@ Codes in use today:
 | `export_expired` | 410 | Downloading an export whose file was deleted, or that is past its `expires_at` (see Exports). |
 | `report_setup_limit_reached` | 409 | Saving a setup when the caller already has 50; `details.max` (see Saved export setups). |
 | `report_setup_name_taken` | 409 | The caller already has a setup with this name, compared case-insensitively (see Saved export setups). |
-| `report_range_invalid` | 422 | A financial report range with `from` after `to`, `to` after the center's today (field error at `["query","to"]`), or `to − from` of 366 days or more (at `["query","from"]`) (see Financial reports). |
+| `report_range_invalid` | 422 | A financial report or analytics KPI range with `from` after `to`, `to` after the center's today (field error at `["query","to"]`), or `to − from` of 366 days or more (at `["query","from"]`) (see Financial reports and Analytics KPIs). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
 | `permission_not_delegable` | 422 | The identity service was asked to delegate a permission outside the four delegable ones (the route's body enum answers `validation_error` first). |
@@ -8732,6 +8732,38 @@ packages, courses, scheduled_sessions, other}}`:
   accrual revenue through today + deferred = Σ charge net.
 - **Billing or payroll off** gives zeros, not errors. A change of the center's
   time zone re-dates everything by the current zone.
+
+### Analytics KPIs
+
+#126 (M8-09; spec §8; #126 E1–E12, orchestrator-recommended, pending owner
+review). Read-only routes in `reporting` (`kpis_router.py`). **The definitions,
+worked examples and performance budget are in [`kpis.md`](kpis.md)**; this
+section is the reference. No new permission: each KPI is gated like the page
+its rows come from. Every range is #117's (`from`/`to` ISO center-local dates,
+both inclusive, both required; `from ≤ to ≤` the center's today and `to −
+from < 366`, else `422 report_range_invalid`, at `["query","to"]` for `from >
+to` and `to > today`, at `["query","from"]` for the span). The check order is
+`401` → `403 permission_denied` → `422 validation_error` → `422
+report_range_invalid` → `200`. No lock, no write, no audit event, no
+`Idempotency-Key`; a fixed number of statements whatever the number of rows.
+Closed shapes. Money is a string; a percentage is a decimal string with two
+places or `null` (zero denominator). The session KPIs (K4–K6) count #84's
+in-scope sessions (`confirmed`/`completed`, started) whose start is in the
+range's local days. K3 (unpaid balances and payroll) is `GET
+/api/v1/reports/finance/balances` above, as of today.
+
+| Route | Guard | Response |
+|---|---|---|
+| `GET /api/v1/reports/kpis/revenue-trend?basis=&from=&to=` (K1) | `require("finance.report.view")` | `{basis, from, to, today, months: [{month, from, to, revenue_total, direct_tutor_cost_total, gross_profit, operating_expenses_total, net_result}], totals: {revenue_total, direct_tutor_cost_total, gross_profit, operating_expenses_total, net_result}}`. Each month (center-local, clipped to the range, oldest first, zeros included) equals `profitability` over its part of the range on the same `basis`; `totals` equals it over the whole range. |
+| `GET /api/v1/reports/kpis/course-profitability?from=&to=` (K2) | `require("finance.report.view")` | `{from, to, today, cohorts: [{cohort: {id, name}, revenue, direct_tutor_cost, gross_profit}], not_attributed: {revenue, direct_tutor_cost, gross_profit}, total: {…}}`. Accrual; cohorts with a non-zero figure, by `gross_profit` descending then id; `total` = the accrual `course` row. |
+| `GET /api/v1/reports/kpis/room-utilization?from=&to=` (K4) | `require("schedule.view")` | `{from, to, rooms: [{room: {id, name}, available_minutes, used_minutes, utilization_percent}], total: {available_minutes, used_minutes, utilization_percent}}`. Active rooms by name (case-insensitive) then id; the percentage may exceed `100.00`. |
+| `GET /api/v1/reports/kpis/student-retention?from=&to=` (K5) | `require("schedule.view")` | `{from, to, previous_from, previous_to, active_previous, active_current, retained, new, lost, retention_percent, months: [{month, from, to, active_students}]}`. Counts only; no student id or name. |
+| `GET /api/v1/reports/kpis/tutor-performance?from=&to=` (K6, K7) | `require("schedule.view")` and `tutor.view` (checked in the route's dependency, before the query: Finance Staff get `403`) | `{from, to, tutors: [{tutor: {id, display_name}, sessions, completed, pending_closeout, cancelled, scheduled_minutes, students, attendance: {present, late, absent, not_recorded}, attendance_percent}], totals: {…the same fields}}`. Per current tutor, by display name (case-insensitive) then id; `totals` is center-wide (`students` distinct). No money. |
+
+Who gets `200`: K1/K2 Owner and Finance Staff (an Administrator gets `403`
+even with `payroll.finalize` delegated); K4/K5 Owner, Administrator, Academic
+Coordinator and Finance Staff; K6 Owner, Administrator and Academic
+Coordinator. Tutors, students and guardians get `403` on all five.
 
 ### Response headers
 

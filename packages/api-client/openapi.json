@@ -28601,6 +28601,406 @@
         }
       }
     },
+    "/api/v1/reports/kpis/revenue-trend": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Get Revenue Trend",
+        "description": "K1: revenue, direct tutor cost (the payroll KPI), gross profit,\noperating expenses and the net result per center-local month of the\nrange (clipped to it, zeros included) and in total. Each month equals\n`GET /reports/finance/profitability` over that month's part of the range\non the same basis, and the totals equal it over the whole range, with\nevery #117 rule (accrual restatement included).",
+        "operationId": "get_revenue_trend_api_v1_reports_kpis_revenue_trend_get",
+        "parameters": [
+          {
+            "name": "basis",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ReportBasis",
+              "description": "accrual or cash."
+            },
+            "description": "accrual or cash."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "First local date, inclusive.",
+              "title": "From"
+            },
+            "description": "First local date, inclusive."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Last local date, inclusive.",
+              "title": "To"
+            },
+            "description": "Last local date, inclusive."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevenueTrend"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/kpis/course-profitability": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Get Course Profitability",
+        "description": "K2 (accrual, no overhead): the course-class revenue and direct tutor\ncost of the range per cohort, plus what can't be tied to a cohort\n(`not_attributed`). The sum is the accrual report's `course` row.",
+        "operationId": "get_course_profitability_api_v1_reports_kpis_course_profitability_get",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "First local date, inclusive.",
+              "title": "From"
+            },
+            "description": "First local date, inclusive."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Last local date, inclusive.",
+              "title": "To"
+            },
+            "description": "Last local date, inclusive."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseProfitability"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/kpis/room-utilization": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Get Room Utilization",
+        "description": "K4: each active room's available minutes (operating hours ∩ the\nroom's windows, closure days excluded, wall-clock) and used minutes (the\nscheduled minutes of its confirmed or completed sessions that have\nstarted), with the percentage (it may exceed 100.00).",
+        "operationId": "get_room_utilization_api_v1_reports_kpis_room_utilization_get",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "First local date, inclusive.",
+              "title": "From"
+            },
+            "description": "First local date, inclusive."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Last local date, inclusive.",
+              "title": "To"
+            },
+            "description": "Last local date, inclusive."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomUtilization"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/kpis/student-retention": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Get Student Retention",
+        "description": "K5: students active in the range (at least one confirmed or completed\nsession that has started) against the window of the same length just\nbefore it: retained, new, lost and the retention percentage, plus the\nactive students per month. Counts only.",
+        "operationId": "get_student_retention_api_v1_reports_kpis_student_retention_get",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "First local date, inclusive.",
+              "title": "From"
+            },
+            "description": "First local date, inclusive."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Last local date, inclusive.",
+              "title": "To"
+            },
+            "description": "Last local date, inclusive."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentRetention"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/kpis/tutor-performance": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Get Tutor Performance",
+        "description": "K6 per current tutor (a substitute is credited) and K7 center-wide\n(`totals`): sessions, completed, pending closeout, cancelled after\nconfirmation, scheduled minutes, distinct students and attendance with\nthe #84 percentage. No money, grade or ranking.",
+        "operationId": "get_tutor_performance_api_v1_reports_kpis_tutor_performance_get",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "First local date, inclusive.",
+              "title": "From"
+            },
+            "description": "First local date, inclusive."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Last local date, inclusive.",
+              "title": "To"
+            },
+            "description": "Last local date, inclusive."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TutorPerformance"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/overdue-accounts": {
       "get": {
         "tags": [
@@ -33233,6 +33633,100 @@
         "title": "AccountName",
         "description": "A user named in an approval request or an audit event: the id and the\ndisplay name only."
       },
+      "ActiveMonth": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "title": "Month",
+            "description": "YYYY-MM.",
+            "examples": [
+              "2031-03"
+            ]
+          },
+          "from": {
+            "type": "string",
+            "format": "date",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "title": "To"
+          },
+          "active_students": {
+            "type": "integer",
+            "title": "Active Students"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "month",
+          "from",
+          "to",
+          "active_students"
+        ],
+        "title": "ActiveMonth"
+      },
+      "ActivityFigures": {
+        "properties": {
+          "sessions": {
+            "type": "integer",
+            "title": "Sessions",
+            "description": "In-scope sessions."
+          },
+          "completed": {
+            "type": "integer",
+            "title": "Completed"
+          },
+          "pending_closeout": {
+            "type": "integer",
+            "title": "Pending Closeout",
+            "description": "Confirmed sessions that have ended."
+          },
+          "cancelled": {
+            "type": "integer",
+            "title": "Cancelled",
+            "description": "Cancelled after a confirmation."
+          },
+          "scheduled_minutes": {
+            "type": "integer",
+            "title": "Scheduled Minutes"
+          },
+          "students": {
+            "type": "integer",
+            "title": "Students",
+            "description": "Distinct participants of in-scope sessions."
+          },
+          "attendance": {
+            "$ref": "#/components/schemas/AttendanceCounts"
+          },
+          "attendance_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KpiPercent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "(present + late) / (present + late + absent) × 100 (#84)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sessions",
+          "completed",
+          "pending_closeout",
+          "cancelled",
+          "scheduled_minutes",
+          "students",
+          "attendance",
+          "attendance_percent"
+        ],
+        "title": "ActivityFigures"
+      },
       "AdjustmentItem": {
         "properties": {
           "id": {
@@ -34829,6 +35323,35 @@
         ],
         "title": "AttendanceCorrectionItem",
         "description": "One staff correction, with its reason."
+      },
+      "AttendanceCounts": {
+        "properties": {
+          "present": {
+            "type": "integer",
+            "title": "Present"
+          },
+          "late": {
+            "type": "integer",
+            "title": "Late"
+          },
+          "absent": {
+            "type": "integer",
+            "title": "Absent"
+          },
+          "not_recorded": {
+            "type": "integer",
+            "title": "Not Recorded"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "present",
+          "late",
+          "absent",
+          "not_recorded"
+        ],
+        "title": "AttendanceCounts"
       },
       "AttendanceItem": {
         "properties": {
@@ -42256,6 +42779,50 @@
         "title": "CohortPage",
         "description": "A page of cohorts (cursor pagination)."
       },
+      "CohortProfitability": {
+        "properties": {
+          "revenue": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Revenue",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "direct_tutor_cost": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Direct Tutor Cost",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "gross_profit": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Gross Profit",
+            "description": "revenue - direct_tutor_cost.",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "cohort": {
+            "$ref": "#/components/schemas/CohortRef"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "revenue",
+          "direct_tutor_cost",
+          "gross_profit",
+          "cohort"
+        ],
+        "title": "CohortProfitability"
+      },
       "CohortRecurrence": {
         "properties": {
           "weekdays": {
@@ -42280,6 +42847,26 @@
         ],
         "title": "CohortRecurrence",
         "description": "The cohort's weekly rule (#65 D1, E3): the weekdays and the interval\nonly. There is no ``until`` or ``count``: the server derives ``COUNT``\nso that the template's sessions fall outside the closures known now.\nThe ranges are checked after the locks, as ``422`` on\n``recurrence.<field>`` (``weekdays_empty``, ``weekday_out_of_range``,\n``weekdays_duplicate``, ``interval_out_of_range``)."
+      },
+      "CohortRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "CohortRef"
       },
       "CohortSessionItem": {
         "properties": {
@@ -43217,6 +43804,93 @@
         ],
         "title": "CourseCompletion",
         "description": "The completion criteria, derived from the template: the minimum\nattendance (null: none), then the required modules and assessments, in\nposition order."
+      },
+      "CourseFigures": {
+        "properties": {
+          "revenue": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Revenue",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "direct_tutor_cost": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Direct Tutor Cost",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "gross_profit": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Gross Profit",
+            "description": "revenue - direct_tutor_cost.",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "revenue",
+          "direct_tutor_cost",
+          "gross_profit"
+        ],
+        "title": "CourseFigures"
+      },
+      "CourseProfitability": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "title": "To"
+          },
+          "today": {
+            "type": "string",
+            "format": "date",
+            "title": "Today",
+            "description": "The center's today when it was computed."
+          },
+          "cohorts": {
+            "items": {
+              "$ref": "#/components/schemas/CohortProfitability"
+            },
+            "type": "array",
+            "title": "Cohorts",
+            "description": "Cohorts with a non-zero revenue or cost in the range, by gross_profit descending, then cohort id."
+          },
+          "not_attributed": {
+            "$ref": "#/components/schemas/CourseFigures",
+            "description": "Course-class revenue and cost tied to no cohort."
+          },
+          "total": {
+            "$ref": "#/components/schemas/CourseFigures"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "today",
+          "cohorts",
+          "not_attributed",
+          "total"
+        ],
+        "title": "CourseProfitability",
+        "description": "``GET /api/v1/reports/kpis/course-profitability`` (K2, accrual, no\noverhead): ``Σ cohorts + not_attributed = total`` = #117's ``course``\nrow."
       },
       "CourseTemplateAssessment": {
         "properties": {
@@ -51884,6 +52558,13 @@
         ],
         "title": "InvitationTokenRequest",
         "description": "The token from an invitation link (``POST …/invitation/lookup``)."
+      },
+      "KpiPercent": {
+        "type": "string",
+        "format": "decimal",
+        "examples": [
+          "66.67"
+        ]
       },
       "Language": {
         "type": "string",
@@ -62188,6 +62869,52 @@
           "pending"
         ]
       },
+      "RevenueTrend": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "title": "To"
+          },
+          "basis": {
+            "$ref": "#/components/schemas/ReportBasis"
+          },
+          "today": {
+            "type": "string",
+            "format": "date",
+            "title": "Today",
+            "description": "The center's today when it was computed."
+          },
+          "months": {
+            "items": {
+              "$ref": "#/components/schemas/TrendMonth"
+            },
+            "type": "array",
+            "title": "Months",
+            "description": "Oldest first, zeros included."
+          },
+          "totals": {
+            "$ref": "#/components/schemas/TrendFigures"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "basis",
+          "today",
+          "months",
+          "totals"
+        ],
+        "title": "RevenueTrend",
+        "description": "``GET /api/v1/reports/kpis/revenue-trend`` (K1): each month equals\n#117 ``profitability`` over that month's part of the range; ``totals``\nequals it over the whole range."
+      },
       "RevocationCause": {
         "type": "string",
         "enum": [
@@ -62206,6 +62933,95 @@
           "student",
           "tutor"
         ]
+      },
+      "RoomRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "RoomRef"
+      },
+      "RoomUtilization": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "title": "To"
+          },
+          "rooms": {
+            "items": {
+              "$ref": "#/components/schemas/RoomUtilizationRow"
+            },
+            "type": "array",
+            "title": "Rooms"
+          },
+          "total": {
+            "$ref": "#/components/schemas/UtilizationFigures"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "rooms",
+          "total"
+        ],
+        "title": "RoomUtilization",
+        "description": "``GET /api/v1/reports/kpis/room-utilization`` (K4): active rooms, by\nname (case-insensitive), then id."
+      },
+      "RoomUtilizationRow": {
+        "properties": {
+          "available_minutes": {
+            "type": "integer",
+            "title": "Available Minutes"
+          },
+          "used_minutes": {
+            "type": "integer",
+            "title": "Used Minutes"
+          },
+          "utilization_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KpiPercent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "used / available × 100 (may exceed 100.00); null when nothing is available."
+          },
+          "room": {
+            "$ref": "#/components/schemas/RoomRef"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "available_minutes",
+          "used_minutes",
+          "utilization_percent",
+          "room"
+        ],
+        "title": "RoomUtilizationRow"
       },
       "RosterEntry": {
         "properties": {
@@ -66348,6 +67164,86 @@
         "title": "StudentProgress",
         "description": "`GET /api/v1/students/{id}/progress` (#84 B2, AM1)."
       },
+      "StudentRetention": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "title": "To"
+          },
+          "previous_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Previous From"
+          },
+          "previous_to": {
+            "type": "string",
+            "format": "date",
+            "title": "Previous To"
+          },
+          "active_previous": {
+            "type": "integer",
+            "title": "Active Previous"
+          },
+          "active_current": {
+            "type": "integer",
+            "title": "Active Current"
+          },
+          "retained": {
+            "type": "integer",
+            "title": "Retained"
+          },
+          "new": {
+            "type": "integer",
+            "title": "New"
+          },
+          "lost": {
+            "type": "integer",
+            "title": "Lost"
+          },
+          "retention_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KpiPercent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "retained / active_previous × 100; null with no previous activity."
+          },
+          "months": {
+            "items": {
+              "$ref": "#/components/schemas/ActiveMonth"
+            },
+            "type": "array",
+            "title": "Months",
+            "description": "The range's months, oldest first."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "previous_from",
+          "previous_to",
+          "active_previous",
+          "active_current",
+          "retained",
+          "new",
+          "lost",
+          "retention_percent",
+          "months"
+        ],
+        "title": "StudentRetention",
+        "description": "``GET /api/v1/reports/kpis/student-retention`` (K5): counts only."
+      },
       "StudentStatus": {
         "type": "string",
         "enum": [
@@ -67212,6 +68108,149 @@
           "dark",
           "system"
         ]
+      },
+      "TrendFigures": {
+        "properties": {
+          "revenue_total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Revenue Total",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "direct_tutor_cost_total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Direct Tutor Cost Total",
+            "description": "The payroll KPI: finalized payroll (accrual) or unreversed payroll payments (cash).",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "gross_profit": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Gross Profit",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "operating_expenses_total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Operating Expenses Total",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "net_result": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Net Result",
+            "examples": [
+              "1250.00"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "revenue_total",
+          "direct_tutor_cost_total",
+          "gross_profit",
+          "operating_expenses_total",
+          "net_result"
+        ],
+        "title": "TrendFigures",
+        "description": "#117 ``profitability`` figures of a range (K1)."
+      },
+      "TrendMonth": {
+        "properties": {
+          "revenue_total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Revenue Total",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "direct_tutor_cost_total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Direct Tutor Cost Total",
+            "description": "The payroll KPI: finalized payroll (accrual) or unreversed payroll payments (cash).",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "gross_profit": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Gross Profit",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "operating_expenses_total": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Operating Expenses Total",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "net_result": {
+            "type": "string",
+            "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+            "format": "decimal",
+            "title": "Net Result",
+            "examples": [
+              "1250.00"
+            ]
+          },
+          "month": {
+            "type": "string",
+            "title": "Month",
+            "description": "YYYY-MM.",
+            "examples": [
+              "2031-01"
+            ]
+          },
+          "from": {
+            "type": "string",
+            "format": "date",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "title": "To"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "revenue_total",
+          "direct_tutor_cost_total",
+          "gross_profit",
+          "operating_expenses_total",
+          "net_result",
+          "month",
+          "from",
+          "to"
+        ],
+        "title": "TrendMonth",
+        "description": "One center-local month clipped to the range."
       },
       "TuitionPauseCreate": {
         "properties": {
@@ -68092,6 +69131,123 @@
         ],
         "title": "TutorOptions",
         "description": "The matching tutors, in the user list order."
+      },
+      "TutorPerformance": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "title": "To"
+          },
+          "tutors": {
+            "items": {
+              "$ref": "#/components/schemas/TutorPerformanceRow"
+            },
+            "type": "array",
+            "title": "Tutors"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ActivityFigures"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "tutors",
+          "totals"
+        ],
+        "title": "TutorPerformance",
+        "description": "``GET /api/v1/reports/kpis/tutor-performance`` (K6; ``totals`` is K7,\ncenter activity): per current tutor, by display name\n(case-insensitive), then id."
+      },
+      "TutorPerformanceRow": {
+        "properties": {
+          "sessions": {
+            "type": "integer",
+            "title": "Sessions",
+            "description": "In-scope sessions."
+          },
+          "completed": {
+            "type": "integer",
+            "title": "Completed"
+          },
+          "pending_closeout": {
+            "type": "integer",
+            "title": "Pending Closeout",
+            "description": "Confirmed sessions that have ended."
+          },
+          "cancelled": {
+            "type": "integer",
+            "title": "Cancelled",
+            "description": "Cancelled after a confirmation."
+          },
+          "scheduled_minutes": {
+            "type": "integer",
+            "title": "Scheduled Minutes"
+          },
+          "students": {
+            "type": "integer",
+            "title": "Students",
+            "description": "Distinct participants of in-scope sessions."
+          },
+          "attendance": {
+            "$ref": "#/components/schemas/AttendanceCounts"
+          },
+          "attendance_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KpiPercent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "(present + late) / (present + late + absent) × 100 (#84)."
+          },
+          "tutor": {
+            "$ref": "#/components/schemas/TutorRef"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sessions",
+          "completed",
+          "pending_closeout",
+          "cancelled",
+          "scheduled_minutes",
+          "students",
+          "attendance",
+          "attendance_percent",
+          "tutor"
+        ],
+        "title": "TutorPerformanceRow"
+      },
+      "TutorRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "TutorRef"
       },
       "TutorRosterItem": {
         "properties": {
@@ -69126,6 +70282,37 @@
         ],
         "title": "UserUpdate",
         "description": "A profile change (``PATCH /api/v1/users/{user_id}``). Fields that are not\nsent stay unchanged; ``\"\"`` or ``null`` clears ``email`` or ``phone``. The\nusername never changes (ADR-0007 D7)."
+      },
+      "UtilizationFigures": {
+        "properties": {
+          "available_minutes": {
+            "type": "integer",
+            "title": "Available Minutes"
+          },
+          "used_minutes": {
+            "type": "integer",
+            "title": "Used Minutes"
+          },
+          "utilization_percent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KpiPercent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "used / available × 100 (may exceed 100.00); null when nothing is available."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "available_minutes",
+          "used_minutes",
+          "utilization_percent"
+        ],
+        "title": "UtilizationFigures"
       },
       "VendorAmount": {
         "properties": {
