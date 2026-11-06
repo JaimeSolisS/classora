@@ -147,6 +147,13 @@ def registered_notification_types() -> frozenset[str]:
     return frozenset(_types)
 
 
+def notification_params_model(code: str) -> type[BaseModel] | None:
+    """A registered type's params model, or ``None`` for an unknown code
+    (the i18n inventory keeps the app's own types, #130 B1)."""
+    registered = _types.get(code)
+    return None if registered is None else registered.params_model
+
+
 def notification_type_info(code: str) -> NotificationTypeInfo | None:
     """A registered type's flags, or ``None`` for an unknown code (#119 A2)."""
     registered = _types.get(code)

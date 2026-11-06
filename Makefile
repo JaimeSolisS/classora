@@ -152,11 +152,12 @@ e2e:
 	$(PNPM) install --frozen-lockfile
 	e2e/scripts/run.sh
 
-## Regenerate the API contract: export the OpenAPI document, then the TypeScript client types.
+## Regenerate the API contract: export the OpenAPI document and the i18n code inventory, then the TypeScript client types.
 ## Run after any API change and commit the result. Needs uv and Node 24; no Docker, database or .env.
 api-client:
 	$(PNPM) install --frozen-lockfile
 	cd apps/api && uv run python -m app.core.openapi ../../packages/api-client/openapi.json
+	cd apps/api && uv run python -m app.core.i18n_inventory ../../packages/api-client/i18n-inventory.json
 	$(PNPM) --filter @classora/api-client generate
 
 ## Drift check (CI): regenerate, then fail if packages/api-client differs from the commit

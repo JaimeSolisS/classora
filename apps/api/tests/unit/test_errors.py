@@ -7,7 +7,12 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.conventions import install_conventions
-from app.core.errors import AppError, VersionConflictError
+from app.core.errors import (
+    CORE_PROBLEM_CODES,
+    AppError,
+    VersionConflictError,
+    status_code_name,
+)
 from app.main import create_app
 from tests.authz.csrf import PROD_APP_ORIGIN
 from tests.unit.conventions_app import LEAK_MARKER
@@ -524,3 +529,17 @@ def test_app_error_headers_are_sent_and_default_to_none():
     assert slow_response.headers["x-extra"] == "1"
     assert AppError.headers is None
     assert "retry-after" not in plain_response.headers
+
+
+def test_the_core_problem_codes_are_pinned():
+    # #130 B1: the codes the core sends without an AppError subclass (the
+    # i18n inventory lists them). A new problem_response( call site in
+    # app/core/errors.py adds its code here.
+    assert CORE_PROBLEM_CODES == {
+        "internal_error",
+        "validation_error",
+        "not_found",
+        "method_not_allowed",
+    }
+    assert {status_code_name(404), status_code_name(405)} <= CORE_PROBLEM_CODES
+    assert AppError.code in CORE_PROBLEM_CODES

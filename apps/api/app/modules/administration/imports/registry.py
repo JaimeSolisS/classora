@@ -53,6 +53,89 @@ DEFAULT_BATCH_SIZE: Final = 100
 MAX_COLUMNS: Final = 30
 """The most columns a file (and a kind) may have (#122 B2)."""
 
+IMPORT_ROW_CODES: Final[frozenset[str]] = frozenset(
+    {
+        # #122 B4 (and the D1 commit-time code), shared by every kind.
+        "required",
+        "invalid",
+        "too_long",
+        "invalid_date",
+        "future_date",
+        "invalid_email",
+        "invalid_phone",
+        "education_level_unknown",
+        "education_level_unavailable",
+        "username_invalid",
+        "username_taken",
+        "duplicate_existing",
+        "duplicate_in_file",
+        # #123: both new kinds name a student by the natural key.
+        "student_unknown",
+        "student_ambiguous",
+        "student_inactive",
+        # #123 B2, B4: schedules.
+        "subject_unknown",
+        "subject_inactive",
+        "tutor_unknown",
+        "tutor_inactive",
+        "classroom_unknown",
+        "classroom_inactive",
+        "time_format",
+        "duration_out_of_range",
+        "weekdays_empty",
+        "weekday_out_of_range",
+        "weekdays_duplicate",
+        "interval_out_of_range",
+        "until_and_count",
+        "count_out_of_range",
+        "until_before_start",
+        "no_occurrences",
+        "starts_on_in_past",
+        "crosses_local_date",
+        "scheduling_conflict",
+        "series_not_offerable",
+        # The conflict codes a failed ``scheduling_conflict`` row lists
+        # (#123 B4: the ADR-0005 hard and soft codes, ``scheduling.conflicts.
+        # CODE_ORDER``, cross-checked in tests/unit/test_imports_registry.py).
+        "tutor_overlap",
+        "room_overlap",
+        "student_overlap",
+        "room_capacity_exceeded",
+        "tutor_unavailable",
+        "room_unavailable",
+        "center_closed",
+        "outside_operating_hours",
+        "tutor_not_qualified",
+        "group_capacity_exceeded",
+        "notice_window",
+        # #123 C2, C3: opening balances.
+        "student_has_no_family",
+        "student_not_in_family",
+        "invalid_amount",
+        "amount_not_positive",
+        "date_out_of_range",
+    }
+)
+"""Every code a :class:`RowIssue` or a failed or skipped
+:class:`CommitOutcome` may carry (#130 B1): the web labels each one
+(``packages/api-client/i18n-inventory.json``). Both refuse any other code
+with ``ValueError``; a site whose code comes from elsewhere (another
+module's error) passes it through :func:`declared_row_code`."""
+
+FALLBACK_ROW_CODE: Final = "invalid"
+"""The declared code for a refusal whose own code has no row label."""
+
+
+def declared_row_code(code: str) -> str:
+    """``code`` when it is declared, else :data:`FALLBACK_ROW_CODE`."""
+    return code if code in IMPORT_ROW_CODES else FALLBACK_ROW_CODE
+
+
+def _check_row_code(code: str) -> None:
+    if code not in IMPORT_ROW_CODES:
+        raise ValueError(f"undeclared import row code: {code!r}")
+
+
 type RowStatus = Literal["ready", "duplicate", "error"]
 type OutcomeStatus = Literal["created", "skipped", "failed"]
 
@@ -72,6 +155,9 @@ class RowIssue:
 
     column: str | None
     code: str
+
+    def __post_init__(self) -> None:
+        _check_row_code(self.code)
 
 
 @dataclass(frozen=True)
@@ -110,6 +196,10 @@ class CommitOutcome:
     record_id: uuid.UUID | None = None
     code: str | None = None
     errors: tuple[RowIssue, ...] = field(default=())
+
+    def __post_init__(self) -> None:
+        if self.code is not None:
+            _check_row_code(self.code)
 
     @classmethod
     def created(cls, record_id: uuid.UUID) -> CommitOutcome:
