@@ -1,7 +1,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { applyLanguage, i18n } from './index';
+import { applyLanguage, i18n, reportsMissingKeys } from './index';
 import { LANGUAGE_STORAGE_KEY } from './language';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { useLanguage } from './use-language';
@@ -105,5 +105,21 @@ describe('LanguageSwitcher', () => {
     act(() => button('Español').click());
     expect(document.documentElement.lang).toBe('es');
     expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('es');
+  });
+});
+
+// #130 C5: the dev-only missing-key log (the E2E language spec fails on it).
+describe('reportsMissingKeys', () => {
+  it.each([
+    [{ DEV: true, MODE: 'development' }, true],
+    [{ DEV: true, MODE: 'test' }, false],
+    [{ DEV: false, MODE: 'production' }, false],
+    [{ DEV: false, MODE: 'test' }, false],
+  ])('%o -> %s', (env, expected) => {
+    expect(reportsMissingKeys(env)).toBe(expected);
+  });
+
+  it('is off under Vitest', () => {
+    expect(reportsMissingKeys(import.meta.env)).toBe(false);
   });
 });

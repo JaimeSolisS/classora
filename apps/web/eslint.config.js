@@ -45,6 +45,15 @@ export default defineConfig([
           message:
             'Do not derive calendar dates from UTC: use toLocalDate/todayInZone from src/lib/time.ts.',
         })),
+        // #130 C4: numbers, money, dates and times are formatted in one
+        // place, in the active language and the center zone.
+        ...['toLocaleString', 'toLocaleDateString', 'toLocaleTimeString'].map(
+          (property) => ({
+            property,
+            message:
+              'Do not format with toLocale*String: use formatMoney from src/lib/money.ts or the formatters of src/lib/time.ts.',
+          }),
+        ),
       ],
       'no-restricted-syntax': [
         'error',

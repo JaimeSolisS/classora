@@ -359,6 +359,59 @@ describe('error messages (F2)', () => {
     );
   });
 
+  // #130 D3: a field error shows its code's catalog message, never the
+  // API's English `message`, in both languages.
+  it.each([
+    [
+      'en',
+      'Cancellation notice (hours)',
+      'Save',
+      'Check the highlighted fields and try again.',
+    ],
+    [
+      'es',
+      'Anticipación para cancelar (horas)',
+      'Guardar',
+      'Revisa los datos marcados e inténtalo de nuevo.',
+    ],
+  ] as const)(
+    'a field error shows the catalog message in %s, never the server text',
+    async (language, label, save, expected) => {
+      const sentence = 'Input should be less than or equal to 168';
+      applyLanguage(language);
+      stub(OVERVIEW_V1, {
+        [POLICIES_POST]: () =>
+          new Response(
+            JSON.stringify({
+              type: 'about:blank',
+              title: 'Problem',
+              status: 422,
+              code: 'validation_error',
+              request_id: 'req-field',
+              errors: [
+                {
+                  path: ['body', 'change_notice_hours'],
+                  code: 'less_than_equal',
+                  message: sentence,
+                },
+              ],
+            }),
+            {
+              status: 422,
+              headers: { 'Content-Type': 'application/problem+json' },
+            },
+          ),
+      });
+      app = await renderApp(PAGE);
+
+      typeInto(field(label), '12');
+      await click(buttonNamed(main(), save));
+
+      expect(main().textContent).not.toContain(sentence);
+      expect(main().textContent).toContain(expected);
+    },
+  );
+
   it('policy_version_in_effect shows in the alert region', async () => {
     stub(OVERVIEW_WITH_UPCOMING, {
       [deleteRoute(POLICY_UPCOMING.id)]: () =>
