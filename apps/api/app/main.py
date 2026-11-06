@@ -45,6 +45,7 @@ from app.core.logging import configure_logging
 from app.core.shutdown import on_shutdown_signal
 from app.modules.administration.approvals_router import router as approvals_router
 from app.modules.administration.imports.router import router as imports_router
+from app.modules.administration.jobs_router import router as jobs_router
 from app.modules.administration.live import (
     NotificationListener,
     install_notification_hub,
@@ -322,6 +323,7 @@ def build_app(
     app.include_router(administration_router)
     app.include_router(approvals_router)
     app.include_router(imports_router)
+    app.include_router(jobs_router)
     app.include_router(exports_router)
     app.include_router(report_setups_router)
     app.include_router(dashboard_router)

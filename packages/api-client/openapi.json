@@ -3494,6 +3494,294 @@
         }
       }
     },
+    "/api/v1/jobs": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "List Jobs",
+        "description": "Background jobs that failed at least once (by default, those still\n`failed`), newest failure first. The error is its class, application code\nand SQLSTATE only; job arguments are never shown.",
+        "operationId": "list_jobs_api_v1_jobs_get",
+        "parameters": [
+          {
+            "name": "task",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^[a-z_]+:[a-z_]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A task name.",
+              "title": "Task"
+            },
+            "description": "A task name."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/JobStatusFilter",
+              "description": "The job's current status, or `any`.",
+              "default": "failed"
+            },
+            "description": "The job's current status, or `any`."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Failed at or after (inclusive).",
+              "title": "From"
+            },
+            "description": "Failed at or after (inclusive)."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Failed before (exclusive).",
+              "title": "To"
+            },
+            "description": "Failed before (exclusive)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_FailedJobItem_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The pagination cursor is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/tasks": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "List Tasks",
+        "description": "The registered background tasks, sorted, and whether each may be\nretried.",
+        "operationId": "list_tasks_api_v1_jobs_tasks_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobTaskList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{job_id}/retry": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Retry Job",
+        "description": "Put a failed job back in the queue (the same job, one more attempt).\nThe task re-checks everything pending, so a retry never duplicates\ncharges or records. The worker picks it up on its next poll.",
+        "operationId": "retry_job_api_v1_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 9223372036854775807,
+              "exclusiveMinimum": 0,
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FailedJobItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such job, or one that never failed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The task can't be retried (job_not_retryable); the job isn't failed (job_not_failed); a queued run of the task already covers it (job_already_queued).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/exports/datasets": {
       "get": {
         "tags": [
@@ -45010,6 +45298,34 @@
         ],
         "title": "CursorPage[EvaluationView]"
       },
+      "CursorPage_FailedJobItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FailedJobItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CursorPage[FailedJobItem]"
+      },
       "CursorPage_FamilyLearningNote_": {
         "properties": {
           "items": {
@@ -49927,6 +50243,125 @@
         ],
         "title": "FactsPeriod"
       },
+      "FailedJobItem": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "task_name": {
+            "type": "string",
+            "title": "Task Name"
+          },
+          "queue_name": {
+            "type": "string",
+            "title": "Queue Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts"
+          },
+          "error_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Class",
+            "description": "The exception class name; null when unknown (failed before failures were recorded)."
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "The application error code, if any."
+          },
+          "sqlstate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sqlstate",
+            "description": "The database SQLSTATE, if any."
+          },
+          "deferred_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deferred At",
+            "description": "When the job was first queued."
+          },
+          "failed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Failed At",
+            "description": "The latest failure."
+          },
+          "retried_count": {
+            "type": "integer",
+            "title": "Retried Count",
+            "description": "How many times it was retried by hand."
+          },
+          "last_retried_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Retried At"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "description": "The task may be retried and the job is `failed` now."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "task_name",
+          "queue_name",
+          "status",
+          "attempts",
+          "error_class",
+          "error_code",
+          "sqlstate",
+          "deferred_at",
+          "failed_at",
+          "retried_count",
+          "last_retried_at",
+          "retryable"
+        ],
+        "title": "FailedJobItem",
+        "description": "A background job that failed at least once (#128 D2, E4).\n\nNever the job's arguments, lock, queueing lock, worker or schedule, nor\nan error message or traceback: the error is its class name, application\ncode and SQLSTATE only."
+      },
       "FamilyCreate": {
         "properties": {
           "name": {
@@ -52757,6 +53192,65 @@
         ],
         "title": "InvitationTokenRequest",
         "description": "The token from an invitation link (``POST …/invitation/lookup``)."
+      },
+      "JobStatus": {
+        "type": "string",
+        "enum": [
+          "todo",
+          "doing",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "aborted"
+        ]
+      },
+      "JobStatusFilter": {
+        "type": "string",
+        "enum": [
+          "failed",
+          "todo",
+          "doing",
+          "succeeded",
+          "cancelled",
+          "aborted",
+          "any"
+        ]
+      },
+      "JobTaskItem": {
+        "properties": {
+          "task_name": {
+            "type": "string",
+            "title": "Task Name"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_name",
+          "retryable"
+        ],
+        "title": "JobTaskItem",
+        "description": "A registered background task (#128 D3)."
+      },
+      "JobTaskList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JobTaskItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "JobTaskList",
+        "description": "The registered tasks, sorted by name (no ``builtin:`` task)."
       },
       "KpiPercent": {
         "type": "string",
@@ -59988,6 +60482,7 @@
           "finance.refund.approve",
           "finance.report.view",
           "guardian.view",
+          "jobs.manage",
           "learning_plan.manage",
           "payment.record",
           "payroll.finalize",

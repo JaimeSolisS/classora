@@ -36,6 +36,7 @@
     "passwordResets": "Password resets",
     "approvals": "Approvals",
     "audit": "Audit log",
+    "jobs": "Failed jobs",
     "catalog": "Catalog",
     "settings": "Settings",
     "billing": "Billing",
@@ -622,6 +623,116 @@
       "maskedLabel": "Value hidden in the audit log",
       "empty": "This event has no more data.",
       "requestId": "Request ID:"
+    }
+  },
+  "jobs": {
+    "title": "Failed jobs",
+    "intro": "Whole background job runs that failed. Errors on single items are retried automatically on the next run and aren't listed here.",
+    "filter": {
+      "label": "Job filters",
+      "task": "Task",
+      "allTasks": "All",
+      "status": "Status",
+      "from": "From",
+      "to": "To",
+      "apply": "Apply filters",
+      "clear": "Clear filters",
+      "fixFirst": "Fix the filters to see the jobs.",
+      "errors": {
+        "date": "The date isn't valid.",
+        "dateOrder": "The end date must be on or after the start date."
+      }
+    },
+    "statusFilter": {
+      "failed": "Failed",
+      "any": "All",
+      "todo": "Queued",
+      "doing": "Running",
+      "succeeded": "Succeeded",
+      "cancelled": "Cancelled",
+      "aborted": "Aborted"
+    },
+    "status": {
+      "failed": "Failed",
+      "todo": "Queued",
+      "doing": "Running",
+      "succeeded": "Succeeded",
+      "cancelled": "Cancelled",
+      "aborted": "Aborted"
+    },
+    "list": {
+      "title": "Jobs",
+      "task": "Task",
+      "status": "Status",
+      "attempts": "Attempts",
+      "error": "Error",
+      "failedAt": "Failed",
+      "retries": "Retries",
+      "actions": "Actions",
+      "unknownError": "Unknown",
+      "sqlstate": "SQLSTATE {{code}}",
+      "noRetries": "None",
+      "retriesSummary_one": "{{count}}, last {{time}}",
+      "retriesSummary_other": "{{count}}, last {{time}}",
+      "empty": "No failed jobs match these filters.",
+      "loadMore": "Load more",
+      "loadingMore": "Loading more jobs…",
+      "changed": "The list changed; reload it.",
+      "reload": "Reload",
+      "shown_one": "{{count}} job shown",
+      "shown_other": "{{count}} jobs shown"
+    },
+    "retry": {
+      "action": "Retry",
+      "actionFor": "Retry {{task}}, failed {{time}}",
+      "title": "Retry {{task}}?",
+      "body": "The job checks everything pending again. It doesn't duplicate charges or records. Periodic jobs also run on their own at their next scheduled time.",
+      "confirm": "Retry",
+      "done": "{{task}} is queued to retry."
+    },
+    "tasks": {
+      "identity": {
+        "purge_auth_sessions": "Expired session cleanup"
+      },
+      "idempotency": {
+        "purge_keys": "Idempotency key cleanup"
+      },
+      "ratelimit": {
+        "purge_counters": "Rate-limit counter cleanup"
+      },
+      "scheduling": {
+        "expire_offers": "Tutor offer expiry",
+        "materialize_series": "Recurring class generation"
+      },
+      "academics": {
+        "create_progress_report_placeholders": "Progress report drafts"
+      },
+      "billing": {
+        "post_session_charges": "Session charges",
+        "post_enrollment_charges": "Enrollment charges",
+        "post_tuition_charges": "Tuition charges",
+        "expire_packages": "Package expiry",
+        "send_charge_reminders": "Payment reminders",
+        "reconcile_session_charges": "Schedule change reconciliation"
+      },
+      "payroll": {
+        "open_periods": "Payroll period opening",
+        "post_adjustments": "Payroll adjustments"
+      },
+      "finance": {
+        "generate_recurring_expenses": "Recurring expenses"
+      },
+      "administration": {
+        "run_imports": "Imports"
+      },
+      "reporting": {
+        "run_exports": "Exports"
+      },
+      "demo": {
+        "succeed": "Demo: success",
+        "fail": "Demo: failure",
+        "periodic": "Demo: periodic"
+      }
     }
   },
   "imports": {

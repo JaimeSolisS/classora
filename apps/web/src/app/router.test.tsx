@@ -180,6 +180,7 @@ describe('route tree', () => {
       'imports',
       'imports/:importId',
       'exports',
+      'jobs',
       'account/password',
       'account/notifications',
       'privacy-notice',
@@ -538,14 +539,18 @@ describe('route tree', () => {
     });
     expect(children[125]!.lazy).toBeTypeOf('function');
     expect(children[125]!.element).toBeUndefined();
-    expect(children[126]!.handle).toBeUndefined();
-    // M8-02b A1: any signed-in user, no permission, code-split.
+    // M8-11 (#128) G1: failed jobs, jobs.manage, code-split.
+    expect(children[126]!.handle).toEqual({ permission: 'jobs.manage' });
+    expect(children[126]!.lazy).toBeTypeOf('function');
+    expect(children[126]!.element).toBeUndefined();
     expect(children[127]!.handle).toBeUndefined();
-    expect(children[127]!.lazy).toBeTypeOf('function');
-    expect(children[127]!.element).toBeUndefined();
-    // #174 G1: any signed-in user, no permission.
-    expect(children[128]!.id).toBe('privacy-notice');
+    // M8-02b A1: any signed-in user, no permission, code-split.
     expect(children[128]!.handle).toBeUndefined();
+    expect(children[128]!.lazy).toBeTypeOf('function');
+    expect(children[128]!.element).toBeUndefined();
+    // #174 G1: any signed-in user, no permission.
+    expect(children[129]!.id).toBe('privacy-notice');
+    expect(children[129]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,

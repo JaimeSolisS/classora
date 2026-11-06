@@ -38,6 +38,7 @@ from app.core.jobs import (
     WORKER_APPLICATION_NAME,
     WORKER_CONCURRENCY,
     create_worker_job_app,
+    record_job_failure,
     worker_healthcheck_connector,
 )
 from app.core.logging import configure_logging
@@ -95,6 +96,8 @@ def worker_options(settings: Settings) -> dict[str, object]:
         "shutdown_graceful_timeout": float(settings.worker_shutdown_timeout_seconds),
         # Signals are handled by run() for the whole process lifetime.
         "install_signal_handlers": False,
+        # Every failed run's sanitized error goes to job_failures (#128 A1).
+        "worker_middleware": [record_job_failure],
     }
 
 

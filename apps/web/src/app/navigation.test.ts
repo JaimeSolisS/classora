@@ -202,6 +202,32 @@ describe('the audit log nav item (#120 D1)', () => {
   });
 });
 
+// M8-11 (#128) G1: "Failed jobs" right after the audit log, for jobs.manage
+// holders only (Owner, Administrator).
+describe('the failed jobs nav item (#128 G1)', () => {
+  const ADMIN = user(['administrator'], ['student.view', 'jobs.manage']);
+  const AUDITOR = user(['administrator'], ['student.view', 'audit.view']);
+
+  it.each([
+    ['a jobs.manage holder', ADMIN, true],
+    ['an audit.view holder without jobs.manage', AUDITOR, false],
+    ['Finance', FINANCE, false],
+    ['a tutor-only user', TUTOR, false],
+    ['a Coordinator', COORDINATOR, false],
+  ] as const)('%s: %s', (_who, as, visible) => {
+    expect(shown(as).includes('/jobs')).toBe(visible);
+  });
+
+  it('comes right after the audit log and is labelled in the common catalog', () => {
+    const paths = NAV_ITEMS.map((item) => item.to);
+    expect(paths.indexOf('/jobs')).toBe(paths.indexOf('/audit') + 1);
+    expect(NAV_ITEMS.find((item) => item.to === '/jobs')).toMatchObject({
+      labelKey: 'nav.jobs',
+      permission: 'jobs.manage',
+    });
+  });
+});
+
 // M8-05b A1, E1: "Imports" right after Invitations, for holders of a
 // permission of some import kind: an Owner, a Coordinator (students only),
 // Finance with billing.manage (opening balances only, #123 F1); a tutor and

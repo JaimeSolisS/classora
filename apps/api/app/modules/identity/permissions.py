@@ -181,6 +181,9 @@ EXPENSE_MANAGE = "expense.manage"
 # bases, receivables, payables and deferred revenue (Owner, Finance Staff; not
 # delegable). Administrators get none, even with payroll.finalize delegated.
 FINANCE_REPORT_VIEW = "finance.report.view"
+# Failed background jobs (#128 E3; architecture ISSUE-J3): who sees the jobs
+# that failed and retries them (Owner, Administrator; not delegable).
+JOBS_MANAGE = "jobs.manage"
 
 
 @dataclass(frozen=True)
@@ -236,6 +239,7 @@ PERMISSIONS: tuple[PermissionDef, ...] = (
     PermissionDef(EXPENSE_VIEW),
     PermissionDef(EXPENSE_MANAGE),
     PermissionDef(FINANCE_REPORT_VIEW),
+    PermissionDef(JOBS_MANAGE),
     PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
     PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
 )
@@ -286,6 +290,7 @@ ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
                 BILLING_VIEW,
                 PAYMENT_RECORD,
                 EXPENSE_CONFIGURE,
+                JOBS_MANAGE,
             }
         ),
         ACADEMIC_COORDINATOR: frozenset(

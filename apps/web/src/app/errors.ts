@@ -551,6 +551,10 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['report_setup_name_taken', 'report_setup_name_taken'],
   // Dashboard layout (#127 E2).
   ['dashboard_widget_unavailable', 'dashboard_widget_unavailable'],
+  // Failed jobs (#128 D6, G4).
+  ['job_not_retryable', 'job_not_retryable'],
+  ['job_not_failed', 'job_not_failed'],
+  ['job_already_queued', 'job_already_queued'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],

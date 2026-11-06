@@ -349,6 +349,9 @@ Codes in use today:
 | `report_setup_limit_reached` | 409 | Saving a setup when the caller already has 50; `details.max` (see Saved export setups). |
 | `report_setup_name_taken` | 409 | The caller already has a setup with this name, compared case-insensitively (see Saved export setups). |
 | `dashboard_widget_unavailable` | 422 | A `PUT` of the dashboard layout lists a widget the caller's permissions don't allow, at `["body","widgets",N,"widget"]`; nothing is stored (see Dashboard layout). |
+| `job_not_retryable` | 409 | `POST /api/v1/jobs/{job_id}/retry`: the job's task isn't in `RETRYABLE_TASKS`, or is no longer registered (see Jobs). |
+| `job_not_failed` | 409 | The same route: the job isn't `failed` now (for example, it was already retried). |
+| `job_already_queued` | 409 | The same route: another `todo` job of the task holds its `queueing_lock`; that run covers the work. Nothing changes and nothing is audited. |
 | `report_range_invalid` | 422 | A financial report or analytics KPI range with `from` after `to`, `to` after the center's today (field error at `["query","to"]`), or `to − from` of 366 days or more (at `["query","from"]`) (see Financial reports and Analytics KPIs). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
@@ -8802,6 +8805,48 @@ tutors, students, guardians) → `422 validation_error` (shape, unknown code, a
 widget listed twice, at the item) → `422 dashboard_widget_unavailable` (at
 `["body","widgets",N,"widget"]`, a widget the caller may not see) → success.
 Nothing is stored on any error.
+
+### Jobs
+
+#128 (M8-11; spec §9 "failed background tasks visible with retry controls";
+architecture ISSUE-J3; #128 E1–E8, orchestrator-recommended, pending owner
+review). The failed background jobs, in `administration` (`jobs.py`,
+`jobs_router.py`), for holders of `jobs.manage` (Owner, Administrator; not
+delegable). The data comes from `job_failures` (`_docs/data-model.md` §24),
+written by the worker middleware, joined by primary key to Procrastinate's
+`procrastinate_jobs` and `procrastinate_events`.
+
+| Route | Guard | Notes |
+|---|---|---|
+| `GET /api/v1/jobs` | `jobs.manage` | `CursorPage[FailedJobItem]`: jobs that failed at least once, newest `failed_at` first (ties by id), 25 per page (`400 invalid_cursor`). Filters: `task` (`^[a-z_]+:[a-z_]+$`, max 128; unknown → empty list), `status` (`failed` default, `todo`, `doing`, `succeeded`, `cancelled`, `aborted`, `any`), `from`/`to` (aware datetimes on `failed_at`, `[from, to)`; `422` when `to ≤ from`). Two statements per page. |
+| `GET /api/v1/jobs/tasks` | `jobs.manage` | `{items: [{task_name, retryable}]}`: the tasks registered on the API's job app, sorted, no `builtin:` task. |
+| `POST /api/v1/jobs/{job_id}/retry` | `jobs.manage`, CSRF | `job_id` is an integer > 0. One Unit of Work: `404 not_found` (no job, or a job that never failed) → lock the job row `FOR UPDATE` → `409 job_not_retryable` → `409 job_not_failed` → `409 job_already_queued` → `procrastinate_retry_job_v2(id, now(), NULL, NULL, NULL)` → audit `administration.job_retried {job_id, task_name, attempts}` (attempts before the retry; no record). `202` with the updated item (`status: todo`, `retryable: false`). A unique violation on the queueing-lock index (a race with a periodic tick) is `409 job_already_queued` and rolls the audit event back. No reauthentication, no `Idempotency-Key`: the status guard makes a repeat a `409`. |
+
+`FailedJobItem` has exactly these fields: `id`, `task_name`, `queue_name`,
+`status`, `attempts`, `error_class`, `error_code`, `sqlstate`, `deferred_at`
+(the first `deferred` event), `failed_at`, `retried_count` and
+`last_retried_at` (the `retried` events), and `retryable` (the task is in
+`RETRYABLE_TASKS` and registered, and the job is `failed`). Never the job's
+arguments, lock, queueing lock, worker or schedule, nor an error message or
+traceback (those stay in the worker logs, keyed by the job id).
+
+Retry semantics:
+
+- A retry keeps the job id and puts it back to `todo`; Procrastinate's
+  trigger adds a `retried` event. Procrastinate's function counts the retry
+  as an attempt (`attempts + 1`), and the next run adds one more, so a job
+  that failed once and then succeeded shows `attempts: 3`.
+- The function sends no `NOTIFY`: the worker picks the job up on its
+  polling interval (seconds).
+- Every task is a timestamp-only idempotent sweeper (`RETRYABLE_TASKS` in
+  `app/core/jobs.py`), so a retry is the same as the next periodic tick,
+  only earlier; it never replays one business item. A retry never resumes a
+  business-level failure: a `failed` import is resumed only by `POST
+  /api/v1/imports/{id}/commit` (with the kind's permission), and a `failed`
+  export stays failed. Retrying `administration:run_imports` only re-runs the
+  sweeper over `committing` imports.
+- Out of scope: aborted and stalled (`doing`) jobs, and per-item failures
+  inside a run (caught, logged and retried by the next tick).
 
 ### Response headers
 

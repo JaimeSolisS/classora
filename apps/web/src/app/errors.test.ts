@@ -471,6 +471,10 @@ const API_CODES = [
   'report_setup_name_taken',
   // Dashboard layout (#127 E2).
   'dashboard_widget_unavailable',
+  // Failed jobs (#128 D6).
+  'job_not_retryable',
+  'job_not_failed',
+  'job_already_queued',
 ];
 // Spellings confirmed with status_code_name() (apps/api/app/core/errors.py).
 const STATUS_CODES = [

@@ -496,5 +496,8 @@
   "export_expired": "This export has expired. Request it again.",
   "report_setup_limit_reached": "You already have 50 saved setups; delete one first.",
   "report_setup_name_taken": "You already have a setup with this name.",
-  "dashboard_widget_unavailable": "One of the widgets is no longer available to you."
+  "dashboard_widget_unavailable": "One of the widgets is no longer available to you.",
+  "job_not_retryable": "This job's task can't be retried.",
+  "job_not_failed": "This job is no longer failed.",
+  "job_already_queued": "A queued run will already cover this job."
 }

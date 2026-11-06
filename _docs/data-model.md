@@ -1714,3 +1714,22 @@ A `reporting` addition. Migration `0092_reporting_dashboard_layouts`; module `re
 | `widgets` | `JSONB` | The saved `[{widget, visible}]` in display order, as sent (after validation). CHECK `jsonb_typeof(widgets) = 'array' AND jsonb_array_length(widgets) BETWEEN 1 AND 20`. Widget codes and booleans only, never a figure. |
 
 No other index than the key and the unique `user_id`. Not `Audited` and no `version`: a per-user UI preference, like `user_preferences` (#36) and `notification_opt_outs` (#119); the last write wins. Entries that are no longer available (a lost permission, a widget removed in a later release) are ignored on read and dropped on the next save, so no migration is needed for a catalog change. The row stays when the user is deactivated or anonymized (RESTRICT, as `user_preferences`; #129 decides deletion).
+
+## 24. Job failures (#128, M8-11)
+
+A **core** addition (`app/core/job_failures.py`). Migration `0093_job_failures`. Procrastinate stores no error text, so the worker middleware `app.core.jobs.record_job_failure` records the sanitized error of every failed job run here; the failed jobs page reads it (`_docs/api.md` Jobs).
+
+### 24.1 `job_failures` (mutable, not audited, not versioned)
+
+| Column | Type | Notes |
+|---|---|---|
+| `job_id` | `BIGINT` **PK** → `procrastinate_jobs(id)` **ON DELETE CASCADE** | One row per job that ever failed. Deleting old jobs (Procrastinate's `builtin:remove_old_jobs`, M10-04/#129) deletes the row. |
+| `task_name` | `VARCHAR(128)` | The job's task, copied (the task filter's index). |
+| `error_class` | `TEXT NULL` | The exception class name (`__qualname__`), CHECK `char_length ≤ 200`. `NULL` for a failure backfilled by the migration ("Unknown"). |
+| `error_code` | `TEXT NULL` | An `AppError` code, CHECK `^[a-z][a-z0-9_]{0,63}$`. |
+| `sqlstate` | `TEXT NULL` | The database SQLSTATE of the exception (or its `orig`/`__cause__`), CHECK `^[0-9A-Z]{5}$`. |
+| `failed_at` | `TIMESTAMPTZ` default `now()` | The latest failure: a job retried and failed again updates its row (`ON CONFLICT (job_id) DO UPDATE`). |
+
+Indexes `ix_job_failures_failed_at_job_id (failed_at DESC, job_id DESC)` (the list order) and `ix_job_failures_task_name_failed_at (task_name, failed_at DESC)`. The list joins `procrastinate_jobs` by primary key only, so it never scans the job table.
+
+Never a message, a traceback or the job's arguments: driver messages quote key values. No personal data. The upgrade backfills one row per existing `failed` job (`error_class` `NULL`, `failed_at` = its latest `failed` event or `now()`); the downgrade drops the table. Not `Audited`: the retry itself is audited (`administration.job_retried`). The FK onto Procrastinate's table couples the migration to Procrastinate's schema; a Procrastinate major upgrade must recheck it and `procrastinate_retry_job_v2`.

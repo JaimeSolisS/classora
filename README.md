@@ -515,6 +515,10 @@ unless a bullet says otherwise.
   browse it on a read-only Audit log page, filtered by record, person and
   date, with each change's before and after values and people shown by
   name. Sensitive pay and expense values stay hidden for every reader.
+- Owners and Administrators see failed background jobs on a Failed jobs
+  page, with the task, the attempts and a safe error label (never personal
+  data), and can retry one. Retries are audited and never duplicate charges
+  or records.
 - Requests that change data are protected by an `Origin` check and a CSRF
   token, and the web app is served with a Content Security Policy and other
   security headers.

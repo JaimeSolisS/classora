@@ -189,3 +189,41 @@ class PolicyVersionInEffectError(AppError):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+# --- Failed jobs (#128 D4, D6) ------------------------------------------------------
+
+
+class JobNotRetryableError(AppError):
+    """The job's task is not in ``RETRYABLE_TASKS`` or is no longer
+    registered (#128 C1, D4)."""
+
+    status = 409
+    code = "job_not_retryable"
+    detail = "This job's task can't be retried."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class JobNotFailedError(AppError):
+    """The job is not ``failed`` now (for example it was already retried)."""
+
+    status = 409
+    code = "job_not_failed"
+    detail = "This job isn't failed, so it can't be retried."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class JobAlreadyQueuedError(AppError):
+    """Another run of the same task (same ``queueing_lock``) is already
+    queued; it covers the work (#128 D4, E5)."""
+
+    status = 409
+    code = "job_already_queued"
+    detail = "A queued run of this task already covers this job."
+
+    def __init__(self) -> None:
+        super().__init__()

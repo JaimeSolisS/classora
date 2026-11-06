@@ -36,6 +36,7 @@
     "passwordResets": "Restablecer contraseñas",
     "approvals": "Aprobaciones",
     "audit": "Auditoría",
+    "jobs": "Tareas fallidas",
     "catalog": "Catálogo",
     "settings": "Configuración",
     "billing": "Cobros",
@@ -629,6 +630,118 @@
       "maskedLabel": "Valor oculto en el registro de auditoría",
       "empty": "Este evento no tiene más datos.",
       "requestId": "ID de solicitud:"
+    }
+  },
+  "jobs": {
+    "title": "Tareas fallidas",
+    "intro": "Ejecuciones completas de tareas en segundo plano que fallaron. Los errores en elementos individuales se reintentan solos en la siguiente ejecución y no aparecen aquí.",
+    "filter": {
+      "label": "Filtros de tareas",
+      "task": "Tarea",
+      "allTasks": "Todas",
+      "status": "Estado",
+      "from": "Desde",
+      "to": "Hasta",
+      "apply": "Aplicar filtros",
+      "clear": "Limpiar filtros",
+      "fixFirst": "Corrige los filtros para ver las tareas.",
+      "errors": {
+        "date": "La fecha no es válida.",
+        "dateOrder": "La fecha final debe ser igual o posterior a la inicial."
+      }
+    },
+    "statusFilter": {
+      "failed": "Fallidas",
+      "any": "Todas",
+      "todo": "En cola",
+      "doing": "En ejecución",
+      "succeeded": "Terminadas",
+      "cancelled": "Canceladas",
+      "aborted": "Interrumpidas"
+    },
+    "status": {
+      "failed": "Fallida",
+      "todo": "En cola",
+      "doing": "En ejecución",
+      "succeeded": "Terminada",
+      "cancelled": "Cancelada",
+      "aborted": "Interrumpida"
+    },
+    "list": {
+      "title": "Tareas",
+      "task": "Tarea",
+      "status": "Estado",
+      "attempts": "Intentos",
+      "error": "Error",
+      "failedAt": "Falló",
+      "retries": "Reintentos",
+      "actions": "Acciones",
+      "unknownError": "Desconocido",
+      "sqlstate": "SQLSTATE {{code}}",
+      "noRetries": "Ninguno",
+      "retriesSummary_one": "{{count}}, el último {{time}}",
+      "retriesSummary_many": "{{count}}, el último {{time}}",
+      "retriesSummary_other": "{{count}}, el último {{time}}",
+      "empty": "No hay tareas fallidas con estos filtros.",
+      "loadMore": "Cargar más",
+      "loadingMore": "Cargando más tareas…",
+      "changed": "La lista cambió; vuelve a cargarla.",
+      "reload": "Volver a cargar",
+      "shown_one": "{{count}} tarea mostrada",
+      "shown_many": "{{count}} tareas mostradas",
+      "shown_other": "{{count}} tareas mostradas"
+    },
+    "retry": {
+      "action": "Reintentar",
+      "actionFor": "Reintentar {{task}}, falló el {{time}}",
+      "title": "¿Reintentar {{task}}?",
+      "body": "La tarea vuelve a revisar todo lo pendiente. No duplica cargos ni registros. Las tareas periódicas también se ejecutan solas en su próximo horario.",
+      "confirm": "Reintentar",
+      "done": "{{task}} quedó en cola para reintentarse."
+    },
+    "tasks": {
+      "identity": {
+        "purge_auth_sessions": "Limpieza de sesiones vencidas"
+      },
+      "idempotency": {
+        "purge_keys": "Limpieza de claves de idempotencia"
+      },
+      "ratelimit": {
+        "purge_counters": "Limpieza de contadores de límite"
+      },
+      "scheduling": {
+        "expire_offers": "Vencimiento de ofertas a tutores",
+        "materialize_series": "Generación de clases recurrentes"
+      },
+      "academics": {
+        "create_progress_report_placeholders": "Borradores de reportes de progreso"
+      },
+      "billing": {
+        "post_session_charges": "Cargos por clase",
+        "post_enrollment_charges": "Cargos por inscripción",
+        "post_tuition_charges": "Cargos de colegiatura",
+        "expire_packages": "Vencimiento de paquetes",
+        "send_charge_reminders": "Recordatorios de pago",
+        "reconcile_session_charges": "Conciliación de cargos por cambios de agenda"
+      },
+      "payroll": {
+        "open_periods": "Apertura de periodos de nómina",
+        "post_adjustments": "Ajustes de nómina"
+      },
+      "finance": {
+        "generate_recurring_expenses": "Gastos recurrentes"
+      },
+      "administration": {
+        "run_imports": "Importaciones"
+      },
+      "reporting": {
+        "run_exports": "Exportaciones"
+      },
+      "demo": {
+        "succeed": "Demostración: éxito",
+        "fail": "Demostración: fallo",
+        "periodic": "Demostración: periódica"
+      }
     }
   },
   "imports": {

@@ -1220,6 +1220,15 @@ export const routes: RouteObject[] = [
             }),
             handle: EXPORTS_ACCESS,
           },
+          // M8-11 (#128) G1: failed background jobs and their retry
+          // (code-split), jobs.manage holders (Owner, Administrator).
+          {
+            path: 'jobs',
+            lazy: async () => ({
+              Component: (await import('@/features/jobs/JobsPage')).JobsPage,
+            }),
+            handle: { permission: 'jobs.manage' },
+          },
           // Any signed-in user (#30 K1): no permission.
           { path: 'account/password', element: <ChangePasswordPage /> },
           // M8-02b A1: any signed-in user's notification preferences
