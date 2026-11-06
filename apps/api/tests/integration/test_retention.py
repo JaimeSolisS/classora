@@ -369,6 +369,7 @@ def test_the_summary_line_one_audit_event_and_an_idempotent_rerun(
     later = NOW + timedelta(days=1)
     caplog.set_level(logging.INFO, logger=retention.__name__)
     before = len(events(url, action=retention.AUDIT_ACTION))
+    caplog.clear()
 
     first = run(url, later)
 
@@ -379,7 +380,13 @@ def test_the_summary_line_one_audit_event_and_an_idempotent_rerun(
     assert summary.counts == dict(sorted(first.counts.items()))
     assert summary.failed_rules == []
     assert isinstance(summary.duration_ms, int)
-    assert record.id not in caplog.text
+    # What the run logged (the retention logger only; the test's own HTTP
+    # request lines name the record and are not the run's): no id or value.
+    logged = [r for r in caplog.records if r.name == retention.__name__]
+    assert logged
+    for entry in logged:
+        assert record.id not in entry.getMessage()
+        assert record.id not in repr(vars(entry))
     runs = events(url, action=retention.AUDIT_ACTION)
     assert len(runs) == before + 1
     assert (runs[-1].actor_user_id, runs[-1].record_type) == (None, None)

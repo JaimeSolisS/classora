@@ -152,7 +152,8 @@ async def test_a_failing_rule_is_logged_and_the_others_still_run(caplog, monkeyp
     assert ran == ["fine"]
     assert result.counts == {"b.fine": 0}
     assert result.failed == ("a.broken",)
-    assert "secret value" not in caplog.text
+    logged = [r for r in caplog.records if r.name == retention.__name__]
+    assert all("secret value" not in repr(vars(r)) for r in logged)
     [summary] = [r for r in caplog.records if r.message == retention.RUN_COMPLETED]
     assert summary.failed_rules == ["a.broken"]
     assert summary.counts == {"b.fine": 0}
