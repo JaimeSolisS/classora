@@ -218,7 +218,8 @@ class DemoAdminPlan:
     receipt_message_es: str
     receipt_message_en: str
     new_students: tuple[dict[str, str], ...]
-    """The students job's two new fictional students (CSV rows)."""
+    """The students job's two new fictional students (CSV rows; no
+    education level, as the #195 students)."""
     tutors: tuple[dict[str, str], ...]
     """The tutors job's rows: one ready, one with an invalid email."""
     series_starts_on: date
@@ -384,8 +385,6 @@ def plan_demo_admin(today: date) -> DemoAdminPlan:
                 "given_names": "Renata",
                 "family_names": family,
                 "birthdate": "2013-05-20",
-                "school_grade": "6",
-                "education_level": "Primaria",
                 **contact,
                 "contact_phone": "55 5555 0101",
             },
@@ -393,8 +392,6 @@ def plan_demo_admin(today: date) -> DemoAdminPlan:
                 "given_names": "Joaquín",
                 "family_names": family,
                 "birthdate": "2011-09-02",
-                "school_grade": "2",
-                "education_level": "Secundaria",
                 **contact,
                 "contact_phone": "55 5555 0102",
             },

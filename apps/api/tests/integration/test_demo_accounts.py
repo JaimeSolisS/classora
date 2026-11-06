@@ -35,12 +35,14 @@ ACCEPTANCE = "/api/v1/privacy-notice/acceptance"
 STUDENTS = "/api/v1/students"
 
 STUDENTS_VISIBLE = {
-    "demo.owner": 5,
-    "demo.admin": 5,
-    "demo.coordinator": 5,
-    "demo.finance": 5,
-    # #299 G4: S, Sib and A, the students of the tutor's demo sessions.
-    "demo.tutor": 3,
+    # The #195 families' five, and M8-demo's two imported students.
+    "demo.owner": 5 + 2,
+    "demo.admin": 5 + 2,
+    "demo.coordinator": 5 + 2,
+    "demo.finance": 5 + 2,
+    # #299 G4: S, Sib and A, the students of the tutor's demo sessions; and
+    # M8-demo: F3's student, of the imported series offered to the tutor.
+    "demo.tutor": 3 + 1,
     "demo.student": 1,
     "demo.guardian": 2,
     # #303: S and A, the cohort's students; #353: and B, of the finished
