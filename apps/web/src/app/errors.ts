@@ -557,6 +557,82 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['job_not_retryable', 'job_not_retryable'],
   ['job_not_failed', 'job_not_failed'],
   ['job_already_queued', 'job_already_queued'],
+  // Codes the i18n audit found without a central message (#130 D1):
+  // reachable codes, and codes a page also handles itself.
+  ['approval_assignee_ineligible', 'approval_assignee_ineligible'],
+  ['approval_request_closed', 'approval_request_closed'],
+  ['notification_type_duplicate', 'notification_type_duplicate'],
+  ['notification_type_mandatory', 'notification_type_mandatory'],
+  ['notification_type_unknown', 'notification_type_unknown'],
+  ['report_range_invalid', 'report_range_invalid'],
+  ['role_unknown', 'role_unknown'],
+  ['series_not_offerable', 'series_not_offerable'],
+  // Field codes the i18n audit found without a central message (#130 D2;
+  // most had a message their own page looked up).
+  ['birthdate_in_future', 'birthdate_in_future'],
+  ['body_required', 'body_required'],
+  ['classroom_inactive', 'classroom_inactive'],
+  ['classroom_not_applicable', 'classroom_not_applicable'],
+  ['classroom_unavailable', 'classroom_unavailable'],
+  ['classroom_unknown', 'classroom_unknown'],
+  ['code_not_overridable', 'code_not_overridable'],
+  ['code_unknown', 'code_unknown'],
+  ['codes_required', 'codes_required'],
+  ['count_out_of_range', 'count_out_of_range'],
+  ['crosses_local_date', 'crosses_local_date'],
+  ['date_range_invalid', 'date_range_invalid'],
+  ['decline_note_too_long', 'decline_note_too_long'],
+  ['duplicate_classroom', 'duplicate_classroom'],
+  ['duplicate_code', 'duplicate_code'],
+  ['duplicate_pair', 'duplicate_pair'],
+  ['ends_before_start', 'ends_before_start'],
+  ['exception_not_applicable', 'exception_not_applicable'],
+  ['from_date_in_past', 'from_date_in_past'],
+  ['from_date_not_allowed', 'from_date_not_allowed'],
+  ['from_date_required', 'from_date_required'],
+  ['interval_out_of_range', 'interval_out_of_range'],
+  ['max_students_below_enrolled', 'max_students_below_enrolled'],
+  ['naive_datetime', 'naive_datetime'],
+  ['name_too_long', 'name_too_long'],
+  ['no_changes', 'no_changes'],
+  ['no_occurrences', 'no_occurrences'],
+  ['not_on_grid', 'not_on_grid'],
+  ['not_whole_minutes', 'not_whole_minutes'],
+  ['occurrence_start_invalid', 'occurrence_start_invalid'],
+  ['override_not_applicable', 'override_not_applicable'],
+  ['pairs_required', 'pairs_required'],
+  // i18next reads a `_many` suffix as a plural form: its own key name.
+  ['pairs_too_many', 'pairs_limit'],
+  ['proposal_in_past', 'proposal_in_past'],
+  ['proposal_not_allowed', 'proposal_not_allowed'],
+  ['proposal_required', 'proposal_required'],
+  ['proposal_unchanged', 'proposal_unchanged'],
+  ['range_in_past', 'range_in_past'],
+  ['range_invalid', 'range_invalid'],
+  ['range_too_far', 'range_too_far'],
+  ['range_too_long', 'range_too_long'],
+  ['reason_too_long', 'reason_too_long'],
+  ['respond_by_invalid', 'respond_by_invalid'],
+  ['respond_by_requires_tutor', 'respond_by_requires_tutor'],
+  ['search_range_invalid', 'search_range_invalid'],
+  ['search_range_too_long', 'search_range_too_long'],
+  ['series_unchanged', 'series_unchanged'],
+  ['session_unchanged', 'session_unchanged'],
+  ['starts_on_in_past', 'starts_on_in_past'],
+  ['student_ids_duplicate', 'student_ids_duplicate'],
+  ['substitute_is_current_tutor', 'substitute_is_current_tutor'],
+  ['time_format', 'time_format'],
+  ['too_short', 'too_short'],
+  ['tutor_inactive', 'tutor_inactive'],
+  ['tutor_unknown', 'tutor_unknown'],
+  ['until_and_count', 'until_and_count'],
+  ['until_before_start', 'until_before_start'],
+  ['weekday_out_of_range', 'weekday_out_of_range'],
+  ['weekdays_duplicate', 'weekdays_duplicate'],
+  ['weekdays_empty', 'weekdays_empty'],
+  ['weekly_below_daily', 'weekly_below_daily'],
+  ['widget_duplicate', 'widget_duplicate'],
+  ['window_overlap', 'window_overlap'],
   // Status-derived codes (status_code_name() in apps/api/app/core/errors.py).
   ['bad_request', 'bad_request'],
   ['unauthorized', 'unauthorized'],
@@ -568,6 +644,26 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['network_error', 'network_error'],
   ['unexpected_response', 'unexpected_response'],
 ]);
+
+/**
+ * Problem codes the API sends only in `local` (the demo job route, never in
+ * the contract): they fall back by status (#130 C1).
+ */
+export const LOCAL_ONLY_CODES: readonly string[] = ['demo_job_already_queued'];
+
+/**
+ * Pydantic's own field-error codes (and the app's sites that reuse one):
+ * shown as the generic `validation_error` message, never mapped (#130 E8).
+ * Any other field code in `@classora/api-client/i18n-inventory.json` needs
+ * its own message.
+ */
+export const GENERIC_FIELD_CODES: readonly string[] = [
+  'missing',
+  'string_too_short',
+  'string_too_long',
+  'string_type',
+  'string_pattern_mismatch',
+];
 
 /** The codes with their own message (exported for tests). */
 export const MAPPED_ERROR_CODES: readonly string[] = [

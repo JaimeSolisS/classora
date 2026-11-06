@@ -89,14 +89,29 @@ export function isConflictCode(code: string): code is ConflictCode {
   return (CONFLICT_CODES as readonly string[]).includes(code);
 }
 
-function codeText(code: string, t: TFunction): string {
+/**
+ * The `common` key of a row code's label: `imports.rowCodes.*`, or
+ * `scheduling.rules.*` for a conflict code; undefined for an unknown code
+ * (#130's inventory check calls this).
+ */
+export function rowCodeLabelKey(
+  code: string,
+):
+  | `imports.rowCodes.${RowCode}`
+  | `scheduling.rules.${ConflictCode}`
+  | undefined {
   if (isRowCode(code)) {
-    return t(`imports.rowCodes.${code}`);
+    return `imports.rowCodes.${code}`;
   }
   if (isConflictCode(code)) {
-    return t(`scheduling.rules.${code}`);
+    return `scheduling.rules.${code}`;
   }
-  return t('imports.rowCodes.unknown', { code });
+  return undefined;
+}
+
+function codeText(code: string, t: TFunction): string {
+  const key = rowCodeLabelKey(code);
+  return key ? t(key) : t('imports.rowCodes.unknown', { code });
 }
 
 /** One error or warning: "column: message", or the message for the row. */
