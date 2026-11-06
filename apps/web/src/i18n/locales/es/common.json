@@ -8522,6 +8522,38 @@
       }
     }
   },
+  "dashboard": {
+    "title": "Tablero",
+    "intro": "Los indicadores que puedes ver. Elige cuáles mostrar y en qué orden con «Personalizar».",
+    "customize": "Personalizar",
+    "loading": "Cargando el tablero…",
+    "layoutError": "No se pudo cargar tu configuración del tablero",
+    "layoutErrorDetail": "Se muestran los widgets predeterminados.",
+    "empty": "No hay widgets visibles",
+    "emptyHint": "Usa «Personalizar» para mostrar alguno.",
+    "dialog": {
+      "title": "Personalizar el tablero",
+      "description": "Elige qué widgets mostrar y ordénalos: arrástralos, usa el teclado o los botones Subir y Bajar.",
+      "listLabel": "Widgets del tablero, en orden",
+      "reorder": "Reordenar «{{title}}»",
+      "show": "Mostrar «{{title}}»",
+      "moveUp": "Subir «{{title}}»",
+      "moveDown": "Bajar «{{title}}»",
+      "position": "«{{title}}», posición {{position}} de {{total}}",
+      "save": "Guardar",
+      "cancel": "Cancelar",
+      "reset": "Restablecer predeterminado",
+      "permissionsChanged": "Tus permisos cambiaron; revisa el tablero",
+      "instructions": "Para reordenar, pulsa Espacio o Intro para levantar el widget, muévelo con las flechas arriba y abajo y pulsa Espacio o Intro para soltarlo. Pulsa Escape para cancelar.",
+      "announcements": {
+        "start": "Levantaste «{{title}}», posición {{position}} de {{total}}.",
+        "over": "«{{title}}» se movió a la posición {{position}} de {{total}}.",
+        "outside": "«{{title}}» está fuera de la lista.",
+        "end": "Soltaste «{{title}}» en la posición {{position}} de {{total}}.",
+        "cancel": "Movimiento cancelado. «{{title}}» volvió a la posición {{position}} de {{total}}."
+      }
+    }
+  },
   "familyBilling": {
     "title": "Cuenta familiar — {{name}}",
     "fallbackTitle": "Cuenta familiar",

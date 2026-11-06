@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0091"
+HEAD = "0092"
 FINANCE_TABLES_0083 = frozenset({"expense_categories", "vendors"})
 EXPENSE_TABLES_0084 = frozenset(
     {"expenses", "expense_payments", "expense_payment_reversals", "expense_adjustments"}
@@ -83,6 +83,7 @@ MESSAGES_0087 = ("receipt_message_es", "receipt_message_en")
 IMPORT_TABLES_0088 = ("import_jobs", "import_rows")
 EXPORT_TABLES_0090 = ("export_jobs", "export_files")
 SETUPS_0091 = "report_setups"
+LAYOUTS_0092 = "dashboard_layouts"
 PAY_RULES = "session_pay_rules"
 LINES = "payroll_lines"
 SALARY_LINE_COLUMNS = frozenset(
@@ -487,6 +488,7 @@ def test_upgrade_empty_database_to_head(fresh_database_url):
             *IMPORT_TABLES_0088,
             *EXPORT_TABLES_0090,
             SETUPS_0091,
+            LAYOUTS_0092,
             *AUTH_TABLES,
             *CATALOG_TABLES,
             *CLASSROOM_TABLES,
@@ -4979,9 +4981,23 @@ def _of_0091(diff: Any) -> bool:
     return diff[0] == "add_index" and diff[1].table.name == SETUPS_0091
 
 
+def _of_0092(diff: Any) -> bool:
+    """A metadata difference that revision 0092 adds: the dashboard layouts
+    table (#127 A1; its unique constraint comes with it). CHECKs are not
+    compared."""
+    if diff[0] == "add_table":
+        return bool(diff[1].name == LAYOUTS_0092)
+    return diff[0] == "add_index" and diff[1].table.name == LAYOUTS_0092
+
+
+def _of_0091_on(diff: Any) -> bool:
+    """A metadata difference that revision 0091 or a later one adds."""
+    return _of_0091(diff) or _of_0092(diff)
+
+
 def _of_0090_on(diff: Any) -> bool:
     """A metadata difference that revision 0090 or a later one adds."""
-    return _of_0090(diff) or _of_0091(diff)
+    return _of_0090(diff) or _of_0091_on(diff)
 
 
 def _of_0089_on(diff: Any) -> bool:
@@ -17635,7 +17651,7 @@ def test_0090_adds_the_tables_and_downgrade_restores_0089(fresh_database_url):
     command.upgrade(config, "0090")
 
     assert version_nums(dsn) == ["0090"]
-    assert [d for d in metadata_diff(dsn) if not _of_0091(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0091_on(d)] == []
     assert public_tables(dsn) - tables == set(EXPORT_TABLES_0090)
 
     command.downgrade(config, "0089")
@@ -17794,14 +17810,14 @@ def test_0091_adds_the_table_and_downgrade_restores_0090(fresh_database_url):
     command.upgrade(config, "0091")
 
     assert version_nums(dsn) == ["0091"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0092(d)] == []
     assert public_tables(dsn) - tables == {SETUPS_0091}
 
     command.downgrade(config, "0090")
 
     assert version_nums(dsn) == ["0090"]
     assert public_tables(dsn) == tables
-    assert [d for d in metadata_diff(dsn) if not _of_0091(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0091_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -17887,6 +17903,111 @@ def test_0091_names_are_unique_per_creator_and_users_restrict(fresh_database_url
 
     assert getattr(taken.value.orig, "sqlstate", None) == "23505"
     assert "uq_report_setups_creator_name" in str(taken.value.orig)
+
+    with pytest.raises(IntegrityError) as restricted:
+        run_sql(dsn, "DELETE FROM users WHERE id = :u", {"u": user_id})
+
+    assert getattr(restricted.value.orig, "sqlstate", None) == "23001"
+
+
+# --- 0092: dashboard layouts (#127 A1) -----
+
+
+def _layout_0092(dsn: str, user_id: str, widgets: str) -> None:
+    run_sql(
+        dsn,
+        "INSERT INTO dashboard_layouts (user_id, widgets)"
+        " VALUES (:u, CAST(:w AS jsonb))",
+        {"u": user_id, "w": widgets},
+    )
+
+
+def test_0092_adds_the_table_and_downgrade_restores_0091(fresh_database_url):
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0091")
+    tables = public_tables(dsn)
+
+    command.upgrade(config, "0092")
+
+    assert version_nums(dsn) == ["0092"]
+    assert metadata_diff(dsn) == []
+    assert public_tables(dsn) - tables == {LAYOUTS_0092}
+
+    command.downgrade(config, "0091")
+
+    assert version_nums(dsn) == ["0091"]
+    assert public_tables(dsn) == tables
+    assert [d for d in metadata_diff(dsn) if not _of_0092(d)] == []
+
+    command.upgrade(config, "head")
+
+    assert metadata_diff(dsn) == []
+
+
+def test_0092_dashboard_layout_columns_constraints_and_indexes(fresh_database_url):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+
+    assert _columns(dsn, LAYOUTS_0092) == {
+        "id": STANDARD_COLUMNS["id"],
+        "created_at": STANDARD_COLUMNS["created_at"],
+        "updated_at": STANDARD_COLUMNS["updated_at"],
+        "user_id": ("uuid", "NO", None, None),
+        "widgets": ("jsonb", "NO", None, None),
+    }
+    constraints = _constraints(dsn, LAYOUTS_0092)
+    assert set(constraints) == {
+        "pk_dashboard_layouts",
+        "fk_dashboard_layouts_user_id_users",
+        "uq_dashboard_layouts_user_id",
+        "ck_dashboard_layouts_widgets_array",
+    }
+    assert constraints["fk_dashboard_layouts_user_id_users"].endswith(
+        "ON DELETE RESTRICT"
+    )
+    # No other index than the key and the one-row-per-user constraint.
+    assert set(_indexes(dsn, LAYOUTS_0092)) == {
+        "pk_dashboard_layouts",
+        "uq_dashboard_layouts_user_id",
+    }
+
+
+@pytest.mark.parametrize(
+    "widgets",
+    [
+        "{}",
+        '"room_utilization"',
+        "[]",
+        "[" + ", ".join(['{"widget": "balances", "visible": true}'] * 21) + "]",
+    ],
+)
+def test_0092_dashboard_layout_widgets_check(fresh_database_url, widgets):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    user_id = _user_0090(dsn)
+
+    with pytest.raises(IntegrityError) as caught:
+        _layout_0092(dsn, user_id, widgets)
+
+    assert getattr(caught.value.orig, "sqlstate", None) == "23514"
+    assert "ck_dashboard_layouts_widgets_array" in str(caught.value.orig)
+
+
+def test_0092_dashboard_layout_one_row_per_user_and_users_restrict(
+    fresh_database_url,
+):
+    dsn = fresh_database_url
+    command.upgrade(alembic_config(dsn), "head")
+    user_id = _user_0090(dsn)
+    twenty = "[" + ", ".join(['{"widget": "balances", "visible": true}'] * 20) + "]"
+    _layout_0092(dsn, user_id, twenty)
+
+    with pytest.raises(IntegrityError) as taken:
+        _layout_0092(dsn, user_id, '[{"widget": "balances", "visible": false}]')
+
+    assert getattr(taken.value.orig, "sqlstate", None) == "23505"
+    assert "uq_dashboard_layouts_user_id" in str(taken.value.orig)
 
     with pytest.raises(IntegrityError) as restricted:
         run_sql(dsn, "DELETE FROM users WHERE id = :u", {"u": user_id})

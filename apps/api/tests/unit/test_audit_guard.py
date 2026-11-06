@@ -381,6 +381,8 @@ def test_the_guard_scans_the_real_audited_models():
     assert not {"roles", "permissions", "role_permissions"} & audited_table_names()
     # #36 A4: a UI preference is not an important record.
     assert "user_preferences" not in audited_table_names()
+    # #127 A2: a dashboard layout is a per-user preference too.
+    assert "dashboard_layouts" not in audited_table_names()
     # #78 A2: approval revisions and staff corrections are append-only; their
     # named events are their record (the #76 E3 pattern).
     assert (

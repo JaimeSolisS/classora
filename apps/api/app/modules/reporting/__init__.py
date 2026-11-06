@@ -9,6 +9,8 @@ seams. #124 (M8-07) adds the asynchronous exports
 (:mod:`~app.modules.reporting.exports`, the task in
 :mod:`~app.modules.reporting.tasks`) and the module's first tables,
 ``export_jobs`` and ``export_files``. #125 (M8-08) adds the saved export
-setups (:mod:`~app.modules.reporting.setups`, ``report_setups``). It still
+setups (:mod:`~app.modules.reporting.setups`, ``report_setups``). #127
+(M8-10) adds the per-user dashboard layout
+(:mod:`~app.modules.reporting.dashboard`, ``dashboard_layouts``). It still
 never writes another module's tables.
 """

@@ -348,6 +348,7 @@ Codes in use today:
 | `export_expired` | 410 | Downloading an export whose file was deleted, or that is past its `expires_at` (see Exports). |
 | `report_setup_limit_reached` | 409 | Saving a setup when the caller already has 50; `details.max` (see Saved export setups). |
 | `report_setup_name_taken` | 409 | The caller already has a setup with this name, compared case-insensitively (see Saved export setups). |
+| `dashboard_widget_unavailable` | 422 | A `PUT` of the dashboard layout lists a widget the caller's permissions don't allow, at `["body","widgets",N,"widget"]`; nothing is stored (see Dashboard layout). |
 | `report_range_invalid` | 422 | A financial report or analytics KPI range with `from` after `to`, `to` after the center's today (field error at `["query","to"]`), or `to − from` of 366 days or more (at `["query","from"]`) (see Financial reports and Analytics KPIs). |
 | `user_state_transition_invalid` | 409 | A suspend, archive or reactivate the user's current state does not allow, including the same state (see User administration). |
 | `delegation_forbidden` | 403 | The actor of a delegation grant or revocation is not an active Owner (`user.delegation.manage`); the routes already require that permission, so it guards other callers of the identity service. |
@@ -8764,6 +8765,43 @@ Who gets `200`: K1/K2 Owner and Finance Staff (an Administrator gets `403`
 even with `payroll.finalize` delegated); K4/K5 Owner, Administrator, Academic
 Coordinator and Finance Staff; K6 Owner, Administrator and Academic
 Coordinator. Tutors, students and guardians get `403` on all five.
+
+### Dashboard layout
+
+#127 (M8-10; spec §8 customizable dashboards; #127 E1–E8,
+orchestrator-recommended, pending owner review). The staff home dashboard's
+per-user layout, in `reporting/dashboard/` (table `dashboard_layouts`,
+`_docs/data-model.md` §23). It holds widget codes and booleans only, never a
+figure: each widget is a KPI section that reads its own KPI route above,
+which checks the caller on every request. Each user reads and writes only
+their own layout (no `user_id` parameter, the Owner included).
+
+- **Widgets** (`WidgetCode`, in the default order): `revenue_trend` (K1),
+  `balances` (K3), `course_profitability` (K2) need `finance.report.view`;
+  `room_utilization` (K4), `student_retention` (K5) need `schedule.view`;
+  `tutor_performance` (K6) needs `schedule.view` and `tutor.view`. Each
+  requirement uses its KPI route's own constants (a unit test pins them).
+- **Available:** the widgets whose every permission the caller holds. Owner:
+  all six; Finance Staff: K1, K3, K2, K4, K5; Administrator and Academic
+  Coordinator: K4, K5, K6; two roles get the union.
+- **Effective layout** (computed on every read, never written back): the
+  stored entries whose widget is available, in stored order, first occurrence
+  only (unknown or unavailable codes dropped), then every available widget
+  still missing, appended with `visible: true`. With no stored row it is the
+  role default (every available widget, shown, in the order above).
+
+| Route | Guard | Notes |
+|---|---|---|
+| `GET /api/v1/reports/dashboard/layout` | `authenticated()`, then at least one available widget | `200 {widgets: [{widget, visible}], customized}` (`customized`: the caller has a stored row). One statement after authentication; no write. |
+| `PUT /api/v1/reports/dashboard/layout` | the same, plus CSRF | Body `{widgets: [{widget, visible}]}` (1–20 items, closed shapes). Upserts the caller's row with the body as sent; `200` with the effective layout of what was stored. No `Idempotency-Key` (idempotent by nature); last write wins (no `version`). |
+| `DELETE /api/v1/reports/dashboard/layout` | the same, plus CSRF | Deletes the caller's row (back to the default); `204`, with or without a row. |
+
+Check order: `401` → `403 csrf_failed` (writes) → `403
+privacy_notice_required` → `403 permission_denied` (no available widget:
+tutors, students, guardians) → `422 validation_error` (shape, unknown code, a
+widget listed twice, at the item) → `422 dashboard_widget_unavailable` (at
+`["body","widgets",N,"widget"]`, a widget the caller may not see) → success.
+Nothing is stored on any error.
 
 ### Response headers
 

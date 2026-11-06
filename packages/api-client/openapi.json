@@ -4163,6 +4163,141 @@
         }
       }
     },
+    "/api/v1/reports/dashboard/layout": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Get Dashboard Layout",
+        "description": "Your dashboard layout: exactly the widgets you may see (each one's KPI\nroute permission), in your saved order, or the role default (every\navailable widget, shown, in the catalog order).",
+        "operationId": "get_dashboard_layout_api_v1_reports_dashboard_layout_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardLayoutResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Put Dashboard Layout",
+        "description": "Save your dashboard layout: the widgets in order, each shown or\nhidden. Available widgets you leave out come back, shown, at the end.",
+        "operationId": "put_dashboard_layout_api_v1_reports_dashboard_layout_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardLayoutUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardLayoutResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Delete Dashboard Layout",
+        "description": "Reset your dashboard to the role default.",
+        "operationId": "delete_dashboard_layout_api_v1_reports_dashboard_layout_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "tags": [
@@ -45292,6 +45427,70 @@
         "title": "CustomPriceUpdate",
         "description": "``PATCH /api/v1/billing/custom-prices/{id}`` (#95 E5): end (or\nre-open with ``null``) a custom price. ``expires_on`` is required; every\nother field is ``field_immutable`` (E7)."
       },
+      "DashboardLayoutResponse": {
+        "properties": {
+          "widgets": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardWidget"
+            },
+            "type": "array",
+            "title": "Widgets"
+          },
+          "customized": {
+            "type": "boolean",
+            "title": "Customized",
+            "description": "Whether the caller saved a layout (false: the role default)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "widgets",
+          "customized"
+        ],
+        "title": "DashboardLayoutResponse",
+        "description": "The caller's effective dashboard layout (#127 C1): exactly the widgets\navailable to them, each once, in their order. Never a KPI figure: each\nwidget reads its own KPI route."
+      },
+      "DashboardLayoutUpdate": {
+        "properties": {
+          "widgets": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardWidget"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Widgets",
+            "description": "The widgets in display order, each once, 1-20. Available widgets left out are appended, shown, at the end."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "widgets"
+        ],
+        "title": "DashboardLayoutUpdate",
+        "description": "``PUT /api/v1/reports/dashboard/layout`` (#127 C3)."
+      },
+      "DashboardWidget": {
+        "properties": {
+          "widget": {
+            "$ref": "#/components/schemas/WidgetCode"
+          },
+          "visible": {
+            "type": "boolean",
+            "title": "Visible",
+            "description": "Whether the dashboard shows it."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "widget",
+          "visible"
+        ],
+        "title": "DashboardWidget",
+        "description": "One widget of the layout, in display order."
+      },
       "DateFilter": {
         "type": "string",
         "enum": [
@@ -70523,6 +70722,17 @@
         ],
         "title": "WeeklyAvailabilityUpdate",
         "description": "The tutor's full list of weekly windows\n(``PUT /api/v1/tutors/{user_id}/availability/weekly``); ``[]`` clears\nthem."
+      },
+      "WidgetCode": {
+        "type": "string",
+        "enum": [
+          "revenue_trend",
+          "balances",
+          "course_profitability",
+          "room_utilization",
+          "student_retention",
+          "tutor_performance"
+        ]
       },
       "WithdrawalConfirmed": {
         "properties": {

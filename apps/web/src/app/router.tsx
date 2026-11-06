@@ -16,6 +16,7 @@ import {
   NewCourseTemplatePage,
 } from '@/features/courses/CourseTemplatePages';
 import { CourseTemplatesPage } from '@/features/courses/CourseTemplatesPage';
+import { HomeRoute } from '@/features/dashboard/HomeRoute';
 import { FamiliesPage } from '@/features/families/FamiliesPage';
 import { FamilyDetailPage } from '@/features/families/FamilyDetailPage';
 import {
@@ -46,7 +47,6 @@ import { InvitationsPage } from '@/features/users/invitations/InvitationsPage';
 import { PasswordResetsPage } from '@/features/users/password-resets/PasswordResetsPage';
 import { UserDetailPage } from '@/features/users/admin/UserDetailPage';
 import { UsersPage } from '@/features/users/admin/UsersPage';
-import { HomePage } from '@/pages/HomePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { RootErrorPage } from '@/pages/RootErrorPage';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
@@ -151,7 +151,8 @@ export const routes: RouteObject[] = [
         // Errors in a page: rendered inside the layout.
         errorElement: <RouteErrorPage />,
         children: [
-          { index: true, element: <HomePage /> },
+          // M8-10 D1: the staff dashboard (code-split), else the old home.
+          { index: true, element: <HomeRoute /> },
           {
             path: 'users',
             element: <UsersPage />,

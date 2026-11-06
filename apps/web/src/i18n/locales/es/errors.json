@@ -495,5 +495,6 @@
   "export_not_ready": "Esta exportación todavía no tiene archivo.",
   "export_expired": "Esta exportación caducó. Solicítala de nuevo.",
   "report_setup_limit_reached": "Ya tienes 50 configuraciones guardadas; elimina alguna.",
-  "report_setup_name_taken": "Ya tienes una configuración con este nombre."
+  "report_setup_name_taken": "Ya tienes una configuración con este nombre.",
+  "dashboard_widget_unavailable": "Uno de los widgets ya no está disponible para ti."
 }
