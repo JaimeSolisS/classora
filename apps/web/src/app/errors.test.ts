@@ -237,6 +237,8 @@ const API_CODES = [
   'progress_report_closed',
   'progress_report_exists',
   'progress_report_author_not_current',
+  // #129 B4: the recently deleted records code.
+  'deleted_record_restore_conflict',
   'progress_report_review_route_required',
   'period_invalid',
   'period_in_future',

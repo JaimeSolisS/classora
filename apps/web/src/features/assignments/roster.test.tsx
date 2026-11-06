@@ -706,8 +706,9 @@ describe('delete (C2)', () => {
     trigger.focus();
     await click(trigger);
     expect(openDialog()!.textContent).toContain(
-      'Students and guardians will no longer see it.',
+      'Students and guardians will no longer see it. You can restore it for 30 days from Recently deleted.',
     );
+    expect(openDialog()!.textContent).not.toContain("can't be undone");
     await pressEscape();
     await settleUntil(() => openDialog() === null);
     await settleUntil(() => focused() === button('Delete'));

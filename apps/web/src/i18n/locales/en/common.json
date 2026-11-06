@@ -37,6 +37,7 @@
     "approvals": "Approvals",
     "audit": "Audit log",
     "jobs": "Failed jobs",
+    "recentlyDeleted": "Recently deleted",
     "catalog": "Catalog",
     "settings": "Settings",
     "billing": "Billing",
@@ -723,7 +724,8 @@
         "generate_recurring_expenses": "Recurring expenses"
       },
       "administration": {
-        "run_imports": "Imports"
+        "run_imports": "Imports",
+        "run_retention": "Data retention"
       },
       "reporting": {
         "run_exports": "Exports"
@@ -4119,7 +4121,7 @@
     },
     "deleteDialog": {
       "title": "Delete this note?",
-      "description": "It disappears from every list.",
+      "description": "It disappears from every list. You can restore it for 30 days from Recently deleted.",
       "confirm": "Delete note",
       "deleting": "Deleting…",
       "cancel": "Cancel"
@@ -4345,7 +4347,7 @@
       },
       "delete": {
         "title": "Delete this draft?",
-        "description": "The draft and its scores are deleted. This can't be undone.",
+        "description": "The draft and its scores are deleted. You can restore it for 30 days from Recently deleted.",
         "confirm": "Delete draft",
         "busy": "Deleting…"
       },
@@ -4543,7 +4545,7 @@
     },
     "delete": {
       "title": "Delete this draft?",
-      "description": "The draft disappears from every list. This can't be undone.",
+      "description": "The draft disappears from every list. You can restore it for 30 days from Recently deleted.",
       "confirm": "Delete draft"
     },
     "notices": {
@@ -4805,7 +4807,7 @@
     },
     "delete": {
       "title": "Delete this homework?",
-      "description": "Students and guardians will no longer see it.",
+      "description": "Students and guardians will no longer see it. You can restore it for 30 days from Recently deleted.",
       "confirm": "Delete homework"
     },
     "grade": {
@@ -4997,7 +4999,7 @@
     },
     "delete": {
       "title": "Delete this report?",
-      "description": "This can't be undone.",
+      "description": "You can restore it for 30 days from Recently deleted.",
       "withdrawn": "The review request is withdrawn.",
       "confirm": "Delete"
     },
@@ -8637,6 +8639,41 @@
       "empty": "No movements yet.",
       "more": "Load more",
       "loading": "Loading…"
+    }
+  },
+  "recentlyDeleted": {
+    "title": "Recently deleted",
+    "intro": "What you deleted in the last 30 days: notes, evaluation and plan drafts, homework and progress reports. You can restore it for 30 days; after that it is removed for good.",
+    "empty": "You have no records deleted in the last 30 days.",
+    "onlyRecent": "Only the 100 most recently deleted are shown.",
+    "listTitle": "Deleted records",
+    "columns": {
+      "kind": "Type",
+      "record": "Record",
+      "student": "Student",
+      "deleted": "Deleted",
+      "available": "Available until",
+      "actions": "Actions"
+    },
+    "kinds": {
+      "session_note": "Class note",
+      "evaluation": "Evaluation",
+      "learning_plan": "Learning plan",
+      "assignment": "Homework",
+      "progress_report": "Progress report"
+    },
+    "untitled": "{{kind}} of {{date}}",
+    "deletedOn": "Deleted on {{date}}",
+    "availableUntil": "Available until {{date}}",
+    "restore": {
+      "action": "Restore",
+      "actionFor": "Restore {{kind}}: {{record}}",
+      "busy": "Restoring…",
+      "done": "{{record}} was restored.",
+      "open": "Open",
+      "openFor": "Open {{record}}",
+      "notFound": "This record can no longer be restored. The list was refreshed.",
+      "conflict": "A live record already takes its place, so this one can't be restored. The list was refreshed."
     }
   }
 }

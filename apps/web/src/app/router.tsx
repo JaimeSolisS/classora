@@ -88,6 +88,7 @@ import {
   PROGRESS_REPORT_ROUTE_ACCESS,
   PROGRESS_REPORT_START_ACCESS,
 } from '@/features/progress-reports/access';
+import { RECENTLY_DELETED_ACCESS } from '@/features/recently-deleted/access';
 import {
   MY_PROGRESS_ACCESS,
   STUDENT_PROGRESS_ACCESS,
@@ -1219,6 +1220,17 @@ export const routes: RouteObject[] = [
                 .ExportsPage,
             }),
             handle: EXPORTS_ACCESS,
+          },
+          // M8-12 (#129) D1: the records the user deleted and may still
+          // restore (code-split): tutors and learning_plan.manage holders.
+          {
+            path: 'recently-deleted',
+            lazy: async () => ({
+              Component: (
+                await import('@/features/recently-deleted/RecentlyDeletedPage')
+              ).RecentlyDeletedPage,
+            }),
+            handle: RECENTLY_DELETED_ACCESS,
           },
           // M8-11 (#128) G1: failed background jobs and their retry
           // (code-split), jobs.manage holders (Owner, Administrator).

@@ -235,6 +235,7 @@ MODULE_TASKS = {
     "finance:generate_recurring_expenses",
     "administration:run_imports",
     "reporting:run_exports",
+    "administration:run_retention",
 }
 
 
@@ -867,6 +868,28 @@ def test_the_import_run_runs_every_15_minutes():
     )
     assert jobs.IMPORTS_TASK == "administration:run_imports"
     assert jobs.task_parameter_types(app)["administration:run_imports"] == {
+        "timestamp": int
+    }
+
+
+def test_the_retention_run_runs_daily_at_0930_utc():
+    # #129 C2: one queued job at a time; nothing else queues it.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "administration:run_retention"
+    ]
+    assert periodic.cron == "30 9 * * *"
+    assert periodic.periodic_id == "administration-run-retention"
+    assert periodic.configure_kwargs["queueing_lock"] == "administration-run-retention"
+    assert app.tasks["administration:run_retention"].queueing_lock == (
+        jobs.RETENTION_QUEUEING_LOCK
+    )
+    assert jobs.RETENTION_TASK == "administration:run_retention"
+    assert jobs.RETENTION_TASK in jobs.RETRYABLE_TASKS
+    assert jobs.task_parameter_types(app)["administration:run_retention"] == {
         "timestamp": int
     }
 

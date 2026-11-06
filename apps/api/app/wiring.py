@@ -34,16 +34,19 @@ types; #316: ``academics.progress_report_due``; #97:
 approval inbox, :func:`review_candidates`, and
 ``administration.approval_assigned``; #122: the ``students`` and ``tutors``
 import kinds; #123: the ``schedules`` and ``opening_balances`` import kinds; #124: the
-three export datasets and ``reporting.export_ready``/``_failed``)
+three export datasets and ``reporting.export_ready``/``_failed``; #129: the
+retention rules ``academics.deleted_records`` and ``jobs.finished_jobs``)
 are wired
 here, by the API app factory
 (``app.main.build_app``), ``app.cli`` and ``app.worker``.
 """
 
 from collections.abc import Sequence
+from typing import Final
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import jobs
 from app.modules.academics import service as academics_service
 from app.modules.administration import service as administration_service
 from app.modules.billing import service as billing_service
@@ -68,6 +71,8 @@ from app.workflows.assignments import register_assignment_notifications
 from app.workflows.availability_change import AVAILABILITY_CHANGE_HANDLER
 from app.workflows.charge_reminders import register_reminder_notifications
 from app.workflows.closeout_on_behalf import register_on_behalf_notifications
+from app.workflows.deleted_records import RULE_CODE as DELETED_RECORDS_RULE_CODE
+from app.workflows.deleted_records import purge_deleted_records
 from app.workflows.evaluations import register_evaluation_notifications
 from app.workflows.learning_plans import register_learning_plan_notifications
 from app.workflows.payroll_period_approval import PAYROLL_PERIOD_HANDLER
@@ -89,6 +94,28 @@ async def review_candidates(
     user_ids = await active_user_ids_with_permission(session, permission)
     references = await get_account_references(session, user_ids)
     return [references[user_id] for user_id in user_ids if user_id in references]
+
+
+DELETED_RECORDS_RULE: Final = administration_service.RetentionRule(
+    code=DELETED_RECORDS_RULE_CODE,
+    tables=academics_service.deleted_records.PURGED_TABLES,
+    run=purge_deleted_records,
+)
+"""#129 C3: deleted academic records after their 30-day recovery window."""
+
+FINISHED_JOBS_RULE: Final = administration_service.RetentionRule(
+    code=jobs.FINISHED_JOBS_RULE_CODE,
+    tables=jobs.FINISHED_JOBS_TABLES,
+    run=jobs.purge_finished_jobs,
+)
+"""#129 C4: succeeded, cancelled and aborted background jobs after 30 days."""
+
+
+def register_retention_wiring() -> None:
+    """The retention job's rules (#129 C1). Registering again changes
+    nothing."""
+    administration_service.register_retention_rule(DELETED_RECORDS_RULE)
+    administration_service.register_retention_rule(FINISHED_JOBS_RULE)
 
 
 def register_approval_wiring() -> None:
@@ -153,6 +180,7 @@ def register_approval_wiring() -> None:
         billing_service.OPENING_BALANCES_IMPORT_KIND
     )
     register_export_wiring()
+    register_retention_wiring()
     administration_service.register_time_zone_dependency(
         scheduling_service.TIME_ZONE_DEPENDENCY, scheduling_service.has_class_sessions
     )

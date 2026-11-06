@@ -2926,6 +2926,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/deleted-records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Deleted Records
+         * @description The records you deleted in the last 30 days and may still restore,
+         *     newest first (at most 100): notes, evaluation drafts, learning plan
+         *     drafts, homework and progress reports. No content, only what names
+         *     them.
+         */
+        get: operations["list_deleted_records_api_v1_deleted_records_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/deleted-records/{kind}/{record_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Deleted Record
+         * @description Restore a record you deleted: it is back exactly as it was (internal
+         *     or draft), with a new version. Nobody is notified.
+         */
+        post: operations["restore_deleted_record_api_v1_deleted_records__kind___record_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/evaluation-templates": {
         parameters: {
             query?: never;
@@ -12614,6 +12658,89 @@ export interface components {
         /** @enum {string} */
         DelegablePermissionCode: "finance.refund.approve" | "payroll.finalize" | "schedule.override" | "user.admin_role.assign";
         /**
+         * DeletedRecordItem
+         * @description One record the caller deleted and may still restore.
+         */
+        DeletedRecordItem: {
+            kind: components["schemas"]["DeletedRecordKind"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Version
+             * @description Send it back to restore the record.
+             */
+            version: number;
+            student: components["schemas"]["DeletedRecordStudent"];
+            /**
+             * Title
+             * @description The assignment's or plan's title, or the evaluation template's name; null for notes and progress reports.
+             */
+            title: string | null;
+            /**
+             * Reference Date
+             * Format: date
+             * @description The note's class date (center time), the evaluation date, the plan's start, the due date, or the report's period start (its creation date for an on-demand report).
+             */
+            reference_date: string;
+            /**
+             * Deleted At
+             * Format: date-time
+             */
+            deleted_at: string;
+            /**
+             * Restorable Until
+             * Format: date-time
+             * @description After this instant the record can't be restored; a daily job then removes it for good.
+             */
+            restorable_until: string;
+        };
+        /**
+         * DeletedRecordKind
+         * @description The eligible kinds (#129 E2): the models with ``SoftDeleteMixin``.
+         * @enum {string}
+         */
+        DeletedRecordKind: "session_note" | "evaluation" | "learning_plan" | "assignment" | "progress_report";
+        /**
+         * DeletedRecordList
+         * @description `GET /api/v1/deleted-records` (B1): newest deletion first.
+         */
+        DeletedRecordList: {
+            /** Items */
+            items: components["schemas"]["DeletedRecordItem"][];
+            /**
+             * Has More
+             * @description Only the 100 most recent are listed.
+             */
+            has_more: boolean;
+        };
+        /**
+         * DeletedRecordRestore
+         * @description `POST /api/v1/deleted-records/{kind}/{id}/restore` (B2).
+         */
+        DeletedRecordRestore: {
+            /**
+             * Version
+             * @description The record's version, as listed.
+             */
+            version: number;
+        };
+        /**
+         * DeletedRecordStudent
+         * @description The record's student (an assignment's first recipient by name).
+         */
+        DeletedRecordStudent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /**
          * DiscountAssignmentCreate
          * @description ``POST /api/v1/billing/discounts/{id}/assignments`` (#95 D6): exactly
          *     one of ``student_id`` and ``family_id``.
@@ -20495,6 +20622,20 @@ export interface components {
         ReportStatus: "draft" | "submitted" | "changes_requested" | "approved_for_family" | "retracted";
         /** @enum {string} */
         RequirementStatus: "met" | "not_met" | "pending";
+        /**
+         * RestoredRecord
+         * @description The restored record: live again, with its new version.
+         */
+        RestoredRecord: {
+            kind: components["schemas"]["DeletedRecordKind"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Version */
+            version: number;
+        };
         /**
          * RevenueTrend
          * @description ``GET /api/v1/reports/kpis/revenue-trend`` (K1): each month equals
@@ -34312,6 +34453,116 @@ export interface operations {
                 };
             };
             /** @description The note changed since it was read (version_conflict) or isn't shared (note_not_published). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_deleted_records_api_v1_deleted_records_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletedRecordList"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    restore_deleted_record_api_v1_deleted_records__kind___record_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: components["schemas"]["DeletedRecordKind"];
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeletedRecordRestore"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoredRecord"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The kind's own delete check fails now (for example note_read_only, evaluation_read_only, plan_subject_not_assigned, assignment_read_only, progress_report_read_only); a failed Origin or X-CSRF-Token check (csrf_failed); privacy_notice_required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such deleted record, it isn't one you deleted, or its 30 days have passed (not_found); also the kind's own 404 when you no longer relate to its student. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The record changed since it was listed (version_conflict), or a live record already takes its place (deleted_record_restore_conflict). */
             409: {
                 headers: {
                     [name: string]: unknown;

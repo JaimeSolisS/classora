@@ -45,6 +45,7 @@ export const LABELLED_TASKS = [
   'finance:generate_recurring_expenses',
   'administration:run_imports',
   'reporting:run_exports',
+  'administration:run_retention',
   'demo:succeed',
   'demo:fail',
   'demo:periodic',

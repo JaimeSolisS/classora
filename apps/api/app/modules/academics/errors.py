@@ -993,3 +993,17 @@ class ScheduleSubjectNotAssignedError(AppError):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+class DeletedRecordRestoreConflictError(AppError):
+    """``409 deleted_record_restore_conflict`` (#129 B2 step 5): restoring
+    the record would break a live-row rule of its kind (today: another live
+    weekly or monthly report of the same student, author, period and
+    subject)."""
+
+    status = 409
+    code = "deleted_record_restore_conflict"
+    detail = "A live record already takes this one's place, so it can't be restored."
+
+    def __init__(self) -> None:
+        super().__init__()

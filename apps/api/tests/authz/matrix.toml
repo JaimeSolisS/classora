@@ -1441,6 +1441,22 @@ allow = ["owner", "administrator", "academic_coordinator"]
 json = {}
 
 [[route]]
+method = "GET"
+path = "/api/v1/deleted-records"
+access = "authenticated"
+# #129 B1: only the caller's own restorable records; an empty list for
+# everyone else (tests/integration/test_deleted_records.py).
+
+[[route]]
+method = "POST"
+path = "/api/v1/deleted-records/{kind}/{record_id}/restore"
+access = "authenticated"
+# #129 B2: the placeholder id is no deleted record: 404 for every role. The
+# 200, 403 and 409 cases are tested in tests/integration/test_deleted_records.py.
+path_params = { kind = "session_note" }
+json = { version = 1 }
+
+[[route]]
 method = "POST"
 path = "/api/v1/dev/demo-jobs"
 access = "public"

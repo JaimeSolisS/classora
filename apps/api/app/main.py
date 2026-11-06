@@ -154,6 +154,9 @@ from app.workflows.change_requests_router import (
 )
 from app.workflows.cohorts_router import router as cohorts_router
 from app.workflows.custom_prices_router import router as custom_prices_router
+from app.workflows.deleted_records_router import (
+    router as deleted_records_router,
+)
 from app.workflows.evaluations_router import (
     evaluation_router as evaluations_router,
 )
@@ -346,6 +349,7 @@ def build_app(
     app.include_router(session_notes_router)
     app.include_router(student_notes_router)
     app.include_router(notes_router)
+    app.include_router(deleted_records_router)
     app.include_router(evaluation_templates_router)
     app.include_router(evaluations_router)
     app.include_router(student_evaluations_router)

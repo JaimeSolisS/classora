@@ -1723,7 +1723,7 @@ A **core** addition (`app/core/job_failures.py`). Migration `0093_job_failures`.
 
 | Column | Type | Notes |
 |---|---|---|
-| `job_id` | `BIGINT` **PK** → `procrastinate_jobs(id)` **ON DELETE CASCADE** | One row per job that ever failed. Deleting old jobs (Procrastinate's `builtin:remove_old_jobs`, M10-04/#129) deletes the row. |
+| `job_id` | `BIGINT` **PK** → `procrastinate_jobs(id)` **ON DELETE CASCADE** | One row per job that ever failed. Deleting old jobs (#129's `jobs.finished_jobs` retention rule: succeeded, cancelled and aborted jobs only) deletes the row; a `failed` job's row is kept. |
 | `task_name` | `VARCHAR(128)` | The job's task, copied (the task filter's index). |
 | `error_class` | `TEXT NULL` | The exception class name (`__qualname__`), CHECK `char_length ≤ 200`. `NULL` for a failure backfilled by the migration ("Unknown"). |
 | `error_code` | `TEXT NULL` | An `AppError` code, CHECK `^[a-z][a-z0-9_]{0,63}$`. |
@@ -1733,3 +1733,25 @@ A **core** addition (`app/core/job_failures.py`). Migration `0093_job_failures`.
 Indexes `ix_job_failures_failed_at_job_id (failed_at DESC, job_id DESC)` (the list order) and `ix_job_failures_task_name_failed_at (task_name, failed_at DESC)`. The list joins `procrastinate_jobs` by primary key only, so it never scans the job table.
 
 Never a message, a traceback or the job's arguments: driver messages quote key values. No personal data. The upgrade backfills one row per existing `failed` job (`error_class` `NULL`, `failed_at` = its latest `failed` event or `now()`); the downgrade drops the table. Not `Audited`: the retry itself is audited (`administration.job_retried`). The FK onto Procrastinate's table couples the migration to Procrastinate's schema; a Procrastinate major upgrade must recheck it and `procrastinate_retry_job_v2`.
+
+## 25. Retention and deletion (#129, M8-12)
+
+The retention policy of this version (#129 E1, E6; architecture ISSUE-L2, which stays PROPOSED for the legal values). The daily job `administration:run_retention` (09:30 UTC) runs the rules registered with `administration.service.register_retention_rule`; each rule declares the tables it deletes from, and `tests/unit/test_retention_rules.py` pins them off the protected tables (`retention.protected_tables()`). Every run logs `retention.run_completed` with counts only and, when it deleted something, writes the named audit event `administration.retention_run` (`details.counts`, no actor).
+
+| Category | Tables | What happens | When | Where |
+|---|---|---|---|---|
+| Money | every `billing` table (charges, payments, allocations, refunds, receipts, packages, tuition plans, discounts, prices, …) | Kept forever | — | Protected (C5 pin) |
+| Payroll | every `payroll` table (periods, lines, adjustments, payments, payslips, rates, …) | Kept forever | — | Protected |
+| Expenses | every `finance` table | Kept forever | — | Protected |
+| Attendance and sessions | `class_sessions`, `class_session_participants`, closeouts | Kept forever | — | Never eligible |
+| Audit and consent | `audit_events`, `consent_records`, `privacy_notice_acceptances` | Kept forever | — | Protected |
+| Import and export metadata | `import_jobs`, `export_jobs` | Kept forever | — | Protected |
+| Master data | users, students, guardians, families, tutors, rooms, subjects, categories, vendors, templates, products | Deactivated or archived, never deleted (recoverable by reactivation) | — | — |
+| Deleted academic records | `session_notes`, `evaluations` (+ `evaluation_scores`), `learning_plans` (+ objectives, milestones), `assignments` (+ `assignment_submissions`), `progress_reports` | Restorable by the deleter for 30 days, then hard-deleted through ORM deletes (`delete` audit events, no actor). A deleted #316 placeholder waits while its period is still the latest ended one. | 30 days after `deleted_at` | `academics.deleted_records` (#129); migration 0094 lets the `progress_reports` trigger delete soft-deleted rows only |
+| Finished background jobs | `procrastinate_jobs` (+ `procrastinate_events` by cascade; the `job_failures` row of a succeeded job that once failed) | Deleted; `failed`, `todo`, `doing` and `aborting` jobs are kept with their `job_failures` rows | 30 days after the job's latest event | `jobs.finished_jobs` (#129) |
+| Sessions | `auth_sessions` | Deleted | Hourly, once ended (24 h) | `identity:purge_auth_sessions` (#25) |
+| Import staging | `import_rows` values | Cleared on commit; deleted on discard or after 7 days | 7 days | `administration:run_imports` (#122) |
+| Export files | `export_files` | Deleted | 24 h after ready | `reporting:run_exports` (#124) |
+| Personal data of former students, guardians and users | names, contacts and audit values | **Pending #155** (legal values): anonymization and audit redaction | — | Follow-up M10-07b |
+
+**Backups:** purged rows stay in the database backups until the backup retention (architecture ISSUE-I7) expires; a restore from a backup brings them back.

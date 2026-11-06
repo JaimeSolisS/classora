@@ -311,6 +311,9 @@ describe('the notes page (H1)', () => {
 
     await click(buttonNamed(main(), 'Delete'));
     expect(openDialog()?.textContent).toContain('Delete this note?');
+    expect(openDialog()?.textContent).toContain(
+      'You can restore it for 30 days from Recently deleted.',
+    );
     await click(buttonNamed(openDialog()!, 'Delete note'));
     await settleUntil(() => text().includes('Note deleted.'));
     expect(api.calls(`DELETE /api/v1/notes/${NOTE_ID}`)).toHaveLength(1);

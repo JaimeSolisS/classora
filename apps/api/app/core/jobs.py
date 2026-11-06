@@ -78,6 +78,7 @@ import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timedelta
 from typing import Any, Final, get_type_hints
 
 from fastapi import Request
@@ -85,7 +86,8 @@ from procrastinate import App, JobContext, PsycopgConnector
 from procrastinate.exceptions import AlreadyEnqueued, JobAborted
 from procrastinate.middleware import AsyncCallNext
 from procrastinate.worker import Worker
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.config import AppEnv, Settings
 from app.core.db import async_direct_database_url, create_direct_engine
@@ -191,6 +193,13 @@ EXPORTS_QUEUEING_LOCK: Final = "reporting-run-exports"
 """At most one queued ``reporting:run_exports`` job (the periodic tick shares
 it)."""
 
+RETENTION_TASK: Final = "administration:run_retention"
+"""The daily retention run (#129 C2): purges deleted academic records after
+their recovery window and finished background jobs. Nothing else queues
+it."""
+RETENTION_QUEUEING_LOCK: Final = "administration-run-retention"
+"""At most one queued ``administration:run_retention`` job."""
+
 # --- Retry classification (#128 C1, E2) --------------------------------------------
 
 RETRYABLE_TASKS: Final[frozenset[str]] = frozenset(
@@ -224,6 +233,10 @@ RETRYABLE_TASKS: Final[frozenset[str]] = frozenset(
         # Builds ``queued`` exports only (``FOR UPDATE SKIP LOCKED``); a
         # business-level ``failed`` export stays failed (#128 C3).
         EXPORTS_TASK,
+        # Each retention rule deletes only what has expired at the run's
+        # ``now`` from committed state, in batches with ``SKIP LOCKED``; a
+        # retry deletes what the failed run left (#129 C2).
+        RETENTION_TASK,
         # Local/dev demo tasks: they only log (``demo:fail`` raises on purpose).
         "demo:succeed",
         "demo:fail",
@@ -333,6 +346,62 @@ async def record_job_failure(
                 extra={"job_id": job_id, "error": type(insert_error).__name__},
             )
         raise
+
+
+# --- Finished job pruning (#129 C4) ------------------------------------------------
+
+FINISHED_JOB_RETENTION_DAYS: Final = 30
+"""How long a succeeded, cancelled or aborted job is kept after its latest
+event (#129 C4)."""
+FINISHED_JOB_BATCH: Final = 5000
+"""Jobs deleted per transaction."""
+FINISHED_JOB_STATUSES: Final = ("succeeded", "cancelled", "aborted")
+"""The statuses pruned: ``failed`` jobs (with their ``job_failures`` row),
+``todo``, ``doing`` and ``aborting`` are kept."""
+FINISHED_JOBS_RULE_CODE: Final = "jobs.finished_jobs"
+FINISHED_JOBS_TABLES: Final = frozenset(
+    {"procrastinate_jobs", "procrastinate_events", "job_failures"}
+)
+"""What the delete reaches: the jobs, their events (``ON DELETE CASCADE``)
+and the ``job_failures`` row a succeeded job kept from an earlier failed
+attempt (``ON DELETE CASCADE``). Procrastinate's unlink trigger clears
+``procrastinate_periodic_defers.job_id``."""
+
+PURGE_FINISHED_JOBS_QUERY: Final = """
+WITH doomed AS (
+    SELECT j.id
+    FROM procrastinate_jobs j
+    WHERE j.status IN ('succeeded', 'cancelled', 'aborted')
+      AND (SELECT max(e.at) FROM procrastinate_events e WHERE e.job_id = j.id)
+          < :cutoff
+    ORDER BY j.id
+    LIMIT :batch
+    FOR UPDATE OF j SKIP LOCKED
+)
+DELETE FROM procrastinate_jobs WHERE id IN (SELECT id FROM doomed) RETURNING id
+"""
+
+
+async def purge_finished_jobs(
+    sessionmaker: async_sessionmaker[AsyncSession], now: datetime
+) -> int:
+    """The ``jobs.finished_jobs`` retention rule (#129 C4): delete the jobs
+    in :data:`FINISHED_JOB_STATUSES` whose latest event is more than
+    :data:`FINISHED_JOB_RETENTION_DAYS` days before ``now``, at most
+    :data:`FINISHED_JOB_BATCH` per transaction. ``procrastinate_jobs`` is
+    not audited, so plain SQL is allowed. Returns the number deleted."""
+    cutoff = now - timedelta(days=FINISHED_JOB_RETENTION_DAYS)
+    total = 0
+    while True:
+        async with sessionmaker() as session, session.begin():
+            result = await session.execute(
+                text(PURGE_FINISHED_JOBS_QUERY),
+                {"cutoff": cutoff, "batch": FINISHED_JOB_BATCH},
+            )
+            count = len(result.all())
+        total += count
+        if count < FINISHED_JOB_BATCH:
+            return total
 
 
 # Worker concurrency is fixed at 1 here; making it configurable and sizing it
@@ -483,13 +552,16 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     are registered in every environment, as is the 15-minute import run
     ``administration:run_imports`` (#122, ``app/modules/administration/
     imports/tasks.py``) and the 15-minute export run
-    ``reporting:run_exports`` (#124, ``app/modules/reporting/tasks.py``).
+    ``reporting:run_exports`` (#124, ``app/modules/reporting/tasks.py``),
+    and the daily retention run ``administration:run_retention`` (#129,
+    ``app/modules/administration/retention.py``).
     The demo tasks
     (and the periodic demo) are registered only in :data:`DEMO_ENVIRONMENTS`.
     Does not open the connector.
     """
     # Imported here: task modules import this module for ids_only.
     from app.core import demo_jobs, idempotency_tasks, ratelimit_tasks
+    from app.modules.administration import retention
     from app.modules.administration.imports import tasks as import_tasks
     from app.modules.identity import tasks as identity_tasks
     from app.modules.reporting import tasks as reporting_tasks
@@ -524,6 +596,7 @@ def create_job_app(connector: PsycopgConnector, *, app_env: AppEnv) -> App:
     recurring_expense_tasks.register(app)
     import_tasks.register(app)
     reporting_tasks.register(app)
+    retention.register(app)
     if app_env in DEMO_ENVIRONMENTS:
         demo_jobs.register(app)
     return app

@@ -519,6 +519,11 @@ unless a bullet says otherwise.
   page, with the task, the attempts and a safe error label (never personal
   data), and can retry one. Retries are audited and never duplicate charges
   or records.
+- Deleted notes, evaluation and learning plan drafts, homework and progress
+  reports can be restored by the person who deleted them for 30 days from a
+  Recently deleted page. A daily retention job then removes them for good,
+  along with old finished background jobs; financial, payroll, expense,
+  attendance, audit and consent records are never deleted.
 - Requests that change data are protected by an `Origin` check and a CSRF
   token, and the web app is served with a Content Security Policy and other
   security headers.

@@ -280,6 +280,7 @@
   "progress_report_closed": "This report is closed and can't be changed.",
   "progress_report_exists": "A report for this period already exists.",
   "progress_report_author_not_current": "The author no longer teaches this student. Approve or retract the report instead.",
+  "deleted_record_restore_conflict": "A live record already takes its place, so this one can't be restored.",
   "progress_report_review_route_required": "This progress report is decided on its own review page.",
   "period_invalid": "Choose a valid period: a Monday for a weekly report, the 1st for a monthly one, or an on-demand period of up to a year.",
   "period_in_future": "The period can't start after today.",
