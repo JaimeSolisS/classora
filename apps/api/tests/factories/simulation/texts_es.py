@@ -532,4 +532,73 @@ TEXTS: Final[dict[str, object]] = {
     "withdrawal_reasons": [
         "No se empezó la materia del paquete; la familia pidió darlo de baja.",
     ],
+    # HF-01e (#553): payroll.
+    "pay_item_types": {
+        "bonus": "Bono de puntualidad",
+        "deduction": "Descuento por material extraviado",
+    },
+    "pay_item_descriptions": {
+        "bonus": "Bono quincenal por llegar puntual a todas sus clases",
+        "deduction": "Reposición de un libro de ejercicios extraviado",
+    },
+    "payroll_manual_reasons": {
+        "advance": "Anticipo de nómina entregado al ingresar al centro",
+        "event": "Apoyo en la feria de ciencias del sábado 24 de octubre",
+    },
+    "payroll_reversal_reasons": [
+        "El banco devolvió la transferencia: la cuenta CLABE estaba mal capturada.",
+    ],
+    # HF-01e (#553): operating expenses.
+    "teaching_materials_category": "Material didáctico",
+    "vendors": {
+        "landlord": "Inmobiliaria Los Fresnos",
+        "power": "Servicios Eléctricos del Valle",
+        "internet": "Red Colibrí Telecomunicaciones",
+        "cleaning": "Limpieza Integral Brillo",
+        "software": "Aula Digital en la Nube",
+        "insurer": "Aseguradora Monte Alto",
+        "stationery": "Papelería La Pluma Azul",
+        "hardware": "Ferretería y Mantenimiento El Tornillo",
+        "furniture": "Mobiliario Escolar Tlacuache",
+    },
+    "vendor_contacts": {
+        "landlord": "Lic. Rosa Méndez, cobranza@losfresnos.example",
+        "power": "Atención a clientes, clientes@electricosdelvalle.example",
+        "internet": "Soporte, soporte@redcolibri.example",
+        "cleaning": "Coordinación, servicio@limpiezabrillo.example",
+        "software": "Facturación, facturas@auladigital.example",
+        "insurer": "Agente Jorge Salas, polizas@montealto.example",
+        "stationery": "Ventas, ventas@plumaazul.example",
+        "hardware": "Mostrador, pedidos@eltornillo.example",
+        "furniture": "Pedidos, pedidos@tlacuache.example",
+    },
+    "expense_templates": {
+        "rent": "Renta mensual del local",
+        "power": "Luz y agua del mes",
+        "cleaning": "Limpieza semanal del centro",
+        "software": "Suscripción a la plataforma de aulas virtuales",
+        "insurance": "Seguro anual de responsabilidad civil",
+    },
+    "expense_descriptions": {
+        "geometry": "Juegos de geometría y calculadoras para el aula 1",
+        "paper": "Papel, tóner y marcadores para pizarrón",
+        "air": "Reparación del aire acondicionado del aula 2",
+        "projector": "Proyector para el aula 4",
+        "readers": "Libros de lectura para primaria",
+        "paint": "Pintura del pasillo y de la recepción",
+        "cleaning_supplies": "Artículos de limpieza para el mes",
+        "whiteboard": "Pizarrón blanco para el aula 5",
+        "lab": "Material para las prácticas de química",
+        "water": "Garrafones de agua purificada",
+        "lock": "Cambio de la chapa de la entrada",
+        "meeting": "Café y galletas para la junta con familias",
+    },
+    "expense_adjustment_reasons": {
+        "shipping": "Cargo de envío e instalación no incluido en la nota",
+        "power": "El recibo de octubre llegó más alto que el monto de la plantilla",
+        "void": "Gasto capturado dos veces; se anula el duplicado",
+    },
+    "expense_reversal_reasons": [
+        "El banco rechazó la transferencia por un error en la referencia.",
+    ],
 }

@@ -871,13 +871,29 @@ Present so far:
   left, one cancelled and refunded, one withdrawn as account credit) and
   the rest pay per class; groups and courses charge an enrollment fee.
   Families pay in cash, by transfer or otherwise, with a receipt for each
-  payment; most pay on time, some late, two keep account credit, and three
-  families have overdue charges with reminders at 19 Nov. There is a
+  payment; most pay on time, some late, two keep account credit, and four
+  families have overdue charges, all with reminders, at 19 Nov. There is a
   bounced transfer paid again, manual charges and an adjustment, due-date
   changes, credited cancellations and a repriced class. See them in
   Billing (accounts, overdue accounts, packages, plans, discounts and
   prices) and in each family's billing pages. Receipts are in the run's
   language.
+- **Payroll and expenses:** payroll runs from 31 Aug. Ten tutors are paid
+  every two weeks (by the hour or per class, groups by the hour, the two
+  course tutors a per-course rate) and two get a monthly salary; late
+  family cancellations and no-shows pay 50 %. Every pay period that ended
+  before 19 Nov is prepared by Finance, finalized by the Owner (with a
+  payslip in the run's language) and paid; the fortnight of 9–22 Nov and
+  November are open. There are a punctuality bonus, a lost-materials
+  deduction, two closeouts approved late and a correction paid in the next
+  fortnight, a manual adjustment, the new tutor's pay advance carried
+  forward, and a payment reversed and paid again. Expenses come from
+  recurring templates (rent, electricity and water, weekly cleaning paused
+  for two weeks in October, a software subscription, the annual insurance)
+  and one-off purchases and repairs; all are paid (one duplicate voided,
+  one transfer reversed and paid again, two adjustments), and one vendor is
+  inactive. See them in Payroll, each tutor's earnings and payslips,
+  Expenses and the financial reports.
 
 The data is a snapshot as of 19 Nov 2026. If the worker runs, pending
 offers and requests expire against the real clock, and once the real date
@@ -889,10 +905,11 @@ after 18 Nov shows as missing once the real date passes its deadline. Once
 the real date passes 1 Dec, the worker's tuition step posts December's
 monthly charges, and its reminder step reminds families about charges that
 become overdue; charges and balances are always judged against the real
-date too.
+date too. Once the real date passes them, the worker also opens the next
+pay periods and generates the templates' later expenses (up to 5 Dec,
+unpaid).
 
-Payroll and administration data arrive in later updates (HF-01e and
-HF-01f).
+Administration data arrives in a later update (HF-01f).
 
 ### First Owner account
 

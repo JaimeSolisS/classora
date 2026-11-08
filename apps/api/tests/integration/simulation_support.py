@@ -108,6 +108,16 @@ course fees are ``courses``') with 24 discount lines, 5 adjustments, 1
 repricing, 7 cancellation decisions, 2 due-date changes, 43 reminders with
 43 notifications, 43 payments with 68 allocations and 43 receipts, 1
 reversal with 4 releases, 1 refund and 1 withdrawal."""
+SMALL_PAYROLL_ROWS: Final = 241
+"""``small`` (#553): 4 terms (1 monthly, 3 biweekly), 5 rates, 2 pay rule
+versions, 2 pay item types with 2 items, 19 periods (15 finalized, 4 open)
+with 139 lines, 7 adjustments (2 late approvals, 1 hours correction, 2
+manual, a carry-forward pair), 15 payments (one reversed and paid again;
+the joiner's first period is 0.00), 1 reversal, 15 payslips, and the 15
+period approval requests and 15 finalize notifications."""
+FINANCE_ROWS: Final = 83
+"""Both profiles (#553): 1 category, 9 vendors, 5 templates, 32 expenses (19
+generated, 13 one-off) with 32 payments, 1 reversal and 3 adjustments."""
 SETTINGS_ROWS: Final = 1
 """The scheduling-policy version effective at ``SIM_SETUP`` (the business
 settings, hours and renames update existing rows)."""
@@ -163,6 +173,14 @@ changes, 208 reminders with 186 notifications, 155 payments with 350
 allocations and 155 receipts, 1 reversal with 16 releases, 1 refund and
 1 withdrawal."""
 
+FULL_PAYROLL_ROWS: Final = 1025
+"""``full`` (#553): 12 terms (2 monthly, 10 biweekly), 15 rates, 2 pay rule
+versions, 2 pay item types with 3 items, 64 periods (52 finalized, 12
+open) with 711 lines, 7 adjustments (2 late approvals, 1 hours correction,
+2 manual, a carry-forward pair), 52 payments (one reversed and paid again;
+the joiner's first period is 0.00), 1 reversal, 52 payslips, and the 52
+period approval requests and 52 finalize notifications."""
+
 MODULE_ROWS: Final[dict[str, dict[str, int]]] = {
     "small": {
         "people": SMALL_PEOPLE_ROWS,
@@ -173,6 +191,8 @@ MODULE_ROWS: Final[dict[str, dict[str, int]]] = {
         "courses": SMALL_COURSES_ROWS,
         "academics": SMALL_ACADEMICS_ROWS,
         "billing": SMALL_BILLING_ROWS,
+        "payroll": SMALL_PAYROLL_ROWS,
+        "finance": FINANCE_ROWS,
     },
     "full": {
         "people": FULL_PEOPLE_ROWS,
@@ -183,6 +203,8 @@ MODULE_ROWS: Final[dict[str, dict[str, int]]] = {
         "courses": FULL_COURSES_ROWS,
         "academics": FULL_ACADEMICS_ROWS,
         "billing": FULL_BILLING_ROWS,
+        "payroll": FULL_PAYROLL_ROWS,
+        "finance": FINANCE_ROWS,
     },
 }
 
@@ -358,8 +380,27 @@ DUMP_TABLES: Final = (
     "refunds",
     "receipts",
     "withdrawals",
+    # HF-01e (#553): payroll and operating expenses.
+    "payroll_settings",
+    "tutor_pay_terms",
+    "compensation_rates",
+    "session_pay_rules",
+    "pay_item_types",
+    "pay_items",
+    "payroll_periods",
+    "payroll_lines",
+    "payroll_adjustments",
+    "payroll_payments",
+    "payroll_payment_reversals",
+    "payslips",
+    "vendors",
+    "expense_templates",
+    "expenses",
+    "expense_payments",
+    "expense_payment_reversals",
+    "expense_adjustments",
 )
-"""The tables HF-01, HF-01b, HF-01c and HF-01d write."""
+"""The tables HF-01, HF-01b, HF-01c, HF-01d and HF-01e write."""
 
 REFERENCE_TABLES: Final = (
     "roles",
@@ -605,3 +646,63 @@ def billing_texts(language: str) -> set[str]:
         billing.reversal.reason,
         *billing.reasons.values(),
     }
+
+
+# --- HF-01e free text (B7) ------------------------------------------------------------
+
+PAYROLL_FREE_TEXT: Final = (
+    ("pay_item_types", "name"),
+    ("pay_items", "description"),
+    ("payroll_adjustments", "reason"),
+    ("payroll_payment_reversals", "reason"),
+    ("expense_categories", "name"),
+    ("vendors", "name"),
+    ("vendors", "contact"),
+    ("expense_templates", "name"),
+    ("expenses", "description"),
+    ("expense_adjustments", "reason"),
+    ("expense_payment_reversals", "reason"),
+)
+"""The payroll and finance columns the simulation writes free text into
+(B7; a job-written adjustment and a carry-forward have no reason)."""
+
+
+def payroll_free_text(url: str) -> list[tuple[str, str]]:
+    """Every distinct non-blank value of :data:`PAYROLL_FREE_TEXT`, with its
+    column."""
+    found = []
+    for table, column in PAYROLL_FREE_TEXT:
+        for (value,) in run_sql(
+            url,
+            f"SELECT DISTINCT {column} FROM {table}"  # noqa: S608
+            f" WHERE {column} IS NOT NULL AND {column} <> ''",
+        ):
+            found.append((f"{table}.{column}", value))
+    return found
+
+
+def payroll_texts(language: str) -> set[str]:
+    """The pool values HF-01e writes (B7)."""
+    from tests.factories.simulation.texts import POOLS
+
+    pool = POOLS[language]  # type: ignore[index]
+    found: set[str] = {str(pool["teaching_materials_category"])}
+    for key in (
+        "expense_categories",
+        "pay_item_types",
+        "pay_item_descriptions",
+        "payroll_manual_reasons",
+        "vendors",
+        "vendor_contacts",
+        "expense_templates",
+        "expense_descriptions",
+        "expense_adjustment_reasons",
+    ):
+        values = pool[key]
+        assert isinstance(values, dict)
+        found |= set(values.values())
+    for key in ("payroll_reversal_reasons", "expense_reversal_reasons"):
+        values = pool[key]
+        assert isinstance(values, list)
+        found |= set(values)
+    return found

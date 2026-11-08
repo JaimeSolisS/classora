@@ -34,6 +34,12 @@ dated events. On 17-18 Nov the pending items are created (requests, offers,
 an availability change, a time off), so at :data:`~.anchor.SIM_NOW` every
 later class is only ``confirmed``, ``offered`` or ``unassigned``.
 
+**Payroll timing (HF-01e).** Two group classes are reviewed on the
+Wednesday after their payroll fortnight is finalized (late approvals), and
+a closeout correction of a class in a fortnight that ends before the anchor
+is made on the Thursday after it (an hours correction), so payroll has work
+after lock. The classes are picked without the RNG.
+
 The result is a list of dated :data:`Event` values the ``schedule`` and
 ``courses`` modules execute in order.
 """
@@ -86,6 +92,13 @@ RESIZE_AT: Final = local_instant(date(2026, 11, 12), "10:00")
 RESIZE_FROM: Final = 90
 RESIZE_TO: Final = 60
 PENDING_DAYS: Final = (date(2026, 11, 17), date(2026, 11, 18))
+PAY_FORTNIGHTS_FROM: Final = date(2026, 8, 31)
+"""HF-01e: the Monday the payroll fortnights count from (the payroll start
+and the biweekly anchor)."""
+LATE_REVIEW_FORTNIGHTS: Final = (date(2026, 9, 14), date(2026, 10, 12))
+"""HF-01e: one group class closed out in each of these fortnights is
+reviewed only after the fortnight's payroll is finalized (a
+``late_approval``)."""
 
 RNG_OFFSET: Final = 550_000
 """The timetable's RNG stream: ``Random(seed + RNG_OFFSET)``."""
@@ -102,6 +115,23 @@ def mins(value: str) -> int:
 
 def monday(day: date) -> date:
     return day - timedelta(days=day.isoweekday() - 1)
+
+
+def fortnight_start(day: date) -> date:
+    """The first day (a Monday) of the payroll fortnight holding ``day``
+    (HF-01e: 14-day blocks from :data:`PAY_FORTNIGHTS_FROM`)."""
+    return day - timedelta(days=(day - PAY_FORTNIGHTS_FROM).days % 14)
+
+
+def fortnight_end(day: date) -> date:
+    return fortnight_start(day) + timedelta(days=13)
+
+
+def after_payroll(day: date, days: int, hhmm: str) -> datetime:
+    """HF-01e: ``days`` days after the end of ``day``'s fortnight, at
+    ``hhmm`` (3: the Wednesday after the Tuesday finalize, 4: the
+    Thursday)."""
+    return local_instant(fortnight_end(day) + timedelta(days=days), hhmm)
 
 
 # --- Profile shapes ------------------------------------------------------------------
@@ -691,6 +721,9 @@ class Timetable:
     expired: tuple[str, ...]
     resized: str = ""
     """The class :func:`_Builder.build_resize` shortens (HF-01d)."""
+    late_reviews: tuple[str, ...] = ()
+    """The group classes reviewed after their fortnight's payroll is
+    finalized (HF-01e)."""
 
     def cls(self, key: str) -> ClassPlan:
         return self.by_key[key]
@@ -940,6 +973,7 @@ class _Builder:
         self.attendance_corrections: list[CorrectAttendance] = []
         self.closeout_corrections: list[CorrectCloseout] = []
         self.changes_requested: list[str] = []
+        self.late_reviews: list[str] = []
         self.declined: list[str] = []
         self.expired: list[str] = []
         self.pool_index: dict[str, int] = defaultdict(int)
@@ -1971,9 +2005,23 @@ class _Builder:
         for c in picked:
             self.changes_requested.append(c.key)
         rest = candidates[n_changes:]
+        corrected = {
+            c.key
+            for c in rest[
+                : self.volumes.attendance_corrections
+                + self.volumes.closeout_corrections
+            ]
+        }
+        self.late_reviews = self.pick_late_reviews(completed, corrected)
         for c in completed:
             end = c.final.ends_at
-            if c.key in self.changes_requested:
+            if c.key in self.late_reviews:
+                self.events.append(
+                    ReviewCloseout(
+                        after_payroll(c.final.day, 3, "12:00"), c.key, approve=True
+                    )
+                )
+            elif c.key in self.changes_requested:
                 self.events.append(
                     ReviewCloseout(
                         end + APPROVE_AFTER,
@@ -2007,6 +2055,10 @@ class _Builder:
         start = self.volumes.attendance_corrections
         for c in rest[start : start + self.volumes.closeout_corrections]:
             at = local_instant(c.final.day + timedelta(days=3), "11:30")
+            if fortnight_end(c.final.day) + timedelta(days=4) < SIM_ANCHOR:
+                # HF-01e: found after the fortnight's payroll is finalized,
+                # so payroll posts it as an ``hours_correction``.
+                at = max(at, after_payroll(c.final.day, 4, "11:30"))
             event = CorrectCloseout(
                 at,
                 c.key,
@@ -2015,6 +2067,30 @@ class _Builder:
             )
             self.closeout_corrections.append(event)
             self.events.append(event)
+
+    def pick_late_reviews(
+        self, completed: Sequence[ClassPlan], excluded: set[str]
+    ) -> list[str]:
+        """HF-01e: in each of :data:`LATE_REVIEW_FORTNIGHTS`, the last held
+        group class (no send-back, no correction, its own tutor) is reviewed
+        on the Wednesday after the fortnight, once payroll has finalized it.
+        Group classes consume no package unit, so billing doesn't move. No
+        RNG: every other plan value is unchanged."""
+        picked: list[str] = []
+        for first in LATE_REVIEW_FORTNIGHTS:
+            found = [
+                c
+                for c in completed
+                if c.kind == "group"
+                and fortnight_start(c.final.day) == first
+                and c.key not in excluded
+                and c.key not in self.changes_requested
+                and not c.substituted
+            ]
+            if not found:
+                raise TimetableError(f"no group class to review late in {first}")
+            picked.append(max(found, key=lambda c: (c.final.starts_at, c.key)).key)
+        return picked
 
     def build_resize(self) -> str:
         """HF-01d: the first confirmed 90-minute series class from 23 Nov
@@ -2316,6 +2392,7 @@ class _Builder:
             declined=tuple(self.declined),
             expired=tuple(self.expired),
             resized=resized,
+            late_reviews=tuple(self.late_reviews),
         )
 
 

@@ -37,6 +37,8 @@ from tests.integration.simulation_support import (
     first_run_lines,
     free_text,
     migrate,
+    payroll_free_text,
+    payroll_texts,
     run_command,
     simulation_env,
     table_counts,
@@ -133,6 +135,8 @@ def test_a_rerun_writes_nothing(migrated_url):
         "courses: 0 rows",
         "academics: 0 rows",
         "billing: 0 rows",
+        "payroll: 0 rows",
+        "finance: 0 rows",
     ]
     assert table_counts(migrated_url) == before
 
@@ -195,7 +199,7 @@ def test_a_database_not_at_head_exits_1(fresh_database_url):
 
 
 class FailingLastModule(SettingsModule):
-    # Replaces the last module (HF-01d: ``billing``); ``settings`` itself
+    # Replaces the last module (HF-01e: ``finance``); ``settings`` itself
     # still runs, so this one must not set up the settings again.
     name = "failing"
 
@@ -269,6 +273,13 @@ def test_the_run_date_does_not_change_the_data(database_url):
         "learning_plan_milestones",
         "assignment_submissions",
         "progress_reports",
+        # HF-01e (#553 B6): payroll and expenses.
+        "payroll_periods",
+        "payroll_lines",
+        "payroll_adjustments",
+        "payslips",
+        "expenses",
+        "expense_payments",
     ):
         assert dumps[0][table], table
 
@@ -536,6 +547,15 @@ def test_free_text_comes_from_the_run_languages_pool(es_url, en_url):
         assert {(r.language, r.message) for r in receipts} == {
             (language, RECEIPT_MESSAGES[language])
         }
+    # HF-01e (#553 B7): payroll and expense texts from the run language's pool,
+    # and every payslip in the run language.
+    for url, language in ((es_url, "es"), (en_url, "en")):
+        texts = [value for _, value in payroll_free_text(url)]
+        assert texts and set(texts) <= payroll_texts(language)
+        if language == "en":
+            assert not [v for v in texts if ACCENTED & set(v)]
+        payslips = rows(url, "SELECT DISTINCT language FROM payslips")
+        assert [r.language for r in payslips] == [language]
 
 
 def test_reference_names_are_english_only_in_english(es_url, en_url):
@@ -552,6 +572,7 @@ def test_reference_names_are_english_only_in_english(es_url, en_url):
         "Maintenance",
         "Rent",
         "Supplies",
+        "Teaching materials",
         "Utilities",
     ]
     assert [r.name for r in rows(es_url, levels)] == [
@@ -564,6 +585,7 @@ def test_reference_names_are_english_only_in_english(es_url, en_url):
         "Equipo",
         "Insumos",
         "Mantenimiento",
+        "Material didáctico",
         "Renta",
         "Servicios",
     ]
