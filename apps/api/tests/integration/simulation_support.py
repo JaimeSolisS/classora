@@ -28,7 +28,11 @@ from tests.authz.csrf import origin_for
 from tests.conftest import frozen_clock
 from tests.factories.simulation import SIMULATION_MODULES
 from tests.factories.simulation import __main__ as simulation_command
-from tests.factories.simulation.plan import ProfileName, SimulationPlan
+from tests.factories.simulation.plan import (
+    ProfileName,
+    SimulationPlan,
+    plan_simulation,
+)
 from tests.factories.simulation.timeline import SimulationModule
 from tests.integration.conftest import run_sql, short_lived_engine
 from tests.integration.test_migrations import alembic_config
@@ -67,8 +71,10 @@ SMALL_STAFF_ROWS: Final = 90
 rejected, 1 pending) with 17 approval requests and 17 decision notifications
 (15 approved, 1 rejected, 1 revoked), 4 availability settings, 24 weekly
 windows, 5 exceptions and 2 preferred classrooms."""
-SMALL_SCHEDULE_ROWS: Final = 1607
-"""``small`` (#550): 12 series (10 individual, 1 group, 1 tutor 12's) with
+SMALL_SCHEDULE_ROWS: Final = 1628
+"""``small`` (#550; HF-01d +21: 20 package units consumed by closeout
+approvals now that billing is on, and the notification of the class the
+Administrator shortens on 12 Nov): 12 series (10 individual, 1 group, 1 tutor 12's) with
 13 participants, 182 sessions with 210 participants, 30 offers covering 178
 sessions, 2 substitutions, 2 reassignment flags, 1 group with 2
 enrollments, 13 session requests, 15 change requests, 195 attendance marks
@@ -76,17 +82,27 @@ with 3 corrections, 151 closeouts with 153 approvals (two corrected) and 2
 closeout corrections, 5 availability change requests, 2 time-off
 exceptions, 189 approval requests and 247 notifications (override rows are
 not counted: they depend on the real date, D5)."""
-SMALL_COURSES_ROWS: Final = 140
-"""``small``: 2 templates with 2 subjects, 7 modules, 4 assessments and 2
-snapshots; 2 cohorts with 4 enrollments; their 2 series with 4
-participants, 27 sessions with 54 participants, 2 series offers covering 26
-sessions and 2 notifications."""
+SMALL_COURSES_ROWS: Final = 142
+"""``small`` (HF-01d +2: the running cohort's two course fees, posted by
+the enrollment hook now that billing is on): 2 templates with 2 subjects,
+7 modules, 4 assessments and 2 snapshots; 2 cohorts with 4 enrollments;
+their 2 series with 4 participants, 27 sessions with 54 participants, 2
+series offers covering 26 sessions and 2 notifications."""
 SMALL_ACADEMICS_ROWS: Final = 626
 """``small`` (#551): 34 notes (21 shared), 3 evaluation templates with 9
 criteria, 34 evaluations with 105 scores, 10 learning plans with 20
 objectives and 40 milestones, 49 assignments with 49 submissions, 3 report
 schedules, 40 progress reports with their 40 approval requests and 190
 notifications."""
+SMALL_BILLING_ROWS: Final = 467
+"""``small`` (#552): 8 billing accounts, 19 catalog items (4 of them the
+products') with 20 versions, 9 custom prices, 5 discounts with 2
+assignments, 4 products, 5 packages, 9 of the 29 unit rows (20
+consumptions are ``schedule``'s), 6 tuition plans with 1 pause, 138 of the
+140 charges (2 course fees are ``courses``') with 24 discount lines, 5
+adjustments, 1 repricing, 7 cancellation decisions, 2 due-date changes,
+21 reminders with 21 notifications, 42 payments with 68 allocations and
+42 receipts, 1 reversal with 5 releases, 1 refund and 1 withdrawal."""
 SETTINGS_ROWS: Final = 1
 """The scheduling-policy version effective at ``SIM_SETUP`` (the business
 settings, hours and renames update existing rows)."""
@@ -105,19 +121,22 @@ FULL_STAFF_ROWS: Final = 227
 42 notifications, 12 availability settings, 60 weekly windows, 7 exceptions
 and 10 preferred classrooms."""
 
-FULL_SCHEDULE_ROWS: Final = 8844
-"""``full`` (#550): 78 series (72 individual slots, 3 groups, 3 tutor 12's)
-with 90 participants, 1085 sessions with 1416 participants, 106 offers
-covering 1043 sessions, 8 substitutions, 8 reassignment flags, 3 groups
-with 15 enrollments, 13 session requests, 65 change requests, 1170
+FULL_SCHEDULE_ROWS: Final = 8927
+"""``full`` (#550; HF-01d +83: 81 package units consumed by closeout
+approvals now that billing is on, and the 2 notifications of the class the
+Administrator shortens on 12 Nov): 78 series (72 individual slots, 3 groups,
+3 tutor 12's) with 90 participants, 1085 sessions with 1416 participants,
+106 offers covering 1043 sessions, 8 substitutions, 8 reassignment flags, 3
+groups with 15 enrollments, 13 session requests, 65 change requests, 1170
 attendance marks with 3 corrections, 818 closeouts with 820 approvals and 2
 closeout corrections, 11 availability change requests, 8 time-off
 exceptions, 912 approval requests and 1170 notifications."""
-FULL_COURSES_ROWS: Final = 241
-"""``full``: 2 templates with 2 subjects, 7 modules, 4 assessments and 2
-snapshots; 2 cohorts with 11 enrollments; their 2 series with 11
-participants, 26 sessions with 142 participants, 2 series offers covering
-26 sessions and 2 notifications."""
+FULL_COURSES_ROWS: Final = 247
+"""``full`` (HF-01d +6: the running cohort's six course fees, posted by the
+enrollment hook now that billing is on): 2 templates with 2 subjects, 7
+modules, 4 assessments and 2 snapshots; 2 cohorts with 11 enrollments; their
+2 series with 11 participants, 26 sessions with 142 participants, 2 series
+offers covering 26 sessions and 2 notifications."""
 
 FULL_ACADEMICS_ROWS: Final = 2231
 """``full`` (#551): 182 notes (113 shared), 3 evaluation templates with 9
@@ -125,6 +144,17 @@ criteria, 130 evaluations with 413 scores, 28 learning plans with 56
 objectives and 112 milestones, 214 assignments with 214 submissions, 3
 report schedules, 95 progress reports with their 95 approval requests and
 677 notifications."""
+
+FULL_BILLING_ROWS: Final = 2517
+"""``full`` (#552): 30 billing accounts, 42 catalog items (4 of them the
+products') with 43 versions, 50 custom prices, 5 discounts with 2
+assignments, 4 products, 15 packages, 20 of the 101 unit rows (81
+consumptions are ``schedule``'s), 21 tuition plans with 1 pause, 943 of
+the 949 charges (6 course fees are ``courses``') with 279 discount lines,
+20 adjustments, 1 repricing, 44 cancellation decisions, 2 due-date
+changes, 169 reminders with 147 notifications, 155 payments with 350
+allocations and 155 receipts, 1 reversal with 16 releases, 1 refund and
+1 withdrawal."""
 
 MODULE_ROWS: Final[dict[str, dict[str, int]]] = {
     "small": {
@@ -135,6 +165,7 @@ MODULE_ROWS: Final[dict[str, dict[str, int]]] = {
         "schedule": SMALL_SCHEDULE_ROWS,
         "courses": SMALL_COURSES_ROWS,
         "academics": SMALL_ACADEMICS_ROWS,
+        "billing": SMALL_BILLING_ROWS,
     },
     "full": {
         "people": FULL_PEOPLE_ROWS,
@@ -144,6 +175,7 @@ MODULE_ROWS: Final[dict[str, dict[str, int]]] = {
         "schedule": FULL_SCHEDULE_ROWS,
         "courses": FULL_COURSES_ROWS,
         "academics": FULL_ACADEMICS_ROWS,
+        "billing": FULL_BILLING_ROWS,
     },
 }
 
@@ -292,14 +324,42 @@ DUMP_TABLES: Final = (
     "assignment_submissions",
     "progress_report_schedules",
     "progress_reports",
+    # HF-01d (#552): billing.
+    "billing_settings",
+    "service_prices",
+    "price_versions",
+    "custom_prices",
+    "discounts",
+    "discount_assignments",
+    "package_products",
+    "packages",
+    "package_credit_transactions",
+    "tuition_plans",
+    "tuition_plan_pauses",
+    "billing_accounts",
+    "charges",
+    "charge_discounts",
+    "charge_adjustments",
+    "charge_duration_repricings",
+    "session_cancellation_decisions",
+    "charge_due_date_changes",
+    "charge_reminders",
+    "payments",
+    "payment_allocations",
+    "payment_reversals",
+    "allocation_releases",
+    "refunds",
+    "receipts",
+    "withdrawals",
 )
-"""The tables HF-01, HF-01b and HF-01c write."""
+"""The tables HF-01, HF-01b, HF-01c and HF-01d write."""
 
 REFERENCE_TABLES: Final = (
     "roles",
     "permissions",
     "privacy_notice_versions",
     "payment_methods",
+    "cancellation_billing_rules",
 )
 """Tables only referenced (their rows resolve foreign keys)."""
 
@@ -477,4 +537,48 @@ def composed_texts(plan: SimulationPlan) -> set[str]:
         *(p.title for p in work.plans),
         *(f"{p.description} {p.reason}" for p in work.plans if p.reason),
         *(h.title for h in work.homework),
+    }
+
+
+# --- HF-01d free text (B7) ------------------------------------------------------------
+
+BILLING_FREE_TEXT: Final = (
+    ("charges", "description"),
+    ("charge_adjustments", "reason"),
+    ("charge_due_date_changes", "reason"),
+    ("withdrawals", "reason"),
+    ("payment_reversals", "reason"),
+    ("refunds", "reason"),
+    ("discounts", "name"),
+    ("package_products", "name"),
+)
+"""The billing columns the simulation writes free text into (B7; a
+job-written adjustment has no reason and an enrollment fee no
+description)."""
+
+
+def billing_free_text(url: str) -> list[tuple[str, str]]:
+    """Every distinct non-blank value of :data:`BILLING_FREE_TEXT`, with its
+    column."""
+    found = []
+    for table, column in BILLING_FREE_TEXT:
+        for (value,) in run_sql(
+            url,
+            f"SELECT DISTINCT {column} FROM {table}"  # noqa: S608
+            f" WHERE {column} IS NOT NULL AND {column} <> ''",
+        ):
+            found.append((f"{table}.{column}", value))
+    return found
+
+
+def billing_texts(language: str) -> set[str]:
+    billing = plan_simulation(language, "small", 1).billing  # type: ignore[arg-type]
+    return {
+        *(p.name for p in billing.products),
+        *(d.name for d in billing.discounts),
+        *(m.description for m in billing.manual_charges),
+        *(a.reason for a in billing.adjustments),
+        *(c.reason for c in billing.due_date_changes),
+        billing.reversal.reason,
+        *billing.reasons.values(),
     }

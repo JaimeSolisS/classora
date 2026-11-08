@@ -862,6 +862,22 @@ Present so far:
   Approvals and progress reports. See them in each student's record
   (history, learning plans, homework), the homework and progress report
   lists, and the family's own pages.
+- **Billing:** billing runs from 1 Sep with catalog prices (one price
+  change on 1 Oct), custom prices, a sibling discount, two scholarships, a
+  September promotion (expired) and a discount starting 1 Dec. About half
+  the students pay a monthly plan (one paused for October), a fifth use
+  prepaid class packages (renewed when used up, one lapsed with classes
+  left, one cancelled and refunded, one withdrawn as account credit) and
+  the rest pay per class; groups and courses charge an enrollment fee.
+  Families pay in cash, by transfer or otherwise, with a receipt for each
+  payment; most pay on time, some late, two keep account credit, and three
+  families have overdue charges with reminders at 19 Nov. There is a
+  bounced transfer paid again, manual charges and an adjustment, due-date
+  changes, credited cancellations and a repriced class. See them in
+  Billing (accounts, overdue accounts, packages, plans, discounts and
+  prices) and in each family's billing pages. Receipts are in the language
+  of the family's first guardian with a login; families without one get
+  Spanish receipts, also in the English run.
 
 The data is a snapshot as of 19 Nov 2026. If the worker runs, pending
 offers and requests expire against the real clock, and once the real date
@@ -869,10 +885,14 @@ passes 18 Nov the later classes look not held. Its progress report schedule
 also adds a draft report each time the real date passes the end of a later
 week or month (only the latest one). Keep the worker stopped to keep the
 snapshot. Homework is always judged against the real date: an assignment due
-after 18 Nov shows as missing once the real date passes its deadline.
+after 18 Nov shows as missing once the real date passes its deadline. Once
+the real date passes 1 Dec, the worker's tuition step posts December's
+monthly charges, and its reminder step reminds families about charges that
+become overdue; charges and balances are always judged against the real
+date too.
 
-Billing, payroll and administration data arrive in later updates (HF-01d
-to HF-01f).
+Payroll and administration data arrive in later updates (HF-01e and
+HF-01f).
 
 ### First Owner account
 

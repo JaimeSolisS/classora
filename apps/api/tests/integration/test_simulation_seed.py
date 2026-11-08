@@ -30,6 +30,8 @@ from tests.integration.simulation_support import (
     RERUN_SEED_LINES,
     SERVICE_CANCELLATION_REASONS,
     academic_free_text,
+    billing_free_text,
+    billing_texts,
     canonical_dump,
     composed_texts,
     first_run_lines,
@@ -130,6 +132,7 @@ def test_a_rerun_writes_nothing(migrated_url):
         "schedule: 0 rows",
         "courses: 0 rows",
         "academics: 0 rows",
+        "billing: 0 rows",
     ]
     assert table_counts(migrated_url) == before
 
@@ -192,7 +195,7 @@ def test_a_database_not_at_head_exits_1(fresh_database_url):
 
 
 class FailingLastModule(SettingsModule):
-    # Replaces the last module (HF-01c: ``academics``); ``settings`` itself
+    # Replaces the last module (HF-01d: ``billing``); ``settings`` itself
     # still runs, so this one must not set up the settings again.
     name = "failing"
 
@@ -517,6 +520,12 @@ def test_free_text_comes_from_the_run_languages_pool(es_url, en_url):
         assert academic and set(academic) <= allowed
         if language == "en":
             assert not [v for v in academic if ACCENTED & set(v)]
+    # HF-01d (#552 B7): the billing texts, from the run language's pool.
+    for url, language in ((es_url, "es"), (en_url, "en")):
+        billing = [value for _, value in billing_free_text(url)]
+        assert billing and set(billing) <= billing_texts(language)
+        if language == "en":
+            assert not [v for v in billing if ACCENTED & set(v)]
 
 
 def test_reference_names_are_english_only_in_english(es_url, en_url):

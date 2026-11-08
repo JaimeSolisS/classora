@@ -46,6 +46,7 @@ from tests.factories.simulation.anchor import (
 from tests.factories.simulation.texts import Language, TextPool
 
 if TYPE_CHECKING:
+    from tests.factories.simulation.billing_plan import Billing
     from tests.factories.simulation.coursework import Coursework
     from tests.factories.simulation.timetable import Timetable
 
@@ -752,6 +753,16 @@ class SimulationPlan:
     """HF-01c's academic record (:mod:`.coursework`); always set by
     :func:`plan_simulation` (read it through :attr:`academics`)."""
 
+    finances: Billing | None = None
+    """HF-01d's billing plan (:mod:`.billing_plan`); always set by
+    :func:`plan_simulation` (read it through :attr:`billing`)."""
+
+    @property
+    def billing(self) -> Billing:
+        if self.finances is None:  # pragma: no cover - plan_simulation sets it
+            raise RuntimeError("the plan has no billing plan")
+        return self.finances
+
     @property
     def timetable(self) -> Timetable:
         if self.schedule is None:  # pragma: no cover - plan_simulation sets it
@@ -969,11 +980,13 @@ def plan_simulation(
         address=texts.text("address"),
         contact_email=texts.text("contact_email"),
     )
+    from tests.factories.simulation.billing_plan import build_billing
     from tests.factories.simulation.coursework import build_coursework
     from tests.factories.simulation.timetable import build_timetable
 
     scheduled = replace(base, schedule=build_timetable(base, seed))
-    return replace(scheduled, coursework=build_coursework(scheduled, seed))
+    taught = replace(scheduled, coursework=build_coursework(scheduled, seed))
+    return replace(taught, finances=build_billing(taught, seed))
 
 
 class _Cycle:
