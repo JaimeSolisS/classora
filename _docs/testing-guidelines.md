@@ -10,8 +10,9 @@ it does not decide anything that task or its ADR owns.
 | Layer | What belongs here | Where the files live | Marker or project | Local command | CI job |
 |---|---|---|---|---|---|
 | API unit | Pure logic: validation, services with fakes, configuration, error mapping, job rules. No Docker, no network, no database. | `apps/api/tests/unit/` | `unit` (applied by directory) | `make test-unit` | `api-unit` |
-| API integration | Anything that needs PostgreSQL: repositories, the Unit of Work, endpoints through the ASGI app, seeds, jobs, PgBouncer behavior, authorization and financial invariants. Testcontainers `postgres:18`, plus the PgBouncer image built from `infrastructure/docker/pgbouncer` when a test asks for it. | `apps/api/tests/integration/` | `integration` (applied by directory) | `make test-integration` (without the migration checks and the billing invariant suite); `make test-integration SHARD=K/4` runs one CI shard | `api-integration (K/4)`, four parallel shards |
+| API integration | Anything that needs PostgreSQL: repositories, the Unit of Work, endpoints through the ASGI app, seeds, jobs, PgBouncer behavior, authorization and financial invariants. Testcontainers `postgres:18`, plus the PgBouncer image built from `infrastructure/docker/pgbouncer` when a test asks for it. | `apps/api/tests/integration/` | `integration` (applied by directory) | `make test-integration` (without the migration checks, the billing invariant suite and the simulation seed tests); `make test-integration SHARD=K/5` runs one CI shard | `api-integration (K/5)`, five parallel shards |
 | Billing invariant suite | Randomized sequences of every M6 ledger operation, cross-operation races and the billing job walk, checked against the whole invariant catalogue after every step (#103; "Financial invariant tests" below). A subset of the integration layer, run only by its own target. | `apps/api/tests/integration/billing_invariants/` | `integration` | `make test-billing-invariants` (`SEEDS=`, `STEPS=`, `EXTRA_SEED=`) | `api-billing-invariants` |
+| Simulation seed tests | The simulated-operations seed runs (#543 chain), checked end to end on a real database. A subset of the integration layer, run only by its own target. | `apps/api/tests/integration/test_simulation_*.py` | `integration` | `make test-simulation` | `api-simulation` |
 | Migration checks | Upgrade from an empty database, a single Alembic head, the downgrade/upgrade round trip, no drift between models and migrations. A subset of the integration layer, run only by its own target. | `apps/api/tests/integration/test_migrations.py` | `integration` | `make test-migrations` | `api-migrations` |
 | Web unit and component | Hooks, stores, formatters, the API call wrapper, routing, rendered components in jsdom, translation catalogs. | `apps/web/src/**/*.test.{ts,tsx}`, `packages/api-client/src/**/*.test.ts` | Vitest project `unit` (web); the api-client package's own Vitest run | `make test-web` | `web` |
 | Storybook story tests | Every component story with its play function and an axe check, in light and dark, in headless Chromium. | `apps/web/src/**/*.stories.tsx` | Vitest projects `storybook-light`, `storybook-dark` | `make test-storybook` | `web-storybook` |
@@ -26,10 +27,10 @@ starved CPU does not fail a full-app render; tests wait on conditions
 for a code-split route), never on time or a tick count.
 
 In CI the API layers run as parallel jobs, and each API test runs in exactly
-one of them: `api-unit`, `api-migrations`, `api-billing-invariants`, and
-`api-integration` in four shards. `--shard=K/N` (`apps/api/tests/sharding.py`) sorts the selected test
+one of them: `api-unit`, `api-migrations`, `api-billing-invariants`,
+`api-simulation`, and `api-integration` in five shards. `--shard=K/N` (`apps/api/tests/sharding.py`) sorts the selected test
 files by path and deals them round-robin, so a file always stays in one shard
-and a red shard is reproduced locally with `make test-integration SHARD=K/4`.
+and a red shard is reproduced locally with `make test-integration SHARD=K/5`.
 Coverage is reported per job (`--cov-report=term-missing`); no coverage
 threshold is enforced.
 
@@ -111,7 +112,10 @@ threshold is enforced.
   services under `sim_clock`. Its tests use the `small` profile and the real
   clock frozen at 2026-11-20 18:00 UTC, except the determinism tests (the
   plan at several frozen dates, and two runs frozen before and after the
-  anchor compared row by row).
+  anchor compared row by row). Its integration tests are named
+  `tests/integration/test_simulation_*.py` and run only in `make
+  test-simulation` (CI job `api-simulation`), so a new part's test file must
+  keep that prefix.
 
 ### Synthetic data only (architecture ISSUE-I7)
 
