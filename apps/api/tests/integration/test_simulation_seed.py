@@ -137,6 +137,8 @@ def test_a_rerun_writes_nothing(migrated_url):
         "billing: 0 rows",
         "payroll: 0 rows",
         "finance: 0 rows",
+        "administration: 0 rows",
+        "reporting: 0 rows",
     ]
     assert table_counts(migrated_url) == before
 
@@ -199,7 +201,7 @@ def test_a_database_not_at_head_exits_1(fresh_database_url):
 
 
 class FailingLastModule(SettingsModule):
-    # Replaces the last module (HF-01e: ``finance``); ``settings`` itself
+    # Replaces the last module (HF-01f: ``reporting``); ``settings`` itself
     # still runs, so this one must not set up the settings again.
     name = "failing"
 
@@ -350,7 +352,8 @@ def test_business_instants_are_the_plans_not_the_real_clock(es_url):
 
 
 def test_people_counts_small(es_url):
-    assert scalar(es_url, "SELECT count(*) FROM students") == 10
+    # HF-01f: + the two imported children.
+    assert scalar(es_url, "SELECT count(*) FROM students") == 12
     assert scalar(es_url, "SELECT count(*) FROM families") == 8
     # HF-01d: + the adult's paying parent; every first guardian has a login.
     assert scalar(es_url, "SELECT count(*) FROM guardians") == 11
@@ -380,7 +383,7 @@ def test_people_counts_small(es_url):
 
 
 def test_full_profile_counts_and_usernames(full_url):
-    assert scalar(full_url, "SELECT count(*) FROM students") == 40
+    assert scalar(full_url, "SELECT count(*) FROM students") == 42
     assert scalar(full_url, "SELECT count(*) FROM families") == 30
     assert scalar(full_url, "SELECT count(*) FROM guardians") == 46
     assert (

@@ -21,20 +21,25 @@ lines containing ``python -m tests.factories.demo``).
   runs at ``SIM_SETUP``, before any class);
 - ``payroll_plan`` and ``expenses_plan``: HF-01e's pure plans; ``payroll``
   and ``finance``: their modules (after ``billing``, so each day's classes,
-  approvals and corrections come first; HF-01f appends its own to
-  :data:`SIMULATION_MODULES`);
+  approvals and corrections come first);
+- ``administration`` and ``reporting``: HF-01f's modules, last (imports,
+  approvals, notification preferences and read state, settings history;
+  report setups, exports, dashboard layouts, recently deleted records), each
+  with its pure plan;
 - ``__main__``: the command.
 """
 
 from typing import Final
 
 from tests.factories.simulation.academics import AcademicsModule
+from tests.factories.simulation.administration import AdministrationModule
 from tests.factories.simulation.billing import BillingModule
 from tests.factories.simulation.catalog import CatalogModule
 from tests.factories.simulation.courses import CoursesModule
 from tests.factories.simulation.finance import FinanceModule
 from tests.factories.simulation.payroll import PayrollModule
 from tests.factories.simulation.people import PeopleModule
+from tests.factories.simulation.reporting import ReportingModule
 from tests.factories.simulation.schedule import ScheduleModule
 from tests.factories.simulation.settings import SettingsModule
 from tests.factories.simulation.staff import StaffModule
@@ -51,5 +56,7 @@ SIMULATION_MODULES: Final[tuple[SimulationModule, ...]] = (
     BillingModule(),
     PayrollModule(),
     FinanceModule(),
+    AdministrationModule(),
+    ReportingModule(),
 )
 """Every module, in order; each day runs them in this order."""

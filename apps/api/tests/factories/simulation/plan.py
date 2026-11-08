@@ -46,10 +46,12 @@ from tests.factories.simulation.anchor import (
 from tests.factories.simulation.texts import Language, TextPool
 
 if TYPE_CHECKING:
+    from tests.factories.simulation.administration import Administration
     from tests.factories.simulation.billing_plan import Billing
     from tests.factories.simulation.coursework import Coursework
     from tests.factories.simulation.expenses_plan import Expenses
     from tests.factories.simulation.payroll_plan import Payroll
+    from tests.factories.simulation.reporting import Reporting
     from tests.factories.simulation.timetable import Timetable
 
 type ProfileName = Literal["full", "small"]
@@ -775,6 +777,24 @@ class SimulationPlan:
     outgoings: Expenses | None = None
     """HF-01e's operating expenses (:mod:`.expenses_plan`); always set by
     :func:`plan_simulation` (read it through :attr:`expenses`)."""
+    admin: Administration | None = None
+    """HF-01f's administration plan (:mod:`.administration`); always set by
+    :func:`plan_simulation` (read it through :attr:`administration`)."""
+    reports: Reporting | None = None
+    """HF-01f's reporting plan (:mod:`.reporting`); always set by
+    :func:`plan_simulation` (read it through :attr:`reporting`)."""
+
+    @property
+    def administration(self) -> Administration:
+        if self.admin is None:  # pragma: no cover - plan_simulation sets it
+            raise RuntimeError("the plan has no administration plan")
+        return self.admin
+
+    @property
+    def reporting(self) -> Reporting:
+        if self.reports is None:  # pragma: no cover - plan_simulation sets it
+            raise RuntimeError("the plan has no reporting plan")
+        return self.reports
 
     @property
     def payroll(self) -> Payroll:
@@ -1012,17 +1032,21 @@ def plan_simulation(
         address=texts.text("address"),
         contact_email=texts.text("contact_email"),
     )
+    from tests.factories.simulation.administration import build_administration
     from tests.factories.simulation.billing_plan import build_billing
     from tests.factories.simulation.coursework import build_coursework
     from tests.factories.simulation.expenses_plan import build_expenses
     from tests.factories.simulation.payroll_plan import build_payroll
+    from tests.factories.simulation.reporting import build_reporting
     from tests.factories.simulation.timetable import build_timetable
 
     scheduled = replace(base, schedule=build_timetable(base, seed))
     taught = replace(scheduled, coursework=build_coursework(scheduled, seed))
     billed = replace(taught, finances=build_billing(taught, seed))
     paid = replace(billed, wages=build_payroll(billed))
-    return replace(paid, outgoings=build_expenses(paid))
+    spent = replace(paid, outgoings=build_expenses(paid))
+    administered = replace(spent, admin=build_administration(spent, seed))
+    return replace(administered, reports=build_reporting(administered))
 
 
 class _Cycle:

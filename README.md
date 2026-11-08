@@ -823,12 +823,13 @@ Owner's user list.
 | (30 guardians) | (30 guardians) | `classora-sim-guardian` | Parent or guardian |
 | (6 students) | (6 students) | `classora-sim-student` | Student |
 
-Present so far:
+What's in it:
 - **People:** 40 students in 30 families with 46 guardians (each adult
-  student's family has the parent who pays). Four students are adults, and
-  four enroll during the term. Every family's first guardian has a login. Every minor has a guardian
-  consent. There is one approved and one pending self-registration, and one
-  pending tutor invitation.
+  student's family has the parent who pays), plus two younger siblings
+  added on 2 Sep by a students import (42 students). Four students are
+  adults, and four enroll during the term. Every family's first guardian
+  has a login. Every minor has a guardian consent. There is one approved
+  and one pending self-registration, and one pending tutor invitation.
 - **Catalog:** 12 subjects across the four levels, five classrooms (one
   closed for renovation on 30 Oct), the 2026–2027 school year and three
   holidays.
@@ -885,8 +886,8 @@ Present so far:
   before 19 Nov is prepared by Finance, finalized by the Owner (with a
   payslip in the run's language) and paid; the fortnight of 9–22 Nov and
   November are open. There are a punctuality bonus, a lost-materials
-  deduction, two closeouts approved late and a correction paid in the next
-  fortnight, a manual adjustment, the new tutor's pay advance carried
+  deduction, two closeouts approved late and an hours correction deducted in the
+  next fortnight, a manual adjustment, the new tutor's pay advance carried
   forward, and a payment reversed and paid again. Expenses come from
   recurring templates (rent, electricity and water, weekly cleaning paused
   for two weeks in October, a software subscription, the annual insurance)
@@ -894,22 +895,57 @@ Present so far:
   one transfer reversed and paid again, two adjustments), and one vendor is
   inactive. See them in Payroll, each tutor's earnings and payslips,
   Expenses and the financial reports.
+- **Administration:** four imports (Administration > Imports): the
+  students file (two children created, one duplicate skipped; one child
+  tries two classes in September and doesn't continue), Finance's opening
+  balances (two charges, paid), a schedules file in October (one weekly
+  series from 23 Nov, one row failed with a scheduling conflict) and a
+  tutors file left staged on 18 Nov. In Approvals, the Owner has assigned
+  the pending qualification to the Administrator and a progress report to
+  the Academic coordinator; the other open items are unassigned. One tutor
+  and one guardian have turned off a notification type. Notifications
+  older than 12 Nov are read, newer ones unread. The contact email changed
+  on 5 Oct, and a scheduling policy version (booking notice 12 h) applies
+  from 1 Nov.
+- **Reports:** three saved report setups (Finance's "monthly expenses",
+  shared with the Owner role; two private students setups), two exports
+  (Finance's October expenses, expired; the Owner's November classes,
+  ready), customized dashboards for the Owner and Finance (the other roles
+  keep the defaults), and in a tutor's Recently deleted, a learning-plan
+  draft and an internal note deleted on 12 Nov. No background job has
+  failed. The audit log holds every change the seed made.
 
-The data is a snapshot as of 19 Nov 2026. If the worker runs, pending
-offers and requests expire against the real clock, and once the real date
-passes 18 Nov the later classes look not held. Its progress report schedule
-also adds a draft report each time the real date passes the end of a later
-week or month (only the latest one). Keep the worker stopped to keep the
-snapshot. Homework is always judged against the real date: an assignment due
-after 18 Nov shows as missing once the real date passes its deadline. Once
-the real date passes 1 Dec, the worker's tuition step posts December's
-monthly charges, and its reminder step reminds families about charges that
-become overdue; charges and balances are always judged against the real
-date too. Once the real date passes them, the worker also opens the next
-pay periods and generates the templates' later expenses (up to 5 Dec,
-unpaid).
+The data is a snapshot as of 19 Nov 2026, whatever day you run the seed.
+The worker works against the real clock, so if it runs:
+- pending offers and requests expire, and once the real date passes 18
+  Nov the later classes look not held; homework due after 18 Nov shows as
+  missing once its deadline passes;
+- its progress report schedule adds a draft report each time the real
+  date passes the end of a later week or month (only the latest one);
+- once the real date passes 1 Dec, December's monthly tuition is posted
+  and families are reminded about charges that become overdue (charges and
+  balances are always judged against the real date);
+- once the real date passes them, the next pay periods open and the
+  templates' later expenses are generated (up to 5 Dec, unpaid);
+- the Owner's export expires 24 hours after 18 Nov 17:00, the staged
+  tutors import 7 days after the seed ran, and the recently deleted
+  records are purged 30 days after 12 Nov.
 
-Administration data arrives in a later update (HF-01f).
+To keep the snapshot, don't start the worker (native stack: skip `make
+worker-native`; Compose: `docker compose stop worker`).
+
+KPIs: the dashboard's default range ends at the real today. To see the
+simulated term, use a custom range ending 18 Nov 2026 (for example 1 Sep to
+18 Nov; before that real date, end it today); for retention, compare
+October with September.
+
+Audit events and notifications show the time the seed ran, not the
+simulated date, because the database sets those times.
+
+To start again, give the language a fresh database: native stack `make
+db-drop NAME=classora_sim_es && make db-create NAME=classora_sim_es`, then
+`make api-native` (migrates) and the target; Compose `docker compose down
+-v`, `make dev`, `make migrate` and the target.
 
 ### First Owner account
 

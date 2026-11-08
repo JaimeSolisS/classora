@@ -601,4 +601,28 @@ TEXTS: Final[dict[str, object]] = {
     "expense_reversal_reasons": [
         "El banco rechazó la transferencia por un error en la referencia.",
     ],
+    # HF-01f (#554): administration and reporting.
+    "contact_email_updated": "recepcion@example.com",
+    "invalid_email": "correo-sin-arroba",
+    "import_files": {
+        "students": "alumnos-nuevos-septiembre.csv",
+        "balances": "saldos-iniciales.csv",
+        "schedules": "horarios-noviembre.csv",
+        "tutors": "tutores-diciembre.csv",
+    },
+    "opening_balance_descriptions": [
+        "Saldo pendiente del ciclo anterior",
+        "Libros del ciclo anterior sin pagar",
+    ],
+    "report_setups": {
+        "admin": "Alumnos activos",
+        "coordinator": "Alumnos de secundaria",
+        "finance": "Gastos del mes",
+    },
+    "deleted_records": {
+        "plan_title": "Plan de repaso (borrador)",
+        "plan_objective": "Repasar los temas del primer parcial",
+        "plan_milestone": "Resolver una guía de ejercicios",
+        "note": "Nota duplicada por error; la información ya está en el cierre.",
+    },
 }
