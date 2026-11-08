@@ -463,6 +463,14 @@ LEFT_OUT: Final = frozenset(
 LEFT_OUT_KEYS: Final = frozenset({"fingerprint"})
 """JSON keys left out: a withdrawal's stored preview ``fingerprint`` is a
 hash over its ids (HF-01d)."""
+LEFT_OUT_BY_TABLE: Final[dict[str, frozenset[str]]] = {
+    # HF-01f: an XLSX file stores the real time it was rendered (openpyxl's
+    # created/modified properties), and the zipped size changes with those
+    # digits by a few bytes; the file itself is left out for the same reason.
+    "export_jobs": frozenset({"byte_size"}),
+}
+"""Columns left out of one table's rows: values that depend on the real
+time the seed ran (E7), not on the plan."""
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _EMBEDDED_UUID = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
@@ -489,6 +497,10 @@ def canonical_dump(url: str) -> dict[str, list[str]]:
     :data:`LEFT_OUT` columns, every id (column or JSON value) replaced by
     the canonical form of the row it names."""
     tables = asyncio.run(_load(url))
+    for table, columns in LEFT_OUT_BY_TABLE.items():
+        for row in tables[table]:
+            for column in columns:
+                row.pop(column, None)
     by_id: dict[uuid.UUID, dict[str, Any]] = {
         row["id"]: row for rows in tables.values() for row in rows if "id" in row
     }
@@ -552,6 +564,62 @@ def canonical_dump(url: str) -> dict[str, list[str]]:
         table: sorted(canon_row(row, 0) for row in tables[table])
         for table in DUMP_TABLES
     }
+
+
+def _flatten(value: Any, path: str = "") -> dict[str, Any]:
+    """A JSON value as ``{dotted path: leaf}``; a string that is itself
+    JSON (a resolved label) is flattened too."""
+    if isinstance(value, str) and value[:1] in "{[":
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return {path: value}
+    if isinstance(value, dict):
+        found: dict[str, Any] = {}
+        for key, item in value.items():
+            found |= _flatten(item, f"{path}.{key}" if path else key)
+        return found
+    if isinstance(value, list):
+        found = {}
+        for index, item in enumerate(value):
+            found |= _flatten(item, f"{path}[{index}]")
+        return found
+    return {path: value}
+
+
+def dump_differences(
+    first: dict[str, list[str]], second: dict[str, list[str]], *, limit: int = 8
+) -> dict[str, Any]:
+    """A bounded description of where two canonical dumps differ (C4): per
+    table, the row counts, how many rows are only in each dump, and for the
+    first such pair the differing fields (``path: (first, second)``, values
+    cut at 200 characters); an unpaired row is shown cut at 400."""
+    from collections import Counter
+
+    found: dict[str, Any] = {}
+    for table in sorted(set(first) | set(second)):
+        a, b = first.get(table, []), second.get(table, [])
+        if a == b:
+            continue
+        only_a = sorted((Counter(a) - Counter(b)).elements())
+        only_b = sorted((Counter(b) - Counter(a)).elements())
+        entry: dict[str, Any] = {
+            "rows": (len(a), len(b)),
+            "only_in_first": len(only_a),
+            "only_in_second": len(only_b),
+        }
+        if only_a and only_b:
+            left, right = _flatten(only_a[0]), _flatten(only_b[0])
+            entry["fields"] = {
+                key: (str(left.get(key))[:200], str(right.get(key))[:200])
+                for key in sorted(set(left) | set(right))
+                if left.get(key) != right.get(key)
+            }
+            entry["fields"] = dict(list(entry["fields"].items())[:limit])
+        else:
+            entry["row"] = (only_a or only_b)[0][:400]
+        found[table] = entry
+    return found
 
 
 # --- HF-01b free text (B10) -------------------------------------------------------
