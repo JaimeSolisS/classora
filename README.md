@@ -774,6 +774,73 @@ center time zone can no longer be changed. `make bootstrap-owner` (below) is
 refused once any Owner exists, so locally use either the demo Owner or
 `make bootstrap-owner`, not both.
 
+#### Simulated operations data
+
+```bash
+make seed-data-spanish   # a simulated tutoring center, in Spanish
+make seed-data-english   # the same center, in English (its own database)
+```
+
+These commands generate an invented tutoring center that has been running
+for a term, so you can see the system with realistic volumes. Both write
+through the application's services, and the names, addresses and texts are
+synthetic. They run on the host (with the API's development dependencies,
+via `uv`), need `.env`, and are **local only**: they refuse every `APP_ENV`
+except `local`.
+
+They need a **freshly migrated database** (the reference data and nothing
+else). They refuse a database with any account, demo data or billing
+configured, and say how to reset. Running the same command again changes
+nothing. The other language refuses that database, so give each language
+its own:
+
+```bash
+# native stack
+make db-shared && make db-create NAME=classora_sim_es   # or classora_sim_en
+# set DATABASE_URL and DATABASE_DIRECT_URL in .env to the printed URL
+make api-native          # migrates, then serves; keep it running
+make seed-data-spanish   # in another terminal
+
+# Compose
+docker compose down -v && make dev && make migrate && make seed-data-spanish
+```
+
+The timeline is fixed, whatever day you run it. History runs from
+1 Sep to 18 Nov 2026. From 19 Nov 2026 to 5 Dec 2026, items are only
+scheduled or pending.
+
+The staff accounts use development passwords. Tutors, guardians and
+students with a login use one password per role. Their usernames are in the
+Owner's user list.
+
+| Spanish username | English username | Password | Role |
+|---|---|---|---|
+| `direccion` | `owner` | `classora-sim-owner` | Owner |
+| `administracion` | `admin` | `classora-sim-admin` | Administrator |
+| `coordinacion` | `coordinator` | `classora-sim-coordinator` | Academic coordinator |
+| `finanzas` | `finance` | `classora-sim-finance` | Finance staff |
+| (12 tutors) | (12 tutors) | `classora-sim-tutor` | Tutor |
+| (12 guardians) | (12 guardians) | `classora-sim-guardian` | Parent or guardian |
+| (6 students) | (6 students) | `classora-sim-student` | Student |
+
+Present so far:
+- **People:** 40 students in 30 families with 42 guardians. Four students
+  are adults, and four enroll during the term. Every minor has a guardian
+  consent. There is one approved and one pending self-registration, and one
+  pending tutor invitation.
+- **Catalog:** 12 subjects across the four levels, five classrooms (one
+  closed for renovation on 30 Oct), the 2026–2027 school year and three
+  holidays.
+- **Tutor profiles:** experience, qualifications (one rejected, one
+  revoked, one pending), weekly availability, limits and breaks, time off
+  and preferred classrooms.
+- **Center settings:** name, contact details, receipt messages, opening
+  hours and the scheduling policy. In English, the education levels and
+  expense categories are renamed.
+
+Classes, academics, billing, payroll and administration data arrive in
+later updates (HF-01b to HF-01f).
+
 ### First Owner account
 
 ```bash

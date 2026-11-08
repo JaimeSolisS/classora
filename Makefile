@@ -1,4 +1,4 @@
-.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-demo lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image
+.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-demo seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -61,6 +61,15 @@ reset-owner-password:
 # Runs with the API dev dependencies (Factory Boy, Faker), which the image does not contain.
 seed-demo:
 	cd apps/api && uv run --env-file ../../.env python -m tests.factories.demo
+
+## Generate the simulated operations data in Spanish on the host (APP_ENV=local only; needs a freshly migrated database and .env).
+# A deterministic center from 1 Sep to 5 Dec 2026 (history to 18 Nov), through the services; README "Simulated operations data".
+seed-data-spanish:
+	cd apps/api && uv run --env-file ../../.env python -m tests.factories.simulation --language es
+
+## Generate the simulated operations data in English on the host (APP_ENV=local only; needs its own freshly migrated database).
+seed-data-english:
+	cd apps/api && uv run --env-file ../../.env python -m tests.factories.simulation --language en
 
 ## Lint both apps and the E2E tests (check only, never modifies files). Fails if any part fails.
 lint: lint-api lint-web lint-e2e
