@@ -62,6 +62,7 @@ def test_the_image_installs_the_pdf_libraries():
 
 
 def test_ci_installs_the_same_pdf_libraries():
-    # #98a B2: api-unit and the api-integration matrix (one step each).
+    # #98a B2, #559 E5: api-unit, api-simulation and the api-integration
+    # matrix (one step each).
     installs = apt_packages(CI_WORKFLOW.read_text())
-    assert installs.count(PDF_PACKAGES) == 2
+    assert installs.count(PDF_PACKAGES) == 3
