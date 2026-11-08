@@ -219,7 +219,11 @@ def test_the_package_story(es_url):
         g=student.given_names,
         f=student.family_names,
     )
-    assert [row[0] for row in starts] == [date(2026, 11, 1)]
+    # HF-01g: one plan per weekly subject, all from 1 Nov.
+    assert sorted(row[0] for row in starts) == sorted(
+        t.starts_on for t in BILLING.tuition_plans if t.student == cancelled.student
+    )
+    assert {row[0] for row in starts} == {date(2026, 11, 1)}
 
 
 # --- B2: final states at the anchor ---------------------------------------------------

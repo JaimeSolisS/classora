@@ -7,6 +7,7 @@ from decimal import Decimal
 
 import pytest
 
+from tests.factories.simulation import payroll_plan
 from tests.factories.simulation.anchor import (
     SIM_ANCHOR,
     SIM_HORIZON,
@@ -94,6 +95,13 @@ def test_both_languages_share_the_structure():
         assert es.payroll.periods == en.payroll.periods
         assert [m.amount for m in es.payroll.manuals] == [
             m.amount for m in en.payroll.manuals
+        ]
+        # HF-01g A2: terms, salaries and item amounts too.
+        assert [(t.tutor, t.frequency, t.salary) for t in es.payroll.terms] == [
+            (t.tutor, t.frequency, t.salary) for t in en.payroll.terms
+        ]
+        assert [(i.tutor, i.kind, i.amount) for i in es.payroll.items] == [
+            (i.tutor, i.kind, i.amount) for i in en.payroll.items
         ]
         assert [(x.key, x.amount, x.steps[-1].at) for x in es.expenses.expenses] == [
             (x.key, x.amount, x.steps[-1].at) for x in en.expenses.expenses
@@ -376,3 +384,35 @@ def test_other_seeds_build(seed):
     for profile in ("small", "full"):
         plan = plan_simulation("es", profile, seed)
         assert plan.payroll.ended and plan.expenses.generated
+
+
+# --- HF-01g: plausible pay (A1, A4) ---------------------------------------------------
+
+
+def test_the_pay_constants_are_in_their_plausibility_ranges():
+    assert all(150 <= rate <= 200 for rate in payroll_plan.INDIVIDUAL_HOURLY)
+    assert 170 <= payroll_plan.INDIVIDUAL_SESSION <= 220
+    assert 200 <= payroll_plan.GROUP_HOURLY <= 260
+    assert payroll_plan.COURSE_RATE == 4000
+    assert 220 <= payroll_plan.COURSE_SESSION <= 280
+
+
+@pytest.mark.parametrize("key", KEYS)
+def test_a_salary_pays_a_plausible_amount_per_held_hour(key):
+    """A4: salary / the tutor's average held hours a month (Sep-Oct, from
+    the timetable) is between 120 and 220 MXN."""
+    plan = PLANS[key]
+    payroll = plan.payroll
+    assert payroll.salaried
+    for tutor in payroll.salaried:
+        [terms] = [t for t in payroll.terms if t.tutor == tutor]
+        assert terms.salary is not None
+        minutes = sum(
+            c.final.minutes
+            for c in plan.timetable.classes
+            if c.status == "completed"
+            and c.final.tutor == tutor
+            and date(2026, 9, 1) <= c.final.day <= date(2026, 10, 31)
+        )
+        per_hour = Decimal(terms.salary) / (Decimal(minutes) / 60 / 2)
+        assert 120 <= per_hour <= 220, (key, tutor, terms.salary, minutes)

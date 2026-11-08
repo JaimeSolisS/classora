@@ -192,8 +192,16 @@ objectives and 112 milestones, 214 assignments with 214 submissions, 3
 report schedules, 95 progress reports with their 95 approval requests and
 919 notifications (HF-01d +242: the guardians who now have a login)."""
 
-FULL_BILLING_ROWS: Final = 2615
-"""HF-01f +20: the imported child's 2 trial class charges with their
+FULL_BILLING_ROWS: Final = 2886
+"""HF-01g +271: a monthly plan per weekly subject (21 -> 54 tuition plans:
++22 individual, +11 linked to the g1/g2 enrollments; pauses 1 -> 3, every
+plan of the paused student), 2 more catalog items with their 2 versions (2
+more subjects' monthly items; g1/g2's flat fees become monthly group items),
+85 more charges (+96 tuition charges, -11 g1/g2 enrollment fees) with 46
+more discount lines, 22 more reminders (5 fewer reminder notifications), 4
+more payments with 4 receipts and 76 more allocations. ``small`` is
+unchanged (one subject per plan student; its only group keeps its fee).
+HF-01f +20: the imported child's 2 trial class charges with their
 discount lines, allocations, reminders and reminder notifications, and the
 2 opening balances' allocations (paid with an existing payment).
 ``full`` (#552): 30 billing accounts, 42 catalog items (4 of them the

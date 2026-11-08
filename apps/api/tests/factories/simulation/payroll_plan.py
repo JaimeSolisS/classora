@@ -79,13 +79,15 @@ RULE_PERCENT: Final = 50
 """The new ``late_cancellation`` and ``no_show`` versions pay 50 %."""
 MAKEUP_PERCENT: Final = 100
 """The seeded makeup rule, unchanged."""
-SALARIES: Final = (5200, 4800)
-INDIVIDUAL_HOURLY: Final = (220, 240, 260, 280)
-INDIVIDUAL_SESSION: Final = 260
-GROUP_HOURLY: Final = 300
+SALARIES: Final = (1900, 2200)
+"""The salaried tutors' monthly salaries (HF-01g E2: 120-220 MXN per average
+held hour)."""
+INDIVIDUAL_HOURLY: Final = (150, 160, 170, 180)
+INDIVIDUAL_SESSION: Final = 190
+GROUP_HOURLY: Final = 230
 COURSE_RATE: Final = 4000
 """A cohort tutor's ``per_course`` rate (split over the cohort's sessions)."""
-COURSE_SESSION: Final = 320
+COURSE_SESSION: Final = 250
 BONUS_AMOUNT: Final = 200
 DEDUCTION_AMOUNT: Final = 180
 EVENT_AMOUNT: Final = 350

@@ -6,6 +6,7 @@ run-date independence test (C4) and the one ``full`` run (D1, D7)."""
 import re
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -27,6 +28,7 @@ from tests.integration.auth_support import auth_client, create_user, login
 from tests.integration.conftest import run_sql
 from tests.integration.demo_support import FROZEN_NOW as DEMO_FROZEN_NOW
 from tests.integration.simulation_support import (
+    FROZEN_NOW,
     RERUN_SEED_LINES,
     SERVICE_CANCELLATION_REASONS,
     academic_free_text,
@@ -838,3 +840,123 @@ def test_no_background_job_is_queued(es_url, full_url):
 
 def test_the_full_run_prints_its_pinned_totals(full_url):
     assert FULL_RUN["out"] == first_run_lines("full")
+
+
+# --- HF-01g: realistic margins on the full run (B1-B3, B5) ----------------------------
+
+TERM = {"from": "2026-09-01", "to": "2026-11-18"}
+MONTHS = (
+    ("2026-09-01", "2026-09-30"),
+    ("2026-10-01", "2026-10-31"),
+    ("2026-11-01", "2026-11-18"),
+)
+
+
+def _report(client: Any, path: str, **params: str) -> Any:
+    response = client.get(path, params=params)
+    assert response.status_code == 200, (path, response.text)
+    return response.json()
+
+
+def _figures(row: dict[str, Any]) -> dict[str, Decimal]:
+    return {
+        key: Decimal(row[key])
+        for key in (
+            "revenue_total",
+            "direct_tutor_cost_total",
+            "gross_profit",
+            "operating_expenses_total",
+            "net_result",
+        )
+    }
+
+
+def test_the_full_term_shows_a_plausible_profit(full_url):
+    """B1, B2 and B5's identities: K1 per month as the Owner, both bases."""
+    owner = plan_simulation("es", "full", 1).owner
+    with frozen_clock(FROZEN_NOW), auth_client(full_url) as client:
+        assert login(client, owner.username, owner.password).status_code == 200
+        trends = {
+            basis: _report(
+                client, "/api/v1/reports/kpis/revenue-trend", basis=basis, **TERM
+            )
+            for basis in ("accrual", "cash")
+        }
+    for basis, trend in trends.items():
+        months = [_figures(m) for m in trend["months"]]
+        assert [m["month"] for m in trend["months"]] == [
+            "2026-09",
+            "2026-10",
+            "2026-11",
+        ]
+        for m in [*months, _figures(trend["totals"])]:
+            assert (
+                m["gross_profit"] == m["revenue_total"] - m["direct_tutor_cost_total"]
+            )
+            assert m["net_result"] == m["gross_profit"] - m["operating_expenses_total"]
+        for september_or_october in months[:2]:
+            margin = (
+                september_or_october["net_result"]
+                / september_or_october["revenue_total"]
+            )
+            if basis == "accrual":
+                share = (
+                    september_or_october["direct_tutor_cost_total"]
+                    / september_or_october["revenue_total"]
+                )
+                assert Decimal("0.20") <= margin <= Decimal("0.40"), (basis, margin)
+                assert Decimal("0.40") <= share <= Decimal("0.60"), (basis, share)
+            else:
+                assert Decimal("0.15") <= margin <= Decimal("0.45"), (basis, margin)
+        november = months[2]
+        assert november["net_result"] > 0, basis
+        assert november["gross_profit"] > 0, basis
+        assert _figures(trend["totals"])["net_result"] > 0, basis
+        if basis == "accrual":
+            assert (
+                sum(m["revenue_total"] for m in months)
+                == _figures(trend["totals"])["revenue_total"]
+            )
+
+
+def test_group_revenue_falls_in_the_months_the_groups_meet(full_url):
+    """B3: the accrual ``group`` row earns in every month; linked plans post
+    on the 1st; only the last group has flat fees."""
+    plan = plan_simulation("es", "full", 1)
+    owner = plan.owner
+    with frozen_clock(FROZEN_NOW), auth_client(full_url) as client:
+        assert login(client, owner.username, owner.password).status_code == 200
+        for start, end in MONTHS:
+            report = _report(
+                client,
+                "/api/v1/reports/finance/profitability",
+                basis="accrual",
+                **{"from": start, "to": end},
+            )
+            [group] = [r for r in report["class_rows"] if r["class_type"] == "group"]
+            assert Decimal(group["revenue"]) > 0, start
+            assert Decimal(group["gross_profit"]) > 0, start
+    dates = rows(
+        full_url,
+        "SELECT DISTINCT c.service_date FROM charges c JOIN tuition_plans t"
+        " ON t.id = c.tuition_plan_id WHERE t.group_enrollment_id IS NOT NULL",
+    )
+    assert {d for (d,) in dates} == {
+        date(2026, 9, 1),
+        date(2026, 10, 1),
+        date(2026, 11, 1),
+    }
+    fees = dict(
+        rows(
+            full_url,
+            "SELECT g.name, count(c.id) FROM class_groups g"
+            " JOIN group_enrollments e ON e.group_id = g.id"
+            " LEFT JOIN charges c ON c.group_enrollment_id = e.id"
+            " AND c.kind = 'group_enrollment' GROUP BY g.name",
+        )
+    )
+    *linked_groups, last = plan.timetable.groups
+    assert fees == {
+        **{g.name: 0 for g in linked_groups},
+        last.name: len(last.series.students),
+    }

@@ -6,13 +6,23 @@ from datetime import date
 
 import pytest
 
+from tests.factories.simulation import billing_plan
 from tests.factories.simulation.anchor import SIM_ANCHOR, SIM_START
 from tests.factories.simulation.billing_plan import (
     MODE_CHANGE_ON,
     build_billing,
+    linked,
     month_starts,
+    session_amount,
+    weekly_subjects,
 )
-from tests.factories.simulation.plan import plan_simulation
+from tests.factories.simulation.plan import (
+    ELEMENTARY,
+    HIGH_SCHOOL,
+    MIDDLE_SCHOOL,
+    UNIVERSITY,
+    plan_simulation,
+)
 from tests.factories.simulation.texts import POOLS, TextPool
 
 PLANS = {
@@ -36,6 +46,24 @@ def test_both_languages_share_the_structure():
         assert es.modes == en.modes
         assert [p.at for p in es.payments] == [p.at for p in en.payments]
         assert [i.amount for i in es.items] == [i.amount for i in en.items]
+        # HF-01g A2: every money field of the plan.
+        assert [(i.key, i.amount) for i in es.items] == [
+            (i.key, i.amount) for i in en.items
+        ]
+        assert es.versions == en.versions
+        assert [(c.student, c.item, c.amount) for c in es.custom_prices] == [
+            (c.student, c.item, c.amount) for c in en.custom_prices
+        ]
+        assert [(p.key, p.amount) for p in es.products] == [
+            (p.key, p.amount) for p in en.products
+        ]
+        assert es.tuition_plans == en.tuition_plans
+        assert [(m.key, m.amount) for m in es.manual_charges] == [
+            (m.key, m.amount) for m in en.manual_charges
+        ]
+        assert [(d.key, d.percent, d.students) for d in es.discounts] == [
+            (d.key, d.percent, d.students) for d in en.discounts
+        ]
 
 
 @pytest.mark.parametrize("key", sorted(PLANS))
@@ -66,7 +94,11 @@ def test_the_mode_shares_and_minimums(key):
     assert sum(1 for p in billing.packages if p.cancelled) == 1
     assert sum(1 for p in billing.packages if p.extra is not None) == 1
     assert len(billing.products) >= 2
-    assert sum(1 for t in billing.tuition_plans if t.pause is not None) == 1
+    paused = {t.student for t in billing.tuition_plans if t.pause is not None}
+    assert len(paused) >= 1
+    assert all(
+        t.pause is not None for t in billing.tuition_plans if t.student in paused
+    )
     kinds = {d.kind for d in billing.discounts}
     assert kinds == {"sibling", "scholarship", "promotion", "discount"}
     assert sum(len(d.students) for d in billing.discounts) == 2
@@ -152,3 +184,92 @@ def test_other_seeds_build(seed):
     for profile in ("small", "full"):
         plan = plan_simulation("es", profile, seed)
         assert plan.billing.packages
+
+
+# --- HF-01g: plausible prices and the plan structure (A1, A3) -------------------------
+
+LEVELS = (ELEMENTARY, MIDDLE_SCHOOL, HIGH_SCHOOL, UNIVERSITY)
+
+
+def test_the_price_constants_are_in_their_plausibility_ranges():
+    prices = [billing_plan.PER_SESSION[level] for level in LEVELS]
+    assert all(280 <= p <= 450 for p in prices)
+    assert prices == sorted(set(prices))  # strictly rising by level
+    for level in LEVELS:
+        ratio = billing_plan.MONTHLY[level] / billing_plan.PER_SESSION[level]
+        assert 3.6 <= ratio <= 4.2, level
+    middle = billing_plan.PER_SESSION[MIDDLE_SCHOOL]
+    quantities = {"pack8": 8, "pack12": 12, "intensive": 10, "subject4": 4}
+    for key, amount in billing_plan.PRODUCT_AMOUNTS.items():
+        assert 0.85 <= amount / quantities[key] / middle <= 1.0, key
+    assert 900 <= billing_plan.GROUP_MONTHLY <= 1300
+    assert 2.7 <= billing_plan.GROUP_FEE / billing_plan.GROUP_MONTHLY <= 3.2
+    assert billing_plan.COURSE_FEES == (3200, 2800)
+
+
+@pytest.mark.parametrize("key", sorted(PLANS))
+def test_the_plan_items_carry_the_constants(key):
+    plan = PLANS[key]
+    billing = plan.billing
+    levels = {s.key: s.level for s in plan.subjects}
+    products = {p.key: p.amount for p in billing.products}
+    assert products == billing_plan.PRODUCT_AMOUNTS
+    for item in billing.items:
+        if item.pricing_model == "per_session":
+            assert item.minutes is not None
+            assert item.amount == session_amount(levels[item.subject], item.minutes)
+        elif item.class_type == "individual":
+            assert item.amount == billing_plan.MONTHLY[levels[item.subject]]
+        elif item.class_type == "group":
+            assert item.amount == (
+                billing_plan.GROUP_MONTHLY
+                if item.pricing_model == "per_period"
+                else billing_plan.GROUP_FEE
+            )
+
+
+@pytest.mark.parametrize("key", sorted(PLANS))
+def test_one_plan_per_weekly_subject_and_linked_groups(key):
+    """A3: a plan student has one plan per weekly individual subject (no two
+    pin the same item); each enrollment of a linked group has one linked plan
+    from 1 Sep; the last group keeps its flat fee and has none. (A 90-min
+    slot can't carry a 1.5x monthly price: a ``per_period`` item takes no
+    custom price, #93 K8; HF-01g D1.)"""
+    plan = PLANS[key]
+    billing = plan.billing
+    items = {i.key: i for i in billing.items}
+    individual = [t for t in billing.tuition_plans if t.group is None]
+    students = {t.student for t in individual}
+    planned = {
+        s
+        for s, modes in billing.modes.items()
+        if any(mode == "plan" for _, mode in modes)
+    }
+    assert students == planned
+    for student in students:
+        mine = [t for t in individual if t.student == student]
+        subjects = [items[t.item].subject for t in mine]
+        assert sorted(subjects) == sorted(weekly_subjects(plan, student))
+        assert len({t.item for t in mine}) == len(mine)
+        assert all(items[t.item].pricing_model == "per_period" for t in mine)
+    assert not any(
+        c.amount > 0 and items[c.item].pricing_model == "per_period"
+        for c in billing.custom_prices
+    )
+    groups = plan.timetable.groups
+    assert linked(plan) == {g.key for g in groups[:-1]}
+    for group in groups:
+        mine = [t for t in billing.tuition_plans if t.group == group.key]
+        if group.key in linked(plan):
+            assert sorted(t.student for t in mine) == sorted(group.series.students)
+            assert all(t.starts_on == date(2026, 9, 1) for t in mine)
+            assert all(items[t.item].group == group.key for t in mine)
+            assert all(
+                i.group != group.key or i.pricing_model == "per_period"
+                for i in billing.items
+            )
+        else:
+            assert mine == []
+            assert [i.pricing_model for i in billing.items if i.group == group.key] == [
+                "full_course"
+            ]
