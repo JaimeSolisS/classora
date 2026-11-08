@@ -820,12 +820,13 @@ Owner's user list.
 | `coordinacion` | `coordinator` | `classora-sim-coordinator` | Academic coordinator |
 | `finanzas` | `finance` | `classora-sim-finance` | Finance staff |
 | (12 tutors) | (12 tutors) | `classora-sim-tutor` | Tutor |
-| (12 guardians) | (12 guardians) | `classora-sim-guardian` | Parent or guardian |
+| (30 guardians) | (30 guardians) | `classora-sim-guardian` | Parent or guardian |
 | (6 students) | (6 students) | `classora-sim-student` | Student |
 
 Present so far:
-- **People:** 40 students in 30 families with 42 guardians. Four students
-  are adults, and four enroll during the term. Every minor has a guardian
+- **People:** 40 students in 30 families with 46 guardians (each adult
+  student's family has the parent who pays). Four students are adults, and
+  four enroll during the term. Every family's first guardian has a login. Every minor has a guardian
   consent. There is one approved and one pending self-registration, and one
   pending tutor invitation.
 - **Catalog:** 12 subjects across the four levels, five classrooms (one
@@ -862,6 +863,21 @@ Present so far:
   Approvals and progress reports. See them in each student's record
   (history, learning plans, homework), the homework and progress report
   lists, and the family's own pages.
+- **Billing:** billing runs from 1 Sep with catalog prices (one price
+  change on 1 Oct), custom prices, a sibling discount, two scholarships, a
+  September promotion (expired) and a discount starting 1 Dec. About half
+  the students pay a monthly plan (one paused for October), a fifth use
+  prepaid class packages (renewed when used up, one lapsed with classes
+  left, one cancelled and refunded, one withdrawn as account credit) and
+  the rest pay per class; groups and courses charge an enrollment fee.
+  Families pay in cash, by transfer or otherwise, with a receipt for each
+  payment; most pay on time, some late, two keep account credit, and three
+  families have overdue charges with reminders at 19 Nov. There is a
+  bounced transfer paid again, manual charges and an adjustment, due-date
+  changes, credited cancellations and a repriced class. See them in
+  Billing (accounts, overdue accounts, packages, plans, discounts and
+  prices) and in each family's billing pages. Receipts are in the run's
+  language.
 
 The data is a snapshot as of 19 Nov 2026. If the worker runs, pending
 offers and requests expire against the real clock, and once the real date
@@ -869,10 +885,14 @@ passes 18 Nov the later classes look not held. Its progress report schedule
 also adds a draft report each time the real date passes the end of a later
 week or month (only the latest one). Keep the worker stopped to keep the
 snapshot. Homework is always judged against the real date: an assignment due
-after 18 Nov shows as missing once the real date passes its deadline.
+after 18 Nov shows as missing once the real date passes its deadline. Once
+the real date passes 1 Dec, the worker's tuition step posts December's
+monthly charges, and its reminder step reminds families about charges that
+become overdue; charges and balances are always judged against the real
+date too.
 
-Billing, payroll and administration data arrive in later updates (HF-01d
-to HF-01f).
+Payroll and administration data arrive in later updates (HF-01e and
+HF-01f).
 
 ### First Owner account
 

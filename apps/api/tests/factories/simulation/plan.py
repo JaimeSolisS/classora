@@ -46,6 +46,7 @@ from tests.factories.simulation.anchor import (
 from tests.factories.simulation.texts import Language, TextPool
 
 if TYPE_CHECKING:
+    from tests.factories.simulation.billing_plan import Billing
     from tests.factories.simulation.coursework import Coursework
     from tests.factories.simulation.timetable import Timetable
 
@@ -154,7 +155,8 @@ FINANCE_REFUND_APPROVE: Final = "finance.refund.approve"
 @dataclass(frozen=True)
 class FamilyShape:
     """One family: how many students and guardians, an adult student (no
-    guardian), its enrollment day (``None``: :data:`SIM_SETUP`) and whether
+    guardian in the shape; HF-01d adds the parent who pays,
+    :func:`_adult_payers`), its enrollment day (``None``: :data:`SIM_SETUP`) and whether
     its first guardian self-registered (the approved registration)."""
 
     students: int
@@ -436,8 +438,10 @@ FULL: Final = Profile(
     teen_logins=2,
 )
 """40 students (36 at setup; 2 on 14 Sep, 1 on 5 Oct, 1 on 9 Nov) in 30
-families (21 with one student, 8 with two, 1 with three; 4 adults alone),
-42 guardians (16 families with two, 10 with one; #543 D1), 12 tutors."""
+families (21 with one student, 8 with two, 1 with three; 4 adults),
+42 guardians (16 families with two, 10 with one; #543 D1) plus the 4
+adults' paying parents (HF-01d), 30 guardian logins (every family's first
+guardian; 12 use the portal), 12 tutors."""
 
 SMALL: Final = Profile(
     name="small",
@@ -626,6 +630,12 @@ class GuardianPlan:
     email: str
     account: AccountPlan | None
     registered: bool = False
+    portal: bool = False
+    """Uses the family portal from enrollment (HF-01's 12 [3] guardian
+    logins): asks for changes and sessions and gives the minors' consent in
+    the app. Since HF-01d every family's first guardian has a login (so
+    receipts and reminders reach every family in the run's language), but
+    the others only receive."""
 
 
 @dataclass(frozen=True)
@@ -751,6 +761,16 @@ class SimulationPlan:
     coursework: Coursework | None = None
     """HF-01c's academic record (:mod:`.coursework`); always set by
     :func:`plan_simulation` (read it through :attr:`academics`)."""
+
+    finances: Billing | None = None
+    """HF-01d's billing plan (:mod:`.billing_plan`); always set by
+    :func:`plan_simulation` (read it through :attr:`billing`)."""
+
+    @property
+    def billing(self) -> Billing:
+        if self.finances is None:  # pragma: no cover - plan_simulation sets it
+            raise RuntimeError("the plan has no billing plan")
+        return self.finances
 
     @property
     def timetable(self) -> Timetable:
@@ -895,6 +915,7 @@ def plan_simulation(
         for index, shape_ in enumerate(shape.tutors)
     )
     families = _families(language, shape, rng, names, themes, texts)
+    families = _adult_payers(language, families, seed, names)
     subjects = tuple(
         SubjectPlan(key, SUBJECT_LEVELS[key], texts.mapping("subjects")[key])
         for key in shape.subjects
@@ -969,11 +990,13 @@ def plan_simulation(
         address=texts.text("address"),
         contact_email=texts.text("contact_email"),
     )
+    from tests.factories.simulation.billing_plan import build_billing
     from tests.factories.simulation.coursework import build_coursework
     from tests.factories.simulation.timetable import build_timetable
 
     scheduled = replace(base, schedule=build_timetable(base, seed))
-    return replace(scheduled, coursework=build_coursework(scheduled, seed))
+    taught = replace(scheduled, coursework=build_coursework(scheduled, seed))
+    return replace(taught, finances=build_billing(taught, seed))
 
 
 class _Cycle:
@@ -1118,7 +1141,8 @@ def _families(
             )
             registered = family_shape.registered and g == 0
             account = None
-            if registered or (g == 0 and guardian_logins > 0):
+            portal = registered or (g == 0 and guardian_logins > 0)
+            if portal:
                 if not registered:
                     guardian_logins -= 1
                 account = AccountPlan(
@@ -1129,6 +1153,16 @@ def _families(
                     REGISTRATION_APPROVED if registered else enrolls_at,
                     themes.next(),
                 )
+            elif g == 0:
+                # HF-01d: every first guardian has a login (theme unset).
+                account = AccountPlan(
+                    names.username(given, family),
+                    f"{given} {family}",
+                    "guardian",
+                    GUARDIAN_PASSWORD,
+                    enrolls_at,
+                    None,
+                )
             guardians.append(
                 GuardianPlan(
                     key=f"{key}g{g + 1}",
@@ -1138,6 +1172,7 @@ def _families(
                     email=_email(given, family, len(names.full_names)),
                     account=account,
                     registered=registered,
+                    portal=portal,
                 )
             )
 
@@ -1173,7 +1208,7 @@ def _families(
             consent = None
             if not family_shape.adult:
                 first = guardians[0]
-                if first.account is not None:
+                if first.portal:
                     method: Literal["in_app", "paper", "in_person"] = "in_app"
                 else:
                     method = "in_person" if in_person else "paper"
@@ -1209,6 +1244,53 @@ def _families(
             )
         )
     return tuple(families)
+
+
+ADULT_PAYER_STREAM: Final = 552_100
+"""HF-01d: the adult students' paying parents come from their own Faker and
+RNG streams, so every earlier name, username and date is unchanged."""
+
+
+def _adult_payers(
+    language: Language,
+    families: tuple[FamilyPlan, ...],
+    seed: int,
+    names: _Names,
+) -> tuple[FamilyPlan, ...]:
+    """HF-01d: each adult student's family gets the parent who pays (a
+    guardian with a login and no portal use), so receipts and reminders
+    reach every family in the run's language. Their own names stream; the
+    shared sets keep names and usernames unique."""
+    # Deterministic synthetic data, not security: a seeded generator.
+    rng = random.Random(seed + ADULT_PAYER_STREAM)  # noqa: S311
+    payers = _Names(language, make_faker(language, seed + ADULT_PAYER_STREAM))
+    payers.full_names = names.full_names
+    payers.usernames = names.usernames
+    result: list[FamilyPlan] = []
+    for family in families:
+        if family.guardians or not family.students:
+            result.append(family)
+            continue
+        student = family.students[0]
+        female = rng.random() < 0.5
+        given, surnames = payers.person(female, student.family_names)
+        payer = GuardianPlan(
+            key=f"{family.key}g1",
+            given_names=given,
+            family_names=surnames,
+            relationship="mother" if female else "father",
+            email=_email(given, surnames, len(payers.full_names)),
+            account=AccountPlan(
+                payers.username(given, surnames),
+                f"{given} {surnames}",
+                "guardian",
+                GUARDIAN_PASSWORD,
+                family.enrolls_at,
+                None,
+            ),
+        )
+        result.append(replace(family, guardians=(payer,)))
+    return tuple(result)
 
 
 def _contact_name(language: Language, names: _Names) -> str:

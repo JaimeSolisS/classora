@@ -81,6 +81,10 @@ LAST_DECIDED_DAY: Final = SIM_ANCHOR - timedelta(days=1)
 LATE_WINDOW: Final = (date(2026, 10, 27), date(2026, 11, 8))
 """Cancellations whose make-up window reaches past the anchor."""
 LATE_WINDOW_CANCELLATIONS: Final = 3
+RESIZE_AT: Final = local_instant(date(2026, 11, 12), "10:00")
+"""When the Administrator shortens one class after the anchor (HF-01d)."""
+RESIZE_FROM: Final = 90
+RESIZE_TO: Final = 60
 PENDING_DAYS: Final = (date(2026, 11, 17), date(2026, 11, 18))
 
 RNG_OFFSET: Final = 550_000
@@ -611,6 +615,17 @@ class CreateMakeup:
 
 
 @dataclass(frozen=True)
+class Resize:
+    """The Administrator shortens one confirmed class (a ``PATCH`` of the
+    class, same start, new end; #552 HF-01d): its posted charge is repriced
+    by the billing reconciliation step."""
+
+    at: datetime
+    cls: str
+    minutes: int
+
+
+@dataclass(frozen=True)
 class ChangeWeekly:
     """A tutor asks to drop a weekly window that has classes: a pending
     availability change request."""
@@ -647,6 +662,7 @@ type Event = (
     | DecideSessionRequest
     | CreateMakeup
     | ChangeWeekly
+    | Resize
 )
 
 COURSE_EVENTS: Final = (CreateCourse, CreateCohort, Enroll)
@@ -673,6 +689,8 @@ class Timetable:
     changes_requested: tuple[str, ...]
     declined: tuple[str, ...]
     expired: tuple[str, ...]
+    resized: str = ""
+    """The class :func:`_Builder.build_resize` shortens (HF-01d)."""
 
     def cls(self, key: str) -> ClassPlan:
         return self.by_key[key]
@@ -862,7 +880,11 @@ def student_facts(plan: SimulationPlan) -> list[StudentFacts]:
     facts: list[StudentFacts] = []
     for family in plan.families:
         guardian = next(
-            (g.account.username for g in family.guardians if g.account is not None),
+            (
+                g.account.username
+                for g in family.guardians
+                if g.portal and g.account is not None
+            ),
             None,
         )
         for student in family.students:
@@ -1994,6 +2016,34 @@ class _Builder:
             self.closeout_corrections.append(event)
             self.events.append(event)
 
+    def build_resize(self) -> str:
+        """HF-01d: the first confirmed 90-minute series class from 23 Nov
+        that no other outcome uses is shortened to 60 minutes on 12 Nov (a
+        ``PATCH``: same start, new end; no RNG). Shortening frees time, so
+        every rule still holds."""
+        found = sorted(
+            (
+                c
+                for c in self.classes.values()
+                if c.kind == "individual"
+                and c.series is not None
+                and c.status == "confirmed"
+                and c.key not in self.used
+                and c.makeup_of is None
+                and c.final == c.placed
+                and c.placed.minutes == RESIZE_FROM
+                and c.placed.day >= date(2026, 11, 23)
+            ),
+            key=lambda c: (c.placed.starts_at, c.key),
+        )
+        if not found:
+            raise TimetableError("no class to shorten")
+        c = found[0]
+        self.used.add(c.key)
+        self.update(c.key, final=replace(c.final, minutes=RESIZE_TO))
+        self.events.append(Resize(RESIZE_AT, c.key, RESIZE_TO))
+        return c.key
+
     # -- at the anchor --
 
     def future(self) -> list[ClassPlan]:
@@ -2246,6 +2296,7 @@ class _Builder:
         self.build_session_requests()
         leftovers = self.build_makeups(cancelled)
         weekly = self.build_pending(leftovers)
+        resized = self.build_resize()
         self.build_holds()
         events = sorted(enumerate(self.events), key=lambda item: (item[1].at, item[0]))
         return Timetable(
@@ -2264,6 +2315,7 @@ class _Builder:
             changes_requested=tuple(self.changes_requested),
             declined=tuple(self.declined),
             expired=tuple(self.expired),
+            resized=resized,
         )
 
 

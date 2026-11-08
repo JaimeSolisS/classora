@@ -26,6 +26,13 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.core.uow import UnitOfWork
 from app.modules.administration.models import ApprovalRequest, Notification
+from app.modules.billing.models import (
+    BillingAccount,
+    Charge,
+    ChargeAdjustment,
+    ChargeDiscount,
+    PackageCreditTransaction,
+)
 from app.modules.courses import service as courses
 from app.modules.courses.models import (
     CohortEnrollment,
@@ -90,6 +97,13 @@ COURSES_TABLES: Final[tuple[type[DeclarativeBase], ...]] = (
     AssignmentOfferSession,
     ApprovalRequest,
     Notification,
+    # HF-01d: what the M4 hooks write in billing (package consumption at a
+    # closeout approval, a later enrollment's fee) once billing is on.
+    BillingAccount,
+    Charge,
+    ChargeDiscount,
+    ChargeAdjustment,
+    PackageCreditTransaction,
 )
 """The courses tables, and the cohort series, sessions and offers this
 module's steps create."""

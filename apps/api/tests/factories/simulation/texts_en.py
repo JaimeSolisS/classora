@@ -492,4 +492,41 @@ TEXTS: Final[dict[str, object]] = {
         "Add concrete examples of the progress in the period.",
         "Check the summary; it does not match the attendance in the period.",
     ],
+    # HF-01d (#552): billing.
+    "billing_products": {
+        "pack8": "8-class package",
+        "pack12": "12-class package",
+        "intensive": "Intensive 10-class package",
+        "subject4": "4-class {subject} package",
+    },
+    "billing_discounts": {
+        "sibling": "Sibling discount",
+        "scholarship_a": "Academic scholarship",
+        "scholarship_b": "Family support scholarship",
+        "promotion": "Back-to-school promotion",
+        "upcoming": "December early payment discount",
+    },
+    "manual_charges": {
+        "materials": "Term study materials",
+        "exam": "Practice exam fee",
+    },
+    "adjustment_reasons": [
+        "The materials were delivered incomplete; the missing part is credited.",
+    ],
+    "due_date_reasons": [
+        "The family asked to pay after mid-month payday.",
+        "Extension agreed because of a delayed paycheck.",
+    ],
+    "reversal_reasons": [
+        "The bank returned the transfer for insufficient funds.",
+    ],
+    "refund_reasons": [
+        "Refund of the cancelled package at the family's request.",
+    ],
+    "package_cancellation_reasons": [
+        "The family switches to the monthly plan from November.",
+    ],
+    "withdrawal_reasons": [
+        "The package subject never started; the family asked to withdraw it.",
+    ],
 }

@@ -53,6 +53,13 @@ from app.modules.academics.schemas import (
 )
 from app.modules.administration import service as administration
 from app.modules.administration.models import ApprovalRequest, Notification
+from app.modules.billing.models import (
+    BillingAccount,
+    Charge,
+    ChargeAdjustment,
+    ChargeDiscount,
+    PackageCreditTransaction,
+)
 from app.modules.catalog.schemas import AvailabilityWindow
 from app.modules.courses.models import CohortEnrollment, CourseCohort
 from app.modules.scheduling import service as scheduling
@@ -90,6 +97,7 @@ from app.modules.scheduling.schemas import (
     AssignmentOfferCreate,
     ClassSeriesCreate,
     ClassSessionCreate,
+    ClassSessionUpdate,
     GroupCreate,
     SeriesRecurrence,
     SessionOverride,
@@ -142,6 +150,7 @@ from tests.factories.simulation.timetable import (
     RequestChange,
     RequestSession,
     RequestTimeOff,
+    Resize,
     ResubmitCloseout,
     ReviewCloseout,
     SeriesPlan,
@@ -171,6 +180,13 @@ SCHEDULE_TABLES: Final[tuple[type[DeclarativeBase], ...]] = (
     TutorAvailabilityException,
     ApprovalRequest,
     Notification,
+    # HF-01d: what the M4 hooks write in billing (package consumption at a
+    # closeout approval, a later enrollment's fee) once billing is on.
+    BillingAccount,
+    Charge,
+    ChargeDiscount,
+    ChargeAdjustment,
+    PackageCreditTransaction,
 )
 """The tables whose rows ``schedule`` counts. ``class_session_overrides``
 is left out: a confirmation's ``notice_window`` override is stored only on
@@ -908,6 +924,26 @@ async def _change_weekly(
     ctx.ids[f"availability:weekly:{event.tutor}"] = result.id
 
 
+async def _resize(session: AsyncSession, ctx: SimulationContext, event: Resize) -> None:
+    """The Administrator shortens a confirmed class (same start, new end;
+    HF-01d): the billing reconciliation step reprices its charge."""
+    admin = await principal(session, ctx, ctx.plan.administrator)
+    target = await class_id(session, ctx, event.cls)
+    final = ctx.plan.timetable.cls(event.cls).final
+    with seed_actor(session, admin.user_id):
+        updated = await scheduling.update_class_session(
+            session,
+            target,
+            ClassSessionUpdate(
+                version=await class_version(session, target),
+                starts_at=final.starts_at,
+                ends_at=final.ends_at,
+            ),
+            actor_id=admin.user_id,
+        )
+    no_warnings(event.cls, updated.warnings)
+
+
 HANDLERS: Final[dict[type, Any]] = {
     CreateSeries: _create_series,
     CreateGroup: _create_group,
@@ -930,6 +966,7 @@ HANDLERS: Final[dict[type, Any]] = {
     DecideSessionRequest: _decide_session_request,
     CreateMakeup: _create_makeup,
     ChangeWeekly: _change_weekly,
+    Resize: _resize,
 }
 """The ``schedule`` module's event handlers (the ``courses`` events are
 :mod:`.courses`')."""

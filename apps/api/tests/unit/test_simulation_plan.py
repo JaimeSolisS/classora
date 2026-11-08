@@ -29,11 +29,17 @@ from tests.factories.simulation.plan import (
 
 PROFILE_COUNTS = {
     # students, families, guardians, tutors, staff
-    "full": (40, 30, 42, 12, 4),
-    "small": (10, 8, 10, 4, 4),
+    # HF-01d: + one paying parent per adult student's family.
+    "full": (40, 30, 46, 12, 4),
+    "small": (10, 8, 11, 4, 4),
 }
-LOGINS = {"full": (12, 6), "small": (3, 2)}
-"""Guardian and student logins per profile (E6)."""
+LOGINS = {"full": (30, 6), "small": (8, 2)}
+"""Guardian and student logins per profile (E6; HF-01d: every family's
+first guardian has a login, so receipts and reminders reach every family
+in the run's language)."""
+PORTAL_GUARDIANS = {"full": 12, "small": 3}
+"""HF-01's guardians who use the portal from enrollment (requests, in-app
+consent)."""
 
 SUGGESTION_TRIPLES = (
     ("math_h", date(2026, 11, 23), "16:00", "17:00", ["t04", "t09"]),
@@ -102,6 +108,8 @@ def test_counts_and_people_invariants(plan):
     assert len(plan.staff) == staff
     guardian_logins, student_logins = LOGINS[plan.profile]
     assert sum(g.account is not None for g in plan.guardians) == guardian_logins
+    assert sum(g.portal for g in plan.guardians) == PORTAL_GUARDIANS[plan.profile]
+    assert all(f.guardians[0].account is not None for f in plan.families)
     assert sum(s.account is not None for s in plan.students) == student_logins
 
     usernames = [a.username for a in plan.accounts]
@@ -120,7 +128,9 @@ def test_counts_and_people_invariants(plan):
             if student.is_adult:
                 assert student.level == UNIVERSITY
                 assert age_on(student.birthdate, SIM_SETUP_DAY) >= 18
-                assert not family.guardians and student.consent is None
+                # HF-01d: the paying parent only (a login, no portal use).
+                assert student.consent is None
+                assert [g.portal for g in family.guardians] == [False]
             else:
                 assert family.guardians, "every minor has a guardian"
                 assert student.consent is not None

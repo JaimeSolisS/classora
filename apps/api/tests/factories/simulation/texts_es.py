@@ -495,4 +495,41 @@ TEXTS: Final[dict[str, object]] = {
         "Agrega ejemplos concretos del avance en el periodo.",
         "Revisa el resumen; no coincide con la asistencia del periodo.",
     ],
+    # HF-01d (#552): billing.
+    "billing_products": {
+        "pack8": "Paquete de 8 clases",
+        "pack12": "Paquete de 12 clases",
+        "intensive": "Paquete intensivo de 10 clases",
+        "subject4": "Paquete de 4 clases de {subject}",
+    },
+    "billing_discounts": {
+        "sibling": "Descuento por hermanos",
+        "scholarship_a": "Beca académica",
+        "scholarship_b": "Beca de apoyo familiar",
+        "promotion": "Promoción de regreso a clases",
+        "upcoming": "Descuento por pronto pago de diciembre",
+    },
+    "manual_charges": {
+        "materials": "Material didáctico del trimestre",
+        "exam": "Cuota del examen de práctica",
+    },
+    "adjustment_reasons": [
+        "El material se entregó incompleto; se descuenta la parte faltante.",
+    ],
+    "due_date_reasons": [
+        "La familia pidió pagar después de la quincena.",
+        "Prórroga acordada por un retraso en el pago de nómina.",
+    ],
+    "reversal_reasons": [
+        "El banco rechazó la transferencia por falta de fondos.",
+    ],
+    "refund_reasons": [
+        "Devolución del paquete cancelado a solicitud de la familia.",
+    ],
+    "package_cancellation_reasons": [
+        "La familia cambia a la mensualidad a partir de noviembre.",
+    ],
+    "withdrawal_reasons": [
+        "No se empezó la materia del paquete; la familia pidió darlo de baja.",
+    ],
 }

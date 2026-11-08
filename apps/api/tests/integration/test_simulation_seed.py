@@ -30,6 +30,8 @@ from tests.integration.simulation_support import (
     RERUN_SEED_LINES,
     SERVICE_CANCELLATION_REASONS,
     academic_free_text,
+    billing_free_text,
+    billing_texts,
     canonical_dump,
     composed_texts,
     first_run_lines,
@@ -130,6 +132,7 @@ def test_a_rerun_writes_nothing(migrated_url):
         "schedule: 0 rows",
         "courses: 0 rows",
         "academics: 0 rows",
+        "billing: 0 rows",
     ]
     assert table_counts(migrated_url) == before
 
@@ -192,7 +195,7 @@ def test_a_database_not_at_head_exits_1(fresh_database_url):
 
 
 class FailingLastModule(SettingsModule):
-    # Replaces the last module (HF-01c: ``academics``); ``settings`` itself
+    # Replaces the last module (HF-01d: ``billing``); ``settings`` itself
     # still runs, so this one must not set up the settings again.
     name = "failing"
 
@@ -338,9 +341,10 @@ def test_business_instants_are_the_plans_not_the_real_clock(es_url):
 def test_people_counts_small(es_url):
     assert scalar(es_url, "SELECT count(*) FROM students") == 10
     assert scalar(es_url, "SELECT count(*) FROM families") == 8
-    assert scalar(es_url, "SELECT count(*) FROM guardians") == 10
+    # HF-01d: + the adult's paying parent; every first guardian has a login.
+    assert scalar(es_url, "SELECT count(*) FROM guardians") == 11
     assert (
-        scalar(es_url, "SELECT count(*) FROM guardians WHERE user_id IS NOT NULL") == 3
+        scalar(es_url, "SELECT count(*) FROM guardians WHERE user_id IS NOT NULL") == 8
     )
     assert (
         scalar(es_url, "SELECT count(*) FROM students WHERE user_id IS NOT NULL") == 2
@@ -367,10 +371,10 @@ def test_people_counts_small(es_url):
 def test_full_profile_counts_and_usernames(full_url):
     assert scalar(full_url, "SELECT count(*) FROM students") == 40
     assert scalar(full_url, "SELECT count(*) FROM families") == 30
-    assert scalar(full_url, "SELECT count(*) FROM guardians") == 42
+    assert scalar(full_url, "SELECT count(*) FROM guardians") == 46
     assert (
         scalar(full_url, "SELECT count(*) FROM guardians WHERE user_id IS NOT NULL")
-        == 12
+        == 30
     )
     assert (
         scalar(full_url, "SELECT count(*) FROM students WHERE user_id IS NOT NULL") == 6
@@ -441,7 +445,7 @@ def test_every_login_accepts_the_notice_and_stores_the_language(es_url, en_url):
         assert len(logins) == scalar(
             url, "SELECT count(*) FROM users WHERE state = 'active'"
         )
-        assert len(logins) == 13
+        assert len(logins) == 18  # HF-01d: 5 more guardian logins
         for row in logins:
             assert row.language == language and row.version == 1
             assert row.accepted_at >= row.published_at
@@ -517,6 +521,21 @@ def test_free_text_comes_from_the_run_languages_pool(es_url, en_url):
         assert academic and set(academic) <= allowed
         if language == "en":
             assert not [v for v in academic if ACCENTED & set(v)]
+    # HF-01d (#552 B7): the billing texts, from the run language's pool.
+    for url, language in ((es_url, "es"), (en_url, "en")):
+        billing = [value for _, value in billing_free_text(url)]
+        assert billing and set(billing) <= billing_texts(language)
+        if language == "en":
+            assert not [v for v in billing if ACCENTED & set(v)]
+        # B4 in both languages: every family's first guardian has a login
+        # with the run language, so every receipt is in it, with its message.
+        receipts = rows(
+            url, "SELECT language, snapshot->>'message' AS message FROM receipts"
+        )
+        assert receipts
+        assert {(r.language, r.message) for r in receipts} == {
+            (language, RECEIPT_MESSAGES[language])
+        }
 
 
 def test_reference_names_are_english_only_in_english(es_url, en_url):

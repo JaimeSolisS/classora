@@ -10,6 +10,7 @@
 """
 
 import asyncio
+import hashlib
 import io
 import json
 import re
@@ -28,7 +29,11 @@ from tests.authz.csrf import origin_for
 from tests.conftest import frozen_clock
 from tests.factories.simulation import SIMULATION_MODULES
 from tests.factories.simulation import __main__ as simulation_command
-from tests.factories.simulation.plan import ProfileName, SimulationPlan
+from tests.factories.simulation.plan import (
+    ProfileName,
+    SimulationPlan,
+    plan_simulation,
+)
 from tests.factories.simulation.timeline import SimulationModule
 from tests.integration.conftest import run_sql, short_lived_engine
 from tests.integration.test_migrations import alembic_config
@@ -50,15 +55,17 @@ RERUN_SEED_LINES: Final = [
     "catalog.education_levels: 0 inserted, 0 updated",
 ]
 
-SMALL_PEOPLE_ROWS: Final = 156
-"""``small``: 15 users (4 staff, 4 tutors, 3 guardian and 2 student logins,
-the pending tutor and the pending registration), 14 user roles (not the
-pending registration), 12 invitation tokens (not the Owner or the two
-self-registrations; 11 redeemed), 13 preferences and 13 privacy acceptances
+SMALL_PEOPLE_ROWS: Final = 184
+"""``small``: 20 users (4 staff, 4 tutors, 8 guardian and 2 student logins,
+the pending tutor and the pending registration), 19 user roles (not the
+pending registration), 17 invitation tokens (not the Owner or the two
+self-registrations; 16 redeemed), 18 preferences and 18 privacy acceptances
 (the login accounts), 1 delegation (granted 18 Nov; the 12 Oct one was
 revoked), 2 registration requests and their 2 approval requests, 8 families,
-10 family guardians, 10 family students, 10 guardians, 10 students, 13
-emergency contacts, 14 student-guardian links and 9 consents (the minors)."""
+11 family guardians, 10 family students, 11 guardians, 10 students, 13
+emergency contacts, 15 student-guardian links and 9 consents (the minors).
+HF-01d +28: every family's first guardian has a login (5 more) and the
+adult's family has the parent who pays."""
 SMALL_CATALOG_ROWS: Final = 18
 """``small``: 6 subjects, 3 classrooms, 5 classroom windows, 1 academic
 period and 3 closures."""
@@ -67,36 +74,51 @@ SMALL_STAFF_ROWS: Final = 90
 rejected, 1 pending) with 17 approval requests and 17 decision notifications
 (15 approved, 1 rejected, 1 revoked), 4 availability settings, 24 weekly
 windows, 5 exceptions and 2 preferred classrooms."""
-SMALL_SCHEDULE_ROWS: Final = 1607
-"""``small`` (#550): 12 series (10 individual, 1 group, 1 tutor 12's) with
-13 participants, 182 sessions with 210 participants, 30 offers covering 178
-sessions, 2 substitutions, 2 reassignment flags, 1 group with 2
-enrollments, 13 session requests, 15 change requests, 195 attendance marks
-with 3 corrections, 151 closeouts with 153 approvals (two corrected) and 2
-closeout corrections, 5 availability change requests, 2 time-off
-exceptions, 189 approval requests and 247 notifications (override rows are
-not counted: they depend on the real date, D5)."""
-SMALL_COURSES_ROWS: Final = 140
-"""``small``: 2 templates with 2 subjects, 7 modules, 4 assessments and 2
-snapshots; 2 cohorts with 4 enrollments; their 2 series with 4
-participants, 27 sessions with 54 participants, 2 series offers covering 26
-sessions and 2 notifications."""
-SMALL_ACADEMICS_ROWS: Final = 626
+SMALL_SCHEDULE_ROWS: Final = 1635
+"""``small`` (#550; HF-01d +28: 20 package units consumed by closeout
+approvals now that billing is on, and 8 more notifications: the class the
+Administrator shortens on 12 Nov and the guardians who now have a login): 12
+series (10 individual, 1 group, 1 tutor 12's) with 13 participants, 182
+sessions with 210 participants, 30 offers covering 178 sessions, 2
+substitutions, 2 reassignment flags, 1 group with 2 enrollments, 13 session
+requests, 15 change requests, 195 attendance marks with 3 corrections, 151
+closeouts with 153 approvals (two corrected) and 2 closeout corrections, 5
+availability change requests, 2 time-off exceptions, 189 approval requests
+and 247 notifications before HF-01d (override rows are not counted: they
+depend on the real date, D5)."""
+SMALL_COURSES_ROWS: Final = 142
+"""``small`` (HF-01d +2: the running cohort's two course fees, posted by
+the enrollment hook now that billing is on): 2 templates with 2 subjects,
+7 modules, 4 assessments and 2 snapshots; 2 cohorts with 4 enrollments;
+their 2 series with 4 participants, 27 sessions with 54 participants, 2
+series offers covering 26 sessions and 2 notifications."""
+SMALL_ACADEMICS_ROWS: Final = 713
 """``small`` (#551): 34 notes (21 shared), 3 evaluation templates with 9
 criteria, 34 evaluations with 105 scores, 10 learning plans with 20
 objectives and 40 milestones, 49 assignments with 49 submissions, 3 report
-schedules, 40 progress reports with their 40 approval requests and 190
-notifications."""
+schedules, 40 progress reports with their 40 approval requests and 277
+notifications (HF-01d +87: the guardians who now have a login are notified
+too)."""
+SMALL_BILLING_ROWS: Final = 512
+"""``small`` (#552): 8 billing accounts, 19 catalog items (4 of them the
+products') with 20 versions, 9 custom prices, 5 discounts with 2
+assignments, 4 products, 5 packages, 9 of the 29 unit rows (20 consumptions
+are ``schedule``'s), 6 tuition plans with 1 pause, 138 of the 140 charges (2
+course fees are ``courses``') with 24 discount lines, 5 adjustments, 1
+repricing, 7 cancellation decisions, 2 due-date changes, 43 reminders with
+43 notifications, 43 payments with 68 allocations and 43 receipts, 1
+reversal with 4 releases, 1 refund and 1 withdrawal."""
 SETTINGS_ROWS: Final = 1
 """The scheduling-policy version effective at ``SIM_SETUP`` (the business
 settings, hours and renames update existing rows)."""
 
-FULL_PEOPLE_ROWS: Final = 524
-"""``full``: 36 users, 35 user roles, 33 tokens, 34 preferences, 34
+FULL_PEOPLE_ROWS: Final = 626
+"""``full``: 54 users, 53 user roles, 51 tokens, 52 preferences, 52
 acceptances, 1 delegation, 2 registration requests and 2 approval requests,
-30 families, 42 family guardians, 40 family students, 42 guardians, 40
-students, 55 emergency contacts, 62 student-guardian links and 36
-consents."""
+30 families, 46 family guardians, 40 family students, 46 guardians, 40
+students, 55 emergency contacts, 66 student-guardian links and 36 consents.
+HF-01d +102: every family's first guardian has a login (18 more) and each
+adult's family has the parent who pays (4)."""
 FULL_CATALOG_ROWS: Final = 26
 """``full``: 12 subjects, 5 classrooms, 5 classroom windows, 1 academic
 period and 3 closures."""
@@ -105,26 +127,41 @@ FULL_STAFF_ROWS: Final = 227
 42 notifications, 12 availability settings, 60 weekly windows, 7 exceptions
 and 10 preferred classrooms."""
 
-FULL_SCHEDULE_ROWS: Final = 8844
-"""``full`` (#550): 78 series (72 individual slots, 3 groups, 3 tutor 12's)
-with 90 participants, 1085 sessions with 1416 participants, 106 offers
-covering 1043 sessions, 8 substitutions, 8 reassignment flags, 3 groups
-with 15 enrollments, 13 session requests, 65 change requests, 1170
-attendance marks with 3 corrections, 818 closeouts with 820 approvals and 2
-closeout corrections, 11 availability change requests, 8 time-off
-exceptions, 912 approval requests and 1170 notifications."""
-FULL_COURSES_ROWS: Final = 241
-"""``full``: 2 templates with 2 subjects, 7 modules, 4 assessments and 2
-snapshots; 2 cohorts with 11 enrollments; their 2 series with 11
-participants, 26 sessions with 142 participants, 2 series offers covering
-26 sessions and 2 notifications."""
+FULL_SCHEDULE_ROWS: Final = 8951
+"""``full`` (#550; HF-01d +107: 81 package units consumed by closeout
+approvals now that billing is on, and 26 more notifications: the class the
+Administrator shortens on 12 Nov and the guardians who now have a login): 78
+series (72 individual slots, 3 groups, 3 tutor 12's) with 90 participants,
+1085 sessions with 1416 participants, 106 offers covering 1043 sessions, 8
+substitutions, 8 reassignment flags, 3 groups with 15 enrollments, 13
+session requests, 65 change requests, 1170 attendance marks with 3
+corrections, 818 closeouts with 820 approvals and 2 closeout corrections, 11
+availability change requests, 8 time-off exceptions, 912 approval requests
+and 1170 notifications before HF-01d."""
+FULL_COURSES_ROWS: Final = 247
+"""``full`` (HF-01d +6: the running cohort's six course fees, posted by the
+enrollment hook now that billing is on): 2 templates with 2 subjects, 7
+modules, 4 assessments and 2 snapshots; 2 cohorts with 11 enrollments; their
+2 series with 11 participants, 26 sessions with 142 participants, 2 series
+offers covering 26 sessions and 2 notifications."""
 
-FULL_ACADEMICS_ROWS: Final = 2231
+FULL_ACADEMICS_ROWS: Final = 2473
 """``full`` (#551): 182 notes (113 shared), 3 evaluation templates with 9
 criteria, 130 evaluations with 413 scores, 28 learning plans with 56
 objectives and 112 milestones, 214 assignments with 214 submissions, 3
 report schedules, 95 progress reports with their 95 approval requests and
-677 notifications."""
+919 notifications (HF-01d +242: the guardians who now have a login)."""
+
+FULL_BILLING_ROWS: Final = 2595
+"""``full`` (#552): 30 billing accounts, 42 catalog items (4 of them the
+products') with 43 versions, 50 custom prices, 5 discounts with 2
+assignments, 4 products, 15 packages, 20 of the 101 unit rows (81
+consumptions are ``schedule``'s), 21 tuition plans with 1 pause, 943 of
+the 949 charges (6 course fees are ``courses``') with 279 discount lines,
+20 adjustments, 1 repricing, 44 cancellation decisions, 2 due-date
+changes, 208 reminders with 186 notifications, 155 payments with 350
+allocations and 155 receipts, 1 reversal with 16 releases, 1 refund and
+1 withdrawal."""
 
 MODULE_ROWS: Final[dict[str, dict[str, int]]] = {
     "small": {
@@ -135,6 +172,7 @@ MODULE_ROWS: Final[dict[str, dict[str, int]]] = {
         "schedule": SMALL_SCHEDULE_ROWS,
         "courses": SMALL_COURSES_ROWS,
         "academics": SMALL_ACADEMICS_ROWS,
+        "billing": SMALL_BILLING_ROWS,
     },
     "full": {
         "people": FULL_PEOPLE_ROWS,
@@ -144,6 +182,7 @@ MODULE_ROWS: Final[dict[str, dict[str, int]]] = {
         "schedule": FULL_SCHEDULE_ROWS,
         "courses": FULL_COURSES_ROWS,
         "academics": FULL_ACADEMICS_ROWS,
+        "billing": FULL_BILLING_ROWS,
     },
 }
 
@@ -292,21 +331,57 @@ DUMP_TABLES: Final = (
     "assignment_submissions",
     "progress_report_schedules",
     "progress_reports",
+    # HF-01d (#552): billing.
+    "billing_settings",
+    "service_prices",
+    "price_versions",
+    "custom_prices",
+    "discounts",
+    "discount_assignments",
+    "package_products",
+    "packages",
+    "package_credit_transactions",
+    "tuition_plans",
+    "tuition_plan_pauses",
+    "billing_accounts",
+    "charges",
+    "charge_discounts",
+    "charge_adjustments",
+    "charge_duration_repricings",
+    "session_cancellation_decisions",
+    "charge_due_date_changes",
+    "charge_reminders",
+    "payments",
+    "payment_allocations",
+    "payment_reversals",
+    "allocation_releases",
+    "refunds",
+    "receipts",
+    "withdrawals",
 )
-"""The tables HF-01, HF-01b and HF-01c write."""
+"""The tables HF-01, HF-01b, HF-01c and HF-01d write."""
 
 REFERENCE_TABLES: Final = (
     "roles",
     "permissions",
     "privacy_notice_versions",
     "payment_methods",
+    "cancellation_billing_rules",
 )
 """Tables only referenced (their rows resolve foreign keys)."""
 
 LEFT_OUT: Final = frozenset(
     {"id", "created_at", "updated_at", "version", "password_hash", "token_hash"}
 )
+LEFT_OUT_KEYS: Final = frozenset({"fingerprint"})
+"""JSON keys left out: a withdrawal's stored preview ``fingerprint`` is a
+hash over its ids (HF-01d)."""
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+_EMBEDDED_UUID = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+)
+"""An id inside a longer string (HF-01d: an adjustment's ``source_key``
+such as ``withdrawal:<charge_id>:<withdrawal_id>``)."""
 
 
 async def _load(url: str) -> dict[str, list[dict[str, Any]]]:
@@ -347,6 +422,13 @@ def canonical_dump(url: str) -> dict[str, list[str]]:
             return resolve(value, depth)
         if isinstance(value, str) and _UUID.match(value):
             return resolve(uuid.UUID(value), depth)
+        if isinstance(value, str) and _EMBEDDED_UUID.search(value):
+            return _EMBEDDED_UUID.sub(
+                lambda m: hashlib.sha256(
+                    resolve(uuid.UUID(m.group(0)), depth).encode()
+                ).hexdigest()[:16],
+                value,
+            )
         if isinstance(value, dict):
             # Keys can be ids too (a closeout approval's attendance by student).
             return dict(
@@ -356,6 +438,7 @@ def canonical_dump(url: str) -> dict[str, list[str]]:
                         canon(v, depth),
                     )
                     for k, v in value.items()
+                    if k not in LEFT_OUT_KEYS
                 )
             )
         if isinstance(value, list):
@@ -477,4 +560,48 @@ def composed_texts(plan: SimulationPlan) -> set[str]:
         *(p.title for p in work.plans),
         *(f"{p.description} {p.reason}" for p in work.plans if p.reason),
         *(h.title for h in work.homework),
+    }
+
+
+# --- HF-01d free text (B7) ------------------------------------------------------------
+
+BILLING_FREE_TEXT: Final = (
+    ("charges", "description"),
+    ("charge_adjustments", "reason"),
+    ("charge_due_date_changes", "reason"),
+    ("withdrawals", "reason"),
+    ("payment_reversals", "reason"),
+    ("refunds", "reason"),
+    ("discounts", "name"),
+    ("package_products", "name"),
+)
+"""The billing columns the simulation writes free text into (B7; a
+job-written adjustment has no reason and an enrollment fee no
+description)."""
+
+
+def billing_free_text(url: str) -> list[tuple[str, str]]:
+    """Every distinct non-blank value of :data:`BILLING_FREE_TEXT`, with its
+    column."""
+    found = []
+    for table, column in BILLING_FREE_TEXT:
+        for (value,) in run_sql(
+            url,
+            f"SELECT DISTINCT {column} FROM {table}"  # noqa: S608
+            f" WHERE {column} IS NOT NULL AND {column} <> ''",
+        ):
+            found.append((f"{table}.{column}", value))
+    return found
+
+
+def billing_texts(language: str) -> set[str]:
+    billing = plan_simulation(language, "small", 1).billing  # type: ignore[arg-type]
+    return {
+        *(p.name for p in billing.products),
+        *(d.name for d in billing.discounts),
+        *(m.description for m in billing.manual_charges),
+        *(a.reason for a in billing.adjustments),
+        *(c.reason for c in billing.due_date_changes),
+        billing.reversal.reason,
+        *billing.reasons.values(),
     }
