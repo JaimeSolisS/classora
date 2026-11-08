@@ -445,7 +445,7 @@ def test_every_login_accepts_the_notice_and_stores_the_language(es_url, en_url):
         assert len(logins) == scalar(
             url, "SELECT count(*) FROM users WHERE state = 'active'"
         )
-        assert len(logins) == 13
+        assert len(logins) == 18  # HF-01d: 5 more guardian logins
         for row in logins:
             assert row.language == language and row.version == 1
             assert row.accepted_at >= row.published_at
