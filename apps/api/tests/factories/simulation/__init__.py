@@ -10,15 +10,20 @@ lines containing ``python -m tests.factories.demo``).
 - ``anchor``: the fixed timeline and :func:`~.anchor.sim_clock`;
 - ``plan``: the pure plan; ``texts``: the language pools;
 - ``timeline``: the driver, the module protocol and the clean check;
-- ``people``, ``catalog``, ``staff``, ``settings``: this issue's modules
-  (HF-01b…HF-01f append theirs to :data:`SIMULATION_MODULES`);
+- ``people``, ``catalog``, ``staff``, ``settings``: HF-01's modules;
+- ``timetable``: HF-01b's pure timetable and outcomes; ``schedule`` and
+  ``courses``: HF-01b's modules (after ``settings``, so the scheduling
+  policy is in place; HF-01c…HF-01f append theirs to
+  :data:`SIMULATION_MODULES`);
 - ``__main__``: the command.
 """
 
 from typing import Final
 
 from tests.factories.simulation.catalog import CatalogModule
+from tests.factories.simulation.courses import CoursesModule
 from tests.factories.simulation.people import PeopleModule
+from tests.factories.simulation.schedule import ScheduleModule
 from tests.factories.simulation.settings import SettingsModule
 from tests.factories.simulation.staff import StaffModule
 from tests.factories.simulation.timeline import SimulationModule
@@ -28,5 +33,7 @@ SIMULATION_MODULES: Final[tuple[SimulationModule, ...]] = (
     CatalogModule(),
     StaffModule(),
     SettingsModule(),
+    ScheduleModule(),
+    CoursesModule(),
 )
 """Every module, in order; each day runs them in this order."""

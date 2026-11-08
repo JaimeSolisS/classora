@@ -45,6 +45,9 @@ class TextPool:
     def choices(self, key: str) -> list[str]:
         return cast(list[str], self._texts[key])
 
+    def lists(self, key: str) -> dict[str, list[str]]:
+        return cast(dict[str, list[str]], self._texts[key])
+
     @property
     def center_name(self) -> str:
         return self.text("center_name")

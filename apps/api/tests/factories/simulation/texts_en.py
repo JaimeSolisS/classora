@@ -123,4 +123,217 @@ TEXTS: Final[dict[str, object]] = {
         "Training workshop",
         "Saturday review session",
     ],
+    # --- HF-01b (#550): the schedule and the courses ---
+    "group_names": {
+        "g1": "Middle school math club",
+        "g2": "High school English conversation",
+        "g3": "Elementary reading workshop",
+    },
+    "course_names": {
+        "exam": "High school entrance exam preparation",
+        "physics": "Physics olympiad workshop",
+    },
+    "course_descriptions": {
+        "exam": (
+            "Guided review of arithmetic, algebra and geometry with practice exams."
+        ),
+        "physics": "Mechanics and energy problems with simple lab activities.",
+    },
+    "course_modules": {
+        "exam": [
+            "Arithmetic and fractions",
+            "Basic algebra",
+            "Geometry and measurement",
+            "Final practice exam",
+        ],
+        "physics": [
+            "Kinematics",
+            "Newton's laws",
+            "Work and energy",
+        ],
+    },
+    "course_materials": {
+        "exam": [
+            "Workbook 1",
+            "Workbook 2",
+            "Geometry set",
+            "Printed practice exam",
+        ],
+        "physics": [
+            "Kinematics problem sheets",
+            "Lab carts and pulleys",
+            "Energy problem guide",
+        ],
+    },
+    "course_assessments": {
+        "exam": ["Diagnostic exam", "Practice entrance exam"],
+        "physics": ["Mechanics exam", "Lab report"],
+    },
+    "cohort_names": {
+        "exam": "Entrance exam, fall 2026",
+        "physics": "Physics olympiad, November group",
+    },
+    "closeout_topics": {
+        "math_e": [
+            "Addition and subtraction with regrouping",
+            "Multiplication tables from 6 to 9",
+            "Fraction problems with drawings",
+        ],
+        "reading_e": [
+            "Reading a story aloud and comprehension",
+            "Main ideas of an informational text",
+            "New vocabulary and using the dictionary",
+        ],
+        "english_e": [
+            "Colors, numbers and greetings",
+            "The verb to be in short sentences",
+            "A song and animal vocabulary",
+        ],
+        "math_m": [
+            "Linear equations",
+            "Ratios and percentages",
+            "Area and perimeter of composite shapes",
+        ],
+        "english_m": [
+            "Simple present and daily routines",
+            "Simple past with regular verbs",
+            "Listening comprehension of a dialogue",
+        ],
+        "science_m": [
+            "The cell and its parts",
+            "Mixtures and separation methods",
+            "Forces and motion in daily life",
+        ],
+        "math_h": [
+            "Linear and quadratic functions",
+            "Right triangle trigonometry",
+            "Systems of equations",
+        ],
+        "physics_h": [
+            "Uniform linear motion",
+            "Newton's second law",
+            "Conservation of energy",
+        ],
+        "chemistry_h": [
+            "Naming inorganic compounds",
+            "Balancing chemical equations",
+            "Basic stoichiometry",
+        ],
+        "english_h": [
+            "Present perfect in conversation",
+            "Writing a formal email",
+            "Reading an article and an oral summary",
+        ],
+        "calculus_u": [
+            "Limits and continuity",
+            "Derivatives with the chain rule",
+            "Integration by substitution",
+        ],
+        "programming_u": [
+            "Loops and conditionals in Python",
+            "Functions and lists",
+            "Debugging a broken program",
+        ],
+    },
+    "closeout_performance": [
+        "Worked willingly and solved almost every exercise.",
+        "Needed support at first but finished the practice alone.",
+        "Participated a lot and explained the answers clearly.",
+        "Was a little distracted; did better in the second half.",
+        "Showed clear progress since the last class.",
+        "Understood the topic; still makes calculation mistakes.",
+    ],
+    "closeout_homework": [
+        "Solve the exercise sheet on page 12.",
+        "Read the assigned text and write down three questions.",
+        "Practice ten exercises on today's topic.",
+        "Review the vocabulary from class.",
+    ],
+    "closeout_next_steps": [
+        "Review the topic with more exercises before moving on.",
+        "Start the next topic of the program.",
+        "Check the homework at the start of the next class.",
+        "Prepare an exam-style exercise.",
+    ],
+    "closeout_change_reasons": [
+        "Please describe the topics covered in more detail.",
+        "The reported minutes do not match the schedule; please check them.",
+    ],
+    "closeout_correction_reasons": [
+        "The class ended ten minutes earlier than reported.",
+        "Minutes adjusted after checking the front desk log.",
+    ],
+    "attendance_correction_reasons": [
+        "The family said the student arrived late because of traffic.",
+        "Corrected after checking the sign-in sheet.",
+        "The tutor marked the attendance by mistake.",
+    ],
+    "family_cancellation_notes": [
+        "There is a school activity that day.",
+        "The student is sick.",
+        "We are going on a family trip.",
+        "There is a doctor's appointment at that time.",
+        "It clashes with an exam at school.",
+    ],
+    "tutor_cancellation_notes": [
+        "I have an academic commitment I cannot move.",
+        "An urgent errand came up.",
+        "I have a mandatory training that day.",
+    ],
+    "center_cancellation_reasons": [
+        "Electrical maintenance at the center.",
+        "Scheduled pest control in the building.",
+        "Water outage in the area.",
+    ],
+    "exception_reasons": [
+        "Illness with a doctor's note.",
+        "Documented family emergency.",
+    ],
+    "reschedule_notes": [
+        "Can we move the class to another time that week?",
+        "There is practice at that time; we ask for another time.",
+        "I need to move the class because of a commitment.",
+        "We would prefer a later time that day.",
+    ],
+    "change_rejection_reasons": [
+        "The request arrived outside the policy deadline.",
+        "The tutor is not available at the proposed time.",
+        "The class is part of a catch-up plan that should not be interrupted.",
+    ],
+    "time_off_notes": [
+        "Medical check-up",
+        "Errand at the bank",
+        "Graduate school exam",
+        "Family matter",
+    ],
+    "availability_rejection_reasons": [
+        "No substitute tutor is available for those classes.",
+        "The notice came too late.",
+    ],
+    "substitution_reasons": [
+        "The tutor has approved time off.",
+        "Covering for the regular tutor's absence.",
+        "The regular tutor is not available that day.",
+    ],
+    "offer_decline_notes": [
+        "I am not available that day.",
+        "I already have another class close to that time.",
+        "I prefer not to take extra classes this week.",
+    ],
+    "session_request_notes": [
+        "Needs to review before an exam.",
+        "We would like an extra practice class.",
+        "Has questions about this week's homework.",
+        "Would like to reinforce the topic before the midterm.",
+        "Missed school and needs to catch up.",
+    ],
+    "session_request_rejection_reasons": [
+        "No tutor is available at that time.",
+        "The student already has a class close to that time.",
+        "The center has an internal event that day.",
+    ],
+    "notice_override_reasons": [
+        "Request reviewed after hours; the family had already been told.",
+        "Confirmation agreed with the family by phone.",
+    ],
 }

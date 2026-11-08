@@ -28,8 +28,10 @@ from tests.integration.conftest import run_sql
 from tests.integration.demo_support import FROZEN_NOW as DEMO_FROZEN_NOW
 from tests.integration.simulation_support import (
     RERUN_SEED_LINES,
+    SERVICE_CANCELLATION_REASONS,
     canonical_dump,
     first_run_lines,
+    free_text,
     migrate,
     run_command,
     simulation_env,
@@ -123,6 +125,8 @@ def test_a_rerun_writes_nothing(migrated_url):
         "catalog: 0 rows",
         "staff: 0 rows",
         "settings: 0 rows",
+        "schedule: 0 rows",
+        "courses: 0 rows",
     ]
     assert table_counts(migrated_url) == before
 
@@ -185,6 +189,13 @@ def test_a_database_not_at_head_exits_1(fresh_database_url):
 
 
 class FailingLastModule(SettingsModule):
+    # Replaces the last module (HF-01b: ``courses``); ``settings`` itself
+    # still runs, so this one must not set up the settings again.
+    name = "failing"
+
+    async def setup(self, session: Any, ctx: Any) -> None:
+        return None
+
     def days(self, ctx: Any) -> set[date]:
         return {SIM_START}
 
@@ -241,6 +252,9 @@ def test_the_run_date_does_not_change_the_data(database_url):
 
     assert dumps[0] == dumps[1]
     assert sum(len(v) for v in dumps[0].values()) > 250
+    # HF-01b B7: the schedule and the courses are in the dump too.
+    for table in ("class_sessions", "session_closeouts", "course_cohorts"):
+        assert dumps[0][table], table
 
 
 def local(day: date, hhmm: str) -> datetime:
@@ -269,8 +283,12 @@ def test_business_instants_are_the_plans_not_the_real_clock(es_url):
         " WHERE q.status = 'rejected'",
     )
     assert rejected == local(date(2026, 9, 10), "11:00")
+    # HF-01's exceptions (HF-01b's time off has its own notes).
     exceptions = rows(
-        es_url, "SELECT starts_on FROM tutor_availability_exceptions ORDER BY 1"
+        es_url,
+        "SELECT starts_on FROM tutor_availability_exceptions"
+        " WHERE note = ANY(:notes) ORDER BY 1",
+        notes=POOLS["es"]["exception_notes"],
     )
     assert [r.starts_on for r in exceptions] == [
         date(2026, 9, 25),
@@ -439,6 +457,12 @@ def free_texts(url: str) -> list[str]:
         scalar(
             url,
             "SELECT reason FROM approval_requests WHERE status = 'rejected'",
+        ),
+        # HF-01b (#550 B10): the schedule's and the courses' free text.
+        *(
+            value
+            for _, value in free_text(url)
+            if value not in SERVICE_CANCELLATION_REASONS
         ),
     ]
 

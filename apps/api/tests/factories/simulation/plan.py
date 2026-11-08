@@ -30,9 +30,9 @@ import random
 import re
 import unicodedata
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
-from typing import Final, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 import faker
 
@@ -44,6 +44,9 @@ from tests.factories.simulation.anchor import (
     local_instant,
 )
 from tests.factories.simulation.texts import Language, TextPool
+
+if TYPE_CHECKING:
+    from tests.factories.simulation.timetable import Timetable
 
 type ProfileName = Literal["full", "small"]
 type Archetype = Literal["mornings", "afternoons", "evenings", "full_days"]
@@ -740,6 +743,15 @@ class SimulationPlan:
     center_name: str
     address: str
     contact_email: str
+    schedule: Timetable | None = None
+    """HF-01b's timetable and outcomes (:mod:`.timetable`); always set by
+    :func:`plan_simulation` (read it through :attr:`timetable`)."""
+
+    @property
+    def timetable(self) -> Timetable:
+        if self.schedule is None:  # pragma: no cover - plan_simulation sets it
+            raise RuntimeError("the plan has no timetable")
+        return self.schedule
 
     @property
     def owner(self) -> AccountPlan:
@@ -893,7 +905,7 @@ def plan_simulation(
     )
     pending_given, pending_family = names.person(True, _surnames(language, names))
     tutor_given, tutor_family = names.person(False, _surnames(language, names))
-    return SimulationPlan(
+    base = SimulationPlan(
         language=language,
         profile=shape.name,
         seed=seed,
@@ -946,6 +958,9 @@ def plan_simulation(
         address=texts.text("address"),
         contact_email=texts.text("contact_email"),
     )
+    from tests.factories.simulation.timetable import build_timetable
+
+    return replace(base, schedule=build_timetable(base, seed))
 
 
 class _Cycle:
