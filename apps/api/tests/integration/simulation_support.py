@@ -10,6 +10,7 @@
 """
 
 import asyncio
+import hashlib
 import io
 import json
 import re
@@ -366,7 +367,15 @@ REFERENCE_TABLES: Final = (
 LEFT_OUT: Final = frozenset(
     {"id", "created_at", "updated_at", "version", "password_hash", "token_hash"}
 )
+LEFT_OUT_KEYS: Final = frozenset({"fingerprint"})
+"""JSON keys left out: a withdrawal's stored preview ``fingerprint`` is a
+hash over its ids (HF-01d)."""
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+_EMBEDDED_UUID = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+)
+"""An id inside a longer string (HF-01d: an adjustment's ``source_key``
+such as ``withdrawal:<charge_id>:<withdrawal_id>``)."""
 
 
 async def _load(url: str) -> dict[str, list[dict[str, Any]]]:
@@ -407,6 +416,13 @@ def canonical_dump(url: str) -> dict[str, list[str]]:
             return resolve(value, depth)
         if isinstance(value, str) and _UUID.match(value):
             return resolve(uuid.UUID(value), depth)
+        if isinstance(value, str) and _EMBEDDED_UUID.search(value):
+            return _EMBEDDED_UUID.sub(
+                lambda m: hashlib.sha256(
+                    resolve(uuid.UUID(m.group(0)), depth).encode()
+                ).hexdigest()[:16],
+                value,
+            )
         if isinstance(value, dict):
             # Keys can be ids too (a closeout approval's attendance by student).
             return dict(
@@ -416,6 +432,7 @@ def canonical_dump(url: str) -> dict[str, list[str]]:
                         canon(v, depth),
                     )
                     for k, v in value.items()
+                    if k not in LEFT_OUT_KEYS
                 )
             )
         if isinstance(value, list):
