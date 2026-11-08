@@ -203,6 +203,11 @@ def test_learning_plans_meet_the_minimums(profile):
         if lp.outcome == "discontinued":
             assert lp.reason is not None and lp.closed_at is not None
         if lp.outcome == "active":
+            # QA #551 D1: an active plan spans the anchor.
+            assert lp.target_on >= SIM_ANCHOR, lp.key
+            assert any(
+                m.status != "done" and m.due_on >= SIM_ANCHOR for m in lp.milestones
+            ), lp.key
             for m in lp.milestones:
                 if m.due_on >= SIM_ANCHOR:
                     assert m.status in ("pending", "in_progress"), lp.key

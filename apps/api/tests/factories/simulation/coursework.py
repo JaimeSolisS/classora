@@ -76,6 +76,8 @@ DISCONTINUED_PLANS: Final = 2
 OVERDUE_PLANS: Final = 2
 EARLY_SUBMISSIONS: Final = 3
 MONTHLY_MIN_CLASSES: Final = 4
+ACTIVE_REACH: Final = timedelta(days=7)
+"""An active plan's target is at least this long after the anchor."""
 TUTOR_LOOKBACK: Final = timedelta(days=30)
 """``scheduling.tutor_assignments.TUTOR_ASSIGNMENT_LOOKBACK_DAYS``."""
 EARLY_ENROLLMENT: Final = date(2026, 10, 1)
@@ -540,6 +542,11 @@ class _Builder:
         start = c.final.day
         created = c.final.ends_at + timedelta(hours=1)
         span = 9 if outcome == "completed" else 14
+        if outcome == "active":
+            # An active plan spans the anchor (QA #551 D1): its last
+            # milestone, and so its target, falls a week or more after it.
+            reach = (SIM_ANCHOR + ACTIVE_REACH - start).days
+            span = max(span, -(-reach // 4))
         objectives_pool = self.rng.sample(self.texts.choices("plan_objectives"), 2)
         milestone_pool = self.rng.sample(self.texts.choices("plan_milestones"), 4)
         dues = [start + timedelta(days=span * (n + 1)) for n in range(4)]

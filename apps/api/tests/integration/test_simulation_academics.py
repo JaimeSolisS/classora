@@ -184,6 +184,18 @@ def test_learning_plans_are_closed_or_active_with_overdue_milestones(es_url):
         )
         == 0
     )
+    # QA #551 D1: every active plan spans the anchor, with an open milestone.
+    assert (
+        scalar(
+            es_url,
+            "SELECT count(*) FROM learning_plans p WHERE p.status = 'active'"
+            " AND (p.target_on < :anchor OR NOT EXISTS (SELECT 1"
+            " FROM learning_plan_milestones m WHERE m.plan_id = p.id"
+            " AND m.status <> 'done' AND m.due_on >= :anchor))",
+            anchor=SIM_ANCHOR,
+        )
+        == 0
+    )
     reasons = POOLS["es"]["plan_discontinue_reasons"]
     for (description,) in rows(
         es_url, "SELECT description FROM learning_plans WHERE status = 'discontinued'"
