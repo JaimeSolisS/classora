@@ -28,7 +28,7 @@ from tests.authz.csrf import origin_for
 from tests.conftest import frozen_clock
 from tests.factories.simulation import SIMULATION_MODULES
 from tests.factories.simulation import __main__ as simulation_command
-from tests.factories.simulation.plan import ProfileName
+from tests.factories.simulation.plan import ProfileName, SimulationPlan
 from tests.factories.simulation.timeline import SimulationModule
 from tests.integration.conftest import run_sql, short_lived_engine
 from tests.integration.test_migrations import alembic_config
@@ -81,6 +81,12 @@ SMALL_COURSES_ROWS: Final = 140
 snapshots; 2 cohorts with 4 enrollments; their 2 series with 4
 participants, 27 sessions with 54 participants, 2 series offers covering 26
 sessions and 2 notifications."""
+SMALL_ACADEMICS_ROWS: Final = 626
+"""``small`` (#551): 34 notes (21 shared), 3 evaluation templates with 9
+criteria, 34 evaluations with 105 scores, 10 learning plans with 20
+objectives and 40 milestones, 49 assignments with 49 submissions, 3 report
+schedules, 40 progress reports with their 40 approval requests and 190
+notifications."""
 SETTINGS_ROWS: Final = 1
 """The scheduling-policy version effective at ``SIM_SETUP`` (the business
 settings, hours and renames update existing rows)."""
@@ -113,6 +119,13 @@ snapshots; 2 cohorts with 11 enrollments; their 2 series with 11
 participants, 26 sessions with 142 participants, 2 series offers covering
 26 sessions and 2 notifications."""
 
+FULL_ACADEMICS_ROWS: Final = 2231
+"""``full`` (#551): 182 notes (113 shared), 3 evaluation templates with 9
+criteria, 130 evaluations with 413 scores, 28 learning plans with 56
+objectives and 112 milestones, 214 assignments with 214 submissions, 3
+report schedules, 95 progress reports with their 95 approval requests and
+677 notifications."""
+
 MODULE_ROWS: Final[dict[str, dict[str, int]]] = {
     "small": {
         "people": SMALL_PEOPLE_ROWS,
@@ -121,6 +134,7 @@ MODULE_ROWS: Final[dict[str, dict[str, int]]] = {
         "settings": SETTINGS_ROWS,
         "schedule": SMALL_SCHEDULE_ROWS,
         "courses": SMALL_COURSES_ROWS,
+        "academics": SMALL_ACADEMICS_ROWS,
     },
     "full": {
         "people": FULL_PEOPLE_ROWS,
@@ -129,6 +143,7 @@ MODULE_ROWS: Final[dict[str, dict[str, int]]] = {
         "settings": SETTINGS_ROWS,
         "schedule": FULL_SCHEDULE_ROWS,
         "courses": FULL_COURSES_ROWS,
+        "academics": FULL_ACADEMICS_ROWS,
     },
 }
 
@@ -264,8 +279,21 @@ DUMP_TABLES: Final = (
     "course_template_snapshots",
     "course_cohorts",
     "cohort_enrollments",
+    # HF-01c (#551): academics.
+    "session_notes",
+    "evaluation_templates",
+    "evaluation_template_criteria",
+    "evaluations",
+    "evaluation_scores",
+    "learning_plans",
+    "learning_plan_objectives",
+    "learning_plan_milestones",
+    "assignments",
+    "assignment_submissions",
+    "progress_report_schedules",
+    "progress_reports",
 )
-"""The tables HF-01 and HF-01b write."""
+"""The tables HF-01, HF-01b and HF-01c write."""
 
 REFERENCE_TABLES: Final = (
     "roles",
@@ -395,3 +423,58 @@ def free_text(url: str) -> list[tuple[str, str]]:
 
 SERVICE_CANCELLATION_REASONS: Final = frozenset({"family_request", "tutor_request"})
 """The cancellation reasons an approved request stores (codes, not text)."""
+
+
+# --- HF-01c free text (B6) --------------------------------------------------------
+
+ACADEMIC_FREE_TEXT: Final = (
+    ("session_notes", "body"),
+    ("evaluation_templates", "name"),
+    ("evaluation_templates", "description"),
+    ("evaluation_template_criteria", "title"),
+    ("evaluations", "template_name"),
+    ("evaluations", "feedback"),
+    ("evaluations", "course_assessment_title"),
+    ("evaluation_scores", "criterion_title"),
+    ("evaluation_scores", "comment"),
+    ("learning_plans", "title"),
+    ("learning_plans", "description"),
+    ("learning_plan_objectives", "title"),
+    ("learning_plan_milestones", "title"),
+    ("learning_plan_milestones", "activities"),
+    ("assignments", "title"),
+    ("assignments", "instructions"),
+    ("assignment_submissions", "text"),
+    ("assignment_submissions", "feedback"),
+    ("progress_reports", "summary"),
+    ("progress_reports", "strengths"),
+    ("progress_reports", "areas_for_improvement"),
+    ("progress_reports", "next_steps"),
+    ("progress_reports", "changes_requested_reason"),
+)
+
+
+def academic_free_text(url: str) -> list[tuple[str, str]]:
+    """Every distinct value of :data:`ACADEMIC_FREE_TEXT`, with its column."""
+    found = []
+    for table, column in ACADEMIC_FREE_TEXT:
+        for (value,) in run_sql(
+            url,
+            f"SELECT DISTINCT {column} FROM {table}"  # noqa: S608
+            f" WHERE {column} IS NOT NULL",
+        ):
+            found.append((f"{table}.{column}", value))
+    return found
+
+
+def composed_texts(plan: SimulationPlan) -> set[str]:
+    """The academic texts the plan composes from pool fragments (note
+    bodies, plan and homework titles, a discontinued plan's description);
+    every other academic text is a pool value as is."""
+    work = plan.academics
+    return {
+        *(n.body for n in work.notes),
+        *(p.title for p in work.plans),
+        *(f"{p.description} {p.reason}" for p in work.plans if p.reason),
+        *(h.title for h in work.homework),
+    }

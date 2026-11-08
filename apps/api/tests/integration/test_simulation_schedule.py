@@ -408,7 +408,7 @@ def test_a_rerun_writes_nothing(es_url):
     code, out, _ = run_command(es_url, "es")
 
     assert code == 0
-    assert out[-2:] == ["schedule: 0 rows", "courses: 0 rows"]
+    assert out[-3:] == ["schedule: 0 rows", "courses: 0 rows", "academics: 0 rows"]
     assert table_counts(es_url) == before
 
 
@@ -420,9 +420,10 @@ def test_a_database_seeded_by_hf01_only_skips_the_schedule(database_url):
         code, out, _ = run_command(url, "es")
 
         assert code == 0
-        assert out[-2:] == [
+        assert out[-3:] == [
             f"schedule: skipped ({SEEDED_EARLIER})",
             f"courses: skipped ({SEEDED_EARLIER})",
+            f"academics: skipped ({SEEDED_EARLIER})",
         ]
         assert table_counts(url) == before
 

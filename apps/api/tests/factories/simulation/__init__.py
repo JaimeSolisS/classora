@@ -13,13 +13,16 @@ lines containing ``python -m tests.factories.demo``).
 - ``people``, ``catalog``, ``staff``, ``settings``: HF-01's modules;
 - ``timetable``: HF-01b's pure timetable and outcomes; ``schedule`` and
   ``courses``: HF-01b's modules (after ``settings``, so the scheduling
-  policy is in place; HF-01c…HF-01f append theirs to
+  policy is in place);
+- ``coursework``: HF-01c's pure academic record; ``academics``: its module
+  (after ``courses``; HF-01d…HF-01f append theirs to
   :data:`SIMULATION_MODULES`);
 - ``__main__``: the command.
 """
 
 from typing import Final
 
+from tests.factories.simulation.academics import AcademicsModule
 from tests.factories.simulation.catalog import CatalogModule
 from tests.factories.simulation.courses import CoursesModule
 from tests.factories.simulation.people import PeopleModule
@@ -35,5 +38,6 @@ SIMULATION_MODULES: Final[tuple[SimulationModule, ...]] = (
     SettingsModule(),
     ScheduleModule(),
     CoursesModule(),
+    AcademicsModule(),
 )
 """Every module, in order; each day runs them in this order."""

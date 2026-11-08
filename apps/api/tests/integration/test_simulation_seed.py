@@ -29,7 +29,9 @@ from tests.integration.demo_support import FROZEN_NOW as DEMO_FROZEN_NOW
 from tests.integration.simulation_support import (
     RERUN_SEED_LINES,
     SERVICE_CANCELLATION_REASONS,
+    academic_free_text,
     canonical_dump,
+    composed_texts,
     first_run_lines,
     free_text,
     migrate,
@@ -127,6 +129,7 @@ def test_a_rerun_writes_nothing(migrated_url):
         "settings: 0 rows",
         "schedule: 0 rows",
         "courses: 0 rows",
+        "academics: 0 rows",
     ]
     assert table_counts(migrated_url) == before
 
@@ -189,7 +192,7 @@ def test_a_database_not_at_head_exits_1(fresh_database_url):
 
 
 class FailingLastModule(SettingsModule):
-    # Replaces the last module (HF-01b: ``courses``); ``settings`` itself
+    # Replaces the last module (HF-01c: ``academics``); ``settings`` itself
     # still runs, so this one must not set up the settings again.
     name = "failing"
 
@@ -252,8 +255,18 @@ def test_the_run_date_does_not_change_the_data(database_url):
 
     assert dumps[0] == dumps[1]
     assert sum(len(v) for v in dumps[0].values()) > 250
-    # HF-01b B7: the schedule and the courses are in the dump too.
-    for table in ("class_sessions", "session_closeouts", "course_cohorts"):
+    # HF-01b B7 and HF-01c B7: the schedule, the courses and the academic
+    # record are in the dump too.
+    for table in (
+        "class_sessions",
+        "session_closeouts",
+        "course_cohorts",
+        "session_notes",
+        "evaluations",
+        "learning_plan_milestones",
+        "assignment_submissions",
+        "progress_reports",
+    ):
         assert dumps[0][table], table
 
 
@@ -494,6 +507,16 @@ def test_free_text_comes_from_the_run_languages_pool(es_url, en_url):
         assert tuple(receipts) == (RECEIPT_MESSAGES["es"], RECEIPT_MESSAGES["en"])
     for value in free_texts(en_url):
         assert not ACCENTED & set(value), value
+    # HF-01c (#551 B6): the academic texts, pool values or composed by the
+    # plan from pool fragments.
+    for url, language in ((es_url, "es"), (en_url, "en")):
+        academic = [value for _, value in academic_free_text(url)]
+        allowed = pool_values(language) | composed_texts(
+            plan_simulation(language, "small", 1)
+        )
+        assert academic and set(academic) <= allowed
+        if language == "en":
+            assert not [v for v in academic if ACCENTED & set(v)]
 
 
 def test_reference_names_are_english_only_in_english(es_url, en_url):
