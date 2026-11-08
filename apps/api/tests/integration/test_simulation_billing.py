@@ -126,7 +126,7 @@ def family_id(url: str, key: str) -> Any:
 def test_the_run_prints_the_billing_total(es_url):
     from tests.integration.simulation_support import MODULE_ROWS
 
-    assert SMALL_RUN["out"][-1] == f"billing: {MODULE_ROWS['small']['billing']} rows"
+    assert f"billing: {MODULE_ROWS['small']['billing']} rows" in SMALL_RUN["out"]
 
 
 def test_every_billing_table_has_rows_and_every_kind_is_present(es_url):
@@ -424,7 +424,7 @@ def test_a_rerun_writes_nothing(es_url):
     code, out, _ = run_command(es_url, "es")
 
     assert code == 0
-    assert out[-1] == "billing: 0 rows"
+    assert out[-3:] == ["billing: 0 rows", "payroll: 0 rows", "finance: 0 rows"]
     assert table_counts(es_url) == before
 
 
@@ -436,9 +436,11 @@ def test_a_database_seeded_by_hf01c_only_skips_the_billing(database_url):
         code, out, _ = run_command(url, "es")
 
         assert code == 0
-        assert out[-2:] == [
+        assert out[-4:] == [
             "academics: 0 rows",
             f"billing: skipped ({SEEDED_EARLIER})",
+            f"payroll: skipped ({SEEDED_EARLIER})",
+            f"finance: skipped ({SEEDED_EARLIER})",
         ]
         assert table_counts(url) == before
 

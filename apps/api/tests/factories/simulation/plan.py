@@ -48,6 +48,8 @@ from tests.factories.simulation.texts import Language, TextPool
 if TYPE_CHECKING:
     from tests.factories.simulation.billing_plan import Billing
     from tests.factories.simulation.coursework import Coursework
+    from tests.factories.simulation.expenses_plan import Expenses
+    from tests.factories.simulation.payroll_plan import Payroll
     from tests.factories.simulation.timetable import Timetable
 
 type ProfileName = Literal["full", "small"]
@@ -766,6 +768,26 @@ class SimulationPlan:
     """HF-01d's billing plan (:mod:`.billing_plan`); always set by
     :func:`plan_simulation` (read it through :attr:`billing`)."""
 
+    wages: Payroll | None = None
+    """HF-01e's payroll plan (:mod:`.payroll_plan`); always set by
+    :func:`plan_simulation` (read it through :attr:`payroll`)."""
+
+    outgoings: Expenses | None = None
+    """HF-01e's operating expenses (:mod:`.expenses_plan`); always set by
+    :func:`plan_simulation` (read it through :attr:`expenses`)."""
+
+    @property
+    def payroll(self) -> Payroll:
+        if self.wages is None:  # pragma: no cover - plan_simulation sets it
+            raise RuntimeError("the plan has no payroll plan")
+        return self.wages
+
+    @property
+    def expenses(self) -> Expenses:
+        if self.outgoings is None:  # pragma: no cover - plan_simulation sets it
+            raise RuntimeError("the plan has no expenses plan")
+        return self.outgoings
+
     @property
     def billing(self) -> Billing:
         if self.finances is None:  # pragma: no cover - plan_simulation sets it
@@ -992,11 +1014,15 @@ def plan_simulation(
     )
     from tests.factories.simulation.billing_plan import build_billing
     from tests.factories.simulation.coursework import build_coursework
+    from tests.factories.simulation.expenses_plan import build_expenses
+    from tests.factories.simulation.payroll_plan import build_payroll
     from tests.factories.simulation.timetable import build_timetable
 
     scheduled = replace(base, schedule=build_timetable(base, seed))
     taught = replace(scheduled, coursework=build_coursework(scheduled, seed))
-    return replace(taught, finances=build_billing(taught, seed))
+    billed = replace(taught, finances=build_billing(taught, seed))
+    paid = replace(billed, wages=build_payroll(billed))
+    return replace(paid, outgoings=build_expenses(paid))
 
 
 class _Cycle:

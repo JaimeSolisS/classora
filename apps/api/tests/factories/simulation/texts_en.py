@@ -529,4 +529,73 @@ TEXTS: Final[dict[str, object]] = {
     "withdrawal_reasons": [
         "The package subject never started; the family asked to withdraw it.",
     ],
+    # HF-01e (#553): payroll.
+    "pay_item_types": {
+        "bonus": "Punctuality bonus",
+        "deduction": "Lost materials deduction",
+    },
+    "pay_item_descriptions": {
+        "bonus": "Fortnightly bonus for arriving on time to every class",
+        "deduction": "Replacement of a lost workbook",
+    },
+    "payroll_manual_reasons": {
+        "advance": "Pay advance given when joining the center",
+        "event": "Support at the science fair on Saturday, October 24",
+    },
+    "payroll_reversal_reasons": [
+        "The bank returned the transfer: the account number was entered wrong.",
+    ],
+    # HF-01e (#553): operating expenses.
+    "teaching_materials_category": "Teaching materials",
+    "vendors": {
+        "landlord": "Ash Grove Properties",
+        "power": "Valley Power and Water",
+        "internet": "Hummingbird Telecom",
+        "cleaning": "Sparkle Cleaning Services",
+        "software": "Cloud Classroom Software",
+        "insurer": "High Mountain Insurance",
+        "stationery": "Blue Pen Stationery",
+        "hardware": "The Bolt Hardware and Repairs",
+        "furniture": "Schoolroom Furniture Co.",
+    },
+    "vendor_contacts": {
+        "landlord": "Rose Mendez, billing@ashgrove.example",
+        "power": "Customer service, customers@valleypower.example",
+        "internet": "Support, support@hummingbirdtelecom.example",
+        "cleaning": "Scheduling, service@sparklecleaning.example",
+        "software": "Billing, invoices@cloudclassroom.example",
+        "insurer": "Agent George Sales, policies@highmountain.example",
+        "stationery": "Sales, sales@bluepen.example",
+        "hardware": "Front desk, orders@thebolt.example",
+        "furniture": "Orders, orders@schoolroomfurniture.example",
+    },
+    "expense_templates": {
+        "rent": "Monthly rent of the premises",
+        "power": "Monthly electricity and water",
+        "cleaning": "Weekly cleaning of the center",
+        "software": "Virtual classroom platform subscription",
+        "insurance": "Annual liability insurance",
+    },
+    "expense_descriptions": {
+        "geometry": "Geometry sets and calculators for room 1",
+        "paper": "Paper, toner and whiteboard markers",
+        "air": "Air conditioning repair in room 2",
+        "projector": "Projector for room 4",
+        "readers": "Reading books for elementary school",
+        "paint": "Paint for the hallway and the front desk",
+        "cleaning_supplies": "Cleaning supplies for the month",
+        "whiteboard": "Whiteboard for room 5",
+        "lab": "Supplies for the chemistry practicals",
+        "water": "Bottled drinking water",
+        "lock": "New lock for the front door",
+        "meeting": "Coffee and cookies for the family meeting",
+    },
+    "expense_adjustment_reasons": {
+        "shipping": "Shipping and installation fee not on the invoice",
+        "power": "The October bill came in higher than the template amount",
+        "void": "Expense entered twice; the duplicate is voided",
+    },
+    "expense_reversal_reasons": [
+        "The bank rejected the transfer because of a wrong reference.",
+    ],
 }
