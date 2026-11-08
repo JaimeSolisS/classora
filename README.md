@@ -849,14 +849,30 @@ Present so far:
   scheduled, with pending session and change requests, offers waiting for a
   tutor, unassigned make-ups, a time off and an availability change. See
   them in the calendar, Approvals and each tutor's or family's schedule.
+- **Academics:** tutors' class notes (most shared with the family, some
+  internal), final evaluations (an initial assessment for each student
+  enrolled before October, a monthly evaluation at the end of September
+  and of October, and the courses' assessments), learning plans
+  (completed, discontinued and active, some with an overdue milestone),
+  homework every other week (graded or missing before 19 Nov; pending or
+  handed in early after it), and progress reports approved for families
+  (September and October monthly reports, two on-demand reports). Two
+  weekly and one monthly report schedule are set up, and two weekly
+  reports for 9–15 Nov wait for review in the Academic coordinator's
+  Approvals and progress reports. See them in each student's record
+  (history, learning plans, homework), the homework and progress report
+  lists, and the family's own pages.
 
 The data is a snapshot as of 19 Nov 2026. If the worker runs, pending
 offers and requests expire against the real clock, and once the real date
-passes 18 Nov the later classes look not held. Keep the worker stopped to
-keep the snapshot.
+passes 18 Nov the later classes look not held. Its progress report schedule
+also adds a draft report each time the real date passes the end of a later
+week or month (only the latest one). Keep the worker stopped to keep the
+snapshot. Homework is always judged against the real date: an assignment due
+after 18 Nov shows as missing once the real date passes its deadline.
 
-Academics, billing, payroll and administration data arrive in later
-updates (HF-01c to HF-01f).
+Billing, payroll and administration data arrive in later updates (HF-01d
+to HF-01f).
 
 ### First Owner account
 
