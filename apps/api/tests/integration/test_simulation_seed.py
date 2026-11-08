@@ -262,7 +262,17 @@ def test_the_run_date_does_not_change_the_data(database_url):
             assert code == 0
             dumps.append(canonical_dump(url))
 
-    assert dumps[0] == dumps[1]
+    # Compared table by table with a short message: pytest's diff of two
+    # whole dumps (thousands of long strings) takes hours.
+    differing = {
+        table: [
+            f"{len(dumps[0][table])} vs {len(dumps[1][table])} rows",
+            *sorted(set(dumps[0][table]) ^ set(dumps[1][table]))[:2],
+        ]
+        for table in dumps[0]
+        if dumps[0][table] != dumps[1][table]
+    }
+    assert not differing, {t: [r[:400] for r in v] for t, v in differing.items()}
     assert sum(len(v) for v in dumps[0].values()) > 250
     # HF-01b B7 and HF-01c B7: the schedule, the courses and the academic
     # record are in the dump too.

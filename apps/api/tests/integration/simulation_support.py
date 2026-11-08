@@ -492,16 +492,22 @@ def canonical_dump(url: str) -> dict[str, list[str]]:
     by_id: dict[uuid.UUID, dict[str, Any]] = {
         row["id"]: row for rows in tables.values() for row in rows if "id" in row
     }
-    cache: dict[uuid.UUID, str] = {}
+    # Keyed by the depth too: a label resolved deep in one chain is cut
+    # shorter (``<unknown>`` past depth 6) than the same row's label near the
+    # top, so caching by id alone made the dump depend on which row was
+    # canonicalized first, i.e. on the order ``SELECT *`` returned the rows
+    # (HF-01f CI: the export notification's job label differed).
+    cache: dict[tuple[uuid.UUID, int], str] = {}
 
     def resolve(value: uuid.UUID, depth: int) -> str:
-        if value in cache:
-            return cache[value]
+        found = cache.get((value, depth))
+        if found is not None:
+            return found
         row = by_id.get(value)
         if row is None or depth > 6:
             return "<unknown>"
         label = canon_row(row, depth + 1)
-        cache[value] = label
+        cache[(value, depth)] = label
         return label
 
     def canon(value: Any, depth: int) -> Any:

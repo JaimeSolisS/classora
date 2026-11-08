@@ -58,7 +58,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
-from typing import Final
+from typing import Any, Final
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,6 +68,7 @@ from app.core.authz import Principal
 from app.core.errors import AppError
 from app.core.reauth import RecentAuthGuard
 from app.modules.academics.models import (
+    ProgressReport,
     SessionCloseout,
     SessionCloseoutApproval,
 )
@@ -99,6 +100,7 @@ from app.modules.administration.settings_models import SchedulingPolicy
 from app.modules.administration.settings_router import TIME_ZONE_ACTION
 from app.modules.billing import imports as balances_kind
 from app.modules.billing.models import Charge, ChargeDiscount
+from app.modules.catalog.models import Subject
 from app.modules.families import consent as families_consent
 from app.modules.families import groupings, guardians
 from app.modules.families import imports as students_kind
@@ -112,6 +114,7 @@ from app.modules.families.models import (
 )
 from app.modules.families.schemas import ConsentCreate, StudentGuardianCreate
 from app.modules.identity import imports as tutors_kind
+from app.modules.identity.models import User
 from app.modules.scheduling import imports as schedules_kind
 from app.modules.scheduling import service as scheduling
 from app.modules.scheduling.attendance_schemas import AttendanceMark
@@ -125,6 +128,7 @@ from app.modules.scheduling.models import (
     ClassSessionParticipant,
 )
 from app.modules.scheduling.schemas import ClassSeriesCreate, SeriesRecurrence
+from app.modules.staff.models import TutorQualification
 from app.workflows import session_closeout, session_closeout_review
 from app.workflows.session_closeout_schemas import SessionCloseoutSubmit
 from tests.factories.demo_clock import seed_actor
@@ -876,17 +880,7 @@ class AdministrationModule:
         )
         with seed_actor(session, owner.user_id):
             for request_type, assignee in targets:
-                item = await session.scalar(
-                    select(ApprovalRequest)
-                    .where(
-                        ApprovalRequest.request_type == request_type,
-                        ApprovalRequest.status.in_(OPEN_STATUSES),
-                        ApprovalRequest.assignee_user_id.is_(None),
-                    )
-                    .order_by(ApprovalRequest.created_at, ApprovalRequest.id)
-                    .limit(1)
-                    .execution_options(populate_existing=True)
-                )
+                item = await _first_open_item(session, request_type)
                 if item is None:
                     raise SimulationStepError(f"no open {request_type} item")
                 await assign_approval_request(
@@ -912,6 +906,49 @@ class AdministrationModule:
                 notification_id=notification_id,
             )
         await session.flush()
+
+
+async def _first_open_item(
+    session: AsyncSession, request_type: str
+) -> ApprovalRequest | None:
+    """The open, unassigned item of ``request_type`` first by its subject's
+    natural key: ids and ``created_at`` can't order them (one transaction:
+    one ``created_at``; ids made in the same millisecond have a random
+    order), and the choice must be the same on every run (C4)."""
+    if request_type == REPORT_ITEM:
+        key: tuple[Any, ...] = (
+            ProgressReport.period_start,
+            Student.family_names,
+            Student.given_names,
+            ProgressReport.kind,
+        )
+        query = (
+            select(ApprovalRequest)
+            .join(ProgressReport, ProgressReport.id == ApprovalRequest.subject_id)
+            .join(Student, Student.id == ProgressReport.student_id)
+        )
+    else:
+        key = (User.username, Subject.name)
+        query = (
+            select(ApprovalRequest)
+            .join(
+                TutorQualification,
+                TutorQualification.id == ApprovalRequest.subject_id,
+            )
+            .join(User, User.id == TutorQualification.tutor_user_id)
+            .join(Subject, Subject.id == TutorQualification.subject_id)
+        )
+    result: ApprovalRequest | None = await session.scalar(
+        query.where(
+            ApprovalRequest.request_type == request_type,
+            ApprovalRequest.status.in_(OPEN_STATUSES),
+            ApprovalRequest.assignee_user_id.is_(None),
+        )
+        .order_by(*key)
+        .limit(1)
+        .execution_options(populate_existing=True)
+    )
+    return result
 
 
 # --- The dated actions ----------------------------------------------------------------
