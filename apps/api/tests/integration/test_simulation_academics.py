@@ -153,7 +153,13 @@ def test_every_evaluation_is_final_dated_before_the_anchor_and_per_the_plan(es_u
 
 def test_learning_plans_are_closed_or_active_with_overdue_milestones(es_url):
     statuses = Counter(
-        dict(rows(es_url, "SELECT status, count(*) FROM learning_plans GROUP BY 1"))
+        dict(
+            rows(
+                es_url,
+                "SELECT status, count(*) FROM learning_plans"
+                " WHERE deleted_at IS NULL GROUP BY 1",
+            )
+        )
     )
     assert statuses["completed"] >= 4 and statuses["discontinued"] >= 2
     assert statuses["draft"] == 0
@@ -321,7 +327,13 @@ def test_reports_waiting_on_approvals_and_no_future_period(es_url):
 
 def test_notes_counts_share_mix_and_timestamps(es_url):
     found = Counter(
-        dict(rows(es_url, "SELECT visibility, count(*) FROM session_notes GROUP BY 1"))
+        dict(
+            rows(
+                es_url,
+                "SELECT visibility, count(*) FROM session_notes"
+                " WHERE deleted_at IS NULL GROUP BY 1",
+            )
+        )
     )
     assert found == {
         "family": sum(n.shared for n in WORK.notes),
@@ -425,7 +437,7 @@ def test_a_rerun_writes_nothing(es_url):
     code, out, _ = run_command(es_url, "es")
 
     assert code == 0
-    assert out[-4:] == [
+    assert out[-6:-2] == [
         "academics: 0 rows",
         "billing: 0 rows",
         "payroll: 0 rows",
@@ -442,7 +454,7 @@ def test_a_database_seeded_by_hf01b_only_skips_the_academics(database_url):
         code, out, _ = run_command(url, "es")
 
         assert code == 0
-        assert out[-5:] == [
+        assert out[-7:-2] == [
             "courses: 0 rows",
             f"academics: skipped ({SEEDED_EARLIER})",
             f"billing: skipped ({SEEDED_EARLIER})",

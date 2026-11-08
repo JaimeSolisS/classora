@@ -424,7 +424,7 @@ def test_a_rerun_writes_nothing(es_url):
     code, out, _ = run_command(es_url, "es")
 
     assert code == 0
-    assert out[-3:] == ["billing: 0 rows", "payroll: 0 rows", "finance: 0 rows"]
+    assert out[-5:-2] == ["billing: 0 rows", "payroll: 0 rows", "finance: 0 rows"]
     assert table_counts(es_url) == before
 
 
@@ -436,7 +436,7 @@ def test_a_database_seeded_by_hf01c_only_skips_the_billing(database_url):
         code, out, _ = run_command(url, "es")
 
         assert code == 0
-        assert out[-4:] == [
+        assert out[-6:-2] == [
             "academics: 0 rows",
             f"billing: skipped ({SEEDED_EARLIER})",
             f"payroll: skipped ({SEEDED_EARLIER})",

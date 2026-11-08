@@ -34,6 +34,7 @@ from tests.integration.simulation_support import (
     billing_texts,
     canonical_dump,
     composed_texts,
+    dump_differences,
     first_run_lines,
     free_text,
     migrate,
@@ -137,6 +138,8 @@ def test_a_rerun_writes_nothing(migrated_url):
         "billing: 0 rows",
         "payroll: 0 rows",
         "finance: 0 rows",
+        "administration: 0 rows",
+        "reporting: 0 rows",
     ]
     assert table_counts(migrated_url) == before
 
@@ -199,7 +202,7 @@ def test_a_database_not_at_head_exits_1(fresh_database_url):
 
 
 class FailingLastModule(SettingsModule):
-    # Replaces the last module (HF-01e: ``finance``); ``settings`` itself
+    # Replaces the last module (HF-01f: ``reporting``); ``settings`` itself
     # still runs, so this one must not set up the settings again.
     name = "failing"
 
@@ -260,7 +263,10 @@ def test_the_run_date_does_not_change_the_data(database_url):
             assert code == 0
             dumps.append(canonical_dump(url))
 
-    assert dumps[0] == dumps[1]
+    # Compared table by table with a short, field-level message: pytest's
+    # diff of two whole dumps (thousands of long strings) takes hours.
+    differences = dump_differences(dumps[0], dumps[1])
+    assert not differences, differences
     assert sum(len(v) for v in dumps[0].values()) > 250
     # HF-01b B7 and HF-01c B7: the schedule, the courses and the academic
     # record are in the dump too.
@@ -350,7 +356,8 @@ def test_business_instants_are_the_plans_not_the_real_clock(es_url):
 
 
 def test_people_counts_small(es_url):
-    assert scalar(es_url, "SELECT count(*) FROM students") == 10
+    # HF-01f: + the two imported children.
+    assert scalar(es_url, "SELECT count(*) FROM students") == 12
     assert scalar(es_url, "SELECT count(*) FROM families") == 8
     # HF-01d: + the adult's paying parent; every first guardian has a login.
     assert scalar(es_url, "SELECT count(*) FROM guardians") == 11
@@ -380,7 +387,7 @@ def test_people_counts_small(es_url):
 
 
 def test_full_profile_counts_and_usernames(full_url):
-    assert scalar(full_url, "SELECT count(*) FROM students") == 40
+    assert scalar(full_url, "SELECT count(*) FROM students") == 42
     assert scalar(full_url, "SELECT count(*) FROM families") == 30
     assert scalar(full_url, "SELECT count(*) FROM guardians") == 46
     assert (

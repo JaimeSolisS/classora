@@ -598,4 +598,28 @@ TEXTS: Final[dict[str, object]] = {
     "expense_reversal_reasons": [
         "The bank rejected the transfer because of a wrong reference.",
     ],
+    # HF-01f (#554): administration and reporting.
+    "contact_email_updated": "frontdesk@example.com",
+    "invalid_email": "no-at-sign",
+    "import_files": {
+        "students": "new-students-september.csv",
+        "balances": "opening-balances.csv",
+        "schedules": "schedules-november.csv",
+        "tutors": "tutors-december.csv",
+    },
+    "opening_balance_descriptions": [
+        "Balance carried over from last school year",
+        "Unpaid books from last school year",
+    ],
+    "report_setups": {
+        "admin": "Active students",
+        "coordinator": "Middle school students",
+        "finance": "Monthly expenses",
+    },
+    "deleted_records": {
+        "plan_title": "Review plan (draft)",
+        "plan_objective": "Review the first term's topics",
+        "plan_milestone": "Work through a practice sheet",
+        "note": "Duplicate note entered by mistake; the details are in the closeout.",
+    },
 }

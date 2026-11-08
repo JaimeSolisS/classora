@@ -112,7 +112,7 @@ EXPENSES = (
 
 
 def test_the_run_prints_the_payroll_and_finance_totals(es_url):
-    assert SMALL_RUN["out"][-2:] == [
+    assert SMALL_RUN["out"][-4:-2] == [
         f"payroll: {MODULE_ROWS['small']['payroll']} rows",
         f"finance: {MODULE_ROWS['small']['finance']} rows",
     ]
@@ -326,7 +326,7 @@ def test_a_rerun_writes_nothing(es_url):
     code, out, _ = run_command(es_url, "es")
 
     assert code == 0
-    assert out[-2:] == ["payroll: 0 rows", "finance: 0 rows"]
+    assert out[-4:-2] == ["payroll: 0 rows", "finance: 0 rows"]
     assert table_counts(es_url) == before
 
 
@@ -338,7 +338,7 @@ def test_a_database_seeded_by_hf01d_only_skips_payroll_and_finance(database_url)
         code, out, _ = run_command(url, "es")
 
         assert code == 0
-        assert out[-3:] == [
+        assert out[-5:-2] == [
             "billing: 0 rows",
             f"payroll: skipped ({SEEDED_EARLIER})",
             f"finance: skipped ({SEEDED_EARLIER})",
