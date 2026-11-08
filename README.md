@@ -837,9 +837,26 @@ Present so far:
 - **Center settings:** name, contact details, receipt messages, opening
   hours and the scheduling policy. In English, the education levels and
   expense categories are renamed.
+- **Classes:** about 80 classes a week: one to three weekly individual
+  classes per student, three class groups and two courses (one that ended
+  in October, one running into December), always within the tutors'
+  subjects, availability and limits. Before 19 Nov every class is held and
+  closed out (attendance, approved closeout), cancelled (on time, late or
+  excused), moved by an approved reschedule, covered by a substitute after
+  approved time off, or skipped for a holiday; there are make-ups, session
+  and change requests (approved and rejected), declined and expired offers,
+  and attendance and closeout corrections. From 19 Nov classes are
+  scheduled, with pending session and change requests, offers waiting for a
+  tutor, unassigned make-ups, a time off and an availability change. See
+  them in the calendar, Approvals and each tutor's or family's schedule.
 
-Classes, academics, billing, payroll and administration data arrive in
-later updates (HF-01b to HF-01f).
+The data is a snapshot as of 19 Nov 2026. If the worker runs, pending
+offers and requests expire against the real clock, and once the real date
+passes 18 Nov the later classes look not held. Keep the worker stopped to
+keep the snapshot.
+
+Academics, billing, payroll and administration data arrive in later
+updates (HF-01c to HF-01f).
 
 ### First Owner account
 

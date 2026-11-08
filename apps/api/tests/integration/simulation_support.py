@@ -67,6 +67,20 @@ SMALL_STAFF_ROWS: Final = 90
 rejected, 1 pending) with 17 approval requests and 17 decision notifications
 (15 approved, 1 rejected, 1 revoked), 4 availability settings, 24 weekly
 windows, 5 exceptions and 2 preferred classrooms."""
+SMALL_SCHEDULE_ROWS: Final = 1607
+"""``small`` (#550): 12 series (10 individual, 1 group, 1 tutor 12's) with
+13 participants, 182 sessions with 210 participants, 30 offers covering 178
+sessions, 2 substitutions, 2 reassignment flags, 1 group with 2
+enrollments, 13 session requests, 15 change requests, 195 attendance marks
+with 3 corrections, 151 closeouts with 153 approvals (two corrected) and 2
+closeout corrections, 5 availability change requests, 2 time-off
+exceptions, 189 approval requests and 247 notifications (override rows are
+not counted: they depend on the real date, D5)."""
+SMALL_COURSES_ROWS: Final = 140
+"""``small``: 2 templates with 2 subjects, 7 modules, 4 assessments and 2
+snapshots; 2 cohorts with 4 enrollments; their 2 series with 4
+participants, 27 sessions with 54 participants, 2 series offers covering 26
+sessions and 2 notifications."""
 SETTINGS_ROWS: Final = 1
 """The scheduling-policy version effective at ``SIM_SETUP`` (the business
 settings, hours and renames update existing rows)."""
@@ -85,18 +99,36 @@ FULL_STAFF_ROWS: Final = 227
 42 notifications, 12 availability settings, 60 weekly windows, 7 exceptions
 and 10 preferred classrooms."""
 
+FULL_SCHEDULE_ROWS: Final = 8844
+"""``full`` (#550): 78 series (72 individual slots, 3 groups, 3 tutor 12's)
+with 90 participants, 1085 sessions with 1416 participants, 106 offers
+covering 1043 sessions, 8 substitutions, 8 reassignment flags, 3 groups
+with 15 enrollments, 13 session requests, 65 change requests, 1170
+attendance marks with 3 corrections, 818 closeouts with 820 approvals and 2
+closeout corrections, 11 availability change requests, 8 time-off
+exceptions, 912 approval requests and 1170 notifications."""
+FULL_COURSES_ROWS: Final = 241
+"""``full``: 2 templates with 2 subjects, 7 modules, 4 assessments and 2
+snapshots; 2 cohorts with 11 enrollments; their 2 series with 11
+participants, 26 sessions with 142 participants, 2 series offers covering
+26 sessions and 2 notifications."""
+
 MODULE_ROWS: Final[dict[str, dict[str, int]]] = {
     "small": {
         "people": SMALL_PEOPLE_ROWS,
         "catalog": SMALL_CATALOG_ROWS,
         "staff": SMALL_STAFF_ROWS,
         "settings": SETTINGS_ROWS,
+        "schedule": SMALL_SCHEDULE_ROWS,
+        "courses": SMALL_COURSES_ROWS,
     },
     "full": {
         "people": FULL_PEOPLE_ROWS,
         "catalog": FULL_CATALOG_ROWS,
         "staff": FULL_STAFF_ROWS,
         "settings": SETTINGS_ROWS,
+        "schedule": FULL_SCHEDULE_ROWS,
+        "courses": FULL_COURSES_ROWS,
     },
 }
 
@@ -205,8 +237,35 @@ DUMP_TABLES: Final = (
     "scheduling_policies",
     "education_levels",
     "expense_categories",
+    # HF-01b (#550): the schedule and the courses.
+    "class_series",
+    "class_series_participants",
+    "class_sessions",
+    "class_session_participants",
+    "class_session_overrides",
+    "assignment_offers",
+    "assignment_offer_sessions",
+    "class_session_substitutions",
+    "class_session_reassignment_flags",
+    "class_groups",
+    "group_enrollments",
+    "session_requests",
+    "session_change_requests",
+    "class_session_attendance",
+    "class_session_attendance_corrections",
+    "session_closeouts",
+    "session_closeout_approvals",
+    "session_closeout_corrections",
+    "tutor_availability_change_requests",
+    "course_templates",
+    "course_template_subjects",
+    "course_template_modules",
+    "course_template_assessments",
+    "course_template_snapshots",
+    "course_cohorts",
+    "cohort_enrollments",
 )
-"""The tables this issue writes."""
+"""The tables HF-01 and HF-01b write."""
 
 REFERENCE_TABLES: Final = (
     "roles",
@@ -261,7 +320,16 @@ def canonical_dump(url: str) -> dict[str, list[str]]:
         if isinstance(value, str) and _UUID.match(value):
             return resolve(uuid.UUID(value), depth)
         if isinstance(value, dict):
-            return {k: canon(v, depth) for k, v in sorted(value.items())}
+            # Keys can be ids too (a closeout approval's attendance by student).
+            return dict(
+                sorted(
+                    (
+                        resolve(uuid.UUID(k), depth) if _UUID.match(k) else k,
+                        canon(v, depth),
+                    )
+                    for k, v in value.items()
+                )
+            )
         if isinstance(value, list):
             return [canon(v, depth) for v in value]
         if isinstance(value, datetime):
@@ -280,3 +348,50 @@ def canonical_dump(url: str) -> dict[str, list[str]]:
         table: sorted(canon_row(row, 0) for row in tables[table])
         for table in DUMP_TABLES
     }
+
+
+# --- HF-01b free text (B10) -------------------------------------------------------
+
+FREE_TEXT = (
+    ("session_change_requests", "note"),
+    ("session_change_requests", "decision_reason"),
+    ("session_requests", "note"),
+    ("session_requests", "rejection_reason"),
+    ("assignment_offers", "decline_note"),
+    ("class_session_substitutions", "reason"),
+    ("class_sessions", "cancellation_reason"),
+    ("class_session_attendance_corrections", "reason"),
+    ("session_closeouts", "topics"),
+    ("session_closeouts", "performance"),
+    ("session_closeouts", "homework"),
+    ("session_closeouts", "next_steps"),
+    ("session_closeouts", "review_reason"),
+    ("session_closeout_corrections", "reason"),
+    ("tutor_availability_change_requests", "rejection_reason"),
+    ("tutor_availability_exceptions", "note"),
+    ("class_groups", "name"),
+    ("course_templates", "name"),
+    ("course_templates", "description"),
+    ("course_template_modules", "title"),
+    ("course_template_modules", "materials"),
+    ("course_template_assessments", "title"),
+    ("course_cohorts", "name"),
+    ("class_session_overrides", "reason"),
+)
+
+
+def free_text(url: str) -> list[tuple[str, str]]:
+    """Every distinct value of :data:`FREE_TEXT`, with its column."""
+    found = []
+    for table, column in FREE_TEXT:
+        for (value,) in run_sql(
+            url,
+            f"SELECT DISTINCT {column} FROM {table}"  # noqa: S608
+            f" WHERE {column} IS NOT NULL",
+        ):
+            found.append((f"{table}.{column}", value))
+    return found
+
+
+SERVICE_CANCELLATION_REASONS: Final = frozenset({"family_request", "tutor_request"})
+"""The cancellation reasons an approved request stores (codes, not text)."""

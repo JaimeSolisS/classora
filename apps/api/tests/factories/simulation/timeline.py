@@ -17,7 +17,7 @@ sees the world as it was on that simulated day. Each step runs under
 :func:`~.anchor.sim_clock` (``setup`` at ``SIM_SETUP``, ``on_day`` at the
 day's 08:00, ``at_anchor`` at ``SIM_NOW``); a step moves the clock to the
 instants it chooses. A module's row total is the sum, over its steps, of the
-rows after minus the rows before in its ``tables`` (``count_rows``).
+rows after minus the rows before in its ``tables`` (:func:`total_rows`).
 
 Everything runs in **one** Unit of Work after ``ensure_at_head`` and the
 reference seeds: all or nothing. The clean-database check runs inside it,
@@ -37,16 +37,17 @@ The password hashes are computed once per distinct password for the run
 milliseconds per hash).
 """
 
+import operator
 import uuid
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date
-from functools import cache
+from functools import cache, reduce
 from typing import Final, Protocol
 
 import faker
-from sqlalchemy import exists, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 
@@ -67,7 +68,7 @@ from app.seeds.registry import REFERENCE_SEEDS, ReferenceSeed
 from app.seeds.runner import apply_seeds, ensure_at_head
 from app.seeds.upsert import UpsertResult
 from app.wiring import register_approval_wiring
-from tests.factories.base import GeneratorSkipped, count_rows
+from tests.factories.base import GeneratorSkipped
 from tests.factories.simulation.anchor import (
     DAY_INSTANT,
     SIM_NOW,
@@ -208,14 +209,28 @@ async def is_rerun(session: AsyncSession, language: Language) -> bool:
     return False
 
 
+async def total_rows(
+    session: AsyncSession, models: Sequence[type[DeclarativeBase]]
+) -> int:
+    """``count_rows`` in one statement (a sum of scalar subqueries): a step
+    is counted before and after, on every day it has work (#550: about a
+    tenth of the run's statements otherwise)."""
+    if not models:
+        return 0
+    counts = [
+        select(func.count()).select_from(model).scalar_subquery() for model in models
+    ]
+    return int(await session.scalar(select(reduce(operator.add, counts))) or 0)
+
+
 async def _counted(
     session: AsyncSession,
     module: SimulationModule,
     step: Callable[[], object],
 ) -> int:
-    before = await count_rows(session, module.tables)
+    before = await total_rows(session, module.tables)
     await step()  # type: ignore[misc]
-    return await count_rows(session, module.tables) - before
+    return await total_rows(session, module.tables) - before
 
 
 async def run_simulation(
