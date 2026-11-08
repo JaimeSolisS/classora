@@ -880,7 +880,11 @@ def student_facts(plan: SimulationPlan) -> list[StudentFacts]:
     facts: list[StudentFacts] = []
     for family in plan.families:
         guardian = next(
-            (g.account.username for g in family.guardians if g.account is not None),
+            (
+                g.account.username
+                for g in family.guardians
+                if g.portal and g.account is not None
+            ),
             None,
         )
         for student in family.students:

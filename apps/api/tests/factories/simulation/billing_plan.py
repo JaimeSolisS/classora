@@ -746,7 +746,7 @@ def build_billing(plan: SimulationPlan, seed: int) -> Billing:
             date(2026, 10, 1),
             date(2026, 10, 20),
             due_reasons[i % len(due_reasons)],
-            local_instant(date(2026, 10, 6), "12:00"),
+            local_instant(date(2026, 10, 2), "12:00"),
         )
         for i, s in enumerate(due_changed)
     )

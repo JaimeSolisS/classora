@@ -27,7 +27,7 @@ from app.workflows import (
     tuition_charges,
 )
 from tests.factories.simulation import SIMULATION_MODULES
-from tests.factories.simulation.anchor import SIM_ANCHOR, SIM_NOW, sim_clock
+from tests.factories.simulation.anchor import SIM_ANCHOR, SIM_NOW, ZONE, sim_clock
 from tests.factories.simulation.plan import plan_simulation
 from tests.factories.simulation.texts import RECEIPT_MESSAGES
 from tests.factories.simulation.timeline import SEEDED_EARLIER
@@ -292,6 +292,27 @@ def test_pay_ahead_families_keep_account_credit(es_url):
             f=family_id(es_url, key),
         )
         assert credit > 0
+
+
+def test_reminders_are_sent_before_the_anchor_on_their_stage_days(es_url):
+    """The reminder step runs at 15:00 each history day; a stage's reminder
+    is sent inside its window (due_soon D−3..D, overdue D+1..D+13,
+    overdue_followup from D+14), never after SIM_NOW. At SIM_NOW the
+    module runs the step once more (B5), so a charge entering a window on
+    19 Nov is reminded at SIM_NOW exactly."""
+    found = rows(es_url, "SELECT stage, due_date, sent_at FROM charge_reminders")
+    assert found
+    for row in found:
+        sent = row.sent_at.astimezone(ZONE)
+        assert row.sent_at <= SIM_NOW
+        assert row.sent_at == SIM_NOW or (sent.hour, sent.minute) == (15, 0)
+        days = (sent.date() - row.due_date).days
+        if row.stage == "due_soon":
+            assert -3 <= days <= 0
+        elif row.stage == "overdue":
+            assert 1 <= days <= 13
+        else:
+            assert days >= 14
 
 
 # --- B3: ledger identities through the existing seams ---------------------------------

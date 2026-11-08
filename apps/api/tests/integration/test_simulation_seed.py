@@ -341,9 +341,10 @@ def test_business_instants_are_the_plans_not_the_real_clock(es_url):
 def test_people_counts_small(es_url):
     assert scalar(es_url, "SELECT count(*) FROM students") == 10
     assert scalar(es_url, "SELECT count(*) FROM families") == 8
-    assert scalar(es_url, "SELECT count(*) FROM guardians") == 10
+    # HF-01d: + the adult's paying parent; every first guardian has a login.
+    assert scalar(es_url, "SELECT count(*) FROM guardians") == 11
     assert (
-        scalar(es_url, "SELECT count(*) FROM guardians WHERE user_id IS NOT NULL") == 3
+        scalar(es_url, "SELECT count(*) FROM guardians WHERE user_id IS NOT NULL") == 8
     )
     assert (
         scalar(es_url, "SELECT count(*) FROM students WHERE user_id IS NOT NULL") == 2
@@ -370,10 +371,10 @@ def test_people_counts_small(es_url):
 def test_full_profile_counts_and_usernames(full_url):
     assert scalar(full_url, "SELECT count(*) FROM students") == 40
     assert scalar(full_url, "SELECT count(*) FROM families") == 30
-    assert scalar(full_url, "SELECT count(*) FROM guardians") == 42
+    assert scalar(full_url, "SELECT count(*) FROM guardians") == 46
     assert (
         scalar(full_url, "SELECT count(*) FROM guardians WHERE user_id IS NOT NULL")
-        == 12
+        == 30
     )
     assert (
         scalar(full_url, "SELECT count(*) FROM students WHERE user_id IS NOT NULL") == 6
@@ -526,6 +527,15 @@ def test_free_text_comes_from_the_run_languages_pool(es_url, en_url):
         assert billing and set(billing) <= billing_texts(language)
         if language == "en":
             assert not [v for v in billing if ACCENTED & set(v)]
+        # B4 in both languages: every family's first guardian has a login
+        # with the run language, so every receipt is in it, with its message.
+        receipts = rows(
+            url, "SELECT language, snapshot->>'message' AS message FROM receipts"
+        )
+        assert receipts
+        assert {(r.language, r.message) for r in receipts} == {
+            (language, RECEIPT_MESSAGES[language])
+        }
 
 
 def test_reference_names_are_english_only_in_english(es_url, en_url):

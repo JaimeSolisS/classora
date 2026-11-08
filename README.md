@@ -820,12 +820,13 @@ Owner's user list.
 | `coordinacion` | `coordinator` | `classora-sim-coordinator` | Academic coordinator |
 | `finanzas` | `finance` | `classora-sim-finance` | Finance staff |
 | (12 tutors) | (12 tutors) | `classora-sim-tutor` | Tutor |
-| (12 guardians) | (12 guardians) | `classora-sim-guardian` | Parent or guardian |
+| (30 guardians) | (30 guardians) | `classora-sim-guardian` | Parent or guardian |
 | (6 students) | (6 students) | `classora-sim-student` | Student |
 
 Present so far:
-- **People:** 40 students in 30 families with 42 guardians. Four students
-  are adults, and four enroll during the term. Every minor has a guardian
+- **People:** 40 students in 30 families with 46 guardians (each adult
+  student's family has the parent who pays). Four students are adults, and
+  four enroll during the term. Every family's first guardian has a login. Every minor has a guardian
   consent. There is one approved and one pending self-registration, and one
   pending tutor invitation.
 - **Catalog:** 12 subjects across the four levels, five classrooms (one
@@ -875,9 +876,8 @@ Present so far:
   bounced transfer paid again, manual charges and an adjustment, due-date
   changes, credited cancellations and a repriced class. See them in
   Billing (accounts, overdue accounts, packages, plans, discounts and
-  prices) and in each family's billing pages. Receipts are in the language
-  of the family's first guardian with a login; families without one get
-  Spanish receipts, also in the English run.
+  prices) and in each family's billing pages. Receipts are in the run's
+  language.
 
 The data is a snapshot as of 19 Nov 2026. If the worker runs, pending
 offers and requests expire against the real clock, and once the real date

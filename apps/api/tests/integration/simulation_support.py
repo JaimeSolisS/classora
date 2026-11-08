@@ -55,15 +55,17 @@ RERUN_SEED_LINES: Final = [
     "catalog.education_levels: 0 inserted, 0 updated",
 ]
 
-SMALL_PEOPLE_ROWS: Final = 156
-"""``small``: 15 users (4 staff, 4 tutors, 3 guardian and 2 student logins,
-the pending tutor and the pending registration), 14 user roles (not the
-pending registration), 12 invitation tokens (not the Owner or the two
-self-registrations; 11 redeemed), 13 preferences and 13 privacy acceptances
+SMALL_PEOPLE_ROWS: Final = 184
+"""``small``: 20 users (4 staff, 4 tutors, 8 guardian and 2 student logins,
+the pending tutor and the pending registration), 19 user roles (not the
+pending registration), 17 invitation tokens (not the Owner or the two
+self-registrations; 16 redeemed), 18 preferences and 18 privacy acceptances
 (the login accounts), 1 delegation (granted 18 Nov; the 12 Oct one was
 revoked), 2 registration requests and their 2 approval requests, 8 families,
-10 family guardians, 10 family students, 10 guardians, 10 students, 13
-emergency contacts, 14 student-guardian links and 9 consents (the minors)."""
+11 family guardians, 10 family students, 11 guardians, 10 students, 13
+emergency contacts, 15 student-guardian links and 9 consents (the minors).
+HF-01d +28: every family's first guardian has a login (5 more) and the
+adult's family has the parent who pays."""
 SMALL_CATALOG_ROWS: Final = 18
 """``small``: 6 subjects, 3 classrooms, 5 classroom windows, 1 academic
 period and 3 closures."""
@@ -72,48 +74,51 @@ SMALL_STAFF_ROWS: Final = 90
 rejected, 1 pending) with 17 approval requests and 17 decision notifications
 (15 approved, 1 rejected, 1 revoked), 4 availability settings, 24 weekly
 windows, 5 exceptions and 2 preferred classrooms."""
-SMALL_SCHEDULE_ROWS: Final = 1628
-"""``small`` (#550; HF-01d +21: 20 package units consumed by closeout
-approvals now that billing is on, and the notification of the class the
-Administrator shortens on 12 Nov): 12 series (10 individual, 1 group, 1 tutor 12's) with
-13 participants, 182 sessions with 210 participants, 30 offers covering 178
-sessions, 2 substitutions, 2 reassignment flags, 1 group with 2
-enrollments, 13 session requests, 15 change requests, 195 attendance marks
-with 3 corrections, 151 closeouts with 153 approvals (two corrected) and 2
-closeout corrections, 5 availability change requests, 2 time-off
-exceptions, 189 approval requests and 247 notifications (override rows are
-not counted: they depend on the real date, D5)."""
+SMALL_SCHEDULE_ROWS: Final = 1635
+"""``small`` (#550; HF-01d +28: 20 package units consumed by closeout
+approvals now that billing is on, and 8 more notifications: the class the
+Administrator shortens on 12 Nov and the guardians who now have a login): 12
+series (10 individual, 1 group, 1 tutor 12's) with 13 participants, 182
+sessions with 210 participants, 30 offers covering 178 sessions, 2
+substitutions, 2 reassignment flags, 1 group with 2 enrollments, 13 session
+requests, 15 change requests, 195 attendance marks with 3 corrections, 151
+closeouts with 153 approvals (two corrected) and 2 closeout corrections, 5
+availability change requests, 2 time-off exceptions, 189 approval requests
+and 247 notifications before HF-01d (override rows are not counted: they
+depend on the real date, D5)."""
 SMALL_COURSES_ROWS: Final = 142
 """``small`` (HF-01d +2: the running cohort's two course fees, posted by
 the enrollment hook now that billing is on): 2 templates with 2 subjects,
 7 modules, 4 assessments and 2 snapshots; 2 cohorts with 4 enrollments;
 their 2 series with 4 participants, 27 sessions with 54 participants, 2
 series offers covering 26 sessions and 2 notifications."""
-SMALL_ACADEMICS_ROWS: Final = 626
+SMALL_ACADEMICS_ROWS: Final = 713
 """``small`` (#551): 34 notes (21 shared), 3 evaluation templates with 9
 criteria, 34 evaluations with 105 scores, 10 learning plans with 20
 objectives and 40 milestones, 49 assignments with 49 submissions, 3 report
-schedules, 40 progress reports with their 40 approval requests and 190
-notifications."""
-SMALL_BILLING_ROWS: Final = 467
+schedules, 40 progress reports with their 40 approval requests and 277
+notifications (HF-01d +87: the guardians who now have a login are notified
+too)."""
+SMALL_BILLING_ROWS: Final = 512
 """``small`` (#552): 8 billing accounts, 19 catalog items (4 of them the
 products') with 20 versions, 9 custom prices, 5 discounts with 2
-assignments, 4 products, 5 packages, 9 of the 29 unit rows (20
-consumptions are ``schedule``'s), 6 tuition plans with 1 pause, 138 of the
-140 charges (2 course fees are ``courses``') with 24 discount lines, 5
-adjustments, 1 repricing, 7 cancellation decisions, 2 due-date changes,
-21 reminders with 21 notifications, 42 payments with 68 allocations and
-42 receipts, 1 reversal with 5 releases, 1 refund and 1 withdrawal."""
+assignments, 4 products, 5 packages, 9 of the 29 unit rows (20 consumptions
+are ``schedule``'s), 6 tuition plans with 1 pause, 138 of the 140 charges (2
+course fees are ``courses``') with 24 discount lines, 5 adjustments, 1
+repricing, 7 cancellation decisions, 2 due-date changes, 43 reminders with
+43 notifications, 43 payments with 68 allocations and 43 receipts, 1
+reversal with 4 releases, 1 refund and 1 withdrawal."""
 SETTINGS_ROWS: Final = 1
 """The scheduling-policy version effective at ``SIM_SETUP`` (the business
 settings, hours and renames update existing rows)."""
 
-FULL_PEOPLE_ROWS: Final = 524
-"""``full``: 36 users, 35 user roles, 33 tokens, 34 preferences, 34
+FULL_PEOPLE_ROWS: Final = 626
+"""``full``: 54 users, 53 user roles, 51 tokens, 52 preferences, 52
 acceptances, 1 delegation, 2 registration requests and 2 approval requests,
-30 families, 42 family guardians, 40 family students, 42 guardians, 40
-students, 55 emergency contacts, 62 student-guardian links and 36
-consents."""
+30 families, 46 family guardians, 40 family students, 46 guardians, 40
+students, 55 emergency contacts, 66 student-guardian links and 36 consents.
+HF-01d +102: every family's first guardian has a login (18 more) and each
+adult's family has the parent who pays (4)."""
 FULL_CATALOG_ROWS: Final = 26
 """``full``: 12 subjects, 5 classrooms, 5 classroom windows, 1 academic
 period and 3 closures."""
@@ -122,16 +127,17 @@ FULL_STAFF_ROWS: Final = 227
 42 notifications, 12 availability settings, 60 weekly windows, 7 exceptions
 and 10 preferred classrooms."""
 
-FULL_SCHEDULE_ROWS: Final = 8927
-"""``full`` (#550; HF-01d +83: 81 package units consumed by closeout
-approvals now that billing is on, and the 2 notifications of the class the
-Administrator shortens on 12 Nov): 78 series (72 individual slots, 3 groups,
-3 tutor 12's) with 90 participants, 1085 sessions with 1416 participants,
-106 offers covering 1043 sessions, 8 substitutions, 8 reassignment flags, 3
-groups with 15 enrollments, 13 session requests, 65 change requests, 1170
-attendance marks with 3 corrections, 818 closeouts with 820 approvals and 2
-closeout corrections, 11 availability change requests, 8 time-off
-exceptions, 912 approval requests and 1170 notifications."""
+FULL_SCHEDULE_ROWS: Final = 8951
+"""``full`` (#550; HF-01d +107: 81 package units consumed by closeout
+approvals now that billing is on, and 26 more notifications: the class the
+Administrator shortens on 12 Nov and the guardians who now have a login): 78
+series (72 individual slots, 3 groups, 3 tutor 12's) with 90 participants,
+1085 sessions with 1416 participants, 106 offers covering 1043 sessions, 8
+substitutions, 8 reassignment flags, 3 groups with 15 enrollments, 13
+session requests, 65 change requests, 1170 attendance marks with 3
+corrections, 818 closeouts with 820 approvals and 2 closeout corrections, 11
+availability change requests, 8 time-off exceptions, 912 approval requests
+and 1170 notifications before HF-01d."""
 FULL_COURSES_ROWS: Final = 247
 """``full`` (HF-01d +6: the running cohort's six course fees, posted by the
 enrollment hook now that billing is on): 2 templates with 2 subjects, 7
@@ -139,21 +145,21 @@ modules, 4 assessments and 2 snapshots; 2 cohorts with 11 enrollments; their
 2 series with 11 participants, 26 sessions with 142 participants, 2 series
 offers covering 26 sessions and 2 notifications."""
 
-FULL_ACADEMICS_ROWS: Final = 2231
+FULL_ACADEMICS_ROWS: Final = 2473
 """``full`` (#551): 182 notes (113 shared), 3 evaluation templates with 9
 criteria, 130 evaluations with 413 scores, 28 learning plans with 56
 objectives and 112 milestones, 214 assignments with 214 submissions, 3
 report schedules, 95 progress reports with their 95 approval requests and
-677 notifications."""
+919 notifications (HF-01d +242: the guardians who now have a login)."""
 
-FULL_BILLING_ROWS: Final = 2517
+FULL_BILLING_ROWS: Final = 2595
 """``full`` (#552): 30 billing accounts, 42 catalog items (4 of them the
 products') with 43 versions, 50 custom prices, 5 discounts with 2
 assignments, 4 products, 15 packages, 20 of the 101 unit rows (81
 consumptions are ``schedule``'s), 21 tuition plans with 1 pause, 943 of
 the 949 charges (6 course fees are ``courses``') with 279 discount lines,
 20 adjustments, 1 repricing, 44 cancellation decisions, 2 due-date
-changes, 169 reminders with 147 notifications, 155 payments with 350
+changes, 208 reminders with 186 notifications, 155 payments with 350
 allocations and 155 receipts, 1 reversal with 16 releases, 1 refund and
 1 withdrawal."""
 
