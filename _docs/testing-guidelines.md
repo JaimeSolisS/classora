@@ -104,6 +104,15 @@ threshold is enforced.
 | Deletes rows | Never, with one exception: `identity.role_permissions` also deletes the pairs of the seeded roles that `ROLE_PERMISSIONS` no longer lists, so the database's role permission sets equal the code (ADR-0007). `roles` and `permissions` rows are never deleted. | Never |
 | Never | Creates user accounts or credentials | Runs in PROD |
 
+- The simulated-operations seed (#543 HF-01; `make seed-data-spanish` /
+  `make seed-data-english`) is test-support code in
+  `apps/api/tests/factories/simulation/`, separate from the demo data: a pure
+  plan, a chronological driver and one module per area, written through the
+  services under `sim_clock`. Its tests use the `small` profile and the real
+  clock frozen at 2026-11-20 18:00 UTC, except the determinism tests (the
+  plan at several frozen dates, and two runs frozen before and after the
+  anchor compared row by row).
+
 ### Synthetic data only (architecture ISSUE-I7)
 
 - All test, seed, demo and E2E data is synthetic. Never copy DEV or PROD data

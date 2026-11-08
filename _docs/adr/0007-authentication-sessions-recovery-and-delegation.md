@@ -20,6 +20,7 @@ Amended 2026-10-18: D9 token derivation instead of a stored hash (issue #24, own
 - 2026-10-18, GitHub issue #31 (M2-13), owner decision E2 (a): managing an account needs authority to assign every role it holds, and nobody suspends or archives themselves (D4).
 - 2026-10-19, GitHub issue #195, owner request: the local demo seed has one demo account per role with documented development passwords (APP_ENV=local only), plus demo families.
 - 2026-10-24, GitHub issue #303 (owner-delegated decision E1 (a)): the local demo seed also has a second tutor account, `demo.tutor2`, with a documented development password (APP_ENV=local only), for the course and substitution demo data.
+- 2026-11-07, GitHub issue #543 (HF-01, owner request; owner-delegated decision E6 (a)): the simulated-operations seed (`make seed-data-spanish` / `make seed-data-english`) creates local-only accounts (staff with fixed usernames, tutors, some guardians and students) with documented development passwords per role (`classora-sim-<role>`), and refuses every `APP_ENV` but `local`.
 
 ## Context
 
