@@ -34,6 +34,7 @@ from tests.factories.simulation.timeline import SEEDED_EARLIER
 from tests.integration.auth_support import auth_client, login
 from tests.integration.billing_invariants.checks import Catalogue
 from tests.integration.conftest import run_sql, short_lived_engine
+from tests.integration.receipt_support import pdf_text, receipt_path
 from tests.integration.simulation_support import (
     billing_free_text,
     billing_texts,
@@ -365,6 +366,32 @@ def test_one_receipt_per_payment_in_the_run_language_with_consecutive_numbers(es
     assert [int(n.rsplit("-", 1)[1]) for n in sorted(numbers)] == list(
         range(1, len(numbers) + 1)
     )
+
+
+def test_a_guardian_downloads_a_receipt_in_the_run_language(es_url):
+    """B4's PDF text check. It renders with WeasyPrint, so it needs Pango:
+    on the owner's Mac it is not run natively ("cannot load library" there
+    is expected, BRIEF #383 D6); the evidence is CI ``api-simulation``."""
+    family = next(
+        f for f in PLAN.families if f.guardians and f.guardians[0].account is not None
+    )
+    guardian = family.guardians[0].account
+    assert guardian is not None
+    fid = family_id(es_url, family.key)
+    receipt_id, number = rows(
+        es_url,
+        "SELECT r.id, r.number FROM receipts r JOIN billing_accounts a"
+        " ON a.id = r.billing_account_id WHERE a.family_id = :f"
+        " ORDER BY r.number LIMIT 1",
+        f=fid,
+    )[0]
+    with auth_client(es_url) as client:
+        assert login(client, guardian.username, guardian.password).status_code == 200
+        response = client.get(receipt_path(fid, receipt_id))
+    assert response.status_code == 200, response.text
+    text = pdf_text(response.content)
+    assert number in text
+    assert "".join(RECEIPT_MESSAGES["es"].split()) in "".join(text.split())
 
 
 # --- B6, B7: rerun, skip, language ----------------------------------------------------
