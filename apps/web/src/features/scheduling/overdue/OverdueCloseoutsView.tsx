@@ -5,11 +5,11 @@ import { Link } from 'react-router';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Button } from '@/components/ui/button';
+import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { FieldError } from '@/features/auth/FieldError';
 import type { FilterOption } from '@/features/calendar/api';
 import { Pagination } from '@/features/catalog/Pagination';
-import { SearchPicker } from '@/features/guardians/SearchPicker';
 import { toLanguage } from '@/i18n/language';
 import { formatElapsed, formatInstant, type LocalDate } from '@/lib/time';
 import {
@@ -53,7 +53,10 @@ export interface OverdueCloseoutsViewProps {
   filters: OverdueState;
   onFilters: (next: OverdueState) => void;
   timeZone: string;
-  searchTutors: (q: string, signal: AbortSignal) => Promise<FilterOption[]>;
+  searchTutors: (
+    q: string | null,
+    signal: AbortSignal,
+  ) => Promise<OptionsPage<FilterOption>>;
   /** The chosen tutor's name, for the chip. */
   tutorName: string | null;
   /** Remembers a picked tutor's name by id. */
@@ -275,14 +278,18 @@ export function OverdueCloseoutsView({
         </h2>
         <div className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div className="min-w-0 sm:col-span-2 lg:col-span-1">
-            <SearchPicker<FilterOption>
+            <Combobox<FilterOption>
               label={t('scheduling.overdue.filters.tutor')}
               help={t('scheduling.calendar.filters.tutorHelp')}
               queryKey={[...OVERDUE_CLOSEOUTS_KEY, 'tutors']}
-              search={searchTutors}
+              load={searchTutors}
               optionId={(option) => option.id}
               optionLabel={optionLabel}
-              selectedId={filters.tutor}
+              optionSearchText={(option) => option.name}
+              emptyText={t('combobox.emptyTutors')}
+              selected={
+                filters.tutor ? { id: filters.tutor, label: chipName } : null
+              }
               onSelect={(option) => {
                 onTutorName(option.id, optionLabel(option));
                 change({ tutor: option.id });

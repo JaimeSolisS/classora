@@ -23,7 +23,7 @@ const args: PeriodsViewProps = {
   filters: { status: null, tutor: null, paid: null, page: 1 },
   onFilters: fn(),
   onPage: fn(),
-  searchTutors: () => Promise.resolve([]),
+  searchTutors: () => Promise.resolve({ items: [], total: 0 }),
   tutorName: null,
   onTutorName: fn(),
   reviewerOnly: false,

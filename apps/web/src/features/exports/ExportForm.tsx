@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import type { FilterOption } from '@/features/calendar/api';
-import { SearchPicker } from '@/features/guardians/SearchPicker';
 import { SELECT_CLASS } from '@/features/students/styles';
 import type { LocalDate } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -380,8 +379,8 @@ export function ExportForm({
   }
 
   /**
-   * A person filter: the picker (a combobox for students, #545; the tutor
-   * search picker until HF-03b), then the choice and "Remove".
+   * A person filter: the combobox (#545 students, #548 tutors), then the
+   * choice and "Remove".
    */
   function personFilter(field: 'tutor' | 'student') {
     const chosen = values.sessions[field];
@@ -396,32 +395,24 @@ export function ExportForm({
       });
     return (
       <div className="flex min-w-0 flex-col gap-2">
-        {field === 'student' ? (
-          <Combobox<FilterOption>
-            label={label}
-            queryKey={[...EXPORTS_QUERY_KEY, 'students']}
-            load={loaders.searchStudents}
-            optionId={(option) => option.id}
-            optionLabel={optionLabel}
-            emptyText={t('combobox.emptyStudents')}
-            selected={chosen ? { id: chosen.id, label: chosen.name } : null}
-            onSelect={onSelect}
-            inputClassName="min-h-11 md:min-h-9"
-            optionClassName="min-h-11 md:min-h-9"
-          />
-        ) : (
-          <SearchPicker<FilterOption>
-            label={label}
-            queryKey={[...EXPORTS_QUERY_KEY, 'tutors']}
-            search={loaders.searchTutors}
-            optionId={(option) => option.id}
-            optionLabel={optionLabel}
-            selectedId={chosen?.id ?? null}
-            onSelect={onSelect}
-            inputClassName="min-h-11 md:min-h-9"
-            optionClassName="min-h-11 md:min-h-8"
-          />
-        )}
+        <Combobox<FilterOption>
+          label={label}
+          queryKey={[...EXPORTS_QUERY_KEY, `${field}s`]}
+          load={
+            field === 'student' ? loaders.searchStudents : loaders.searchTutors
+          }
+          optionId={(option) => option.id}
+          optionLabel={optionLabel}
+          emptyText={t(
+            field === 'student'
+              ? 'combobox.emptyStudents'
+              : 'combobox.emptyTutors',
+          )}
+          selected={chosen ? { id: chosen.id, label: chosen.name } : null}
+          onSelect={onSelect}
+          inputClassName="min-h-11 md:min-h-9"
+          optionClassName="min-h-11 md:min-h-9"
+        />
         {chosen ? (
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span>

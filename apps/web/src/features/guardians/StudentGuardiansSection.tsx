@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
+import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +18,7 @@ import { StudentStatusBadge } from '@/features/students/StudentBadges';
 import { SELECT_CLASS, TEXT_LINK_CLASS } from '@/features/students/styles';
 import {
   GUARDIANS_QUERY_KEY,
-  searchActiveGuardians,
+  fetchGuardianOptions,
   type GuardianListItem,
   type GuardianRelationship,
   type StudentGuardianCreate,
@@ -26,7 +27,6 @@ import {
 import { ConfirmDialog } from './ConfirmDialog';
 import { AccountBadge } from './GuardianBadges';
 import { fullName, listName, RELATIONSHIPS } from './rules';
-import { SearchPicker } from './SearchPicker';
 
 // The Guardians section of the student detail (#34 I4), shown only when the
 // server sent `guardians` (staff with guardian.view). Each row: the name (a
@@ -47,9 +47,9 @@ interface StudentGuardiansSectionProps {
   onUnlink: (guardianId: string) => Promise<void>;
   /** The guardian search (stories pass a stub). */
   searchGuardians?: (
-    q: string,
+    q: string | null,
     signal: AbortSignal,
-  ) => Promise<GuardianListItem[]>;
+  ) => Promise<OptionsPage<GuardianListItem>>;
 }
 
 export function StudentGuardiansSection({
@@ -57,7 +57,7 @@ export function StudentGuardiansSection({
   canManage,
   onLink,
   onUnlink,
-  searchGuardians = searchActiveGuardians,
+  searchGuardians = fetchGuardianOptions,
 }: StudentGuardiansSectionProps) {
   const { t } = useTranslation();
   const id = useId();
@@ -182,9 +182,9 @@ export function StudentGuardiansSection({
 interface LinkGuardianDialogProps {
   open: boolean;
   searchGuardians: (
-    q: string,
+    q: string | null,
     signal: AbortSignal,
-  ) => Promise<GuardianListItem[]>;
+  ) => Promise<OptionsPage<GuardianListItem>>;
   /** Links; rejects with the error to show inside the dialog. */
   onLink: (body: StudentGuardianCreate) => Promise<void>;
   onCancel: () => void;
@@ -285,13 +285,16 @@ export function LinkGuardianDialog({
             className="flex flex-col gap-4"
           >
             {error ? <ErrorAlert error={error} /> : null}
-            <SearchPicker<GuardianListItem>
+            <Combobox<GuardianListItem>
               label={t('students.guardians.guardian')}
               queryKey={[...GUARDIANS_QUERY_KEY, 'active-options']}
-              search={searchGuardians}
+              load={searchGuardians}
               optionId={(item) => item.id}
               optionLabel={(item) => listName(item)}
-              selectedId={guardian?.id ?? null}
+              emptyText={t('combobox.emptyGuardians')}
+              selected={
+                guardian ? { id: guardian.id, label: listName(guardian) } : null
+              }
               onSelect={(item) => {
                 setGuardian(item);
                 setMissing((m) => ({ ...m, guardian: false }));

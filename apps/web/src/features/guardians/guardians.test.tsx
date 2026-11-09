@@ -13,7 +13,14 @@ import {
   type ApiStub,
   type Responder,
 } from '@/test/api-stub';
-import { alerts, click, fieldByLabel, typeInto } from '@/test/dom';
+import {
+  alerts,
+  click,
+  comboboxOption,
+  comboboxOptions,
+  fieldByLabel,
+  typeInto,
+} from '@/test/dom';
 import {
   buttonNamed,
   jsonResponse,
@@ -33,7 +40,6 @@ import {
   RAMON,
 } from './fixtures';
 import { SEARCH_DEBOUNCE_MS } from './GuardiansPage';
-import { PICKER_DEBOUNCE_MS } from './SearchPicker';
 
 // #34 I5 (and I1-I4, J1, J2): the Guardians navigation item and pages behind
 // guardian.view / family.manage, the list's query string, the form's request
@@ -124,29 +130,20 @@ function searches(api: ApiStub, path: string): string[] {
     .map((url) => url.search);
 }
 
-/** Lets the picker's debounce pass (real timers), then settles. */
-async function afterDebounce() {
-  await act(async () => {
-    await new Promise((resolve) =>
-      setTimeout(resolve, PICKER_DEBOUNCE_MS + 30),
-    );
-  });
-  await settle();
-}
-
-function radioLabelled(root: ParentNode, text: string): HTMLInputElement {
-  const label = [...root.querySelectorAll('label')].find((l) =>
-    l.textContent?.includes(text),
-  );
-  const radio = label?.querySelector('input[type="radio"]');
-  if (!(radio instanceof HTMLInputElement)) {
+/** The open combobox option whose text contains `text` (#548). */
+function optionWith(text: string): HTMLElement {
+  const option = comboboxOptions().find((o) => o.textContent?.includes(text));
+  if (!option) {
     throw new Error(`No option "${text}"`);
   }
-  return radio;
+  return option;
 }
 
-async function choose(radio: HTMLInputElement) {
-  await click(radio);
+/** Clicks the empty combobox: its first page lists without typing. */
+async function openList(input: HTMLInputElement) {
+  act(() => input.focus());
+  await click(input);
+  await settle();
 }
 
 function selectByLabel(root: ParentNode, label: string): HTMLSelectElement {
@@ -331,24 +328,40 @@ describe('the form (I2)', () => {
     });
     app = await renderApp('/guardians/new');
 
-    typeInto(field('Search accounts by username or name'), 'parent');
-    await afterDebounce();
+    const picker = field('Search accounts by username or name');
+    await openList(picker);
 
+    // The first page lists without typing (#548 C2): no q, 100 per page.
+    expect(picker.getAttribute('role')).toBe('combobox');
     expect(searches(api, '/api/v1/users')).toEqual([
-      '?q=parent&role=guardian&limit=10',
+      '?role=guardian&limit=100',
     ]);
-    expect(statusText()).toContain('Results: 2');
-    const archived = radioLabelled(main(), 'old.parent');
-    expect(archived.disabled).toBe(true);
-    expect(archived.closest('label')?.textContent).toContain('(archived)');
-    const available = radioLabelled(main(), 'e2e.guardians.parent');
-    expect(available.disabled).toBe(false);
+    expect(statusText()).toContain('2 results');
+    const archived = optionWith('old.parent');
+    expect(archived.getAttribute('aria-disabled')).toBe('true');
+    expect(archived.textContent).toContain('(archived)');
+    await click(archived);
+    expect(
+      main().querySelector('[data-slot="guardian-account-chip"]'),
+    ).toBeNull();
+    const available = optionWith('e2e.guardians.parent');
+    expect(available.getAttribute('aria-disabled')).toBeNull();
     expect(main().textContent).toContain(
       'This account will see the records of the linked children.',
     );
 
-    await choose(available);
-    expect(available.checked).toBe(true);
+    // Local filtering matches the username and name, not the state words.
+    typeInto(picker, 'pending');
+    await settle();
+    expect(comboboxOptions()).toHaveLength(0);
+    typeInto(picker, 'PADRE de');
+    await settle();
+    expect(comboboxOptions().map((o) => o.textContent)).toEqual([
+      expect.stringContaining('e2e.guardians.parent'),
+    ]);
+
+    await click(optionWith('e2e.guardians.parent'));
+    expect(picker.value).toContain('e2e.guardians.parent');
     expect(
       main().querySelector('[data-slot="guardian-account-chip"]')?.textContent,
     ).toContain('e2e.guardians.parent');
@@ -589,12 +602,20 @@ describe("the student's Guardians section (I4)", () => {
     const before = api.calls(studentRoute(JOSE)).length;
 
     await click(buttonNamed(section()!, 'Link guardian'));
-    typeInto(field('Guardian', dialog()!), 'ramon');
-    await afterDebounce();
+    const picker = field('Guardian', dialog()!);
+    // Autofocus loads the first page but doesn't open the list (#545 A4).
+    await settle();
+    expect(document.activeElement).toBe(picker);
+    expect(picker.getAttribute('aria-expanded')).toBe('false');
+    await click(picker);
+    await settle();
+    expect(comboboxOptions().length).toBeGreaterThan(0);
+    typeInto(picker, 'ramon');
+    await settle();
     expect(searches(api, '/api/v1/guardians')).toEqual([
-      '?q=ramon&status=active&limit=10',
+      '?status=active&limit=100',
     ]);
-    await choose(radioLabelled(dialog()!, 'Pérez Solís, Ramón'));
+    await click(comboboxOption('Pérez Solís, Ramón')!);
     selectOption(selectByLabel(dialog()!, 'Relationship'), 'father');
     await click(buttonNamed(dialog()!, 'Link'));
 

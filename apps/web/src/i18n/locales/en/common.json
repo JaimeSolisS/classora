@@ -29,6 +29,8 @@
     "emptyStudents": "There are no students to choose from.",
     "emptyFamilies": "There are no families to choose from.",
     "emptyGuardians": "There are no guardians to choose from.",
+    "emptyTutors": "There are no tutors to choose from.",
+    "emptyAccounts": "There are no accounts to choose from.",
     "noResults": "No matches for “{{text}}”.",
     "count_one": "{{count}} result",
     "count_other": "{{count}} results",
@@ -1865,12 +1867,6 @@
       "nameTooLong": "It can have up to 100 characters.",
       "emailInvalid": "Enter a valid email address.",
       "phoneInvalid": "Enter a valid phone number: digits, spaces, parentheses, dots or hyphens only."
-    },
-    "picker": {
-      "count": "Results: {{count}}",
-      "none": "No results.",
-      "failed": "The search didn't work. Try again.",
-      "results": "Results for “{{label}}”"
     }
   },
   "families": {

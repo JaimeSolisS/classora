@@ -14,7 +14,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Pagination } from '@/features/catalog/Pagination';
-import { SearchPicker } from '@/features/guardians/SearchPicker';
 import { LINK_BUTTON_CLASS } from '@/features/students/styles';
 import { BillingTabs } from '../BillingTabs';
 import { searchStudents, type StudentOption } from '../tuition/api';
@@ -80,7 +79,10 @@ export interface PackagesViewProps {
     q: string | null,
     signal: AbortSignal,
   ) => Promise<OptionsPage<StudentOption>>;
-  searchFamily?: (q: string, signal: AbortSignal) => Promise<NamedOption[]>;
+  searchFamily?: (
+    q: string | null,
+    signal: AbortSignal,
+  ) => Promise<OptionsPage<NamedOption>>;
 }
 
 export function PackagesView({
@@ -333,14 +335,15 @@ export function PackagesView({
             </Button>
           </div>
         ) : (
-          <SearchPicker<NamedOption>
+          <Combobox<NamedOption>
             label={t('billing.packages.sold.filters.searchFamily')}
             help={t('billing.packages.sold.filters.searchFamilyHelp')}
             queryKey={[...PACKAGE_OPTIONS_KEY, 'filter-families']}
-            search={searchFamily}
+            load={searchFamily}
             optionId={(option) => option.id}
             optionLabel={(option) => option.name}
-            selectedId={null}
+            emptyText={t('combobox.emptyFamilies')}
+            selected={null}
             onSelect={(family) => onFamily(family)}
           />
         )}

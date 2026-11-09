@@ -1,6 +1,7 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { routes } from '@/app/router';
+import { PICKER_DEBOUNCE_MS } from '@/components/ui/combobox';
 import type { SessionUserBody } from '@/features/auth/session';
 import { applyLanguage } from '@/i18n';
 import type { LocalDate } from '@/lib/time';
@@ -12,7 +13,13 @@ import {
   type ApiStub,
   type Responder,
 } from '@/test/api-stub';
-import { click } from '@/test/dom';
+import {
+  click,
+  comboboxOption,
+  comboboxOptions,
+  fieldByLabel,
+  typeInto,
+} from '@/test/dom';
 import {
   buttonNamed,
   jsonResponse,
@@ -281,6 +288,59 @@ describe('the overdue closeouts page (#301b A)', () => {
     ).toBe('Remove filter: Tutor Carmen Ruiz');
     // Pagination (total > 25).
     expect(main().textContent).toContain('26–26 of 26');
+  });
+
+  it('lists tutors on a click, searches the server past one page, and filters (#548)', async () => {
+    const tutorUrls: URL[] = [];
+    const carmen = {
+      id: CARMEN_ID,
+      display_name: 'Carmen Ruiz',
+      state: 'active',
+    };
+    const other = {
+      id: '00000000-0000-4000-8000-0000000c4a09',
+      display_name: 'Ana Otra',
+      state: 'active',
+    };
+    await open(PATH, undefined, REVIEWER, {
+      'GET /api/v1/schedule/tutor-options': (request) => {
+        const url = new URL(request.url);
+        tutorUrls.push(url);
+        return url.searchParams.has('q')
+          ? jsonResponse(200, { items: [carmen], total: 1 })
+          : jsonResponse(200, { items: [other, carmen], total: 63 });
+      },
+    });
+    const field = fieldByLabel(main(), 'Tutor');
+
+    act(() => field.focus());
+    await click(field);
+    await settleUntil(() => comboboxOptions().length === 2);
+    expect(Object.fromEntries(tutorUrls[0]!.searchParams)).toEqual({
+      limit: '50',
+    });
+    expect(document.body.textContent).toContain('Showing 2 of 63.');
+
+    // 63 > 50 loaded: the text goes to the server after the pause.
+    typeInto(field, ' Carm ');
+    await act(
+      () =>
+        new Promise((resolve) => setTimeout(resolve, PICKER_DEBOUNCE_MS + 30)),
+    );
+    await settleUntil(() => tutorUrls.length === 2);
+    expect(Object.fromEntries(tutorUrls[1]!.searchParams)).toEqual({
+      q: 'Carm',
+      limit: '50',
+    });
+    await settleUntil(() => comboboxOptions().length === 1);
+    await click(comboboxOption('Carmen Ruiz')!);
+    await settle();
+
+    expect(app!.location()).toBe(`${PATH}?tutor=${CARMEN_ID}`);
+    expect(listUrls().at(-1)!.searchParams.get('tutor_user_id')).toBe(
+      CARMEN_ID,
+    );
+    expect(buttonNamed(main(), 'Tutor: Carmen Ruiz')).toBeTruthy();
   });
 
   it('falls back to "Selected tutor" and removes the chip back to page 1', async () => {

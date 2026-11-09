@@ -218,6 +218,53 @@ export const DisabledOption: Story = {
   },
 };
 
+/** Accounts (#548): the label carries state and role words. */
+const ACCOUNTS: Student[] = [
+  { id: 'a1', name: 'ana.p · Ana Pérez · Active · Tutor' },
+  { id: 'a2', name: 'beto.r · Beto Ruiz · Archived · Guardian (archived)' },
+  { id: 'a3', name: 'carla.m · Carla Méndez · Pending · Student' },
+];
+const USERNAMES: Record<string, string> = {
+  a1: 'ana.p Ana Pérez',
+  a2: 'beto.r Beto Ruiz',
+  a3: 'carla.m Carla Méndez',
+};
+
+export const SearchTextDiffersFromLabel: Story = {
+  args: {
+    label: 'Account',
+    help: 'Type part of a username or name.',
+    load: () => Promise.resolve({ items: ACCOUNTS, total: ACCOUNTS.length }),
+    optionSearchText: (account) => USERNAMES[account.id] ?? account.name,
+    optionDisabled: (account) => account.id === 'a2',
+  },
+  play: async ({ canvas, canvasElement, userEvent }) => {
+    const field = canvas.getByRole('combobox', { name: 'Account' });
+    await userEvent.click(field);
+    // A role word in the label doesn't match: the search text has none.
+    await userEvent.type(field, 'tutor');
+    const list = await page(canvasElement).findByRole('listbox', {
+      name: 'Account',
+    });
+    await waitFor(() =>
+      expect(within(list).queryAllByRole('option')).toHaveLength(0),
+    );
+    await userEvent.clear(field);
+    await userEvent.type(field, 'carla.m');
+    await waitFor(() =>
+      expect(
+        within(list)
+          .getAllByRole('option')
+          .map((option) => option.textContent),
+      ).toEqual(['carla.m · Carla Méndez · Pending · Student']),
+    );
+    await userEvent.keyboard('{ArrowDown}{Enter}');
+    await expect(field).toHaveValue(
+      'carla.m · Carla Méndez · Pending · Student',
+    );
+  },
+};
+
 export const Truncated: Story = {
   args: { load: loadLarge },
   play: async ({ canvas, canvasElement, userEvent }) => {

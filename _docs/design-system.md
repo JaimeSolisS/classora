@@ -316,15 +316,6 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   and the last "Remove" are disabled with a help text. Focus goes to the new
   row after adding, to a neighbour after removing, and stays on the moved
   row's button after a move. Server field errors land on their fields.
-- **`SearchPicker`** (`features/guardians`, #34): a labelled search field
-  whose results (up to 10, after a 300 ms pause) are a native radio group,
-  so Tab reaches the group and the arrow keys move the visible checked
-  option; a polite status announces the result count. Disabled options
-  (an archived account) stay listed. Used by the guardian form's account
-  picker and the student's "Link guardian" dialog; no combobox dependency.
-  Since #545 it remains only for the HF-03b sites (the tutor pickers, the
-  account pickers, the "Link guardian" picker and the packages family
-  filter); HF-03b moves them to `Combobox` and deletes it.
 - **`Combobox`** (`components/ui/combobox.tsx`, #545): the type-ahead
   picker, the WAI-ARIA APG "combobox with list autocomplete" over `Input`
   and the pinned `radix-ui` Popover (no new dependency). Generic
@@ -346,14 +337,20 @@ Loading and error primitives in `apps/web/src/components/feedback/`
     list shows without a wait.
   - **Keyboard:** ArrowDown/ArrowUp move (wrapping, skipping disabled
     options, scrolled into view); Enter chooses and never submits the form;
-    Escape closes, a second Escape restores the chosen label; Tab closes
+    Escape closes, a second Escape restores the chosen label (inside a
+    modal dialog, the second Escape closes the dialog instead); Tab closes
     without choosing. Leaving the field restores the chosen label.
   - **Filtering:** when the first page (100, the API's maximum) holds every
     option, each keystroke filters locally, ignoring case and accents, every
     term in any order (`src/lib/search.ts`, the API's term rule). Otherwise
     the text goes to the server as `q` after 300 ms (never a blank `q`);
     the loaded options stay filtered locally and busy until it answers, and
-    an older answer never replaces a newer one.
+    an older answer never replaces a newer one. Server mode keeps each
+    endpoint's matching: students, guardians and families fold accents and
+    take the words in any order, but tutors (`tutor-options`,
+    `/payroll/tutors`) and accounts (`/users`) match one case-insensitive
+    substring of the username or display name **without** accent folding
+    (#548 E4). Local mode always ignores accents.
   - **States:** loading (`aria-busy`), the caller's empty text, "No matches
     for …", "Showing N of M. Keep typing to narrow the list." and a result
     count, announced by one polite status; a failed load shows "Couldn't
@@ -368,7 +365,17 @@ Loading and error primitives in `apps/web/src/components/feedback/`
     enrolling in a group or cohort, a new group's students, the calendar and
     export student filters, custom price and discount targets (students and
     families), tuition plans (dialog and filter), packages (sell dialog and
-    student filter) and the family page's "Add student" / "Add guardian".
+    student filter) and the family page's "Add student" / "Add guardian";
+    and, since #548, every tutor, account, guardian and family picker: the
+    calendar, export, overdue-closeouts, payroll periods and unresolved-work
+    tutor filters (tutor options, 50 per page, with `total`; payroll tutors,
+    100), the guardian form's account picker and the student's login-account
+    dialog (`/users`, 100; archived accounts listed and disabled), the
+    student's "Link guardian" dialog (active guardians) and the packages
+    family filter. Account pickers pass `optionSearchText` = username +
+    display name, and tutor pickers the plain name, so local filtering
+    matches what the server searches, not the state, role, "(archived)" or
+    "(inactive)" words of the label. `SearchPicker` was removed (#548).
 - **`AccountBadge`** (`features/guardians`, #34): "Has account" / "No
   account" as a text badge.
 - **`TutorsTable` / `TutorDetailView` / `TutorForm`** (`features/tutors`,
@@ -490,7 +497,7 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   sideways. A state that can't act is a bordered text badge ("Can't
   submit"), never colour alone. Repeated row links carry an accessible name
   with the row's subject and date ("Open session: Matemáticas, …"). The
-  filters (a `SearchPicker`, two labelled `type="date"` inputs with the
+  filters (a tutor `Combobox`, two labelled `type="date"` inputs with the
   range error on "To", a removable chip, "Clear filters") stack in one
   column below `sm`.
 - **Completion disclosure table** (`features/courses/cohorts/completion`,

@@ -7,6 +7,7 @@ import { ApiError } from '@/app/api';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
+import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { FieldError } from '@/features/auth/FieldError';
 import {
@@ -23,8 +24,7 @@ import {
   type GuardianFormValues,
   type GuardianMessageKey,
 } from './rules';
-import { SearchPicker } from './SearchPicker';
-import { useAccountLabel } from './useAccountLabel';
+import { accountSearchText, useAccountLabel } from './useAccountLabel';
 
 // The guardian form (#34 I2), shared by /guardians/new and
 // /guardians/:id/edit. React Hook Form + Zod mirror GuardianCreate/Update.
@@ -61,7 +61,10 @@ interface GuardianFormProps {
   /** The id of the page heading that names the form. */
   labelledBy: string;
   /** The account search (stories pass a stub). */
-  searchAccounts?: (q: string, signal: AbortSignal) => Promise<AccountOption[]>;
+  searchAccounts?: (
+    q: string | null,
+    signal: AbortSignal,
+  ) => Promise<OptionsPage<AccountOption>>;
 }
 
 export function GuardianForm({
@@ -248,15 +251,21 @@ export function GuardianForm({
                   </Button>
                 </div>
               ) : null}
-              <SearchPicker<AccountOption>
+              <Combobox<AccountOption>
                 label={t('guardians.account.search')}
                 help={t('guardians.account.help')}
                 queryKey={[...GUARDIANS_QUERY_KEY, 'accounts']}
-                search={searchAccounts}
+                load={searchAccounts}
                 optionId={(account) => account.id}
                 optionLabel={accountLabel}
+                optionSearchText={accountSearchText}
                 optionDisabled={(account) => account.state === 'archived'}
-                selectedId={field.value?.id ?? null}
+                emptyText={t('combobox.emptyAccounts')}
+                selected={
+                  field.value
+                    ? { id: field.value.id, label: accountLabel(field.value) }
+                    : null
+                }
                 onSelect={(account) =>
                   field.onChange({
                     id: account.id,

@@ -2980,9 +2980,12 @@ writes nothing (no lock, no audit event). Tutors, students and guardians get
 
 **Tutor options** (`GET /api/v1/schedule/tutor-options`, #57): `q`
 (optional, 1–100 characters, trimmed) and `limit` (1–50, default 20). Returns
-`{"items": [{id, display_name, state}]}`: the users holding the `tutor` role
-whose username or display name contains `q` (not case-sensitive), by display
-name, inactive ones included (the UI labels them). No contact data, so
+`{"items": [{id, display_name, state}], "total": n}`: the users holding the
+`tutor` role whose username or display name contains `q` (not
+case-sensitive), by display name, inactive ones included (the UI labels
+them). `total` (#548) counts every match, or every tutor without `q`,
+whatever the `limit`; the type-ahead pickers use it to filter the first page
+locally or ask the server. No contact data, so
 Finance staff, who don't hold `tutor.view`, can filter the calendar by
 tutor. At most 3 statements.
 

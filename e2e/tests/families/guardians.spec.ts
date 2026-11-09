@@ -7,6 +7,11 @@ import {
   SIGNED_OUT_STATE,
 } from '../support/auth';
 import { common, fill, signedInAs } from '../support/catalog';
+import {
+  comboboxField,
+  comboboxOptions,
+  pickOption,
+} from '../support/combobox';
 import { createStudentViaApi } from '../support/students';
 import { createApprovedAccount } from '../support/consent';
 
@@ -113,8 +118,11 @@ test('linking a guardian to a student, and unlinking revokes access', async ({
   await main.getByLabel(g.fields.givenNames, { exact: true }).fill('Laura');
   await main.getByLabel(g.fields.familyNames, { exact: true }).fill(family);
   await main.getByLabel(g.fields.phone, { exact: true }).fill('55 1234 0000');
-  await main.getByRole('searchbox', { name: g.account.search }).fill(PARENT);
-  await main.getByRole('radio', { name: new RegExp(`^${PARENT} ·`) }).check();
+  // The account combobox (#548): type the username, choose its option.
+  await comboboxField(main, g.account.search).fill(PARENT);
+  await comboboxOptions(main, g.account.search)
+    .getByRole('option', { name: new RegExp(`^${PARENT} ·`) })
+    .click();
   await main.getByRole('button', { name: g.save, exact: true }).click();
   await expect(page).toHaveURL(/\/guardians\/[0-9a-f-]{36}$/);
   await expect(
@@ -131,12 +139,12 @@ test('linking a guardian to a student, and unlinking revokes access', async ({
   ).toBeVisible();
   await main.getByRole('button', { name: sg.link, exact: true }).click();
   const dialog = page.getByRole('dialog', { name: sg.linkTitle });
-  await dialog
-    .getByRole('searchbox', { name: sg.guardian })
-    .fill(`nunez ${sfx}`);
-  await dialog
-    .getByRole('radio', { name: `${family}, Laura`, exact: true })
-    .check();
+  // The guardian combobox (#548) lists guardians on a click, before typing.
+  await comboboxField(dialog, sg.guardian).click();
+  await expect(
+    comboboxOptions(dialog, sg.guardian).getByRole('option').first(),
+  ).toBeVisible();
+  await pickOption(dialog, sg.guardian, `nunez ${sfx}`, `${family}, Laura`);
   await dialog
     .getByLabel(sg.relationship, { exact: true })
     .selectOption({ label: common.relationships.mother! });

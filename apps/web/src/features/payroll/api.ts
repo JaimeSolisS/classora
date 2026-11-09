@@ -1,5 +1,6 @@
 import type { components } from '@classora/api-client';
 import { api, apiCall } from '@/app/api';
+import { COMBOBOX_PAGE_SIZE, type OptionsPage } from '@/components/ui/combobox';
 import { idempotencyHeaders } from '@/lib/idempotency';
 
 // The payroll calls of #425, #444 and #454: the tutor list, one tutor's
@@ -227,13 +228,26 @@ export function fetchUnresolved(
   );
 }
 
-/** The tutor filter's picker: the Payroll list, in every state (#444). */
+/**
+ * The tutor filter's picker (#444, #548): the Payroll list in every state,
+ * or the matches for `q` (blank `q` is never sent).
+ */
 export async function searchPayrollTutors(
-  q: string,
+  q: string | null,
   signal: AbortSignal,
-): Promise<PayrollTutor[]> {
-  const page = await fetchPayrollTutors({ q, state: 'all', page: 1 }, signal);
-  return page.items;
+): Promise<OptionsPage<PayrollTutor>> {
+  const text = q?.trim() ?? '';
+  const page = await apiCall(
+    () =>
+      api.GET('/api/v1/payroll/tutors', {
+        params: {
+          query: { ...(text ? { q: text } : {}), limit: COMBOBOX_PAGE_SIZE },
+        },
+        signal,
+      }),
+    { signal },
+  );
+  return { items: page.items, total: page.total };
 }
 
 export function fetchPayItemTypes(signal: AbortSignal): Promise<PayItemType[]> {

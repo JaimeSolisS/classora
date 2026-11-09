@@ -596,9 +596,12 @@ class TutorOption(BaseModel):
 
 
 class TutorOptions(BaseModel):
-    """The matching tutors, in the user list order."""
+    """The matching tutors, in the user list order. ``total`` counts every
+    tutor-role user matching ``q`` (all of them without ``q``), whatever the
+    ``limit``."""
 
     items: list[TutorOption]
+    total: int
 
 
 # --- Slot suggestions (#50 B) -----------------------------------------------------

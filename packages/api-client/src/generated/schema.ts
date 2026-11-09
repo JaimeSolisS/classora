@@ -23554,11 +23554,15 @@ export interface components {
         TutorOptionState: "pending" | "active" | "suspended" | "archived";
         /**
          * TutorOptions
-         * @description The matching tutors, in the user list order.
+         * @description The matching tutors, in the user list order. ``total`` counts every
+         *     tutor-role user matching ``q`` (all of them without ``q``), whatever the
+         *     ``limit``.
          */
         TutorOptions: {
             /** Items */
             items: components["schemas"]["TutorOption"][];
+            /** Total */
+            total: number;
         };
         /**
          * TutorPerformance

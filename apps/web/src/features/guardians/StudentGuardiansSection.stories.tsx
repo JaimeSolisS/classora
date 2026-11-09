@@ -20,7 +20,9 @@ const meta = {
     canManage: true,
     onLink: fn(() => Promise.resolve()),
     onUnlink: fn(() => Promise.resolve()),
-    searchGuardians: fn(() => Promise.resolve(LIST_ITEMS.slice(0, 2))),
+    searchGuardians: fn(() =>
+      Promise.resolve({ items: LIST_ITEMS.slice(0, 2), total: 2 }),
+    ),
   },
   render: (args) => (
     <StoryQueryClient>
@@ -83,14 +85,15 @@ export const LinkDialogConflict: Story = {
     );
     const dialog = within(await screen.findByRole('dialog'));
     await userEvent.type(
-      dialog.getByRole('searchbox', {
+      dialog.getByRole('combobox', {
         name: i18n.t('students.guardians.guardian'),
       }),
       'ramon',
     );
     await waitFor(() => expect(args.searchGuardians).toHaveBeenCalled());
+    // The options sit in the portalled list (#545), outside the dialog.
     await userEvent.click(
-      await dialog.findByRole('radio', { name: 'Pérez Solís, Ramón' }),
+      await screen.findByRole('option', { name: 'Pérez Solís, Ramón' }),
     );
     await userEvent.selectOptions(
       dialog.getByRole('combobox', {

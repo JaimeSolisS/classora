@@ -82,9 +82,10 @@ const meta = {
     onFilters: fn(),
     timeZone: ZONE,
     searchTutors: fn(() =>
-      Promise.resolve([
-        { id: CARMEN_ID, name: 'Carmen Ruiz', inactive: false },
-      ]),
+      Promise.resolve({
+        items: [{ id: CARMEN_ID, name: 'Carmen Ruiz', inactive: false }],
+        total: 1,
+      }),
     ),
     tutorName: null,
     onTutorName: fn(),

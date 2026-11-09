@@ -13,7 +13,10 @@ import { ALL_DATASETS, QUEUED } from './fixtures';
 
 const LOADERS: ExportFormLoaders = {
   searchTutors: () =>
-    Promise.resolve([{ id: 'tutor-1', name: 'Ana Tutora', inactive: false }]),
+    Promise.resolve({
+      items: [{ id: 'tutor-1', name: 'Ana Tutora', inactive: false }],
+      total: 1,
+    }),
   searchStudents: () =>
     Promise.resolve({
       items: [{ id: 'student-1', name: 'Luis Alumno', inactive: false }],

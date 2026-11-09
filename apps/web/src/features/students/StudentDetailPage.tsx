@@ -8,6 +8,7 @@ import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
+import type { OptionsPage } from '@/components/ui/combobox';
 import {
   Dialog,
   DialogContent,
@@ -218,16 +219,16 @@ interface StudentDetailViewProps {
   onUnlinkGuardian?: (guardianId: string) => Promise<void>;
   /** The link dialog's guardian search (stories pass a stub). */
   searchGuardians?: (
-    q: string,
+    q: string | null,
     signal: AbortSignal,
-  ) => Promise<GuardianListItem[]>;
+  ) => Promise<OptionsPage<GuardianListItem>>;
   /** Links (an id) or unlinks (null) the login; rejects with the error. */
   onSetLogin?: (userId: string | null) => Promise<void>;
   /** The login dialog's account search (stories pass a stub). */
   searchAccounts?: (
-    q: string,
+    q: string | null,
     signal: AbortSignal,
-  ) => Promise<LoginAccountOption[]>;
+  ) => Promise<OptionsPage<LoginAccountOption>>;
   /** The Consents section (the page renders it with its own query). */
   consentSection?: ReactNode;
 }

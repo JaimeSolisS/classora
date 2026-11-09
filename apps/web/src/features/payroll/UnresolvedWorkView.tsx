@@ -6,6 +6,7 @@ import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
+import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import {
   Table,
   TableBody,
@@ -15,7 +16,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { SearchPicker } from '@/features/guardians/SearchPicker';
 import { useFormatters } from '@/lib/formatters';
 import {
   PAY_ITEMS_ANCHOR,
@@ -65,7 +65,10 @@ export interface UnresolvedWorkViewProps {
   payroll: PayrollOffState;
   filters: UnresolvedFilters;
   onFilters: (next: Partial<UnresolvedFilters>) => void;
-  searchTutors: (q: string, signal: AbortSignal) => Promise<PayrollTutor[]>;
+  searchTutors: (
+    q: string | null,
+    signal: AbortSignal,
+  ) => Promise<OptionsPage<PayrollTutor>>;
   /** The chosen tutor's name, for the chip. */
   tutorName: string | null;
   /** Remembers a picked tutor's name by id. */
@@ -442,14 +445,17 @@ export function UnresolvedWorkView({
         </h2>
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
           <div className="min-w-0">
-            <SearchPicker<PayrollTutor>
+            <Combobox<PayrollTutor>
               label={t('payroll.unresolved.filters.tutor')}
               help={t('payroll.unresolved.filters.tutorHelp')}
               queryKey={[...UNRESOLVED_KEY, 'tutors']}
-              search={searchTutors}
+              load={searchTutors}
               optionId={(tutor) => tutor.user_id}
               optionLabel={(tutor) => tutor.display_name}
-              selectedId={filters.tutor}
+              emptyText={t('combobox.emptyTutors')}
+              selected={
+                filters.tutor ? { id: filters.tutor, label: chipName } : null
+              }
               onSelect={(tutor) => {
                 onTutorName(tutor.user_id, tutor.display_name);
                 onFilters({ tutor: tutor.user_id });

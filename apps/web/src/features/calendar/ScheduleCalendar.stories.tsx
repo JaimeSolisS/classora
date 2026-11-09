@@ -50,7 +50,8 @@ function CalendarStory({
   const [state, setState] = useState(initial);
   const loaders: CalendarLoaders = {
     fetchCalendar: () => result(),
-    searchTutors: () => Promise.resolve(TUTOR_OPTIONS),
+    searchTutors: () =>
+      Promise.resolve({ items: TUTOR_OPTIONS, total: TUTOR_OPTIONS.length }),
     searchStudents: () =>
       Promise.resolve({
         items: STUDENT_OPTIONS,

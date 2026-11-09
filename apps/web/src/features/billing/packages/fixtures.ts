@@ -1,3 +1,5 @@
+import type { OptionsPage } from '@/components/ui/combobox';
+import { matchesSearch } from '@/lib/search';
 import {
   SUBJECT_ALGEBRA,
   V_CURRENT,
@@ -8,6 +10,7 @@ import type { ChargeDetail } from '../accounts/api';
 import { STUDENT_ANA, STUDENT_BRUNO } from '../tuition/fixtures';
 import type {
   ChargeItem,
+  NamedOption,
   PackageCancelled,
   PackageDetail,
   PackagePage,
@@ -271,13 +274,13 @@ export const PURCHASE_CHARGE: ChargeItem = {
   cohort_enrollment_id: null,
 };
 
-export function searchFixtureFamilies(q = '') {
-  const text = q.toLowerCase();
-  return Promise.resolve(
-    [FAMILY_LOPEZ, FAMILY_DIAZ].filter((family) =>
-      family.name.toLowerCase().includes(text),
-    ),
+export function searchFixtureFamilies(
+  q: string | null = null,
+): Promise<OptionsPage<NamedOption>> {
+  const items = [FAMILY_LOPEZ, FAMILY_DIAZ].filter((family) =>
+    matchesSearch(family.name, q ?? ''),
   );
+  return Promise.resolve({ items, total: items.length });
 }
 
 // #386 C1: a cancelled package, and the purchase charge's detail (the

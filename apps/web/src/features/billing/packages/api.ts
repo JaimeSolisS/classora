@@ -1,6 +1,6 @@
 import type { components } from '@classora/api-client';
 import { api, apiCall } from '@/app/api';
-import { PICKER_LIMIT } from '@/features/guardians/api';
+import { COMBOBOX_PAGE_SIZE, type OptionsPage } from '@/components/ui/combobox';
 import { idempotencyHeaders } from '@/lib/idempotency';
 import type { PriceVersionCreate } from '../pricing/api';
 
@@ -339,20 +339,33 @@ export interface NamedOption {
   name: string;
 }
 
-/** Up to PICKER_LIMIT families matching `q`, any status (guardian.view). */
+/**
+ * The family filter's options (#548): every family, any status, or the
+ * matches for `q` (blank `q` is never sent; guardian.view, scoped).
+ */
 export async function searchFamilies(
-  q: string,
+  q: string | null,
   signal: AbortSignal,
-): Promise<NamedOption[]> {
+): Promise<OptionsPage<NamedOption>> {
+  const text = q?.trim() ?? '';
   const page = await apiCall(
     () =>
       api.GET('/api/v1/families', {
-        params: { query: { q, status: 'all', limit: PICKER_LIMIT } },
+        params: {
+          query: {
+            ...(text ? { q: text } : {}),
+            status: 'all',
+            limit: COMBOBOX_PAGE_SIZE,
+          },
+        },
         signal,
       }),
     { signal },
   );
-  return page.items.map((family) => ({ id: family.id, name: family.name }));
+  return {
+    items: page.items.map((family) => ({ id: family.id, name: family.name })),
+    total: page.total,
+  };
 }
 
 /** A family by id, with its name (the list's deep link ?family_id=). */

@@ -18,7 +18,9 @@ const meta = {
     isMinor: true,
     canManage: true,
     onChange: fn(() => Promise.resolve()),
-    searchAccounts: fn(() => Promise.resolve(LOGIN_OPTIONS)),
+    searchAccounts: fn(() =>
+      Promise.resolve({ items: LOGIN_OPTIONS, total: LOGIN_OPTIONS.length }),
+    ),
   },
   render: (args) => (
     <StoryQueryClient>
@@ -65,12 +67,13 @@ export const DialogConsentRequired: Story = {
     );
     const dialog = within(await screen.findByRole('dialog'));
     await userEvent.type(
-      dialog.getByRole('searchbox', { name: i18n.t('students.login.search') }),
+      dialog.getByRole('combobox', { name: i18n.t('students.login.search') }),
       'jose',
     );
     await waitFor(() => expect(args.searchAccounts).toHaveBeenCalled());
+    // The options sit in the portalled list (#545), outside the dialog.
     await userEvent.click(
-      await dialog.findByRole('radio', { name: /jose\.nunez/ }),
+      await screen.findByRole('option', { name: /jose\.nunez/ }),
     );
     await userEvent.click(
       dialog.getByRole('button', { name: i18n.t('students.login.linkAction') }),

@@ -38,7 +38,7 @@ const meta = {
     payroll: { status: 'ready', off: false },
     filters: { tutor: null, reason: null },
     onFilters: fn(),
-    searchTutors: () => Promise.resolve([]),
+    searchTutors: () => Promise.resolve({ items: [], total: 0 }),
     tutorName: null,
     onTutorName: fn(),
     canOpenSession: true,

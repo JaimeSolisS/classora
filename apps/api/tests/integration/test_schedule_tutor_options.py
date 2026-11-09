@@ -70,8 +70,47 @@ def test_only_tutor_role_users_matching_q_with_their_state(
         "items": [
             {"id": str(ana.id), "display_name": f"ana {word}", "state": "suspended"},
             {"id": str(bea.id), "display_name": f"Bea {word}", "state": "active"},
-        ]
+        ],
+        "total": 2,
     }
+
+
+def test_without_q_total_counts_every_tutor_whatever_the_limit(
+    module_seeded_url, client, cookie
+):
+    word = tag()
+    create_user(module_seeded_url, roles=(TUTOR,), display_name=f"Hugo {word}")
+    create_user(
+        module_seeded_url,
+        roles=(TUTOR,),
+        display_name=f"Iris {word}",
+        state="suspended",
+    )
+    # The #31 user list, any state, is the independent reference.
+    users = get(client, cookie, "/api/v1/users", role=TUTOR, limit=100).json()
+
+    body = get(client, cookie, OPTIONS, limit=2).json()
+
+    assert users["total"] >= 2
+    assert body["total"] == users["total"]
+    assert [item["id"] for item in body["items"]] == [
+        item["id"] for item in users["items"][:2]
+    ]
+
+
+def test_with_q_total_counts_only_the_matches(module_seeded_url, client, cookie):
+    word = tag()
+    for i in range(3):
+        create_user(module_seeded_url, roles=(TUTOR,), display_name=f"J{i} {word}")
+    create_user(module_seeded_url, roles=(FINANCE_STAFF,), display_name=f"K {word}")
+
+    body = get(client, cookie, OPTIONS, q=word, limit=2).json()
+
+    assert [item["display_name"] for item in body["items"]] == [
+        f"J0 {word}",
+        f"J1 {word}",
+    ]
+    assert body["total"] == 3
 
 
 def test_no_contact_data(module_seeded_url, client, cookie):

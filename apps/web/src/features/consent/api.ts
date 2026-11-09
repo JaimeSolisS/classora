@@ -1,5 +1,6 @@
 import type { components } from '@classora/api-client';
 import { api, apiCall } from '@/app/api';
+import { COMBOBOX_PAGE_SIZE, type OptionsPage } from '@/components/ui/combobox';
 
 // The consent calls (#35 D) and the student's login account (#35 C). The
 // overview is a query; record, revoke and the account link are direct calls,
@@ -17,9 +18,6 @@ export type StudentLogin = components['schemas']['StudentLogin'];
 export type StudentAccountUpdate =
   components['schemas']['StudentAccountUpdate'];
 export type LoginAccountOption = components['schemas']['UserListItem'];
-
-/** How many accounts the login picker shows. */
-export const ACCOUNT_PICKER_LIMIT = 10;
 
 /** Every cached consent overview. */
 export const CONSENTS_QUERY_KEY = ['consents'] as const;
@@ -66,22 +64,26 @@ export function revokeConsent(
 }
 
 /**
- * Up to 10 accounts matching `q` (the login picker; any role, archived ones
- * listed and disabled). Every family.manage holder also holds user.view.
+ * Every account, or the matches for `q` (the login picker, #548; any role,
+ * archived ones listed and disabled; blank `q` is never sent). Every
+ * family.manage holder also holds user.view.
  */
 export async function searchLoginAccounts(
-  q: string,
+  q: string | null,
   signal: AbortSignal,
-): Promise<LoginAccountOption[]> {
+): Promise<OptionsPage<LoginAccountOption>> {
+  const text = q?.trim() ?? '';
   const page = await apiCall(
     () =>
       api.GET('/api/v1/users', {
-        params: { query: { q, limit: ACCOUNT_PICKER_LIMIT } },
+        params: {
+          query: { ...(text ? { q: text } : {}), limit: COMBOBOX_PAGE_SIZE },
+        },
         signal,
       }),
     { signal },
   );
-  return page.items;
+  return { items: page.items, total: page.total };
 }
 
 /** Link a login account to the student, or unlink it (`user_id: null`). */

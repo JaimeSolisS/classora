@@ -31,8 +31,9 @@ policy, D9). Read-only: no lock, no audit event.
 
 **Tutor options** (:func:`list_tutor_options`): the users holding the
 ``tutor`` role, matching ``q`` like the #31 user search and in its order,
-inactive ones included (past sessions keep their tutor). No contact data.
-Three statements (``identity.service.list_role_members``).
+inactive ones included (past sessions keep their tutor), with the
+``total`` of matches (#548). No contact data. Three statements
+(``identity.service.list_role_members``).
 """
 
 import uuid
@@ -324,5 +325,6 @@ async def list_tutor_options(
                 id=member.id, display_name=member.display_name, state=member.state
             )
             for member in page.items
-        ]
+        ],
+        total=page.total,
     )

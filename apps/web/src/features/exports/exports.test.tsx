@@ -13,6 +13,8 @@ import {
 import {
   alerts,
   click,
+  comboboxOption,
+  comboboxOptions,
   fieldByLabel,
   openDialog,
   setFieldValue,
@@ -486,6 +488,52 @@ describe('the request (B3, E3)', () => {
         },
       },
     ]);
+  });
+
+  it('the tutor filter lists the tutors on a click and sends the chosen one (#548)', async () => {
+    const tutorUrls: URL[] = [];
+    const api = stub(OWNER, {
+      [CREATE]: created(QUEUED),
+      'GET /api/v1/schedule/tutor-options': (request) => {
+        tutorUrls.push(new URL(request.url));
+        return jsonResponse(200, {
+          items: [
+            { id: 'tutor-1', display_name: 'Ana Tutora', state: 'active' },
+            { id: 'tutor-2', display_name: 'Beto Baja', state: 'suspended' },
+          ],
+          total: 2,
+        });
+      },
+    });
+    await open('/exports?dataset=class_sessions');
+    // A column checkbox is labelled "Tutor" too: take the combobox.
+    const field = [
+      ...main().querySelectorAll<HTMLInputElement>('[role="combobox"]'),
+    ].find((input) => input.labels?.[0]?.textContent === 'Tutor')!;
+
+    expect(field).toBeDefined();
+    act(() => field.focus());
+    await click(field);
+    await settleUntil(() => comboboxOptions().length === 2);
+    // The plain name, without the "(inactive)" marker, as before.
+    expect(comboboxOptions().map((o) => o.textContent)).toEqual([
+      'Ana Tutora',
+      'Beto Baja',
+    ]);
+    expect(Object.fromEntries(tutorUrls[0]!.searchParams)).toEqual({
+      limit: '50',
+    });
+    await click(comboboxOption('Ana Tutora')!);
+    expect(main().textContent).toContain('Tutor: Ana Tutora');
+    await submit();
+
+    const bodies = api.calls(CREATE).map((call) => call.body) as {
+      dataset: string;
+      filters: Record<string, unknown>;
+    }[];
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]!.dataset).toBe('class_sessions');
+    expect(bodies[0]!.filters.tutor_user_id).toBe('tutor-1');
   });
 
   it('sends the expense statuses in catalogue order and the student filters', async () => {

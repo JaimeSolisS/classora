@@ -70122,14 +70122,19 @@
             },
             "type": "array",
             "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
           }
         },
         "type": "object",
         "required": [
-          "items"
+          "items",
+          "total"
         ],
         "title": "TutorOptions",
-        "description": "The matching tutors, in the user list order."
+        "description": "The matching tutors, in the user list order. ``total`` counts every\ntutor-role user matching ``q`` (all of them without ``q``), whatever the\n``limit``."
       },
       "TutorPerformance": {
         "properties": {
