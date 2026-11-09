@@ -710,7 +710,9 @@ breakpoints are used: `sm` 640px, `md` 768px, `lg` 1024px, `xl` 1280px.
   focus. The choice is kept per browser in `localStorage`
   (`classora.sidebar`: `expanded` | `collapsed`; blocked or invalid storage
   means expanded), not in the account; sign-out keeps it. Width changes
-  animate with `motion-reduce:transition-none`.
+  animate with `motion-reduce:transition-none`. The top bar and `<main>`
+  margins animate at `lg` and up only (`lg:transition-[margin]`), so a
+  resize below `lg` drops the offset at once and never overflows (#576).
 - **Below `lg`:** the navigation and the top-bar utilities are a modal
   drawer from the left behind "Menu", always with labels. Opening it moves
   focus to its first link and makes `<main>` `inert`; Escape or a click on

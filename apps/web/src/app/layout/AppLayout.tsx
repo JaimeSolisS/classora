@@ -241,7 +241,7 @@ export function AppLayout({ navItems = NAV_ITEMS }: AppLayoutProps) {
         </a>
         <header
           className={cn(
-            'min-w-0 border-b border-border transition-[margin] duration-200 motion-reduce:transition-none',
+            'min-w-0 border-b border-border lg:transition-[margin] lg:duration-200 lg:motion-reduce:transition-none',
             hasNav && (collapsed ? 'lg:ml-16' : 'lg:ml-60'),
           )}
         >
@@ -370,7 +370,7 @@ export function AppLayout({ navItems = NAV_ITEMS }: AppLayoutProps) {
           tabIndex={-1}
           inert={navOpen}
           className={cn(
-            'min-w-0 flex-1 p-4 outline-none transition-[margin] duration-200 motion-reduce:transition-none',
+            'min-w-0 flex-1 p-4 outline-none lg:transition-[margin] lg:duration-200 lg:motion-reduce:transition-none',
             hasNav && (collapsed ? 'lg:ml-16' : 'lg:ml-60'),
           )}
         >
