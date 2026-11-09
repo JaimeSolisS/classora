@@ -1,3 +1,4 @@
+import type { OptionsPage } from '@/components/ui/combobox';
 import type { TargetOption } from '../targets';
 import type { Discount, DiscountDetail, DiscountPage } from './api';
 
@@ -150,8 +151,8 @@ export const SIBLING_DETAIL: DiscountDetail = { ...SIBLING, assignments: [] };
 /** The picker's search for the stories. */
 export function searchFixtureTargets(
   kind: TargetOption['kind'],
-): Promise<TargetOption[]> {
-  return Promise.resolve(
-    kind === 'student' ? [STUDENT_ANA, STUDENT_LUIS] : [FAMILY_LOPEZ],
-  );
+): Promise<OptionsPage<TargetOption>> {
+  const items =
+    kind === 'student' ? [STUDENT_ANA, STUDENT_LUIS] : [FAMILY_LOPEZ];
+  return Promise.resolve({ items, total: items.length });
 }

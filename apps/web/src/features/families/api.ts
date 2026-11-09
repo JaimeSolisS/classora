@@ -1,6 +1,7 @@
 import type { components } from '@classora/api-client';
 import { api, apiCall } from '@/app/api';
-import { PICKER_LIMIT } from '@/features/guardians/api';
+import type { OptionsPage } from '@/components/ui/combobox';
+import { fetchStudentOptions } from '@/features/students/api';
 
 // The family grouping calls (#172). The list and the detail are queries;
 // create, update, add and remove are direct calls. A change replaces the
@@ -78,20 +79,12 @@ export function fetchFamily(
   );
 }
 
-/** Up to 10 students matching `q` (any status: inactive students may join). */
-export async function searchStudents(
-  q: string,
+/** The combobox's students (#545), any status: inactive students may join. */
+export function searchStudents(
+  q: string | null,
   signal: AbortSignal,
-): Promise<StudentOption[]> {
-  const page = await apiCall(
-    () =>
-      api.GET('/api/v1/students', {
-        params: { query: { q, status: 'all', limit: PICKER_LIMIT } },
-        signal,
-      }),
-    { signal },
-  );
-  return page.items;
+): Promise<OptionsPage<StudentOption>> {
+  return fetchStudentOptions({ q, status: 'all', signal });
 }
 
 export function createFamily(body: FamilyCreate): Promise<FamilyDetail> {

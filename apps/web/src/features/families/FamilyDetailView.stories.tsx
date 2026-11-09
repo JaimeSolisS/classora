@@ -23,9 +23,14 @@ const meta = {
     onReload: fn(() => Promise.resolve()),
     onAdd: fn(() => Promise.resolve()),
     onRemove: fn(() => Promise.resolve()),
-    searchStudentOptions: fn(() => Promise.resolve(STUDENT_OPTIONS)),
+    searchStudentOptions: fn(() =>
+      Promise.resolve({
+        items: STUDENT_OPTIONS,
+        total: STUDENT_OPTIONS.length,
+      }),
+    ),
     searchGuardianOptions: fn(() =>
-      Promise.resolve(GUARDIAN_ITEMS.slice(0, 2)),
+      Promise.resolve({ items: GUARDIAN_ITEMS.slice(0, 2), total: 2 }),
     ),
   },
   render: (args) => (
@@ -96,14 +101,15 @@ export const AddStudentConflict: Story = {
     );
     const dialog = within(await screen.findByRole('dialog'));
     await userEvent.type(
-      dialog.getByRole('searchbox', {
+      dialog.getByRole('combobox', {
         name: i18n.t('families.students.student'),
       }),
       'mateo',
     );
     await waitFor(() => expect(args.searchStudentOptions).toHaveBeenCalled());
+    // The options sit in the portalled list (#545), outside the dialog.
     await userEvent.click(
-      await dialog.findByRole('radio', { name: 'Ríos Luna, Mateo' }),
+      await screen.findByRole('option', { name: 'Ríos Luna, Mateo' }),
     );
     await userEvent.click(
       dialog.getByRole('button', { name: i18n.t('families.addAction') }),

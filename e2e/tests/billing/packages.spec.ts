@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
+import { pickOption } from '../support/combobox';
 import { addToFamilyViaApi, createFamilyViaApi } from '../support/families';
 import { createStudentViaApi } from '../support/students';
 
@@ -83,10 +84,7 @@ test('selling a session package', async ({ page }, testInfo) => {
     .first()
     .click();
   dialog = page.getByRole('dialog', { name: packages.sell.title });
-  await dialog
-    .getByLabel(packages.fields.student, { exact: true })
-    .fill(studentName);
-  await dialog.getByRole('radio', { name: studentName, exact: true }).check();
+  await pickOption(dialog, packages.fields.student, studentName, studentName);
   await dialog
     .getByLabel(packages.fields.product, { exact: true })
     .selectOption(productId);

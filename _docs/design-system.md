@@ -322,6 +322,53 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   option; a polite status announces the result count. Disabled options
   (an archived account) stay listed. Used by the guardian form's account
   picker and the student's "Link guardian" dialog; no combobox dependency.
+  Since #545 it remains only for the HF-03b sites (the tutor pickers, the
+  account pickers, the "Link guardian" picker and the packages family
+  filter); HF-03b moves them to `Combobox` and deletes it.
+- **`Combobox`** (`components/ui/combobox.tsx`, #545): the type-ahead
+  picker, the WAI-ARIA APG "combobox with list autocomplete" over `Input`
+  and the pinned `radix-ui` Popover (no new dependency). Generic
+  (`Combobox<T>`), with the loader contract `load(q | null, signal) →
+  { items, total }`, `optionId`, `optionLabel` and optional
+  `optionSearchText` (what local filtering matches; defaults to the label),
+  `optionDisabled` and `optionNote`; the caller holds `selected`
+  (`{ id, label }`), so a deep link or a reset shows in the field.
+  - **Pattern:** the input has `role="combobox"`, `aria-autocomplete="list"`,
+    `aria-expanded`, `aria-controls` (while open) and
+    `aria-activedescendant`; the popup is a `listbox` named by the field's
+    label; options carry `aria-selected` and `aria-disabled`. DOM focus never
+    leaves the input. A visible `<label>`, help and errors through
+    `aria-describedby`, `aria-invalid` on an error, `autocomplete="off"`,
+    100 characters at most.
+  - **Opening:** a click or tap, typing, ArrowDown / Alt+ArrowDown, or the
+    chevron button (out of the tab order, "Show options"). Never on Tab or
+    `autoFocus` focus; the first page is requested on first focus, so the
+    list shows without a wait.
+  - **Keyboard:** ArrowDown/ArrowUp move (wrapping, skipping disabled
+    options, scrolled into view); Enter chooses and never submits the form;
+    Escape closes, a second Escape restores the chosen label; Tab closes
+    without choosing. Leaving the field restores the chosen label.
+  - **Filtering:** when the first page (100, the API's maximum) holds every
+    option, each keystroke filters locally, ignoring case and accents, every
+    term in any order (`src/lib/search.ts`, the API's term rule). Otherwise
+    the text goes to the server as `q` after 300 ms (never a blank `q`);
+    the loaded options stay filtered locally and busy until it answers, and
+    an older answer never replaces a newer one.
+  - **States:** loading (`aria-busy`), the caller's empty text, "No matches
+    for …", "Showing N of M. Keep typing to narrow the list." and a result
+    count, announced by one polite status; a failed load shows "Couldn't
+    load the options." and "Try again" under the field, outside the popup.
+  - **Modes and layout:** `single` shows the choice in the field; `add`
+    reports each choice, clears the field and keeps the list open (chips
+    next to it, disabled once picked). The popup is portalled, as wide as
+    the field, at most `min(16rem, 50vh)` tall with its own scroll, so a
+    dialog's scroll area never clips it (its wheel and touch scroll are kept
+    from the dialog's scroll lock); options are at least 36 px tall and wrap.
+  - **Used by** every student picker (#545): scheduling a class or series,
+    enrolling in a group or cohort, a new group's students, the calendar and
+    export student filters, custom price and discount targets (students and
+    families), tuition plans (dialog and filter), packages (sell dialog and
+    student filter) and the family page's "Add student" / "Add guardian".
 - **`AccountBadge`** (`features/guardians`, #34): "Has account" / "No
   account" as a text badge.
 - **`TutorsTable` / `TutorDetailView` / `TutorForm`** (`features/tutors`,

@@ -1,7 +1,6 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionUserBody } from '@/features/auth/session';
-import { PICKER_DEBOUNCE_MS } from '@/features/guardians/SearchPicker';
 import { conflictsByDate } from '@/features/scheduling/session/rules';
 import {
   EMPTY_RECURRENCE,
@@ -18,6 +17,8 @@ import {
 } from '@/test/api-stub';
 import {
   click,
+  comboboxOption,
+  comboboxOptions,
   fieldByLabel,
   openDialog,
   pressEscape,
@@ -255,14 +256,12 @@ function choose(root: ParentNode, label: string, value: string) {
   });
 }
 
+/** Types into the student combobox (#545) and waits for its options. */
 async function search(root: ParentNode, label: string, text: string) {
-  typeInto(fieldByLabel(root, label), text);
-  await act(async () => {
-    await new Promise((resolve) =>
-      setTimeout(resolve, PICKER_DEBOUNCE_MS + 30),
-    );
-  });
-  await settle();
+  const field = fieldByLabel(root, label);
+  act(() => field.focus());
+  typeInto(field, text);
+  await settleUntil(() => comboboxOptions().length > 0);
 }
 
 const navLabels = () =>
@@ -835,16 +834,9 @@ describe('the dialogs (D)', () => {
     await click(trigger);
     const dialog = openDialog()!;
     await search(dialog, 'Student', 'a');
-    const ana = dialog.querySelector<HTMLInputElement>(
-      `input[value="${ACTIVE_ANA.student.id}"]`,
-    )!;
-    expect(ana.disabled).toBe(true);
-    expect(dialog.textContent).toContain('Ana López (already enrolled)');
-    await click(
-      dialog.querySelector<HTMLInputElement>(
-        `input[value="${STUDENT_CARLA.id}"]`,
-      )!,
-    );
+    const ana = comboboxOption('Ana López (already enrolled)')!;
+    expect(ana.getAttribute('aria-disabled')).toBe('true');
+    await click(comboboxOption('Carla Méndez')!);
     await click(buttonNamed(dialog, 'Enroll'));
     const panel = dialog.querySelector('[role="alert"]')!;
     expect(panel.querySelector('h3')?.textContent).toBe('Whole group');
@@ -883,11 +875,7 @@ describe('the dialogs (D)', () => {
     await click(buttonNamed(main(), 'Enroll student'));
     const dialog = openDialog()!;
     await search(dialog, 'Student', 'c');
-    await click(
-      dialog.querySelector<HTMLInputElement>(
-        `input[value="${STUDENT_CARLA.id}"]`,
-      )!,
-    );
+    await click(comboboxOption('Carla Méndez')!);
     await click(buttonNamed(dialog, 'Enroll'));
     const panel = dialog.querySelector('[role="alert"]')!;
     expect([...panel.querySelectorAll('h3')].map((h) => h.textContent)).toEqual(
@@ -906,11 +894,7 @@ describe('the dialogs (D)', () => {
     await click(buttonNamed(main(), 'Enroll student'));
     const dialog = openDialog()!;
     await search(dialog, 'Student', 'c');
-    await click(
-      dialog.querySelector<HTMLInputElement>(
-        `input[value="${STUDENT_CARLA.id}"]`,
-      )!,
-    );
+    await click(comboboxOption('Carla Méndez')!);
     await click(buttonNamed(dialog, 'Enroll'));
     expect(dialog.textContent).toContain('This student is already enrolled.');
   });
@@ -979,11 +963,7 @@ describe('the dialogs (D)', () => {
     app = await open(`/groups/${GROUP_ID}`);
     const dialog = await openEnrollFromKeyboard();
     await search(dialog, 'Student', 'c');
-    await click(
-      dialog.querySelector<HTMLInputElement>(
-        `input[value="${STUDENT_CARLA.id}"]`,
-      )!,
-    );
+    await click(comboboxOption('Carla Méndez')!);
     await click(buttonNamed(dialog, 'Enroll'));
     expect(openDialog()).toBeNull();
     expect(document.activeElement).toBe(buttonNamed(main(), 'Enroll student'));
@@ -1077,16 +1057,8 @@ describe('/groups/new (E)', () => {
     typeInto(fieldByLabel(main(), 'Start'), '10:00');
     typeInto(fieldByLabel(main(), 'End'), '11:00');
     await search(main(), 'Add a student', 'a');
-    await click(
-      main().querySelector<HTMLInputElement>(
-        `input[value="${ACTIVE_ANA.student.id}"]`,
-      )!,
-    );
-    await click(
-      main().querySelector<HTMLInputElement>(
-        `input[value="${STUDENT_CARLA.id}"]`,
-      )!,
-    );
+    await click(comboboxOption('Ana López')!);
+    await click(comboboxOption('Carla Méndez')!);
   }
 
   it('creates with an override of the accepted soft codes, then opens the group', async () => {

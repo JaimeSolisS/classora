@@ -3,6 +3,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { api, csrfTokenOf } from '../support/api';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common, fill } from '../support/catalog';
+import { pickOption } from '../support/combobox';
 import { createStudentViaApi } from '../support/students';
 import { createSubjectViaApi } from '../support/tutors';
 
@@ -201,10 +202,7 @@ async function pick(
   query: string,
   name: string,
 ) {
-  await scope.getByLabel(label, { exact: true }).fill(query);
-  const option = scope.getByRole('radio', { name, exact: true });
-  await expect(option).toBeVisible();
-  await option.check();
+  await pickOption(scope, label, query, name);
 }
 
 async function expectNoAxeViolations(page: Page) {

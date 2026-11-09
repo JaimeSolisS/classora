@@ -15,9 +15,10 @@ const LOADERS: ExportFormLoaders = {
   searchTutors: () =>
     Promise.resolve([{ id: 'tutor-1', name: 'Ana Tutora', inactive: false }]),
   searchStudents: () =>
-    Promise.resolve([
-      { id: 'student-1', name: 'Luis Alumno', inactive: false },
-    ]),
+    Promise.resolve({
+      items: [{ id: 'student-1', name: 'Luis Alumno', inactive: false }],
+      total: 1,
+    }),
   fetchRooms: () =>
     Promise.resolve([{ id: 'room-1', name: 'Aula 1', inactive: false }]),
   fetchLevels: () =>

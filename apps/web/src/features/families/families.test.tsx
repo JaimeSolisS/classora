@@ -7,7 +7,6 @@ import {
   LIST_ITEMS as GUARDIAN_ITEMS,
 } from '@/features/guardians/fixtures';
 import { guardianPage } from '@/features/guardians/fixtures';
-import { PICKER_DEBOUNCE_MS } from '@/features/guardians/SearchPicker';
 import { JOSE, JOSE_LIMITED } from '@/features/students/fixtures';
 import {
   meAs,
@@ -18,7 +17,7 @@ import {
   type ApiStub,
   type Responder,
 } from '@/test/api-stub';
-import { click, fieldByLabel, typeInto } from '@/test/dom';
+import { click, fieldByLabel, pickOption, typeInto } from '@/test/dom';
 import {
   buttonNamed,
   jsonResponse,
@@ -130,26 +129,6 @@ function searches(api: ApiStub, path: string): string[] {
     .map(([request]) => new URL(request.url))
     .filter((url) => url.pathname === path)
     .map((url) => url.search);
-}
-
-async function afterDebounce() {
-  await act(async () => {
-    await new Promise((resolve) =>
-      setTimeout(resolve, PICKER_DEBOUNCE_MS + 30),
-    );
-  });
-  await settle();
-}
-
-function radioLabelled(root: ParentNode, text: string): HTMLInputElement {
-  const label = [...root.querySelectorAll('label')].find((l) =>
-    l.textContent?.includes(text),
-  );
-  const radio = label?.querySelector('input[type="radio"]');
-  if (!(radio instanceof HTMLInputElement)) {
-    throw new Error(`No option "${text}"`);
-  }
-  return radio;
 }
 
 function selectByLabel(root: ParentNode, label: string): HTMLSelectElement {
@@ -423,12 +402,11 @@ describe('the detail (H3)', () => {
     const before = api.calls(detailRoute(OTRA)).length;
 
     await click(buttonNamed(section('Students')!, 'Add student'));
-    typeInto(field('Student', dialog()!), 'mateo');
-    await afterDebounce();
+    await pickOption(dialog()!, 'Student', 'mateo', 'Ríos Luna, Mateo');
+    // The combobox loads the first page once and filters it locally (#545).
     expect(searches(api, '/api/v1/students')).toEqual([
-      '?q=mateo&status=all&limit=10',
+      '?status=all&limit=100',
     ]);
-    await click(radioLabelled(dialog()!, 'Ríos Luna, Mateo'));
     await click(buttonNamed(dialog()!, 'Add'));
 
     expect(dialog()!.textContent).toContain(
@@ -452,12 +430,10 @@ describe('the detail (H3)', () => {
     app = await renderApp(`/families/${OTRA.id}`);
 
     await click(buttonNamed(section('Guardians')!, 'Add guardian'));
-    typeInto(field('Guardian', dialog()!), 'ramon');
-    await afterDebounce();
+    await pickOption(dialog()!, 'Guardian', 'ramon', 'Pérez Solís, Ramón');
     expect(searches(api, '/api/v1/guardians')).toEqual([
-      '?q=ramon&status=active&limit=10',
+      '?status=active&limit=100',
     ]);
-    await click(radioLabelled(dialog()!, 'Pérez Solís, Ramón'));
     await click(buttonNamed(dialog()!, 'Add'));
 
     expect(
@@ -483,9 +459,7 @@ describe('the detail (H3)', () => {
       [],
     );
 
-    typeInto(field('Student', dialog()!), 'mateo');
-    await afterDebounce();
-    await click(radioLabelled(dialog()!, 'Ríos Luna, Mateo'));
+    await pickOption(dialog()!, 'Student', 'mateo', 'Ríos Luna, Mateo');
     await click(buttonNamed(dialog()!, 'Add'));
 
     expect(dialog()!.textContent).toContain(

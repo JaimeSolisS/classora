@@ -5,6 +5,7 @@ import { ApiError } from '@/app/api';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
+import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import type { FilterOption } from '@/features/calendar/api';
 import { SearchPicker } from '@/features/guardians/SearchPicker';
@@ -378,34 +379,49 @@ export function ExportForm({
     );
   }
 
-  /** A person filter: the search picker, then the choice and "Remove". */
-  function personFilter(
-    field: 'tutor' | 'student',
-    search: (q: string, signal: AbortSignal) => Promise<FilterOption[]>,
-  ) {
+  /**
+   * A person filter: the picker (a combobox for students, #545; the tutor
+   * search picker until HF-03b), then the choice and "Remove".
+   */
+  function personFilter(field: 'tutor' | 'student') {
     const chosen = values.sessions[field];
     const label = t(`exports.form.${field}`);
     const optionLabel = (option: FilterOption) => option.name;
+    const onSelect = (option: FilterOption) =>
+      update({
+        sessions: {
+          ...values.sessions,
+          [field]: { id: option.id, name: optionLabel(option) },
+        },
+      });
     return (
       <div className="flex min-w-0 flex-col gap-2">
-        <SearchPicker<FilterOption>
-          label={label}
-          queryKey={[...EXPORTS_QUERY_KEY, `${field}s`]}
-          search={search}
-          optionId={(option) => option.id}
-          optionLabel={optionLabel}
-          selectedId={chosen?.id ?? null}
-          onSelect={(option) =>
-            update({
-              sessions: {
-                ...values.sessions,
-                [field]: { id: option.id, name: optionLabel(option) },
-              },
-            })
-          }
-          inputClassName="min-h-11 md:min-h-9"
-          optionClassName="min-h-11 md:min-h-8"
-        />
+        {field === 'student' ? (
+          <Combobox<FilterOption>
+            label={label}
+            queryKey={[...EXPORTS_QUERY_KEY, 'students']}
+            load={loaders.searchStudents}
+            optionId={(option) => option.id}
+            optionLabel={optionLabel}
+            emptyText={t('combobox.emptyStudents')}
+            selected={chosen ? { id: chosen.id, label: chosen.name } : null}
+            onSelect={onSelect}
+            inputClassName="min-h-11 md:min-h-9"
+            optionClassName="min-h-11 md:min-h-9"
+          />
+        ) : (
+          <SearchPicker<FilterOption>
+            label={label}
+            queryKey={[...EXPORTS_QUERY_KEY, 'tutors']}
+            search={loaders.searchTutors}
+            optionId={(option) => option.id}
+            optionLabel={optionLabel}
+            selectedId={chosen?.id ?? null}
+            onSelect={onSelect}
+            inputClassName="min-h-11 md:min-h-9"
+            optionClassName="min-h-11 md:min-h-8"
+          />
+        )}
         {chosen ? (
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span>
@@ -439,8 +455,8 @@ export function ExportForm({
           {dateField('to', s.to, (to) => set({ to }), true)}
         </div>
         <div className="grid gap-4 md:grid-cols-2">
-          {personFilter('tutor', loaders.searchTutors)}
-          {personFilter('student', loaders.searchStudents)}
+          {personFilter('tutor')}
+          {personFilter('student')}
         </div>
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 md:items-end">
           <div className="flex flex-col gap-2">

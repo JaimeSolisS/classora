@@ -1,5 +1,5 @@
 import { act } from 'react';
-import { settle } from './render-app';
+import { settle, settleUntil } from './render-app';
 
 // DOM helpers for component tests in jsdom (no Testing Library, #28).
 
@@ -102,4 +102,31 @@ export function labelled<
     throw new Error(`No field labelled "${text}"`);
   }
   return field as T;
+}
+
+/** The options of the open combobox list (portalled to <body>, #545). */
+export function comboboxOptions(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+}
+
+/** The open combobox option whose text is `name`, or undefined. */
+export function comboboxOption(name: string): HTMLElement | undefined {
+  return comboboxOptions().find((option) => option.textContent === name);
+}
+
+/**
+ * Picks from the combobox labelled `label` (#545): focuses it, types
+ * `query`, waits for the option whose text is `name` and clicks it.
+ */
+export async function pickOption(
+  root: ParentNode,
+  label: string,
+  query: string,
+  name: string,
+): Promise<void> {
+  const field = fieldByLabel(root, label);
+  act(() => field.focus());
+  typeInto(field, query);
+  await settleUntil(() => comboboxOption(name));
+  await click(comboboxOption(name)!);
 }

@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Button } from '@/components/ui/button';
+import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import {
   Table,
   TableBody,
@@ -13,7 +14,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Pagination } from '@/features/catalog/Pagination';
-import { SearchPicker } from '@/features/guardians/SearchPicker';
 import { LINK_BUTTON_CLASS } from '@/features/students/styles';
 import { BillingTabs } from '../BillingTabs';
 import {
@@ -56,7 +56,10 @@ export interface TuitionPlansViewProps {
   /** The last change, announced politely. */
   announcement?: string;
   /** Stories: the picker's search instead of the API. */
-  search?: (q: string, signal: AbortSignal) => Promise<StudentOption[]>;
+  search?: (
+    q: string | null,
+    signal: AbortSignal,
+  ) => Promise<OptionsPage<StudentOption>>;
 }
 
 export function TuitionPlansView({
@@ -236,14 +239,15 @@ export function TuitionPlansView({
             </Button>
           </div>
         ) : (
-          <SearchPicker<StudentOption>
+          <Combobox<StudentOption>
             label={t('billing.tuition.filters.searchStudent')}
             help={t('billing.tuition.filters.searchHelp')}
             queryKey={[...TUITION_OPTIONS_KEY, 'filter-students']}
-            search={search}
+            load={search}
             optionId={(option) => option.id}
             optionLabel={(option) => option.name}
-            selectedId={null}
+            emptyText={t('combobox.emptyStudents')}
+            selected={null}
             onSelect={(student) => onStudent(student)}
           />
         )}

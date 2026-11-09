@@ -7,12 +7,13 @@ import { useDocumentTitle } from '@/app/useDocumentTitle';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Button } from '@/components/ui/button';
+import type { OptionsPage } from '@/components/ui/combobox';
 import { useCan } from '@/features/auth/useSession';
 import { ConfirmDialog } from '@/features/guardians/ConfirmDialog';
 import { AccountBadge } from '@/features/guardians/GuardianBadges';
 import {
+  fetchGuardianOptions,
   GUARDIANS_QUERY_KEY,
-  searchActiveGuardians,
   type GuardianListItem,
 } from '@/features/guardians/api';
 import { fullName } from '@/features/guardians/rules';
@@ -148,15 +149,15 @@ interface FamilyDetailViewProps {
   onAdd: (kind: MemberKind, memberId: string) => Promise<void>;
   /** Removes a member; rejects with the error to show. */
   onRemove: (kind: MemberKind, memberId: string) => Promise<void>;
-  /** The pickers' searches (stories pass stubs). */
+  /** The pickers' options (#545; stories pass stubs). */
   searchStudentOptions?: (
-    q: string,
+    q: string | null,
     signal: AbortSignal,
-  ) => Promise<StudentOption[]>;
+  ) => Promise<OptionsPage<StudentOption>>;
   searchGuardianOptions?: (
-    q: string,
+    q: string | null,
     signal: AbortSignal,
-  ) => Promise<GuardianListItem[]>;
+  ) => Promise<OptionsPage<GuardianListItem>>;
 }
 
 interface Removing {
@@ -176,7 +177,7 @@ export function FamilyDetailView({
   onAdd,
   onRemove,
   searchStudentOptions = searchStudents,
-  searchGuardianOptions = searchActiveGuardians,
+  searchGuardianOptions = fetchGuardianOptions,
 }: FamilyDetailViewProps) {
   const { t } = useTranslation();
   const id = useId();

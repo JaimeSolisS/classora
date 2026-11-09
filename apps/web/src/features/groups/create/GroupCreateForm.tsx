@@ -5,9 +5,9 @@ import { ApiError } from '@/app/api';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
+import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { FieldError } from '@/features/auth/FieldError';
-import { SearchPicker } from '@/features/guardians/SearchPicker';
 import {
   conflictsOf,
   type Option,
@@ -69,7 +69,10 @@ export interface GroupCreateFormProps {
   subjects: readonly SubjectOption[];
   tutors: readonly Option[];
   classrooms: readonly ClassroomCapacityOption[];
-  searchStudents: (q: string, signal: AbortSignal) => Promise<Option[]>;
+  searchStudents: (
+    q: string | null,
+    signal: AbortSignal,
+  ) => Promise<OptionsPage<Option>>;
   timeZone: string;
   canOverride: boolean;
   onSubmit: (
@@ -481,19 +484,22 @@ export function GroupCreateForm({
             {t('groups.create.students')}
           </legend>
           <div id={`${fieldId('students')}-picker`}>
-            <SearchPicker<Option>
+            <Combobox<Option>
+              mode="add"
               label={t('groups.create.addStudent')}
               help={t('groups.create.studentsHelp')}
               queryKey={['groups', 'create', 'students']}
-              search={searchStudents}
+              load={searchStudents}
               optionId={(student) => student.id}
               optionLabel={(student) =>
                 pickedIds.has(student.id)
                   ? t('groups.create.alreadyAdded', { name: student.name })
                   : student.name
               }
+              optionSearchText={(student) => student.name}
               optionDisabled={(student) => pickedIds.has(student.id)}
-              selectedId={null}
+              emptyText={t('combobox.emptyStudents')}
+              selected={null}
               onSelect={addStudent}
             />
           </div>

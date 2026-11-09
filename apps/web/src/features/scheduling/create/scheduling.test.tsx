@@ -1,7 +1,6 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionUserBody } from '@/features/auth/session';
-import { PICKER_DEBOUNCE_MS } from '@/features/guardians/SearchPicker';
 import { applyLanguage } from '@/i18n';
 import {
   meAs,
@@ -11,7 +10,13 @@ import {
   type ApiStub,
   type Responder,
 } from '@/test/api-stub';
-import { click, fieldByLabel, openDialog, typeInto } from '@/test/dom';
+import {
+  click,
+  fieldByLabel,
+  openDialog,
+  pickOption,
+  typeInto,
+} from '@/test/dom';
 import {
   buttonNamed,
   jsonResponse,
@@ -182,17 +187,7 @@ function choose(label: string, value: string) {
 }
 
 async function pickStudent() {
-  typeInto(fieldByLabel(main(), 'Student'), 'Ana');
-  await act(async () => {
-    await new Promise((resolve) =>
-      setTimeout(resolve, PICKER_DEBOUNCE_MS + 30),
-    );
-  });
-  await settle();
-  const radio = main().querySelector<HTMLInputElement>(
-    `input[type="radio"][value="${ANA.id}"]`,
-  )!;
-  await click(radio);
+  await pickOption(main(), 'Student', 'Ana', 'Ana López');
 }
 
 async function fillForm() {
@@ -804,18 +799,7 @@ describe('workload warnings (#50 C2)', () => {
       [CREATE]: () => jsonResponse(201, CREATED_WITH_WARNINGS),
     });
     app = await renderApp('/schedule/new');
-    typeInto(fieldByLabel(main(), 'Estudiante'), 'Ana');
-    await act(async () => {
-      await new Promise((resolve) =>
-        setTimeout(resolve, PICKER_DEBOUNCE_MS + 30),
-      );
-    });
-    await settle();
-    await click(
-      main().querySelector<HTMLInputElement>(
-        `input[type="radio"][value="${ANA.id}"]`,
-      )!,
-    );
+    await pickOption(main(), 'Estudiante', 'Ana', 'Ana López');
     choose('Materia', SUBJECTS[0]!.id);
     typeInto(fieldByLabel(main(), 'Fecha'), '2031-01-06');
     typeInto(fieldByLabel(main(), 'Inicio'), '10:00');

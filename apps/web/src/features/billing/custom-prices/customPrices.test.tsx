@@ -1,3 +1,4 @@
+import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionUserBody } from '@/features/auth/session';
 import { problemWith } from '@/features/academics/testing';
@@ -11,7 +12,15 @@ import {
   type ApiStub,
   type Responder,
 } from '@/test/api-stub';
-import { alerts, click, labelled, openDialog, setFieldValue } from '@/test/dom';
+import {
+  alerts,
+  click,
+  comboboxOption,
+  comboboxOptions,
+  labelled,
+  openDialog,
+  setFieldValue,
+} from '@/test/dom';
 import {
   buttonNamed,
   jsonResponse,
@@ -140,8 +149,20 @@ async function renderAt(path: string) {
   await settleUntil(() => main().querySelector('h1'));
 }
 
+/**
+ * Types into a picker: the student/target combobox (#545) loads its first
+ * page on focus and filters it; a SearchPicker (the family filter) waits
+ * for its debounced radios.
+ */
 async function search(root: ParentNode, label: string, q: string) {
-  setFieldValue(input(root, label), q);
+  const field = input(root, label);
+  if (field.getAttribute('role') === 'combobox') {
+    act(() => field.focus());
+    setFieldValue(field, q);
+    await settleUntil(() => comboboxOptions().length > 0);
+    return;
+  }
+  setFieldValue(field, q);
   await new Promise((resolve) => setTimeout(resolve, PICKER_DEBOUNCE_MS + 30));
   await settleUntil(() =>
     [...root.querySelectorAll('fieldset input[type="radio"]')].some(
@@ -267,7 +288,7 @@ describe('the list (E2, E3, E6)', () => {
     await renderAt('/billing/custom-prices');
 
     await search(main(), 'Search student', 'Ana');
-    await click(choice(main(), 'Ana López'));
+    await click(comboboxOption('Ana López')!);
     await settleUntil(() => listUrls.length >= 2);
 
     expect(app!.router.state.location.search).toBe(
@@ -323,7 +344,7 @@ describe('the list (E2, E3, E6)', () => {
 describe('the add dialog (E4)', () => {
   async function fill() {
     await search(dialog(), 'Search student', 'Ana');
-    await click(choice(dialog(), 'Ana López'));
+    await click(comboboxOption('Ana López')!);
     setFieldValue(select(dialog(), 'Catalog price'), PRICE_WITH_NEXT.id);
     setFieldValue(input(dialog(), 'Custom price (MXN)'), ' 300 ');
     setFieldValue(input(dialog(), 'From'), '2026-10-21');

@@ -1,5 +1,6 @@
 import type { components } from '@classora/api-client';
 import { api, apiCall } from '@/app/api';
+import { COMBOBOX_PAGE_SIZE, type OptionsPage } from '@/components/ui/combobox';
 
 // The guardian profile and link calls (#34). The list, the detail and the
 // pickers' searches are queries; create, update, link and unlink are direct
@@ -99,6 +100,32 @@ export async function searchActiveGuardians(
     { signal },
   );
   return page.items;
+}
+
+/**
+ * The family dialog's guardian combobox (#545): the active guardians, or the
+ * matches for `q` (blank `q` is never sent).
+ */
+export async function fetchGuardianOptions(
+  q: string | null,
+  signal: AbortSignal,
+): Promise<OptionsPage<GuardianListItem>> {
+  const text = q?.trim() ?? '';
+  const page = await apiCall(
+    () =>
+      api.GET('/api/v1/guardians', {
+        params: {
+          query: {
+            ...(text ? { q: text } : {}),
+            status: 'active',
+            limit: COMBOBOX_PAGE_SIZE,
+          },
+        },
+        signal,
+      }),
+    { signal },
+  );
+  return { items: page.items, total: page.total };
 }
 
 /**

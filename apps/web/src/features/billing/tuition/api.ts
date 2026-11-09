@@ -1,7 +1,8 @@
 import type { components } from '@classora/api-client';
 import { api, apiCall } from '@/app/api';
-import { PICKER_LIMIT } from '@/features/guardians/api';
+import type { OptionsPage } from '@/components/ui/combobox';
 import { fullName } from '@/features/guardians/rules';
+import { fetchStudentOptions } from '@/features/students/api';
 import type { ServicePrice } from '../pricing/api';
 
 // The tuition plan calls (#93, #374): the list and one plan are queries;
@@ -155,23 +156,22 @@ export interface StudentOption {
   name: string;
 }
 
-/** Up to PICKER_LIMIT active students matching `q` (a plan needs one). */
+/**
+ * The student combobox's options (#545): the active students (a plan or a
+ * package needs one), or the matches for `q`.
+ */
 export async function searchStudents(
-  q: string,
+  q: string | null,
   signal: AbortSignal,
-): Promise<StudentOption[]> {
-  const page = await apiCall(
-    () =>
-      api.GET('/api/v1/students', {
-        params: { query: { q, status: 'active', limit: PICKER_LIMIT } },
-        signal,
-      }),
-    { signal },
-  );
-  return page.items.map((student) => ({
-    id: student.id,
-    name: fullName(student),
-  }));
+): Promise<OptionsPage<StudentOption>> {
+  const page = await fetchStudentOptions({ q, status: 'active', signal });
+  return {
+    items: page.items.map((student) => ({
+      id: student.id,
+      name: fullName(student),
+    })),
+    total: page.total,
+  };
 }
 
 /** A student by id, with its name (the list's deep link ?student_id=). */

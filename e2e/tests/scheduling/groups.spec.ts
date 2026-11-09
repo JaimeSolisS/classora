@@ -2,6 +2,11 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator } from '@playwright/test';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
+import {
+  comboboxField,
+  comboboxOptions,
+  pickOption,
+} from '../support/combobox';
 import { createStudentViaApi } from '../support/students';
 import { createSubjectViaApi } from '../support/tutors';
 
@@ -60,10 +65,7 @@ async function pick(
   query: string,
   name: string,
 ) {
-  await scope.getByLabel(label, { exact: true }).fill(query);
-  const option = scope.getByRole('radio', { name, exact: true });
-  await expect(option).toBeVisible();
-  await option.check();
+  await pickOption(scope, label, query, name);
 }
 
 test('an Owner creates a group, enrolls over the maximum and withdraws', async ({
@@ -130,13 +132,15 @@ test('an Owner creates a group, enrolls over the maximum and withdraws', async (
   ).toBeChecked();
   await main.getByRole('radio', { name: series.endsOptions.count }).check();
   await main.getByLabel(series.count, { exact: true }).fill('4');
-  // The initial students: each choice adds a removable chip (the radios
-  // never stay checked).
-  await main
-    .getByLabel(groups.create.addStudent, { exact: true })
-    .fill(familyNames);
+  // The initial students: each choice adds a removable chip, clears the
+  // field and keeps the list open (the combobox's add mode, #545).
+  await comboboxField(main, groups.create.addStudent).fill(familyNames);
   for (const name of [first, second]) {
-    await main.getByRole('radio', { name, exact: true }).click();
+    await comboboxOptions(main, groups.create.addStudent)
+      .getByRole('option', { name, exact: true })
+      .click();
+    await expect(comboboxField(main, groups.create.addStudent)).toHaveValue('');
+    await comboboxField(main, groups.create.addStudent).fill(familyNames);
     await expect(
       main.getByRole('button', {
         name: fill(groups.create.remove, { name }),

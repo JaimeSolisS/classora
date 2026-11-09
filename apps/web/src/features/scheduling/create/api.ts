@@ -1,5 +1,7 @@
 import type { components } from '@classora/api-client';
 import { api, apiCall, ApiError } from '@/app/api';
+import type { OptionsPage } from '@/components/ui/combobox';
+import { fetchStudentOptions } from '@/features/students/api';
 
 // The calls of "Schedule a session" (#48 F): the create, the suggested
 // times after a conflict (#50 C1), the suggested tutors (#51 G), and the options of the form (active
@@ -77,25 +79,25 @@ export function conflictsOf(error: unknown): SchedulingConflict[] | null {
   return Array.isArray(conflicts) ? conflicts : [];
 }
 
-/** Active students matching `q` (the picker shows up to 10). */
+/**
+ * The student combobox's options (#545): the active students, or the
+ * matches for `q` (S1–S3). Keeps dropping a row the API marks inactive.
+ */
 export async function searchStudents(
-  q: string,
+  q: string | null,
   signal: AbortSignal,
-): Promise<Option[]> {
-  const page = await apiCall(
-    () =>
-      api.GET('/api/v1/students', {
-        params: { query: { q, status: 'active', limit: 10 } },
-        signal,
-      }),
-    { signal },
-  );
-  return page.items
+): Promise<OptionsPage<Option>> {
+  const page = await fetchStudentOptions({ q, status: 'active', signal });
+  const items = page.items
     .filter((student) => student.is_active)
     .map((student) => ({
       id: student.id,
       name: `${student.given_names} ${student.family_names}`,
     }));
+  return {
+    items,
+    total: page.total - (page.items.length - items.length),
+  };
 }
 
 /** The active subjects (one page), by level name, then name. */

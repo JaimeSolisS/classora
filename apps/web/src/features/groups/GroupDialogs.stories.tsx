@@ -38,7 +38,7 @@ function enroll(extra: Partial<Parameters<typeof EnrollDialog>[0]>) {
         open
         groupName={GROUP.name}
         enrolledIds={new Set([ACTIVE_ANA.student.id])}
-        searchStudents={fn(() => Promise.resolve([CARLA]))}
+        searchStudents={fn(() => Promise.resolve({ items: [CARLA], total: 1 }))}
         canOverride
         onEnroll={fn(() => Promise.resolve(ENROLLED))}
         onDone={fn()}

@@ -1,6 +1,7 @@
 import { api, apiCall } from '@/app/api';
-import { PICKER_LIMIT } from '@/features/guardians/api';
+import { COMBOBOX_PAGE_SIZE, type OptionsPage } from '@/components/ui/combobox';
 import { fullName } from '@/features/guardians/rules';
+import { fetchStudentOptions } from '@/features/students/api';
 
 // The students and families a discount is assigned to or a custom price is
 // for (#367 D2, E3, E4): the picker's search (GET /students?q=, student.view;
@@ -19,40 +20,49 @@ export const TARGET_KINDS: readonly TargetKind[] = ['student', 'family'];
 
 export const TARGETS_QUERY_KEY = ['billing', 'targets'] as const;
 
-/** Up to PICKER_LIMIT students or families matching `q`, any status. */
+/**
+ * The combobox's students or families (#545): the first page, or the
+ * matches for `q`, any status (blank `q` is never sent).
+ */
 export async function searchTargets(
   kind: TargetKind,
-  q: string,
+  q: string | null,
   signal: AbortSignal,
-): Promise<TargetOption[]> {
+): Promise<OptionsPage<TargetOption>> {
   if (kind === 'student') {
-    const page = await apiCall(
-      () =>
-        api.GET('/api/v1/students', {
-          params: { query: { q, status: 'all', limit: PICKER_LIMIT } },
-          signal,
-        }),
-      { signal },
-    );
-    return page.items.map((student) => ({
-      kind,
-      id: student.id,
-      name: fullName(student),
-    }));
+    const page = await fetchStudentOptions({ q, status: 'all', signal });
+    return {
+      items: page.items.map((student) => ({
+        kind,
+        id: student.id,
+        name: fullName(student),
+      })),
+      total: page.total,
+    };
   }
+  const text = q?.trim() ?? '';
   const page = await apiCall(
     () =>
       api.GET('/api/v1/families', {
-        params: { query: { q, status: 'all', limit: PICKER_LIMIT } },
+        params: {
+          query: {
+            ...(text ? { q: text } : {}),
+            status: 'all',
+            limit: COMBOBOX_PAGE_SIZE,
+          },
+        },
         signal,
       }),
     { signal },
   );
-  return page.items.map((family) => ({
-    kind,
-    id: family.id,
-    name: family.name,
-  }));
+  return {
+    items: page.items.map((family) => ({
+      kind,
+      id: family.id,
+      name: family.name,
+    })),
+    total: page.total,
+  };
 }
 
 /** One student or family by id, with its name. */

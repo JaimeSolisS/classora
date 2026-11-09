@@ -4,6 +4,7 @@ import { ApiError } from '@/app/api';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
+import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import {
   Dialog,
   DialogContent,
@@ -12,13 +13,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { SearchPicker } from '@/features/guardians/SearchPicker';
 import { listName } from '@/features/guardians/rules';
 import { FAMILIES_QUERY_KEY, type MemberKind } from './api';
 
 // The "Add student" / "Add guardian" dialog of the family detail (#172 H3),
-// with the #34 picker pattern: a search field whose results are a native
-// radio group. `family_member_conflict` shows inside the dialog as "This
+// with the type-ahead combobox (#545). `family_member_conflict` shows inside the dialog as "This
 // student (guardian) already belongs to another family. Remove them from it
 // first."; any other error shows its own message. Focus is trapped while it
 // is open and returns to the button that opened it.
@@ -33,8 +32,8 @@ export interface MemberOption {
 interface AddMemberDialogProps<T extends MemberOption> {
   kind: MemberKind;
   open: boolean;
-  /** The search (GET /students?q= or GET /guardians?status=active&q=). */
-  search: (q: string, signal: AbortSignal) => Promise<T[]>;
+  /** The options (GET /students or GET /guardians?status=active, #545). */
+  search: (q: string | null, signal: AbortSignal) => Promise<OptionsPage<T>>;
   /** Adds the chosen member; rejects with the error to show. */
   onAdd: (memberId: string) => Promise<void>;
   onCancel: () => void;
@@ -62,6 +61,7 @@ export function AddMemberDialog<T extends MemberOption>({
           label: t('families.students.student'),
           choose: t('families.students.choose'),
           conflict: t('families.students.conflict'),
+          empty: t('combobox.emptyStudents'),
         }
       : {
           title: t('families.guardians.addTitle'),
@@ -69,6 +69,7 @@ export function AddMemberDialog<T extends MemberOption>({
           label: t('families.guardians.guardian'),
           choose: t('families.guardians.choose'),
           conflict: t('families.guardians.conflict'),
+          empty: t('combobox.emptyGuardians'),
         };
 
   function reset() {
@@ -142,13 +143,16 @@ export function AddMemberDialog<T extends MemberOption>({
                 message={conflict ? copy.conflict : undefined}
               />
             ) : null}
-            <SearchPicker<T>
+            <Combobox<T>
               label={copy.label}
               queryKey={[...FAMILIES_QUERY_KEY, 'member-options', kind]}
-              search={search}
+              load={search}
               optionId={(item) => item.id}
               optionLabel={(item) => listName(item)}
-              selectedId={chosen?.id ?? null}
+              emptyText={copy.empty}
+              selected={
+                chosen ? { id: chosen.id, label: listName(chosen) } : null
+              }
               onSelect={(item) => {
                 setChosen(item);
                 setMissing(false);

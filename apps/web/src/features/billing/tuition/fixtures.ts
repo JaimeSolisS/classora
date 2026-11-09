@@ -1,3 +1,5 @@
+import type { OptionsPage } from '@/components/ui/combobox';
+import { matchesSearch } from '@/lib/search';
 import { addDays } from '@/lib/time';
 import {
   GROUP_OPTIONS,
@@ -341,12 +343,12 @@ export const PLAN_ENDED_DETAIL: TuitionPlanDetail = {
   ),
 };
 
-/** The student search of the stories: every fixture student matching q. */
-export function searchFixtureStudents(q = ''): Promise<StudentOption[]> {
-  const text = q.toLowerCase();
-  return Promise.resolve(
-    [STUDENT_ANA, STUDENT_BRUNO].filter((student) =>
-      student.name.toLowerCase().includes(text),
-    ),
+/** The student options of the stories (#545): every fixture student. */
+export function searchFixtureStudents(
+  q: string | null = null,
+): Promise<OptionsPage<StudentOption>> {
+  const items = [STUDENT_ANA, STUDENT_BRUNO].filter((student) =>
+    matchesSearch(student.name, q ?? ''),
   );
+  return Promise.resolve({ items, total: items.length });
 }
