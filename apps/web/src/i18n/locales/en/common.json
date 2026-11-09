@@ -1,8 +1,75 @@
 {
-  "apiStatus": {
-    "checking": "API: checking…",
-    "live": "API: live",
-    "unreachable": "API: unreachable"
+  "home": {
+    "greeting": "Hello, {{name}}",
+    "today": {
+      "title": "Today"
+    },
+    "next": "Next class: {{when}}, {{subject}}",
+    "more_one": "and {{shown}} more",
+    "more_other": "and {{shown}} more",
+    "forStudent": "For {{name}}",
+    "staff": {
+      "title": "Today's classes",
+      "loading": "Loading today's classes…",
+      "empty": "No classes today.",
+      "none": "No classes in the next 7 days.",
+      "calendar": "Open calendar"
+    },
+    "tutor": {
+      "title": "My classes"
+    },
+    "family": {
+      "title": "Classes",
+      "consent": "{{name}} hasn't shared their schedule with you."
+    },
+    "personal": {
+      "loading": "Loading your classes…",
+      "empty": "No classes today.",
+      "none": "No classes in the next 14 days.",
+      "upcoming": "Upcoming classes",
+      "schedule": "Open my schedule"
+    },
+    "pending": {
+      "title": "Waiting for you",
+      "loading": "Loading pending items…",
+      "nothing": "Nothing waiting for you.",
+      "itemError": "Couldn't load: {{label}}.",
+      "approvals_one": "{{shown}} open approval",
+      "approvals_other": "{{shown}} open approvals",
+      "overdueCloseouts_one": "{{shown}} class overdue for closeout",
+      "overdueCloseouts_other": "{{shown}} classes overdue for closeout",
+      "overdueAccounts_one": "{{shown}} overdue family account",
+      "overdueAccounts_other": "{{shown}} overdue family accounts",
+      "attention_one": "{{shown}} class without a tutor or in conflict in the next 7 days",
+      "attention_other": "{{shown}} classes without a tutor or in conflict in the next 7 days",
+      "offers_one": "{{shown}} offer waiting for your answer",
+      "offers_other": "{{shown}} offers waiting for your answer",
+      "toCloseOut_one": "{{shown}} class to close out",
+      "toCloseOut_other": "{{shown}} classes to close out",
+      "toGrade_one": "{{shown}} homework submission to grade",
+      "toGrade_other": "{{shown}} homework submissions to grade",
+      "homeworkPending_one": "{{shown}} homework assignment to do",
+      "homeworkPending_other": "{{shown}} homework assignments to do",
+      "homeworkMissing_one": "{{shown}} missing homework assignment",
+      "homeworkMissing_other": "{{shown}} missing homework assignments",
+      "balanceOverdue": "Overdue balance: {{amount}}",
+      "balanceDue": "Balance due: {{amount}}",
+      "errorLabels": {
+        "approvals": "open approvals",
+        "overdueCloseouts": "overdue closeouts",
+        "overdueAccounts": "overdue accounts",
+        "attention": "classes needing attention",
+        "offers": "offers to answer",
+        "toCloseOut": "classes to close out",
+        "toGrade": "homework to grade",
+        "homework": "homework",
+        "balance": "balance"
+      }
+    },
+    "fallback": {
+      "title": "Quick links",
+      "none": "Your account doesn't have access to any section yet. Ask the center for access."
+    }
   },
   "theme": {
     "label": "Theme",

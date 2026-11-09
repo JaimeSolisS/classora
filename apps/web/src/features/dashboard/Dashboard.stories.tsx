@@ -9,6 +9,9 @@ import { useState, type ReactNode } from 'react';
 import { expect, fn, within } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import type { Session } from '@/features/auth/session';
+import { calendarQueryKey } from '@/features/calendar/api';
+import { homeKeys } from '@/features/home/api';
+import { staffWindow } from '@/features/home/rules';
 import { BALANCES_KEY } from '@/features/reporting/api';
 import { kpiKeys } from '@/features/reporting/kpis/api';
 import {
@@ -21,6 +24,7 @@ import {
   TUTORS,
 } from '@/features/reporting/kpis/fixtures';
 import { i18n } from '@/i18n';
+import { todayInZone } from '@/lib/time';
 import { StoryAuth } from '@/test/StoryAuth';
 import { StoryRouter } from '@/test/StoryRouter';
 import { LAYOUT_KEY, type DashboardLayout, type WidgetCode } from './api';
@@ -31,7 +35,8 @@ import { WIDGETS } from './widgets';
 // The staff dashboard (M8-10 D3–D5, E1): the Owner's six widgets, Finance's
 // five, a layout with every widget hidden, a layout that failed to load
 // (the role default, "Customize" disabled), and the "Customize" dialog.
-// Every query is seeded: no request. axe runs on each story in both themes.
+// Every query is seeded, the "Today" panel's too (HF-06: no class today,
+// nothing pending): no request. axe runs on each story in both themes.
 
 const RANGE = { from: '2031-03-01', to: '2031-03-31' };
 
@@ -59,7 +64,15 @@ const layoutOf = (
   customized: !visible,
 });
 
+const ZONE = 'America/Mexico_City';
+const TODAY_WINDOW = staffWindow(todayInZone(ZONE), ZONE);
+
 const KPI_DATA: ReadonlyArray<readonly [QueryKey, unknown]> = [
+  [
+    calendarQueryKey({ from: TODAY_WINDOW.from, to: TODAY_WINDOW.to }),
+    { items: [], truncated: false },
+  ],
+  [homeKeys.overdueAccounts, { count: 0, more: false }],
   [BALANCES_KEY, KPI_BALANCES],
   [kpiKeys.revenueTrend({ basis: 'accrual', ...RANGE }), TREND_ACCRUAL],
   [kpiKeys.courseProfitability(RANGE), COURSES],

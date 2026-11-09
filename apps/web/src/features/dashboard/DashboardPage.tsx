@@ -8,6 +8,7 @@ import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/features/auth/useSession';
+import { TodayPanel } from '@/features/home/TodayPanel';
 import {
   RevenueTrendSection,
   useCourseProfitability,
@@ -34,7 +35,9 @@ import {
 import type { DialogEntry } from './CustomizeDialog';
 import { defaultLayout, mayShow, widgetOf, type Widget } from './widgets';
 
-// The staff dashboard on the home page (M8-10 D3–D5, #127 E2–E4). One
+// The staff dashboard on the home page (M8-10 D3–D5, #127 E2–E4). Under
+// the header, the fixed "Today" panel (HF-06 D1: agenda and pending items,
+// not part of the layout). One
 // range control (URL `from`/`to`, default "Last 3 months", as the KPI
 // page), then the visible widgets of the caller's layout in order, each
 // the M8-09b KPI section unchanged (its own card, h2, query, loading,
@@ -54,7 +57,7 @@ function isForbidden(error: unknown): boolean {
 
 export function DashboardPage() {
   const { t } = useTranslation();
-  // The home page: the bare brand title, as `HomePage`.
+  // The home page: the bare brand title, as the role home.
   useDocumentTitle();
   const { formatLocalDate } = useFormatters();
   const queryClient = useQueryClient();
@@ -182,6 +185,7 @@ export function DashboardPage() {
           </Button>
         )}
       </div>
+      {user ? <TodayPanel user={user} /> : null}
       <RangeControl
         draft={draft}
         onDate={onDate}

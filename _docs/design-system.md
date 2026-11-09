@@ -722,6 +722,31 @@ breakpoints are used: `sm` 640px, `md` 768px, `lg` 1024px, `xl` 1280px.
 - Signed-out pages and the privacy-notice step have no navigation items, so
   no sidebar and no offset.
 
+### Home (HF-06)
+
+`/` is never empty. Staff (`DASHBOARD_ACCESS`) get the #127 dashboard with a
+fixed "Hoy / Today" panel (`features/home/TodayPanel`, an `h2`) between the
+header and the range control; it is not part of the customizable layout.
+Everyone else gets the role home (`features/home/RoleHomePage`): an `h1`
+greeting, then the same sections as `h2` cards.
+
+- **Sections**, in a fixed order and as the roles allow (the union for
+  multi-role users): the center's classes today (`schedule.view`), "My
+  classes" (tutor), the family's classes (student or guardian), then the
+  pending items. Each is a token-only card (`HomeCard`), loads, fails and
+  retries on its own (`LoadingState`, `ErrorAlert`), and lists rows as
+  `<ul>` links (44 px rows below `md`, 24 px above).
+- **Pending items** are counts as labelled links ("3 aprobaciones
+  abiertas", never a bare "3"), each read only when its access passes, hidden
+  at 0 and on a 403/404 (no alert); any other error is a compact line with
+  "Reintentar" on that item. A truncated source shows "{n}+".
+- **Fallback:** with no agenda and no pending source, "Accesos rápidos" (the
+  user's visible navigation items except Home, at most 8) or a text that
+  asks the center for access.
+- **Empty states are text** ("No tienes clases hoy.", "No hay clases en los
+  próximos 14 días.", "Nada pendiente."), never an empty card. "Today" is
+  always the center's date (`useCenterTimeZone`), never the browser's.
+
 ## Adding a component
 
 1. From `apps/web`, add it with the pinned shadcn CLI (never install the CLI as
