@@ -39,12 +39,14 @@ import {
   fetchCharge,
   fetchCharges,
   fetchChargesByIds,
+  fetchHiddenChargeCount,
   fetchLedger,
   fetchOpenCharges,
   fetchPayment,
   fetchPaymentMethods,
   fetchPayments,
   fetchSummary,
+  hiddenChargesKey,
   ledgerKey,
   openChargesKey,
   PAYMENT_METHODS_KEY,
@@ -81,6 +83,7 @@ import {
   accountView,
   accountViewParams,
   oldestFirst,
+  requestedStatuses,
   type AttemptFailure,
 } from './rules';
 import {
@@ -134,6 +137,10 @@ import {
 // the button disabled until a reload succeeds; it never claims a reload that
 // didn't happen. A failed refetch of a summary already shown is that same
 // out-of-date state, not the error page.
+// #563: the charges list hides the void (0.00) charges unless `?void=1`
+// (the server filters by status, so the pages stay exact), and a separate
+// count query (`status=void&limit=1`, its `total`) says how many are
+// hidden; it fails silently.
 
 function NotFoundOrError({
   error,
@@ -227,7 +234,7 @@ export function AccountPage() {
   const ready = summary.data !== undefined;
   const chargeFilters = {
     studentId: view.studentId,
-    statuses: view.statuses,
+    statuses: requestedStatuses(view),
     page: view.page,
   };
   const charges = useQuery({
@@ -235,6 +242,13 @@ export function AccountPage() {
     queryFn: ({ signal }) => fetchCharges(familyId, chargeFilters, signal),
     placeholderData: keepPreviousData,
     enabled: ready,
+  });
+  const hiddenCharges = useQuery({
+    queryKey: hiddenChargesKey(familyId, view.studentId),
+    queryFn: ({ signal }) =>
+      fetchHiddenChargeCount(familyId, view.studentId, signal),
+    enabled: ready && !view.showVoid,
+    retry: false,
   });
   const ledger = useInfiniteQuery({
     queryKey: ledgerKey(familyId, view.studentId),
@@ -507,6 +521,11 @@ export function AccountPage() {
         view={view}
         onView={(next) => setSearchParams(accountViewParams(next))}
         charges={pageState<ChargePage>(charges)}
+        hiddenCount={
+          view.showVoid || hiddenCharges.isError
+            ? null
+            : (hiddenCharges.data ?? null)
+        }
         ledger={ledgerState}
         payments={pageState<PaymentPage>(payments)}
         canRecord={canRecord}

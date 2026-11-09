@@ -6641,9 +6641,15 @@
       "charges": {
         "title": "Cargos",
         "statusFilter": "Estado",
-        "statusHelp": "Sin ninguno marcado se muestran todos los estados.",
+        "statusHelp": "Sin ninguno marcado se muestran todos los estados; los cargos en {{amount}} se muestran con la casilla de abajo.",
         "empty": "Todavía no hay cargos.",
         "emptyFiltered": "Ningún cargo coincide con estos filtros.",
+        "noneShown": "No hay cargos que mostrar.",
+        "showVoid": "Mostrar cargos en {{amount}} (anulados)",
+        "hidden_one": "{{count}} cargo en {{amount}} oculto",
+        "hidden_many": "{{count}} cargos en {{amount}} ocultos",
+        "hidden_other": "{{count}} cargos en {{amount}} ocultos",
+        "showHidden": "Mostrar",
         "pagination": "Páginas de cargos",
         "columns": {
           "serviceDate": "Fecha del servicio",

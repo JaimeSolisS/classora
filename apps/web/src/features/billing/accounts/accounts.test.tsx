@@ -19,12 +19,15 @@ import {
   type RenderedApp,
 } from '@/test/render-app';
 import { SEARCH_DEBOUNCE_MS } from './AccountsPage';
+import type { ChargePage } from './api';
 import {
   ANA,
   CHARGE_OVERDUE,
   CHARGE_PAID,
   CHARGE_PARTIAL,
+  CHARGE_PENDING,
   CHARGES_PAGE,
+  EMPTY_CHARGES_PAGE,
   EMPTY_FAMILIES_PAGE,
   FAMILIES_PAGE,
   FAMILY_ID,
@@ -39,6 +42,7 @@ import {
   SUMMARY,
   SUMMARY_NO_ACCOUNT,
 } from './fixtures';
+import { accountView, accountViewParams, requestedStatuses } from './rules';
 
 // #379 G1 (A, B, C): the Accounts tab and routes by permission, the family
 // search (debounced, in the URL), the account page (summary, per-student
@@ -79,6 +83,19 @@ const COORDINATOR = user(
 
 let familyUrls: URL[] = [];
 let chargeUrls: URL[] = [];
+// #563: the hidden-count requests (`status=void&limit=1`), apart from the
+// list's, and the count they answer.
+let countUrls: URL[] = [];
+let voidCount = 0;
+const isHiddenCount = (url: URL) =>
+  url.searchParams.get('limit') === '1' &&
+  url.searchParams.getAll('status').join() === 'void';
+const countPage = (total: number): ChargePage => ({
+  items: [],
+  total,
+  limit: 1,
+  offset: 0,
+});
 let ledgerUrls: URL[] = [];
 let paymentUrls: URL[] = [];
 
@@ -94,7 +111,12 @@ function stub(
     },
     [SUMMARY_ROUTE]: () => jsonResponse(200, SUMMARY),
     [CHARGES]: (request) => {
-      chargeUrls.push(new URL(request.url));
+      const url = new URL(request.url);
+      if (isHiddenCount(url)) {
+        countUrls.push(url);
+        return jsonResponse(200, countPage(voidCount));
+      }
+      chargeUrls.push(url);
       return jsonResponse(200, CHARGES_PAGE);
     },
     [LEDGER]: (request) => {
@@ -160,6 +182,8 @@ beforeEach(() => {
   applyLanguage('en');
   familyUrls = [];
   chargeUrls = [];
+  countUrls = [];
+  voidCount = 0;
   ledgerUrls = [];
   paymentUrls = [];
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -599,4 +623,292 @@ describe('the account page (C)', () => {
       `/billing/accounts/${FAMILY_ID}?payments_page=2`,
     );
   });
+});
+
+// #563: the void (0.00) charges are hidden by default; a toggle in the URL
+// (`?void=1`) shows them, and a polite line counts the hidden ones.
+const CHARGE_VOID = {
+  ...CHARGE_PENDING,
+  id: '53000000-0000-4000-8000-000000000009',
+  service_date: '2026-10-19',
+  list_amount: '0.00',
+  amount: '0.00',
+  net: '0.00',
+  open: '0.00',
+  status: 'void' as const,
+};
+const SHOWN = ['pending', 'partially_paid', 'overdue', 'paid'];
+const voidToggle = () => choice(section('Charges'), 'Show $0.00 charges');
+const hiddenLine = (heading = 'Charges') =>
+  section(heading).querySelector('[data-hidden-charges]')!.textContent;
+
+describe('the void charges, URL state (#563 rules)', () => {
+  const view = (query: string) => accountView(new URLSearchParams(query));
+
+  it('reads the toggle off by default and on from void=1 or a legacy status=void', () => {
+    expect(view('')).toMatchObject({ statuses: [], showVoid: false });
+    expect(view('void=1')).toMatchObject({ statuses: [], showVoid: true });
+    expect(view('void=true').showVoid).toBe(false);
+    expect(view('status=void')).toMatchObject({
+      statuses: [],
+      showVoid: true,
+    });
+    expect(view('status=paid&status=void')).toMatchObject({
+      statuses: ['paid'],
+      showVoid: true,
+    });
+  });
+
+  it('writes void=1 only when the toggle is on', () => {
+    expect(accountViewParams(view('status=void')).toString()).toBe('void=1');
+    expect(accountViewParams(view('status=paid')).toString()).toBe(
+      'status=paid',
+    );
+    expect(accountViewParams(view('void=0&page=2')).toString()).toBe('page=2');
+  });
+
+  it.each([
+    [[], false, SHOWN],
+    [[], true, []],
+    [['paid'], false, ['paid']],
+    [['pending', 'paid'], true, ['pending', 'paid', 'void']],
+  ] as const)(
+    'asks for %j with the toggle %s as %j',
+    (statuses, showVoid, sent) => {
+      expect(requestedStatuses({ statuses: [...statuses], showVoid })).toEqual(
+        sent,
+      );
+    },
+  );
+});
+
+describe('the void charges on the account page (#563)', () => {
+  it('hides them by default: four status boxes and no void in the request', async () => {
+    stub();
+    await renderAccount();
+
+    expect(chargeUrls.at(-1)?.searchParams.getAll('status')).toEqual(SHOWN);
+    const charges = section('Charges');
+    const boxes = [...charges.querySelectorAll('fieldset label')].map(
+      (label) => label.textContent,
+    );
+    expect(boxes).toEqual(['Pending', 'Partially paid', 'Overdue', 'Paid']);
+    expect(voidToggle().checked).toBe(false);
+    expect(charges.textContent).toContain(
+      'None checked shows every status; $0.00 charges show with the checkbox below.',
+    );
+    expect(charges.querySelector('tbody')!.textContent).not.toContain('Void');
+    expect(app!.location()).toBe(`/billing/accounts/${FAMILY_ID}`);
+  });
+
+  it('turns the toggle on and off in the URL, back on page 1', async () => {
+    stub({
+      [CHARGES]: (request) => {
+        const url = new URL(request.url);
+        if (isHiddenCount(url)) {
+          countUrls.push(url);
+          return jsonResponse(200, countPage(1));
+        }
+        chargeUrls.push(url);
+        const statuses = url.searchParams.getAll('status');
+        const withVoid = statuses.length === 0 || statuses.includes('void');
+        return jsonResponse(200, {
+          ...CHARGES_PAGE,
+          items: withVoid
+            ? [CHARGE_VOID, ...CHARGES_PAGE.items]
+            : CHARGES_PAGE.items,
+          total: 30,
+        });
+      },
+    });
+    await renderAccount(`/billing/accounts/${FAMILY_ID}?page=2`);
+    await settleUntil(() => hiddenLine() === '1 $0.00 charge hidden');
+
+    await click(voidToggle());
+    await settleUntil(() =>
+      main().querySelector(`[data-charge-id="${CHARGE_VOID.id}"]`),
+    );
+    expect(app!.location()).toBe(`/billing/accounts/${FAMILY_ID}?void=1`);
+    expect(chargeUrls.at(-1)?.searchParams.getAll('status')).toEqual([]);
+    expect(chargeUrls.at(-1)?.searchParams.get('offset')).toBe('0');
+    expect(cells(row(`[data-charge-id="${CHARGE_VOID.id}"]`)).at(-2)).toBe(
+      'Void',
+    );
+    expect(hiddenLine()).toBe('');
+
+    await click(choice(section('Charges'), 'Paid'));
+    await settleUntil(
+      () => chargeUrls.at(-1)?.searchParams.getAll('status').length === 2,
+    );
+    expect(chargeUrls.at(-1)?.searchParams.getAll('status')).toEqual([
+      'paid',
+      'void',
+    ]);
+    expect(app!.location()).toBe(
+      `/billing/accounts/${FAMILY_ID}?status=paid&void=1`,
+    );
+
+    await click(voidToggle());
+    await settleUntil(
+      () => chargeUrls.at(-1)?.searchParams.getAll('status').length === 1,
+    );
+    expect(chargeUrls.at(-1)?.searchParams.getAll('status')).toEqual(['paid']);
+    expect(app!.location()).toBe(`/billing/accounts/${FAMILY_ID}?status=paid`);
+    await settleUntil(
+      () =>
+        main().querySelector(`[data-charge-id="${CHARGE_VOID.id}"]`) === null,
+    );
+    expect(hiddenLine()).toBe('1 $0.00 charge hidden');
+  });
+
+  it.each([
+    ['?void=1', []],
+    ['?status=void', []],
+  ])('opens %s with the toggle on and no status box', async (query, sent) => {
+    stub();
+    await renderAccount(`/billing/accounts/${FAMILY_ID}${query}`);
+
+    expect(voidToggle().checked).toBe(true);
+    expect(chargeUrls.at(-1)?.searchParams.getAll('status')).toEqual(sent);
+    expect(
+      [
+        ...section('Charges').querySelectorAll<HTMLInputElement>(
+          'fieldset input',
+        ),
+      ].some((box) => box.checked),
+    ).toBe(false);
+    // The toggle on: no count is asked for, and no line.
+    expect(countUrls).toHaveLength(0);
+    expect(hiddenLine()).toBe('');
+  });
+
+  it('counts the hidden charges, singular and plural, and "Show" turns the toggle on', async () => {
+    voidCount = 3;
+    stub();
+    await renderAccount();
+    await settleUntil(() => hiddenLine() !== '');
+
+    expect(hiddenLine()).toBe('3 $0.00 charges hidden');
+    const url = countUrls.at(-1)!;
+    expect(url.searchParams.getAll('status')).toEqual(['void']);
+    expect(url.searchParams.get('limit')).toBe('1');
+    expect(url.searchParams.has('student_id')).toBe(false);
+
+    await click(buttonNamed(section('Charges'), 'Show'));
+    await settleUntil(() => voidToggle().checked);
+    expect(app!.location()).toBe(`/billing/accounts/${FAMILY_ID}?void=1`);
+    expect(hiddenLine()).toBe('');
+    expect(() => buttonNamed(section('Charges'), 'Show')).toThrow();
+  });
+
+  it('counts for the selected student, whatever the status boxes', async () => {
+    stub({
+      [CHARGES]: (request) => {
+        const url = new URL(request.url);
+        if (isHiddenCount(url)) {
+          countUrls.push(url);
+          const student = url.searchParams.get('student_id');
+          return jsonResponse(200, countPage(student === ANA.id ? 1 : 52));
+        }
+        chargeUrls.push(url);
+        return jsonResponse(200, CHARGES_PAGE);
+      },
+    });
+    await renderAccount();
+    await settleUntil(() => hiddenLine() === '52 $0.00 charges hidden');
+
+    setFieldValue(labelled<HTMLSelectElement>(main(), 'Student'), ANA.id);
+    await settleUntil(() => hiddenLine() === '1 $0.00 charge hidden');
+    expect(countUrls.at(-1)?.searchParams.get('student_id')).toBe(ANA.id);
+
+    const counted = countUrls.length;
+    await click(choice(section('Charges'), 'Overdue'));
+    await settleUntil(() =>
+      chargeUrls.at(-1)?.searchParams.getAll('status').includes('overdue'),
+    );
+    expect(countUrls).toHaveLength(counted);
+    expect(hiddenLine()).toBe('1 $0.00 charge hidden');
+  });
+
+  it('reads the count in Spanish', async () => {
+    applyLanguage('es');
+    voidCount = 2;
+    stub();
+    await renderAccount();
+    await settleUntil(() => hiddenLine('Cargos') !== '');
+    expect(hiddenLine('Cargos')).toBe('2 cargos en $0.00 ocultos');
+    expect(
+      choice(section('Cargos'), 'Mostrar cargos en $0.00 (anulados)'),
+    ).toBeTruthy();
+    expect(buttonNamed(section('Cargos'), 'Mostrar')).toBeTruthy();
+  });
+
+  it('shows no line for none, and none and no alert when the count fails', async () => {
+    stub();
+    await renderAccount();
+    await settleUntil(() => countUrls.length === 1);
+    expect(hiddenLine()).toBe('');
+
+    app!.unmount();
+    stub({
+      [CHARGES]: (request) => {
+        const url = new URL(request.url);
+        if (isHiddenCount(url)) {
+          countUrls.push(url);
+          return problemWith(500, 'internal_error');
+        }
+        chargeUrls.push(url);
+        return jsonResponse(200, CHARGES_PAGE);
+      },
+    });
+    countUrls = [];
+    await renderAccount();
+    await settleUntil(() => countUrls.length === 1);
+    // Let the 500 land before looking.
+    await settleUntil(() => true);
+    await settleUntil(() => true);
+    expect(hiddenLine()).toBe('');
+    expect(alerts(section('Charges'))).toEqual([]);
+    expect(
+      section('Charges').querySelectorAll('[data-charge-id]'),
+    ).toHaveLength(CHARGES_PAGE.items.length);
+  });
+
+  it.each([
+    ['every charge is void', '', EMPTY_CHARGES_PAGE, 5, 'No charges to show.'],
+    ['no charge at all', '', EMPTY_CHARGES_PAGE, 0, 'No charges yet.'],
+    [
+      'no visible charge matches',
+      '?status=overdue',
+      EMPTY_CHARGES_PAGE,
+      5,
+      'No charges match these filters.',
+    ],
+  ] as const)(
+    'says so when %s',
+    async (_case, query, page, hiddenTotal, text) => {
+      voidCount = hiddenTotal;
+      stub({
+        [CHARGES]: (request) => {
+          const url = new URL(request.url);
+          if (isHiddenCount(url)) {
+            countUrls.push(url);
+            return jsonResponse(200, countPage(voidCount));
+          }
+          chargeUrls.push(url);
+          return jsonResponse(200, page);
+        },
+      });
+      await renderAt(`/billing/accounts/${FAMILY_ID}${query}`);
+      await settleUntil(
+        () => countUrls.length === 1 && section('Charges')?.querySelector('p'),
+      );
+      await settleUntil(() => section('Charges').textContent?.includes(text));
+      const charges = section('Charges');
+      expect(charges.textContent).toContain(text);
+      expect(hiddenLine()).toBe(
+        hiddenTotal > 0 ? `${hiddenTotal} $0.00 charges hidden` : '',
+      );
+    },
+  );
 });

@@ -27,6 +27,12 @@ import { FIRST_RENDER_TIMEOUT_MS } from '../support/timeouts';
 //      password) → "Reversed", the charge open again;
 //   4. a second payment kept as credit; "Refund" part of it → the refund
 //      is listed and the account credit is lower;
+//   4b. (#563) a second manual charge credited in full (net $0.00, inside
+//      step 2's reauthentication window: no second password) is void: its
+//      row leaves the list, "1 cargo en $0.00 oculto" counts it, the
+//      "show $0.00 charges" toggle shows it as "Anulado" (`?void=1`) and
+//      hides it again. Before step 5, whose withdrawn purchase charge is
+//      void too;
 //   5. (#387 D3) a 10-session package sold to the student through the API
 //      (a purchase charge ignores the billing floor, #94 L5); on Billing →
 //      Packages, "Withdraw (unused units)" → the panel shows 10 unused
@@ -43,7 +49,8 @@ import { FIRST_RENDER_TIMEOUT_MS } from '../support/timeouts';
 const billing = common.billing;
 const accounts = billing.accounts;
 const ZONE = 'America/Mexico_City';
-const TEST_TIMEOUT_MS = 150_000;
+// #563 raised it from 150 s for step 4b (one more charge and adjustment).
+const TEST_TIMEOUT_MS = 180_000;
 
 // Chromium logs every 4xx resource as a console error: the expected 403
 // reauth_required before the password dialog.
@@ -391,6 +398,87 @@ test('corrections, reversals and refunds on a family account', async ({
     .click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(credit).toContainText(money(60_000));
+
+  // 4b. (#563) A $250.00 charge credited in full is void: hidden by default.
+  const voidDescription = `Anulado E2E ${suffix}`;
+  await main
+    .getByRole('button', { name: accounts.charges.add, exact: true })
+    .click();
+  dialog = page.getByRole('dialog', {
+    name: accounts.manualCharge.title,
+    exact: true,
+  });
+  await dialog
+    .getByLabel(accounts.manualCharge.fields.student, { exact: true })
+    .selectOption(studentId);
+  await dialog
+    .getByLabel(accounts.manualCharge.fields.description, { exact: true })
+    .fill(voidDescription);
+  await dialog
+    .getByLabel(accounts.manualCharge.fields.amount, { exact: true })
+    .fill('250');
+  await dialog
+    .getByRole('button', { name: accounts.manualCharge.submit, exact: true })
+    .click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const voidCharge = main
+    .locator('[data-charge-id]')
+    .filter({ hasText: voidDescription });
+  await expect(voidCharge).toHaveCount(1);
+  const hiddenCharges = main.locator('[data-hidden-charges]');
+  await expect(hiddenCharges).toHaveText('');
+  await voidCharge
+    .getByRole('button', {
+      name: new RegExp(`^${accounts.charges.view} `),
+    })
+    .click();
+  await expect(detail.locator('[data-charge-net="250.00"]')).toBeVisible();
+  await detail
+    .getByRole('button', { name: accounts.adjust.action, exact: true })
+    .click();
+  dialog = page.getByRole('dialog', {
+    name: accounts.adjust.title,
+    exact: true,
+  });
+  await dialog
+    .getByLabel(accounts.adjust.fields.amount, { exact: true })
+    .fill('250');
+  await dialog
+    .getByLabel(accounts.adjust.fields.reason, { exact: true })
+    .fill(reason);
+  await dialog
+    .getByRole('button', { name: accounts.adjust.submit, exact: true })
+    .click();
+  // Inside step 2's window: no second password.
+  await expect(dialog).toHaveCount(0);
+  await expect(reauth).toHaveCount(0);
+  await expect(detail.locator('[data-charge-net="0.00"]')).toBeVisible();
+  await detail
+    .locator('[data-slot="dialog-footer"]')
+    .getByRole('button', { name: accounts.chargeDetail.close, exact: true })
+    .click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(voidCharge).toHaveCount(0);
+  const hiddenOne = fill(accounts.charges.hidden_one, {
+    count: 1,
+    amount: money(0),
+  });
+  await expect(hiddenCharges).toHaveText(hiddenOne);
+  // The toggle shows it as "Anulado", then hides it again.
+  const showVoid = main.getByRole('checkbox', {
+    name: fill(accounts.charges.showVoid, { amount: money(0) }),
+    exact: true,
+  });
+  await expect(showVoid).not.toBeChecked();
+  await showVoid.check();
+  await expect(page).toHaveURL(/[?&]void=1(&|$)/);
+  await expect(voidCharge).toHaveCount(1);
+  await expect(voidCharge).toContainText(billing.tuition.chargeStatus.void);
+  await expect(hiddenCharges).toHaveText('');
+  await showVoid.uncheck();
+  await expect(page).not.toHaveURL(/[?&]void=1/);
+  await expect(voidCharge).toHaveCount(0);
+  await expect(hiddenCharges).toHaveText(hiddenOne);
 
   // 5. A package withdrawn as account credit (#387 D3).
   const withdrawals = common.billing.withdrawals;

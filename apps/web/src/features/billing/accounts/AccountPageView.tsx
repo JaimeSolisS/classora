@@ -17,12 +17,13 @@ import { CATALOG_LINK_CLASS } from '@/features/catalog/LevelsTable';
 import { Pagination } from '@/features/catalog/Pagination';
 import { FamilyStatusBadge } from '@/features/families/FamilyBadges';
 import { SELECT_CLASS } from '@/features/students/styles';
+import { formatMoney } from '@/lib/money';
 import { BillingTabs } from '../BillingTabs';
 import { DueDateCell } from '../due-dates/DueDateCell';
 import { canChangeDueDate } from '../due-dates/rules';
 import { ChargeStatusBadge } from '../tuition/TuitionBadges';
 import {
-  CHARGE_STATUSES,
+  FILTER_STATUSES,
   type AccountSummary,
   type ChargeItem,
   type ChargePage,
@@ -51,7 +52,10 @@ import { toggleStatus, type AccountView } from './rules';
 // get "Change due date" on each charge with something open. #386: every
 // charge row has "Details" (its adjustments and allocations), and
 // billing.manage holders "Add charge" on the Charges section. #387 B4: the
-// page passes its Withdrawals section, rendered after Payments.
+// page passes its Withdrawals section, rendered after Payments. #563: the
+// status boxes leave out "void"; a separate "show $0.00 charges" toggle
+// shows them, and while it is off a polite line says how many are hidden,
+// with a button that turns it on.
 
 export type PageState<T> =
   | { status: 'loading' }
@@ -74,6 +78,8 @@ export interface AccountPageViewProps {
   view: AccountView;
   onView: (view: AccountView) => void;
   charges: PageState<ChargePage>;
+  /** #563: the void charges hidden by the toggle (null: unknown, or shown). */
+  hiddenCount?: number | null;
   ledger: LedgerState;
   payments: PageState<PaymentPage>;
   /** payment.record: "Record payment" and "Apply account credit". */
@@ -121,6 +127,7 @@ export function AccountPageView({
   view,
   onView,
   charges,
+  hiddenCount = null,
   ledger,
   payments,
   canRecord,
@@ -157,6 +164,8 @@ export function AccountPageView({
   const hasCredit = apiCents(summary.account_credit) > 0;
   const noAccount = summary.account_id === null;
   const chargeFiltered = view.statuses.length > 0 || view.studentId !== null;
+  const zero = formatMoney('0.00');
+  const hidden = !view.showVoid && hiddenCount !== null ? hiddenCount : 0;
 
   const totals: [string, string][] = [
     [t('billing.accounts.summary.outstanding'), summary.outstanding],
@@ -174,7 +183,9 @@ export function AccountPageView({
         <p>
           {chargeFiltered
             ? t('billing.accounts.charges.emptyFiltered')
-            : t('billing.accounts.charges.empty')}
+            : hidden > 0
+              ? t('billing.accounts.charges.noneShown')
+              : t('billing.accounts.charges.empty')}
         </p>
       );
     }
@@ -646,7 +657,7 @@ export function AccountPageView({
             {t('billing.accounts.charges.statusFilter')}
           </legend>
           <div className="flex flex-wrap gap-x-6 gap-y-2">
-            {CHARGE_STATUSES.map((status) => (
+            {FILTER_STATUSES.map((status) => (
               <label
                 key={status}
                 className="flex min-h-6 items-center gap-2 text-sm"
@@ -668,9 +679,47 @@ export function AccountPageView({
             ))}
           </div>
           <p className="text-sm text-muted-foreground">
-            {t('billing.accounts.charges.statusHelp')}
+            {t('billing.accounts.charges.statusHelp', { amount: zero })}
           </p>
         </fieldset>
+        <label className="flex min-h-11 items-center gap-2 self-start text-sm md:min-h-6">
+          <input
+            type="checkbox"
+            className="size-4 accent-primary"
+            checked={view.showVoid}
+            onChange={(event) =>
+              onView({ ...view, showVoid: event.target.checked, page: 1 })
+            }
+          />
+          {t('billing.accounts.charges.showVoid', { amount: zero })}
+        </label>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {/* Polite, without role="status": the page's own status stays the
+              only one (E2E reads it by role). */}
+          <p
+            aria-live="polite"
+            data-hidden-charges={hidden}
+            className="text-sm"
+          >
+            {hidden > 0
+              ? t('billing.accounts.charges.hidden', {
+                  count: hidden,
+                  amount: zero,
+                })
+              : ''}
+          </p>
+          {hidden > 0 ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-11 md:min-h-8"
+              onClick={() => onView({ ...view, showVoid: true, page: 1 })}
+            >
+              {t('billing.accounts.charges.showHidden')}
+            </Button>
+          ) : null}
+        </div>
         {chargesBody}
       </section>
 

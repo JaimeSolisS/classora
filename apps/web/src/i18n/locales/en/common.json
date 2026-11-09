@@ -6507,9 +6507,14 @@
       "charges": {
         "title": "Charges",
         "statusFilter": "Status",
-        "statusHelp": "None checked shows every status.",
+        "statusHelp": "None checked shows every status; {{amount}} charges show with the checkbox below.",
         "empty": "No charges yet.",
         "emptyFiltered": "No charges match these filters.",
+        "noneShown": "No charges to show.",
+        "showVoid": "Show {{amount}} charges (void)",
+        "hidden_one": "{{count}} {{amount}} charge hidden",
+        "hidden_other": "{{count}} {{amount}} charges hidden",
+        "showHidden": "Show",
         "pagination": "Charge pages",
         "columns": {
           "serviceDate": "Service date",
