@@ -24,6 +24,16 @@ test('the app shell loads without errors', async ({ page }) => {
       .getByRole('heading', { level: 1, name: common.dashboard.title }),
   ).toBeVisible();
   await expect(page.locator('[data-dashboard-widgets]')).toBeVisible();
+  // HF-06 F5: the fixed "Hoy" panel above the widgets, loaded without a
+  // refused request (no console error).
+  const today = page.locator('[data-home-today]');
+  await expect(
+    today.getByRole('heading', { level: 2, name: common.home.today.title }),
+  ).toBeVisible();
+  await expect(
+    today.getByRole('heading', { level: 3, name: common.home.staff.title }),
+  ).toBeVisible();
+  await expect(today.locator('[aria-busy="true"]')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

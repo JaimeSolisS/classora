@@ -79,7 +79,7 @@ describe('bootstrap (A1)', () => {
     app = await renderApp('/');
 
     expect(app.location()).toBe('/');
-    expect(h1()).toBe('Classora');
+    expect(h1()).toBe('Hello, Demo Owner');
   });
 
   it('loading: shows the busy session state, never the page or a redirect', async () => {
@@ -147,9 +147,7 @@ describe('bootstrap (A1)', () => {
 describe('no polling (A2)', () => {
   it('an idle tab makes no /auth/me call after the first, for 31 minutes', async () => {
     vi.useFakeTimers();
-    const stub = stubSignedIn({
-      'GET /health/live': () => jsonResponse(200, { status: 'ok' }),
-    });
+    const stub = stubSignedIn();
 
     app = mountApp('/');
     for (let minute = 0; minute < 31; minute += 1) {
@@ -158,7 +156,7 @@ describe('no polling (A2)', () => {
       });
     }
 
-    expect(h1()).toBe('Classora');
+    expect(h1()).toBe('Hello, Demo Owner');
     expect(stub.calls('GET /api/v1/auth/me')).toHaveLength(1);
   });
 });

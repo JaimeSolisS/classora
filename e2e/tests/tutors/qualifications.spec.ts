@@ -537,6 +537,31 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
       displayName: PARENT_NAME,
     });
     try {
+      // HF-06 F5: Home shows the guardian's greeting, the family's classes
+      // and the pending items, with no refused read.
+      await parent.page.goto('/');
+      const parentHome = parent.page.getByRole('main');
+      await expect(
+        parentHome.getByRole('heading', {
+          level: 1,
+          name: fill(common.home.greeting, { name: PARENT_NAME }),
+        }),
+      ).toBeVisible();
+      for (const title of [
+        common.home.family.title,
+        common.home.pending.title,
+      ]) {
+        await expect(
+          parentHome.getByRole('heading', {
+            level: 2,
+            name: title,
+            exact: true,
+          }),
+        ).toBeVisible();
+      }
+      await expect(
+        parentHome.locator('[data-home-sections] [aria-busy="true"]'),
+      ).toHaveCount(0);
       await parent.page
         .getByRole('banner')
         .getByRole('link', { name: common.nav.sessionRequests, exact: true })

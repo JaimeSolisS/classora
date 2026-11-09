@@ -60,9 +60,10 @@ async function expectWidgets(page: Page, codes: Code[]): Promise<void> {
   await expect(
     main.getByRole('heading', { level: 1, name: dashboard.title }),
   ).toBeVisible();
-  await expect(main.getByRole('heading', { level: 2 })).toHaveText(
-    codes.map((code) => TITLES[code]),
-  );
+  // The widgets' own headings (HF-06: the "Hoy" panel above has its own).
+  await expect(
+    main.locator('[data-dashboard-widgets]').getByRole('heading', { level: 2 }),
+  ).toHaveText(codes.map((code) => TITLES[code]));
   // Every widget has loaded (no skeleton, no error).
   await expect(main.locator('[data-kpi-section]')).toHaveCount(codes.length);
   await expect(
@@ -78,9 +79,22 @@ test('the Owner customizes the home dashboard and it persists', async ({
   await resetLayout(page);
 
   try {
-    // 1. The home page is the dashboard with the six widgets, in order.
+    // 1. The home page is the dashboard with the six widgets, in order,
+    // under the fixed "Hoy" panel (HF-06 D1), which the axe scan covers.
     await page.reload();
     await expectWidgets(page, DEFAULT);
+    const today = page.locator('[data-home-today]');
+    await expect(
+      today.getByRole('heading', { level: 2, name: common.home.today.title }),
+    ).toBeVisible();
+    await expect(
+      today.getByRole('heading', {
+        level: 3,
+        name: common.home.pending.title,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(today.locator('[aria-busy="true"]')).toHaveCount(0);
     expect(await axeViolations(page)).toEqual([]);
 
     // 2. Customize: dnd-kit's keyboard sensor moves "rooms" up one.

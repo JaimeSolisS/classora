@@ -241,7 +241,6 @@ describe('csrf_failed (C3)', () => {
   it('another user from the refetch: no retry, cache cleared, home (A5)', async () => {
     const stub = stubSignedIn({
       [ACTION]: () => problem(403, 'csrf_failed'),
-      'GET /health/live': () => jsonResponse(200, { status: 'ok' }),
     });
     stub.set({ [ME]: [meAs(), meAs(OTHER_USER)] });
     app = await renderApp('/action', pages);

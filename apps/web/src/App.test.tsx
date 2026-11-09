@@ -2,36 +2,32 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyLanguage, i18n } from './i18n';
 import { LANGUAGE_STORAGE_KEY } from './i18n/language';
-import { stubSignedIn, type Responder } from './test/api-stub';
-import {
-  buttonNamed,
-  jsonResponse,
-  mountApp,
-  renderApp,
-  type RenderedApp,
-} from './test/render-app';
+import { stubSignedIn } from './test/api-stub';
+import { buttonNamed, renderApp, type RenderedApp } from './test/render-app';
 
-// Home page (C5): the health check runs through TanStack Query and the
-// central API helper, rendered through the router with a fresh query client.
-// Signed in through a stubbed /auth/me (#28 I2): the home page is behind the
-// guard.
-
-/** Signed in; GET /health/live answers with `health`. */
-function stubHealth(health: Responder) {
-  return stubSignedIn({ 'GET /health/live': health });
-}
+// Home page (C5; HF-06 F4): the role home, rendered through the router
+// with a fresh query client. Signed in through a stubbed /auth/me (#28 I2):
+// the home page is behind the guard. TEST_USER (owner role, user.view and
+// audit.view only) has no agenda and no pending source, so the role home
+// shows its quick links and makes no request of its own: the session read
+// is the request these tests count (same origin, no remount).
 
 let app: RenderedApp | undefined;
 
-function statusText(): string | null {
-  return app?.container.querySelector('[role="status"]')?.textContent ?? null;
+/** The shell's own requests, made on every page. */
+const SHELL_PATHS = [
+  '/api/v1/auth/me',
+  '/api/v1/auth/me/preferences',
+  '/api/v1/notifications/unread-count',
+];
+
+function heading(): string | null {
+  return app?.container.querySelector('main h1')?.textContent ?? null;
 }
 
 beforeEach(() => {
   // Each test sets its language explicitly; these tests read English text.
   applyLanguage('en');
-  // Failed health checks are reported to the console; keep the output clean.
-  vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -43,108 +39,50 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-describe('Home page API status', () => {
-  it('shows the product name and checks /health/live on the same origin', async () => {
-    const stub = stubHealth(() => jsonResponse(200, { status: 'ok' }));
+describe('Home page requests', () => {
+  it('greets the user and reads the session on the same origin; no health check', async () => {
+    const stub = stubSignedIn();
 
     app = await renderApp('/');
 
-    expect(app.container.querySelector('h1')?.textContent).toBe('Classora');
+    expect(heading()).toBe('Hello, Demo Owner');
     expect(document.title).toBe('Classora');
-    expect(stub.calls('GET /health/live')).toHaveLength(1);
+    expect(stub.calls('GET /api/v1/auth/me')).toHaveLength(1);
+    expect(stub.calls('GET /health/live')).toHaveLength(0);
     // The API client passes one Request object to fetch.
     const request = stub.fetch.mock.calls
       .map(([r]) => r)
-      .find((r) => r.url.endsWith('/health/live'))!;
+      .find((r) => r.url.endsWith('/api/v1/auth/me'))!;
     const url = new URL(request.url);
     expect(request.method).toBe('GET');
-    expect(url.pathname).toBe('/health/live');
+    expect(url.pathname).toBe('/api/v1/auth/me');
     expect(url.origin).toBe(window.location.origin);
-    expect(request.headers.get('Accept')).toBe('application/json');
     expect(request.signal).toBeInstanceOf(AbortSignal);
-  });
-
-  it('shows "API: checking…" while the request is pending', async () => {
-    stubHealth(() => new Promise<Response>(() => {}));
-
-    app = await renderApp('/');
-
-    expect(statusText()).toBe('API: checking…');
-  });
-
-  it('shows "API: live" for 200 with {"status":"ok"}', async () => {
-    stubHealth(() => jsonResponse(200, { status: 'ok' }));
-
-    app = await renderApp('/');
-
-    expect(statusText()).toBe('API: live');
-  });
-
-  it('shows "API: unreachable" for a 503 response, without retrying', async () => {
-    const stub = stubHealth(() => jsonResponse(503, { status: 'ok' }));
-
-    app = await renderApp('/');
-
-    expect(statusText()).toBe('API: unreachable');
-    expect(stub.calls('GET /health/live')).toHaveLength(1);
-  });
-
-  it('shows "API: unreachable" for a 200 with an unexpected body', async () => {
-    stubHealth(() => jsonResponse(200, { status: 'down' }));
-
-    app = await renderApp('/');
-
-    expect(statusText()).toBe('API: unreachable');
-  });
-
-  it('shows "API: unreachable" when fetch rejects (network error)', async () => {
-    stubHealth(() => Promise.reject(new TypeError('Failed to fetch')));
-
-    app = await renderApp('/');
-
-    expect(statusText()).toBe('API: unreachable');
-  });
-
-  it('shows "API: unreachable" when there is no response within 5 seconds', async () => {
-    vi.useFakeTimers();
-    stubHealth(
-      (request) =>
-        new Promise<Response>((_resolve, reject) => {
-          request.signal.addEventListener('abort', () =>
-            reject(new DOMException('Aborted', 'AbortError')),
-          );
-        }),
+    // The quick links (D3): the page itself asks nothing; only the shell's
+    // reads (the session, the bell, the stored preferences) are sent.
+    expect(
+      app.container.querySelector('[data-home-section="fallback"]'),
+    ).not.toBeNull();
+    expect(stub.requests.filter((r) => !SHELL_PATHS.includes(r.path))).toEqual(
+      [],
     );
-
-    app = mountApp('/');
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(4999);
-    });
-    expect(statusText()).toBe('API: checking…');
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10);
-    });
-    expect(statusText()).toBe('API: unreachable');
   });
 });
 
 describe('Home page language', () => {
   it.each([
-    ['es', 'API: activa', 'Tema', 'Idioma'],
-    ['en', 'API: live', 'Theme', 'Language'],
+    ['es', 'Hola, Demo Owner', 'Accesos rápidos', 'Tema', 'Idioma'],
+    ['en', 'Hello, Demo Owner', 'Quick links', 'Theme', 'Language'],
   ] as const)(
     'renders the page and both switchers in %s on the first render',
-    async (language, status, themeLabel, languageLabel) => {
+    async (language, greeting, links, themeLabel, languageLabel) => {
       applyLanguage(language);
-      stubHealth(() => jsonResponse(200, { status: 'ok' }));
+      stubSignedIn();
 
       app = await renderApp('/');
 
-      expect(statusText()).toBe(status);
+      expect(heading()).toBe(greeting);
+      expect(app.container.querySelector('main h2')?.textContent).toBe(links);
       const groups = [
         ...app.container.querySelectorAll('header [role="group"]'),
       ].map((g) => g.getAttribute('aria-label'));
@@ -152,33 +90,33 @@ describe('Home page language', () => {
       expect(document.documentElement.lang).toBe(language);
       // No raw catalog key ever reaches the screen.
       expect(app.container.textContent).not.toMatch(
-        /apiStatus\.|theme\.|language\.|nav\.|shell\.|common:|errors:/,
+        /home\.|theme\.|language\.|nav\.|shell\.|common:|errors:/,
       );
     },
   );
 
-  it('switches language in place: no remount, status kept, stored', async () => {
+  it('switches language in place: no remount, stored, no second session read', async () => {
     applyLanguage('es');
-    const stub = stubHealth(() => jsonResponse(200, { status: 'ok' }));
+    const stub = stubSignedIn();
     app = await renderApp('/');
     const { container } = app;
-    const heading = container.querySelector('h1');
-    expect(statusText()).toBe('API: activa');
+    const h1 = container.querySelector('main h1');
+    expect(heading()).toBe('Hola, Demo Owner');
     expect(buttonNamed(container, 'Claro')).toBeTruthy();
 
     act(() => buttonNamed(container, 'English').click());
 
     expect(i18n.language).toBe('en');
-    expect(statusText()).toBe('API: live');
+    expect(heading()).toBe('Hello, Demo Owner');
     expect(buttonNamed(container, 'Light')).toBeTruthy();
     expect(document.documentElement.lang).toBe('en');
     expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('en');
-    // Same DOM node and no second health check: the app was not remounted.
-    expect(container.querySelector('h1')).toBe(heading);
-    expect(stub.calls('GET /health/live')).toHaveLength(1);
+    // Same DOM node and no second session read: the app was not remounted.
+    expect(container.querySelector('main h1')).toBe(h1);
+    expect(stub.calls('GET /api/v1/auth/me')).toHaveLength(1);
 
     act(() => buttonNamed(container, 'Español').click());
-    expect(statusText()).toBe('API: activa');
+    expect(heading()).toBe('Hola, Demo Owner');
     expect(document.documentElement.lang).toBe('es');
   });
 });

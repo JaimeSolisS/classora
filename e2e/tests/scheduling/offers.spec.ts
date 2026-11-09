@@ -610,6 +610,30 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
   // 2. The tutor signs in: the bell has the offers.
   const tutor = await signInTutor(browser);
   try {
+    // 2a. Home (HF-06 F5): the greeting, "Mis clases" and the pending
+    // offers count (this spec's two offers, at least), with no refused read.
+    await tutor.page.goto('/');
+    const tutorHome = tutor.page.getByRole('main');
+    await expect(
+      tutorHome.getByRole('heading', {
+        level: 1,
+        name: fill(common.home.greeting, { name: TUTOR_NAME }),
+      }),
+    ).toBeVisible();
+    await expect(
+      tutorHome.getByRole('heading', {
+        level: 2,
+        name: common.home.tutor.title,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      tutorHome.locator('[data-home-pending="offers"] a'),
+    ).toHaveAttribute('href', '/offers');
+    await expect(
+      tutorHome.locator('[data-home-sections] [aria-busy="true"]'),
+    ).toHaveCount(0);
+
     const [before, after] = common.notifications.bellUnread.split('{{unread}}');
     const bell = tutor.page.getByRole('banner').getByRole('button', {
       name: new RegExp(`^${escape(before!)}[1-9]\\d*${escape(after!)}$`),
@@ -1125,6 +1149,25 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     // shows only the menu button at 390 px), then the phone.
     student = await signInDemoStudent(browser);
     try {
+      // HF-06 F5: Home shows the greeting and the family's classes.
+      await student.page.goto('/');
+      const studentHome = student.page.getByRole('main');
+      await expect(
+        studentHome.getByRole('heading', {
+          level: 1,
+          name: fill(common.home.greeting, { name: DEMO_STUDENT_NAME }),
+        }),
+      ).toBeVisible();
+      await expect(
+        studentHome.getByRole('heading', {
+          level: 2,
+          name: common.home.family.title,
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        studentHome.locator('[data-home-sections] [aria-busy="true"]'),
+      ).toHaveCount(0);
       const [unreadBefore, unreadAfter] =
         common.notifications.bellUnread.split('{{unread}}');
       const studentBell = student.page.getByRole('banner').getByRole('button', {

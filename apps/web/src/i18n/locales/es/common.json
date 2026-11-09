@@ -1,8 +1,85 @@
 {
-  "apiStatus": {
-    "checking": "API: comprobando…",
-    "live": "API: activa",
-    "unreachable": "API: sin conexión"
+  "home": {
+    "greeting": "Hola, {{name}}",
+    "today": {
+      "title": "Hoy"
+    },
+    "next": "Próxima clase: {{when}}, {{subject}}",
+    "more_one": "y {{shown}} más",
+    "more_many": "y {{shown}} más",
+    "more_other": "y {{shown}} más",
+    "forStudent": "Para {{name}}",
+    "staff": {
+      "title": "Clases de hoy",
+      "loading": "Cargando las clases de hoy…",
+      "empty": "No hay clases hoy.",
+      "none": "No hay clases en los próximos 7 días.",
+      "calendar": "Ver calendario"
+    },
+    "tutor": {
+      "title": "Mis clases"
+    },
+    "family": {
+      "title": "Clases",
+      "consent": "{{name}} no ha compartido su horario contigo."
+    },
+    "personal": {
+      "loading": "Cargando tus clases…",
+      "empty": "No tienes clases hoy.",
+      "none": "No hay clases en los próximos 14 días.",
+      "upcoming": "Próximas clases",
+      "schedule": "Ver mi agenda"
+    },
+    "pending": {
+      "title": "Pendientes",
+      "loading": "Cargando pendientes…",
+      "nothing": "Nada pendiente.",
+      "itemError": "No se pudo cargar: {{label}}.",
+      "approvals_one": "{{shown}} aprobación abierta",
+      "approvals_many": "{{shown}} aprobaciones abiertas",
+      "approvals_other": "{{shown}} aprobaciones abiertas",
+      "overdueCloseouts_one": "{{shown}} clase con cierre atrasado",
+      "overdueCloseouts_many": "{{shown}} clases con cierre atrasado",
+      "overdueCloseouts_other": "{{shown}} clases con cierre atrasado",
+      "overdueAccounts_one": "{{shown}} cuenta familiar con saldo vencido",
+      "overdueAccounts_many": "{{shown}} cuentas familiares con saldo vencido",
+      "overdueAccounts_other": "{{shown}} cuentas familiares con saldo vencido",
+      "attention_one": "{{shown}} clase sin tutor o en conflicto en los próximos 7 días",
+      "attention_many": "{{shown}} clases sin tutor o en conflicto en los próximos 7 días",
+      "attention_other": "{{shown}} clases sin tutor o en conflicto en los próximos 7 días",
+      "offers_one": "{{shown}} oferta espera tu respuesta",
+      "offers_many": "{{shown}} ofertas esperan tu respuesta",
+      "offers_other": "{{shown}} ofertas esperan tu respuesta",
+      "toCloseOut_one": "{{shown}} clase por cerrar",
+      "toCloseOut_many": "{{shown}} clases por cerrar",
+      "toCloseOut_other": "{{shown}} clases por cerrar",
+      "toGrade_one": "{{shown}} tarea entregada por calificar",
+      "toGrade_many": "{{shown}} tareas entregadas por calificar",
+      "toGrade_other": "{{shown}} tareas entregadas por calificar",
+      "homeworkPending_one": "{{shown}} tarea por hacer",
+      "homeworkPending_many": "{{shown}} tareas por hacer",
+      "homeworkPending_other": "{{shown}} tareas por hacer",
+      "homeworkMissing_one": "{{shown}} tarea sin entregar",
+      "homeworkMissing_many": "{{shown}} tareas sin entregar",
+      "homeworkMissing_other": "{{shown}} tareas sin entregar",
+      "balanceOverdue": "Saldo vencido: {{amount}}",
+      "balanceDue": "Saldo pendiente: {{amount}}",
+      "errorLabels": {
+        "approvals": "aprobaciones abiertas",
+        "overdueCloseouts": "cierres atrasados",
+        "overdueAccounts": "cuentas con saldo vencido",
+        "attention": "clases que requieren atención",
+        "offers": "ofertas por responder",
+        "toCloseOut": "clases por cerrar",
+        "toGrade": "tareas por calificar",
+        "homework": "tareas",
+        "balance": "saldo"
+      }
+    },
+    "fallback": {
+      "title": "Accesos rápidos",
+      "none": "Tu cuenta aún no tiene acceso a ninguna sección. Pide acceso al centro."
+    }
   },
   "theme": {
     "label": "Tema",

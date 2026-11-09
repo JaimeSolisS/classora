@@ -45,12 +45,12 @@ describe('i18n instance', () => {
     expect(i18n.isInitialized).toBe(true);
     applyLanguage('es');
     expect(i18n.language).toBe('es');
-    expect(i18n.t('apiStatus.live')).toBe('API: activa');
+    expect(i18n.t('home.today.title')).toBe('Hoy');
     expect(i18n.t('errors:generic')).toBe(
       'Algo salió mal. Inténtalo de nuevo.',
     );
     applyLanguage('en');
-    expect(i18n.t('apiStatus.live')).toBe('API: live');
+    expect(i18n.t('home.today.title')).toBe('Today');
   });
 
   it('types keys from the catalogs', () => {

@@ -164,7 +164,6 @@ function stub(
     [R.student_retention]: () => jsonResponse(200, RETENTION),
     [R.tutor_performance]: () => jsonResponse(200, TUTORS),
     [R.balances]: () => jsonResponse(200, KPI_BALANCES),
-    'GET /health/live': () => jsonResponse(200, { status: 'ok' }),
     ...routes,
   });
 }
@@ -241,7 +240,9 @@ describe('the dashboard per role (D1, D3, E3)', () => {
       expect(document.title).toBe('Classora');
       expect(sections()).toEqual(expected.map((code) => SECTION[code]));
       expect(
-        [...main().querySelectorAll('h2')].map((node) => node.textContent),
+        [...main().querySelectorAll('[data-dashboard-widgets] h2')].map(
+          (node) => node.textContent,
+        ),
       ).toEqual(expected.map((code) => TITLES[code]));
       expect(api.calls(`GET ${LAYOUT}`)).toHaveLength(1);
       for (const code of ALL) {
@@ -346,19 +347,58 @@ describe('the dashboard per role (D1, D3, E3)', () => {
     ['a guardian', GUARDIAN],
     ['a user with no KPI permission', TEST_USER],
   ] as const)(
-    '%s keeps the old home page and asks for no layout',
+    '%s gets the role home and asks for no layout',
     async (_who, as) => {
       const api = stub(as, answer(layoutOf([])));
       await open();
       await settle();
 
-      expect(h1()).toBe('Classora');
-      expect(main().querySelector('[role="status"]')?.textContent).toBe(
-        'API: live',
-      );
+      expect(h1()).toBe('Hello, Demo Owner');
+      expect(main().querySelector('[data-home-page]')).toBeTruthy();
+      expect(main().querySelector('[data-dashboard-page]')).toBeNull();
       expect(reportRequests(api)).toEqual([]);
+      expect(api.calls('GET /health/live')).toHaveLength(0);
     },
   );
+
+  it('HF-06 F2: the Today panel sits above the range control; the layout and widget reads are unchanged', async () => {
+    const api = stub(OWNER, answer(layoutOf(ALL)), {
+      'GET /api/v1/class-sessions': () =>
+        jsonResponse(200, { items: [], truncated: false }),
+      'GET /api/v1/billing/overdue-accounts': () =>
+        jsonResponse(200, {
+          items: [],
+          total: 0,
+          limit: 1,
+          offset: 0,
+          today: '2031-04-02',
+          totals: {},
+        }),
+    });
+    await open();
+    await ready(ALL);
+    await settle();
+
+    const today = main().querySelector('[data-home-today]')!;
+    expect(today).toBeTruthy();
+    expect(today.querySelector('h2')?.textContent).toBe('Today');
+    const range = main().querySelector('[data-kpi-range]')!;
+    // The panel comes before the range control and the widgets.
+    expect(
+      today.compareDocumentPosition(range) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      today.compareDocumentPosition(
+        main().querySelector('[data-dashboard-widgets]')!,
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(today.querySelector('[data-home-section="staff"]')).toBeTruthy();
+    expect(api.calls(`GET ${LAYOUT}`)).toHaveLength(1);
+    for (const code of ALL) {
+      expect(api.calls(R[code]), code).toHaveLength(1);
+    }
+    expect(api.calls('GET /api/v1/class-sessions')).toHaveLength(1);
+  });
 });
 
 describe('layout states (D5)', () => {

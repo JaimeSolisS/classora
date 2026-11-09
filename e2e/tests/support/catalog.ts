@@ -6,7 +6,15 @@ import { readFileSync } from 'node:fs';
 // read `en`.
 
 type Common = {
-  apiStatus: { live: string };
+  // HF-06: the home page for every role (agenda and pending items).
+  home: {
+    greeting: string;
+    today: { title: string };
+    staff: { title: string };
+    tutor: { title: string };
+    family: { title: string };
+    pending: { title: string };
+  };
   // M8-10 (#127): the staff dashboard on the home page.
   dashboard: {
     title: string;

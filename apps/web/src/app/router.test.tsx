@@ -576,8 +576,9 @@ describe('home', () => {
     const { container } = app;
 
     expect(container.querySelector('header')).not.toBeNull();
+    // HF-06 D2: the role home greets the user; the title stays the brand.
     expect(container.querySelector('main#main h1')?.textContent).toBe(
-      'Classora',
+      'Hello, Demo Owner',
     );
     expect(document.title).toBe('Classora');
     const home = container.querySelector('nav a[href="/"]');
@@ -590,7 +591,7 @@ describe('home', () => {
 
   it('renders the guard route child for a signed-in user', async () => {
     app = await renderApp('/');
-    expect(app.container.querySelector('[role="status"]')).not.toBeNull();
+    expect(app.container.querySelector('[data-home-page]')).not.toBeNull();
   });
 });
 
@@ -618,7 +619,7 @@ describe('404', () => {
     act(() => back?.click());
 
     expect(app.container.querySelector('main h1')?.textContent).toBe(
-      'Classora',
+      'Hello, Demo Owner',
     );
     expect(document.title).toBe('Classora');
   });
