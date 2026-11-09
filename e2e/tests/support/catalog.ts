@@ -665,6 +665,8 @@ type Common = {
       unassigned: string;
       another: string;
       openSession: string;
+      // HF-02: back to the calendar after a pre-filled save.
+      viewInCalendar: string;
     };
     // #436 G: the makeup block and makeup mode.
     makeup: {
@@ -693,7 +695,7 @@ type Common = {
       regionLabel: string;
       scheduleSession: string;
       views: Record<'day' | 'week' | 'month' | 'list', string>;
-      filters: { student: string };
+      filters: { student: string; room: string };
       // #58: rescheduling.
       move: Record<
         'moved' | 'movedWithOverride' | 'notSaved' | 'overrideAction' | 'close',

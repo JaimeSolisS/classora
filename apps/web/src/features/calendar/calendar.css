@@ -36,6 +36,13 @@
   font-size: var(--text-sm);
 }
 
+/* HF-02 D4: free times in Day and Week can be selected by schedule.manage
+ * holders only (the region's `cl-calendar--selectable`); the highlight is
+ * --fc-classic-highlight above. */
+.cl-calendar--selectable .cl-day-lane {
+  cursor: pointer;
+}
+
 /* --- Events: the state is a border style AND an icon with its text. --- */
 
 .cl-calendar .cl-event {

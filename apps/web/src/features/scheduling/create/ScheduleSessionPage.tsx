@@ -20,11 +20,14 @@ import {
 } from './api';
 import { MakeupTargetNotice, MakeupUnusableNotice } from './MakeupNotices';
 import {
+  calendarWeekPath,
   isSessionId,
   MAKEUP_LINK_CLASS,
   MAKEUP_PARAM,
   makeupTargetProblem,
   makeupValues,
+  PREFILL_PARAMS,
+  prefillValues,
   scheduleBody,
   sessionPath,
   suggestionBody,
@@ -50,6 +53,11 @@ import { ScheduleSessionForm } from './ScheduleSessionForm';
 // one fresh snapshot: a refetch after the save can't swap the success panel
 // for "already has a makeup", and the session page's cached copy is never
 // used. A target that can't be made up shows one notice instead of the form.
+//
+// Pre-filled from the calendar (HF-02 C1), `?date&start&end&tutor&room`: read
+// once, when the form mounts (rules.prefillValues; invalid values are
+// ignored), never in makeup mode. A different pre-fill mounts a new form.
+// After a pre-filled save, the success panel links back to that week.
 
 export function ScheduleSessionPage() {
   const { t } = useTranslation();
@@ -127,9 +135,18 @@ export function ScheduleSessionPage() {
   ) {
     content = <LoadingState />;
   } else {
+    const prefill = target
+      ? null
+      : prefillValues(searchParams, {
+          tutors: tutors.data,
+          classrooms: classrooms.data,
+        });
+    const prefillKey = PREFILL_PARAMS.map(
+      (name) => searchParams.get(name) ?? '',
+    ).join('|');
     content = (
       <ScheduleSessionForm
-        key={target?.id ?? 'plain'}
+        key={target?.id ?? `plain|${prefillKey}`}
         subjects={subjects.data}
         tutors={tutors.data}
         classrooms={classrooms.data}
@@ -162,7 +179,19 @@ export function ScheduleSessionPage() {
             {t('scheduling.series.success.openSeries')}
           </Link>
         )}
-        initialValues={target ? makeupValues(target) : undefined}
+        initialValues={target ? makeupValues(target) : (prefill ?? undefined)}
+        calendarLink={
+          prefill
+            ? (date) => (
+                <Link
+                  to={calendarWeekPath(date, prefill)}
+                  className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+                >
+                  {t('scheduling.success.viewInCalendar')}
+                </Link>
+              )
+            : undefined
+        }
         makeup={
           target
             ? {

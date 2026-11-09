@@ -1,6 +1,9 @@
 import FullCalendar, {
   useCalendarController,
   type CalendarOptions,
+  type DateClickInfo,
+  type DateSelectInfo,
+  type DateSpanApi,
 } from '@fullcalendar/react';
 import esLocale from '@fullcalendar/react/locales/es';
 import '@fullcalendar/react/skeleton.css';
@@ -16,7 +19,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
@@ -43,6 +46,15 @@ import {
 import { useMoveSession } from './dnd/useMoveSession';
 import { EventContent } from './EventContent';
 import { isCompact, type LabelContext } from './labels';
+import {
+  clickPrefill,
+  isSelectionAllowed,
+  isSingleSnap,
+  newSessionPath,
+  SELECTABLE_VIEWS,
+  selectionPrefill,
+  type SlotPrefill,
+} from './select/rules';
 import { SessionDialog } from './SessionDialog';
 import {
   filterQuery,
@@ -67,7 +79,15 @@ import './calendar.css';
 // event dialog's "Reschedule" (keyboard and single pointer). Every move is
 // the same PATCH through dnd/useMoveSession: optimistic, reverted on any
 // refusal, the "Move not saved" dialog for a conflict (with the override
-// for holders of schedule.override). No selecting or date-click.
+// for holders of schedule.override).
+//
+// Scheduling from the grid (HF-02): a holder of schedule.manage drags over
+// free times in Day or Week (15-minute steps) or clicks one (one hour), and
+// "Schedule a session" opens pre-filled through its URL (select/rules), with
+// the tutor and room filters. A click also makes a one-snap selection, which
+// opens nothing: `dateClick` handles it, so one gesture navigates once.
+// Ranges that started, span two local days or last over 480 minutes are
+// refused (`selectAllow`). Month and List don't select; nobody else selects.
 
 export interface ScheduleCalendarProps {
   state: CalendarState;
@@ -78,8 +98,9 @@ export interface ScheduleCalendarProps {
   today: LocalDate;
   loaders: CalendarLoaders;
   /**
-   * schedule.manage: the "Schedule a session" link, and moving sessions
-   * (drag, resize, Reschedule) when `loaders.updateSession` is given.
+   * schedule.manage: the "Schedule a session" link, selecting free times
+   * (HF-02), and moving sessions (drag, resize, Reschedule) when
+   * `loaders.updateSession` is given.
    */
   canSchedule: boolean;
   /** schedule.override: "Override and move" after a soft conflict. */
@@ -108,7 +129,7 @@ const SLOT_FORMATS = {
 } as const;
 
 /** Day and week titles name the dates, not only the month. In Month a
- * drag moves the date only: no resize (#58 D4). */
+ * drag moves the date only: no resize (#58 D4), and no selecting (HF-02 E6). */
 const VIEW_OPTIONS = {
   timeGridDay: {
     titleFormat: { year: 'numeric', month: 'long', day: 'numeric' },
@@ -116,7 +137,7 @@ const VIEW_OPTIONS = {
   timeGridWeek: {
     titleFormat: { year: 'numeric', month: 'short', day: 'numeric' },
   },
-  dayGridMonth: { eventDurationEditable: false },
+  dayGridMonth: { eventDurationEditable: false, selectable: false },
 } as const;
 
 function localDateOf(edge: string): LocalDate {
@@ -152,6 +173,57 @@ export function ScheduleCalendar({
   const noticeRef = useRef<HTMLDivElement | null>(null);
   const canMove = canSchedule && loaders.updateSession !== undefined;
   const move = useMoveSession(canMove ? loaders.updateSession : undefined);
+  const navigate = useNavigate();
+  // The filters the form gets (C2), read when a selection is released, so
+  // the options don't change identity with them.
+  const { tutor, room } = state.filters;
+  const prefillFilters = useRef({ tutor, room });
+  useEffect(() => {
+    prefillFilters.current = { tutor, room };
+  }, [tutor, room]);
+  // One navigation per gesture (a fast double click opens the form once).
+  const opening = useRef(false);
+  const openForm = useCallback(
+    (prefill: SlotPrefill) => {
+      if (opening.current) {
+        return;
+      }
+      opening.current = true;
+      void navigate(newSessionPath(prefill, prefillFilters.current));
+    },
+    [navigate],
+  );
+  // B3: judged against the real now, when FullCalendar asks.
+  const allowSelect = useCallback(
+    (span: DateSpanApi) => isSelectionAllowed(span, Date.now(), timeZone),
+    [timeZone],
+  );
+  const onSelect = useCallback(
+    (info: DateSelectInfo) => {
+      if (
+        !SELECTABLE_VIEWS.has(info.view.type) ||
+        isSingleSnap(info) ||
+        !isSelectionAllowed(info, Date.now(), timeZone)
+      ) {
+        return;
+      }
+      openForm(selectionPrefill(info, timeZone));
+    },
+    [openForm, timeZone],
+  );
+  const onDateClick = useCallback(
+    (info: DateClickInfo) => {
+      if (
+        !SELECTABLE_VIEWS.has(info.view.type) ||
+        info.allDay ||
+        info.date.getTime() < Date.now()
+      ) {
+        return;
+      }
+      openForm(clickPrefill(info.date, timeZone));
+    },
+    [openForm, timeZone],
+  );
 
   // Keep FullCalendar on the URL's view and date (back/forward, the toolbar).
   useEffect(() => {
@@ -266,6 +338,14 @@ export function ScheduleCalendar({
       snapDuration: '00:15:00',
       eventDrop: onChange,
       eventResize: onChange,
+      // HF-02: selecting free times (Day and Week) for schedule.manage. No
+      // mirror: `eventContent` needs an item; the highlight is enough.
+      selectable: canSchedule,
+      selectMirror: false,
+      ...(canSchedule
+        ? { selectAllow: allowSelect, select: onSelect, dateClick: onDateClick }
+        : {}),
+      dayLaneClass: 'cl-day-lane',
       eventClass: (info) => {
         const { item, pending, movable } = info.event
           .extendedProps as EventProps;
@@ -313,7 +393,19 @@ export function ScheduleCalendar({
         );
       },
     }),
-    [t, timeZone, language, context, initial, canMove, onChange],
+    [
+      t,
+      timeZone,
+      language,
+      context,
+      initial,
+      canMove,
+      onChange,
+      canSchedule,
+      allowSelect,
+      onSelect,
+      onDateClick,
+    ],
   );
   const refused = move.refused;
   const fetching = sessions.isFetching || query === null;
@@ -473,12 +565,19 @@ export function ScheduleCalendar({
         role="region"
         aria-label={t('scheduling.calendar.regionLabel')}
         aria-busy={fetching}
-        aria-describedby={`${id}-alt`}
-        className="cl-calendar"
+        aria-describedby={canSchedule ? `${id}-alt ${id}-select` : `${id}-alt`}
+        className={
+          canSchedule ? 'cl-calendar cl-calendar--selectable' : 'cl-calendar'
+        }
       >
         <p id={`${id}-alt`} className="sr-only">
           {t('scheduling.calendar.listAlternative')}
         </p>
+        {canSchedule ? (
+          <p id={`${id}-select`} className="sr-only">
+            {t('scheduling.calendar.selectHint')}
+          </p>
+        ) : null}
         <FullCalendar controller={controller} {...options} events={events} />
       </div>
 

@@ -171,6 +171,11 @@ export interface ScheduleSessionFormProps {
   ) => Promise<ClassSeriesCreated>;
   /** A link to the created series' page (#54b D1). */
   seriesLink?: (seriesId: string) => ReactNode;
+  /**
+   * "View in calendar" on both success panels, for the session's (or the
+   * series' first) date (HF-02 C7); the page passes it when pre-filled.
+   */
+  calendarLink?: (date: string) => ReactNode;
   /** Whether "Repeats weekly" starts on (stories). */
   initialRepeats?: boolean;
   /** The rule to start from (stories). */
@@ -194,6 +199,7 @@ export function ScheduleSessionForm({
   sessionLink,
   onSubmitSeries,
   seriesLink,
+  calendarLink,
   initialRepeats = false,
   initialRecurrence = EMPTY_RECURRENCE,
   makeup,
@@ -666,6 +672,7 @@ export function ScheduleSessionForm({
         </p>
         <div className="flex flex-wrap items-center gap-4">
           {seriesLink ? seriesLink(createdSeries.id) : null}
+          {calendarLink ? calendarLink(values.date) : null}
           <Button type="button" onClick={scheduleAnother}>
             {t('scheduling.success.another')}
           </Button>
@@ -755,6 +762,7 @@ export function ScheduleSessionForm({
         </dl>
         <div className="flex flex-wrap items-center gap-4">
           {sessionLink ? sessionLink(created.id) : null}
+          {calendarLink ? calendarLink(values.date) : null}
           <Button type="button" onClick={scheduleAnother}>
             {t('scheduling.success.another')}
           </Button>

@@ -89,6 +89,8 @@ interface StubProps {
   eventClick: (info: unknown) => void;
   eventDrop: (info: unknown) => void;
   eventResize: (info: unknown) => void;
+  selectable: boolean;
+  dateClick?: (info: unknown) => void;
   datesSet: (info: { startStr: string; endStr: string }) => void;
 }
 
@@ -389,6 +391,8 @@ function render(
           canOverride: options.canOverride ?? true,
         }),
       },
+      // HF-02: where a selection goes.
+      { path: '/schedule/new', element: createElement('p', null, 'form') },
     ],
     { initialEntries: ['/'] },
   );
@@ -479,6 +483,25 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
+describe('selecting without moving (HF-02 B8)', () => {
+  it('still opens the form when sessions cannot be moved', async () => {
+    render({ update: undefined });
+    await loaded();
+
+    expect(stub.last!.eventStartEditable).toBe(false);
+    expect(stub.last!.selectable).toBe(true);
+    act(() =>
+      stub.last!.dateClick!({
+        date: new Date(at('2031-03-10', '10:00')),
+        allDay: false,
+        view: { type: 'timeGridWeek' },
+      }),
+    );
+    await settle();
+    expect(rendered!.container.textContent).toBe('form');
+  });
+});
+
 describe('who can drag (D2)', () => {
   it('an Owner drags editable events only; the others are fixed', async () => {
     render({ update: vi.fn() });
@@ -490,6 +513,7 @@ describe('who can drag (D2)', () => {
     expect(stub.last!.snapDuration).toBe('00:15:00');
     expect(stub.last!.views.dayGridMonth).toEqual({
       eventDurationEditable: false,
+      selectable: false,
     });
     expect(eventOf(MOVABLE.id).editable).toBeUndefined();
     expect(eventOf(OCCURRENCE.id).editable).toBeUndefined();

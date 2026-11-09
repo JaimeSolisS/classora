@@ -2,7 +2,12 @@ import type { FieldError } from '@classora/api-client';
 import type { ParseKeys } from 'i18next';
 import { ApiError } from '@/app/api';
 import type { ErrorMessageKey } from '@/app/errors';
-import { localDateTimeToInstant, toLocalDate, toLocalTime } from '@/lib/time';
+import {
+  localDateTimeToInstant,
+  parseLocalDate,
+  toLocalDate,
+  toLocalTime,
+} from '@/lib/time';
 import type { ClassSessionDetail } from '../session/api';
 import type {
   ClassSessionCreate,
@@ -241,6 +246,81 @@ export function makeupValues(target: ClassSessionDetail): ScheduleValues {
       : null,
     subjectId: target.subject.id,
   };
+}
+
+// --- Pre-filled from the calendar (HF-02 C1) ----------------------------------
+
+/** The URL parameters a calendar selection fills (`?date&start&end&tutor&room`). */
+export const PREFILL_PARAMS = [
+  'date',
+  'start',
+  'end',
+  'tutor',
+  'room',
+] as const;
+
+function isRealDate(value: string): boolean {
+  try {
+    parseLocalDate(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The option's own id for a UUID in the URL, or '' (not a loaded option). */
+function optionId(value: string | null, options: readonly Option[]): string {
+  if (value === null || !UUID.test(value)) {
+    return '';
+  }
+  const id = value.toLowerCase();
+  return options.find((option) => option.id.toLowerCase() === id)?.id ?? '';
+}
+
+/**
+ * The form's first values from the URL (C1): a real `date`, `HH:MM` `start`
+ * and `end` (the end only after the start), and a `tutor` / `room` that is
+ * one of the loaded active options. Anything else is ignored without an
+ * error; the student and the subject stay empty. Null when nothing valid was
+ * given (the plain form).
+ */
+export function prefillValues(
+  params: URLSearchParams,
+  options: { tutors: readonly Option[]; classrooms: readonly Option[] },
+): ScheduleValues | null {
+  const date = params.get('date') ?? '';
+  const start = params.get('start') ?? '';
+  const end = params.get('end') ?? '';
+  const values: ScheduleValues = {
+    ...EMPTY_SCHEDULE,
+    date: isRealDate(date) ? date : '',
+    start: TIME.test(start) ? start : '',
+    tutorId: optionId(params.get('tutor'), options.tutors),
+    classroomId: optionId(params.get('room'), options.classrooms),
+  };
+  // HH:MM strings compare like the times they hold.
+  values.end = TIME.test(end) && values.start && end > values.start ? end : '';
+  const filled =
+    values.date ||
+    values.start ||
+    values.end ||
+    values.tutorId ||
+    values.classroomId;
+  return filled ? values : null;
+}
+
+/**
+ * "View in calendar" after a pre-filled save (C7, E8): the Week of the
+ * session's date, with the tutor and room that were pre-filled.
+ */
+export function calendarWeekPath(
+  date: string,
+  filters: Pick<ScheduleValues, 'tutorId' | 'classroomId'>,
+): string {
+  const params = new URLSearchParams({ view: 'week', date });
+  if (filters.tutorId) params.set('tutor', filters.tutorId);
+  if (filters.classroomId) params.set('room', filters.classroomId);
+  return `/schedule?${params.toString()}`;
 }
 
 /** Whether the target took a live makeup first (C2). */

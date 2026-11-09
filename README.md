@@ -172,7 +172,11 @@ unless a bullet says otherwise.
   conflicts can be overridden with a reason.
 - Staff schedule one-off individual sessions from the calendar's "Schedule a
   session" page (one student, a subject, an optional tutor and classroom, a
-  date and times in the center's time zone). Before anything is saved the
+  date and times in the center's time zone). Owners and Administrators can
+  also open that page from the calendar by dragging over free times (or
+  clicking one, for a one-hour session) in Day or Week view: it opens
+  pre-filled with the date, the times, and the tutor and room the calendar
+  is filtered by. Before anything is saved the
   server checks student, tutor and classroom overlaps, tutor availability and
   qualification, classroom availability, center closures, operating hours
   and booking notice, and lists every conflict. An Owner, or an

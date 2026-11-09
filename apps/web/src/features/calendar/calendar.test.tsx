@@ -58,6 +58,15 @@ interface StubCalendarProps {
   events: { id: string; extendedProps: { item: CalendarItem } }[];
   eventContent: (info: unknown) => ReactNode;
   datesSet: (info: { startStr: string; endStr: string }) => void;
+  selectable: boolean;
+  selectMirror: boolean;
+  selectAllow?: (span: { start: Date; end: Date }) => boolean;
+  select?: (info: { start: Date; end: Date; view: { type: string } }) => void;
+  dateClick?: (info: {
+    date: Date;
+    allDay: boolean;
+    view: { type: string };
+  }) => void;
 }
 
 const calendarProps = vi.hoisted(() => ({
@@ -678,5 +687,197 @@ describe('the Schedule page', () => {
 
     expect(sessionUrls()).toHaveLength(0);
     expect(calendarProps.last).toBeNull();
+  });
+});
+
+describe('scheduling from the grid (HF-02)', () => {
+  let app: RenderedApp | undefined;
+  const COORDINATOR: SessionUserBody = {
+    ...TEST_USER,
+    roles: ['academic_coordinator'],
+    permissions: ['schedule.view', 'schedule.assign', 'student.view'],
+  };
+  const STUDENT = ANA.student_id;
+  // Tuesday 2031-03-11 in America/Mexico_City (UTC-6).
+  const WEEK_VIEW = { type: 'timeGridWeek' };
+  const instant = (time: string) => new Date(`2031-03-11T${time}:00-06:00`);
+
+  async function open(
+    user: SessionUserBody,
+    url = '/schedule?view=week',
+  ): Promise<void> {
+    stubApi({
+      'GET /api/v1/auth/me': meAs(user),
+      [SESSIONS]: () => jsonResponse(200, { items: [], truncated: false }),
+      'GET /api/v1/classrooms': () =>
+        jsonResponse(200, { items: [], total: 0, limit: 100, offset: 0 }),
+    });
+    app = await renderApp(url, ROUTES);
+    await vi.waitFor(() => expect(calendarProps.last).not.toBeNull(), {
+      timeout: 3000,
+    });
+    await settle();
+  }
+
+  function hint(): string | null | undefined {
+    const region = app!.container.querySelector('[role="region"]');
+    const ids = region?.getAttribute('aria-describedby')?.split(' ') ?? [];
+    return ids
+      .map((id) => document.getElementById(id)?.textContent ?? '')
+      .join(' ');
+  }
+
+  async function act_(run: () => void): Promise<void> {
+    run();
+    await settle();
+  }
+
+  beforeEach(() => {
+    applyLanguage('en');
+    calendarProps.last = null;
+  });
+
+  afterEach(() => {
+    app?.unmount();
+    app = undefined;
+    vi.unstubAllGlobals();
+  });
+
+  it('is on for schedule.manage, with the gesture hint (A1, D1, D4)', async () => {
+    await open(MANAGER);
+
+    const props = calendarProps.last!;
+    expect(props.selectable).toBe(true);
+    expect(props.selectMirror).toBe(false);
+    expect(props.select).toBeTypeOf('function');
+    expect(props.dateClick).toBeTypeOf('function');
+    expect(props.selectAllow).toBeTypeOf('function');
+    expect(hint()).toContain(
+      'To schedule a session, drag over free times in Day or Week view, or click a time for a one-hour session.',
+    );
+    expect(
+      app!.container
+        .querySelector('[role="region"]')
+        ?.classList.contains('cl-calendar--selectable'),
+    ).toBe(true);
+  });
+
+  it.each([
+    ['Coordinator', COORDINATOR],
+    ['Finance', VIEWER],
+  ])(
+    'is off for a %s (schedule.view only), without the hint',
+    async (_, user) => {
+      await open(user);
+
+      const props = calendarProps.last!;
+      expect(props.selectable).toBe(false);
+      expect(props.select).toBeUndefined();
+      expect(props.dateClick).toBeUndefined();
+      expect(hint()).not.toContain('To schedule a session');
+      expect(
+        app!.container
+          .querySelector('[role="region"]')
+          ?.classList.contains('cl-calendar--selectable'),
+      ).toBe(false);
+    },
+  );
+
+  it('opens the form with a dragged range and the tutor and room filters only (B1, C2)', async () => {
+    await open(
+      MANAGER,
+      `/schedule?view=week&date=2031-03-10&tutor=${CARMEN.id}&room=${ROOM.id}&student=${STUDENT}&kind=individual`,
+    );
+
+    await act_(() =>
+      calendarProps.last!.select!({
+        start: instant('10:00'),
+        end: instant('11:30'),
+        view: WEEK_VIEW,
+      }),
+    );
+
+    expect(app!.location()).toBe(
+      `/schedule/new?date=2031-03-11&start=10:00&end=11:30&tutor=${CARMEN.id}&room=${ROOM.id}`,
+    );
+  });
+
+  it("opens a one-hour form on a click, once, and ignores the click's one-snap selection (B2)", async () => {
+    await open(MANAGER);
+    const props = calendarProps.last!;
+
+    // A plain click: FullCalendar reports a 15-minute selection and a
+    // dateClick. Only the click navigates, and only once.
+    await act_(() => {
+      props.select!({
+        start: instant('14:00'),
+        end: instant('14:15'),
+        view: WEEK_VIEW,
+      });
+      props.dateClick!({
+        date: instant('14:00'),
+        allDay: false,
+        view: WEEK_VIEW,
+      });
+      props.dateClick!({
+        date: instant('15:00'),
+        allDay: false,
+        view: WEEK_VIEW,
+      });
+    });
+
+    expect(app!.location()).toBe(
+      '/schedule/new?date=2031-03-11&start=14:00&end=15:00',
+    );
+  });
+
+  it('opens nothing for a past time, a refused range, or Month and List (B3, B5)', async () => {
+    await open(MANAGER);
+    const props = calendarProps.last!;
+    const past = new Date('2020-03-10T16:00:00Z');
+
+    await act_(() => {
+      props.dateClick!({ date: past, allDay: false, view: WEEK_VIEW });
+      props.select!({
+        start: past,
+        end: new Date('2020-03-10T17:00:00Z'),
+        view: WEEK_VIEW,
+      });
+      // Across two days, and 24:00.
+      props.select!({
+        start: instant('10:00'),
+        end: new Date('2031-03-12T11:00:00-06:00'),
+        view: WEEK_VIEW,
+      });
+      props.select!({
+        start: instant('23:00'),
+        end: new Date('2031-03-12T00:00:00-06:00'),
+        view: WEEK_VIEW,
+      });
+      props.dateClick!({
+        date: instant('10:00'),
+        allDay: true,
+        view: { type: 'dayGridMonth' },
+      });
+      props.select!({
+        start: instant('10:00'),
+        end: instant('12:00'),
+        view: { type: 'listWeek' },
+      });
+    });
+
+    expect(app!.location()).toBe('/schedule?view=week');
+    expect(
+      props.selectAllow!({
+        start: past,
+        end: new Date('2020-03-10T17:00:00Z'),
+      }),
+    ).toBe(false);
+    expect(
+      props.selectAllow!({ start: instant('10:00'), end: instant('18:00') }),
+    ).toBe(true);
+    expect(
+      props.selectAllow!({ start: instant('10:00'), end: instant('18:15') }),
+    ).toBe(false);
   });
 });

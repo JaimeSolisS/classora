@@ -2375,7 +2375,8 @@
       "offered": "Ofrecida a {{tutor}}",
       "unassigned": "Sin asignar",
       "another": "Programar otra",
-      "openSession": "Abrir la sesión"
+      "openSession": "Abrir la sesión",
+      "viewInCalendar": "Ver en el calendario"
     },
     "severity": {
       "hard": "No permitido",
@@ -2441,6 +2442,7 @@
       "noTutor": "Sin tutor",
       "noStudents": "Sin estudiantes",
       "listAlternative": "La vista Lista muestra las mismas sesiones como texto.",
+      "selectHint": "Para programar una sesión, arrastra sobre horas libres en la vista Día o Semana, o haz clic en una hora para una sesión de una hora. Con el teclado, usa «Programar una sesión».",
       "filters": {
         "label": "Filtros",
         "tutor": "Tutor",
