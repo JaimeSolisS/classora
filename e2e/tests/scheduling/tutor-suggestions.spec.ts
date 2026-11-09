@@ -192,7 +192,11 @@ test('suggested tutors follow the subject and time, and a granted subject', asyn
 
   // 3. The tutor list's Materias column.
   await page.goto(`/tutors?q=${encodeURIComponent(DEMO_TUTOR)}`);
-  const row = main.getByRole('row').filter({ hasText: DEMO_TUTOR });
+  // The exact username cell: other demo tutors' usernames contain
+  // "demo.tutor" as a substring.
+  const row = main.getByRole('row').filter({
+    has: page.getByRole('cell', { name: DEMO_TUTOR, exact: true }),
+  });
   await expect(row).toContainText(subjectName);
 
   // 4. The panel loads by itself; choosing keeps the list.
@@ -217,7 +221,10 @@ test('suggested tutors follow the subject and time, and a granted subject', asyn
       .split('\u0000')[0]!
       .trim(),
   );
-  const tutorRow = panel.getByRole('listitem').filter({ hasText: tutorName });
+  // The exact name, not a substring ("Demo Tutor 2" would match too).
+  const tutorRow = panel.getByRole('listitem').filter({
+    has: page.getByText(tutorName, { exact: true }),
+  });
   await expect(tutorRow).toBeVisible();
   await expect(field(fields.tutor)).toHaveValue('');
   await tutorRow
