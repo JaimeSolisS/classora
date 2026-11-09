@@ -416,8 +416,14 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   the Popover of the pinned `radix-ui` package. Non-modal (`role="dialog"`);
   give the content an accessible name (`aria-labelledby` its heading).
   Escape or an outside click closes it and returns focus to the trigger.
+- **`tooltip`** (`components/ui/tooltip.tsx`, #546): the shadcn wrapper
+  over the Tooltip of the pinned `radix-ui` package; `TooltipProvider` is
+  mounted once, in `AppLayout`. It opens on hover and on keyboard focus,
+  Escape dismisses it and the pointer can move onto it (SC 1.4.13). It only
+  repeats a name the trigger already has (visible or `sr-only` text, or
+  `aria-label`); never use it as the only name.
 - **`NotificationBell`** (`features/notifications`, #41): the header bell,
-  next to the user menu (inside the collapsed menu below `lg`), for a
+  next to the user menu (inside the navigation drawer below `lg`), for a
   signed-in user who accepted the privacy notice. The button's accessible
   name is "Notifications", plus "(3 unread)" when there are unread ones; the
   visual badge ("99+" above 99) is `aria-hidden` and sits outside the button
@@ -629,6 +635,36 @@ breakpoints are used: `sm` 640px, `md` 768px, `lg` 1024px, `xl` 1280px.
   target phones; `sm` and `md` add columns and spacing for tablets and
   desktops. Primary actions stay reachable with one hand on small screens.
 - Every view reflows down to 320 CSS px.
+
+### App shell (#546)
+
+`AppLayout` is the one shell for every signed-in role.
+
+- **`lg` and up:** the primary navigation is a fixed sidebar on the left
+  (about 15rem wide), still the `<nav>` inside `<header>`. Its items are
+  grouped in sections (Administration, Finance, People, Academics, My
+  space; Home has none), each a `<ul>` labelled by a visible text label (not
+  a heading). A section with no visible item is not rendered. The active
+  link has `aria-current="page"`, a background and a leading bar (not colour
+  alone). The top bar (brand, switchers, bell, user menu) and `<main>` are
+  offset to its right; `<main>` has `min-w-0`, so wide content scrolls in
+  its own container and the page never scrolls sideways.
+- **Icon rail:** the toggle at the top of the sidebar ("Collapse sidebar" /
+  "Expand sidebar") collapses it to about 4rem. Each link then shows only
+  its `aria-hidden` icon in a 40 × 40 px target, keeps its label as
+  `sr-only` text, and shows the label in a `tooltip` on hover and keyboard
+  focus. The choice is kept per browser in `localStorage`
+  (`classora.sidebar`: `expanded` | `collapsed`; blocked or invalid storage
+  means expanded), not in the account; sign-out keeps it. Width changes
+  animate with `motion-reduce:transition-none`.
+- **Below `lg`:** the navigation and the top-bar utilities are a modal
+  drawer from the left behind "Menu", always with labels. Opening it moves
+  focus to its first link and makes `<main>` `inert`; Escape or a click on
+  the backdrop closes it and returns focus to "Menu"; following a link
+  closes it (focus goes to `<main>` if it was left on a hidden element);
+  widening to `lg` closes it.
+- Signed-out pages and the privacy-notice step have no navigation items, so
+  no sidebar and no offset.
 
 ## Adding a component
 

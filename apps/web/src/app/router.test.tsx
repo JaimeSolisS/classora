@@ -1,8 +1,10 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyLanguage } from '@/i18n';
-import { resetUiStore, useUiStore } from '@/stores/ui';
-import { stubSignedIn } from '@/test/api-stub';
+import { SIDEBAR_STORAGE_KEY } from '@/app/layout/sidebar';
+import { reloadSidebarPreference, resetUiStore, useUiStore } from '@/stores/ui';
+import { meAs, stubApi, stubSignedIn, TEST_USER } from '@/test/api-stub';
+import { pressEscape } from '@/test/dom';
 import { buttonNamed, renderApp, type RenderedApp } from '@/test/render-app';
 import { routes } from './router';
 
@@ -26,6 +28,7 @@ afterEach(() => {
   resetUiStore();
   vi.unstubAllGlobals();
   window.localStorage.clear();
+  reloadSidebarPreference();
 });
 
 describe('route tree', () => {
@@ -657,6 +660,149 @@ describe('navigation toggle', () => {
     act(() => toggle.click());
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(useUiStore.getState().navOpen).toBe(false);
+  });
+});
+
+const navTexts = () =>
+  [...app!.container.querySelectorAll('header nav a')].map(
+    (a) => a.textContent,
+  );
+const main = () => app!.container.querySelector<HTMLElement>('main#main')!;
+
+// #546 B3/B5/H3: the sidebar's collapse toggle, its stored preference and
+// the icon rail (links keep their names and the active state).
+describe('sidebar collapse', () => {
+  it('flips its name and sidebarCollapsed, writes classora.sidebar and is restored on a fresh render', async () => {
+    app = await renderApp('/');
+    const expanded = navTexts();
+    const nav = app.container.querySelector('header nav')!;
+    const collapse = buttonNamed(nav, 'Collapse sidebar');
+    expect(collapse.getAttribute('aria-controls')).toBe(nav.id);
+    expect(nav.id).toBeTruthy();
+    expect(useUiStore.getState().sidebarCollapsed).toBe(false);
+
+    act(() => collapse.focus());
+    act(() => collapse.click());
+    expect(collapse.getAttribute('aria-label')).toBe('Expand sidebar');
+    expect(document.activeElement).toBe(collapse);
+    expect(useUiStore.getState().sidebarCollapsed).toBe(true);
+    expect(window.localStorage.getItem(SIDEBAR_STORAGE_KEY)).toBe('collapsed');
+    expect(navTexts()).toEqual(expanded);
+    const home = app.container.querySelector('header nav a[href="/"]');
+    expect(home?.getAttribute('aria-current')).toBe('page');
+    expect(home?.querySelector('svg')?.getAttribute('aria-hidden')).toBe(
+      'true',
+    );
+
+    // A fresh page load in the same browser.
+    app.unmount();
+    useUiStore.setState({ sidebarCollapsed: false });
+    reloadSidebarPreference();
+    app = await renderApp('/');
+    expect(useUiStore.getState().sidebarCollapsed).toBe(true);
+    expect(
+      buttonNamed(app.container, 'Expand sidebar').getAttribute(
+        'aria-controls',
+      ),
+    ).toBe(app.container.querySelector('header nav')!.id);
+    expect(navTexts()).toEqual(expanded);
+
+    act(() => buttonNamed(app!.container, 'Expand sidebar').click());
+    expect(useUiStore.getState().sidebarCollapsed).toBe(false);
+    expect(window.localStorage.getItem(SIDEBAR_STORAGE_KEY)).toBe('expanded');
+  });
+
+  it('labels each section with a visible item and leaves empty sections out', async () => {
+    stubApi({
+      'GET /api/v1/auth/me': meAs({
+        ...TEST_USER,
+        roles: ['tutor'],
+        permissions: ['student.view', 'tutor.view'],
+      }),
+    });
+    app = await renderApp('/');
+    const nav = app.container.querySelector('header nav')!;
+    const labels = [...nav.querySelectorAll('ul[aria-labelledby]')].map(
+      (list) =>
+        document.getElementById(list.getAttribute('aria-labelledby')!)
+          ?.textContent,
+    );
+    expect(labels).toEqual(['People', 'Academics', 'My space']);
+    // Home has no section; no heading or group in the navigation.
+    expect(nav.querySelectorAll('ul')).toHaveLength(4);
+    expect(nav.querySelector('h1, h2, h3, h4, [role="group"]')).toBeNull();
+    for (const list of nav.querySelectorAll('ul[aria-labelledby]')) {
+      expect(list.querySelectorAll('a').length).toBeGreaterThan(0);
+    }
+  });
+});
+
+// #546 E1-E4/H3: below `lg` the navigation is a modal drawer.
+describe('navigation drawer', () => {
+  it('makes main inert, focuses the first link, and Escape closes it and focuses Menu', async () => {
+    app = await renderApp('/');
+    const toggle = buttonNamed(app.container, 'Menu');
+    expect(main().hasAttribute('inert')).toBe(false);
+
+    act(() => toggle.click());
+    expect(useUiStore.getState().navOpen).toBe(true);
+    expect(main().hasAttribute('inert')).toBe(true);
+    expect(document.activeElement).toBe(
+      app.container.querySelector('header nav a[href="/"]'),
+    );
+
+    await pressEscape();
+    expect(useUiStore.getState().navOpen).toBe(false);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(toggle);
+    expect(main().hasAttribute('inert')).toBe(false);
+  });
+
+  it('closes on a backdrop click and focuses Menu', async () => {
+    app = await renderApp('/');
+    const toggle = buttonNamed(app.container, 'Menu');
+    act(() => toggle.click());
+    const backdrop = app.container.querySelector<HTMLElement>(
+      'header div[aria-hidden="true"]',
+    );
+    expect(backdrop).not.toBeNull();
+
+    act(() => backdrop!.click());
+    expect(useUiStore.getState().navOpen).toBe(false);
+    expect(document.activeElement).toBe(toggle);
+    expect(
+      app.container.querySelector('header div[aria-hidden="true"]'),
+    ).toBeNull();
+  });
+
+  it('closes when a nav link is followed and focuses main, not a hidden link', async () => {
+    app = await renderApp('/missing');
+    act(() => buttonNamed(app!.container, 'Menu').click());
+    expect(main().hasAttribute('inert')).toBe(true);
+
+    act(() =>
+      app!.container
+        .querySelector<HTMLAnchorElement>('header nav a[href="/"]')!
+        .click(),
+    );
+    expect(app.location()).toBe('/');
+    expect(useUiStore.getState().navOpen).toBe(false);
+    expect(main().hasAttribute('inert')).toBe(false);
+    expect(document.activeElement).toBe(main());
+  });
+
+  it('closes when a user-menu link is followed', async () => {
+    app = await renderApp('/missing');
+    act(() => buttonNamed(app!.container, 'Menu').click());
+    const link = [
+      ...app.container.querySelectorAll<HTMLAnchorElement>(
+        '#app-header-menu a',
+      ),
+    ].find((a) => a.textContent === 'Change password')!;
+
+    act(() => link.click());
+    expect(useUiStore.getState().navOpen).toBe(false);
+    expect(main().hasAttribute('inert')).toBe(false);
   });
 });
 

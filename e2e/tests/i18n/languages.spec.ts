@@ -36,7 +36,12 @@ const RAW_KEY = new RegExp(
 );
 
 function navLabels(catalog: Catalog): Set<string> {
-  return new Set(Object.values(catalog.nav as Record<string, string>));
+  // The link labels only (#546: `nav.sections` holds the section labels).
+  return new Set(
+    Object.values(catalog.nav).filter(
+      (value): value is string => typeof value === 'string',
+    ),
+  );
 }
 
 /** Watches the page: missing-key logs and preference writes. */

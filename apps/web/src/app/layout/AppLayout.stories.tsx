@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect } from 'storybook/test';
+import { House, ScrollText } from 'lucide-react';
+import { expect, waitFor, within } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
 import type { Session } from '@/features/auth/session';
@@ -8,11 +9,12 @@ import {
   type PreferencesContextValue,
 } from '@/features/preferences/usePreferences';
 import { UNREAD_COUNT_KEY } from '@/features/notifications/api';
-import { resetUiStore } from '@/stores/ui';
+import { resetUiStore, useUiStore } from '@/stores/ui';
 import { StoryAuth } from '@/test/StoryAuth';
 import { StoryQueryClient } from '@/test/StoryQueryClient';
 import { StoryRouter } from '@/test/StoryRouter';
 import type { NavItem } from '../navigation';
+import { SIDEBAR_STORAGE_KEY } from './sidebar';
 import { AppLayout } from './AppLayout';
 
 function SamplePage() {
@@ -26,7 +28,7 @@ const signedIn: Session = {
     username: 'demo.owner',
     display_name: 'Demo Owner',
     roles: ['administrator'],
-    permissions: ['user.view'],
+    permissions: ['user.view', 'student.view', 'schedule.view'],
     privacy_notice_required: false,
     preferences: { language: 'es', theme: 'system' },
     center_time_zone: 'America/Mexico_City',
@@ -95,18 +97,43 @@ const meta = {
   },
   beforeEach: () => {
     resetUiStore();
+    window.localStorage.removeItem(SIDEBAR_STORAGE_KEY);
+    useUiStore.setState({ sidebarCollapsed: false });
   },
 } satisfies Meta<typeof AppLayout>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// Desktop (lg and up), signed in: navigation, switchers, the user name and
-// "Sign out" always visible, no toggle.
+// Desktop (lg and up), signed in: the sidebar on the left with its sections
+// (#546 B2), switchers, the user name and "Sign out" always visible, no
+// "Menu" toggle.
 export const Desktop: Story = {
   play: async ({ canvas }) => {
+    const nav = canvas.getByRole('navigation', { name: i18n.t('nav.label') });
+    await expect(nav).toBeVisible();
+    for (const section of [
+      'administration',
+      'finance',
+      'people',
+      'academics',
+    ] as const) {
+      await expect(
+        within(nav).getByRole('list', {
+          name: i18n.t(`nav.sections.${section}`),
+        }),
+      ).toBeVisible();
+    }
     await expect(
-      canvas.getByRole('navigation', { name: i18n.t('nav.label') }),
+      within(nav).queryByRole('list', { name: i18n.t('nav.sections.mine') }),
+    ).toBeNull();
+    // The sidebar sits left of <main> (no overlap).
+    const main = canvas.getByRole('main');
+    await expect(nav.getBoundingClientRect().right).toBeLessThanOrEqual(
+      main.getBoundingClientRect().left,
+    );
+    await expect(
+      canvas.getByRole('button', { name: i18n.t('nav.collapse') }),
     ).toBeVisible();
     await expect(
       canvas.queryByRole('button', { name: i18n.t('nav.toggle') }),
@@ -133,13 +160,51 @@ export const Desktop: Story = {
   },
 };
 
+// #546 B3/B4, collapsed: an icon rail; a link focused with the keyboard shows
+// its label in a tooltip and keeps its name.
+export const DesktopCollapsed: Story = {
+  beforeEach: () => {
+    useUiStore.setState({ sidebarCollapsed: true });
+  },
+  play: async ({ canvas, userEvent }) => {
+    const nav = canvas.getByRole('navigation', { name: i18n.t('nav.label') });
+    await expect(nav.getBoundingClientRect().width).toBeLessThanOrEqual(64);
+    const users = within(nav).getByRole('link', { name: i18n.t('nav.users') });
+    await expect(users.getBoundingClientRect().height).toBeGreaterThanOrEqual(
+      40,
+    );
+    await expect(users.getBoundingClientRect().width).toBeGreaterThanOrEqual(
+      40,
+    );
+    users.focus();
+    const tooltip = await within(document.body).findByRole('tooltip');
+    await expect(tooltip).toHaveTextContent(i18n.t('nav.users'));
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(within(document.body).queryByRole('tooltip')).toBeNull(),
+    );
+
+    const expand = canvas.getByRole('button', { name: i18n.t('nav.expand') });
+    await userEvent.click(expand);
+    await expect(
+      canvas.getByRole('button', { name: i18n.t('nav.collapse') }),
+    ).toHaveFocus();
+  },
+};
+
 // Signed in: only the items the user may open (UX only). The second item
 // needs a permission this user lacks.
 export const FilteredNavigation: Story = {
   render: () =>
     renderLayout(signedIn, [
-      { to: '/', labelKey: 'nav.home', end: true },
-      { to: '/audit', labelKey: 'notFound.title', permission: 'audit.view' },
+      { to: '/', labelKey: 'nav.home', icon: House, end: true },
+      {
+        to: '/audit',
+        labelKey: 'notFound.title',
+        icon: ScrollText,
+        section: 'administration',
+        permission: 'audit.view',
+      },
     ]),
   play: async ({ canvas }) => {
     const nav = canvas.getByRole('navigation', { name: i18n.t('nav.label') });
@@ -168,7 +233,8 @@ export const SignedOut: Story = {
   },
 };
 
-// Narrow (320 px): navigation and both switchers collapse behind the toggle.
+// Narrow (320 px): navigation and both switchers are a drawer behind the
+// toggle (#546 E6): focus moves into it, Escape closes it and focuses "Menu".
 export const Narrow: Story = {
   globals: { viewport: { value: 'narrow320' } },
   play: async ({ canvas, userEvent }) => {
@@ -180,9 +246,17 @@ export const Narrow: Story = {
 
     await userEvent.click(toggle);
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const nav = canvas.getByRole('navigation', { name: i18n.t('nav.label') });
+    await expect(nav).toBeVisible();
     await expect(
-      canvas.getByRole('navigation', { name: i18n.t('nav.label') }),
-    ).toBeVisible();
+      within(nav).getByRole('link', { name: i18n.t('nav.home') }),
+    ).toHaveFocus();
+    await expect(canvas.getByRole('main', { hidden: true })).toHaveAttribute(
+      'inert',
+    );
+    await expect(
+      canvas.queryByRole('button', { name: i18n.t('nav.collapse') }),
+    ).toBeNull();
     await expect(
       canvas.getByRole('group', { name: i18n.t('theme.label') }),
     ).toBeVisible();
@@ -200,6 +274,12 @@ export const Narrow: Story = {
     // Nothing overflows horizontally at 320 px.
     await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(320);
 
+    await userEvent.keyboard('{Escape}');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle).toHaveFocus();
+    await expect(canvas.getByRole('main')).not.toHaveAttribute('inert');
+
+    await userEvent.click(toggle);
     await userEvent.click(toggle);
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   },
@@ -220,7 +300,7 @@ export const PreferenceSaveFailed: Story = {
   },
 };
 
-// #36 F5 at 320 px: the alert sits in the collapsed header menu, below the
+// #36 F5 at 320 px: the alert sits in the drawer, below the
 // switchers, and nothing overflows.
 export const PreferenceSaveFailedNarrow: Story = {
   render: renderSaveFailed,

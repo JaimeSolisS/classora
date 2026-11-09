@@ -1,7 +1,8 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyLanguage } from '@/i18n';
-import { useUiStore } from '@/stores/ui';
+import { SIDEBAR_STORAGE_KEY } from '@/app/layout/sidebar';
+import { reloadSidebarPreference, useUiStore } from '@/stores/ui';
 import {
   noContent,
   problem,
@@ -65,6 +66,8 @@ afterEach(() => {
   app = undefined;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  window.localStorage.removeItem(SIDEBAR_STORAGE_KEY);
+  reloadSidebarPreference();
 });
 
 describe('the header (E1)', () => {
@@ -117,6 +120,22 @@ describe('sign out (E2, E4)', () => {
       expect(header().textContent).not.toContain('Sign out');
     },
   );
+
+  // #546 B5/H4: sign-out closes the drawer but keeps this browser's sidebar
+  // preference.
+  it('keeps the stored sidebar preference at sign-out', async () => {
+    stubLogout(noContent);
+    app = await renderApp('/', pages);
+    act(() => useUiStore.getState().setSidebarCollapsed(true));
+    act(() => useUiStore.getState().setNavOpen(true));
+
+    await signOut();
+
+    expect(app.location()).toBe('/login');
+    expect(useUiStore.getState().navOpen).toBe(false);
+    expect(useUiStore.getState().sidebarCollapsed).toBe(true);
+    expect(window.localStorage.getItem(SIDEBAR_STORAGE_KEY)).toBe('collapsed');
+  });
 
   it('the next unsafe request carries no X-CSRF-Token', async () => {
     const stub = stubLogout(noContent);

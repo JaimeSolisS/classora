@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { canAccess } from '@/features/auth/access';
 import type { SessionUserBody } from '@/features/auth/session';
 import { TEST_USER } from '@/test/api-stub';
-import { NAV_ITEMS } from './navigation';
+import { NAV_ITEMS, NAV_SECTIONS } from './navigation';
 
 // #308 A2: "Evaluation templates" for evaluation.manage holders, "Academic
 // history" for students and guardians; Finance and a tutor-only user see
@@ -376,5 +376,80 @@ describe('the recently deleted nav item (#129 D1)', () => {
       labelKey: 'nav.recentlyDeleted',
       anyOf: [{ role: 'tutor' }, { permission: 'learning_plan.manage' }],
     });
+  });
+});
+
+// #546 C1/B2/H1: every item has a distinct icon; every item but Home has a
+// section; each section is a contiguous run of NAV_ITEMS, in display order.
+describe('the sidebar icons and sections (#546)', () => {
+  it('gives every item a distinct icon', () => {
+    const icons = NAV_ITEMS.map((item) => item.icon);
+    expect(icons.every((icon) => icon !== undefined)).toBe(true);
+    expect(new Set(icons).size).toBe(NAV_ITEMS.length);
+  });
+
+  it('gives every item except Home a section', () => {
+    expect(
+      NAV_ITEMS.filter((item) => !item.section).map((item) => item.to),
+    ).toEqual(['/']);
+  });
+
+  it('keeps each section contiguous and the sections in order', () => {
+    const runs: string[] = [];
+    for (const item of NAV_ITEMS.slice(1)) {
+      if (runs.at(-1) !== item.section) {
+        runs.push(item.section!);
+      }
+    }
+    expect(runs).toEqual([...NAV_SECTIONS]);
+  });
+
+  it.each([
+    [
+      'administration',
+      [
+        '/users',
+        '/invitations',
+        '/imports',
+        '/exports',
+        '/password-resets',
+        '/approvals',
+        '/audit',
+        '/jobs',
+        '/catalog/education-levels',
+        '/settings',
+      ],
+    ],
+    ['finance', ['/billing', '/payroll', '/expenses', '/reports']],
+    ['people', ['/students', '/guardians', '/families', '/tutors']],
+    [
+      'academics',
+      [
+        '/groups',
+        '/courses',
+        '/courses/cohorts',
+        '/academics/evaluation-templates',
+        '/schedule',
+        '/my-schedule',
+        '/my-history',
+        '/my-learning-plans',
+        '/assignments',
+        '/my-homework',
+        '/progress-reports',
+        '/recently-deleted',
+        '/my-progress-reports',
+        '/my-progress',
+      ],
+    ],
+    [
+      'mine',
+      ['/offers', '/my-pay', '/requests', '/change-requests', '/my-billing'],
+    ],
+  ] as const)('puts the %s items in their section', (section, paths) => {
+    expect(
+      NAV_ITEMS.filter((item) => item.section === section).map(
+        (item) => item.to,
+      ),
+    ).toEqual(paths);
   });
 });

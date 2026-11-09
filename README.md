@@ -15,7 +15,7 @@ PgBouncer (schema managed with Alembic migrations), a background worker for
 queued and periodic jobs (Procrastinate), server-rendered PDF documents
 (Jinja2 and WeasyPrint) and Excel files (openpyxl) with es/en server message
 catalogs, and a React + TypeScript + Vite web app. The web app has a routed
-shell (layout with navigation, a 404 page and
+shell (layout with a collapsible side navigation, a 404 page and
 central error handling), a TanStack Query data layer, a typed API client
 generated from the API's OpenAPI document, a design system foundation
 (central design tokens, Tailwind CSS, shadcn/ui components catalogued in

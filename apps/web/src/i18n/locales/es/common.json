@@ -28,6 +28,15 @@
   "nav": {
     "label": "Navegación principal",
     "toggle": "Menú",
+    "collapse": "Contraer barra lateral",
+    "expand": "Expandir barra lateral",
+    "sections": {
+      "administration": "Administración",
+      "finance": "Finanzas",
+      "people": "Personas",
+      "academics": "Académico",
+      "mine": "Mi espacio"
+    },
     "home": "Inicio",
     "users": "Usuarios",
     "invitations": "Invitaciones",
