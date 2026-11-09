@@ -642,9 +642,18 @@ up to date changes nothing.
 ### Seed data
 
 ```bash
-make seed       # reference data
-make seed-demo  # synthetic demo data (local and dev only)
+make seed                # reference data
+make seed-demo           # small synthetic demo data (local and dev only)
+make seed-data-spanish   # a simulated term of a tutoring center, in Spanish (local only)
+make seed-data-english   # the same simulated term, in English (local only)
 ```
+
+Use `make seed-demo` for a handful of accounts to try each role, and
+`make seed-data-spanish` or `make seed-data-english` to see the system with a
+term's worth of realistic data (see
+[Simulated operations data](#simulated-operations-data)). The demo data
+and each simulated language need a database of their own; they cannot be
+combined.
 
 `make seed` applies the reference data every environment needs. Run
 `make migrate` first: it refuses to run on a database with pending migrations.
@@ -817,6 +826,24 @@ make seed-data-spanish   # in another terminal
 docker compose down -v && make dev && make migrate && make seed-data-spanish
 ```
 
+Then open <http://127.0.0.1:5173> (native stack: start `make web-native`
+too) and sign in as the Owner (`direccion` in
+Spanish, `owner` in English, password `classora-sim-owner`); the other
+accounts are in the table below. To keep both languages, point
+`DATABASE_URL` and `DATABASE_DIRECT_URL` in `.env` at the other language's
+database and restart `make api-native` to switch.
+
+The command prints the reference-seed lines and then one `<module>: <n>
+rows` line per part of the simulation. It writes everything in one
+transaction, so a failed run leaves the database as it was. It exits with:
+
+| Exit code | Meaning |
+|---|---|
+| `0` | Data generated, or already there in this language (nothing changed) |
+| `1` | Configuration error, or the database has pending migrations (run `make migrate`) |
+| `2` | `APP_ENV` is not `local`; nothing is touched |
+| `3` | The database is not fresh, or holds the other language; the message says why, and nothing is written |
+
 The timeline is fixed, whatever day you run it. History runs from
 1 Sep to 18 Nov 2026. From 19 Nov 2026 to 5 Dec 2026, items are only
 scheduled or pending.
@@ -845,8 +872,9 @@ What's in it:
 - **Catalog:** 12 subjects across the four levels, five classrooms (one
   closed for renovation on 30 Oct), the 2026–2027 school year and three
   holidays.
-- **Tutor profiles:** experience, qualifications (one rejected, one
-  revoked, one pending), weekly availability, limits and breaks, time off
+- **Tutor profiles:** experience, the subjects each tutor teaches
+  (approved qualifications; one rejected, one revoked, one pending), weekly
+  availability, limits and breaks, time off
   and preferred classrooms.
 - **Center settings:** name, contact details, receipt messages, opening
   hours and the scheduling policy. In English, the education levels and
@@ -990,8 +1018,10 @@ account ends when the new password is set.
 
 Open the web app at <http://127.0.0.1:5173> and sign in with any demo account
 from the table in [Seed data](#seed-data) (for example `demo.owner` /
-`classora-demo-owner`, from `make seed-demo`) or with the account from
-`make bootstrap-owner`. The first time an account signs in, the
+`classora-demo-owner`, from `make seed-demo`), with a simulated-data account
+(for example `direccion` / `classora-sim-owner`, from `make seed-data-spanish`;
+see [Simulated operations data](#simulated-operations-data)) or with the
+account from `make bootstrap-owner`. The first time an account signs in, the
 app shows the privacy notice; accept it to continue. To call the API directly,
 log in against it and keep the session cookie, for example with the demo
 Owner:
