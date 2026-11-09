@@ -2,7 +2,8 @@
 tutor qualifications (#44, implemented in
 :mod:`app.modules.staff.qualifications`; the approval handler in
 :mod:`app.modules.staff.qualification_approval`; revocation, #198, in
-:mod:`app.modules.staff.qualification_revocation`).
+:mod:`app.modules.staff.qualification_revocation`; a reviewer's direct
+grant, HF-05 A, in :mod:`app.modules.staff.qualification_grant`).
 
 For other modules (M4-03, M4-06): :func:`approved_subject_ids`,
 :func:`is_qualified`, :func:`qualified_pairs` (its batch twin, #57) and
@@ -144,6 +145,9 @@ from app.modules.staff.qualification_approval import (
 from app.modules.staff.qualification_approval import (
     register_qualification_notifications as register_qualification_notifications,
 )
+from app.modules.staff.qualification_grant import (
+    grant_qualification as grant_qualification,
+)
 from app.modules.staff.qualification_revocation import (
     revoke_qualification as revoke_qualification,
 )
@@ -164,8 +168,17 @@ from app.modules.staff.qualifications import (
 from app.modules.staff.qualifications import (
     request_qualification as request_qualification,
 )
-from app.modules.staff.qualifications import teaching_subjects, visible_tutor
-from app.modules.staff.schemas import TutorDetail, TutorListItem, TutorUpdate
+from app.modules.staff.qualifications import (
+    teaching_subjects,
+    teaching_subjects_many,
+    visible_tutor,
+)
+from app.modules.staff.schemas import (
+    TeachingSubject,
+    TutorDetail,
+    TutorListItem,
+    TutorUpdate,
+)
 from app.modules.staff.tutor_availability import (
     TeachingLimits as TeachingLimits,
 )
@@ -222,6 +235,7 @@ __all__ = [
     "evaluate_interval",
     "get_availability",
     "get_tutor",
+    "grant_qualification",
     "is_qualified",
     "is_tutor_available",
     "is_tutor_available_at",
@@ -242,7 +256,7 @@ __all__ = [
 ]
 
 
-def _list_item(member: RoleMember) -> TutorListItem:
+def _list_item(member: RoleMember, subjects: list[TeachingSubject]) -> TutorListItem:
     return TutorListItem(
         user_id=member.id,
         username=member.username,
@@ -250,6 +264,7 @@ def _list_item(member: RoleMember) -> TutorListItem:
         state=member.state,
         email=member.email,
         phone=member.phone,
+        teaching_subjects=subjects,
     )
 
 
@@ -263,13 +278,17 @@ async def list_tutors(
 ) -> OffsetPage[TutorListItem]:
     """The tutors the caller may see matching ``q`` and ``state``, by display
     name, then username (the #31 order). A tutor-only caller's page holds
-    only themselves. Three statements (``identity.list_role_members``)."""
+    only themselves. Four statements (``identity.list_role_members``, then
+    the page's teaching subjects, HF-05 D1)."""
     only = None if sees_every_tutor(principal) else [principal.user_id]
     members = await identity.list_role_members(
         session, TUTOR, q=q, state=state, page=page, user_ids=only
     )
+    subjects = await teaching_subjects_many(
+        session, [member.id for member in members.items]
+    )
     return OffsetPage[TutorListItem](
-        items=[_list_item(member) for member in members.items],
+        items=[_list_item(member, subjects[member.id]) for member in members.items],
         total=members.total,
         limit=members.limit,
         offset=members.offset,
@@ -310,14 +329,14 @@ async def _detail(
     member: RoleMember,
     profile: TutorProfile | None,
 ) -> TutorDetail:
+    item = _list_item(member, await teaching_subjects(session, member.id))
     return TutorDetail(
-        **_list_item(member).model_dump(),
+        **dict(item),
         professional_experience=(
             profile.professional_experience if profile is not None else None
         ),
         version=profile.version if profile is not None else 0,
         editable_fields=sorted(_editable(principal, member)),
-        teaching_subjects=await teaching_subjects(session, member.id),
     )
 
 

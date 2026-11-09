@@ -26,6 +26,12 @@ Tutor qualifications (#44; ``staff/qualifications.py`` has the orders):
 Reviewers decide through the approval inbox (``/api/v1/approval-requests``,
 ``qualification.review``).
 
+- ``POST …/qualifications/grant`` (HF-05 A): ``require("qualification.review")``
+  (Owners and Administrators) grant a tutor a subject directly, approved at
+  once with no inbox item; order ``401`` → ``csrf_failed`` → ``403`` →
+  ``422`` → ``404`` → ``403`` (self-grant) → ``422`` subject → ``409
+  subject_inactive`` → ``409 qualification_exists``
+  (``staff/qualification_grant.py``).
 - ``POST …/qualifications/{qualification_id}/revoke`` (#198):
   ``require("qualification.review")`` (Owners and Administrators); order
   ``403`` → ``422`` → ``404`` → ``409 version_conflict`` → ``409
@@ -83,6 +89,7 @@ from app.modules.staff.schemas import (
     AvailabilitySettingsUpdate,
     ChangeRequestCancel,
     QualificationCreate,
+    QualificationGrant,
     QualificationItem,
     QualificationRevoke,
     QualificationStatusFilter,
@@ -242,6 +249,43 @@ async def request_qualification(
     """The tutor requests to teach a subject: a pending qualification and a
     staff.qualification approval request. Only the tutor themselves."""
     return await service.request_qualification(
+        uow.session, principal=principal, user_id=user_id, subject_id=body.subject_id
+    )
+
+
+@router.post(
+    "/{user_id}/qualifications/grant",
+    status_code=201,
+    responses={
+        **PERMISSION_RESPONSES,
+        403: problem_response_doc(
+            f"{PERMISSION_RESPONSES[403]['description']} Also: the tutor is the"
+            " caller; a tutor's own subjects go through a request"
+            " (permission_denied)."
+        ),
+        404: problem_response_doc(
+            "No such user, or the user doesn't hold the tutor role (not_found)."
+        ),
+        409: problem_response_doc(
+            "The subject or its education level is inactive (subject_inactive),"
+            " or the tutor already has a pending or approved qualification for"
+            " it (qualification_exists)."
+        ),
+        422: problem_response_doc(
+            "The body is not valid, or the subject doesn't exist (validation_error)."
+        ),
+    },
+)
+async def grant_qualification(
+    principal: Annotated[Principal, require(QUALIFICATION_REVIEW)],
+    user_id: uuid.UUID,
+    body: QualificationGrant,
+    uow: UnitOfWorkDep,
+) -> QualificationItem:
+    """A reviewer records that a tutor teaches a subject: the qualification
+    is approved at once, with no approval request, and the tutor is
+    notified. Any account state; not for the caller themselves."""
+    return await service.grant_qualification(
         uow.session, principal=principal, user_id=user_id, subject_id=body.subject_id
     )
 

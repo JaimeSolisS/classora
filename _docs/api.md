@@ -2339,8 +2339,8 @@ documents with M5-08.
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
-| `GET /api/v1/tutors` | `require("tutor.view")`, list filtered by record policy | Query `q` (part of the username or display name, ignoring case; accents not folded; at most 100 characters), `state` (one user state), offset pagination. Sorted by display name, then username. Items: `user_id`, `username`, `display_name`, `state`, `email`, `phone`. |
-| `GET /api/v1/tutors/{user_id}` | `require("tutor.view")` + record policy | The list item fields plus `professional_experience`, `version`, `editable_fields` (sorted) and `teaching_subjects` (#44). |
+| `GET /api/v1/tutors` | `require("tutor.view")`, list filtered by record policy | Query `q` (part of the username or display name, ignoring case; accents not folded; at most 100 characters), `state` (one user state), offset pagination. Sorted by display name, then username. Items: `user_id`, `username`, `display_name`, `state`, `email`, `phone`, `teaching_subjects` (HF-05 D1: approved only, the detail's type and order; one statement for the page, at most 4 in all). |
+| `GET /api/v1/tutors/{user_id}` | `require("tutor.view")` + record policy | The list item fields (`teaching_subjects` included, #44) plus `professional_experience`, `version` and `editable_fields` (sorted). |
 | `PATCH /api/v1/tutors/{user_id}` | `require("tutor.view")` + record and field policy | Body `{version, display_name?, email?, phone?, professional_experience?}` (unknown fields are `422`). |
 
 - **Who sees what** (owner decision on #43, E1 (a)): `tutor.view` is held by
@@ -2386,14 +2386,16 @@ Implemented by M3-08 (#44; spec §3 "subject + education-level
 qualifications, approved by an administrator", §16) in
 `apps/api/app/modules/staff/` (`qualifications.py`,
 `qualification_approval.py`; revocation, M3-08b #198, in
-`qualification_revocation.py`). A tutor requests to teach a **subject**; a
-subject belongs to exactly one education level (#32), so the level follows
-from it.
+`qualification_revocation.py`; a reviewer's direct grant, HF-05, in
+`qualification_grant.py`). A tutor requests to teach a **subject**, or a
+reviewer grants it directly; a subject belongs to exactly one education
+level (#32), so the level follows from it.
 
 | Route | Access | Notes |
 | ----- | ------ | ----- |
 | `GET /api/v1/tutors/{user_id}/qualifications` | `require("tutor.view")` + the tutor profile record policy | Query `status` (`all` by default, or one status). A JSON array of `QualificationItem`, ordered by the level's `sort_order`, the subject name, then the request time. |
 | `POST /api/v1/tutors/{user_id}/qualifications` | `require("tutor.view")`; only the tutor themselves | Body `{subject_id}` (unknown fields are `422`). `201` with the item. |
+| `POST /api/v1/tutors/{user_id}/qualifications/grant` | `require("qualification.review")` (Owners, Administrators; not delegable) | Body `{subject_id}` (`QualificationGrant`, unknown fields are `422`). `201` with the item, `approved` at once. No reauthentication (not in ADR-0007 D10). HF-05. |
 | `POST /api/v1/tutors/{user_id}/qualifications/{qualification_id}/cancel` | `require("tutor.view")`; only the tutor themselves, only while `pending` | No body. `200` with the item. |
 | Approve / reject | `POST /api/v1/approval-requests/{id}/approve` and `/reject` | Holders of `qualification.review` (Owners, Administrators; not delegable). See Approval requests. |
 | `POST /api/v1/tutors/{user_id}/qualifications/{qualification_id}/revoke` | `require("qualification.review")` (Owners, Administrators) | Body `{reason, version}` (`QualificationRevoke`, unknown fields are `422`). `200` with the item. No reauthentication (not in ADR-0007 D10). |
@@ -2419,7 +2421,8 @@ from it.
   `revocation_reason`, `version`. `GET …/qualifications?status=revoked`
   lists the revoked ones.
 - **Requesting:** only the tutor themselves (holding `tutor`, active);
-  administrators don't request on a tutor's behalf. Order: `422` (body) →
+  administrators don't file a request on a tutor's behalf: they **grant**
+  the subject directly (below). Order: `422` (body) →
   `404` (unknown tutor, or one the caller can't see) → `403
   permission_denied` (a caller who sees the tutor but isn't them) → `422` on
   `["body", "subject_id"]` (unknown subject; code `validation_error`) → `409
@@ -2428,6 +2431,28 @@ from it.
   unique index at flush, so two concurrent requests give one `201` and one
   `409`). The `pending` row and a `staff.qualification` approval request
   (requester: the tutor) are created in one transaction.
+- **Granting (HF-05, owner-approved E1; spec §2):** a holder of
+  `qualification.review` records that a tutor teaches a subject. Order:
+  `401` → `csrf_failed` → `403 permission_denied` (a Coordinator, Finance,
+  any tutor including the tutor themselves, a Student or a Guardian) →
+  `422` (body) → `404` (unknown user, or one without the `tutor` role) →
+  `403 permission_denied` (the tutor is the caller: no self-grant; a
+  reviewer who also tutors requests their own subjects) → `422` on
+  `["body", "subject_id"]` (unknown subject; code `validation_error`) →
+  `409 subject_inactive` (both rows locked `FOR SHARE`) → `409
+  qualification_exists` (a `pending` or `approved` row: a pending request
+  is decided in the inbox, not by a grant; a pre-check plus the unique index
+  at flush, so two concurrent grants, or a grant racing a request, give one
+  `201` and one `409`). One `approved` row is created with `decided_at` =
+  `created_at` = now and `decided_by_user_id` = the reviewer, **no**
+  `staff.qualification` approval request, and one
+  `staff.qualification_approved` notification for the tutor (the existing
+  type and params), in one transaction; the automatic `create` audit event
+  is the trail. Any account state is accepted (`pending` invitees
+  included), as for a revoke; eligibility counts only active accounts. The
+  row then behaves as any approved qualification (listed with
+  `requested_at` = `decided_at`, in `teaching_subjects`, counted for
+  eligibility, revocable).
 - **Cancelling:** `404` (tutor) → `403` → `404` (no such qualification of
   this tutor) → `409 approval_transition_invalid` unless `pending`. Sets
   `cancelled` and `decided_at` and cancels the approval request.
@@ -2697,6 +2722,7 @@ a tutor. Finance staff, tutors, students and guardians don't hold it.
 | `GET /api/v1/class-sessions/{class_session_id}` | `require("schedule.view")` (Owner, Administrator, Academic coordinator, Finance staff) | `ClassSessionDetail`; `404 not_found` for an unknown id. Every holder sees every session and its overrides (no record policy for staff). At most 7 statements, plus 3 for a cancelled session's `makeup` block. |
 | `GET /api/v1/schedule/tutor-options?q=…&limit=…` | `require("schedule.view")` (same four roles) | The calendar's tutor filter (#57), below. |
 | `GET /api/v1/tutor-suggestions?subject_id=…&starts_at=…&ends_at=…` | `require("schedule.assign")` (Owner, Administrator, Academic coordinator) | The eligible tutors for a new slot (#51), below. `200` with `TutorSuggestionList`. |
+| `POST /api/v1/tutor-suggestions/series` | `require("schedule.assign")` (same three roles) | Read-only (no `Idempotency-Key`): the tutors free and available for every occurrence of a planned series (HF-05), below. `200` with `SeriesTutorSuggestionList`. |
 | `GET /api/v1/class-sessions/{class_session_id}/replacement-tutors` | `require("schedule.assign")` (same three roles) | Replacement tutors for a session, never its current tutor (#51), below. |
 | `POST`/`GET /api/v1/class-sessions/{class_session_id}/offers` | `schedule.assign` / `schedule.view` | Offer an `unassigned` session to a tutor; the session's offer history (M4-07, see Assignment offers). |
 | `POST /api/v1/class-sessions/{class_session_id}/conflict-overrides` | `require("schedule.manage")` plus `schedule.override` (checked after the `404`) | Override the soft conflicts of one `conflict` series occurrence and schedule it (M4-09c); `200` with `ClassSessionDetail`. See Class series, "Series overrides". |
@@ -3051,17 +3077,64 @@ Response (`TutorSuggestionList`):
             "tutor": {"id": "…", "display_name": "…"},
             "weekly_minutes": 120, "daily_minutes": 60,
             "weekly_limit_minutes": 900, "daily_limit_minutes": null,
-            "prefers_classroom": false}],
- "eligible_count": 3}
+            "prefers_classroom": false,
+            "warnings": [{"code": "daily_limit_exceeded",
+                          "details": {"date": "2031-01-06",
+                                      "limit_minutes": 60,
+                                      "scheduled_minutes": 90}}]}],
+ "eligible_count": 3, "qualified_count": 5,
+ "busy_count": 1, "unavailable_count": 1}
 ```
 
 `items` holds the first `limit` eligible tutors in ranking order (`rank`
 from 1); `eligible_count` counts them all. Nobody eligible is `200` with
-`items: []` and `eligible_count: 0`; ineligible tutors and their reasons are
-never listed. `scheduling.service.suggest_tutors` is the one implementation
-(for M4-07 offers and M4-10 substitutions too); it takes at most `8 + 6 × C`
-statements, `C` being the qualified active tutors (tutors without the
-qualification cost nothing). The web app's "Schedule a session" form has a
+`items: []` and `eligible_count: 0`; ineligible tutors are never named.
+**Why the others aren't listed** (HF-05 B1): `qualified_count` counts the
+active tutors holding an approved qualification for the subject (minus an
+excluded current tutor), `busy_count` those with an overlapping session,
+and `unavailable_count` those without an overlap who aren't available; a
+tutor both busy and unavailable counts as busy, so `qualified_count =
+eligible_count + busy_count + unavailable_count`. **Warnings** (HF-05 B2):
+each returned item's `warnings` are the #50 workload warnings
+(`daily_limit_exceeded`, `weekly_limit_exceeded`, `break_too_short`, in
+ADR-0005 order) that a create of this slot with this tutor would return
+(for a replacement, without the session itself); display only, they never
+drop or reorder a tutor. The four counts and `warnings` are always present
+in responses (the generated client types them as optional, since they were
+added after #51). `scheduling.service.suggest_tutors` is the one
+implementation (for M4-07 offers and M4-10 substitutions too); it takes at
+most `8 + 7 × C` statements, `C` being the qualified active tutors (tutors
+without the qualification cost nothing; an item's sessions are read for its
+warnings only when it has a limit).
+
+**Series suggestions** (HF-05 C). `POST /api/v1/tutor-suggestions/series`
+body (`SeriesTutorSuggestionQuery`, unknown fields are `422`):
+`subject_id`, `classroom_id` (optional), `starts_on`, `start_time` (`HH:MM`),
+`duration_minutes` (15–480), `recurrence` (the `SeriesRecurrence` of `POST
+/class-series`) and `limit` (1–50, default 10). Order: `401` → `csrf_failed`
+→ `403` → `422` body → `422` for the recurrence, `starts_on_in_past` and
+`crosses_local_date` (the codes and paths of `POST /class-series`) → `422`
+references, all at once (`subject_unknown` / `subject_inactive` on
+`["body", "subject_id"]`, `classroom_unknown` / `classroom_inactive` on
+`["body", "classroom_id"]`) → `200`. The rule is expanded in the center
+zone over `[starts_on local midnight, + SCHEDULING_HORIZON_WEEKS weeks)`;
+occurrences that start before now or fall on a center closure date are
+dropped, and `occurrence_count` counts the rest. A tutor is eligible when
+they are qualified and active, have no overlap with **any** remaining
+occurrence and are available for **every** one (windows and exceptions).
+`busy_count` and `unavailable_count` are as above, over all occurrences.
+The ranking is the #51 rule at the **first** remaining occurrence
+(`weekly_minutes` and `daily_minutes` of its local week and date;
+`prefers_classroom` as above); `warnings` is always `[]`, as for
+`ClassSeriesCreated`. When no occurrence remains, the response is `200`
+with `items: []`, every count `0` and `occurrence_count: 0`. Response
+`SeriesTutorSuggestionList`: the `TutorSuggestionList` fields plus
+`occurrence_count`. At most `10 + 6 × C` statements, whatever the number of
+occurrences (the overlap is one statement over `[first start, last end)`,
+availability two for all tutors). Read-only and **advisory**: `POST
+/class-series` checks its own occurrences over `[now, horizon)` and the
+nightly job checks later ones, so a suggestion never guarantees a clean
+create. The web app's "Schedule a session" form has a
 "Suggest tutors" button for holders of `schedule.assign`; the session page
 (`/schedule/sessions/:id`, M4-07) uses the replacement list in its "Offer to
 a tutor" panel.

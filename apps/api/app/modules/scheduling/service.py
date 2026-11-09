@@ -49,7 +49,8 @@ Tutor suggestions (#51, :mod:`~app.modules.scheduling.tutor_suggestions`;
 the pure eligibility and workload ranking rule in
 :mod:`~app.modules.scheduling.eligibility`): :func:`suggest_tutors` (the one
 implementation, for #52 / #55 too), :func:`suggest_for_slot` and
-:func:`suggest_replacements` (the two routes' reads).
+:func:`suggest_replacements` (the two routes' reads), and
+:func:`suggest_for_series` (HF-05 C, a whole series).
 
 Imports (#123): :data:`SCHEDULES_IMPORT_KIND`
 (:mod:`~app.modules.scheduling.imports`), the ``schedules`` import kind the
@@ -978,6 +979,9 @@ from app.modules.scheduling.tutor_assignments import (
 )
 from app.modules.scheduling.tutor_assignments import (
     subjects_by_student_for_tutor as subjects_by_student_for_tutor,
+)
+from app.modules.scheduling.tutor_suggestions import (
+    suggest_for_series as suggest_for_series,
 )
 from app.modules.scheduling.tutor_suggestions import (
     suggest_for_slot as suggest_for_slot,

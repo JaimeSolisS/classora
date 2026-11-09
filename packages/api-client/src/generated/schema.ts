@@ -2067,6 +2067,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tutors/{user_id}/qualifications/grant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Grant Qualification
+         * @description A reviewer records that a tutor teaches a subject: the qualification
+         *     is approved at once, with no approval request, and the tutor is
+         *     notified. Any account state; not for the caller themselves.
+         */
+        post: operations["grant_qualification_api_v1_tutors__user_id__qualifications_grant_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tutors/{user_id}/qualifications/{qualification_id}/cancel": {
         parameters: {
             query?: never;
@@ -3843,6 +3865,40 @@ export interface paths {
         get: operations["list_tutor_suggestions_api_v1_tutor_suggestions_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tutor-suggestions/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List Series Tutor Suggestions
+         * @description The tutors who can teach **every** occurrence of a planned weekly
+         *     series, the first `limit` in ranking order, with how many are eligible,
+         *     busy or unavailable.
+         *
+         *     The rule is expanded from `starts_on` over the scheduling horizon
+         *     (`SCHEDULING_HORIZON_WEEKS`, default 12 weeks); occurrences that already
+         *     started or fall on a center closure are not checked (`occurrence_count`
+         *     counts the others). A tutor is listed when they are an active tutor with
+         *     an approved qualification for the subject, available for every
+         *     occurrence and without an overlapping offered, confirmed or completed
+         *     session on any of them. The ranking is that of `GET
+         *     /tutor-suggestions` at the first checked occurrence; `warnings` is
+         *     always empty. Read-only and advisory: `POST /class-series` checks its
+         *     occurrences again over `[now, horizon)` and the nightly job checks
+         *     later ones, so a suggestion never guarantees a clean create.
+         */
+        post: operations["list_series_tutor_suggestions_api_v1_tutor_suggestions_series_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -20220,6 +20276,18 @@ export interface components {
             subject_id: string;
         };
         /**
+         * QualificationGrant
+         * @description A reviewer grants a tutor one subject directly (HF-05 A1): approved
+         *     at once, with no approval request.
+         */
+        QualificationGrant: {
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+        };
+        /**
          * QualificationItem
          * @description One qualification of a tutor, with its subject and level names.
          */
@@ -21159,6 +21227,79 @@ export interface components {
             until: string | null;
             /** Count */
             count: number | null;
+        };
+        /**
+         * SeriesTutorSuggestionList
+         * @description The tutors free and available for **every** checked occurrence of a
+         *     series, ranked at the first one (HF-05 C).
+         */
+        SeriesTutorSuggestionList: {
+            /** Items */
+            items: components["schemas"]["TutorSuggestion"][];
+            /** Eligible Count */
+            eligible_count: number;
+            /**
+             * Qualified Count
+             * @description Active tutors holding an approved qualification for the subject (an excluded tutor left out).
+             */
+            qualified_count?: number;
+            /**
+             * Busy Count
+             * @description Qualified tutors with an overlapping session as tutor.
+             */
+            busy_count?: number;
+            /**
+             * Unavailable Count
+             * @description Qualified tutors without an overlap who are not available for the slot (weekly windows and time off).
+             */
+            unavailable_count?: number;
+            /**
+             * Occurrence Count
+             * @description The occurrences checked: those in [starts_on, + the scheduling horizon) that start after now and are not on a center closure.
+             */
+            occurrence_count: number;
+        };
+        /**
+         * SeriesTutorSuggestionQuery
+         * @description The body of ``POST /api/v1/tutor-suggestions/series`` (HF-05 C1): the
+         *     timing members of a series create, the subject and the optional
+         *     classroom. Unknown fields are ``422``.
+         */
+        SeriesTutorSuggestionQuery: {
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /**
+             * Classroom Id
+             * @description The classroom; ranks the tutors who prefer it first on ties.
+             */
+            classroom_id?: string | null;
+            /**
+             * Starts On
+             * Format: date
+             * @description The local date the rule starts on (not before today).
+             */
+            starts_on: string;
+            /**
+             * Start Time
+             * Format: time
+             * @description The local start time, HH:MM (whole minutes, no seconds).
+             */
+            start_time: string;
+            /**
+             * Duration Minutes
+             * @description 15-480 minutes.
+             */
+            duration_minutes: number;
+            recurrence: components["schemas"]["SeriesRecurrence"];
+            /**
+             * Limit
+             * @description At most this many items (1-50).
+             * @default 10
+             */
+            limit: number;
         };
         /**
          * ServicePriceCreate
@@ -23485,6 +23626,11 @@ export interface components {
             email: string | null;
             /** Phone */
             phone: string | null;
+            /**
+             * Teaching Subjects
+             * @description The subjects of the tutor's approved qualifications, by the level's order, then the subject name.
+             */
+            teaching_subjects: components["schemas"]["TeachingSubject"][];
             /** Professional Experience */
             professional_experience: string | null;
             /**
@@ -23497,11 +23643,6 @@ export interface components {
              * @description The fields the caller may change, sorted; empty: read only. Sending another field is 403 permission_denied.
              */
             editable_fields: components["schemas"]["TutorField"][];
-            /**
-             * Teaching Subjects
-             * @description The subjects of the tutor's approved qualifications, by the level's order, then the subject name.
-             */
-            teaching_subjects: components["schemas"]["TeachingSubject"][];
         };
         /** @enum {string} */
         TutorField: "display_name" | "email" | "phone" | "professional_experience";
@@ -23525,6 +23666,11 @@ export interface components {
             email: string | null;
             /** Phone */
             phone: string | null;
+            /**
+             * Teaching Subjects
+             * @description The subjects of the tutor's approved qualifications, by the level's order, then the subject name (HF-05 D1).
+             */
+            teaching_subjects?: components["schemas"]["TeachingSubject"][];
         };
         /**
          * TutorName
@@ -23740,18 +23886,40 @@ export interface components {
              * @description The slot has a classroom and it is one of the tutor's preferred.
              */
             prefers_classroom: boolean;
+            /**
+             * Warnings
+             * @description The workload warnings a create of this slot with this tutor would return (daily_limit_exceeded, weekly_limit_exceeded, break_too_short; HF-05 B2). Display only: they never drop or reorder a tutor. Always empty for a series.
+             */
+            warnings?: components["schemas"]["SchedulingWarning"][];
         };
         /**
          * TutorSuggestionList
-         * @description The first ``limit`` eligible tutors in ranking order, and how many
-         *     are eligible in all (advisory: creating or offering re-checks
-         *     everything).
+         * @description The first ``limit`` eligible tutors in ranking order, how many are
+         *     eligible in all, and why the others are not (HF-05 B1; advisory:
+         *     creating or offering re-checks everything).
+         *
+         *     ``qualified_count = eligible_count + busy_count + unavailable_count``.
          */
         TutorSuggestionList: {
             /** Items */
             items: components["schemas"]["TutorSuggestion"][];
             /** Eligible Count */
             eligible_count: number;
+            /**
+             * Qualified Count
+             * @description Active tutors holding an approved qualification for the subject (an excluded tutor left out).
+             */
+            qualified_count?: number;
+            /**
+             * Busy Count
+             * @description Qualified tutors with an overlapping session as tutor.
+             */
+            busy_count?: number;
+            /**
+             * Unavailable Count
+             * @description Qualified tutors without an overlap who are not available for the slot (weekly windows and time off).
+             */
+            unavailable_count?: number;
         };
         /**
          * TutorUpdate
@@ -31356,6 +31524,77 @@ export interface operations {
             };
         };
     };
+    grant_qualification_api_v1_tutors__user_id__qualifications_grant_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QualificationGrant"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationItem"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). Also: the tutor is the caller; a tutor's own subjects go through a request (permission_denied). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No such user, or the user doesn't hold the tutor role (not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The subject or its education level is inactive (subject_inactive), or the tutor already has a pending or approved qualification for it (qualification_exists). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     cancel_qualification_api_v1_tutors__user_id__qualifications__qualification_id__cancel_post: {
         parameters: {
             query?: never;
@@ -37783,6 +38022,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TutorSuggestionList"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied (permission_denied); the privacy notice must be accepted first (privacy_notice_required); on POST, PUT, PATCH and DELETE also a failed Origin or X-CSRF-Token check (csrf_failed). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_series_tutor_suggestions_api_v1_tutor_suggestions_series_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeriesTutorSuggestionQuery"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeriesTutorSuggestionList"];
                 };
             };
             /** @description Authentication required. */

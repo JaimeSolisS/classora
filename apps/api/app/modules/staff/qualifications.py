@@ -30,7 +30,8 @@ qualification of this tutor) → ``409 approval_transition_invalid`` unless
 order a decision takes, so a cancel racing a decision can't deadlock.
 
 Revoking an approved qualification (#198) is
-:mod:`app.modules.staff.qualification_revocation`.
+:mod:`app.modules.staff.qualification_revocation`; a reviewer granting one
+directly (HF-05 A) is :mod:`app.modules.staff.qualification_grant`.
 
 **Only approved counts** (#44 D2): :func:`approved_subject_ids`,
 :func:`is_qualified`, :func:`qualified_tutor_ids` and the profile's
@@ -119,10 +120,11 @@ async def items_of(
         rows,
         key=lambda row: (*_sort_key(references[row.subject_id]), row.created_at),
     )
-    return [_item(row, references[row.subject_id]) for row in ordered]
+    return [item_of(row, references[row.subject_id]) for row in ordered]
 
 
-def _item(row: TutorQualification, reference: SubjectReference) -> QualificationItem:
+def item_of(row: TutorQualification, reference: SubjectReference) -> QualificationItem:
+    """One item, with the subject's reference already read."""
     return QualificationItem(
         id=row.id,
         subject_id=row.subject_id,
@@ -158,7 +160,7 @@ async def list_qualifications(
     return await items_of(session, rows)
 
 
-async def _flush_new(session: AsyncSession) -> None:
+async def flush_new(session: AsyncSession) -> None:
     """Flush a new qualification; a concurrent duplicate that won the race
     (``uq_tutor_qualifications_active``) is ``409 qualification_exists``."""
     try:
@@ -198,7 +200,7 @@ async def request_qualification(
         tutor_user_id=user_id, subject_id=subject_id, status=PENDING
     )
     session.add(qualification)
-    await _flush_new(session)
+    await flush_new(session)
     await administration.create_approval_request(
         session,
         request_type=QUALIFICATION_APPROVAL_TYPE,
@@ -206,7 +208,7 @@ async def request_qualification(
         requester_user_id=user_id,
     )
     await session.refresh(qualification, ["created_at", "version"])
-    return _item(qualification, reference)
+    return item_of(qualification, reference)
 
 
 async def cancel_qualification(
@@ -273,15 +275,58 @@ async def teaching_subjects(
     subject_ids = await approved_subject_ids(session, tutor_user_id)
     references = await catalog.subject_references(session, subject_ids)
     return [
-        TeachingSubject(
-            subject_id=reference.id,
-            subject_name=reference.name,
-            education_level_id=reference.education_level_id,
-            education_level_name=reference.education_level_name,
-            subject_is_active=reference.is_active,
-        )
+        _teaching_subject(reference)
         for reference in sorted(references.values(), key=_sort_key)
     ]
+
+
+async def teaching_subjects_many(
+    session: AsyncSession, tutor_user_ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, list[TeachingSubject]]:
+    """:func:`teaching_subjects` for a page of tutors (HF-05 D1): every
+    requested tutor is a key, each list in the same order. One statement
+    (the approved rows joined to ``catalog.service.subject_reference_columns``)
+    whatever the number of tutors; none for an empty input."""
+    ids = set(tutor_user_ids)
+    if not ids:
+        return {}
+    names = catalog.subject_reference_columns().subquery()
+    rows = await session.execute(
+        select(TutorQualification.tutor_user_id, names)
+        .join(names, names.c.id == TutorQualification.subject_id)
+        .where(TutorQualification.tutor_user_id.in_(ids))
+        .where(TutorQualification.status == APPROVED)
+    )
+    found: dict[uuid.UUID, list[TeachingSubject]] = {tutor: [] for tutor in ids}
+    # The detail's order (_sort_key), sorted here as there.
+    for row in sorted(
+        rows,
+        key=lambda r: (
+            r.education_level_sort_order,
+            r.education_level_name.lower(),
+            r.name.lower(),
+        ),
+    ):
+        found[row.tutor_user_id].append(
+            TeachingSubject(
+                subject_id=row.id,
+                subject_name=row.name,
+                education_level_id=row.education_level_id,
+                education_level_name=row.education_level_name,
+                subject_is_active=row.is_active,
+            )
+        )
+    return found
+
+
+def _teaching_subject(reference: SubjectReference) -> TeachingSubject:
+    return TeachingSubject(
+        subject_id=reference.id,
+        subject_name=reference.name,
+        education_level_id=reference.education_level_id,
+        education_level_name=reference.education_level_name,
+        subject_is_active=reference.is_active,
+    )
 
 
 async def approved_subject_ids(

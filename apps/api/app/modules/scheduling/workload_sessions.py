@@ -4,7 +4,8 @@ The counted sessions of a tutor (:func:`tutor_workload_sessions`) are read
 in **one statement**, from the Monday of the first ISO week through the
 Sunday of the last, widened by ``BREAK_MAX`` minutes at both ends; the rules
 are the pure :mod:`~app.modules.scheduling.workload`. The create path (#48
-C2) computes the warnings (:func:`session_warnings`) after the conflict
+C2) computes the warnings (:func:`session_warnings`; :func:`warnings_for_limits`
+with the limits already read) after the conflict
 checks and before the insert: at most two statements with a tutor (the
 limits, then the sessions, only when a limit is set), none without one. Not
 locked (#50 A8). #51 and #58 reuse both; a move (#58 C1) passes
@@ -101,6 +102,30 @@ async def session_warnings(
     session): the limits, then (only when one is set) the counted sessions
     of the session's ISO week. At most two statements."""
     limits = await staff.teaching_limits(session, tutor_user_id)
+    return await warnings_for_limits(
+        session,
+        tutor_user_id,
+        limits,
+        starts_at,
+        ends_at,
+        zone,
+        exclude_session_id=exclude_session_id,
+    )
+
+
+async def warnings_for_limits(
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID,
+    limits: staff.TeachingLimits,
+    starts_at: datetime,
+    ends_at: datetime,
+    zone: str,
+    *,
+    exclude_session_id: uuid.UUID | None = None,
+) -> list[SchedulingWarning]:
+    """:func:`session_warnings` with the tutor's limits already read (HF-05
+    B2, the tutor suggestions): the counted sessions are read only when a
+    limit is set. At most one statement."""
     if not _has_limits(limits):
         return []
     local_date = starts_at.astimezone(ZoneInfo(zone)).date()
