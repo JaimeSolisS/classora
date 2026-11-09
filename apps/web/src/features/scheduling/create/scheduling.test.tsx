@@ -40,11 +40,13 @@ import {
   TUTORS,
 } from './fixtures';
 import {
+  calendarWeekPath,
   canSuggestTutors,
   EMPTY_SCHEDULE,
   overrideAction,
   overrideCodes,
   overrideReasonError,
+  prefillValues,
   scheduleBody,
   serverErrors,
   sessionOverride,
@@ -995,5 +997,181 @@ describe('suggested tutors (#51 G)', () => {
     expect(main().textContent).toContain(
       'This subject or its education level is inactive. Choose another one.',
     );
+  });
+});
+
+describe('pre-filled from the calendar (HF-02 C1)', () => {
+  const OPTIONS = { tutors: TUTORS, classrooms: CLASSROOMS };
+  const params = (query: string) => new URLSearchParams(query);
+  const TUTOR = TUTORS[1]!.id;
+  const ROOM = CLASSROOMS[0]!.id;
+
+  it('reads the date, times, tutor and room; the student and subject stay empty', () => {
+    expect(
+      prefillValues(
+        params(
+          `date=2031-03-10&start=10:00&end=11:30&tutor=${TUTOR}&room=${ROOM}`,
+        ),
+        OPTIONS,
+      ),
+    ).toEqual({
+      ...EMPTY_SCHEDULE,
+      date: '2031-03-10',
+      start: '10:00',
+      end: '11:30',
+      tutorId: TUTOR,
+      classroomId: ROOM,
+    });
+  });
+
+  it('is null without any valid parameter', () => {
+    expect(prefillValues(params(''), OPTIONS)).toBeNull();
+    expect(
+      prefillValues(params('date=2031-02-30&start=25:00&tutor=x'), OPTIONS),
+    ).toBeNull();
+  });
+
+  it('ignores an invalid date or time, without an error', () => {
+    expect(
+      prefillValues(params('date=2031-02-30&start=10:00&end=11:00'), OPTIONS),
+    ).toMatchObject({ date: '', start: '10:00', end: '11:00' });
+    expect(
+      prefillValues(params('date=2031-03-10&start=9:00&end=11:00'), OPTIONS),
+    ).toMatchObject({ date: '2031-03-10', start: '', end: '' });
+    expect(
+      prefillValues(params('date=2031-03-10&start=10:00&end=24:00'), OPTIONS),
+    ).toMatchObject({ start: '10:00', end: '' });
+  });
+
+  it('drops an end that is not after the start', () => {
+    expect(
+      prefillValues(params('date=2031-03-10&start=10:00&end=10:00'), OPTIONS),
+    ).toMatchObject({ start: '10:00', end: '' });
+    expect(
+      prefillValues(params('date=2031-03-10&start=10:00&end=09:45'), OPTIONS),
+    ).toMatchObject({ start: '10:00', end: '' });
+  });
+
+  it('ignores a tutor or room that is not a loaded active option', () => {
+    const unknown = '00000000-0000-4000-8000-0000000009ff';
+    expect(
+      prefillValues(
+        params(`date=2031-03-10&tutor=${unknown}&room=${unknown}`),
+        OPTIONS,
+      ),
+    ).toMatchObject({ tutorId: '', classroomId: '' });
+    expect(
+      prefillValues(params(`date=2031-03-10&tutor=${TUTOR}`), {
+        tutors: [],
+        classrooms: [],
+      }),
+    ).toMatchObject({ tutorId: '' });
+  });
+
+  it('links back to the week with the pre-filled tutor and room (C7)', () => {
+    expect(
+      calendarWeekPath('2031-03-10', { tutorId: TUTOR, classroomId: '' }),
+    ).toBe(`/schedule?view=week&date=2031-03-10&tutor=${TUTOR}`);
+    expect(
+      calendarWeekPath('2031-03-10', { tutorId: '', classroomId: ROOM }),
+    ).toBe(`/schedule?view=week&date=2031-03-10&room=${ROOM}`);
+  });
+});
+
+describe('the pre-filled page (HF-02 F2)', () => {
+  const TUTOR = TUTORS[1]!.id;
+  const ROOM = CLASSROOMS[0]!.id;
+  const PREFILLED = `/schedule/new?date=2031-03-10&start=10:00&end=11:30&tutor=${TUTOR}&room=${ROOM}`;
+
+  function selected(label: string): string {
+    const field = [...main().querySelectorAll('label')]
+      .filter((l) => l.textContent === label)
+      .map((l) => document.getElementById(l.htmlFor))[0] as HTMLSelectElement;
+    return field.value;
+  }
+
+  function calendarLink(): HTMLAnchorElement | undefined {
+    return [...main().querySelectorAll('a')].find(
+      (a) => a.textContent === 'View in calendar',
+    );
+  }
+
+  it('renders the URL values in the fields, as a one-off session', async () => {
+    const api = stub();
+    app = await renderApp(PREFILLED);
+
+    expect(fieldByLabel(main(), 'Date').value).toBe('2031-03-10');
+    expect(fieldByLabel(main(), 'Start').value).toBe('10:00');
+    expect(fieldByLabel(main(), 'End').value).toBe('11:30');
+    expect(selected('Tutor')).toBe(TUTOR);
+    expect(selected('Classroom')).toBe(ROOM);
+    expect(selected('Subject')).toBe('');
+    expect(main().textContent).not.toContain('Ana López');
+    const repeats = main().querySelector<HTMLInputElement>('[role="switch"]');
+    expect(repeats?.checked).toBe(false);
+    expect(api.calls(CREATE)).toHaveLength(0);
+  });
+
+  it('keeps the date and times when "Repeats weekly" turns on (C3)', async () => {
+    stub();
+    app = await renderApp(PREFILLED);
+
+    await click(main().querySelector<HTMLInputElement>('[role="switch"]')!);
+
+    expect(fieldByLabel(main(), 'Starts on').value).toBe('2031-03-10');
+    expect(fieldByLabel(main(), 'Start').value).toBe('10:00');
+    expect(fieldByLabel(main(), 'End').value).toBe('11:30');
+    // 2031-03-10 is a Monday: its weekday is pre-checked.
+    const monday = [...main().querySelectorAll('label')].find(
+      (label) => label.textContent?.trim() === 'Monday',
+    );
+    const box = monday?.querySelector('input') ?? null;
+    expect(box?.checked ?? false).toBe(true);
+  });
+
+  it('shows "View in calendar" after a pre-filled save, and not after a plain one', async () => {
+    const api = stub(SCHEDULER, { [CREATE]: () => jsonResponse(201, CREATED) });
+    app = await renderApp(PREFILLED);
+    await pickStudent();
+    choose('Subject', SUBJECTS[0]!.id);
+
+    await click(buttonNamed(main(), 'Schedule session'));
+
+    expect(api.calls(CREATE)[0]!.body).toMatchObject({
+      tutor_user_id: TUTOR,
+      classroom_id: ROOM,
+      starts_at: '2031-03-10T16:00:00.000Z',
+      ends_at: '2031-03-10T17:30:00.000Z',
+    });
+    expect(main().textContent).toContain('Session scheduled');
+    expect(calendarLink()?.getAttribute('href')).toBe(
+      `/schedule?view=week&date=2031-03-10&tutor=${TUTOR}&room=${ROOM}`,
+    );
+
+    // "Schedule another" keeps today's behaviour (C6).
+    await click(buttonNamed(main(), 'Schedule another'));
+    expect(fieldByLabel(main(), 'Date').value).toBe('2031-03-10');
+    expect(fieldByLabel(main(), 'Start').value).toBe('');
+    expect(selected('Tutor')).toBe('');
+    app.unmount();
+
+    stub(SCHEDULER, { [CREATE]: () => jsonResponse(201, CREATED) });
+    app = await renderApp('/schedule/new');
+    await fillForm();
+    await click(buttonNamed(main(), 'Schedule session'));
+    expect(main().textContent).toContain('Session scheduled');
+    expect(calendarLink()).toBeUndefined();
+  });
+
+  it('gives a Coordinator the forbidden page (A3)', async () => {
+    stub({
+      ...TEST_USER,
+      roles: ['academic_coordinator'],
+      permissions: ['schedule.view', 'schedule.assign', 'student.view'],
+    });
+    app = await renderApp(PREFILLED);
+
+    expect(main().textContent).toContain("You don't have access to this page");
+    expect(main().querySelector('form')).toBeNull();
   });
 });

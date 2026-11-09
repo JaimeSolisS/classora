@@ -7,7 +7,8 @@ import timeGridPlugin from '@fullcalendar/react/timegrid';
 // The calendar's views (#57 C2, ADR-0005 D8): only FullCalendar's standard
 // time-grid day and week, day-grid month and list views, plus the classic
 // theme and the interaction code shipped in the pinned @fullcalendar/react
-// (#58 D1: dragging and resizing events; no selecting, no date-click).
+// (#58 D1: dragging and resizing events; HF-02: selecting free times and
+// clicking one in Day and Week, to schedule a session).
 
 export const CALENDAR_VIEWS = {
   day: 'timeGridDay',

@@ -2354,7 +2354,8 @@
       "offered": "Offered to {{tutor}}",
       "unassigned": "Unassigned",
       "another": "Schedule another",
-      "openSession": "Open the session"
+      "openSession": "Open the session",
+      "viewInCalendar": "View in calendar"
     },
     "severity": {
       "hard": "Not allowed",
@@ -2418,6 +2419,7 @@
       "noTutor": "No tutor",
       "noStudents": "No students",
       "listAlternative": "The List view shows the same sessions as text.",
+      "selectHint": "To schedule a session, drag over free times in Day or Week view, or click a time for a one-hour session. With the keyboard, use \"Schedule a session\".",
       "filters": {
         "label": "Filters",
         "tutor": "Tutor",
