@@ -96,6 +96,10 @@ function stub(
     [SUMMARY_ROUTE]: () => jsonResponse(200, SUMMARY),
     [CHARGES]: (request) => {
       const url = new URL(request.url);
+      // #563: the hidden void charges' count; none here.
+      if (url.searchParams.get('limit') === '1') {
+        return jsonResponse(200, { items: [], total: 0, limit: 1, offset: 0 });
+      }
       if (url.searchParams.get('limit') === '100') {
         return jsonResponse(200, {
           items: OPEN_CHARGES,
@@ -595,6 +599,75 @@ describe('adjust a charge (A3, D1-D3)', () => {
     await settleUntil(() => alerts(dialog).length > 0);
     expect(alerts(dialog).join()).toContain(
       "You don't have permission to do this.",
+    );
+  });
+});
+
+describe('a charge that becomes void (#563 AC6)', () => {
+  it('keeps the detail open at $0.00, then drops the row and counts it hidden', async () => {
+    let voided = false;
+    const VOIDED = {
+      ...CHARGE_DETAIL,
+      adjustments_total: '-1600.00',
+      net: '0.00',
+      open: '0.00',
+      status: 'void' as const,
+    };
+    stub({
+      [CHARGES]: (request) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get('limit') === '1') {
+          expect(url.searchParams.getAll('status')).toEqual(['void']);
+          return jsonResponse(200, {
+            items: [],
+            total: voided ? 1 : 0,
+            limit: 1,
+            offset: 0,
+          });
+        }
+        // The list never asks for void charges while the toggle is off.
+        expect(url.searchParams.getAll('status')).not.toContain('void');
+        const items = CHARGES_PAGE.items.filter(
+          (item) => !(voided && item.id === CHARGE_OVERDUE.id),
+        );
+        return jsonResponse(200, {
+          ...CHARGES_PAGE,
+          items,
+          total: items.length,
+        });
+      },
+      [CHARGE(CHARGE_OVERDUE.id)]: () =>
+        jsonResponse(200, voided ? VOIDED : CHARGE_DETAIL),
+      [ADJUST(CHARGE_OVERDUE.id)]: () => {
+        voided = true;
+        return jsonResponse(201, {
+          ...ADJUSTMENT_POSTED,
+          adjustment: { ...ADJUSTMENT_POSTED.adjustment, amount: '-1500.00' },
+          charge: { ...VOIDED },
+        });
+      },
+    });
+    await renderAccount();
+    const hidden = () =>
+      [...main().querySelectorAll('section')]
+        .find((item) => item.querySelector('h2')?.textContent === 'Charges')!
+        .querySelector('[data-hidden-charges]')!.textContent;
+    expect(hidden()).toBe('');
+
+    await openAdjust();
+    fillAdjustment('1500');
+    await saveAdjustment();
+    await settleUntil(() => dialogTitled('Adjust the charge') === null);
+    // The detail stays open, with the net at $0.00.
+    await settleUntil(() => titled('Charge').textContent?.includes('Void'));
+    expect(statusIn('Charge')).toContain('$0.00');
+
+    await click(buttonNamed(titled('Charge'), 'Close'));
+    await settleUntil(() => dialogTitled('Charge') === null);
+    await settleUntil(
+      () =>
+        main().querySelector(`[data-charge-id="${CHARGE_OVERDUE.id}"]`) ===
+          null && hidden() === '1 $0.00 charge hidden',
     );
   });
 });

@@ -63,6 +63,13 @@ export const CHARGE_STATUSES: readonly ChargeStatus[] = [
   'paid',
   'void',
 ];
+/**
+ * The status filter's boxes on the staff account page (#563 E2): every
+ * status but `void`, which has its own "show $0.00 charges" toggle.
+ */
+export const FILTER_STATUSES: readonly ChargeStatus[] = CHARGE_STATUSES.filter(
+  (status) => status !== 'void',
+);
 /** The statuses of a charge that may still have an open amount. */
 export const OPEN_STATUSES: readonly ChargeStatus[] = [
   'pending',
@@ -98,6 +105,15 @@ export interface ChargeFilters {
 
 export function chargesKey(familyId: string, filters: ChargeFilters) {
   return [...accountKey(familyId), 'charges', filters] as const;
+}
+
+/**
+ * How many void (0.00) charges the account page hides (#563), for one
+ * student or all. Under the `'charges'` prefix, so every invalidation of
+ * the charges refreshes it too.
+ */
+export function hiddenChargesKey(familyId: string, studentId: string | null) {
+  return [...accountKey(familyId), 'charges', 'hidden', studentId] as const;
 }
 
 /** The open charges the allocation editor and the estimate use. */
@@ -163,6 +179,34 @@ export function fetchCharges(
       }),
     { signal },
   );
+}
+
+/**
+ * The number of void charges of the account (or of one student), read from
+ * the page's `total` (#563): the server counts, nothing is filtered here.
+ */
+export async function fetchHiddenChargeCount(
+  familyId: string,
+  studentId: string | null,
+  signal: AbortSignal,
+): Promise<number> {
+  const page = await apiCall(
+    () =>
+      api.GET('/api/v1/families/{family_id}/billing-account/charges', {
+        params: {
+          path: { family_id: familyId },
+          query: {
+            ...(studentId ? { student_id: studentId } : {}),
+            status: ['void'],
+            limit: 1,
+            offset: 0,
+          },
+        },
+        signal,
+      }),
+    { signal },
+  );
+  return page.total;
 }
 
 async function scanCharges(

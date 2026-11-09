@@ -4,6 +4,7 @@ import { isMoneyInput, normalizeMoneyInput } from '@/lib/money';
 import type { LocalDate } from '@/lib/time';
 import {
   CHARGE_STATUSES,
+  FILTER_STATUSES,
   type AllocationLine,
   type ChargeFilters,
   type ChargeItem,
@@ -36,6 +37,10 @@ export const RECEIVED_ON_MIN = '2000-01-01';
 // --------------------------------------------------------- URL state
 
 export interface AccountView extends ChargeFilters {
+  /** The checked status boxes (never `void`); empty: every shown status. */
+  statuses: ChargeStatus[];
+  /** #563: the "show $0.00 charges" toggle (`?void=1`); off by default. */
+  showVoid: boolean;
   /** The payments list's page (`?payments_page=`). */
   paymentsPage: number;
 }
@@ -45,13 +50,18 @@ function pageOf(value: string | null): number {
   return Number.isInteger(page) && page >= 1 ? page : 1;
 }
 
-/** The account page's state in `search`; anything invalid is ignored. */
+/**
+ * The account page's state in `search`; anything invalid is ignored. A
+ * legacy `?status=void` link turns the toggle on (#563), so it still shows
+ * the void charges.
+ */
 export function accountView(search: URLSearchParams): AccountView {
   const statuses = search.getAll('status');
   const studentId = search.get('student_id');
   return {
     studentId: studentId && studentId.length > 0 ? studentId : null,
-    statuses: CHARGE_STATUSES.filter((status) => statuses.includes(status)),
+    statuses: FILTER_STATUSES.filter((status) => statuses.includes(status)),
+    showVoid: search.get('void') === '1' || statuses.includes('void'),
     page: pageOf(search.get('page')),
     paymentsPage: pageOf(search.get('payments_page')),
   };
@@ -62,11 +72,27 @@ export function accountViewParams(view: AccountView): URLSearchParams {
   const params = new URLSearchParams();
   if (view.studentId) params.set('student_id', view.studentId);
   for (const status of view.statuses) params.append('status', status);
+  if (view.showVoid) params.set('void', '1');
   if (view.page > 1) params.set('page', String(view.page));
   if (view.paymentsPage > 1) {
     params.set('payments_page', String(view.paymentsPage));
   }
   return params;
+}
+
+/**
+ * The statuses the charges list asks the API for (#563): the void charges
+ * are hidden unless the toggle is on. Empty means every status (no
+ * `status` parameter). The server filters, so the pages and `total` stay
+ * exact.
+ */
+export function requestedStatuses(
+  view: Pick<AccountView, 'statuses' | 'showVoid'>,
+): ChargeStatus[] {
+  if (view.statuses.length === 0) {
+    return view.showVoid ? [] : [...FILTER_STATUSES];
+  }
+  return view.showVoid ? [...view.statuses, 'void'] : [...view.statuses];
 }
 
 /** Toggles one charge status in the filter, in the filter's order. */

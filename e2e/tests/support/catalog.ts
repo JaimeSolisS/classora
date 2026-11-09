@@ -332,7 +332,15 @@ type Common = {
       list: { title: string; search: string };
       page: { title: string };
       summary: { title: string; accountCredit: string };
-      charges: { title: string; empty: string; add: string; view: string };
+      charges: {
+        title: string;
+        empty: string;
+        add: string;
+        view: string;
+        // #563: the void (0.00) charges' toggle and hidden count.
+        showVoid: string;
+        hidden_one: string;
+      };
       ledger: { title: string; empty: string };
       payments: {
         title: string;
@@ -454,7 +462,7 @@ type Common = {
       filters: { status: string; searchStudent: string };
       periodStates: Record<'paused', string>;
       // #379 G3: a paid charge; #382 F3: an overdue one.
-      chargeStatus: Record<'pending' | 'paid' | 'overdue', string>;
+      chargeStatus: Record<'pending' | 'paid' | 'overdue' | 'void', string>;
       pauses: { empty: string };
       pause: Record<'action' | 'title' | 'submit' | 'from', string>;
       resume: Record<'action' | 'title' | 'submit', string>;
