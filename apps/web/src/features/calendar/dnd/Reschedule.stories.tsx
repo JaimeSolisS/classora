@@ -79,7 +79,11 @@ function Week({ canSchedule }: { canSchedule: boolean }) {
         page([MOVABLE, OCCURRENCE, FIXED, OVERRIDDEN_ITEM]),
       ),
     searchTutors: () => Promise.resolve(TUTOR_OPTIONS),
-    searchStudents: () => Promise.resolve(STUDENT_OPTIONS),
+    searchStudents: () =>
+      Promise.resolve({
+        items: STUDENT_OPTIONS,
+        total: STUDENT_OPTIONS.length,
+      }),
     fetchRooms: () => Promise.resolve(ROOM_OPTIONS),
     updateSession: (_id, body) => Promise.resolve(updated(MOVABLE, body)),
   };

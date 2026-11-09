@@ -4,6 +4,7 @@ import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Combobox } from '@/components/ui/combobox';
 import { SearchPicker } from '@/features/guardians/SearchPicker';
 import { SELECT_CLASS } from '@/features/students/styles';
 import { CALENDAR_KEY, type CalendarLoaders, type FilterOption } from './api';
@@ -118,14 +119,20 @@ export function CalendarFilters({
             onChange({ ...filters, tutor: option.id });
           }}
         />
-        <SearchPicker<FilterOption>
+        <Combobox<FilterOption>
           label={t('scheduling.calendar.filters.student')}
           help={t('scheduling.calendar.filters.studentHelp')}
           queryKey={[...CALENDAR_KEY, 'students']}
-          search={loaders.searchStudents}
+          load={loaders.searchStudents}
           optionId={(option) => option.id}
           optionLabel={label}
-          selectedId={filters.student}
+          optionSearchText={(option) => option.name}
+          emptyText={t('combobox.emptyStudents')}
+          selected={
+            filters.student
+              ? { id: filters.student, label: nameOf(filters.student) }
+              : null
+          }
           onSelect={(option) => {
             onName(option.id, label(option));
             onChange({ ...filters, student: option.id });

@@ -1,5 +1,6 @@
 import type { components } from '@classora/api-client';
 import { api, apiCall } from '@/app/api';
+import { COMBOBOX_PAGE_SIZE, type OptionsPage } from '@/components/ui/combobox';
 
 // The student profile calls (#33). The list, the detail and the active
 // levels for the selects are queries; create and update are direct calls
@@ -72,6 +73,40 @@ export function fetchStudents(
       }),
     { signal },
   );
+}
+
+export interface StudentOptionsParams {
+  /** The typed text, or null for the first page (never sent blank). */
+  q: string | null;
+  status: StudentStatusFilter;
+  signal: AbortSignal;
+}
+
+/**
+ * The student pickers' loader (#545 A12): the visible students (scoped by
+ * the API) in its default order, or its matches for `q`, with the total.
+ */
+export async function fetchStudentOptions({
+  q,
+  status,
+  signal,
+}: StudentOptionsParams): Promise<OptionsPage<StudentListItem>> {
+  const text = q?.trim() ?? '';
+  const page = await apiCall(
+    () =>
+      api.GET('/api/v1/students', {
+        params: {
+          query: {
+            ...(text ? { q: text } : {}),
+            status,
+            limit: COMBOBOX_PAGE_SIZE,
+          },
+        },
+        signal,
+      }),
+    { signal },
+  );
+  return { items: page.items, total: page.total };
 }
 
 export function fetchStudent(

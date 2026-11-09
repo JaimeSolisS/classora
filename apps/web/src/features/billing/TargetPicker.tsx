@@ -1,11 +1,11 @@
 import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SearchPicker } from '@/features/guardians/SearchPicker';
+import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import { searchTargets, TARGET_KINDS, TARGETS_QUERY_KEY } from './targets';
 import type { TargetKind, TargetOption } from './targets';
 
 // A student or a family (#367 D2, E3, E4): a "Student / Family" radio and
-// the #34 search picker over the chosen kind (the AddMemberDialog pattern).
+// the type-ahead combobox (#545) over the chosen kind (the AddMemberDialog pattern).
 // Changing the kind clears the choice. Options can be listed disabled with
 // their own label (already assigned, the EnrollDialog pattern).
 
@@ -20,12 +20,12 @@ export interface TargetPickerProps {
   disabledIds?: ReadonlySet<string>;
   disabledLabel?: (name: string) => string;
   errorMessage?: string;
-  /** The search, injectable for stories. */
+  /** The options' loader (#545), injectable for stories. */
   search?: (
     kind: TargetKind,
-    q: string,
+    q: string | null,
     signal: AbortSignal,
-  ) => Promise<TargetOption[]>;
+  ) => Promise<OptionsPage<TargetOption>>;
 }
 
 export function TargetPicker({
@@ -65,7 +65,7 @@ export function TargetPicker({
           ))}
         </div>
       </fieldset>
-      <SearchPicker<TargetOption>
+      <Combobox<TargetOption>
         key={kind}
         label={t(`billing.targets.search.${kind}`)}
         help={
@@ -74,15 +74,21 @@ export function TargetPicker({
             : t(`billing.targets.searchHelp.${kind}`)
         }
         queryKey={[...TARGETS_QUERY_KEY, 'search', kind]}
-        search={(q, signal) => search(kind, q, signal)}
+        load={(q, signal) => search(kind, q, signal)}
         optionId={(option) => option.id}
         optionLabel={(option) =>
           disabledIds?.has(option.id) && disabledLabel
             ? disabledLabel(option.name)
             : option.name
         }
+        optionSearchText={(option) => option.name}
         optionDisabled={(option) => disabledIds?.has(option.id) ?? false}
-        selectedId={chosen?.id ?? null}
+        emptyText={
+          kind === 'student'
+            ? t('combobox.emptyStudents')
+            : t('combobox.emptyFamilies')
+        }
+        selected={chosen ? { id: chosen.id, label: chosen.name } : null}
         onSelect={onSelect}
         errorMessage={errorMessage}
       />

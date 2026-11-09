@@ -65,16 +65,22 @@ export const AssignDialog: Story = {
       context.canvasElement.ownerDocument.body,
     ).findByRole('dialog');
     await context.userEvent.type(
-      within(dialog).getByLabelText(i18n.t('billing.targets.search.student')),
+      within(dialog).getByRole('combobox', {
+        name: i18n.t('billing.targets.search.student'),
+      }),
       'L',
     );
+    // The options sit in the portalled list (#545), outside the dialog.
     await expect(
-      await within(dialog).findByRole('radio', {
-        name: i18n.t('billing.discounts.assign.alreadyAssigned', {
-          name: 'Ana López',
-        }),
-      }),
-    ).toBeDisabled();
+      await within(context.canvasElement.ownerDocument.body).findByRole(
+        'option',
+        {
+          name: i18n.t('billing.discounts.assign.alreadyAssigned', {
+            name: 'Ana López',
+          }),
+        },
+      ),
+    ).toHaveAttribute('aria-disabled', 'true');
   },
 };
 

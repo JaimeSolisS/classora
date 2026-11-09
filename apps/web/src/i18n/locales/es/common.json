@@ -22,6 +22,21 @@
   "dialog": {
     "close": "Cerrar"
   },
+  "combobox": {
+    "toggle": "Mostrar opciones",
+    "loading": "Cargando…",
+    "empty": "No hay opciones para elegir.",
+    "emptyStudents": "No hay estudiantes para elegir.",
+    "emptyFamilies": "No hay familias para elegir.",
+    "emptyGuardians": "No hay padres ni tutores para elegir.",
+    "noResults": "Sin coincidencias para «{{text}}».",
+    "count_one": "{{count}} resultado",
+    "count_many": "{{count}} resultados",
+    "count_other": "{{count}} resultados",
+    "truncated": "Se muestran {{shown}} de {{total}}. Sigue escribiendo para acotar la lista.",
+    "failed": "No se pudieron cargar las opciones.",
+    "retry": "Reintentar"
+  },
   "shell": {
     "skipToMain": "Saltar al contenido principal"
   },

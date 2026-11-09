@@ -6,6 +6,7 @@ import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
+import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import {
   Dialog,
   DialogContent,
@@ -15,7 +16,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { FieldError } from '@/features/auth/FieldError';
-import { SearchPicker } from '@/features/guardians/SearchPicker';
 import {
   useFieldMessage,
   useReturnFocus,
@@ -66,7 +66,10 @@ export interface SellPackageDialogProps {
   onSubmit: (body: PackagePurchase, idempotencyKey: string) => Promise<void>;
   onClose: () => void;
   /** Stories: the student search instead of the API. */
-  search?: (q: string, signal: AbortSignal) => Promise<StudentOption[]>;
+  search?: (
+    q: string | null,
+    signal: AbortSignal,
+  ) => Promise<OptionsPage<StudentOption>>;
   /** Stories: the values to start from. */
   initialStudent?: StudentOption | null;
   initialProductId?: string;
@@ -202,7 +205,7 @@ function DialogBody({
         className="flex flex-col gap-4"
       >
         <div id={fieldId('student')}>
-          <SearchPicker<StudentOption>
+          <Combobox<StudentOption>
             label={t('billing.packages.fields.student')}
             help={
               student
@@ -212,10 +215,11 @@ function DialogBody({
                 : t('billing.packages.hints.student')
             }
             queryKey={[...PACKAGE_OPTIONS_KEY, 'sell-students']}
-            search={search}
+            load={search}
             optionId={(option) => option.id}
             optionLabel={(option) => option.name}
-            selectedId={student?.id ?? null}
+            emptyText={t('combobox.emptyStudents')}
+            selected={student ? { id: student.id, label: student.name } : null}
             onSelect={(next) => {
               setStudent(next);
               setErrors((current) => ({ ...current, student: undefined }));

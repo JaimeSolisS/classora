@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { api, csrfTokenOf } from '../support/api';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
+import { pickOption } from '../support/combobox';
 import { addToFamilyViaApi, createFamilyViaApi } from '../support/families';
 import { createStudentViaApi } from '../support/students';
 import { createSubjectViaApi } from '../support/tutors';
@@ -120,10 +121,7 @@ test('managing tuition plans', async ({ page }, testInfo) => {
   ).toBeVisible();
   await main.getByRole('button', { name: tuition.add }).first().click();
   dialog = page.getByRole('dialog', { name: tuition.add });
-  await dialog
-    .getByLabel(tuition.fields.student, { exact: true })
-    .fill(firstName);
-  await dialog.getByRole('radio', { name: firstName, exact: true }).check();
+  await pickOption(dialog, tuition.fields.student, firstName, firstName);
   await dialog
     .getByLabel(tuition.fields.price, { exact: true })
     .selectOption(priceId);

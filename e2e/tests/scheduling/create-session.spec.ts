@@ -3,6 +3,11 @@ import { expect, test, type Page } from '@playwright/test';
 import { switchColorScheme } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
+import {
+  comboboxField,
+  comboboxOptions,
+  pickOption,
+} from '../support/combobox';
 import { createStudentViaApi } from '../support/students';
 import { createSubjectViaApi } from '../support/tutors';
 
@@ -14,6 +19,8 @@ import { createSubjectViaApi } from '../support/tutors';
 // conflict panel lists the student overlap, and "Suggested times" (#50 D7)
 // lists 11:00–12:00 first. The page has no axe violations with both shown;
 // choosing that time fills in the form, and scheduling it is "Unassigned".
+// The student field is the type-ahead combobox (#545 D4): a click lists
+// students without typing, and "lucia agenda …" finds "Lucía Agenda …".
 //
 // Budgets (#27, ADR-0008; see support/auth.ts): no login, no redemption and
 // no registration (two API creates with the shared Owner session; no tutor
@@ -44,13 +51,43 @@ function firstWeekdayAhead(): string {
 }
 
 async function pickStudent(page: Page, familyNames: string, name: string) {
+  await pickOption(
+    page.getByRole('main'),
+    common.scheduling.fields.student,
+    familyNames,
+    name,
+  );
+}
+
+/**
+ * The type-ahead student field (#545 D4): a click on the empty field lists
+ * students without typing; lower-case text without the accent finds the
+ * student; ArrowDown and Enter choose it. Local or server mode alike.
+ */
+async function typeAheadStudent(page: Page, query: string, name: string) {
   const main = page.getByRole('main');
-  await main
-    .getByLabel(common.scheduling.fields.student, { exact: true })
-    .fill(familyNames);
-  const option = main.getByRole('radio', { name });
-  await expect(option).toBeVisible();
-  await option.check();
+  const label = common.scheduling.fields.student;
+  const field = comboboxField(main, label);
+  const list = comboboxOptions(main, label);
+  await field.click();
+  await expect(field).toHaveAttribute('aria-expanded', 'true');
+  await expect(list.getByRole('option').first()).toBeVisible();
+  await field.fill(query);
+  await expect(list.getByRole('option', { name, exact: true })).toBeVisible();
+  // The keyboard reaches it (first in relevance order; at most 10 steps).
+  for (let step = 0; step < 10; step += 1) {
+    await field.press('ArrowDown');
+    const active = await field.getAttribute('aria-activedescendant');
+    if (
+      active &&
+      (await page.locator(`[id="${active}"]`).textContent()) === name
+    ) {
+      break;
+    }
+  }
+  await field.press('Enter');
+  await expect(field).toHaveAttribute('aria-expanded', 'false');
+  await expect(field).toHaveValue(name);
 }
 
 async function fillWhen(page: Page, date: string, start: string, end: string) {
@@ -111,9 +148,10 @@ test('an Owner schedules a session and meets a student overlap', async ({
     main.getByRole('heading', { level: 1, name: common.scheduling.title }),
   ).toBeVisible();
 
-  // 2. No tutor, no classroom, 10:00-11:00: unassigned.
+  // 2. No tutor, no classroom, 10:00-11:00: unassigned. The student comes
+  // from the type-ahead list (#545): "lucia agenda …" finds "Lucía Agenda …".
   const date = firstWeekdayAhead();
-  await pickStudent(page, familyNames, studentName);
+  await typeAheadStudent(page, `lucia agenda ${suffix}`, studentName);
   await main
     .getByLabel(common.scheduling.fields.subject, { exact: true })
     .selectOption({ label: subjectName });

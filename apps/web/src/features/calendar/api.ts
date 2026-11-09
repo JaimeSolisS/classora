@@ -1,5 +1,7 @@
 import type { components } from '@classora/api-client';
 import { api, apiCall } from '@/app/api';
+import type { OptionsPage } from '@/components/ui/combobox';
+import { fetchStudentOptions } from '@/features/students/api';
 import type { Instant } from '@/lib/time';
 import type { FilterQuery } from './urlState';
 
@@ -84,23 +86,20 @@ export async function searchTutorOptions(
   }));
 }
 
+/** The student filter's options (#545), any status, inactive marked. */
 export async function searchStudentOptions(
-  q: string,
+  q: string | null,
   signal: AbortSignal,
-): Promise<FilterOption[]> {
-  const page = await apiCall(
-    () =>
-      api.GET('/api/v1/students', {
-        params: { query: { q, status: 'all', limit: FILTER_SEARCH_LIMIT } },
-        signal,
-      }),
-    { signal },
-  );
-  return page.items.map((student) => ({
-    id: student.id,
-    name: `${student.given_names} ${student.family_names}`,
-    inactive: !student.is_active,
-  }));
+): Promise<OptionsPage<FilterOption>> {
+  const page = await fetchStudentOptions({ q, status: 'all', signal });
+  return {
+    items: page.items.map((student) => ({
+      id: student.id,
+      name: `${student.given_names} ${student.family_names}`,
+      inactive: !student.is_active,
+    })),
+    total: page.total,
+  };
 }
 
 export async function fetchRoomOptions(

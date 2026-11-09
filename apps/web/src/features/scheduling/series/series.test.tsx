@@ -4,7 +4,6 @@ import { createRoot } from 'react-dom/client';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionUserBody } from '@/features/auth/session';
-import { PICKER_DEBOUNCE_MS } from '@/features/guardians/SearchPicker';
 import { applyLanguage } from '@/i18n';
 import {
   meAs,
@@ -19,6 +18,7 @@ import {
   fieldByLabel,
   openDialog,
   pressEscape,
+  pickOption,
   typeInto,
 } from '@/test/dom';
 import {
@@ -244,18 +244,7 @@ function weekday(root: ParentNode, day: number): HTMLInputElement {
 }
 
 async function fillSeriesForm() {
-  typeInto(fieldByLabel(main(), 'Student'), 'Ana');
-  await act(async () => {
-    await new Promise((resolve) =>
-      setTimeout(resolve, PICKER_DEBOUNCE_MS + 30),
-    );
-  });
-  await settle();
-  await click(
-    main().querySelector<HTMLInputElement>(
-      `input[type="radio"][value="${ANA.id}"]`,
-    )!,
-  );
+  await pickOption(main(), 'Student', 'Ana', 'Ana López');
   choose(main(), 'Subject', SUBJECTS[0]!.id);
   await click(main().querySelector<HTMLInputElement>('[role="switch"]')!);
   typeInto(fieldByLabel(main(), 'Starts on'), '2031-01-06');

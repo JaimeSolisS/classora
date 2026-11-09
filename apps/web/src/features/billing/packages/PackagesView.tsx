@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Button } from '@/components/ui/button';
+import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import {
   Table,
   TableBody,
@@ -75,7 +76,10 @@ export interface PackagesViewProps {
   /** Read by the polite status (a cancelled package). */
   announcement?: string;
   /** Stories: the pickers' searches instead of the API. */
-  searchStudent?: (q: string, signal: AbortSignal) => Promise<StudentOption[]>;
+  searchStudent?: (
+    q: string | null,
+    signal: AbortSignal,
+  ) => Promise<OptionsPage<StudentOption>>;
   searchFamily?: (q: string, signal: AbortSignal) => Promise<NamedOption[]>;
 }
 
@@ -299,14 +303,15 @@ export function PackagesView({
             </Button>
           </div>
         ) : (
-          <SearchPicker<StudentOption>
+          <Combobox<StudentOption>
             label={t('billing.packages.sold.filters.searchStudent')}
             help={t('billing.packages.sold.filters.searchStudentHelp')}
             queryKey={[...PACKAGE_OPTIONS_KEY, 'filter-students']}
-            search={searchStudent}
+            load={searchStudent}
             optionId={(option) => option.id}
             optionLabel={(option) => option.name}
-            selectedId={null}
+            emptyText={t('combobox.emptyStudents')}
+            selected={null}
             onSelect={(student) => onStudent(student)}
           />
         )}

@@ -3,6 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { switchColorScheme } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
+import { pickOption } from '../support/combobox';
 import { createStudentViaApi } from '../support/students';
 import { createSubjectViaApi } from '../support/tutors';
 
@@ -87,13 +88,12 @@ function fill(text: string, values: Record<string, string | number>): string {
 }
 
 async function pickStudent(page: Page, familyNames: string, name: string) {
-  const main = page.getByRole('main');
-  await main
-    .getByLabel(common.scheduling.fields.student, { exact: true })
-    .fill(familyNames);
-  const option = main.getByRole('radio', { name });
-  await expect(option).toBeVisible();
-  await option.check();
+  await pickOption(
+    page.getByRole('main'),
+    common.scheduling.fields.student,
+    familyNames,
+    name,
+  );
 }
 
 test('an Owner schedules, edits and cancels a weekly series', async ({

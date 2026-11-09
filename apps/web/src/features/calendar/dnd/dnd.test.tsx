@@ -360,7 +360,11 @@ function render(
       options.fetchCalendar ??
       vi.fn(() => Promise.resolve<CalendarPage>(page(items))),
     searchTutors: () => Promise.resolve(TUTOR_OPTIONS),
-    searchStudents: () => Promise.resolve(STUDENT_OPTIONS),
+    searchStudents: () =>
+      Promise.resolve({
+        items: STUDENT_OPTIONS,
+        total: STUDENT_OPTIONS.length,
+      }),
     fetchRooms: () => Promise.resolve(ROOM_OPTIONS),
     updateSession: options.update,
   };

@@ -1,3 +1,4 @@
+import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionUserBody } from '@/features/auth/session';
 import { problemWith } from '@/features/academics/testing';
@@ -11,7 +12,15 @@ import {
   type ApiStub,
   type Responder,
 } from '@/test/api-stub';
-import { alerts, click, labelled, openDialog, setFieldValue } from '@/test/dom';
+import {
+  alerts,
+  click,
+  comboboxOption,
+  comboboxOptions,
+  labelled,
+  openDialog,
+  setFieldValue,
+} from '@/test/dom';
 import {
   buttonNamed,
   jsonResponse,
@@ -211,8 +220,20 @@ async function openAdd() {
   await settleUntil(() => openDialog()?.querySelector('form'));
 }
 
+/**
+ * Types into a picker: the student/target combobox (#545) loads its first
+ * page on focus and filters it; a SearchPicker (the family filter) waits
+ * for its debounced radios.
+ */
 async function search(root: ParentNode, label: string, q: string) {
-  setFieldValue(input(root, label), q);
+  const field = input(root, label);
+  if (field.getAttribute('role') === 'combobox') {
+    act(() => field.focus());
+    setFieldValue(field, q);
+    await settleUntil(() => comboboxOptions().length > 0);
+    return;
+  }
+  setFieldValue(field, q);
   await new Promise((resolve) => setTimeout(resolve, PICKER_DEBOUNCE_MS + 30));
   await settleUntil(() =>
     root.querySelector('fieldset input[type="radio"][value]'),
@@ -770,10 +791,12 @@ describe('the detail page (D)', () => {
 
     await click(buttonNamed(main(), 'Assign'));
     await search(dialog(), 'Search student', 'L');
-    expect(choice(dialog(), 'Ana López (already assigned)').disabled).toBe(
-      true,
-    );
-    await click(choice(dialog(), 'Luis Pérez'));
+    expect(
+      comboboxOption('Ana López (already assigned)')!.getAttribute(
+        'aria-disabled',
+      ),
+    ).toBe('true');
+    await click(comboboxOption('Luis Pérez')!);
     await click(buttonNamed(dialog(), 'Assign'));
     await settleUntil(() => openDialog() === null);
 
@@ -795,7 +818,7 @@ describe('the detail page (D)', () => {
     await click(buttonNamed(main(), 'Assign'));
     await click(choice(dialog(), 'Family'));
     await search(dialog(), 'Search family', 'López');
-    await click(choice(dialog(), 'Familia López'));
+    await click(comboboxOption('Familia López')!);
     await click(buttonNamed(dialog(), 'Assign'));
 
     expect(api.calls(assignRoute(SCHOLARSHIP.id))[0]?.body).toEqual({

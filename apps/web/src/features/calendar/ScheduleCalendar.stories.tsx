@@ -51,7 +51,11 @@ function CalendarStory({
   const loaders: CalendarLoaders = {
     fetchCalendar: () => result(),
     searchTutors: () => Promise.resolve(TUTOR_OPTIONS),
-    searchStudents: () => Promise.resolve(STUDENT_OPTIONS),
+    searchStudents: () =>
+      Promise.resolve({
+        items: STUDENT_OPTIONS,
+        total: STUDENT_OPTIONS.length,
+      }),
     fetchRooms: () => Promise.resolve(ROOM_OPTIONS),
     // #54b D2: every event is an occurrence of one series here.
     fetchSeriesId: () =>

@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
+import { pickOption } from '../support/combobox';
 import { createStudentViaApi } from '../support/students';
 import { createSubjectViaApi } from '../support/tutors';
 
@@ -82,12 +83,12 @@ test('an Owner overrides a soft conflict with a reason', async ({
   await expect(
     main.getByRole('heading', { level: 1, name: common.scheduling.title }),
   ).toBeVisible();
-  await main
-    .getByLabel(common.scheduling.fields.student, { exact: true })
-    .fill(familyNames);
-  const option = main.getByRole('radio', { name: studentName });
-  await expect(option).toBeVisible();
-  await option.check();
+  await pickOption(
+    main,
+    common.scheduling.fields.student,
+    familyNames,
+    studentName,
+  );
   await main
     .getByLabel(common.scheduling.fields.subject, { exact: true })
     .selectOption({ label: subjectName });

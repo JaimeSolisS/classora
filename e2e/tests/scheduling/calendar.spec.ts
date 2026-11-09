@@ -3,6 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { api, csrfTokenOf } from '../support/api';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
+import { pickOption } from '../support/combobox';
 import { createStudentViaApi } from '../support/students';
 import { createSubjectViaApi } from '../support/tutors';
 
@@ -125,12 +126,12 @@ test('an Owner finds a session on the calendar in every view', async ({
   await loaded();
 
   // 2. Filter by the new student: the event is there, named "Unassigned".
-  await main
-    .getByLabel(common.scheduling.calendar.filters.student, { exact: true })
-    .fill(familyNames);
-  const option = main.getByRole('radio', { name: studentName });
-  await expect(option).toBeVisible();
-  await option.click();
+  await pickOption(
+    main,
+    common.scheduling.calendar.filters.student,
+    familyNames,
+    studentName,
+  );
   await expect(page).toHaveURL(new RegExp(`student=${studentId}`));
   await loaded();
   await expect(event).toHaveCount(1);

@@ -14,8 +14,10 @@ import {
 } from '@/test/api-stub';
 import {
   click,
+  comboboxOption,
   fieldByLabel,
   openDialog,
+  pickOption,
   pressEscape,
   typeInto,
 } from '@/test/dom';
@@ -24,6 +26,7 @@ import {
   jsonResponse,
   renderApp,
   type RenderedApp,
+  settle,
 } from '@/test/render-app';
 import {
   COHORT,
@@ -204,21 +207,13 @@ function typeArea(root: ParentNode, label: string, value: string) {
   });
 }
 
-/** Opens "Enroll student", searches and picks `studentId`. */
-async function enrollDialogWith(studentId: string): Promise<HTMLElement> {
+/** Opens "Enroll student", types in the combobox and picks `student`. */
+async function enrollDialogWith(student: {
+  display_name: string;
+}): Promise<HTMLElement> {
   await click(buttonNamed(main(), 'Enroll student'));
   const dialog = openDialog()!;
-  typeInto(fieldByLabel(dialog, 'Student'), 'a');
-  const option = await vi.waitFor(() => {
-    const found = dialog.querySelector<HTMLInputElement>(
-      `input[value="${studentId}"]`,
-    );
-    if (!found) {
-      throw new Error('no option yet');
-    }
-    return found;
-  }, WAIT);
-  await click(option);
+  await pickOption(dialog, 'Student', 'a', student.display_name);
   return dialog;
 }
 
@@ -482,17 +477,17 @@ describe('the enroll dialog (B)', () => {
     app = await open();
     const trigger = buttonNamed(main(), 'Enroll student');
     act(() => trigger.focus());
-    const dialog = await enrollDialogWith(STUDENT_CARLA.id);
+    const dialog = await enrollDialogWith(STUDENT_CARLA);
     // B2: a started cohort says what the student joins.
     expect(dialog.textContent).toContain(
       "The student joins only the sessions that haven't started yet.",
     );
-    // B1: the enrolled student can't be picked.
-    const ana = dialog.querySelector<HTMLInputElement>(
-      `input[value="${STUDENT_ANA.id}"]`,
-    )!;
-    expect(ana.disabled).toBe(true);
-    expect(dialog.textContent).toContain('Ana López (already enrolled)');
+    // B1: the enrolled student can't be picked (the list reopened).
+    act(() => fieldByLabel(dialog, 'Student').click());
+    await settle();
+    const ana = comboboxOption('Ana López (already enrolled)')!;
+    expect(ana.getAttribute('aria-disabled')).toBe('true');
+    await pressEscape();
     await click(buttonNamed(dialog, 'Enroll'));
     await vi.waitFor(() => expect(openDialog()).toBeNull(), WAIT);
     expect(api.calls(ENROLL).map((c) => c.body)).toEqual([
@@ -520,7 +515,7 @@ describe('the enroll dialog (B)', () => {
       ],
     });
     app = await open();
-    const dialog = await enrollDialogWith(STUDENT_CARLA.id);
+    const dialog = await enrollDialogWith(STUDENT_CARLA);
     await click(buttonNamed(dialog, 'Enroll'));
     const panel = await vi.waitFor(() => {
       const found = dialog.querySelector('[role="alert"]');
@@ -564,7 +559,7 @@ describe('the enroll dialog (B)', () => {
         ]),
     });
     app = await open();
-    const dialog = await enrollDialogWith(STUDENT_CARLA.id);
+    const dialog = await enrollDialogWith(STUDENT_CARLA);
     await click(buttonNamed(dialog, 'Enroll'));
     await waitForText(() => dialog, "Can't be overridden");
     const labels = [
@@ -587,7 +582,7 @@ describe('the enroll dialog (B)', () => {
       [ENROLL]: () => conflictResponse([COHORT_CAPACITY_CONFLICT]),
     });
     app = await open();
-    const dialog = await enrollDialogWith(STUDENT_CARLA.id);
+    const dialog = await enrollDialogWith(STUDENT_CARLA);
     await click(buttonNamed(dialog, 'Enroll'));
     await waitForText(() => dialog, 'Needs an override (Owner)');
     expect(dialog.textContent).not.toContain('Can be overridden');
@@ -599,7 +594,7 @@ describe('the enroll dialog (B)', () => {
       [ENROLL]: () => problem(409, 'already_enrolled'),
     });
     app = await open();
-    const dialog = await enrollDialogWith(STUDENT_CARLA.id);
+    const dialog = await enrollDialogWith(STUDENT_CARLA);
     const before = api.calls(DETAIL).length;
     await click(buttonNamed(dialog, 'Enroll'));
     await waitForText(() => dialog, 'This student is already enrolled.');
@@ -619,7 +614,7 @@ describe('the enroll dialog (B)', () => {
       [ENROLL]: () => problem(409, 'cohort_ended'),
     });
     app = await open();
-    const dialog = await enrollDialogWith(STUDENT_CARLA.id);
+    const dialog = await enrollDialogWith(STUDENT_CARLA);
     await click(buttonNamed(dialog, 'Enroll'));
     await waitForText(() => dialog, 'This cohort has ended');
     await vi.waitFor(
@@ -638,7 +633,7 @@ describe('the enroll dialog (B)', () => {
       ],
     });
     app = await open();
-    const dialog = await enrollDialogWith(STUDENT_CARLA.id);
+    const dialog = await enrollDialogWith(STUDENT_CARLA);
     await click(buttonNamed(dialog, 'Enroll'));
     await waitForText(
       () => dialog,

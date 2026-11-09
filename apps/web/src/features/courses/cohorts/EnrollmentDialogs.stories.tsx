@@ -46,7 +46,9 @@ function Enroll(extra: Partial<EnrollDialogProps>) {
         open
         groupName={ROSTER_COHORT.name}
         enrolledIds={new Set([STUDENT_ANA.id])}
-        searchStudents={fn(() => Promise.resolve([ANA, CARLA]))}
+        searchStudents={fn(() =>
+          Promise.resolve({ items: [ANA, CARLA], total: 2 }),
+        )}
         canOverride
         labels={labels}
         onEnroll={fn(() => Promise.resolve(ENROLLED_CARLA))}
@@ -64,16 +66,19 @@ export const Picker: Story = {
   ),
   play: async () => {
     const dialog = within(await screen.findByRole('dialog'));
-    const search = dialog.getByLabelText(i18n.t('groups.enroll.student'));
+    const search = dialog.getByRole('combobox', {
+      name: i18n.t('groups.enroll.student'),
+    });
     await expect(search).toHaveFocus();
     await userEvent.type(search, 'a');
+    // The options sit in the portalled list (#545), outside the dialog.
     await expect(
-      await dialog.findByRole('radio', {
+      await screen.findByRole('option', {
         name: i18n.t('courses.cohorts.enrollment.dialog.alreadyEnrolled', {
           name: ANA.name,
         }),
       }),
-    ).toBeDisabled();
+    ).toHaveAttribute('aria-disabled', 'true');
     await expect(
       dialog.getByText(i18n.t('courses.cohorts.enrollment.dialog.started')),
     ).toBeVisible();

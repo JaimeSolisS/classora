@@ -4,9 +4,9 @@ import { ApiError } from '@/app/api';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
+import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { FieldError } from '@/features/auth/FieldError';
-import { SearchPicker } from '@/features/guardians/SearchPicker';
 import { SELECT_CLASS } from '@/features/students/styles';
 import { useFormatters } from '@/lib/formatters';
 import { toLanguage } from '@/i18n/language';
@@ -141,7 +141,10 @@ export interface ScheduleSessionFormProps {
   subjects: readonly SubjectOption[];
   tutors: readonly Option[];
   classrooms: readonly Option[];
-  searchStudents: (q: string, signal: AbortSignal) => Promise<Option[]>;
+  searchStudents: (
+    q: string | null,
+    signal: AbortSignal,
+  ) => Promise<OptionsPage<Option>>;
   timeZone: string;
   /** Creates the session (with the override when given); rejects with the error. */
   onSubmit: (
@@ -896,7 +899,7 @@ export function ScheduleSessionForm({
           </dl>
         ) : (
           <div id={`${fieldId('student')}-picker`}>
-            <SearchPicker<Option>
+            <Combobox<Option>
               label={t('scheduling.fields.student')}
               help={
                 values.student
@@ -904,10 +907,15 @@ export function ScheduleSessionForm({
                   : t('scheduling.studentHelp')
               }
               queryKey={['scheduling', 'create', 'students']}
-              search={searchStudents}
+              load={searchStudents}
               optionId={(student) => student.id}
               optionLabel={(student) => student.name}
-              selectedId={values.student?.id ?? null}
+              emptyText={t('combobox.emptyStudents')}
+              selected={
+                values.student
+                  ? { id: values.student.id, label: values.student.name }
+                  : null
+              }
               onSelect={(student) => change('student', student)}
               errorMessage={message(errors.student)}
             />

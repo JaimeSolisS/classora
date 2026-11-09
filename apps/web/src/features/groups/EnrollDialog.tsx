@@ -4,6 +4,7 @@ import { ApiError } from '@/app/api';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
+import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import {
   Dialog,
   DialogContent,
@@ -12,7 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { SearchPicker } from '@/features/guardians/SearchPicker';
 import {
   conflictsOf,
   type Option,
@@ -73,7 +73,10 @@ export interface EnrollDialogProps {
   groupName: string;
   /** The students enrolled now (disabled in the picker). */
   enrolledIds: ReadonlySet<string>;
-  searchStudents: (q: string, signal: AbortSignal) => Promise<Option[]>;
+  searchStudents: (
+    q: string | null,
+    signal: AbortSignal,
+  ) => Promise<OptionsPage<Option>>;
   canOverride: boolean;
   onEnroll: (
     student: Option,
@@ -282,7 +285,7 @@ function EnrollContent({
         className="flex min-w-0 flex-col gap-4"
       >
         <div id={`${id}-picker`}>
-          <SearchPicker<Option>
+          <Combobox<Option>
             label={t('groups.enroll.student')}
             help={
               student
@@ -290,15 +293,17 @@ function EnrollContent({
                 : labels.studentHelp
             }
             queryKey={['groups', 'enroll', 'students']}
-            search={searchStudents}
+            load={searchStudents}
             optionId={(option) => option.id}
             optionLabel={(option) =>
               enrolledIds.has(option.id)
                 ? labels.alreadyEnrolled(option.name)
                 : option.name
             }
+            optionSearchText={(option) => option.name}
             optionDisabled={(option) => enrolledIds.has(option.id)}
-            selectedId={student?.id ?? null}
+            emptyText={t('combobox.emptyStudents')}
+            selected={student ? { id: student.id, label: student.name } : null}
             onSelect={(option) => {
               setStudent(option);
               setStudentError(undefined);

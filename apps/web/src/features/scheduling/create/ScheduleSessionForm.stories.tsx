@@ -49,7 +49,7 @@ const meta = {
     subjects: SUBJECTS,
     tutors: TUTORS,
     classrooms: CLASSROOMS,
-    searchStudents: fn(() => Promise.resolve([ANA])),
+    searchStudents: fn(() => Promise.resolve({ items: [ANA], total: 1 })),
     timeZone: 'America/Mexico_City',
     labelledBy: 'schedule-title',
     onSubmit: fn(() => Promise.resolve(CREATED)),

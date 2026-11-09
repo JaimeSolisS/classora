@@ -51,7 +51,7 @@ const meta = {
     subjects: SUBJECTS,
     tutors: TUTORS,
     classrooms: ROOMS,
-    searchStudents: fn(() => Promise.resolve([])),
+    searchStudents: fn(() => Promise.resolve({ items: [], total: 0 })),
     timeZone: 'America/Mexico_City',
     canOverride: true,
     labelledBy: 'group-title',

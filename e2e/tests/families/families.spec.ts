@@ -7,6 +7,7 @@ import {
   SIGNED_OUT_STATE,
 } from '../support/auth';
 import { common, fill, signedInAs } from '../support/catalog';
+import { pickOption } from '../support/combobox';
 import {
   createFamilyViaApi,
   createGuardianAccountViaPage,
@@ -91,8 +92,7 @@ async function addMember(
     .getByRole('button', { name: add.button, exact: true })
     .click();
   const dialog = page.getByRole('dialog', { name: add.title });
-  await dialog.getByRole('searchbox', { name: add.label }).fill(search);
-  await dialog.getByRole('radio', { name: option, exact: true }).check();
+  await pickOption(dialog, add.label, search, option);
   await dialog.getByRole('button', { name: f.addAction, exact: true }).click();
   return dialog;
 }

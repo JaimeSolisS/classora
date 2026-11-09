@@ -22,6 +22,20 @@
   "dialog": {
     "close": "Close"
   },
+  "combobox": {
+    "toggle": "Show options",
+    "loading": "Loading…",
+    "empty": "There are no options to choose from.",
+    "emptyStudents": "There are no students to choose from.",
+    "emptyFamilies": "There are no families to choose from.",
+    "emptyGuardians": "There are no guardians to choose from.",
+    "noResults": "No matches for “{{text}}”.",
+    "count_one": "{{count}} result",
+    "count_other": "{{count}} results",
+    "truncated": "Showing {{shown}} of {{total}}. Keep typing to narrow the list.",
+    "failed": "Couldn't load the options.",
+    "retry": "Try again"
+  },
   "shell": {
     "skipToMain": "Skip to main content"
   },

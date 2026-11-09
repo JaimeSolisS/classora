@@ -7,6 +7,7 @@ import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
+import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import {
   Dialog,
   DialogContent,
@@ -16,7 +17,6 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { FieldError } from '@/features/auth/FieldError';
-import { SearchPicker } from '@/features/guardians/SearchPicker';
 import {
   useFieldMessage,
   useReturnFocus,
@@ -78,7 +78,10 @@ export interface TuitionPlanDialogProps {
   onSubmit: (values: PlanFormValues, price: ServicePrice) => Promise<void>;
   onClose: () => void;
   /** Stories: the searches instead of the API. */
-  search?: (q: string, signal: AbortSignal) => Promise<StudentOption[]>;
+  search?: (
+    q: string | null,
+    signal: AbortSignal,
+  ) => Promise<OptionsPage<StudentOption>>;
   fetchEnrollments?: (
     studentId: string,
     signal: AbortSignal,
@@ -274,7 +277,7 @@ function DialogBody({
         className="flex flex-col gap-4"
       >
         <div id={fieldId('student')}>
-          <SearchPicker<StudentOption>
+          <Combobox<StudentOption>
             label={t('billing.tuition.fields.student')}
             help={
               values.student
@@ -284,10 +287,15 @@ function DialogBody({
                 : t('billing.tuition.hints.student')
             }
             queryKey={[...TUITION_OPTIONS_KEY, 'dialog-students']}
-            search={search}
+            load={search}
             optionId={(option) => option.id}
             optionLabel={(option) => option.name}
-            selectedId={values.student?.id ?? null}
+            emptyText={t('combobox.emptyStudents')}
+            selected={
+              values.student
+                ? { id: values.student.id, label: values.student.name }
+                : null
+            }
             onSelect={(student) => change('student', student)}
             errorMessage={message(errors.student)}
           />

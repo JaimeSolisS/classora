@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { api, csrfTokenOf } from '../support/api';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
+import { pickOption } from '../support/combobox';
 import { createFamilyViaApi } from '../support/families';
 import { createStudentViaApi } from '../support/students';
 import { createSubjectViaApi } from '../support/tutors';
@@ -166,10 +167,12 @@ test('managing discounts and custom prices', async ({ page }, testInfo) => {
   // 4. Assign the student through the picker, then remove the assignment.
   await main.getByRole('button', { name: discounts.assign.title }).click();
   dialog = page.getByRole('dialog', { name: discounts.assign.title });
-  await dialog
-    .getByLabel(billing.targets.search.student, { exact: true })
-    .fill(studentFamily);
-  await dialog.getByRole('radio', { name: studentName, exact: true }).check();
+  await pickOption(
+    dialog,
+    billing.targets.search.student,
+    studentFamily,
+    studentName,
+  );
   await dialog.getByRole('button', { name: discounts.assign.submit }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const assignments = main.getByRole('table', {
