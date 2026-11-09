@@ -7,7 +7,9 @@ unchanged.
 **Setup (Finance, at SIM_SETUP).** Billing starts on 1 Sep. Catalog prices:
 one individual ``per_session`` item per subject and class length the
 timetable uses (amounts by level), a monthly ``per_period`` item per
-subject the tuition plans pin, a flat fee per class group and per course;
+subject the tuition plans pin, a monthly group-scoped item for every group
+but the last (billed through plans linked to each enrollment, HF-01g E4), a
+flat fee for the last group and per course;
 one price change effective 1 Oct (a second version). Discounts: the sibling
 discount, two scholarships, a September-only promotion on packages and an
 upcoming one from 1 Dec. Four package products.
@@ -15,10 +17,12 @@ upcoming one from 1 Dec. Four package products.
 **Billing modes (A2).** Each student has one mode at a time, changing only
 on the 1st of a month:
 
-- ``plan`` (about half): a monthly tuition plan; their individual classes
-  are covered by a ``0.00`` custom price per item (the services post a
-  ``void`` charge for each), so only the monthly charge is paid. One plan is
-  paused for October.
+- ``plan`` (about half): a monthly tuition plan per weekly individual
+  subject (HF-01g E3; one price per subject whatever the class length: a
+  ``per_period`` item takes no custom price, #93 K8); their individual
+  classes are covered by a ``0.00`` custom price per item (the services
+  post a ``void`` charge for each), so only the monthly charges are paid.
+  One student's plans are paused for October.
 - ``package`` (about a fifth): a 8- or 12-class package (any subject,
   valid 120 days, so it covers every class through the horizon) bought on
   31 Aug and renewed when it is used up; one student adds an intensive
@@ -102,21 +106,34 @@ OVERDUE_WEEKLY_FROM: Final = date(2026, 11, 9)
 LAST_PAY_DAY: Final = SIM_ANCHOR - timedelta(days=1)
 
 PER_SESSION: Final[dict[str, int]] = {
-    ELEMENTARY: 280,
-    MIDDLE_SCHOOL: 300,
-    HIGH_SCHOOL: 330,
-    UNIVERSITY: 380,
+    ELEMENTARY: 310,
+    MIDDLE_SCHOOL: 340,
+    HIGH_SCHOOL: 370,
+    UNIVERSITY: 430,
 }
 """The price of a 60-minute individual class by level (MXN); other lengths
 pro rata, rounded to tens."""
 MONTHLY: Final[dict[str, int]] = {
-    ELEMENTARY: 1050,
-    MIDDLE_SCHOOL: 1150,
-    HIGH_SCHOOL: 1250,
-    UNIVERSITY: 1450,
+    ELEMENTARY: 1240,
+    MIDDLE_SCHOOL: 1360,
+    HIGH_SCHOOL: 1480,
+    UNIVERSITY: 1720,
 }
+"""A subject's monthly plan item by level (HF-01g E3): one weekly class of
+that subject, whatever its length (a ``per_period`` item takes no length
+and no custom price, #93 K8)."""
 PRICE_CHANGE_STEP: Final = 30
-GROUP_FEE: Final = 2400
+GROUP_MONTHLY: Final = 1150
+"""A linked group's monthly price per student (HF-01g E4)."""
+GROUP_FEE: Final = 3200
+"""The flat fee of the last group (HF-01g E4: the only ``group_enrollment``
+example; its revenue counts on the enrollment date)."""
+PRODUCT_AMOUNTS: Final[dict[str, int]] = {
+    "pack8": 2580,
+    "pack12": 3840,
+    "intensive": 3200,
+    "subject4": 1320,
+}
 COURSE_FEES: Final[tuple[int, ...]] = (3200, 2800)
 CUSTOM_RATE: Final = Decimal("0.9")
 MANUAL_AMOUNTS: Final[dict[str, int]] = {"materials": 350, "exam": 450}
@@ -187,6 +204,9 @@ class TuitionPlanPlan:
     starts_on: date
     at: datetime
     pause: tuple[date, date] | None = None
+    group: str | None = None
+    """A plan linked to the student's enrollment in this group (HF-01g
+    E4)."""
 
 
 @dataclass(frozen=True)
@@ -329,6 +349,46 @@ def mondays() -> Iterable[date]:
         day += timedelta(days=7)
 
 
+def plan_key(student: str, subject: str) -> str:
+    """A tuition plan's key: the student and its subject (or
+    ``group:<group>``)."""
+    return f"tp:{student}:{subject}"
+
+
+def weekly_subjects(plan: SimulationPlan, student: str) -> list[str]:
+    """The subjects of ``student``'s weekly individual series, the subject
+    of their first class first (HF-01g E3: a plan per subject)."""
+    first: dict[str, tuple[datetime, str]] = {}
+    for c in plan.timetable.classes:
+        if c.kind == "individual" and c.students[0] == student:
+            key = (c.placed.starts_at, c.key)
+            if c.subject not in first or key < first[c.subject]:
+                first[c.subject] = key
+    subjects = {
+        s.subject
+        for s in plan.timetable.series
+        if s.kind == "individual" and s.students[0] == student
+    }
+    return sorted(subjects, key=lambda subject: first[subject])
+
+
+def first_month(plan: SimulationPlan, student: str, subject: str) -> date:
+    """The first day of the month ``student``'s weekly ``subject`` starts
+    in (a subject added later is billed from that month)."""
+    starts = min(
+        s.starts_on
+        for s in plan.timetable.series
+        if s.kind == "individual" and s.students[0] == student and s.subject == subject
+    )
+    return starts.replace(day=1)
+
+
+def linked(plan: SimulationPlan) -> frozenset[str]:
+    """The groups billed monthly through linked plans (HF-01g E4): every
+    group but the last in the timetable, which keeps its flat fee."""
+    return frozenset(g.key for g in plan.timetable.groups[:-1])
+
+
 # --- The builder ----------------------------------------------------------------------
 
 
@@ -371,7 +431,21 @@ def build_billing(plan: SimulationPlan, seed: int) -> Billing:
         )
         for subject, minutes in pairs
     ]
+    linked_groups = linked(plan)
     for group in timetable.groups:
+        if group.key in linked_groups:
+            items.append(
+                ItemPlan(
+                    f"monthly:group:{group.key}",
+                    "group",
+                    "per_period",
+                    group.series.subject,
+                    GROUP_MONTHLY,
+                    group=group.key,
+                    frequency="monthly",
+                )
+            )
+            continue
         items.append(
             ItemPlan(
                 f"group:{group.key}",
@@ -435,15 +509,17 @@ def build_billing(plan: SimulationPlan, seed: int) -> Billing:
     names = texts.mapping("billing_products")
     subject_names = texts.mapping("subjects")
     products = (
-        ProductPlan("pack8", names["pack8"], 8, 120, 2240),
-        ProductPlan("pack12", names["pack12"], 12, 120, 3240),
-        ProductPlan("intensive", names["intensive"], 10, 30, 2600),
+        ProductPlan("pack8", names["pack8"], 8, 120, PRODUCT_AMOUNTS["pack8"]),
+        ProductPlan("pack12", names["pack12"], 12, 120, PRODUCT_AMOUNTS["pack12"]),
+        ProductPlan(
+            "intensive", names["intensive"], 10, 30, PRODUCT_AMOUNTS["intensive"]
+        ),
         ProductPlan(
             "subject4",
             names["subject4"].format(subject=subject_names[extra_subject]),
             4,
             60,
-            1200,
+            PRODUCT_AMOUNTS["subject4"],
             subject=extra_subject,
         ),
     )
@@ -459,11 +535,10 @@ def build_billing(plan: SimulationPlan, seed: int) -> Billing:
     )
     modes[cancelled] = ((SIM_START, "package"), (MODE_CHANGE_ON, "plan"))
 
-    # Tuition plans: each plan student's first subject's monthly item.
-    def monthly_item(student: str) -> str:
-        subject = sorted(classes[student], key=lambda c: (c.placed.starts_at, c.key))[
-            0
-        ].subject
+    # Tuition plans (HF-01g E3): one per weekly individual subject, each
+    # pinning that subject's monthly item; the first is the subject of the
+    # student's first class.
+    def monthly_item(subject: str) -> str:
         key = f"monthly:{subject}"
         if all(i.key != key for i in items):
             items.append(
@@ -507,35 +582,55 @@ def build_billing(plan: SimulationPlan, seed: int) -> Billing:
 
     tuition: list[TuitionPlanPlan] = []
     for s in sorted(plan_students):
-        tuition.append(
+        tuition.extend(
             TuitionPlanPlan(
-                f"tp:{s}",
+                plan_key(s, subject),
                 s,
-                monthly_item(s),
-                SIM_START,
+                monthly_item(subject),
+                max(SIM_START, first_month(plan, s, subject)),
                 OPENING_AT,
                 pause=PAUSE if s == paused else None,
             )
+            for subject in weekly_subjects(plan, s)
         )
-    tuition.append(
+    tuition.extend(
         TuitionPlanPlan(
-            f"tp:{cancelled}",
+            plan_key(cancelled, subject),
             cancelled,
-            monthly_item(cancelled),
-            MODE_CHANGE_ON,
+            monthly_item(subject),
+            max(MODE_CHANGE_ON, first_month(plan, cancelled, subject)),
             PLAN_CHANGE_AT,
         )
+        for subject in weekly_subjects(plan, cancelled)
     )
+    # Linked group plans (HF-01g E4), created before the 31 Aug job steps.
+    for group in timetable.groups:
+        if group.key in linked_groups:
+            tuition.extend(
+                TuitionPlanPlan(
+                    plan_key(s, f"group:{group.key}"),
+                    s,
+                    f"monthly:group:{group.key}",
+                    SIM_START,
+                    OPENING_AT,
+                    group=group.key,
+                )
+                for s in sorted(group.series.students)
+            )
 
-    # Custom prices: 0.00 on a plan student's items; 10 % off for two
-    # per-class students.
+    # Custom prices: 0.00 on a plan student's per-session items; 10 % off
+    # for two per-class students.
     by_key = {i.key: i for i in items}
     custom: list[CustomPricePlan] = []
+    individual_starts: dict[str, TuitionPlanPlan] = {}
     for t in tuition:
+        if t.group is None and t.student not in individual_starts:
+            individual_starts[t.student] = t
+    for student, t in sorted(individual_starts.items()):
         used = sorted(
             {
                 item_key(c.subject, m)
-                for c in classes[t.student]
+                for c in classes[student]
                 for m in (c.placed.minutes, c.final.minutes)
             }
         )
@@ -543,7 +638,7 @@ def build_billing(plan: SimulationPlan, seed: int) -> Billing:
             local_instant(SETUP_DAY, "11:00") if t.starts_on == SIM_START else t.at
         )
         custom.extend(
-            CustomPricePlan(t.student, key, 0, t.starts_on, setup_at) for key in used
+            CustomPricePlan(student, key, 0, t.starts_on, setup_at) for key in used
         )
     per_class = sorted(
         s for s in regular if modes[s][0][1] == "per_class" and s != resized
@@ -742,7 +837,7 @@ def build_billing(plan: SimulationPlan, seed: int) -> Billing:
     due_changes = tuple(
         DueDateChangePlan(
             family_of[s],
-            f"tp:{s}",
+            plan_key(s, weekly_subjects(plan, s)[0]),
             date(2026, 10, 1),
             date(2026, 10, 20),
             due_reasons[i % len(due_reasons)],

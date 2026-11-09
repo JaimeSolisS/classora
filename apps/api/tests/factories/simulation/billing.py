@@ -94,6 +94,7 @@ from app.modules.billing.schemas import (
     ServicePriceCreate,
 )
 from app.modules.billing.settings import get_billing_settings, update_billing_settings
+from app.modules.scheduling.models import GroupEnrollment
 from app.workflows import (
     billing_accounts,
     billing_corrections,
@@ -558,11 +559,23 @@ class BillingModule:
         self, session: AsyncSession, ctx: SimulationContext, key: str
     ) -> None:
         tuition = next(t for t in ctx.plan.billing.tuition_plans if t.key == key)
+        enrollment = None
+        if tuition.group is not None:
+            enrollment = await session.scalar(
+                select(GroupEnrollment.id).where(
+                    GroupEnrollment.group_id == ctx.id(f"group:{tuition.group}"),
+                    GroupEnrollment.student_id == student_id(ctx, tuition.student),
+                    GroupEnrollment.withdrawn_at.is_(None),
+                )
+            )
+            if enrollment is None:
+                raise SimulationStepError(f"{key}: no group enrollment")
         created, _ = await tuition_plans.create_tuition_plan(
             session,
             TuitionPlanCreate(
                 student_id=student_id(ctx, tuition.student),
                 service_price_id=ctx.id(f"price:{tuition.item}"),
+                group_enrollment_id=enrollment,
                 starts_on=tuition.starts_on,
                 due_offset_days=TUITION_DUE_OFFSET,
             ),
@@ -680,8 +693,8 @@ class BillingModule:
         if on(CANCEL_AT):
             found.append((CANCEL_AT, _cancel))
         changes = [t for t in plan.tuition_plans if t.at != OPENING_AT and on(t.at)]
-        for tuition in changes:
-            found.append((tuition.at, _plan_change(tuition.key)))
+        if changes:
+            found.append((changes[0].at, _plan_change(tuple(t.key for t in changes))))
         return found
 
 
@@ -781,22 +794,26 @@ async def _reverse(session: AsyncSession, ctx: SimulationContext) -> None:
 
 
 async def _pause(session: AsyncSession, ctx: SimulationContext) -> None:
-    tuition = next(t for t in ctx.plan.billing.tuition_plans if t.pause is not None)
-    assert tuition.pause is not None  # noqa: S101 - selected above
-    plan_id = ctx.id(f"tuition:{tuition.key}")
-    version = await session.scalar(
-        select(TuitionPlan.version).where(TuitionPlan.id == plan_id)
-    )
-    assert version is not None  # noqa: S101 - created at setup
+    """Every plan of the paused student (HF-01g: a plan per subject)."""
     me = await finance(session, ctx)
-    with seed_actor(session, me.user_id):
-        await tuition_plans.add_tuition_pause(
-            session,
-            plan_id,
-            TuitionPauseCreate(
-                version=version, starts_on=tuition.pause[0], ends_on=tuition.pause[1]
-            ),
+    for tuition in ctx.plan.billing.tuition_plans:
+        if tuition.pause is None:
+            continue
+        plan_id = ctx.id(f"tuition:{tuition.key}")
+        version = await session.scalar(
+            select(TuitionPlan.version).where(TuitionPlan.id == plan_id)
         )
+        assert version is not None  # noqa: S101 - created at setup
+        with seed_actor(session, me.user_id):
+            await tuition_plans.add_tuition_pause(
+                session,
+                plan_id,
+                TuitionPauseCreate(
+                    version=version,
+                    starts_on=tuition.pause[0],
+                    ends_on=tuition.pause[1],
+                ),
+            )
 
 
 async def _intensive(session: AsyncSession, ctx: SimulationContext) -> None:
@@ -880,12 +897,16 @@ async def _cancel(session: AsyncSession, ctx: SimulationContext) -> None:
             )
 
 
-def _plan_change(key: str) -> Any:
+def _plan_change(keys: tuple[str, ...]) -> Any:
+    """The package student's plans (one per subject) and their custom
+    prices."""
+
     async def run(session: AsyncSession, ctx: SimulationContext) -> None:
-        tuition = next(t for t in ctx.plan.billing.tuition_plans if t.key == key)
+        plans = [t for t in ctx.plan.billing.tuition_plans if t.key in keys]
         me = await finance(session, ctx)
         with seed_actor(session, me.user_id):
-            await BillingModule()._create_plan(session, ctx, key)
-        await BillingModule()._custom_prices(session, ctx, local_today(tuition.at))
+            for tuition in plans:
+                await BillingModule()._create_plan(session, ctx, tuition.key)
+        await BillingModule()._custom_prices(session, ctx, local_today(plans[0].at))
 
     return run

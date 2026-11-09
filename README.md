@@ -867,10 +867,13 @@ What's in it:
 - **Billing:** billing runs from 1 Sep with catalog prices (one price
   change on 1 Oct), custom prices, a sibling discount, two scholarships, a
   September promotion (expired) and a discount starting 1 Dec. About half
-  the students pay a monthly plan (one paused for October), a fifth use
-  prepaid class packages (renewed when used up, one lapsed with classes
-  left, one cancelled and refunded, one withdrawn as account credit) and
-  the rest pay per class; groups and courses charge an enrollment fee.
+  the students pay monthly plans, one per subject (one student's paused
+  for October), a fifth use prepaid class packages (renewed when used up,
+  one lapsed with classes left, one cancelled and refunded, one withdrawn
+  as account credit) and the rest pay per class. Two groups charge a
+  monthly fee through plans linked to each enrollment; the third group and
+  the courses charge an enrollment fee. A flat group fee counts on its
+  enrollment date (24 Aug), so it isn't in the term's monthly reports.
   Families pay in cash, by transfer or otherwise, with a receipt for each
   payment; most pay on time, some late, two keep account credit, and four
   families have overdue charges, all with reminders, at 19 Nov. There is a
@@ -937,7 +940,9 @@ worker-native`; Compose: `docker compose stop worker`).
 KPIs: the dashboard's default range ends at the real today. To see the
 simulated term, use a custom range ending 18 Nov 2026 (for example 1 Sep to
 18 Nov; before that real date, end it today); for retention, compare
-October with September.
+October with September. The term shows a profit in every month; November
+looks stronger than September and October until its pay periods are
+finalized.
 
 Audit events and notifications show the time the seed ran, not the
 simulated date, because the database sets those times.
