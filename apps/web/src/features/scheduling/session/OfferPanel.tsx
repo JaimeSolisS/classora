@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '@/app/api';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
@@ -93,6 +93,10 @@ export interface OfferPanelProps<T = AssignmentOfferCreated> {
   variant?: 'offer' | 'substitute' | 'confirm';
   /** The classroom choice (#60: the request confirmation). */
   classrooms?: readonly Option[];
+  /** The subject's name, for the suggestions' empty state (HF-05b B8). */
+  subjectName?: string;
+  /** The link to assign subjects (qualification.review; HF-05b B8). */
+  suggestionsEmptyLink?: ReactNode;
   /** Stories. */
   initialValues?: OfferValues;
   initialConflicts?: SchedulingConflict[];
@@ -110,6 +114,8 @@ export function OfferPanel<T = AssignmentOfferCreated>({
   series,
   variant = 'offer',
   classrooms,
+  subjectName,
+  suggestionsEmptyLink,
   initialValues = EMPTY_OFFER,
   initialConflicts,
   initialScope = 'session',
@@ -500,7 +506,12 @@ export function OfferPanel<T = AssignmentOfferCreated>({
             </Button>
           </div>
           {suggestions ? (
-            <TutorSuggestions state={suggestions} onChoose={choose} />
+            <TutorSuggestions
+              state={suggestions}
+              onChoose={choose}
+              subjectName={subjectName}
+              emptyLink={suggestionsEmptyLink}
+            />
           ) : null}
         </div>
         {classrooms ? (

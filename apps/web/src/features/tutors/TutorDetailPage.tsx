@@ -23,6 +23,7 @@ import {
   isChangeRequest,
   fetchQualifications,
   fetchTutor,
+  grantQualification,
   qualificationsKey,
   replaceWeeklyAvailability,
   requestQualification,
@@ -50,7 +51,9 @@ import { TutorForm } from './TutorForm';
 // cancel; for holders of qualification.review, revoke (#198), which then
 // refreshes the list and the profile (its teaching subjects). A
 // `#qualifications` hash (the notifications' link) scrolls to it once the
-// page has loaded.
+// page has loaded. Reviewers other than the tutor themselves assign
+// subjects directly (HF-05b A1), which refreshes the list, the profile and
+// the tutor list (its subjects column); a pending row links to Approvals.
 //
 // Then the Availability section (#45 F1): the availability query; the
 // tutor themselves and tutor.manage holders (a non-empty `editable_fields`)
@@ -125,6 +128,7 @@ export function TutorDetailPage() {
 
 /** The Qualifications section with its query and actions. */
 function TutorQualifications({ tutor }: { tutor: TutorDetail }) {
+  const { t } = useTranslation();
   const session = useSession();
   const queryClient = useQueryClient();
   const location = useLocation();
@@ -182,6 +186,23 @@ function TutorQualifications({ tutor }: { tutor: TutorDetail }) {
         }
       }}
       canRevoke={canRevoke}
+      canGrant={canRevoke && !isSelf}
+      onGrant={async (subjectId) => {
+        const item = await grantQualification(tutor.user_id, subjectId);
+        await Promise.all([
+          refresh(),
+          queryClient.invalidateQueries({
+            queryKey: tutorDetailKey(tutor.user_id),
+          }),
+          queryClient.invalidateQueries({ queryKey: TUTORS_LIST_QUERY_KEY }),
+        ]);
+        return item;
+      }}
+      approvalsLink={
+        <Link to="/approvals?type=staff.qualification" className={LINK_CLASS}>
+          {t('tutors.qualifications.grant.approveHint')}
+        </Link>
+      }
       onReload={refresh}
       onRevoke={async (item, reason) => {
         await revokeQualification(tutor.user_id, item.id, {

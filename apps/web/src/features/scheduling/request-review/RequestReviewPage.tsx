@@ -49,6 +49,7 @@ export function RequestReviewPage() {
   const { requestId = '' } = useParams();
   const timeZone = useCenterTimeZone();
   const canOverride = useCan('schedule.override');
+  const canReviewQualifications = useCan('qualification.review');
   const client = useQueryClient();
   const [notice, setNotice] = useState<RequestReviewNotice | null>(null);
   const [confirmed, setConfirmed] = useState<{
@@ -130,6 +131,17 @@ export function RequestReviewPage() {
         timeZone={timeZone}
         canOverride={canOverride}
         onSuggest={() => suggestTutors(requestSuggestionParams(detail))}
+        subjectName={detail.subject.name}
+        suggestionsEmptyLink={
+          canReviewQualifications ? (
+            <Link
+              to="/tutors"
+              className="underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+            >
+              {t('scheduling.tutorSuggestions.assignSubjects')}
+            </Link>
+          ) : undefined
+        }
         onSubmit={(values, override) =>
           reloadingOnStale(
             confirmSessionRequest(

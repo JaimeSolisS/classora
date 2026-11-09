@@ -175,7 +175,7 @@ describe('the /tutors route and navigation (E1)', () => {
 });
 
 describe('the list (E2)', () => {
-  it('shows name, username, state, email and phone with a link', async () => {
+  it('shows name, username, state, email, phone and subjects with a link', async () => {
     stub();
 
     app = await renderApp('/tutors');
@@ -191,7 +191,16 @@ describe('the list (E2)', () => {
       'Suspended',
       'Not set',
       '55 8765 4321',
+      'Álgebra (Secundaria), Cálculo (Preparatoria) (inactive)',
     ]);
+    // HF-05b A3: no subjects (or none sent) is "Not set".
+    const subjects = (row: Element) =>
+      [...row.querySelectorAll('td')].at(-1)?.textContent;
+    expect(subjects(rows[0]!)).toBe('Not set');
+    expect(subjects(rows[2]!)).toBe('Not set');
+    expect(
+      [...main().querySelectorAll('thead th')].map((th) => th.textContent),
+    ).toContain('Subjects');
     expect(rows[0]!.querySelector('a')?.getAttribute('href')).toBe(
       `/tutors/${TUTOR_ID}`,
     );

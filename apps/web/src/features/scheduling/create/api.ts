@@ -17,6 +17,10 @@ export type SlotSuggestions = components['schemas']['SlotSuggestions'];
 export type SuggestedSlot = components['schemas']['SuggestedSlot'];
 export type TutorSuggestionList = components['schemas']['TutorSuggestionList'];
 export type TutorSuggestion = components['schemas']['TutorSuggestion'];
+export type SeriesTutorSuggestionQuery =
+  components['schemas']['SeriesTutorSuggestionQuery'];
+export type SeriesTutorSuggestionList =
+  components['schemas']['SeriesTutorSuggestionList'];
 
 /** The query of GET /api/v1/tutor-suggestions (#51 D1). */
 export interface TutorSuggestionParams {
@@ -24,6 +28,8 @@ export interface TutorSuggestionParams {
   starts_at: string;
   ends_at: string;
   classroom_id?: string;
+  /** At most this many items (1-50; the API's default is 10). */
+  limit?: number;
 }
 
 /** One option of a select. */
@@ -64,9 +70,25 @@ export function suggestSlots(
 /** The eligible tutors for a new slot, lightest week first (#51 G1). */
 export function suggestTutors(
   query: TutorSuggestionParams,
+  signal?: AbortSignal,
 ): Promise<TutorSuggestionList> {
-  return apiCall(() =>
-    api.GET('/api/v1/tutor-suggestions', { params: { query } }),
+  return apiCall(
+    () => api.GET('/api/v1/tutor-suggestions', { params: { query }, signal }),
+    signal,
+  );
+}
+
+/**
+ * The tutors free and available for every occurrence of a weekly series,
+ * ranked at the first one (HF-05 C; read-only).
+ */
+export function suggestSeriesTutors(
+  body: SeriesTutorSuggestionQuery,
+  signal?: AbortSignal,
+): Promise<SeriesTutorSuggestionList> {
+  return apiCall(
+    () => api.POST('/api/v1/tutor-suggestions/series', { body, signal }),
+    signal,
   );
 }
 

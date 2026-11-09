@@ -4,9 +4,11 @@ import type {
   SchedulingConflict,
   SchedulingWarning,
   SlotSuggestions,
+  SeriesTutorSuggestionList,
   SubjectOption,
   TutorSuggestionList,
 } from './api';
+import type { TutorAvailability } from '@/features/tutors/api';
 import type { ScheduleValues } from './rules';
 
 // Sample data for the scheduling form's tests and stories (#48 F4, #49 F5,
@@ -229,6 +231,7 @@ export const TUTOR_SUGGESTIONS: TutorSuggestionList = {
       weekly_limit_minutes: null,
       daily_limit_minutes: null,
       prefers_classroom: true,
+      warnings: [],
     },
     {
       rank: 2,
@@ -238,6 +241,7 @@ export const TUTOR_SUGGESTIONS: TutorSuggestionList = {
       weekly_limit_minutes: 900,
       daily_limit_minutes: 240,
       prefers_classroom: false,
+      warnings: [],
     },
     {
       rank: 3,
@@ -250,12 +254,117 @@ export const TUTOR_SUGGESTIONS: TutorSuggestionList = {
       weekly_limit_minutes: null,
       daily_limit_minutes: null,
       prefers_classroom: false,
+      warnings: [],
     },
   ],
   eligible_count: 4,
+  qualified_count: 6,
+  busy_count: 1,
+  unavailable_count: 1,
 };
 
+/** Nobody free: 3 qualified, 2 busy and 1 unavailable (HF-05b B5). */
 export const NO_TUTOR_SUGGESTIONS: TutorSuggestionList = {
   items: [],
   eligible_count: 0,
+  qualified_count: 3,
+  busy_count: 2,
+  unavailable_count: 1,
+};
+
+/** Nobody holds the subject (HF-05b B5). */
+export const NO_QUALIFIED_TUTORS: TutorSuggestionList = {
+  items: [],
+  eligible_count: 0,
+  qualified_count: 0,
+  busy_count: 0,
+  unavailable_count: 0,
+};
+
+/** One tutor over the daily limit and with a short break (HF-05b B3). */
+export const TUTOR_SUGGESTIONS_WITH_WARNINGS: TutorSuggestionList = {
+  items: [
+    {
+      ...TUTOR_SUGGESTIONS.items[1]!,
+      rank: 1,
+      daily_minutes: 210,
+      warnings: [
+        {
+          code: 'daily_limit_exceeded',
+          details: {
+            date: '2031-01-06',
+            limit_minutes: 240,
+            scheduled_minutes: 270,
+          },
+        },
+        {
+          code: 'break_too_short',
+          details: { gap_minutes: 5, required_break_minutes: 10 },
+        },
+      ],
+    },
+  ],
+  eligible_count: 1,
+  qualified_count: 1,
+  busy_count: 0,
+  unavailable_count: 0,
+};
+
+/** Seven eligible tutors: five shown, then "View all" (HF-05b B3). */
+export const MANY_TUTOR_SUGGESTIONS: TutorSuggestionList = {
+  items: Array.from({ length: 7 }, (_, index) => ({
+    rank: index + 1,
+    tutor: {
+      id: `00000000-0000-4000-8000-0000000005${String(index).padStart(2, '0')}`,
+      display_name: `Tutor ${index + 1}`,
+    },
+    weekly_minutes: index * 60,
+    daily_minutes: 0,
+    weekly_limit_minutes: null,
+    daily_limit_minutes: null,
+    prefers_classroom: false,
+    warnings: [],
+  })),
+  eligible_count: 7,
+  qualified_count: 7,
+  busy_count: 0,
+  unavailable_count: 0,
+};
+
+/** A weekly series: one tutor free for all 12 sessions (HF-05b B2). */
+export const SERIES_TUTOR_SUGGESTIONS: SeriesTutorSuggestionList = {
+  items: [{ ...TUTOR_SUGGESTIONS.items[0]!, warnings: [] }],
+  eligible_count: 1,
+  qualified_count: 2,
+  busy_count: 0,
+  unavailable_count: 1,
+  occurrence_count: 12,
+};
+
+/** A series with nobody free: 1 qualified, unavailable once (HF-05b B5). */
+export const NO_SERIES_TUTOR_SUGGESTIONS: SeriesTutorSuggestionList = {
+  items: [],
+  eligible_count: 0,
+  qualified_count: 1,
+  busy_count: 0,
+  unavailable_count: 1,
+  occurrence_count: 2,
+};
+
+/** Carmen's weekly windows (HF-05b C1), out of order on purpose. */
+export const CARMEN_AVAILABILITY: TutorAvailability = {
+  weekly: [
+    { weekday: 3, starts_at: '09:00', ends_at: '13:00' },
+    { weekday: 1, starts_at: '16:00', ends_at: '20:00' },
+  ],
+  exceptions: [],
+  limits: {
+    daily_limit_minutes: null,
+    weekly_limit_minutes: null,
+    required_break_minutes: null,
+  },
+  preferred_classrooms: [],
+  version: 1,
+  pending_changes: [],
+  recent_changes: [],
 };

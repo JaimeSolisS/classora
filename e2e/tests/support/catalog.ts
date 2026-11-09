@@ -706,7 +706,19 @@ type Common = {
     states: Record<'offered' | 'confirmed' | 'unassigned', string> &
       Record<string, string>;
     // #51: suggested tutors (#60 uses them on the review page).
-    tutorSuggestions: { button: string; chooseTutor: string };
+    tutorSuggestions: {
+      button: string;
+      chooseTutor: string;
+      // HF-05b: the panel on "Schedule a session".
+      heading: string;
+      chosenTutor: string;
+      summary: string;
+      unavailablePart_one: string;
+      inSeries_other: string;
+    };
+    // HF-05b C: the chosen tutor's availability and free times.
+    tutorAvailability: { exceptions: string };
+    freeTimes: { button: string; heading: string; empty: string };
     // #62 G1 (used by #62b E1): the staff review of a change request.
     changeRequest: {
       title: string;
@@ -935,6 +947,8 @@ type Common = {
       revokeReason: string;
       revokeConfirm: string;
       revoked: string;
+      // HF-05b A1: a reviewer assigns a subject directly.
+      grant: { button: string; title: string; submit: string };
     };
     availability: {
       title: string;

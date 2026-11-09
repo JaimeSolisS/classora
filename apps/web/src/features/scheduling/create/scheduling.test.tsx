@@ -22,6 +22,7 @@ import {
   jsonResponse,
   renderApp,
   settle,
+  settleUntil,
   type RenderedApp,
 } from '@/test/render-app';
 import {
@@ -29,32 +30,46 @@ import {
   CLASSROOMS,
   CONFLICTS,
   CREATED,
+  CARMEN_AVAILABILITY,
   CREATED_WITH_WARNINGS,
+  MANY_TUTOR_SUGGESTIONS,
+  NO_QUALIFIED_TUTORS,
+  NO_SERIES_TUTOR_SUGGESTIONS,
   NO_SUGGESTIONS,
   NO_TUTOR_SUGGESTIONS,
   OVERRIDDEN,
+  SERIES_TUTOR_SUGGESTIONS,
   SOFT_CONFLICTS,
   SUBJECTS,
   SUGGESTIONS,
   TUTOR_SUGGESTIONS,
+  TUTOR_SUGGESTIONS_WITH_WARNINGS,
   TUTORS,
 } from './fixtures';
+import { EMPTY_RECURRENCE } from '../series/recurrence';
 import {
   calendarWeekPath,
+  canFindFreeTimes,
   canSuggestTutors,
   EMPTY_SCHEDULE,
+  freeTimesBody,
+  isChosenTutorUnsuggested,
   overrideAction,
   overrideCodes,
   overrideReasonError,
   prefillValues,
   scheduleBody,
   serverErrors,
+  seriesTutorSuggestionBody,
   sessionOverride,
   slotValues,
   suggestionBody,
+  suggestionEmptyState,
+  tutorSuggestionKey,
   tutorSuggestionParams,
   validateOverrideReason,
   validateSchedule,
+  weeklyAvailabilityText,
 } from './rules';
 
 // #48 F1-F4: the route behind schedule.manage and its nav entry, the client
@@ -814,11 +829,21 @@ describe('workload warnings (#50 C2)', () => {
   });
 });
 
-describe('suggested tutors (#51 G)', () => {
+describe('suggested tutors (#51 G, HF-05b B)', () => {
   const SUGGEST_TUTORS = 'GET /api/v1/tutor-suggestions';
+  const SUGGEST_SERIES = 'POST /api/v1/tutor-suggestions/series';
   const ASSIGNER: SessionUserBody = {
     ...SCHEDULER,
     permissions: [...SCHEDULER.permissions, 'schedule.assign'],
+  };
+  const OWNER: SessionUserBody = {
+    ...ASSIGNER,
+    permissions: [
+      ...ASSIGNER.permissions,
+      'tutor.view',
+      'tutor.manage',
+      'qualification.review',
+    ],
   };
 
   function panel(): HTMLElement | undefined {
@@ -827,12 +852,26 @@ describe('suggested tutors (#51 G)', () => {
     );
   }
 
+  function tutorSelect(): HTMLSelectElement {
+    return [...main().querySelectorAll('label')]
+      .filter((l) => l.textContent === 'Tutor')
+      .map((l) => document.getElementById(l.htmlFor))[0] as HTMLSelectElement;
+  }
+
   function fillSlot() {
     choose('Subject', SUBJECTS[0]!.id);
     choose('Classroom', CLASSROOMS[0]!.id);
     typeInto(fieldByLabel(main(), 'Date'), '2031-01-06');
     typeInto(fieldByLabel(main(), 'Start'), '10:00');
     typeInto(fieldByLabel(main(), 'End'), '11:00');
+  }
+
+  /** Past the 400 ms debounce, with real timers, then settles. */
+  async function afterDebounce() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+    await settle();
   }
 
   it('sends the slot as instants in the center zone (Tijuana DST)', () => {
@@ -864,10 +903,148 @@ describe('suggested tutors (#51 G)', () => {
     expect(canSuggestTutors({ ...values, end: '15:00' })).toBe(false);
   });
 
+  it('loads only for a valid slot (and rule); the tutor is never part of it (E1)', () => {
+    const values = {
+      ...EMPTY_SCHEDULE,
+      subjectId: 's',
+      date: '2031-01-06',
+      start: '10:00',
+      end: '11:00',
+    };
+    const rule = { ...EMPTY_RECURRENCE, weekdays: [1] };
+    const once = tutorSuggestionKey(values, false, rule);
+    expect(once).not.toBeNull();
+    expect(tutorSuggestionKey({ ...values, subjectId: '' }, false, rule)).toBe(
+      null,
+    );
+    expect(tutorSuggestionKey({ ...values, end: '09:00' }, false, rule)).toBe(
+      null,
+    );
+    expect(tutorSuggestionKey({ ...values, tutorId: 't' }, false, rule)).toBe(
+      once,
+    );
+    expect(
+      tutorSuggestionKey({ ...values, classroomId: 'r' }, false, rule),
+    ).not.toBe(once);
+    // Series: a valid rule loads, an invalid one doesn't.
+    const series = tutorSuggestionKey(values, true, rule);
+    expect(series).not.toBeNull();
+    expect(series).not.toBe(once);
+    expect(
+      tutorSuggestionKey(values, true, { ...rule, weekdays: [] }),
+    ).toBeNull();
+    expect(
+      tutorSuggestionKey(values, true, { ...rule, ends: 'count', count: '0' }),
+    ).toBeNull();
+  });
+
+  it('builds the series body without the student, tutor or deadline (E1)', () => {
+    expect(
+      seriesTutorSuggestionBody(
+        {
+          ...EMPTY_SCHEDULE,
+          student: ANA,
+          tutorId: 't',
+          subjectId: 's',
+          classroomId: 'r',
+          date: '2031-01-06',
+          start: '10:00',
+          end: '11:30',
+        },
+        { ...EMPTY_RECURRENCE, weekdays: [3, 1], ends: 'count', count: '8' },
+      ),
+    ).toEqual({
+      subject_id: 's',
+      classroom_id: 'r',
+      starts_on: '2031-01-06',
+      start_time: '10:00',
+      duration_minutes: 90,
+      recurrence: { weekdays: [1, 3], interval: 1, until: null, count: 8 },
+      limit: 50,
+    });
+  });
+
+  it('explains an empty list from the counts (E1)', () => {
+    const base = { items: [], eligible_count: 0 };
+    expect(suggestionEmptyState(base)).toEqual({ kind: 'unknown' });
+    expect(
+      suggestionEmptyState({
+        ...base,
+        qualified_count: 0,
+        busy_count: 0,
+        unavailable_count: 0,
+      }),
+    ).toEqual({ kind: 'noneQualified' });
+    expect(
+      suggestionEmptyState({
+        ...base,
+        qualified_count: 2,
+        busy_count: 0,
+        unavailable_count: 2,
+      }),
+    ).toEqual({
+      kind: 'noneFree',
+      qualified: 2,
+      busy: 0,
+      unavailable: 2,
+      occurrences: null,
+    });
+    expect(
+      suggestionEmptyState({
+        ...base,
+        qualified_count: 1,
+        busy_count: 1,
+        unavailable_count: 0,
+        occurrence_count: 4,
+      }),
+    ).toMatchObject({ kind: 'noneFree', occurrences: 4 });
+    expect(
+      suggestionEmptyState({
+        ...base,
+        qualified_count: 0,
+        busy_count: 0,
+        unavailable_count: 0,
+        occurrence_count: 0,
+      }),
+    ).toEqual({ kind: 'noOccurrences' });
+  });
+
+  it('tells whether the chosen tutor is missing from a complete list (E1)', () => {
+    const diego = TUTORS[1]!.id;
+    const carmen = TUTORS[0]!.id;
+    const list = { ...TUTOR_SUGGESTIONS, eligible_count: 3 };
+    expect(isChosenTutorUnsuggested(list, '')).toBe(false);
+    expect(isChosenTutorUnsuggested(list, diego)).toBe(false);
+    expect(isChosenTutorUnsuggested(list, carmen)).toBe(false);
+    expect(isChosenTutorUnsuggested(list, 'someone-else')).toBe(true);
+    // More eligible than listed: it can't tell.
+    expect(
+      isChosenTutorUnsuggested({ ...list, eligible_count: 60 }, 'someone-else'),
+    ).toBe(false);
+  });
+
+  it('summarizes the weekly windows by weekday, then start (E1)', () => {
+    const name = (day: number) => ['', 'mon', 'tue', 'wed'][day] ?? '?';
+    expect(weeklyAvailabilityText([], name)).toBeNull();
+    expect(
+      weeklyAvailabilityText(
+        [
+          { weekday: 3, starts_at: '09:00', ends_at: '13:00' },
+          { weekday: 1, starts_at: '16:00', ends_at: '20:00' },
+          { weekday: 1, starts_at: '08:00', ends_at: '10:00' },
+        ],
+        name,
+      ),
+    ).toBe('mon 08:00–10:00, mon 16:00–20:00, wed 09:00–13:00');
+  });
+
   it('is hidden without schedule.assign', async () => {
-    stub(SCHEDULER);
+    const api = stub(SCHEDULER);
     app = await renderApp('/schedule/new');
-    expect(buttonNamed(main(), 'Schedule session')).toBeDefined();
+    fillSlot();
+    await afterDebounce();
+    expect(panel()).toBeUndefined();
+    expect(api.calls(SUGGEST_TUTORS)).toHaveLength(0);
     expect(
       [...main().querySelectorAll('button')].some(
         (b) => b.textContent === 'Suggest tutors',
@@ -875,7 +1052,26 @@ describe('suggested tutors (#51 G)', () => {
     ).toBe(false);
   });
 
-  it('lists the tutors in rank order and Choose fills the picker', async () => {
+  it('puts Tutor and Classroom after "When" (B1)', async () => {
+    stub(ASSIGNER);
+    app = await renderApp('/schedule/new');
+    const labels = [...main().querySelectorAll('form label, form legend')]
+      .map((element) => element.textContent)
+      .filter((text) =>
+        ['Subject', 'Date and time', 'Date', 'Tutor', 'Classroom'].includes(
+          text ?? '',
+        ),
+      );
+    expect(labels).toEqual([
+      'Subject',
+      'Date and time',
+      'Date',
+      'Tutor',
+      'Classroom',
+    ]);
+  });
+
+  it('loads by itself 400 ms after the last change, once (B2, fake timers)', async () => {
     let query: URLSearchParams | undefined;
     const api = stub(ASSIGNER, {
       [SUGGEST_TUTORS]: (request) => {
@@ -884,12 +1080,24 @@ describe('suggested tutors (#51 G)', () => {
       },
     });
     app = await renderApp('/schedule/new');
-    const button = buttonNamed(main(), 'Suggest tutors');
-    expect(button.disabled).toBe(true);
-    fillSlot();
-    expect(button.disabled).toBe(false);
-
-    await click(button);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      fillSlot();
+      expect(panel()?.textContent).toContain('Looking for tutors…');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(399);
+      });
+      expect(api.calls(SUGGEST_TUTORS)).toHaveLength(0);
+      // Another change restarts the wait.
+      typeInto(fieldByLabel(main(), 'End'), '11:00');
+      typeInto(fieldByLabel(main(), 'Start'), '10:00');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(400);
+      });
+      expect(api.calls(SUGGEST_TUTORS)).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
     await settle();
 
     expect(Object.fromEntries(query!)).toEqual({
@@ -897,72 +1105,230 @@ describe('suggested tutors (#51 G)', () => {
       starts_at: '2031-01-06T16:00:00.000Z',
       ends_at: '2031-01-06T17:00:00.000Z',
       classroom_id: CLASSROOMS[0]!.id,
+      limit: '50',
     });
     const section = panel()!;
-    const rows = [...section.querySelectorAll('li')].map(
+    expect(section.textContent).toContain(
+      'Qualified for Álgebra, available and without another class on January 6, 2031 from 10:00 to 11:00.',
+    );
+    const rows = [...section.querySelectorAll('ol > li')].map(
       (li) => li.textContent,
     );
     expect(rows).toEqual([
       'Diego TorresPrefers this room0 min this week · 0 min that dayChoose',
-      'Carmen Ruiz2 h 30 min this week · 1 h that day · limit 15 h/week · limit 4 h/dayChoose',
+      'Carmen Ruiz2 h 30 min this week · 1 h that day · limit 15 h/week · limit 4 h/dayWithin their limitsChoose',
       'Elena Vega5 h this week · 0 min that dayChoose',
     ]);
     expect(section.textContent).toContain('3 of 4 eligible tutors');
-
-    await click(buttonNamed(section, 'Choose Diego Torres'));
-
-    const tutor = [...main().querySelectorAll('label')]
-      .filter((l) => l.textContent === 'Tutor')
-      .map((l) => document.getElementById(l.htmlFor))[0] as HTMLSelectElement;
-    expect(tutor.value).toBe(TUTORS[1]!.id);
-    expect(panel()).toBeUndefined();
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    });
-    expect(document.activeElement).toBe(tutor);
-    expect(main().querySelector('[aria-live="polite"]')?.textContent).toBe(
-      'Tutor set to Diego Torres. Review the form and schedule the session.',
-    );
-    expect(api.calls(CREATE)).toHaveLength(0);
+    // Focus never moves on an automatic load (D1).
+    expect(document.activeElement).not.toBe(section.querySelector('button'));
   });
 
-  it('clears a shown panel when the slot changes', async () => {
-    stub(ASSIGNER, {
+  it('refetches on a room change, never on a tutor change; back to the loaded slot: no request (B2)', async () => {
+    const api = stub(ASSIGNER, {
       [SUGGEST_TUTORS]: () => jsonResponse(200, TUTOR_SUGGESTIONS),
     });
     app = await renderApp('/schedule/new');
     fillSlot();
-    await click(buttonNamed(main(), 'Suggest tutors'));
-    await settle();
+    await afterDebounce();
+    expect(api.calls(SUGGEST_TUTORS)).toHaveLength(1);
+
+    choose('Tutor', TUTORS[0]!.id);
+    await afterDebounce();
+    expect(api.calls(SUGGEST_TUTORS)).toHaveLength(1);
     expect(panel()).toBeDefined();
 
-    typeInto(fieldByLabel(main(), 'End'), '11:30');
-
-    expect(panel()).toBeUndefined();
-    await click(buttonNamed(main(), 'Suggest tutors'));
-    await settle();
     choose('Classroom', '');
+    await afterDebounce();
+    expect(api.calls(SUGGEST_TUTORS)).toHaveLength(2);
+
+    // Changed and changed back before the wait ends: no request.
+    typeInto(fieldByLabel(main(), 'End'), '11:30');
+    typeInto(fieldByLabel(main(), 'End'), '11:00');
+    await afterDebounce();
+    expect(api.calls(SUGGEST_TUTORS)).toHaveLength(2);
+    expect(panel()!.textContent).toContain('Diego Torres');
+
+    // An incomplete slot hides the panel.
+    typeInto(fieldByLabel(main(), 'End'), '');
     expect(panel()).toBeUndefined();
   });
 
-  it('shows the empty and error states, and a 422 on the fields', async () => {
+  it('drops a stale answer (B2)', async () => {
+    let release: (response: Response) => void = () => {};
+    const api = stub(ASSIGNER, {
+      [SUGGEST_TUTORS]: [
+        () =>
+          new Promise<Response>((resolve) => {
+            release = resolve;
+          }),
+        () => jsonResponse(200, TUTOR_SUGGESTIONS_WITH_WARNINGS),
+      ],
+    });
+    app = await renderApp('/schedule/new');
+    fillSlot();
+    await afterDebounce();
+    expect(api.calls(SUGGEST_TUTORS)).toHaveLength(1);
+
+    typeInto(fieldByLabel(main(), 'End'), '11:30');
+    await afterDebounce();
+    expect(api.calls(SUGGEST_TUTORS)).toHaveLength(2);
+    release(jsonResponse(200, TUTOR_SUGGESTIONS));
+    await settle();
+
+    const text = panel()!.textContent;
+    expect(text).toContain('1 eligible tutor.');
+    expect(text).not.toContain('Diego Torres');
+  });
+
+  it('shows the warnings as text (B3)', async () => {
+    stub(ASSIGNER, {
+      [SUGGEST_TUTORS]: () =>
+        jsonResponse(200, TUTOR_SUGGESTIONS_WITH_WARNINGS),
+    });
+    app = await renderApp('/schedule/new');
+    fillSlot();
+    await afterDebounce();
+    const items = [...panel()!.querySelectorAll('ol > li ul li')].map(
+      (li) => li.textContent,
+    );
+    expect(items).toEqual([
+      'Daily teaching limit exceeded on Jan 6, 2031: 270 minutes scheduled, limit 240.',
+      'Break too short: 5 minutes between classes, 10 required.',
+    ]);
+    expect(panel()!.textContent).not.toContain('Within their limits');
+  });
+
+  it('"Choose" sets Tutor, marks it Chosen and keeps the list (B4)', async () => {
+    const api = stub(ASSIGNER, {
+      [SUGGEST_TUTORS]: () => jsonResponse(200, TUTOR_SUGGESTIONS),
+    });
+    app = await renderApp('/schedule/new');
+    fillSlot();
+    await afterDebounce();
+
+    await click(buttonNamed(panel()!, 'Choose Diego Torres'));
+    await afterDebounce();
+
+    expect(tutorSelect().value).toBe(TUTORS[1]!.id);
+    const chosen = buttonNamed(panel()!, 'Chosen: Diego Torres');
+    expect(chosen.textContent).toBe('Chosen');
+    expect(chosen.getAttribute('aria-pressed')).toBe('true');
+    expect(
+      buttonNamed(panel()!, 'Choose Carmen Ruiz').getAttribute('aria-pressed'),
+    ).toBe('false');
+    expect(main().querySelector('[aria-live="polite"]')?.textContent).toBe(
+      'Tutor set to Diego Torres. Review the form and schedule the session.',
+    );
+    expect(api.calls(SUGGEST_TUTORS)).toHaveLength(1);
+    expect(api.calls(CREATE)).toHaveLength(0);
+  });
+
+  it('marks a tutor from the URL as Chosen (B4, HF-02 pre-fill)', async () => {
+    const api = stub(ASSIGNER, {
+      [SUGGEST_TUTORS]: () => jsonResponse(200, TUTOR_SUGGESTIONS),
+    });
+    app = await renderApp(
+      `/schedule/new?date=2031-01-06&start=10:00&end=11:00&tutor=${TUTORS[0]!.id}`,
+    );
+    choose('Subject', SUBJECTS[0]!.id);
+    await afterDebounce();
+    expect(api.calls(SUGGEST_TUTORS)).toHaveLength(1);
+    expect(
+      buttonNamed(panel()!, 'Chosen: Carmen Ruiz').getAttribute('aria-pressed'),
+    ).toBe('true');
+  });
+
+  it('shows five rows, then "View all" (B3)', async () => {
+    stub(ASSIGNER, {
+      [SUGGEST_TUTORS]: () => jsonResponse(200, MANY_TUTOR_SUGGESTIONS),
+    });
+    app = await renderApp('/schedule/new');
+    fillSlot();
+    await afterDebounce();
+    expect(panel()!.querySelectorAll('ol > li')).toHaveLength(5);
+    await click(buttonNamed(panel()!, 'View all (7)'));
+    expect(panel()!.querySelectorAll('ol > li')).toHaveLength(7);
+  });
+
+  it('notes a picked tutor who is not suggested (B6)', async () => {
+    stub(ASSIGNER, {
+      [SUGGEST_TUTORS]: () =>
+        jsonResponse(200, {
+          ...TUTOR_SUGGESTIONS,
+          items: [TUTOR_SUGGESTIONS.items[0]],
+          eligible_count: 1,
+        }),
+    });
+    app = await renderApp('/schedule/new');
+    fillSlot();
+    await afterDebounce();
+    expect(main().textContent).not.toContain('isn’t among the suggested');
+
+    choose('Tutor', TUTORS[0]!.id);
+    const note = [...main().querySelectorAll('p')].find((p) =>
+      p.textContent?.startsWith('Carmen Ruiz isn’t among the suggested'),
+    )!;
+    expect(note).toBeDefined();
+    expect(tutorSelect().getAttribute('aria-describedby')).toContain(note.id);
+  });
+
+  it('explains an empty list; the Tutors link only with qualification.review (B5)', async () => {
+    stub(ASSIGNER, {
+      [SUGGEST_TUTORS]: () => jsonResponse(200, NO_QUALIFIED_TUTORS),
+    });
+    app = await renderApp('/schedule/new');
+    fillSlot();
+    await afterDebounce();
+    expect(panel()!.textContent).toContain(
+      'No active tutor has Álgebra assigned.',
+    );
+    expect(panel()!.querySelector('a')).toBeNull();
+    app.unmount();
+
+    stub(OWNER, {
+      [SUGGEST_TUTORS]: () => jsonResponse(200, NO_QUALIFIED_TUTORS),
+    });
+    app = await renderApp('/schedule/new');
+    fillSlot();
+    await afterDebounce();
+    const link = panel()!.querySelector('a')!;
+    expect(link.textContent).toBe('Assign subjects in Tutors');
+    expect(link.getAttribute('href')).toBe('/tutors');
+    app.unmount();
+
     stub(ASSIGNER, {
       [SUGGEST_TUTORS]: () => jsonResponse(200, NO_TUTOR_SUGGESTIONS),
     });
     app = await renderApp('/schedule/new');
     fillSlot();
-    await click(buttonNamed(main(), 'Suggest tutors'));
-    await settle();
+    await afterDebounce();
     expect(panel()!.textContent).toContain(
-      'No tutor is qualified, available and free at this time.',
+      '3 tutors are qualified for Álgebra, but none can at that time: 2 already have a class and 1 isn’t available.',
     );
     app.unmount();
 
+    stub(ASSIGNER, {
+      [SUGGEST_TUTORS]: () =>
+        jsonResponse(200, {
+          ...NO_TUTOR_SUGGESTIONS,
+          busy_count: 0,
+          unavailable_count: 3,
+        }),
+    });
+    app = await renderApp('/schedule/new');
+    fillSlot();
+    await afterDebounce();
+    expect(panel()!.textContent).toContain(
+      '3 tutors are qualified for Álgebra, but none can at that time: 3 aren’t available.',
+    );
+  });
+
+  it('shows the error state, and a 422 on the fields without moving the focus', async () => {
     stub(ASSIGNER, { [SUGGEST_TUTORS]: () => problem(500, 'internal_error') });
     app = await renderApp('/schedule/new');
     fillSlot();
-    await click(buttonNamed(main(), 'Suggest tutors'));
-    await settle();
+    await afterDebounce();
     expect(panel()!.querySelector('[role="alert"]')).not.toBeNull();
     app.unmount();
 
@@ -991,12 +1357,238 @@ describe('suggested tutors (#51 G)', () => {
     });
     app = await renderApp('/schedule/new');
     fillSlot();
-    await click(buttonNamed(main(), 'Suggest tutors'));
-    await settle();
+    const focused = document.activeElement;
+    await afterDebounce();
     expect(panel()).toBeUndefined();
     expect(main().textContent).toContain(
       'This subject or its education level is inactive. Choose another one.',
     );
+    expect(document.activeElement).toBe(focused);
+  });
+
+  it('asks the series route in series mode, and explains its empty list (B2, B5)', async () => {
+    const api = stub(ASSIGNER, {
+      [SUGGEST_TUTORS]: () => jsonResponse(200, TUTOR_SUGGESTIONS),
+      [SUGGEST_SERIES]: [
+        () => jsonResponse(200, SERIES_TUTOR_SUGGESTIONS),
+        () => jsonResponse(200, NO_SERIES_TUTOR_SUGGESTIONS),
+        () =>
+          jsonResponse(200, {
+            ...NO_SERIES_TUTOR_SUGGESTIONS,
+            qualified_count: 0,
+            unavailable_count: 0,
+            occurrence_count: 0,
+          }),
+      ],
+    });
+    app = await renderApp('/schedule/new');
+    fillSlot();
+    await afterDebounce();
+    expect(api.calls(SUGGEST_TUTORS)).toHaveLength(1);
+
+    await click(main().querySelector<HTMLInputElement>('[role="switch"]')!);
+    await afterDebounce();
+    const [series] = api.calls(SUGGEST_SERIES);
+    expect(series!.body).toEqual({
+      subject_id: SUBJECTS[0]!.id,
+      classroom_id: CLASSROOMS[0]!.id,
+      starts_on: '2031-01-06',
+      start_time: '10:00',
+      duration_minutes: 60,
+      recurrence: { weekdays: [1], interval: 1, until: null, count: null },
+      limit: 50,
+    });
+    expect(panel()!.textContent).toContain(
+      'Qualified for Álgebra, available and free for all 12 sessions in the coming weeks.',
+    );
+    // No "Within their limits" and no free-time search in series mode.
+    expect(panel()!.textContent).not.toContain('Within their limits');
+
+    choose('Classroom', '');
+    await afterDebounce();
+    expect(panel()!.textContent).toContain(
+      '1 tutor is qualified for Álgebra, but can’t at that time: 1 isn’t available in at least one of the 2 sessions.',
+    );
+
+    // Changed and changed back before the wait ends: no request.
+    choose('Classroom', CLASSROOMS[0]!.id);
+    choose('Classroom', '');
+    await afterDebounce();
+    expect(api.calls(SUGGEST_SERIES)).toHaveLength(2);
+
+    typeInto(fieldByLabel(main(), 'End'), '11:15');
+    await afterDebounce();
+    expect(panel()!.textContent).toContain(
+      'The series has no sessions to check in the coming weeks.',
+    );
+    expect(api.calls(SUGGEST_TUTORS)).toHaveLength(1);
+  });
+});
+
+describe('the chosen tutor (HF-05b C)', () => {
+  const SUGGEST_TUTORS = 'GET /api/v1/tutor-suggestions';
+  const AVAILABILITY = `GET /api/v1/tutors/${TUTORS[0]!.id}/availability`;
+  const OWNER: SessionUserBody = {
+    ...SCHEDULER,
+    permissions: [
+      ...SCHEDULER.permissions,
+      'schedule.assign',
+      'tutor.view',
+      'tutor.manage',
+    ],
+  };
+
+  function freeTimes(): HTMLElement | undefined {
+    return [...main().querySelectorAll('section')].find((s) =>
+      s.querySelector('h2')?.textContent?.startsWith('Other free times'),
+    );
+  }
+
+  it('builds the 7-day request and needs a tutor and every field (E1)', () => {
+    const values = {
+      ...EMPTY_SCHEDULE,
+      student: ANA,
+      subjectId: 's',
+      tutorId: 't',
+      date: '2031-01-06',
+      start: '10:00',
+      end: '11:00',
+    };
+    expect(canFindFreeTimes(values)).toBe(true);
+    expect(canFindFreeTimes({ ...values, tutorId: '' })).toBe(false);
+    expect(canFindFreeTimes({ ...values, student: null })).toBe(false);
+    expect(freeTimesBody(values, 'America/Mexico_City')).toEqual({
+      kind: 'individual',
+      student_id: ANA.id,
+      subject_id: 's',
+      tutor_user_id: 't',
+      classroom_id: null,
+      starts_at: '2031-01-06T16:00:00.000Z',
+      ends_at: '2031-01-06T17:00:00.000Z',
+      limit: 5,
+      search_from: '2031-01-06',
+      search_to: '2031-01-12',
+    });
+  });
+
+  it('shows the weekly availability, or none with the edit link (C1)', async () => {
+    const api = stub(OWNER, {
+      [AVAILABILITY]: [
+        () => jsonResponse(200, CARMEN_AVAILABILITY),
+        () => jsonResponse(200, { ...CARMEN_AVAILABILITY, weekly: [] }),
+      ],
+    });
+    app = await renderApp('/schedule/new');
+    choose('Tutor', TUTORS[0]!.id);
+    await settleUntil(() =>
+      main().textContent?.includes('weekly availability'),
+    );
+    expect(main().textContent).toContain(
+      'Carmen Ruiz’s weekly availability: Mon 16:00–20:00, Wed 09:00–13:00.',
+    );
+    expect(main().textContent).toContain(
+      'Date exceptions are checked when searching or scheduling.',
+    );
+    // Cached by tutor: choosing again doesn't read it again.
+    choose('Tutor', '');
+    choose('Tutor', TUTORS[0]!.id);
+    await settle();
+    expect(api.calls(AVAILABILITY)).toHaveLength(1);
+    app.unmount();
+
+    stub(OWNER, {
+      [AVAILABILITY]: () =>
+        jsonResponse(200, { ...CARMEN_AVAILABILITY, weekly: [] }),
+    });
+    app = await renderApp('/schedule/new');
+    choose('Tutor', TUTORS[0]!.id);
+    await settleUntil(() => main().textContent?.includes('no weekly'));
+    expect(main().textContent).toContain(
+      'Carmen Ruiz has no weekly availability recorded.',
+    );
+    const link = [...main().querySelectorAll('a')].find(
+      (a) => a.textContent === 'Record their availability',
+    );
+    expect(link?.getAttribute('href')).toBe(
+      `/tutors/${TUTORS[0]!.id}#availability`,
+    );
+  });
+
+  it('reads no availability without tutor.view', async () => {
+    const api = stub(SCHEDULER);
+    app = await renderApp('/schedule/new');
+    choose('Tutor', TUTORS[0]!.id);
+    await settle();
+    expect(api.calls(AVAILABILITY)).toHaveLength(0);
+    expect(main().textContent).not.toContain('weekly availability');
+  });
+
+  it('finds free times once complete; choosing one fills the fields and reloads the tutors (C2, C3)', async () => {
+    const api = stub(OWNER, {
+      [AVAILABILITY]: () => jsonResponse(200, CARMEN_AVAILABILITY),
+      [SUGGEST]: [
+        () => jsonResponse(200, SUGGESTIONS),
+        () => jsonResponse(200, NO_SUGGESTIONS),
+      ],
+      [SUGGEST_TUTORS]: () => jsonResponse(200, TUTOR_SUGGESTIONS),
+    });
+    app = await renderApp('/schedule/new');
+    expect(
+      [...main().querySelectorAll('button')].some(
+        (b) => b.textContent === 'Find free times',
+      ),
+    ).toBe(false);
+    choose('Tutor', TUTORS[0]!.id);
+    const button = buttonNamed(main(), 'Find free times');
+    expect(button.disabled).toBe(true);
+    await fillForm();
+    expect(button.disabled).toBe(false);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+    await settle();
+    expect(api.calls(SUGGEST_TUTORS)).toHaveLength(1);
+
+    await click(button);
+    expect(api.calls(SUGGEST)[0]!.body).toMatchObject({
+      tutor_user_id: TUTORS[0]!.id,
+      search_from: '2031-01-06',
+      search_to: '2031-01-12',
+      limit: 5,
+    });
+    const section = freeTimes()!;
+    expect(section.querySelector('h2')?.textContent).toBe(
+      'Other free times for Carmen Ruiz',
+    );
+    await click(section.querySelectorAll<HTMLButtonElement>('ul button')[0]!);
+
+    expect(fieldByLabel(main(), 'Date').value).toBe('2031-01-06');
+    expect(fieldByLabel(main(), 'Start').value).toBe('11:00');
+    expect(fieldByLabel(main(), 'End').value).toBe('12:00');
+    expect(freeTimes()).toBeUndefined();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+    await settle();
+    expect(document.activeElement?.textContent).toBe('Schedule session');
+    expect(api.calls(SUGGEST_TUTORS)).toHaveLength(2);
+    expect(api.calls(CREATE)).toHaveLength(0);
+
+    // The empty answer; a tutor change clears the list.
+    await click(buttonNamed(main(), 'Find free times'));
+    expect(freeTimes()!.textContent).toContain(
+      'No free times for Carmen Ruiz in those 7 days.',
+    );
+    choose('Tutor', TUTORS[1]!.id);
+    expect(freeTimes()).toBeUndefined();
+
+    // Hidden in series mode.
+    await click(main().querySelector<HTMLInputElement>('[role="switch"]')!);
+    expect(
+      [...main().querySelectorAll('button')].some(
+        (b) => b.textContent === 'Find free times',
+      ),
+    ).toBe(false);
   });
 });
 

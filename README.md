@@ -142,7 +142,9 @@ unless a bullet says otherwise.
   follows from it) and can withdraw a pending request; staff approve or
   reject it, with a reason, on the Approvals page, and can later revoke an
   approved qualification with a reason the tutor sees. Only approved
-  qualifications count as the tutor's teaching subjects.
+  qualifications count as the tutor's teaching subjects. Owners and
+  Administrators can also assign a subject to a tutor directly from the
+  tutor's page; the Tutors list shows each tutor's subjects.
 - Availability: tutors publish their weekly availability and exceptions (time
   off and extra availability on given dates) in the center's local time;
   staff can edit it too, and academic coordinators view it. The API answers
@@ -197,8 +199,11 @@ unless a bullet says otherwise.
   gives a warning but doesn't block.
 - The system suggests eligible tutors (qualified, available and free at that
   time) ranked by weekly workload, including replacements for an existing
-  session; on the "Schedule a session" page, "Suggest tutors" fills in the
-  chosen one.
+  session. The "Schedule a session" page lists suggested tutors as soon as
+  the subject and time are set, for one-off sessions and weekly series, with
+  the reasons (workload, limits, preferred room) and why none fit; once a
+  tutor is chosen, it shows their weekly availability and the nearest free
+  times.
 - A session with a tutor is offered to that tutor; one without a tutor stays
   unassigned. Tutors accept or decline offered sessions from My offers
   (notified in-app), or a whole weekly series in one answer; later sessions

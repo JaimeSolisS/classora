@@ -21,7 +21,9 @@ import { QualificationsSection } from './QualificationsSection';
 // word, the teaching subjects, the empty state, and the request dialog
 // answering 409 qualification_exists. #198 E4: a revoked row as a reviewer
 // sees it (Revoke on the approved row), and the revoke dialog answering 409
-// qualification_not_approved. No request: every call is a stub.
+// qualification_not_approved. HF-05b E3: the grant dialog as a reviewer
+// sees it (taken subjects disabled and marked, the pending row's link to
+// Approvals). No request: every call is a stub.
 
 const meta = {
   title: 'Tutors/QualificationsSection',
@@ -213,5 +215,43 @@ export const RevokeDialogNotApproved: Story = {
     await expect(
       await dialog.findByText(i18n.t('errors:qualification_not_approved')),
     ).toBeVisible();
+  },
+};
+
+export const GrantDialog: Story = {
+  args: {
+    canRequest: false,
+    canRevoke: true,
+    canGrant: true,
+    onGrant: fn(() => Promise.resolve(QUALIFICATIONS[0]!)),
+    approvalsLink: (
+      <a href="#approvals" className="underline underline-offset-4">
+        {i18n.t('tutors.qualifications.grant.approveHint')}
+      </a>
+    ),
+    initiallyGranting: true,
+  },
+  play: async ({ canvas, userEvent }) => {
+    // The dialog hides the page from the accessibility tree meanwhile.
+    await expect(
+      canvas.getByText(i18n.t('tutors.qualifications.grant.approveHint')),
+    ).toHaveAttribute('href', '#approvals');
+    const dialog = within(await screen.findByRole('dialog'));
+    await expect(
+      dialog.getByRole('heading', {
+        name: i18n.t('tutors.qualifications.grant.title'),
+      }),
+    ).toBeVisible();
+    await dialog.findByRole('option', { name: LEVEL_SECUNDARIA.name });
+    await userEvent.selectOptions(
+      dialog.getByRole('combobox', {
+        name: i18n.t('tutors.qualifications.levelLabel'),
+      }),
+      LEVEL_SECUNDARIA.id,
+    );
+    const taken = await dialog.findByRole('option', {
+      name: `${SUBJECT_ALGEBRA.name} (${i18n.t('tutors.qualifications.grant.assigned')})`,
+    });
+    await expect(taken).toBeDisabled();
   },
 };
