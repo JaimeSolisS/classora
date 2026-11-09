@@ -470,12 +470,16 @@ test('corrections, reversals and refunds on a family account', async ({
     exact: true,
   });
   await expect(showVoid).not.toBeChecked();
-  await showVoid.check();
+  // A click, then wait: the box's state comes from the URL, so it changes
+  // only after the router navigates (`.check()` reads it right away).
+  await showVoid.click();
+  await expect(showVoid).toBeChecked();
   await expect(page).toHaveURL(/[?&]void=1(&|$)/);
   await expect(voidCharge).toHaveCount(1);
   await expect(voidCharge).toContainText(billing.tuition.chargeStatus.void);
   await expect(hiddenCharges).toHaveText('');
-  await showVoid.uncheck();
+  await showVoid.click();
+  await expect(showVoid).not.toBeChecked();
   await expect(page).not.toHaveURL(/[?&]void=1/);
   await expect(voidCharge).toHaveCount(0);
   await expect(hiddenCharges).toHaveText(hiddenOne);
