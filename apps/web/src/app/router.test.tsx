@@ -712,6 +712,28 @@ describe('sidebar collapse', () => {
     expect(window.localStorage.getItem(SIDEBAR_STORAGE_KEY)).toBe('expanded');
   });
 
+  // #576: the header/main margin animates only at lg and up. A bare
+  // transition-[margin] animated lg:ml-60 → 0 after a resize to phone width
+  // and made the page overflow sideways for 200 ms.
+  it('animates the header and main margins at lg and up only', async () => {
+    app = await renderApp('/');
+    const header = app.container
+      .querySelector('header nav')!
+      .closest('header')!;
+    const main = app.container.querySelector('main#main')!;
+    for (const element of [header, main]) {
+      const tokens = element.className.split(/\s+/);
+      expect(tokens).toContain('lg:transition-[margin]');
+      expect(tokens).toContain('lg:duration-200');
+      expect(tokens).toContain('lg:motion-reduce:transition-none');
+      expect(tokens).not.toContain('transition-[margin]');
+      expect(tokens).not.toContain('duration-200');
+      expect(tokens.some((token) => /^transition(-|$)/.test(token))).toBe(
+        false,
+      );
+    }
+  });
+
   it('labels each section with a visible item and leaves empty sections out', async () => {
     stubApi({
       'GET /api/v1/auth/me': meAs({
