@@ -1,3 +1,4 @@
+import { FileText, House, ScrollText } from 'lucide-react';
 import type { RouteObject } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NavItem } from '@/app/navigation';
@@ -51,11 +52,17 @@ const testPages: RouteObject[] = [
 ];
 
 const testNav: NavItem[] = [
-  { to: '/', labelKey: 'nav.home', end: true },
-  { to: '/audit', labelKey: 'auth.forbidden.title', permission: 'audit.view' },
+  { to: '/', labelKey: 'nav.home', icon: House, end: true },
+  {
+    to: '/audit',
+    labelKey: 'auth.forbidden.title',
+    icon: ScrollText,
+    permission: 'audit.view',
+  },
   {
     to: '/odd',
     labelKey: 'notFound.title',
+    icon: FileText,
     permission: 'not.a.permission' as NavItem['permission'],
   },
 ];

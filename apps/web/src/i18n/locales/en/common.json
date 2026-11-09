@@ -28,6 +28,15 @@
   "nav": {
     "label": "Main navigation",
     "toggle": "Menu",
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar",
+    "sections": {
+      "administration": "Administration",
+      "finance": "Finance",
+      "people": "People",
+      "academics": "Academics",
+      "mine": "My space"
+    },
     "home": "Home",
     "users": "Users",
     "invitations": "Invitations",

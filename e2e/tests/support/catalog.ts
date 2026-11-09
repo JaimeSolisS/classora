@@ -74,6 +74,13 @@ type Common = {
     imports: string;
     // M8-07b E4: CSV/Excel exports.
     exports: string;
+    // #546 H7: the sidebar's collapse toggle and section labels.
+    collapse: string;
+    expand: string;
+    sections: Record<
+      'administration' | 'finance' | 'people' | 'academics' | 'mine',
+      string
+    >;
   };
   // M8-07b E4: the exports page.
   exports: {
