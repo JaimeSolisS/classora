@@ -464,6 +464,40 @@ describe('makeup mode (B)', () => {
     expect(linkTo(TARGET_PATH)).toBeDefined();
   });
 
+  it('ignores the calendar pre-fill parameters (HF-02 C4)', async () => {
+    const api = stub({ [CREATE]: () => jsonResponse(201, CREATED) });
+    app = await renderApp(
+      `${MAKEUP_URL}&date=2031-03-10&start=08:00&end=09:30` +
+        `&tutor=${TUTORS[1]!.id}&room=${CLASSROOMS[0]!.id}`,
+    );
+
+    // The makeup values: the target's student and subject, nothing else.
+    const text = main().textContent;
+    expect(text).toContain(MAKEUP_AVAILABLE.participants[0]!.display_name);
+    expect(text).toContain('Makeup of the cancelled session');
+    expect(fieldByLabel(main(), 'Date').value).toBe('');
+    expect(fieldByLabel(main(), 'Start').value).toBe('');
+    expect(fieldByLabel(main(), 'End').value).toBe('');
+    const selects = [...main().querySelectorAll('select')];
+    expect(selects.map((select) => select.value)).toEqual(['', '']);
+
+    fillWhen();
+    await click(buttonNamed(main(), 'Schedule session'));
+
+    expect(api.calls(CREATE)[0]!.body).toMatchObject({
+      tutor_user_id: null,
+      classroom_id: null,
+      starts_at: '2031-01-06T16:00:00.000Z',
+      makeup_of_session_id: ID,
+    });
+    expect(main().textContent).toContain('Session scheduled');
+    expect(
+      [...main().querySelectorAll('a')].some(
+        (a) => a.textContent === 'View in calendar',
+      ),
+    ).toBe(false);
+  });
+
   it('keeps the success panel: the target is read once', async () => {
     const api = stub({ [CREATE]: () => jsonResponse(201, CREATED) });
     app = await renderApp(MAKEUP_URL);
