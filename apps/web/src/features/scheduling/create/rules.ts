@@ -3,19 +3,28 @@ import type { ParseKeys } from 'i18next';
 import { ApiError } from '@/app/api';
 import type { ErrorMessageKey } from '@/app/errors';
 import {
+  addDays,
   localDateTimeToInstant,
   parseLocalDate,
   toLocalDate,
   toLocalTime,
 } from '@/lib/time';
+import {
+  durationMinutes,
+  recurrenceBody,
+  validateRecurrence,
+  type RecurrenceValues,
+} from '../series/recurrence';
 import type { ClassSessionDetail } from '../session/api';
 import type {
   ClassSessionCreate,
   Option,
   SchedulingConflict,
+  SeriesTutorSuggestionQuery,
   SlotSuggestionRequest,
   SubjectOption,
   SuggestedSlot,
+  TutorSuggestionList,
   TutorSuggestionParams,
 } from './api';
 
@@ -577,4 +586,178 @@ export function hoursAndMinutes(total: number): {
   minutes: number;
 } {
   return { hours: Math.floor(total / 60), minutes: total % 60 };
+}
+
+// --- Suggested tutors while scheduling (HF-05b B, C) --------------------------
+
+/** How long the inputs must stay unchanged before the panel loads (B2). */
+export const TUTOR_SUGGESTIONS_DELAY_MS = 400;
+
+/** The most tutors the panel asks for (B2; the API's maximum). */
+export const TUTOR_SUGGESTIONS_LIMIT = 50;
+
+/** The rows shown before "View all" (B3). */
+export const TUTOR_SUGGESTIONS_SHOWN = 5;
+
+/**
+ * What the panel loads for, as a stable key, or null when it can't load
+ * (B2): a subject, a date, a start and an end after it and, in series mode,
+ * a valid rule. The tutor is never part of it, so choosing one never
+ * reloads; the room and the repeats switch are.
+ */
+export function tutorSuggestionKey(
+  values: ScheduleValues,
+  repeats: boolean,
+  recurrence: RecurrenceValues,
+): string | null {
+  if (!canSuggestTutors(values)) {
+    return null;
+  }
+  const slot = [values.subjectId, values.classroomId, values.date];
+  if (!repeats) {
+    return JSON.stringify(['once', ...slot, values.start, values.end]);
+  }
+  if (Object.keys(validateRecurrence(recurrence, values.date)).length > 0) {
+    return null;
+  }
+  return JSON.stringify([
+    'series',
+    ...slot,
+    values.start,
+    values.end,
+    recurrenceBody(recurrence),
+  ]);
+}
+
+/**
+ * The body of POST /tutor-suggestions/series (B2): the timing members of
+ * the series create (`seriesCreateBody`), the subject and the room, without
+ * the student, the tutor and an override.
+ */
+export function seriesTutorSuggestionBody(
+  values: ScheduleValues,
+  recurrence: RecurrenceValues,
+): SeriesTutorSuggestionQuery {
+  return {
+    subject_id: values.subjectId,
+    classroom_id: values.classroomId || null,
+    starts_on: values.date,
+    start_time: values.start,
+    duration_minutes: durationMinutes(values.start, values.end) ?? 0,
+    recurrence: recurrenceBody(recurrence),
+    limit: TUTOR_SUGGESTIONS_LIMIT,
+  };
+}
+
+/** A one-off or series suggestion list (the series adds its occurrences). */
+export type AnyTutorSuggestionList = TutorSuggestionList & {
+  occurrence_count?: number;
+};
+
+/** Why the list is empty, from the HF-05 counts (B5). */
+export type SuggestionEmptyState =
+  | { kind: 'unknown' }
+  | { kind: 'noOccurrences' }
+  | { kind: 'noneQualified' }
+  | {
+      kind: 'noneFree';
+      qualified: number;
+      /** 0 = left out of the text. */
+      busy: number;
+      /** 0 = left out of the text. */
+      unavailable: number;
+      /** The series' occurrences; null for a one-off slot. */
+      occurrences: number | null;
+    };
+
+export function suggestionEmptyState(
+  result: AnyTutorSuggestionList,
+): SuggestionEmptyState {
+  const occurrences = result.occurrence_count ?? null;
+  if (occurrences === 0) {
+    return { kind: 'noOccurrences' };
+  }
+  if (result.qualified_count === undefined) {
+    return { kind: 'unknown' };
+  }
+  if (result.qualified_count === 0) {
+    return { kind: 'noneQualified' };
+  }
+  return {
+    kind: 'noneFree',
+    qualified: result.qualified_count,
+    busy: result.busy_count ?? 0,
+    unavailable: result.unavailable_count ?? 0,
+    occurrences,
+  };
+}
+
+/**
+ * Whether the chosen tutor is missing from a loaded list that holds every
+ * eligible tutor (B6): false without a tutor, or when more tutors are
+ * eligible than the list holds (it can't tell).
+ */
+export function isChosenTutorUnsuggested(
+  result: TutorSuggestionList,
+  tutorId: string,
+): boolean {
+  if (!tutorId || result.eligible_count > result.items.length) {
+    return false;
+  }
+  return !result.items.some((item) => item.tutor.id === tutorId);
+}
+
+/** One weekly window as the API returns it. */
+export interface WeeklyWindow {
+  weekday: number;
+  starts_at: string;
+  ends_at: string;
+}
+
+/**
+ * The tutor's weekly windows as text (C1): by weekday (Monday first), then
+ * start, each "<day> HH:MM–HH:MM", comma-separated; null without windows.
+ * The times are the center-zone times as stored.
+ */
+export function weeklyAvailabilityText(
+  windows: readonly WeeklyWindow[],
+  weekdayName: (isoWeekday: number) => string,
+): string | null {
+  if (windows.length === 0) {
+    return null;
+  }
+  return [...windows]
+    .sort(
+      (a, b) => a.weekday - b.weekday || a.starts_at.localeCompare(b.starts_at),
+    )
+    .map(
+      (window) =>
+        `${weekdayName(window.weekday)} ${window.starts_at}–${window.ends_at}`,
+    )
+    .join(', ');
+}
+
+/** The days "Find free times" searches: the date and the 6 after it (C2). */
+export const FREE_TIMES_DAYS = 7;
+
+/**
+ * Whether "Find free times" can ask (C2): one-off mode, a tutor, and every
+ * field the create needs.
+ */
+export function canFindFreeTimes(values: ScheduleValues): boolean {
+  return (
+    values.tutorId !== '' && Object.keys(validateSchedule(values)).length === 0
+  );
+}
+
+/** The C2 request: the form's values, the 7-day window, 5 times at most. */
+export function freeTimesBody(
+  values: ScheduleValues,
+  timeZone: string,
+): SlotSuggestionRequest {
+  return {
+    ...suggestionBody(values, timeZone),
+    search_from: values.date,
+    search_to: addDays(values.date, FREE_TIMES_DAYS - 1),
+  };
 }

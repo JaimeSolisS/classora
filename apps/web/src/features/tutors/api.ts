@@ -153,6 +153,22 @@ export function cancelQualification(
   );
 }
 
+/**
+ * Grants a tutor a subject directly, approved at once (HF-05 A;
+ * qualification.review, never on oneself).
+ */
+export function grantQualification(
+  userId: string,
+  subjectId: string,
+): Promise<QualificationItem> {
+  return apiCall(() =>
+    api.POST('/api/v1/tutors/{user_id}/qualifications/grant', {
+      params: { path: { user_id: userId } },
+      body: { subject_id: subjectId },
+    }),
+  );
+}
+
 /** Revokes an approved qualification (#198; qualification.review). */
 export function revokeQualification(
   userId: string,

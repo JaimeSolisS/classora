@@ -3134,10 +3134,16 @@ occurrences (the overlap is one statement over `[first start, last end)`,
 availability two for all tutors). Read-only and **advisory**: `POST
 /class-series` checks its own occurrences over `[now, horizon)` and the
 nightly job checks later ones, so a suggestion never guarantees a clean
-create. The web app's "Schedule a session" form has a
-"Suggest tutors" button for holders of `schedule.assign`; the session page
-(`/schedule/sessions/:id`, M4-07) uses the replacement list in its "Offer to
-a tutor" panel.
+create.
+
+**In the web app** (HF-05b). For holders of `schedule.assign`, the
+"Schedule a session" form loads suggestions by itself once the subject and
+time are set (400 ms after the last change): `GET /tutor-suggestions` with
+`limit=50` for a one-off session, this series route with `limit=50` once
+"Repeats weekly" has a valid rule. It shows the counts when nobody fits and
+each tutor's `warnings`. Request review keeps its "Suggest tutors" button;
+the session page (`/schedule/sessions/:id`, M4-07) uses the replacement
+list in its "Offer to a tutor" panel.
 
 Overrides written by a series write or the conflict-override route (M4-09c)
 carry the series in `class_series_id` (context, not a second subject; `null`

@@ -13,6 +13,9 @@ import { useWarningMessage } from './warningMessages';
 // "Workload warning" note when a create at that time would warn. Choosing
 // one hands it to the form, which fills in the fields (it never submits).
 // Loading, empty and error states; the error is the shared ErrorAlert.
+//
+// HF-05b C2 reuses it for "Find free times" with its own heading, intro
+// and empty text.
 
 export type SuggestionsState =
   | { status: 'loading' }
@@ -23,12 +26,21 @@ export interface SuggestedSlotsProps {
   state: SuggestionsState;
   timeZone: string;
   onChoose: (slot: SuggestedSlot) => void;
+  /** Replaces the heading (HF-05b C2). */
+  heading?: string;
+  /** Replaces the intro (HF-05b C2). */
+  intro?: string;
+  /** Replaces the empty text (HF-05b C2). */
+  emptyText?: string;
 }
 
 export function SuggestedSlots({
   state,
   timeZone,
   onChoose,
+  heading,
+  intro,
+  emptyText,
 }: SuggestedSlotsProps) {
   const { t } = useTranslation();
   const { formatLocalDate } = useFormatters();
@@ -51,10 +63,11 @@ export function SuggestedSlots({
   } else if (state.result.slots.length === 0) {
     content = (
       <p role="status" className="text-sm">
-        {t('scheduling.suggestions.empty', {
-          from: formatLocalDate(state.result.search_from, 'long'),
-          to: formatLocalDate(state.result.search_to, 'long'),
-        })}
+        {emptyText ??
+          t('scheduling.suggestions.empty', {
+            from: formatLocalDate(state.result.search_from, 'long'),
+            to: formatLocalDate(state.result.search_to, 'long'),
+          })}
       </p>
     );
   } else {
@@ -107,10 +120,10 @@ export function SuggestedSlots({
       className="flex flex-col gap-3 rounded-md border border-border p-4"
     >
       <h2 id={headingId} className="font-medium">
-        {t('scheduling.suggestions.heading')}
+        {heading ?? t('scheduling.suggestions.heading')}
       </h2>
       <p className="text-sm text-muted-foreground">
-        {t('scheduling.suggestions.intro')}
+        {intro ?? t('scheduling.suggestions.intro')}
       </p>
       {content}
     </section>

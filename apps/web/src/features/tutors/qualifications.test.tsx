@@ -41,6 +41,7 @@ import {
   TUTOR_AS_SELF,
   TUTOR_ID,
   TUTOR_ITEM,
+  TUTOR_READ_ONLY,
 } from './fixtures';
 
 // #44 F1-F3: the Qualifications section of the tutor profile (table,
@@ -324,6 +325,140 @@ describe('the request dialog (F1, F3)', () => {
     expect(alerts(openDialog()!).join(' ')).toContain(
       'There is already a pending or approved qualification for this subject.',
     );
+  });
+});
+
+describe('assigning a subject (HF-05b A1, A2)', () => {
+  const GRANT = `POST /api/v1/tutors/${TUTOR_ID}/qualifications/grant`;
+  const COORDINATOR: SessionUserBody = {
+    ...TEST_USER,
+    roles: ['academic_coordinator'],
+    permissions: ['tutor.view', 'schedule.view', 'schedule.assign'],
+  };
+  const GRANTED = {
+    ...QUALIFICATIONS[2]!,
+    id: '00000000-0000-4000-8000-0000000000f9',
+    status: 'approved' as const,
+    decided_at: '2026-11-09T12:00:00Z',
+    rejection_reason: null,
+    version: 1,
+  };
+
+  const buttonTexts = () =>
+    [...section().querySelectorAll('button')].map(
+      (button) => button.textContent,
+    );
+
+  it('only qualification.review holders see "Assign subject", never on their own profile', async () => {
+    stub(ADMIN, TUTOR_AS_ADMIN);
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+    expect(buttonTexts()).toContain('Assign subject');
+    expect(buttonTexts()).not.toContain('Request qualification');
+    app.unmount();
+
+    stub(SELF, TUTOR_AS_SELF);
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+    expect(buttonTexts()).toContain('Request qualification');
+    expect(buttonTexts()).not.toContain('Assign subject');
+    app.unmount();
+
+    stub(COORDINATOR, TUTOR_READ_ONLY);
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+    expect(buttonTexts()).not.toContain('Request qualification');
+    expect(buttonTexts()).not.toContain('Assign subject');
+    app.unmount();
+
+    // A reviewer who is also this tutor.
+    stub(
+      { ...ADMIN, id: TUTOR_ID, roles: ['administrator', 'tutor'] },
+      TUTOR_AS_SELF,
+    );
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+    expect(buttonTexts()).not.toContain('Assign subject');
+  });
+
+  it('disables the subjects already pending or approved, grants one, then refreshes and announces', async () => {
+    const api = stub(ADMIN, TUTOR_AS_ADMIN, {
+      [GRANT]: () => jsonResponse(201, GRANTED),
+    });
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+    const details = api.calls(DETAIL).length;
+    const lists = api.calls(QUALIFICATIONS_ROUTE).length;
+
+    await click(buttonNamed(section(), 'Assign subject'));
+    expect(openDialog()!.textContent).toContain('Assign a subject');
+    choose(dialogSelects()[0]!, LEVEL_SECUNDARIA.id);
+    await settle();
+    const options = [...dialogSelects()[1]!.options].map((option) => [
+      option.textContent,
+      option.disabled,
+    ]);
+    expect(options).toEqual([
+      ['Choose a subject', false],
+      ['Álgebra (Already assigned)', true],
+      ['Física (Pending)', true],
+    ]);
+
+    choose(dialogSelects()[0]!, LEVEL_PREPARATORIA.id);
+    await settle();
+    choose(dialogSelects()[1]!, SUBJECT_CALCULO.id);
+    await click(buttonNamed(openDialog()!, 'Assign subject'));
+
+    expect(api.calls(GRANT).map((r) => r.body)).toEqual([
+      { subject_id: SUBJECT_CALCULO.id },
+    ]);
+    expect(api.calls(REQUEST)).toHaveLength(0);
+    expect(openDialog()).toBeNull();
+    expect(section().querySelector('[role="status"]')?.textContent).toBe(
+      'Subject assigned: Cálculo',
+    );
+    expect(api.calls(QUALIFICATIONS_ROUTE).length).toBeGreaterThan(lists);
+    expect(api.calls(DETAIL).length).toBeGreaterThan(details);
+  });
+
+  it('shows a 409 inside the dialog', async () => {
+    stub(ADMIN, TUTOR_AS_ADMIN, {
+      [GRANT]: [
+        () => problem(409, 'qualification_exists'),
+        () => problem(409, 'subject_inactive'),
+      ],
+    });
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+    await click(buttonNamed(section(), 'Assign subject'));
+    choose(dialogSelects()[0]!, LEVEL_PREPARATORIA.id);
+    await settle();
+    choose(dialogSelects()[1]!, SUBJECT_CALCULO.id);
+
+    await click(buttonNamed(openDialog()!, 'Assign subject'));
+    expect(openDialog()).not.toBeNull();
+    expect(alerts(openDialog()!).join(' ')).toContain(
+      'There is already a pending or approved qualification for this subject.',
+    );
+
+    await click(buttonNamed(openDialog()!, 'Assign subject'));
+    expect(alerts(openDialog()!).join(' ')).toContain(
+      'This subject or its education level is inactive.',
+    );
+  });
+
+  it('a pending row links reviewers to Approvals', async () => {
+    stub(ADMIN, TUTOR_AS_ADMIN);
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+    const links = [...section().querySelectorAll('tbody a')];
+    expect(links.map((a) => a.textContent)).toEqual([
+      'Approve it in Approvals',
+    ]);
+    expect(links[0]!.getAttribute('href')).toBe(
+      '/approvals?type=staff.qualification',
+    );
+    expect(links[0]!.closest('tr')?.getAttribute('data-qualification-id')).toBe(
+      PENDING.id,
+    );
+    app.unmount();
+
+    stub(SELF, TUTOR_AS_SELF);
+    app = await renderApp(`/tutors/${TUTOR_ID}`);
+    expect(section().querySelectorAll('tbody a')).toHaveLength(0);
   });
 });
 

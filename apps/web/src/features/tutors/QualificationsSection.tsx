@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
@@ -50,6 +50,12 @@ import { RevokeQualificationDialog } from './RevokeQualificationDialog';
 // and the reason where a rejection reason goes. For holders of
 // qualification.review (`canRevoke`), an approved row has "Revoke", which
 // opens RevokeQualificationDialog; the tutor never sees it.
+//
+// Granting (HF-05b A1): holders of qualification.review (`canGrant`; never
+// on their own profile) get "Assign subject": the same dialog, where the
+// subjects with a pending or approved row are disabled and marked; a grant
+// is approved at once ("Subject assigned: …"). A pending row then shows
+// `approvalsLink` (approve it in Approvals).
 
 export type QualificationsState =
   | { status: 'loading' }
@@ -81,6 +87,14 @@ interface QualificationsSectionProps {
   ) => Promise<CatalogOption[]>;
   /** Opens with the request dialog shown (stories). */
   initiallyRequesting?: boolean;
+  /** The caller may grant subjects: qualification.review, not oneself. */
+  canGrant?: boolean;
+  /** Grants a subject; rejects with the error to show in the dialog. */
+  onGrant?: (subjectId: string) => Promise<QualificationItem>;
+  /** The hint on a pending row, for `canGrant` (a link to Approvals). */
+  approvalsLink?: ReactNode;
+  /** Opens with the grant dialog shown (stories). */
+  initiallyGranting?: boolean;
 }
 
 export function QualificationsSection({
@@ -96,6 +110,10 @@ export function QualificationsSection({
   loadLevels = fetchActiveLevelOptions,
   loadSubjects = fetchActiveSubjectOptions,
   initiallyRequesting = false,
+  canGrant = false,
+  onGrant,
+  approvalsLink,
+  initiallyGranting = false,
 }: QualificationsSectionProps) {
   const { t } = useTranslation();
   const { formatInstant } = useFormatters();
@@ -105,6 +123,9 @@ export function QualificationsSection({
   const teachingTitleId = `${id}-teaching`;
   const [requesting, setRequesting] = useState(
     initiallyRequesting && canRequest,
+  );
+  const [granting, setGranting] = useState(
+    initiallyGranting && canGrant && onGrant !== undefined,
   );
   const [cancelling, setCancelling] = useState<QualificationItem | null>(null);
   // The id only: after "Reload" the dialog gets the item's new version.
@@ -187,10 +208,13 @@ export function QualificationsSection({
               <TableCell className="whitespace-normal">
                 {item.education_level_name}
               </TableCell>
-              <TableCell>
+              <TableCell className="whitespace-normal">
                 <StatusBadge>
                   {t(`tutors.qualifications.statuses.${item.status}`)}
                 </StatusBadge>
+                {canGrant && approvalsLink && item.status === 'pending' ? (
+                  <span className="mt-1 block text-sm">{approvalsLink}</span>
+                ) : null}
               </TableCell>
               <TableCell>
                 {formatInstant(item.requested_at, 'dateTime')}
@@ -283,6 +307,19 @@ export function QualificationsSection({
             {t('tutors.qualifications.request')}
           </Button>
         ) : null}
+        {canGrant && onGrant ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setError(null);
+              setAnnouncement('');
+              setGranting(true);
+            }}
+          >
+            {t('tutors.qualifications.grant.button')}
+          </Button>
+        ) : null}
       </div>
       <p className="text-sm">{t('tutors.qualifications.intro')}</p>
       <p role="status" className="text-sm">
@@ -328,6 +365,25 @@ export function QualificationsSection({
           setAnnouncement(t('tutors.qualifications.requested'));
         }}
       />
+      {canGrant && onGrant ? (
+        <RequestQualificationDialog
+          open={granting}
+          mode="grant"
+          taken={takenSubjects(state)}
+          loadLevels={loadLevels}
+          loadSubjects={loadSubjects}
+          onCancel={() => setGranting(false)}
+          onRequest={async (subjectId) => {
+            const item = await onGrant(subjectId);
+            setGranting(false);
+            setAnnouncement(
+              t('tutors.qualifications.grant.granted', {
+                subject: item.subject_name,
+              }),
+            );
+          }}
+        />
+      ) : null}
       <CancelQualificationDialog
         item={cancelling}
         onConfirm={cancel}
@@ -347,6 +403,21 @@ export function QualificationsSection({
   );
 }
 
+/** The subjects with a pending or approved row (the grant dialog). */
+function takenSubjects(
+  state: QualificationsState,
+): ReadonlyMap<string, 'approved' | 'pending'> {
+  const taken = new Map<string, 'approved' | 'pending'>();
+  if (state.status === 'ready') {
+    for (const item of state.items) {
+      if (item.status === 'approved' || item.status === 'pending') {
+        taken.set(item.subject_id, item.status);
+      }
+    }
+  }
+  return taken;
+}
+
 /** The status as a word in a bordered badge (never colour alone). */
 function StatusBadge({ children }: { children: string }) {
   return (
@@ -358,6 +429,10 @@ function StatusBadge({ children }: { children: string }) {
 
 interface RequestQualificationDialogProps {
   open: boolean;
+  /** "request" (the tutor) or "grant" (a reviewer, HF-05b A1). */
+  mode?: 'request' | 'grant';
+  /** The subjects already pending or approved: disabled and marked. */
+  taken?: ReadonlyMap<string, 'approved' | 'pending'>;
   loadLevels: (signal: AbortSignal) => Promise<CatalogOption[]>;
   loadSubjects: (
     levelId: string,
@@ -371,6 +446,8 @@ interface RequestQualificationDialogProps {
 /** The request dialog: an education level select, then its subjects. */
 export function RequestQualificationDialog({
   open,
+  mode = 'request',
+  taken,
   loadLevels,
   loadSubjects,
   onRequest,
@@ -388,6 +465,8 @@ export function RequestQualificationDialog({
     >
       {open ? (
         <RequestQualificationContent
+          mode={mode}
+          taken={taken}
           loadLevels={loadLevels}
           loadSubjects={loadSubjects}
           onRequest={onRequest}
@@ -400,6 +479,8 @@ export function RequestQualificationDialog({
 }
 
 function RequestQualificationContent({
+  mode = 'request',
+  taken,
   loadLevels,
   loadSubjects,
   onRequest,
@@ -409,6 +490,7 @@ function RequestQualificationContent({
   sendingRef: { current: boolean };
 }) {
   const { t } = useTranslation();
+  const grant = mode === 'grant';
   const id = useId();
   const levelId = `${id}-level`;
   const subjectFieldId = `${id}-subject`;
@@ -471,9 +553,15 @@ function RequestQualificationContent({
       onInteractOutside={(event) => event.preventDefault()}
     >
       <DialogHeader>
-        <DialogTitle>{t('tutors.qualifications.requestTitle')}</DialogTitle>
+        <DialogTitle>
+          {grant
+            ? t('tutors.qualifications.grant.title')
+            : t('tutors.qualifications.requestTitle')}
+        </DialogTitle>
         <DialogDescription>
-          {t('tutors.qualifications.requestDescription')}
+          {grant
+            ? t('tutors.qualifications.grant.description')
+            : t('tutors.qualifications.requestDescription')}
         </DialogDescription>
       </DialogHeader>
       <form
@@ -532,11 +620,18 @@ function RequestQualificationContent({
             <option value="">
               {t('tutors.qualifications.subjectPlaceholder')}
             </option>
-            {subjectOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.name}
-              </option>
-            ))}
+            {subjectOptions.map((option) => {
+              const status = taken?.get(option.id);
+              return (
+                <option key={option.id} value={option.id} disabled={!!status}>
+                  {status === 'approved'
+                    ? `${option.name} (${t('tutors.qualifications.grant.assigned')})`
+                    : status === 'pending'
+                      ? `${option.name} (${t('tutors.qualifications.grant.pending')})`
+                      : option.name}
+                </option>
+              );
+            })}
           </select>
           {level !== '' && subjects.isSuccess && subjectOptions.length === 0 ? (
             <p className="text-sm">{t('tutors.qualifications.subjectNone')}</p>
@@ -565,7 +660,16 @@ function RequestQualificationContent({
           </Button>
           <Button type="submit" disabled={busy}>
             {busy ? (
-              <Spinner label={t('tutors.qualifications.sending')} showLabel />
+              <Spinner
+                label={
+                  grant
+                    ? t('tutors.qualifications.grant.sending')
+                    : t('tutors.qualifications.sending')
+                }
+                showLabel
+              />
+            ) : grant ? (
+              t('tutors.qualifications.grant.submit')
             ) : (
               t('tutors.qualifications.send')
             )}

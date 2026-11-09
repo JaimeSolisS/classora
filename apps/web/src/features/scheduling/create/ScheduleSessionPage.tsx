@@ -15,12 +15,15 @@ import {
   fetchTutorOptions,
   SCHEDULE_OPTIONS_KEY,
   searchStudents,
+  suggestSeriesTutors,
   suggestSlots,
   suggestTutors,
 } from './api';
+import { fetchAvailability } from '@/features/tutors/api';
 import { MakeupTargetNotice, MakeupUnusableNotice } from './MakeupNotices';
 import {
   calendarWeekPath,
+  freeTimesBody,
   isSessionId,
   MAKEUP_LINK_CLASS,
   MAKEUP_PARAM,
@@ -29,8 +32,10 @@ import {
   PREFILL_PARAMS,
   prefillValues,
   scheduleBody,
+  seriesTutorSuggestionBody,
   sessionPath,
   suggestionBody,
+  TUTOR_SUGGESTIONS_LIMIT,
   tutorSuggestionParams,
   type MakeupProblem,
 } from './rules';
@@ -44,8 +49,12 @@ import { ScheduleSessionForm } from './ScheduleSessionForm';
 // The times are in the center zone (the session's business setting).
 // Holders of schedule.override can override soft conflicts (#49). After a
 // conflict the form shows suggested times (#50). Holders of schedule.assign
-// can ask for suggested tutors (#51). "Repeats weekly" creates a weekly
-// series (#54b A) and links to its page.
+// see suggested tutors (#51; HF-05b B: loaded by the form, one-off or
+// series, up to 50). Holders of tutor.view see the chosen tutor's weekly
+// availability (HF-05b C1), tutor.manage holders a link to edit it, and
+// qualification.review holders a link to Tutors when nobody holds the
+// subject (B5). "Find free times" (C2) uses the #50 search. "Repeats
+// weekly" creates a weekly series (#54b A) and links to its page.
 //
 // Makeup mode (#436 B), `?makeupOf=<cancelled session>`: the URL parameter is
 // the mode's only state. The target is read once, under its own key, and
@@ -66,6 +75,9 @@ export function ScheduleSessionPage() {
   const timeZone = useCenterTimeZone();
   const canOverride = useCan('schedule.override');
   const canAssign = useCan('schedule.assign');
+  const canViewTutors = useCan('tutor.view');
+  const canManageTutors = useCan('tutor.manage');
+  const canReviewQualifications = useCan('qualification.review');
   const subjects = useQuery({
     queryKey: [...SCHEDULE_OPTIONS_KEY, 'subjects'],
     queryFn: ({ signal }) => fetchSubjectOptions(signal),
@@ -232,8 +244,47 @@ export function ScheduleSessionPage() {
         onSuggest={(values) => suggestSlots(suggestionBody(values, timeZone))}
         onSuggestTutors={
           canAssign
-            ? (values) => suggestTutors(tutorSuggestionParams(values, timeZone))
+            ? (values, signal) =>
+                suggestTutors(
+                  {
+                    ...tutorSuggestionParams(values, timeZone),
+                    limit: TUTOR_SUGGESTIONS_LIMIT,
+                  },
+                  signal,
+                )
             : undefined
+        }
+        onSuggestSeriesTutors={
+          canAssign
+            ? (values, recurrence, signal) =>
+                suggestSeriesTutors(
+                  seriesTutorSuggestionBody(values, recurrence),
+                  signal,
+                )
+            : undefined
+        }
+        assignSubjectsLink={
+          canReviewQualifications ? (
+            <Link to="/tutors" className={MAKEUP_LINK_CLASS}>
+              {t('scheduling.tutorSuggestions.assignSubjects')}
+            </Link>
+          ) : undefined
+        }
+        loadTutorAvailability={canViewTutors ? fetchAvailability : undefined}
+        tutorAvailabilityLink={
+          canManageTutors
+            ? (tutorId) => (
+                <Link
+                  to={`/tutors/${encodeURIComponent(tutorId)}#availability`}
+                  className="underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+                >
+                  {t('scheduling.tutorAvailability.edit')}
+                </Link>
+              )
+            : undefined
+        }
+        onFindFreeTimes={(values) =>
+          suggestSlots(freeTimesBody(values, timeZone))
         }
       />
     );

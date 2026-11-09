@@ -8,8 +8,10 @@ import {
   CLASSROOMS,
   CONFLICTS,
   CREATED,
+  CARMEN_AVAILABILITY,
   CREATED_WITH_WARNINGS,
   FILLED,
+  NO_QUALIFIED_TUTORS,
   NO_SUGGESTIONS,
   NO_TUTOR_SUGGESTIONS,
   OVERRIDDEN,
@@ -18,6 +20,7 @@ import {
   SUBJECTS,
   SUGGESTIONS,
   TUTOR_SUGGESTIONS,
+  TUTOR_SUGGESTIONS_WITH_WARNINGS,
   TUTORS,
   UNASSIGNED,
 } from './fixtures';
@@ -36,8 +39,11 @@ import { ScheduleSessionForm } from './ScheduleSessionForm';
 // submitting) and the success panel with an override. Suggested times
 // after a conflict (#50 C3): loading, with slots (one with a workload
 // warning), empty and an error; the success panel with all three workload
-// warnings. Suggested tutors (#51 G3): loading, three results (one
-// preferring the room, one with limits), empty and an error. No request:
+// warnings. Suggested tutors (#51 G3, HF-05b E3), loaded by themselves:
+// loading, three results (one preferring the room, one within its limits,
+// the chosen one), with warnings, empty with counts, nobody qualified (with
+// the Tutors link) and an error; the chosen tutor's availability and free
+// times. No request:
 // `onSubmit`, `onSuggest`, `onSuggestTutors` and the student search are
 // stubs. Repeats weekly (#54b E3): the section on, a 409 grouped by date
 // (no override for series yet) and the series success panel.
@@ -484,9 +490,10 @@ export const SuccessWithWarnings: Story = {
   },
 };
 
-// --- Suggested tutors (#51 G3) -----------------------------------------------
+// --- Suggested tutors (#51 G3, HF-05b E3) ------------------------------------
+// The panel loads by itself once the slot is valid (FILLED is), after the
+// 400 ms wait.
 
-const suggestTutorsName = () => i18n.t('scheduling.tutorSuggestions.button');
 const tutorsHeading = () => i18n.t('scheduling.tutorSuggestions.heading');
 
 function withTutors(answer: () => Promise<typeof TUTOR_SUGGESTIONS>) {
@@ -495,10 +502,7 @@ function withTutors(answer: () => Promise<typeof TUTOR_SUGGESTIONS>) {
 
 export const TutorSuggestionsLoading: Story = {
   args: withTutors(() => new Promise<never>(() => {})),
-  play: async ({ canvas, userEvent }) => {
-    await userEvent.click(
-      canvas.getByRole('button', { name: suggestTutorsName() }),
-    );
+  play: async ({ canvas }) => {
     await expect(
       await canvas.findByText(i18n.t('scheduling.tutorSuggestions.loading')),
     ).toBeVisible();
@@ -508,17 +512,27 @@ export const TutorSuggestionsLoading: Story = {
 export const TutorSuggestionsResults: Story = {
   args: withTutors(() => Promise.resolve(TUTOR_SUGGESTIONS)),
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(
-      canvas.getByRole('button', { name: suggestTutorsName() }),
+    const section = await canvas.findByRole(
+      'region',
+      { name: tutorsHeading() },
+      { timeout: 3000 },
     );
-    const section = await canvas.findByRole('region', {
-      name: tutorsHeading(),
-    });
-    const list = within(section).getByRole('list');
+    const list = await within(section).findByRole('list');
     await expect(within(list).getAllByRole('listitem')).toHaveLength(3);
     await expect(section).toHaveTextContent(
       i18n.t('scheduling.tutorSuggestions.prefersRoom'),
     );
+    await expect(section).toHaveTextContent(
+      i18n.t('scheduling.tutorSuggestions.withinLimits'),
+    );
+    // FILLED's tutor is Carmen Ruiz: her row is chosen.
+    await expect(
+      within(section).getByRole('button', {
+        name: i18n.t('scheduling.tutorSuggestions.chosenTutor', {
+          name: 'Carmen Ruiz',
+        }),
+      }),
+    ).toHaveAttribute('aria-pressed', 'true');
     await userEvent.click(
       within(section).getByRole('button', {
         name: i18n.t('scheduling.tutorSuggestions.chooseTutor', {
@@ -529,22 +543,66 @@ export const TutorSuggestionsResults: Story = {
     await expect(
       canvas.getByLabelText(i18n.t('scheduling.fields.tutor')),
     ).toHaveValue(TUTORS[1]!.id);
+    await expect(
+      within(section).getByRole('button', {
+        name: i18n.t('scheduling.tutorSuggestions.chosenTutor', {
+          name: 'Diego Torres',
+        }),
+      }),
+    ).toHaveAttribute('aria-pressed', 'true');
+  },
+};
+
+export const TutorSuggestionsWithWarnings: Story = {
+  args: withTutors(() => Promise.resolve(TUTOR_SUGGESTIONS_WITH_WARNINGS)),
+  play: async ({ canvas }) => {
+    const section = await canvas.findByRole(
+      'region',
+      { name: tutorsHeading() },
+      { timeout: 3000 },
+    );
     await waitFor(() =>
-      expect(
-        canvas.getByLabelText(i18n.t('scheduling.fields.tutor')),
-      ).toHaveFocus(),
+      expect(section).toHaveTextContent(
+        i18n.t('scheduling.warnings.break_too_short', {
+          count: 5,
+          required: 10,
+        }),
+      ),
     );
   },
 };
 
-export const TutorSuggestionsEmpty: Story = {
+export const TutorSuggestionsEmptyWithCounts: Story = {
   args: withTutors(() => Promise.resolve(NO_TUTOR_SUGGESTIONS)),
-  play: async ({ canvas, userEvent }) => {
-    await userEvent.click(
-      canvas.getByRole('button', { name: suggestTutorsName() }),
-    );
+  play: async ({ canvas }) => {
     await expect(
-      await canvas.findByText(i18n.t('scheduling.tutorSuggestions.empty')),
+      await canvas.findByText(
+        new RegExp(
+          i18n.t('scheduling.tutorSuggestions.busyPart', { count: 2 }),
+        ),
+        undefined,
+        { timeout: 3000 },
+      ),
+    ).toBeVisible();
+  },
+};
+
+export const TutorSuggestionsNoneQualified: Story = {
+  args: {
+    ...withTutors(() => Promise.resolve(NO_QUALIFIED_TUTORS)),
+    assignSubjectsLink: (
+      <a href="#tutors" className="underline underline-offset-4">
+        {i18n.t('scheduling.tutorSuggestions.assignSubjects')}
+      </a>
+    ),
+  },
+  play: async ({ canvas }) => {
+    await expect(
+      await canvas.findByRole(
+        'link',
+        { name: i18n.t('scheduling.tutorSuggestions.assignSubjects') },
+        { timeout: 3000 },
+      ),
     ).toBeVisible();
   },
 };
@@ -555,14 +613,42 @@ export const TutorSuggestionsError: Story = {
       new ApiError({ code: 'internal_error', status: 500, requestId: 'req-x' }),
     ),
   ),
-  play: async ({ canvas, userEvent }) => {
-    await userEvent.click(
-      canvas.getByRole('button', { name: suggestTutorsName() }),
+  play: async ({ canvas }) => {
+    const section = await canvas.findByRole(
+      'region',
+      { name: tutorsHeading() },
+      { timeout: 3000 },
     );
-    const section = await canvas.findByRole('region', {
-      name: tutorsHeading(),
-    });
-    await expect(await within(section).findByRole('alert')).toBeVisible();
+    await expect(
+      await within(section).findByRole('alert', undefined, { timeout: 3000 }),
+    ).toBeVisible();
+  },
+};
+
+// --- The chosen tutor (HF-05b C, E3) ------------------------------------------
+
+export const TutorAvailabilityAndFreeTimes: Story = {
+  args: {
+    ...withTutors(() => Promise.resolve(TUTOR_SUGGESTIONS)),
+    loadTutorAvailability: fn(() => Promise.resolve(CARMEN_AVAILABILITY)),
+    onFindFreeTimes: fn(() => Promise.resolve(SUGGESTIONS)),
+  },
+  play: async ({ canvas, userEvent }) => {
+    await expect(
+      await canvas.findByText(
+        i18n.t('scheduling.tutorAvailability.exceptions'),
+      ),
+    ).toBeVisible();
+    await userEvent.click(
+      canvas.getByRole('button', {
+        name: i18n.t('scheduling.freeTimes.button'),
+      }),
+    );
+    await expect(
+      await canvas.findByRole('region', {
+        name: i18n.t('scheduling.freeTimes.heading', { name: 'Carmen Ruiz' }),
+      }),
+    ).toBeVisible();
   },
 };
 

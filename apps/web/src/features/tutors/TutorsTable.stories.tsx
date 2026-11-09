@@ -6,8 +6,8 @@ import { StoryRouter } from '@/test/StoryRouter';
 import { TUTOR_ITEM, TUTOR_ITEMS, tutorPage } from './fixtures';
 import { TutorsTable } from './TutorsTable';
 
-// The tutor list (#43 E2, E5): rows, a tutor's own one-row list, empty,
-// loading and error. No request.
+// The tutor list (#43 E2, E5): rows (with the HF-05b subjects column), a
+// tutor's own one-row list, empty, loading and error. No request.
 
 const meta = {
   title: 'Tutors/TutorsTable',
@@ -48,6 +48,14 @@ export const Rows: Story = {
     ).toHaveAttribute('href', `/tutors/${TUTOR_ITEM.user_id}`);
     await expect(
       canvas.getByText(i18n.t('userStates.suspended')),
+    ).toBeVisible();
+    await expect(
+      canvas.getByRole('columnheader', {
+        name: i18n.t('tutors.list.subjects'),
+      }),
+    ).toBeVisible();
+    await expect(
+      canvas.getByText(/Álgebra \(Secundaria\), Cálculo \(Preparatoria\)/),
     ).toBeVisible();
     await expect(
       canvas.getByRole('button', { name: i18n.t('tutors.list.previous') }),

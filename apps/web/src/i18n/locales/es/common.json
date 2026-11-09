@@ -1232,6 +1232,7 @@
       "username": "Usuario",
       "email": "Correo electrónico",
       "phone": "Teléfono",
+      "subjects": "Materias",
       "empty": "Ningún tutor coincide con estos filtros.",
       "pagination": "Páginas de la lista de tutores",
       "previous": "Anterior",
@@ -1324,7 +1325,18 @@
       "revoked": "Calificación revocada.",
       "revokedOn": "Revocada el {{date}}",
       "reload": "Recargar",
-      "loadError": "No se pudieron cargar las calificaciones."
+      "loadError": "No se pudieron cargar las calificaciones.",
+      "grant": {
+        "button": "Asignar materia",
+        "title": "Asignar una materia",
+        "description": "Elige el nivel educativo y la materia. La calificación queda aprobada de inmediato y se avisa al tutor.",
+        "submit": "Asignar materia",
+        "sending": "Asignando…",
+        "assigned": "Ya asignada",
+        "pending": "Pendiente",
+        "granted": "Materia asignada: {{subject}}",
+        "approveHint": "Apruébala en Aprobaciones"
+      }
     },
     "availability": {
       "title": "Disponibilidad",
@@ -2607,7 +2619,47 @@
       "chosen": "Tutor cambiado a {{name}}. Revisa el formulario y programa la sesión.",
       "hours": "{{hours}} h",
       "minutes": "{{minutes}} min",
-      "hoursMinutes": "{{hours}} h {{minutes}} min"
+      "hoursMinutes": "{{hours}} h {{minutes}} min",
+      "withinLimits": "Dentro de sus límites",
+      "chosenLabel": "Elegido",
+      "chosenTutor": "Elegido: {{name}}",
+      "viewAll": "Ver todos ({{count}})",
+      "summary": "Califican para {{subject}}, están disponibles y no tienen otra clase el {{date}} de {{start}} a {{end}}.",
+      "seriesSummary_one": "Califican para {{subject}}, están disponibles y libres en la {{count}} sesión de las próximas semanas.",
+      "seriesSummary_many": "Califican para {{subject}}, están disponibles y libres en las {{count}} sesiones de las próximas semanas.",
+      "seriesSummary_other": "Califican para {{subject}}, están disponibles y libres en las {{count}} sesiones de las próximas semanas.",
+      "noneQualified": "Ningún tutor activo tiene asignada {{subject}}.",
+      "assignSubjects": "Asignar materias en Tutores",
+      "noneFree_one": "{{count}} tutor califica para {{subject}}, pero no puede a esa hora: {{reasons}}",
+      "noneFree_many": "{{count}} tutores califican para {{subject}}, pero ninguno puede a esa hora: {{reasons}}",
+      "noneFree_other": "{{count}} tutores califican para {{subject}}, pero ninguno puede a esa hora: {{reasons}}",
+      "noneFreeNoReason_one": "{{count}} tutor califica para {{subject}}, pero no puede a esa hora",
+      "noneFreeNoReason_many": "{{count}} tutores califican para {{subject}}, pero ninguno puede a esa hora",
+      "noneFreeNoReason_other": "{{count}} tutores califican para {{subject}}, pero ninguno puede a esa hora",
+      "busyPart_one": "{{count}} ya tiene clase",
+      "busyPart_many": "{{count}} ya tienen clase",
+      "busyPart_other": "{{count}} ya tienen clase",
+      "unavailablePart_one": "{{count}} no está disponible",
+      "unavailablePart_many": "{{count}} no están disponibles",
+      "unavailablePart_other": "{{count}} no están disponibles",
+      "and": " y ",
+      "inSeries_one": "{{text}} en la única sesión.",
+      "inSeries_many": "{{text}} en al menos una de las {{count}} sesiones.",
+      "inSeries_other": "{{text}} en al menos una de las {{count}} sesiones.",
+      "noOccurrences": "La serie no tiene sesiones que revisar en las próximas semanas.",
+      "notSuggested": "{{name}} no aparece entre los sugeridos para este horario. Al programar se revisarán sus materias, disponibilidad y clases."
+    },
+    "tutorAvailability": {
+      "weekly": "Disponibilidad semanal de {{name}}: {{windows}}.",
+      "none": "{{name}} no tiene disponibilidad semanal registrada.",
+      "edit": "Registrar su disponibilidad",
+      "exceptions": "Las excepciones por fecha se revisan al buscar o programar."
+    },
+    "freeTimes": {
+      "button": "Buscar horarios libres",
+      "heading": "Otros horarios libres de {{name}}",
+      "intro": "Horarios libres en los 7 días desde la fecha elegida, del más cercano al más lejano. Al elegir uno se llenan la fecha y las horas; no se programa la sesión.",
+      "empty": "No hay horarios libres para {{name}} en esos 7 días."
     },
     "offer": {
       "heading": "Ofrecer a un tutor",

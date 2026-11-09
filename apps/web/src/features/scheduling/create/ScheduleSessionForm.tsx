@@ -1,4 +1,13 @@
-import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import {
+  useEffect,
+  useEffectEvent,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '@/app/api';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
@@ -8,6 +17,7 @@ import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { FieldError } from '@/features/auth/FieldError';
 import { SELECT_CLASS } from '@/features/students/styles';
+import { availabilityKey, type TutorAvailability } from '@/features/tutors/api';
 import { useFormatters } from '@/lib/formatters';
 import { toLanguage } from '@/i18n/language';
 import type { ClassSeriesCreated } from '../series/api';
@@ -34,6 +44,7 @@ import {
   type ClassSessionCreated,
   type Option,
   type SchedulingConflict,
+  type SeriesTutorSuggestionList,
   type SlotSuggestions,
   type SubjectOption,
   type SuggestedSlot,
@@ -43,21 +54,24 @@ import {
 import { ConflictPanel } from './ConflictPanel';
 import { OverrideDialog } from './OverrideDialog';
 import {
-  canSuggestTutors,
+  canFindFreeTimes,
   EMPTY_SCHEDULE,
   FIELD_ORDER,
+  isChosenTutorUnsuggested,
   isConflictCode,
   isMakeupTaken,
   overrideAction,
   overrideReasonError,
   serverErrors,
   sessionOverride,
-  SLOT_FIELDS,
   slotValues,
   splitServerErrors,
   subjectsByLevel,
   takenMakeupId,
+  TUTOR_SUGGESTIONS_DELAY_MS,
+  tutorSuggestionKey,
   validateSchedule,
+  weeklyAvailabilityText,
   type ScheduleErrors,
   type ScheduleField,
   type ScheduleMessage,
@@ -95,14 +109,24 @@ import { useWarningMessage } from './warningMessages';
 // polite live region. The success panel lists the 201's workload warnings
 // (#50 C2).
 //
-// Suggested tutors (#51 G): with `onSuggestTutors` (the page passes it only
-// to holders of schedule.assign) a "Suggest tutors" button sits under the
-// Tutor picker, enabled once the subject, date, start and end are valid. The
-// panel lists the eligible tutors; "Choose" sets the Tutor picker (nothing
-// is submitted), closes the panel, moves the focus to the picker and
-// announces the tutor. Changing the subject, classroom, date or times
-// clears a shown panel, so stale suggestions are never applied. A 422 goes
-// onto the form's fields.
+// Suggested tutors (#51 G, HF-05b B): with `onSuggestTutors` (the page
+// passes it only to holders of schedule.assign) the panel sits under the
+// Tutor and Classroom pickers, which come after "When". It loads by itself
+// 400 ms after the subject, date, start and end (and, in series mode, the
+// rule, through `onSuggestSeriesTutors`) become valid or change, and after a
+// classroom or repeats change; never on a tutor change. A change aborts the
+// request in flight and a stale answer is dropped; inputs back to the last
+// loaded ones show that list again without a request. "Choose" sets the
+// Tutor picker (nothing is submitted), keeps the list and marks the row
+// "Chosen"; a pre-filled or picked tutor is marked too. A chosen tutor
+// missing from a complete list gets a note under the picker (B6). A 422
+// goes onto the form's fields; the focus never moves on a load.
+//
+// Tutor chosen (HF-05b C): with `loadTutorAvailability` (tutor.view) a line
+// under the picker lists the tutor's weekly windows; with `onFindFreeTimes`
+// (one-off mode) "Find free times" lists the tutor's nearest free times over
+// 7 days; choosing one fills the date and times like the times after a
+// conflict. Any change to the form hides a shown list.
 //
 // Repeats weekly (#54b A1-A4): with `onSubmitSeries` a switch (off by
 // default, so the one-off flow is unchanged) turns the form into a weekly
@@ -155,8 +179,28 @@ export interface ScheduleSessionFormProps {
   canOverride: boolean;
   /** Free times for the same values after a conflict (#50); none: no section. */
   onSuggest?: (values: ScheduleValues) => Promise<SlotSuggestions>;
-  /** The eligible tutors for the slot (#51; schedule.assign); none: no button. */
-  onSuggestTutors?: (values: ScheduleValues) => Promise<TutorSuggestionList>;
+  /** The eligible tutors for the slot (#51; schedule.assign); none: no panel. */
+  onSuggestTutors?: (
+    values: ScheduleValues,
+    signal: AbortSignal,
+  ) => Promise<TutorSuggestionList>;
+  /** The tutors free for every occurrence of the series (HF-05b B2). */
+  onSuggestSeriesTutors?: (
+    values: ScheduleValues,
+    recurrence: RecurrenceValues,
+    signal: AbortSignal,
+  ) => Promise<SeriesTutorSuggestionList>;
+  /** The link to assign subjects (qualification.review; HF-05b B5). */
+  assignSubjectsLink?: ReactNode;
+  /** The chosen tutor's availability (tutor.view; HF-05b C1). */
+  loadTutorAvailability?: (
+    tutorId: string,
+    signal: AbortSignal,
+  ) => Promise<TutorAvailability>;
+  /** The link to edit a tutor's availability (tutor.manage; HF-05b C1). */
+  tutorAvailabilityLink?: (tutorId: string) => ReactNode;
+  /** The chosen tutor's nearest free times (HF-05b C2); none: no button. */
+  onFindFreeTimes?: (values: ScheduleValues) => Promise<SlotSuggestions>;
   /** The values to start from (stories). */
   initialValues?: ScheduleValues;
   /** A link to the created session's page (#52 H2; the page passes it). */
@@ -194,6 +238,11 @@ export function ScheduleSessionForm({
   canOverride,
   onSuggest,
   onSuggestTutors,
+  onSuggestSeriesTutors,
+  assignSubjectsLink,
+  loadTutorAvailability,
+  tutorAvailabilityLink,
+  onFindFreeTimes,
   initialValues = EMPTY_SCHEDULE,
   labelledBy,
   sessionLink,
@@ -206,8 +255,15 @@ export function ScheduleSessionForm({
 }: ScheduleSessionFormProps) {
   const { t, i18n } = useTranslation();
   const language = toLanguage(i18n.resolvedLanguage);
+  const weekdayFormat = new Intl.DateTimeFormat(language, {
+    weekday: 'short',
+    timeZone: 'UTC',
+  });
+  // 2024-01-01 is a Monday (ISO weekday 1).
+  const weekdayName = (weekday: number) =>
+    weekdayFormat.format(Date.UTC(2024, 0, weekday));
   const { t: tErrors } = useTranslation('errors');
-  const { formatInstant } = useFormatters();
+  const { formatInstant, formatLocalDate } = useFormatters();
   const id = useId();
   const [values, setValues] = useState<ScheduleValues>(initialValues);
   const [errors, setErrors] = useState<ScheduleErrors>({});
@@ -235,9 +291,23 @@ export function ScheduleSessionForm({
   const [suggestions, setSuggestions] = useState<SuggestionsState | null>(null);
   const [announcement, setAnnouncement] = useState('');
   const suggestionRequest = useRef(0);
-  const [tutorSuggestions, setTutorSuggestions] =
-    useState<TutorSuggestionsState | null>(null);
+  // The last load's answer for its key (null: nothing to show, e.g. a 422),
+  // and the last list that loaded (shown again when its key comes back).
+  const [tutorLoad, setTutorLoad] = useState<{
+    key: string;
+    state: TutorSuggestionsState | null;
+  } | null>(null);
+  const [tutorSettled, setTutorSettled] = useState<{
+    key: string;
+    state: TutorSuggestionsState;
+  } | null>(null);
   const tutorRequest = useRef(0);
+  // "Find free times" (C2), for the values it was asked with.
+  const [freeTimes, setFreeTimes] = useState<{
+    key: string;
+    state: SuggestionsState;
+  } | null>(null);
+  const freeTimesRequest = useRef(0);
   const submitButton = useRef<HTMLButtonElement>(null);
   const warningMessage = useWarningMessage();
   const slotParts = useSlotParts(timeZone);
@@ -267,9 +337,6 @@ export function ScheduleSessionForm({
     value: ScheduleValues[K],
   ) {
     setValues((current) => ({ ...current, [key]: value }));
-    if (SLOT_FIELDS.has(key)) {
-      clearTutorSuggestions();
-    }
     if (key === 'date' && !weekdaysTouched.current) {
       setRecurrence((current) => ({
         ...current,
@@ -309,56 +376,136 @@ export function ScheduleSessionForm({
     }
   }
 
-  function clearTutorSuggestions() {
-    // A later answer of an earlier request is ignored.
-    tutorRequest.current += 1;
-    setTutorSuggestions(null);
+  const seriesMode = repeats && onSubmitSeries !== undefined;
+  const suggestionKey = onSuggestTutors
+    ? tutorSuggestionKey(values, seriesMode, recurrence)
+    : null;
+  let tutorSuggestions: TutorSuggestionsState | null = null;
+  if (suggestionKey !== null) {
+    if (tutorLoad?.key === suggestionKey) {
+      tutorSuggestions = tutorLoad.state;
+    } else if (tutorSettled?.key === suggestionKey) {
+      tutorSuggestions = tutorSettled.state;
+    } else {
+      // Waiting for the debounce, or the request in flight.
+      tutorSuggestions = { status: 'loading' };
+    }
   }
 
-  function suggestTutors() {
-    if (!onSuggestTutors || !canSuggestTutors(values)) {
+  const isSettled = useEffectEvent((key: string) => tutorSettled?.key === key);
+
+  const loadTutorSuggestions = useEffectEvent(
+    (key: string, signal: AbortSignal) => {
+      if (!onSuggestTutors) {
+        return;
+      }
+      tutorRequest.current += 1;
+      const request = tutorRequest.current;
+      const series = seriesMode && onSuggestSeriesTutors !== undefined;
+      const call = series
+        ? onSuggestSeriesTutors(values, recurrence, signal)
+        : onSuggestTutors(values, signal);
+      call.then(
+        (result) => {
+          if (request !== tutorRequest.current || signal.aborted) {
+            return;
+          }
+          const state: TutorSuggestionsState = { status: 'loaded', result };
+          setTutorLoad({ key, state });
+          setTutorSettled({ key, state });
+        },
+        (error: unknown) => {
+          if (request !== tutorRequest.current || signal.aborted) {
+            return;
+          }
+          if (error instanceof ApiError && error.fieldErrors.length > 0) {
+            const mapped = splitServerErrors(error.fieldErrors, fixed).fields;
+            const mappedRule = series
+              ? recurrenceServerErrors(error.fieldErrors)
+              : {};
+            if (
+              Object.keys(mapped).length > 0 ||
+              Object.keys(mappedRule).length > 0
+            ) {
+              // On the fields, without moving the focus (D1).
+              setTutorLoad({ key, state: null });
+              setErrors(mapped);
+              setRecurrenceErrors(mappedRule);
+              return;
+            }
+          }
+          setTutorLoad({ key, state: { status: 'error', error } });
+        },
+      );
+    },
+  );
+
+  useEffect(() => {
+    if (suggestionKey === null || isSettled(suggestionKey)) {
       return;
     }
-    tutorRequest.current += 1;
-    const request = tutorRequest.current;
-    setTutorSuggestions({ status: 'loading' });
-    onSuggestTutors(values).then(
-      (result) => {
-        if (request === tutorRequest.current) {
-          setTutorSuggestions({ status: 'loaded', result });
-        }
-      },
-      (error: unknown) => {
-        if (request !== tutorRequest.current) {
-          return;
-        }
-        const mapped =
-          error instanceof ApiError
-            ? splitServerErrors(error.fieldErrors, fixed).fields
-            : {};
-        if (Object.keys(mapped).length > 0) {
-          setTutorSuggestions(null);
-          setErrors(mapped);
-          focusFirst(mapped);
-        } else {
-          setTutorSuggestions({ status: 'error', error });
-        }
-      },
+    const controller = new AbortController();
+    const timer = window.setTimeout(
+      () => loadTutorSuggestions(suggestionKey, controller.signal),
+      TUTOR_SUGGESTIONS_DELAY_MS,
     );
-  }
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [suggestionKey]);
+
+  // The chosen tutor's weekly windows (C1), cached by tutor.
+  const availability = useQuery({
+    queryKey: availabilityKey(values.tutorId),
+    queryFn: ({ signal }) =>
+      loadTutorAvailability
+        ? loadTutorAvailability(values.tutorId, signal)
+        : Promise.reject(new Error('no loader')),
+    enabled: loadTutorAvailability !== undefined && values.tutorId !== '',
+    staleTime: 60_000,
+  });
 
   function chooseTutor(suggestion: TutorSuggestion) {
     setValues((current) => ({ ...current, tutorId: suggestion.tutor.id }));
-    clearTutorSuggestions();
     setAnnouncement(
       t('scheduling.tutorSuggestions.chosen', {
         name: suggestion.tutor.display_name,
       }),
     );
-    window.setTimeout(
-      () => document.getElementById(fieldId('tutor'))?.focus(),
-      0,
+  }
+
+  // "Find free times" (C2): shown only for the values it was asked with.
+  const freeTimesKey = JSON.stringify(values);
+  const shownFreeTimes =
+    !seriesMode && freeTimes?.key === freeTimesKey ? freeTimes.state : null;
+
+  function findFreeTimes() {
+    if (!onFindFreeTimes || !canFindFreeTimes(values)) {
+      return;
+    }
+    freeTimesRequest.current += 1;
+    const request = freeTimesRequest.current;
+    const key = freeTimesKey;
+    setFreeTimes({ key, state: { status: 'loading' } });
+    onFindFreeTimes(values).then(
+      (result) => {
+        if (request === freeTimesRequest.current) {
+          setFreeTimes({ key, state: { status: 'loaded', result } });
+        }
+      },
+      (error: unknown) => {
+        if (request === freeTimesRequest.current) {
+          setFreeTimes({ key, state: { status: 'error', error } });
+        }
+      },
     );
+  }
+
+  function chooseFreeTime(slot: SuggestedSlot) {
+    freeTimesRequest.current += 1;
+    setFreeTimes(null);
+    chooseSlot(slot);
   }
 
   function focusFirst(found: ScheduleErrors) {
@@ -485,7 +632,6 @@ export function ScheduleSessionForm({
     setSeriesConflicts(null);
     setRecurrenceErrors({});
     clearSuggestions();
-    clearTutorSuggestions();
     setAnnouncement('');
     setFailure(null);
     if (repeats && onSubmitSeries) {
@@ -600,7 +746,6 @@ export function ScheduleSessionForm({
     setRecurrence(EMPTY_RECURRENCE);
     setRecurrenceErrors({});
     weekdaysTouched.current = false;
-    clearTutorSuggestions();
     setAnnouncement('');
     setErrors({});
     setValues({ ...EMPTY_SCHEDULE, date: values.date });
@@ -783,9 +928,10 @@ export function ScheduleSessionForm({
     value: string,
     onChange: (value: string) => void,
     options: React.ReactNode,
+    extra: { describedBy?: string | undefined; after?: ReactNode } = {},
   ) {
     return (
-      <div className="flex flex-col gap-2">
+      <div className="flex min-w-0 flex-col gap-2">
         <label htmlFor={fieldId(field)} className="text-sm font-medium">
           {label}
         </label>
@@ -794,12 +940,13 @@ export function ScheduleSessionForm({
           className={SELECT_CLASS}
           value={value}
           aria-invalid={errors[field] ? true : undefined}
-          aria-describedby={describedBy(field)}
+          aria-describedby={describedBy(field, extra.describedBy)}
           onChange={(event) => onChange(event.target.value)}
         >
           {options}
         </select>
         <FieldError id={errorId(field)} message={message(errors[field])} />
+        {extra.after}
       </div>
     );
   }
@@ -825,6 +972,67 @@ export function ScheduleSessionForm({
         <FieldError id={errorId(field)} message={message(errors[field])} />
       </div>
     );
+  }
+
+  const tutorName =
+    tutors.find((tutor) => tutor.id === values.tutorId)?.name ?? '';
+  const subjectName = makeup
+    ? makeup.subjectName
+    : subjects.find((subject) => subject.id === values.subjectId)?.name;
+  const loadedSuggestions =
+    tutorSuggestions?.status === 'loaded' ? tutorSuggestions.result : null;
+  const unsuggestedId = `${id}-tutor-unsuggested`;
+  const unsuggested =
+    loadedSuggestions !== null &&
+    isChosenTutorUnsuggested(loadedSuggestions, values.tutorId);
+  let suggestionSummary: string | undefined;
+  if (loadedSuggestions && subjectName !== undefined) {
+    suggestionSummary =
+      loadedSuggestions.occurrence_count === undefined
+        ? t('scheduling.tutorSuggestions.summary', {
+            subject: subjectName,
+            date: formatLocalDate(values.date, 'long'),
+            start: values.start,
+            end: values.end,
+          })
+        : t('scheduling.tutorSuggestions.seriesSummary', {
+            subject: subjectName,
+            count: loadedSuggestions.occurrence_count,
+          });
+  }
+  let availabilityLine: ReactNode = null;
+  if (loadTutorAvailability && values.tutorId) {
+    if (availability.data) {
+      const text = weeklyAvailabilityText(
+        availability.data.weekly,
+        weekdayName,
+      );
+      availabilityLine = (
+        <div className="flex flex-col gap-1 text-sm break-words">
+          <p>
+            {text === null
+              ? t('scheduling.tutorAvailability.none', { name: tutorName })
+              : t('scheduling.tutorAvailability.weekly', {
+                  name: tutorName,
+                  windows: text,
+                })}
+            {text === null && tutorAvailabilityLink ? (
+              <> {tutorAvailabilityLink(values.tutorId)}</>
+            ) : null}
+          </p>
+          <p className="text-muted-foreground">
+            {t('scheduling.tutorAvailability.exceptions')}
+          </p>
+        </div>
+      );
+    } else if (availability.isError) {
+      availabilityLine = (
+        <ErrorAlert
+          error={availability.error}
+          onRetry={() => void availability.refetch()}
+        />
+      );
+    }
   }
 
   const action = conflicts ? overrideAction(conflicts, canOverride) : null;
@@ -949,59 +1157,6 @@ export function ScheduleSessionForm({
                 ))}
               </>,
             )}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {select(
-            'tutor',
-            t('scheduling.fields.tutor'),
-            values.tutorId,
-            (value) => change('tutorId', value),
-            <>
-              <option value="">{t('scheduling.noTutor')}</option>
-              {tutors.map((tutor) => (
-                <option key={tutor.id} value={tutor.id}>
-                  {tutor.name}
-                </option>
-              ))}
-            </>,
-          )}
-          {select(
-            'classroom',
-            t('scheduling.fields.classroom'),
-            values.classroomId,
-            (value) => change('classroomId', value),
-            <>
-              <option value="">{t('scheduling.noClassroom')}</option>
-              {classrooms.map((room) => (
-                <option key={room.id} value={room.id}>
-                  {room.name}
-                </option>
-              ))}
-            </>,
-          )}
-        </div>
-        {onSuggestTutors ? (
-          <div className="flex flex-col gap-3">
-            <div>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={
-                  !canSuggestTutors(values) ||
-                  tutorSuggestions?.status === 'loading'
-                }
-                onClick={suggestTutors}
-              >
-                {t('scheduling.tutorSuggestions.button')}
-              </Button>
-            </div>
-            {tutorSuggestions ? (
-              <TutorSuggestions
-                state={tutorSuggestions}
-                onChoose={chooseTutor}
-              />
-            ) : null}
-          </div>
-        ) : null}
         <fieldset className="flex flex-col gap-3">
           <legend className="text-sm font-medium">
             {t('scheduling.fields.when')}
@@ -1040,6 +1195,97 @@ export function ScheduleSessionForm({
             />
           ) : null}
         </fieldset>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {select(
+            'tutor',
+            t('scheduling.fields.tutor'),
+            values.tutorId,
+            (value) => change('tutorId', value),
+            <>
+              <option value="">{t('scheduling.noTutor')}</option>
+              {tutors.map((tutor) => (
+                <option key={tutor.id} value={tutor.id}>
+                  {tutor.name}
+                </option>
+              ))}
+            </>,
+            {
+              describedBy: unsuggested ? unsuggestedId : undefined,
+              after: (
+                <>
+                  {unsuggested ? (
+                    <p
+                      id={unsuggestedId}
+                      className="border-s-4 border-chart-2 ps-2 text-sm break-words"
+                    >
+                      {t('scheduling.tutorSuggestions.notSuggested', {
+                        name: tutorName,
+                      })}
+                    </p>
+                  ) : null}
+                  {availabilityLine}
+                </>
+              ),
+            },
+          )}
+          {select(
+            'classroom',
+            t('scheduling.fields.classroom'),
+            values.classroomId,
+            (value) => change('classroomId', value),
+            <>
+              <option value="">{t('scheduling.noClassroom')}</option>
+              {classrooms.map((room) => (
+                <option key={room.id} value={room.id}>
+                  {room.name}
+                </option>
+              ))}
+            </>,
+          )}
+        </div>
+        {onFindFreeTimes && !seriesMode && values.tutorId ? (
+          <div className="flex flex-col gap-3">
+            <div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={
+                  !canFindFreeTimes(values) ||
+                  shownFreeTimes?.status === 'loading'
+                }
+                onClick={findFreeTimes}
+              >
+                {t('scheduling.freeTimes.button')}
+              </Button>
+            </div>
+            {shownFreeTimes ? (
+              <SuggestedSlots
+                state={shownFreeTimes}
+                timeZone={timeZone}
+                onChoose={chooseFreeTime}
+                heading={t('scheduling.freeTimes.heading', {
+                  name: tutorName,
+                })}
+                intro={t('scheduling.freeTimes.intro')}
+                emptyText={t('scheduling.freeTimes.empty', {
+                  name: tutorName,
+                })}
+              />
+            ) : null}
+          </div>
+        ) : null}
+        {tutorSuggestions ? (
+          <TutorSuggestions
+            state={tutorSuggestions}
+            onChoose={chooseTutor}
+            chosenId={values.tutorId}
+            summary={suggestionSummary}
+            subjectName={subjectName}
+            emptyLink={assignSubjectsLink}
+            series={seriesMode}
+            collapse
+          />
+        ) : null}
         <div>
           <Button ref={submitButton} type="submit" disabled={submitting}>
             {submitting ? <Spinner /> : null}

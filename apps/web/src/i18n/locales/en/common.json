@@ -1218,6 +1218,7 @@
       "username": "Username",
       "email": "Email",
       "phone": "Phone",
+      "subjects": "Subjects",
       "empty": "No tutors match these filters.",
       "pagination": "Tutor list pages",
       "previous": "Previous",
@@ -1310,7 +1311,18 @@
       "revoked": "Qualification revoked.",
       "revokedOn": "Revoked {{date}}",
       "reload": "Reload",
-      "loadError": "The qualifications couldn't be loaded."
+      "loadError": "The qualifications couldn't be loaded.",
+      "grant": {
+        "button": "Assign subject",
+        "title": "Assign a subject",
+        "description": "Choose the education level and the subject. The qualification is approved at once and the tutor is notified.",
+        "submit": "Assign subject",
+        "sending": "Assigning…",
+        "assigned": "Already assigned",
+        "pending": "Pending",
+        "granted": "Subject assigned: {{subject}}",
+        "approveHint": "Approve it in Approvals"
+      }
     },
     "availability": {
       "title": "Availability",
@@ -2581,7 +2593,41 @@
       "chosen": "Tutor set to {{name}}. Review the form and schedule the session.",
       "hours": "{{hours}} h",
       "minutes": "{{minutes}} min",
-      "hoursMinutes": "{{hours}} h {{minutes}} min"
+      "hoursMinutes": "{{hours}} h {{minutes}} min",
+      "withinLimits": "Within their limits",
+      "chosenLabel": "Chosen",
+      "chosenTutor": "Chosen: {{name}}",
+      "viewAll": "View all ({{count}})",
+      "summary": "Qualified for {{subject}}, available and without another class on {{date}} from {{start}} to {{end}}.",
+      "seriesSummary_one": "Qualified for {{subject}}, available and free for the {{count}} session in the coming weeks.",
+      "seriesSummary_other": "Qualified for {{subject}}, available and free for all {{count}} sessions in the coming weeks.",
+      "noneQualified": "No active tutor has {{subject}} assigned.",
+      "assignSubjects": "Assign subjects in Tutors",
+      "noneFree_one": "{{count}} tutor is qualified for {{subject}}, but can’t at that time: {{reasons}}",
+      "noneFree_other": "{{count}} tutors are qualified for {{subject}}, but none can at that time: {{reasons}}",
+      "noneFreeNoReason_one": "{{count}} tutor is qualified for {{subject}}, but can’t at that time",
+      "noneFreeNoReason_other": "{{count}} tutors are qualified for {{subject}}, but none can at that time",
+      "busyPart_one": "{{count}} already has a class",
+      "busyPart_other": "{{count}} already have a class",
+      "unavailablePart_one": "{{count}} isn’t available",
+      "unavailablePart_other": "{{count}} aren’t available",
+      "and": " and ",
+      "inSeries_one": "{{text}} for the only session.",
+      "inSeries_other": "{{text}} in at least one of the {{count}} sessions.",
+      "noOccurrences": "The series has no sessions to check in the coming weeks.",
+      "notSuggested": "{{name}} isn’t among the suggested tutors for this time. Scheduling checks their subjects, availability and classes."
+    },
+    "tutorAvailability": {
+      "weekly": "{{name}}’s weekly availability: {{windows}}.",
+      "none": "{{name}} has no weekly availability recorded.",
+      "edit": "Record their availability",
+      "exceptions": "Date exceptions are checked when searching or scheduling."
+    },
+    "freeTimes": {
+      "button": "Find free times",
+      "heading": "Other free times for {{name}}",
+      "intro": "Free times in the 7 days from the chosen date, nearest first. Choosing one fills in the date and times; it doesn’t schedule the session.",
+      "empty": "No free times for {{name}} in those 7 days."
     },
     "offer": {
       "heading": "Offer to a tutor",

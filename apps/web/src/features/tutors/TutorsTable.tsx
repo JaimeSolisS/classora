@@ -12,10 +12,12 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { StateBadge } from '@/features/users/admin/StateBadge';
-import type { TutorListPage } from './api';
+import type { TeachingSubject, TutorListPage } from './api';
 
 // The tutor list (#43 E2): name (a link to the profile), username, state,
-// email and phone, then Previous/Next and the range. Loading, empty and
+// email and phone, and the subjects of the approved qualifications (HF-05b
+// A3: "Subject (Level)", the API's order, an inactive one marked), then
+// Previous/Next and the range. Loading, empty and
 // error states. Presentational: the page passes the query state. Below `md`
 // the table scrolls inside its own container (SC 1.4.10 data-table
 // exception); the page itself never scrolls sideways.
@@ -48,6 +50,17 @@ export function TutorsTable({ state, labelledBy, onPage }: TutorsTableProps) {
   }
   const page = Math.floor(offset / limit) + 1;
   const notSet = t('tutors.profile.notSet');
+  const subjectsText = (subjects: readonly TeachingSubject[]) =>
+    subjects
+      .map(
+        (subject) =>
+          `${subject.subject_name} (${subject.education_level_name})${
+            subject.subject_is_active
+              ? ''
+              : ` ${t('tutors.qualifications.subjectInactive')}`
+          }`,
+      )
+      .join(', ');
   return (
     <div className="flex flex-col gap-4">
       <Table aria-labelledby={labelledBy}>
@@ -58,6 +71,7 @@ export function TutorsTable({ state, labelledBy, onPage }: TutorsTableProps) {
             <TableHead scope="col">{t('tutors.list.state')}</TableHead>
             <TableHead scope="col">{t('tutors.list.email')}</TableHead>
             <TableHead scope="col">{t('tutors.list.phone')}</TableHead>
+            <TableHead scope="col">{t('tutors.list.subjects')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -77,6 +91,9 @@ export function TutorsTable({ state, labelledBy, onPage }: TutorsTableProps) {
               </TableCell>
               <TableCell>{item.email ?? notSet}</TableCell>
               <TableCell>{item.phone ?? notSet}</TableCell>
+              <TableCell className="min-w-48 whitespace-normal">
+                {subjectsText(item.teaching_subjects ?? []) || notSet}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>

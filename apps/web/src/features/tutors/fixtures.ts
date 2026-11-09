@@ -33,6 +33,23 @@ export const TUTOR_ITEMS: TutorListItem[] = [
     state: 'suspended',
     email: null,
     phone: '55 8765 4321',
+    // HF-05b A3: the list's subjects, in the API's order.
+    teaching_subjects: [
+      {
+        subject_id: '00000000-0000-4000-8000-0000000000e1',
+        subject_name: 'Álgebra',
+        education_level_id: '00000000-0000-4000-8000-0000000000d1',
+        education_level_name: 'Secundaria',
+        subject_is_active: true,
+      },
+      {
+        subject_id: '00000000-0000-4000-8000-0000000000e3',
+        subject_name: 'Cálculo',
+        education_level_id: '00000000-0000-4000-8000-0000000000d2',
+        education_level_name: 'Preparatoria',
+        subject_is_active: false,
+      },
+    ],
   },
   {
     user_id: '00000000-0000-4000-8000-0000000000c3',
@@ -41,6 +58,7 @@ export const TUTOR_ITEMS: TutorListItem[] = [
     state: 'pending',
     email: 'invited@example.com',
     phone: null,
+    teaching_subjects: [],
   },
 ];
 
