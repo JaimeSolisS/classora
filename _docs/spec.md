@@ -45,7 +45,7 @@ Permissions use predefined roles plus record-level ownership checks. Tutors acce
 
 ### Schedule administration
 - Tutors publish recurring weekly availability and exceptions (time off, holidays, changes), preferred classrooms, teaching limits and required breaks. Changes affecting existing assignments require administrator approval.
-- Tutors request subject + education-level qualifications, approved by an administrator.
+- Tutors request subject + education-level qualifications, approved by an administrator, or are granted them directly by an administrator (HF-05 E1, owner-approved 2026-11-07).
 - Administrators schedule all confirmed classes, make final tutor assignments, and manage group/course enrollment (including additions/removals after a start date with appropriate financial adjustments).
 - Parents and students can see available individual-session slots and **request**, not automatically book, them.
 - Tutors accept/decline offered assignments; declined assignments return for reassignment.

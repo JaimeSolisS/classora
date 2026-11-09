@@ -737,15 +737,44 @@ class TutorSuggestion(BaseModel):
     prefers_classroom: bool = Field(
         description="The slot has a classroom and it is one of the tutor's preferred."
     )
+    warnings: list[SchedulingWarning] = Field(
+        default_factory=list,
+        description=(
+            "The workload warnings a create of this slot with this tutor would"
+            " return (daily_limit_exceeded, weekly_limit_exceeded,"
+            " break_too_short; HF-05 B2). Display only: they never drop or"
+            " reorder a tutor. Always empty for a series."
+        ),
+    )
 
 
 class TutorSuggestionList(BaseModel):
-    """The first ``limit`` eligible tutors in ranking order, and how many
-    are eligible in all (advisory: creating or offering re-checks
-    everything)."""
+    """The first ``limit`` eligible tutors in ranking order, how many are
+    eligible in all, and why the others are not (HF-05 B1; advisory:
+    creating or offering re-checks everything).
+
+    ``qualified_count = eligible_count + busy_count + unavailable_count``."""
 
     items: list[TutorSuggestion]
     eligible_count: int
+    qualified_count: int = Field(
+        default_factory=int,
+        description=(
+            "Active tutors holding an approved qualification for the subject"
+            " (an excluded tutor left out)."
+        ),
+    )
+    busy_count: int = Field(
+        default_factory=int,
+        description="Qualified tutors with an overlapping session as tutor.",
+    )
+    unavailable_count: int = Field(
+        default_factory=int,
+        description=(
+            "Qualified tutors without an overlap who are not available for the"
+            " slot (weekly windows and time off)."
+        ),
+    )
 
 
 # --- Assignment offers (#52 C, D, G) ----------------------------------------------
@@ -1063,6 +1092,48 @@ class ClassSeriesCreate(BaseModel):
     )
 
     _start_time = field_validator("start_time", mode="before")(_check_start_time)
+
+
+class SeriesTutorSuggestionQuery(BaseModel):
+    """The body of ``POST /api/v1/tutor-suggestions/series`` (HF-05 C1): the
+    timing members of a series create, the subject and the optional
+    classroom. Unknown fields are ``422``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    subject_id: uuid.UUID
+    classroom_id: uuid.UUID | None = Field(
+        default=None,
+        description="The classroom; ranks the tutors who prefer it first on ties.",
+    )
+    starts_on: date = Field(
+        description="The local date the rule starts on (not before today)."
+    )
+    start_time: time = Field(
+        description="The local start time, HH:MM (whole minutes, no seconds)."
+    )
+    duration_minutes: int = Field(ge=15, le=480, description="15-480 minutes.")
+    recurrence: SeriesRecurrence
+    limit: int = Field(
+        default=TUTOR_SUGGESTIONS_DEFAULT_LIMIT,
+        ge=1,
+        le=TUTOR_SUGGESTIONS_MAX_LIMIT,
+        description="At most this many items (1-50).",
+    )
+
+    _start_time = field_validator("start_time", mode="before")(_check_start_time)
+
+
+class SeriesTutorSuggestionList(TutorSuggestionList):
+    """The tutors free and available for **every** checked occurrence of a
+    series, ranked at the first one (HF-05 C)."""
+
+    occurrence_count: int = Field(
+        description=(
+            "The occurrences checked: those in [starts_on, + the scheduling"
+            " horizon) that start after now and are not on a center closure."
+        )
+    )
 
 
 class SeriesRecurrenceDetail(BaseModel):

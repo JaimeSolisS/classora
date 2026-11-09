@@ -30,6 +30,10 @@
   ``require("schedule.assign")`` (Owners, Administrators and Academic
   Coordinators; ADR-0005 D9). The eligible tutors in workload order;
   read-only and advisory.
+- ``POST /api/v1/tutor-suggestions/series`` (HF-05 C):
+  ``require("schedule.assign")``. The tutors free and available for every
+  occurrence of a planned series in the horizon; read-only (no
+  ``idempotent()``) and advisory.
 - ``POST /api/v1/class-series`` (#53 E): ``require("schedule.manage")``. A
   recurring individual series; order ``401``/``403`` → ``422`` body →
   student lock → zone ``FOR SHARE`` → ``422`` recurrence → ``422``
@@ -133,6 +137,8 @@ from app.modules.scheduling.schemas import (
     ClassSessionUpdated,
     ConflictOverrideCreate,
     OfferStatusFilter,
+    SeriesTutorSuggestionList,
+    SeriesTutorSuggestionQuery,
     SlotSuggestionRequest,
     SlotSuggestions,
     SubstitutionCreate,
@@ -497,6 +503,49 @@ async def list_tutor_suggestions(
     who prefer the classroom, then name. Limits are shown, never applied.
     Advisory and read-only: creating or offering re-checks everything."""
     return await service.suggest_for_slot(uow.session, query)
+
+
+@suggestions_router.post(
+    "/series",
+    responses={
+        **PERMISSION_RESPONSES,
+        422: problem_response_doc(
+            "The body is not valid (validation_error): a missing or unknown"
+            " field, `start_time` not HH:MM (time_format), a duration outside"
+            " 15-480, `limit` outside 1-50; the recurrence (weekdays_empty,"
+            " weekday_out_of_range, weekdays_duplicate, interval_out_of_range,"
+            " until_and_count, count_out_of_range, until_before_start,"
+            " no_occurrences); starts_on_in_past; crosses_local_date on"
+            " start_time; or the references (subject_unknown,"
+            " subject_inactive, classroom_unknown, classroom_inactive), all in"
+            " one response. The same codes and paths as POST /class-series."
+        ),
+    },
+)
+async def list_series_tutor_suggestions(
+    principal: Annotated[Principal, require(SCHEDULE_ASSIGN)],
+    body: SeriesTutorSuggestionQuery,
+    uow: UnitOfWorkDep,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SeriesTutorSuggestionList:
+    """The tutors who can teach **every** occurrence of a planned weekly
+    series, the first `limit` in ranking order, with how many are eligible,
+    busy or unavailable.
+
+    The rule is expanded from `starts_on` over the scheduling horizon
+    (`SCHEDULING_HORIZON_WEEKS`, default 12 weeks); occurrences that already
+    started or fall on a center closure are not checked (`occurrence_count`
+    counts the others). A tutor is listed when they are an active tutor with
+    an approved qualification for the subject, available for every
+    occurrence and without an overlapping offered, confirmed or completed
+    session on any of them. The ranking is that of `GET
+    /tutor-suggestions` at the first checked occurrence; `warnings` is
+    always empty. Read-only and advisory: `POST /class-series` checks its
+    occurrences again over `[now, horizon)` and the nightly job checks
+    later ones, so a suggestion never guarantees a clean create."""
+    return await service.suggest_for_series(
+        uow.session, body, horizon_weeks=settings.scheduling_horizon_weeks
+    )
 
 
 @series_router.post(

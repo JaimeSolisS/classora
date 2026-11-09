@@ -441,7 +441,104 @@ def test_nobody_qualifies_is_an_empty_list(client, cookie, subject):
     response = suggest(client, cookie, query(subject))
 
     assert response.status_code == 200
-    assert response.json() == {"items": [], "eligible_count": 0}
+    assert response.json() == {
+        "items": [],
+        "eligible_count": 0,
+        "qualified_count": 0,
+        "busy_count": 0,
+        "unavailable_count": 0,
+    }
+
+
+# --- HF-05 B1: why the others aren't listed ------------------------------------------
+
+
+def counts_of(response: Response) -> tuple[int, int, int, int]:
+    assert response.status_code == 200, response.text
+    body = response.json()
+    return (
+        body["qualified_count"],
+        body["eligible_count"],
+        body["busy_count"],
+        body["unavailable_count"],
+    )
+
+
+def test_the_counts_split_the_qualified_tutors(
+    module_seeded_url, client, cookie, subject, control
+):
+    busy = new_tutor(module_seeded_url, qualified_for=[subject])
+    teaching(module_seeded_url, busy, at(MONDAY, "10:30"), 60, "confirmed")
+    away = new_tutor(module_seeded_url, qualified_for=[subject])
+    time_off(module_seeded_url, away, MONDAY)
+    new_tutor(module_seeded_url, qualified_for=[subject], windows=[])
+    # Both busy and unavailable: counted as busy.
+    both = new_tutor(module_seeded_url, qualified_for=[subject])
+    teaching(module_seeded_url, both, at(MONDAY, "10:00"), 60, "offered")
+    time_off(module_seeded_url, both, MONDAY)
+    # Not qualified, or not active: not counted at all.
+    new_tutor(module_seeded_url)
+    new_tutor(module_seeded_url, qualified_for=[subject], state="suspended")
+
+    response = suggest(client, cookie, query(subject))
+
+    assert listed(response) == [control]
+    assert counts_of(response) == (5, 1, 2, 2)
+
+
+def test_only_busy_or_only_unavailable(module_seeded_url, client, cookie, subject):
+    busy = new_tutor(module_seeded_url, qualified_for=[subject])
+    teaching(module_seeded_url, busy, at(MONDAY, "10:30"), 60, "completed")
+    assert counts_of(suggest(client, cookie, query(subject))) == (1, 0, 1, 0)
+
+    other = new_subject(module_seeded_url)
+    new_tutor(module_seeded_url, qualified_for=[other], windows=[])
+    assert counts_of(suggest(client, cookie, query(other))) == (1, 0, 0, 1)
+
+
+# --- HF-05 B2: the warnings ----------------------------------------------------------
+
+
+def test_warnings_show_what_a_create_would_return_and_never_reorder(
+    module_seeded_url, client, cookie, subject
+):
+    ana, beto, carla = three_tutors(module_seeded_url, subject)
+    # Ana: 30 minutes that day and a 60-minute daily limit; the slot's 60
+    # make 90. She still ranks first (fewest weekly minutes).
+    set_limits(module_seeded_url, ana, daily=60)
+    teaching(module_seeded_url, ana, at(MONDAY, "15:00"), 30, "confirmed")
+    teaching(
+        module_seeded_url,
+        beto,
+        at(MONDAY + timedelta(days=1), "10:00"),
+        45,
+        "confirmed",
+    )
+    teaching(
+        module_seeded_url, carla, at(MONDAY + timedelta(days=1), "12:00"), 60, "offered"
+    )
+    # Beto has a limit he stays under: no warning.
+    set_limits(module_seeded_url, beto, weekly=600)
+
+    items = suggest(client, cookie, query(subject)).json()["items"]
+
+    assert [i["tutor"]["display_name"] for i in items] == [
+        "Ana Uno",
+        "Beto Dos",
+        "Carla Tres",
+    ]
+    assert items[0]["warnings"] == [
+        {
+            "code": "daily_limit_exceeded",
+            "details": {
+                "date": "2031-01-06",
+                "limit_minutes": 60,
+                "scheduled_minutes": 90,
+            },
+        }
+    ]
+    assert items[1]["warnings"] == []
+    assert items[2]["warnings"] == []
 
 
 # --- C, H3: ranking ------------------------------------------------------------------
@@ -612,6 +709,8 @@ def test_statement_budget(module_seeded_url, subject, count):
     for _ in range(count):
         tutor = new_tutor(module_seeded_url, qualified_for=[subject])
         prefer_room(module_seeded_url, tutor, room)
+        # A limit: each item also reads its sessions for the warnings (HF-05 B2).
+        set_limits(module_seeded_url, tutor, weekly=600)
     # Tutors without the qualification cost nothing.
     for _ in range(3):
         new_tutor(module_seeded_url)
@@ -630,7 +729,9 @@ def test_statement_budget(module_seeded_url, subject, count):
     statements, result = count_statements(module_seeded_url, call)
 
     assert result.eligible_count == count
-    assert statements <= 8 + 6 * count
+    assert result.items[0].warnings == []
+    # HF-05 B3: 8 + 7C (one statement more per returned item for warnings).
+    assert statements <= 8 + 7 * count
 
 
 def test_nothing_is_written(module_seeded_url, client, cookie, subject):

@@ -3324,6 +3324,16 @@ allow = ["owner", "administrator", "academic_coordinator"]
 # tests/integration/test_tutor_suggestions.py.
 
 [[route]]
+method = "POST"
+path = "/api/v1/tutor-suggestions/series"
+access = "permission"
+permission = "schedule.assign"
+allow = ["owner", "administrator", "academic_coordinator"]
+# HF-05 C1: read-only (no idempotent()). No body: 422 for every allowed role
+# ("not denied"). The 200 and 422 cases are in
+# tests/integration/test_series_tutor_suggestions.py.
+
+[[route]]
 method = "GET"
 path = "/api/v1/tutors"
 access = "permission"
@@ -3436,6 +3446,17 @@ permission = "tutor.view"
 allow = ["owner", "administrator", "academic_coordinator", "tutor"]
 # #44: only the tutor themselves requests. A valid body for the placeholder
 # id, which is no tutor: 404 for every allowed role (nothing is created).
+json = { subject_id = "00000000-0000-7000-8000-000000000001" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/qualifications/grant"
+access = "permission"
+permission = "qualification.review"
+allow = ["owner", "administrator"]
+# HF-05 A1: reviewers grant a subject directly. A valid body for the
+# placeholder id, which is no tutor: 404 for every allowed role (nothing is
+# created).
 json = { subject_id = "00000000-0000-7000-8000-000000000001" }
 
 [[route]]

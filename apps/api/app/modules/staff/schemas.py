@@ -70,18 +70,6 @@ ProfessionalExperience = Annotated[
 ]
 
 
-class TutorListItem(BaseModel):
-    """One tutor: a user holding the ``tutor`` role, with the account's
-    contact fields."""
-
-    user_id: uuid.UUID
-    username: str
-    display_name: str
-    state: UserState
-    email: str | None
-    phone: str | None
-
-
 class TeachingSubject(BaseModel):
     """A subject the tutor holds an **approved** qualification for (#44 D1).
     A subject deactivated later stays, with ``subject_is_active`` false."""
@@ -93,8 +81,34 @@ class TeachingSubject(BaseModel):
     subject_is_active: bool
 
 
+class TutorListItem(BaseModel):
+    """One tutor: a user holding the ``tutor`` role, with the account's
+    contact fields."""
+
+    user_id: uuid.UUID
+    username: str
+    display_name: str
+    state: UserState
+    email: str | None
+    phone: str | None
+    teaching_subjects: list[TeachingSubject] = Field(
+        default_factory=list,
+        description=(
+            "The subjects of the tutor's approved qualifications, by the"
+            " level's order, then the subject name (HF-05 D1)."
+        ),
+    )
+
+
 class TutorDetail(TutorListItem):
     """One tutor profile, with what the caller may edit."""
+
+    teaching_subjects: list[TeachingSubject] = Field(
+        description=(
+            "The subjects of the tutor's approved qualifications, by the"
+            " level's order, then the subject name."
+        )
+    )
 
     professional_experience: str | None
     version: int = Field(
@@ -107,12 +121,6 @@ class TutorDetail(TutorListItem):
         description=(
             "The fields the caller may change, sorted; empty: read only."
             " Sending another field is 403 permission_denied."
-        )
-    )
-    teaching_subjects: list[TeachingSubject] = Field(
-        description=(
-            "The subjects of the tutor's approved qualifications, by the"
-            " level's order, then the subject name."
         )
     )
 
@@ -160,6 +168,15 @@ type QualificationStatusFilter = Literal[
 
 class QualificationCreate(BaseModel):
     """A tutor's request to teach one subject (the level follows from it)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    subject_id: uuid.UUID
+
+
+class QualificationGrant(BaseModel):
+    """A reviewer grants a tutor one subject directly (HF-05 A1): approved
+    at once, with no approval request."""
 
     model_config = ConfigDict(extra="forbid")
 

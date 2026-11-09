@@ -27,8 +27,14 @@ from tests.integration.test_class_session_create import (
     new_room,
     new_subject,
     new_tutor,
+    time_off,
 )
-from tests.integration.test_tutor_suggestions import prefer_room, row_counts, teaching
+from tests.integration.test_tutor_suggestions import (
+    prefer_room,
+    row_counts,
+    set_limits,
+    teaching,
+)
 
 SESSIONS = "/api/v1/class-sessions"
 
@@ -174,6 +180,49 @@ def test_an_inactive_subject_still_gets_suggestions(module_seeded_url, client, c
     assert listed(replacements(client, cookie, session_id)) == [tutor]
 
 
+# --- HF-05 B1, B2: counts and warnings -----------------------------------------------
+
+
+def test_the_counts_leave_out_the_current_tutor(
+    module_seeded_url, client, cookie, subject
+):
+    current = new_tutor(module_seeded_url, qualified_for=[subject])
+    free = new_tutor(module_seeded_url, qualified_for=[subject])
+    busy = new_tutor(module_seeded_url, qualified_for=[subject])
+    away = new_tutor(module_seeded_url, qualified_for=[subject])
+    teaching(module_seeded_url, busy, at(MONDAY, "10:30"), 60, "confirmed")
+    time_off(module_seeded_url, away, MONDAY)
+    session_id = session_for(module_seeded_url, subject, tutor=current)
+
+    body = replacements(client, cookie, session_id).json()
+
+    assert [uuid.UUID(i["tutor"]["id"]) for i in body["items"]] == [free]
+    assert (
+        body["qualified_count"],
+        body["eligible_count"],
+        body["busy_count"],
+        body["unavailable_count"],
+    ) == (3, 1, 1, 1)
+
+
+def test_the_warnings_leave_out_the_session_itself(
+    module_seeded_url, client, cookie, subject
+):
+    current = new_tutor(module_seeded_url, qualified_for=[subject])
+    other = new_tutor(module_seeded_url, qualified_for=[subject])
+    set_limits(module_seeded_url, other, daily=90)
+    # 60 minutes already that day; the session's own 60 make 120 > 90.
+    teaching(module_seeded_url, other, at(MONDAY, "14:00"), 60, "confirmed")
+    session_id = session_for(module_seeded_url, subject, tutor=current)
+
+    [item] = replacements(client, cookie, session_id).json()["items"]
+
+    assert uuid.UUID(item["tutor"]["id"]) == other
+    assert [
+        (w["code"], w["details"]["scheduled_minutes"]) for w in item["warnings"]
+    ] == [("daily_limit_exceeded", 120)]
+
+
 # --- E3: errors ----------------------------------------------------------------------
 
 
@@ -226,6 +275,8 @@ def test_statement_budget(module_seeded_url, subject, count):
     for _ in range(count):
         tutor = new_tutor(module_seeded_url, qualified_for=[subject])
         prefer_room(module_seeded_url, tutor, room)
+        # A limit: each item also reads its sessions for the warnings (B2).
+        set_limits(module_seeded_url, tutor, daily=600)
     session_id = session_for(
         module_seeded_url, subject, state="unassigned", classroom_id=room
     )
@@ -236,7 +287,8 @@ def test_statement_budget(module_seeded_url, subject, count):
     statements, result = count_statements(module_seeded_url, call)
 
     assert result.eligible_count == count
-    assert statements <= 8 + 6 * count
+    # HF-05 B3: one more statement per returned item for the warnings.
+    assert statements <= 8 + 7 * count
 
 
 def test_nothing_is_written(module_seeded_url, client, cookie, subject):

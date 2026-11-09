@@ -35,7 +35,8 @@ same for subjects, with their level (#44 tutor qualifications);
 :func:`subject_name_columns` is an unexecuted ``(id, name)`` select another
 module joins (#80); :func:`subject_sort_columns` and
 :func:`education_level_sort_columns` add the levels' names and sort order
-(#89 price catalog). :func:`periods_overlapping` gives the active periods of
+(#89 price catalog); :func:`subject_reference_columns` adds the subject's
+active flag (HF-05 tutors list). :func:`periods_overlapping` gives the active periods of
 one type over a date range (#80 E3).
 
 **Writes** (``catalog.manage``): create and ``PATCH`` (rename, reorder,
@@ -457,6 +458,22 @@ def subject_sort_columns() -> Select[uuid.UUID, str, uuid.UUID, str, int]:
     return select(
         Subject.id,
         Subject.name,
+        Subject.education_level_id,
+        EducationLevel.name.label("education_level_name"),
+        EducationLevel.sort_order.label("education_level_sort_order"),
+    ).join(EducationLevel, EducationLevel.id == Subject.education_level_id)
+
+
+def subject_reference_columns() -> Select[uuid.UUID, str, bool, uuid.UUID, str, int]:
+    """``SELECT id, name, is_active, education_level_id,
+    education_level_name, education_level_sort_order`` of every subject,
+    **not executed** (HF-05 D1, the :func:`subject_sort_columns` pattern
+    with the active flag): the tutors list joins it as a subquery so a
+    page's teaching subjects come in one statement."""
+    return select(
+        Subject.id,
+        Subject.name,
+        Subject.is_active,
         Subject.education_level_id,
         EducationLevel.name.label("education_level_name"),
         EducationLevel.sort_order.label("education_level_sort_order"),

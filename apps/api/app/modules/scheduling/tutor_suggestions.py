@@ -18,52 +18,92 @@ for #52 / #55). In order:
 5. the workload: **one statement** with conditional sums over the slot's
    local ISO week and date;
 6. the preferred classrooms, per candidate, only when the slot has a room;
-7. the ranking, then the limits (``staff.service.teaching_limits``) for the
-   returned items only.
+7. the ranking, then for the returned items only the limits
+   (``staff.service.teaching_limits``) and the workload ``warnings`` a
+   create would return (HF-05 B2,
+   ``workload_sessions.warnings_for_limits``: the counted sessions, read
+   only when a limit is set). Display only: they never reorder.
 
-At most ``8 + 6 × C`` statements (``C`` the candidates after step 2).
-Read-only: no lock, no audit event, nothing written (#51 F3). The routes'
-reads (:func:`suggest_for_slot`, :func:`suggest_replacements`) add the
-``422`` / ``404`` / ``409`` checks.
+The response also counts the qualified candidates (step 2) that are busy
+(step 3) or unavailable (step 4), from the sets already built (HF-05 B1,
+``eligibility.suggestion_counts``). At most ``8 + 7 × C`` statements (``C``
+the candidates after step 2). Read-only: no lock, no audit event, nothing
+written (#51 F3). The routes' reads (:func:`suggest_for_slot`,
+:func:`suggest_replacements`) add the ``422`` / ``404`` / ``409`` checks.
+
+**A series** (HF-05 C, :func:`suggest_for_series`): after the ``422``
+checks of ``POST /class-series`` (rule, ``starts_on_in_past``,
+``crosses_local_date``) and the references, the rule is expanded over
+``[starts_on local midnight, + horizon weeks)``; occurrences before now and
+on a center closure are dropped. Steps 1-2 as above; the overlap is one
+statement over ``[first start, last end)`` checked in memory against every
+occurrence (``eligibility.series_is_busy``); availability is
+``staff.service.tutor_availability_rules_many`` (two statements for all
+tutors) checked for every occurrence (``eligibility.series_is_available``);
+steps 5-7 at the **first** occurrence, without warnings (``[]``, as
+``ClassSeriesCreated.warnings``). At most ``10 + 6 × C`` statements,
+whatever the number of occurrences. Advisory: ``POST /class-series`` checks
+``[now, horizon)`` again and the nightly job checks later occurrences.
 
 Every function runs in the caller's Unit of Work and never commits.
 """
 
 import uuid
-from collections.abc import Collection
-from datetime import date, datetime, timedelta
+from collections.abc import Collection, Mapping
+from datetime import datetime, time, timedelta
 from typing import Final
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import clock
 from app.core.authz import RecordNotFoundError
 from app.core.errors import FieldError
 from app.modules.administration import service as administration
 from app.modules.catalog import service as catalog
 from app.modules.identity import service as identity
+from app.modules.identity.schemas import AccountReference
 from app.modules.scheduling.eligibility import (
+    NO_CLOSED_DATES,
     Candidate,
+    Interval,
+    SuggestionCounts,
     local_day_bounds,
     local_week_bounds,
     rank_candidates,
+    series_is_available,
+    series_is_busy,
+    suggestion_counts,
 )
 from app.modules.scheduling.errors import (
     ClassSessionNotAssignableError,
     InvalidSessionTimesError,
     SessionValidationError,
 )
+from app.modules.scheduling.materialize import closed_dates
 from app.modules.scheduling.models import ClassSession
+from app.modules.scheduling.recurrence import (
+    Occurrence,
+    RecurrenceFields,
+    build_rrule,
+    expand,
+    horizon_end,
+    to_instant,
+)
 from app.modules.scheduling.schemas import (
     TUTOR_SUGGESTIONS_DEFAULT_LIMIT,
+    SeriesTutorSuggestionList,
+    SeriesTutorSuggestionQuery,
     SessionTutor,
     TutorSuggestion,
     TutorSuggestionList,
     TutorSuggestionQuery,
 )
+from app.modules.scheduling.series import check_series_rule
 from app.modules.scheduling.states import TUTOR_OCCUPYING_STATES, SessionState
 from app.modules.scheduling.times import validate_session_bounds
+from app.modules.scheduling.workload_sessions import warnings_for_limits
 from app.modules.staff import service as staff
 
 TUTOR_ROLE: Final = "tutor"
@@ -72,9 +112,6 @@ NOT_ASSIGNABLE_STATES: Final = frozenset(
     {SessionState.COMPLETED, SessionState.CANCELLED, SessionState.SKIPPED_CLOSURE}
 )
 """A session in these states takes no tutor (#51 E3)."""
-NO_CLOSED_DATES: Final[frozenset[date]] = frozenset()
-"""Center closures never drop a tutor (#51 B2): the create/offer path
-reports them as ``center_closed``."""
 _ONE_MICROSECOND: Final = timedelta(microseconds=1)
 
 _OCCUPYING: Final = sorted(state.value for state in TUTOR_OCCUPYING_STATES)
@@ -92,8 +129,12 @@ _MESSAGES: Final = {
 }
 
 
+def _field_error(location: str, field: str, code: str) -> FieldError:
+    return {"path": [location, field], "code": code, "message": _MESSAGES[code]}
+
+
 def _query_error(field: str, code: str) -> FieldError:
-    return {"path": ["query", field], "code": code, "message": _MESSAGES[code]}
+    return _field_error("query", field, code)
 
 
 def _is_naive(value: datetime) -> bool:
@@ -173,6 +214,102 @@ async def _workload(
     }
 
 
+async def _candidate_accounts(
+    session: AsyncSession,
+    subject_id: uuid.UUID,
+    exclude_tutor_user_ids: Collection[uuid.UUID],
+) -> dict[uuid.UUID, AccountReference]:
+    """Steps 1 and 2: the active tutor accounts holding an approved
+    qualification for the subject, minus the excluded tutors (two
+    statements, the second skipped without a qualified user)."""
+    qualified = await staff.qualified_tutor_ids(session, subject_id)
+    candidate_ids = set(qualified) - set(exclude_tutor_user_ids)
+    return {
+        user_id: account
+        for user_id, account in (
+            await identity.get_account_references(session, candidate_ids)
+        ).items()
+        if account.state == ACTIVE and TUTOR_ROLE in account.roles
+    }
+
+
+async def _ranked_items(
+    session: AsyncSession,
+    accounts: Mapping[uuid.UUID, AccountReference],
+    available: Collection[uuid.UUID],
+    *,
+    starts_at: datetime,
+    ends_at: datetime,
+    zone: str,
+    classroom_id: uuid.UUID | None,
+    exclude_session_id: uuid.UUID | None,
+    limit: int,
+    with_warnings: bool,
+) -> list[TutorSuggestion]:
+    """Steps 5-7 for the eligible tutors at the slot ``(starts_at,
+    ends_at)``: the workload (one statement), the preferred classrooms (one
+    per tutor, only with a classroom), the ranking, then for the returned
+    items only the limits (one each) and, ``with_warnings``, the workload
+    warnings of a create (HF-05 B2; one more each, only when a limit is
+    set)."""
+    workload = await _workload(session, available, starts_at, zone, exclude_session_id)
+    candidates = []
+    for user_id in available:
+        prefers = classroom_id is not None and classroom_id in (
+            await staff.preferred_classroom_ids(session, user_id)
+        )
+        weekly, daily = workload.get(user_id, (0, 0))
+        candidates.append(
+            Candidate(
+                user_id=user_id,
+                display_name=accounts[user_id].display_name,
+                weekly_minutes=weekly,
+                daily_minutes=daily,
+                prefers_classroom=prefers,
+            )
+        )
+    items = []
+    for rank, candidate in enumerate(rank_candidates(candidates)[:limit], start=1):
+        limits = await staff.teaching_limits(session, candidate.user_id)
+        warnings = (
+            await warnings_for_limits(
+                session,
+                candidate.user_id,
+                limits,
+                starts_at,
+                ends_at,
+                zone,
+                exclude_session_id=exclude_session_id,
+            )
+            if with_warnings
+            else []
+        )
+        items.append(
+            TutorSuggestion(
+                rank=rank,
+                tutor=SessionTutor(
+                    id=candidate.user_id, display_name=candidate.display_name
+                ),
+                weekly_minutes=candidate.weekly_minutes,
+                daily_minutes=candidate.daily_minutes,
+                weekly_limit_minutes=limits.weekly_limit_minutes,
+                daily_limit_minutes=limits.daily_limit_minutes,
+                prefers_classroom=candidate.prefers_classroom,
+                warnings=warnings,
+            )
+        )
+    return items
+
+
+def _counted(counts: SuggestionCounts) -> dict[str, int]:
+    return {
+        "eligible_count": counts.eligible,
+        "qualified_count": counts.qualified,
+        "busy_count": counts.busy,
+        "unavailable_count": counts.unavailable,
+    }
+
+
 async def suggest_tutors(
     session: AsyncSession,
     *,
@@ -184,20 +321,13 @@ async def suggest_tutors(
     exclude_tutor_user_ids: Collection[uuid.UUID] = frozenset(),
     limit: int = TUTOR_SUGGESTIONS_DEFAULT_LIMIT,
 ) -> TutorSuggestionList:
-    """The eligible tutors for the slot in ranking order (the module
-    docstring; the rules in :mod:`~app.modules.scheduling.eligibility`). The
-    caller has validated the bounds and the references. Never writes."""
-    qualified = await staff.qualified_tutor_ids(session, subject_id)
-    candidate_ids = set(qualified) - set(exclude_tutor_user_ids)
-    accounts = {
-        user_id: account
-        for user_id, account in (
-            await identity.get_account_references(session, candidate_ids)
-        ).items()
-        if account.state == ACTIVE and TUTOR_ROLE in account.roles
-    }
+    """The eligible tutors for the slot in ranking order, with the counts of
+    the others (the module docstring; the rules in
+    :mod:`~app.modules.scheduling.eligibility`). The caller has validated
+    the bounds and the references. Never writes."""
+    accounts = await _candidate_accounts(session, subject_id, exclude_tutor_user_ids)
     if not accounts:
-        return TutorSuggestionList(items=[], eligible_count=0)
+        return TutorSuggestionList(items=[], **_counted(suggestion_counts((), (), ())))
 
     busy = await _busy_tutors(
         session, accounts.keys(), starts_at, ends_at, exclude_session_id
@@ -219,67 +349,113 @@ async def suggest_tutors(
         )
         if result.available:
             available.append(user_id)
+    counts = suggestion_counts(accounts.keys(), busy, available)
     if not available:
-        return TutorSuggestionList(items=[], eligible_count=0)
+        return TutorSuggestionList(items=[], **_counted(counts))
 
-    workload = await _workload(session, available, starts_at, zone, exclude_session_id)
-    candidates = []
-    for user_id in available:
-        prefers = classroom_id is not None and classroom_id in (
-            await staff.preferred_classroom_ids(session, user_id)
+    items = await _ranked_items(
+        session,
+        accounts,
+        available,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        zone=zone,
+        classroom_id=classroom_id,
+        exclude_session_id=exclude_session_id,
+        limit=limit,
+        with_warnings=True,
+    )
+    return TutorSuggestionList(items=items, **_counted(counts))
+
+
+# --- A series (HF-05 C) --------------------------------------------------------------
+
+
+async def _session_intervals(
+    session: AsyncSession,
+    tutor_ids: Collection[uuid.UUID],
+    starts_at: datetime,
+    ends_at: datetime,
+) -> dict[uuid.UUID, list[Interval]]:
+    """Every occupying session as tutor of ``tutor_ids`` overlapping
+    ``[starts_at, ends_at)``, as intervals by tutor (one statement)."""
+    rows = await session.execute(
+        select(
+            ClassSession.tutor_user_id, ClassSession.starts_at, ClassSession.ends_at
+        ).where(
+            ClassSession.tutor_user_id.in_(list(tutor_ids)),
+            ClassSession.state.in_(_OCCUPYING),
+            ClassSession.starts_at < ends_at,
+            ClassSession.ends_at > starts_at,
         )
-        weekly, daily = workload.get(user_id, (0, 0))
-        candidates.append(
-            Candidate(
-                user_id=user_id,
-                display_name=accounts[user_id].display_name,
-                weekly_minutes=weekly,
-                daily_minutes=daily,
-                prefers_classroom=prefers,
-            )
+    )
+    found: dict[uuid.UUID, list[Interval]] = {}
+    for tutor_id, start, end in rows:
+        if tutor_id is not None:
+            found.setdefault(tutor_id, []).append((start, end))
+    return found
+
+
+async def _series_occurrences(
+    session: AsyncSession,
+    query: SeriesTutorSuggestionQuery,
+    fields: RecurrenceFields,
+    zone: str,
+    horizon_weeks: int,
+) -> list[Occurrence]:
+    """C3: the rule's occurrences in ``[starts_on local midnight, +
+    horizon_weeks)`` that start after now and are not on a center closure
+    (one statement for the closures, none without an occurrence)."""
+    window_start = to_instant(datetime.combine(query.starts_on, time()), zone)
+    now = clock.now()
+    occurrences = [
+        occurrence
+        for occurrence in expand(
+            build_rrule(fields),
+            starts_on=query.starts_on,
+            start_time=query.start_time,
+            duration_minutes=query.duration_minutes,
+            zone=zone,
+            window_start=window_start,
+            window_end=horizon_end(window_start, horizon_weeks),
         )
-    ranked = rank_candidates(candidates)
-    items = []
-    for rank, candidate in enumerate(ranked[:limit], start=1):
-        limits = await staff.teaching_limits(session, candidate.user_id)
-        items.append(
-            TutorSuggestion(
-                rank=rank,
-                tutor=SessionTutor(
-                    id=candidate.user_id, display_name=candidate.display_name
-                ),
-                weekly_minutes=candidate.weekly_minutes,
-                daily_minutes=candidate.daily_minutes,
-                weekly_limit_minutes=limits.weekly_limit_minutes,
-                daily_limit_minutes=limits.daily_limit_minutes,
-                prefers_classroom=candidate.prefers_classroom,
-            )
+        if occurrence.starts_at >= now
+    ]
+    if not occurrences:
+        return []
+    closed = closed_dates(
+        await catalog.closures_between(
+            session, occurrences[0].local_date, occurrences[-1].local_date
         )
-    return TutorSuggestionList(items=items, eligible_count=len(ranked))
+    )
+    return [o for o in occurrences if o.local_date not in closed]
 
 
 # --- The routes' reads (D, E) --------------------------------------------------------
 
 
 async def _validate_references(
-    session: AsyncSession, query: TutorSuggestionQuery
+    session: AsyncSession,
+    subject_id: uuid.UUID,
+    classroom_id: uuid.UUID | None,
+    location: str,
 ) -> None:
+    """The subject and classroom ``422`` errors, all at once, on
+    ``[location, field]`` (``query`` for the slot, ``body`` for a series)."""
     errors: list[FieldError] = []
-    subject = await catalog.get_subject_for_reference(
-        session, query.subject_id, lock=False
-    )
+    subject = await catalog.get_subject_for_reference(session, subject_id, lock=False)
     if subject is None:
-        errors.append(_query_error("subject_id", "subject_unknown"))
+        errors.append(_field_error(location, "subject_id", "subject_unknown"))
     elif not (subject.is_active and subject.education_level_is_active):
-        errors.append(_query_error("subject_id", "subject_inactive"))
-    if query.classroom_id is not None:
-        classroom = (
-            await catalog.classroom_references(session, [query.classroom_id])
-        ).get(query.classroom_id)
+        errors.append(_field_error(location, "subject_id", "subject_inactive"))
+    if classroom_id is not None:
+        classroom = (await catalog.classroom_references(session, [classroom_id])).get(
+            classroom_id
+        )
         if classroom is None:
-            errors.append(_query_error("classroom_id", "classroom_unknown"))
+            errors.append(_field_error(location, "classroom_id", "classroom_unknown"))
         elif not classroom.is_active:
-            errors.append(_query_error("classroom_id", "classroom_inactive"))
+            errors.append(_field_error(location, "classroom_id", "classroom_inactive"))
     if errors:
         raise SessionValidationError(errors)
 
@@ -296,7 +472,7 @@ async def suggest_for_slot(
     except InvalidSessionTimesError as exc:
         field = _bounds_field(exc.reason, query.starts_at)
         raise SessionValidationError([_query_error(field, exc.reason)]) from None
-    await _validate_references(session, query)
+    await _validate_references(session, query.subject_id, query.classroom_id, "query")
     return await suggest_tutors(
         session,
         subject_id=query.subject_id,
@@ -329,4 +505,79 @@ async def suggest_replacements(
         exclude_session_id=row.id,
         exclude_tutor_user_ids=excluded,
         limit=limit,
+    )
+
+
+async def suggest_for_series(
+    session: AsyncSession,
+    query: SeriesTutorSuggestionQuery,
+    *,
+    horizon_weeks: int,
+) -> SeriesTutorSuggestionList:
+    """``POST /api/v1/tutor-suggestions/series`` (HF-05 C): the zone (a
+    plain read: advisory), ``422`` for the rule, ``starts_on_in_past`` and
+    ``crosses_local_date`` (as ``POST /class-series``), ``422`` references
+    (all at once), then the occurrences (C3) and the tutors free and
+    available for every one of them (C4), ranked at the first (C5). At most
+    ``10 + 6 × C`` statements whatever the number of occurrences."""
+    zone = await administration.get_center_time_zone(session)
+    fields = check_series_rule(query, zone)
+    await _validate_references(session, query.subject_id, query.classroom_id, "body")
+    occurrences = await _series_occurrences(session, query, fields, zone, horizon_weeks)
+    if not occurrences:
+        # Nothing to check: no tutor is evaluated (D2 of the engineer report).
+        return SeriesTutorSuggestionList(
+            items=[], occurrence_count=0, **_counted(suggestion_counts((), (), ()))
+        )
+    accounts = await _candidate_accounts(session, query.subject_id, frozenset())
+    if not accounts:
+        return SeriesTutorSuggestionList(
+            items=[],
+            occurrence_count=len(occurrences),
+            **_counted(suggestion_counts((), (), ())),
+        )
+
+    intervals = [(o.starts_at, o.ends_at) for o in occurrences]
+    sessions = await _session_intervals(
+        session,
+        accounts.keys(),
+        intervals[0][0],
+        max(end for _, end in intervals),
+    )
+    busy = {
+        user_id
+        for user_id in accounts
+        if series_is_busy(intervals, sessions.get(user_id, ()))
+    }
+    free = sorted(set(accounts) - busy)
+    tz = ZoneInfo(zone)
+    last_date = (intervals[-1][1] - _ONE_MICROSECOND).astimezone(tz).date()
+    rules = await staff.tutor_availability_rules_many(
+        session, free, occurrences[0].local_date, last_date
+    )
+    available = [
+        user_id
+        for user_id in free
+        if series_is_available(rules[user_id], intervals, zone)
+    ]
+    counts = suggestion_counts(accounts.keys(), busy, available)
+    first = occurrences[0]
+    items = (
+        await _ranked_items(
+            session,
+            accounts,
+            available,
+            starts_at=first.starts_at,
+            ends_at=first.ends_at,
+            zone=zone,
+            classroom_id=query.classroom_id,
+            exclude_session_id=None,
+            limit=query.limit,
+            with_warnings=False,
+        )
+        if available
+        else []
+    )
+    return SeriesTutorSuggestionList(
+        items=items, occurrence_count=len(occurrences), **_counted(counts)
     )

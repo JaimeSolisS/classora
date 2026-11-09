@@ -3,6 +3,7 @@
 import threading
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -23,7 +24,7 @@ from app.modules.identity.permissions import (
     TUTOR,
 )
 from app.modules.staff import service
-from app.modules.staff.models import TutorProfile
+from app.modules.staff.models import TutorProfile, TutorQualification
 from app.modules.staff.service import _flush_profile
 from tests.authz.assertions import assert_same_not_found
 from tests.integration.auth_support import CreatedUser, auth_client, create_user
@@ -31,9 +32,11 @@ from tests.integration.catalog_support import count_statements, get, patch
 from tests.integration.conftest import run_sql
 from tests.integration.invitation_support import sign_in
 from tests.integration.lifecycle_support import code_of, events, in_uow
+from tests.integration.test_class_session_create import new_subject
 from tests.integration.user_admin_support import unique_token
 
 TUTORS = "/api/v1/tutors"
+DECIDED = datetime(2026, 1, 5, 12, 0, tzinfo=UTC)
 
 OK = (200, None)
 DENIED = (403, "permission_denied")
@@ -171,6 +174,7 @@ def test_the_list_holds_tutors_with_contact_fields(module_seeded_url, client, ad
             "state": "active",
             "email": None,
             "phone": "55 1111 2222",
+            "teaching_subjects": [],
         },
         {
             "user_id": str(one.id),
@@ -179,6 +183,7 @@ def test_the_list_holds_tutors_with_contact_fields(module_seeded_url, client, ad
             "state": "active",
             "email": "b@example.com",
             "phone": None,
+            "teaching_subjects": [],
         },
     ]
 
@@ -267,8 +272,13 @@ def test_a_tutor_who_lost_the_role_disappears_but_the_row_stays(
 
 def test_the_list_takes_at_most_four_statements(module_seeded_url):
     token = unique_token("ts")
+    subjects = [new_subject(module_seeded_url) for _ in range(2)]
     for n in range(5):
-        new_tutor(module_seeded_url, display_name=f"{n} {token}")
+        person = new_tutor(module_seeded_url, display_name=f"{n} {token}")
+        # HF-05 D1: the page's teaching subjects are one statement, however
+        # many tutors and subjects.
+        for subject in subjects[: n % 3]:
+            qualify(module_seeded_url, person.id, subject)
     owner_principal = Principal(
         user_id=uuid.uuid4(),
         roles=frozenset({OWNER}),
@@ -287,7 +297,61 @@ def test_the_list_takes_at_most_four_statements(module_seeded_url):
     )
 
     assert page.total == 5
+    assert [len(item.teaching_subjects) for item in page.items] == [0, 1, 2, 0, 1]
     assert statements <= 4
+
+
+def qualify(
+    url: str, user_id: uuid.UUID, subject_id: uuid.UUID, status: str = "approved"
+) -> None:
+    """A qualification of ``user_id`` for ``subject_id`` in ``status``."""
+
+    async def _add(session: Any) -> None:
+        fields: dict[str, Any] = {}
+        if status != "pending":
+            fields = {"decided_at": DECIDED, "decided_by_user_id": user_id}
+        if status == "rejected":
+            fields["rejection_reason"] = "Sin certificado"
+        session.add(
+            TutorQualification(
+                tutor_user_id=user_id, subject_id=subject_id, status=status, **fields
+            )
+        )
+
+    in_uow(url, _add)
+
+
+def test_list_items_show_the_approved_subjects_as_the_detail(
+    module_seeded_url, client, coordinator
+):
+    token = unique_token("tz")
+    person = new_tutor(module_seeded_url, display_name=f"S {token}")
+    other = new_tutor(module_seeded_url, display_name=f"T {token}")
+    approved = [new_subject(module_seeded_url) for _ in range(3)]
+    for subject in approved:
+        qualify(module_seeded_url, person.id, subject)
+    for status in ("pending", "rejected"):
+        qualify(module_seeded_url, person.id, new_subject(module_seeded_url), status)
+    qualify(module_seeded_url, other.id, approved[0])
+    cookie = sign_in(client, coordinator.username)
+
+    items = get(client, cookie, TUTORS, q=token).json()["items"]
+
+    first, second = items
+    assert {s["subject_id"] for s in first["teaching_subjects"]} == {
+        str(subject) for subject in approved
+    }
+    assert (
+        first["teaching_subjects"]
+        == detail(client, cookie, person.id)["teaching_subjects"]
+    )
+    assert [s["subject_id"] for s in second["teaching_subjects"]] == [str(approved[0])]
+    # A tutor still sees only themselves, with their subjects.
+    own = get(client, sign_in(client, other.username), TUTORS).json()
+    assert [i["user_id"] for i in own["items"]] == [str(other.id)]
+    assert [s["subject_id"] for s in own["items"][0]["teaching_subjects"]] == [
+        str(approved[0])
+    ]
 
 
 # --- C4: who sees and edits what -----------------------------------------------------
