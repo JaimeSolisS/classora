@@ -240,6 +240,28 @@ describe('Combobox: filtering', () => {
     expect(status()).toBe('No matches for “enrolled”.');
   });
 
+  it('filters an account on its search text, not its label words (#548 A2)', async () => {
+    const account = { id: 'ana', name: 'ana.p · Ana P · Activo · Tutor' };
+    render({
+      load: () => Promise.resolve(page([account, JOSE])),
+      optionSearchText: (item) =>
+        item.id === 'ana' ? 'ana.p Ana P' : item.name,
+    });
+    await focus();
+    await type('tutor');
+    expect(options()).toHaveLength(0);
+    await type('ana p');
+    expect(optionNames()).toEqual(['ana.p · Ana P · Activo · Tutor']);
+  });
+
+  it('filters on the label when optionSearchText is not given', async () => {
+    const account = { id: 'ana', name: 'ana.p · Ana P · Activo · Tutor' };
+    render({ load: () => Promise.resolve(page([account, JOSE])) });
+    await focus();
+    await type('tutor');
+    expect(optionNames()).toEqual(['ana.p · Ana P · Activo · Tutor']);
+  });
+
   it('never sends a blank q', async () => {
     const load = vi.fn<Load>(() => Promise.resolve(page(ITEMS, 300)));
     render({ load });

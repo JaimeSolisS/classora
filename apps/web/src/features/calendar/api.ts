@@ -62,28 +62,41 @@ export function fetchCalendar(
   );
 }
 
-/** How many options a filter search shows. */
-export const FILTER_SEARCH_LIMIT = 10;
+/** The tutor options a picker loads at once (the endpoint's maximum). */
+export const TUTOR_OPTIONS_PAGE_SIZE = 50;
 /** The most classrooms the room filter loads (one page). */
 export const ROOMS_LIMIT = 100;
 
+/**
+ * The tutor pickers' options (#548): every tutor-role user, any state
+ * (inactive marked), or the matches for `q` (blank `q` is never sent).
+ */
 export async function searchTutorOptions(
-  q: string,
+  q: string | null,
   signal: AbortSignal,
-): Promise<FilterOption[]> {
+): Promise<OptionsPage<FilterOption>> {
+  const text = q?.trim() ?? '';
   const page = await apiCall(
     () =>
       api.GET('/api/v1/schedule/tutor-options', {
-        params: { query: { q, limit: FILTER_SEARCH_LIMIT } },
+        params: {
+          query: {
+            ...(text ? { q: text } : {}),
+            limit: TUTOR_OPTIONS_PAGE_SIZE,
+          },
+        },
         signal,
       }),
     { signal },
   );
-  return page.items.map((tutor) => ({
-    id: tutor.id,
-    name: tutor.display_name,
-    inactive: tutor.state !== 'active',
-  }));
+  return {
+    items: page.items.map((tutor) => ({
+      id: tutor.id,
+      name: tutor.display_name,
+      inactive: tutor.state !== 'active',
+    })),
+    total: page.total,
+  };
 }
 
 /** The student filter's options (#545), any status, inactive marked. */

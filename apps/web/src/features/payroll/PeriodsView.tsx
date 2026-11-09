@@ -5,6 +5,7 @@ import { Link } from 'react-router';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import { Button } from '@/components/ui/button';
+import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import {
   Table,
   TableBody,
@@ -15,7 +16,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Pagination } from '@/features/catalog/Pagination';
-import { SearchPicker } from '@/features/guardians/SearchPicker';
 import { StateBadge } from '@/features/users/admin/StateBadge';
 import { useFormatters } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
@@ -66,7 +66,11 @@ export interface PeriodsViewProps {
   onPage: (page: number) => void;
   /** The tutor picker's search (the Payroll list); null hides the picker. */
   searchTutors:
-    ((q: string, signal: AbortSignal) => Promise<PayrollTutor[]>) | null;
+    | ((
+        q: string | null,
+        signal: AbortSignal,
+      ) => Promise<OptionsPage<PayrollTutor>>)
+    | null;
   /** The chosen tutor's name, for the chip. */
   tutorName: string | null;
   onTutorName: (id: string, name: string) => void;
@@ -454,14 +458,17 @@ export function PeriodsView({
           </div>
           {searchTutors ? (
             <div className="min-w-0">
-              <SearchPicker<PayrollTutor>
+              <Combobox<PayrollTutor>
                 label={t('payroll.periods.filters.tutor')}
                 help={t('payroll.periods.filters.tutorHelp')}
                 queryKey={[...PAYROLL_PERIODS_KEY, 'tutors']}
-                search={searchTutors}
+                load={searchTutors}
                 optionId={(tutor) => tutor.user_id}
                 optionLabel={(tutor) => tutor.display_name}
-                selectedId={filters.tutor}
+                emptyText={t('combobox.emptyTutors')}
+                selected={
+                  filters.tutor ? { id: filters.tutor, label: chipName } : null
+                }
                 onSelect={(tutor) => {
                   onTutorName(tutor.user_id, tutor.display_name);
                   onFilters({ tutor: tutor.user_id });

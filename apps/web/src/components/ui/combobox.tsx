@@ -456,7 +456,8 @@ export function Combobox<T>({
               aria-label={t('combobox.toggle')}
               aria-controls={open ? ids.listbox : undefined}
               aria-expanded={open}
-              className="absolute top-1/2 right-1 flex size-7 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
+              // As tall as the field (44 px where the field is, #444 D3; #548).
+              className="absolute inset-y-0 right-0 flex w-9 items-center justify-center rounded-r-md text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
               // Keeps DOM focus in the field.
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => {

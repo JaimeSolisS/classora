@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common, fill } from '../support/catalog';
+import { comboboxField, comboboxOptions } from '../support/combobox';
 import { FIRST_RENDER_TIMEOUT_MS } from '../support/timeouts';
 
 // Overdue closeouts and closeout on behalf (#301b H3). `run.sh` inserts,
@@ -11,6 +12,8 @@ import { FIRST_RENDER_TIMEOUT_MS } from '../support/timeouts';
 // shared session:
 // 1. Agenda → "Cierres pendientes (n)" → the overdue page lists "E2E
 //    Overdue" (axe).
+// 1b. The tutor combobox (#548) lists tutors on a click; "demo tutor" +
+//    Enter filters by Demo Tutor; "E2E Overdue" stays listed (axe).
 // 2. At 390×844 the page never scrolls sideways and the table's region is
 //    visible (axe).
 // 3. "Abrir clase" → the session page; the Closeout section reads "0 de 1".
@@ -79,6 +82,36 @@ test('overdue closeouts: close out on the tutor’s behalf and approve (#301b)',
     main.getByRole('heading', { level: 1, name: overdue.title }),
   ).toBeVisible();
   const row = main.getByRole('row').filter({ hasText: SUBJECT });
+  await expect(row).toHaveCount(1);
+  expect(await axeViolations(page)).toEqual([]);
+
+  // 1b. The tutor filter (#548): a click on the empty field lists tutors
+  // before any typing; "demo tutor" finds Demo Tutor (local or server
+  // mode, whichever the tutor count gives); Enter filters by them.
+  const tutorField = comboboxField(main, overdue.filters.tutor);
+  const tutorList = comboboxOptions(main, overdue.filters.tutor);
+  await tutorField.click();
+  await expect(tutorField).toHaveAttribute('aria-expanded', 'true');
+  await expect(tutorList.getByRole('option').first()).toBeVisible();
+  await tutorField.fill('demo tutor');
+  await expect(
+    tutorList.getByRole('option', { name: TUTOR_NAME, exact: true }),
+  ).toBeVisible();
+  for (let step = 0; step < 10; step += 1) {
+    await tutorField.press('ArrowDown');
+    const active = await tutorField.getAttribute('aria-activedescendant');
+    if (
+      active &&
+      (await page.locator(`[id="${active}"]`).textContent()) === TUTOR_NAME
+    ) {
+      break;
+    }
+  }
+  await tutorField.press('Enter');
+  await expect(page).toHaveURL(
+    /\/schedule\/overdue-closeouts\?tutor=[0-9a-f-]{36}$/,
+  );
+  await expect(tutorField).toHaveValue(TUTOR_NAME);
   await expect(row).toHaveCount(1);
   expect(await axeViolations(page)).toEqual([]);
 

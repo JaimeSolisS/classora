@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn, waitFor } from 'storybook/test';
+import { expect, fn, screen, waitFor } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
 import { StoryQueryClient } from '@/test/StoryQueryClient';
@@ -21,7 +21,12 @@ const meta = {
     labelledBy: 'guardian-form-title',
     onSubmit: fn(() => Promise.resolve()),
     onReload: fn(() => Promise.resolve()),
-    searchAccounts: fn(() => Promise.resolve(ACCOUNT_OPTIONS)),
+    searchAccounts: fn(() =>
+      Promise.resolve({
+        items: ACCOUNT_OPTIONS,
+        total: ACCOUNT_OPTIONS.length,
+      }),
+    ),
   },
   render: (args) => (
     <StoryQueryClient>
@@ -51,7 +56,7 @@ export const Create: Story = {
       canvas.getByLabelText(i18n.t('guardians.fields.givenNames')),
     ).toBeVisible();
     await expect(
-      canvas.getByRole('searchbox', {
+      canvas.getByRole('combobox', {
         name: i18n.t('guardians.account.search'),
       }),
     ).toBeVisible();
@@ -70,20 +75,24 @@ export const EditWithAccount: Story = {
 
 export const AccountPickerWithArchived: Story = {
   play: async ({ canvas, userEvent, args }) => {
-    await userEvent.type(
-      canvas.getByRole('searchbox', {
+    // A click on the empty field lists the accounts (#548), no typing.
+    await userEvent.click(
+      canvas.getByRole('combobox', {
         name: i18n.t('guardians.account.search'),
       }),
-      'parent',
     );
     await waitFor(() => expect(args.searchAccounts).toHaveBeenCalled());
-    const archived = await canvas.findByRole('radio', { name: /old\.parent/ });
-    await expect(archived).toBeDisabled();
-    const available = canvas.getByRole('radio', {
-      name: /e2e\.guardians\.parent/,
-    });
-    await userEvent.click(available);
-    await expect(available).toBeChecked();
+    // The options sit in the portalled list (#545).
+    const archived = await screen.findByRole('option', { name: /old\.parent/ });
+    await expect(archived).toHaveAttribute('aria-disabled', 'true');
+    await userEvent.click(
+      screen.getByRole('option', { name: /e2e\.guardians\.parent/ }),
+    );
+    await expect(
+      await canvas.findByRole('button', {
+        name: i18n.t('guardians.account.remove'),
+      }),
+    ).toBeVisible();
   },
 };
 

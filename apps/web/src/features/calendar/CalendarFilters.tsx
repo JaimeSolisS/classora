@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Combobox } from '@/components/ui/combobox';
-import { SearchPicker } from '@/features/guardians/SearchPicker';
 import { SELECT_CLASS } from '@/features/students/styles';
 import { CALENDAR_KEY, type CalendarLoaders, type FilterOption } from './api';
 import {
@@ -16,7 +15,7 @@ import {
   type SessionKindFilter,
 } from './urlState';
 
-// The calendar's filters (#57 D6): tutor and student search pickers, a room
+// The calendar's filters (#57 D6): tutor and student comboboxes, a room
 // select, the class type and "Show cancelled". Active filters show as
 // removable chips. The tutor options come from the schedule.view route
 // (#57 E2), so Finance can filter by tutor too.
@@ -106,14 +105,20 @@ export function CalendarFilters({
         {t('scheduling.calendar.filters.label')}
       </h2>
       <div className="grid gap-4 md:grid-cols-2">
-        <SearchPicker<FilterOption>
+        <Combobox<FilterOption>
           label={t('scheduling.calendar.filters.tutor')}
           help={t('scheduling.calendar.filters.tutorHelp')}
           queryKey={[...CALENDAR_KEY, 'tutors']}
-          search={loaders.searchTutors}
+          load={loaders.searchTutors}
           optionId={(option) => option.id}
           optionLabel={label}
-          selectedId={filters.tutor}
+          optionSearchText={(option) => option.name}
+          emptyText={t('combobox.emptyTutors')}
+          selected={
+            filters.tutor
+              ? { id: filters.tutor, label: nameOf(filters.tutor) }
+              : null
+          }
           onSelect={(option) => {
             onName(option.id, label(option));
             onChange({ ...filters, tutor: option.id });

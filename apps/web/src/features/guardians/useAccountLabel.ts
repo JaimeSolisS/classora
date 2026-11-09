@@ -15,3 +15,14 @@ export function useAccountLabel() {
       : base;
   };
 }
+
+/**
+ * What an account picker's local filter matches (#548 A2): the username and
+ * the display name, the fields the server's `q` searches, not the state,
+ * role or "(archived)" words of the label.
+ */
+export function accountSearchText(
+  account: AccountOption | GuardianAccount,
+): string {
+  return `${account.username} ${account.display_name}`;
+}

@@ -4,6 +4,7 @@ import { ApiError } from '@/app/api';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
+import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import {
   Dialog,
   DialogContent,
@@ -19,14 +20,14 @@ import {
   type StudentLogin,
 } from '@/features/consent/api';
 import { ConfirmDialog } from '@/features/guardians/ConfirmDialog';
-import { SearchPicker } from '@/features/guardians/SearchPicker';
+import { accountSearchText } from '@/features/guardians/useAccountLabel';
 import { StateBadge } from '@/features/users/admin/StateBadge';
 
 // The Login account section of the student detail (#35 I1), shown when the
 // server sent `login` or the viewer holds family.manage. It shows the linked
 // account (username, display name, a state badge as text). With
 // family.manage: "Link account" (none) or "Change" open a dialog with an
-// account picker over GET /users?q= (roles shown, archived accounts
+// account combobox over GET /users (roles shown, archived accounts
 // disabled); "Remove" unlinks behind a confirmation. The account errors and
 // guardian_consent_required show inside the dialog. For a minor, help text
 // says the login works only after a linked guardian consents.
@@ -40,9 +41,9 @@ interface StudentLoginSectionProps {
   onChange: (userId: string | null) => Promise<void>;
   /** The account search (stories pass a stub). */
   searchAccounts?: (
-    q: string,
+    q: string | null,
     signal: AbortSignal,
-  ) => Promise<LoginAccountOption[]>;
+  ) => Promise<OptionsPage<LoginAccountOption>>;
 }
 
 export function StudentLoginSection({
@@ -170,9 +171,9 @@ interface LinkAccountDialogProps {
   open: boolean;
   isMinor: boolean;
   searchAccounts: (
-    q: string,
+    q: string | null,
     signal: AbortSignal,
-  ) => Promise<LoginAccountOption[]>;
+  ) => Promise<OptionsPage<LoginAccountOption>>;
   /** Links; rejects with the error to show inside the dialog. */
   onLink: (userId: string) => Promise<void>;
   onCancel: () => void;
@@ -286,14 +287,18 @@ export function LinkAccountDialog({
             className="flex flex-col gap-4"
           >
             {alert ? <ErrorAlert error={alert} /> : null}
-            <SearchPicker<LoginAccountOption>
+            <Combobox<LoginAccountOption>
               label={t('students.login.search')}
               queryKey={[...CONSENTS_QUERY_KEY, 'accounts']}
-              search={searchAccounts}
+              load={searchAccounts}
               optionId={(option) => option.id}
               optionLabel={label}
+              optionSearchText={accountSearchText}
               optionDisabled={(option) => option.state === 'archived'}
-              selectedId={account?.id ?? null}
+              emptyText={t('combobox.emptyAccounts')}
+              selected={
+                account ? { id: account.id, label: label(account) } : null
+              }
               onSelect={(option) => {
                 setAccount(option);
                 setMissing(false);

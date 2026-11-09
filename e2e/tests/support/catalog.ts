@@ -728,7 +728,10 @@ type Common = {
     };
     markers: Record<string, { label: string }>;
     // #301b: the overdue closeouts page and its Schedule link.
-    overdue: Record<'title' | 'link' | 'linkCount' | 'open', string>;
+    overdue: Record<'title' | 'link' | 'linkCount' | 'open', string> & {
+      // #548: the tutor combobox's label.
+      filters: Record<'tutor', string>;
+    };
     session: {
       title: string;
       history: string;

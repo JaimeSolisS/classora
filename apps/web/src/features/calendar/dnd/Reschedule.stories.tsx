@@ -78,7 +78,8 @@ function Week({ canSchedule }: { canSchedule: boolean }) {
       Promise.resolve<CalendarPage>(
         page([MOVABLE, OCCURRENCE, FIXED, OVERRIDDEN_ITEM]),
       ),
-    searchTutors: () => Promise.resolve(TUTOR_OPTIONS),
+    searchTutors: () =>
+      Promise.resolve({ items: TUTOR_OPTIONS, total: TUTOR_OPTIONS.length }),
     searchStudents: () =>
       Promise.resolve({
         items: STUDENT_OPTIONS,

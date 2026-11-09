@@ -11,7 +11,12 @@ import type { SessionUserBody } from '@/features/auth/session';
 import { applyLanguage, i18n } from '@/i18n';
 import type { LocalDate } from '@/lib/time';
 import { meAs, stubApi, TEST_USER, type ApiStub } from '@/test/api-stub';
-import { click } from '@/test/dom';
+import {
+  click,
+  comboboxOption,
+  comboboxOptions,
+  fieldByLabel,
+} from '@/test/dom';
 import {
   jsonResponse,
   renderApp,
@@ -468,6 +473,59 @@ describe('the Schedule page', () => {
     );
     await settle();
     expect(app.location()).toBe('/schedule?view=list&date=2026-11-10');
+  });
+
+  it('lists the tutors on a click on the empty Tutor field and filters by one (#548)', async () => {
+    stub(VIEWER, () => jsonResponse(200, { items: [], truncated: false }));
+    const tutorUrls: URL[] = [];
+    api.set({
+      'GET /api/v1/schedule/tutor-options': (request) => {
+        tutorUrls.push(new URL(request.url));
+        return jsonResponse(200, {
+          items: [
+            {
+              id: CARMEN.id,
+              display_name: CARMEN.display_name,
+              state: 'active',
+            },
+            {
+              id: '00000000-0000-4000-8000-000000057b02',
+              display_name: 'Diego Torres',
+              state: 'suspended',
+            },
+          ],
+          total: 2,
+        });
+      },
+    });
+    app = await renderApp('/schedule?view=list&date=2026-11-10', ROUTES);
+    await calendarLoaded();
+    const field = fieldByLabel(app.container, 'Tutor');
+
+    expect(field.getAttribute('role')).toBe('combobox');
+    field.focus();
+    await click(field);
+    await vi.waitFor(() => expect(comboboxOptions()).toHaveLength(2));
+
+    expect(comboboxOptions().map((o) => o.textContent)).toEqual([
+      'Carmen Ruiz',
+      'Diego Torres (inactive)',
+    ]);
+    expect(Object.fromEntries(tutorUrls[0]!.searchParams)).toEqual({
+      limit: '50',
+    });
+    await click(comboboxOption('Carmen Ruiz')!);
+    await settle();
+
+    expect(app.location()).toBe(
+      `/schedule?view=list&date=2026-11-10&tutor=${CARMEN.id}`,
+    );
+    expect(field.value).toBe('Carmen Ruiz');
+    await vi.waitFor(() =>
+      expect(sessionUrls().at(-1)!.searchParams.get('tutor_user_id')).toBe(
+        CARMEN.id,
+      ),
+    );
   });
 
   it('shows the truncated notice', async () => {

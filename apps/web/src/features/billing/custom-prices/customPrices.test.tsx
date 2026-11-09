@@ -2,7 +2,6 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionUserBody } from '@/features/auth/session';
 import { problemWith } from '@/features/academics/testing';
-import { PICKER_DEBOUNCE_MS } from '@/features/guardians/SearchPicker';
 import { applyLanguage } from '@/i18n';
 import {
   meAs,
@@ -150,25 +149,14 @@ async function renderAt(path: string) {
 }
 
 /**
- * Types into a picker: the student/target combobox (#545) loads its first
- * page on focus and filters it; a SearchPicker (the family filter) waits
- * for its debounced radios.
+ * Types into a combobox (#545, #548): it loads its first page on focus and
+ * filters it.
  */
 async function search(root: ParentNode, label: string, q: string) {
   const field = input(root, label);
-  if (field.getAttribute('role') === 'combobox') {
-    act(() => field.focus());
-    setFieldValue(field, q);
-    await settleUntil(() => comboboxOptions().length > 0);
-    return;
-  }
+  act(() => field.focus());
   setFieldValue(field, q);
-  await new Promise((resolve) => setTimeout(resolve, PICKER_DEBOUNCE_MS + 30));
-  await settleUntil(() =>
-    [...root.querySelectorAll('fieldset input[type="radio"]')].some(
-      (radio) => (radio as HTMLInputElement).value.length > 20,
-    ),
-  );
+  await settleUntil(() => comboboxOptions().length > 0);
 }
 
 async function openAdd() {

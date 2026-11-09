@@ -13,6 +13,8 @@ import {
 import {
   alerts,
   click,
+  comboboxOption,
+  comboboxOptions,
   fieldByLabel,
   labelled,
   setFieldValue,
@@ -26,7 +28,13 @@ import {
   type RenderedApp,
 } from '@/test/render-app';
 import { PAYROLL_PERIODS_KEY, UNRESOLVED_KEY } from './api';
-import { SETTINGS_OFF, SETTINGS_ON, TUTOR_ID } from './fixtures';
+import {
+  SETTINGS_OFF,
+  SETTINGS_ON,
+  TUTOR_HOURLY,
+  TUTOR_ID,
+  TUTORS_PAGE,
+} from './fixtures';
 import {
   ADMIN_ID,
   ALL_LINES,
@@ -321,6 +329,35 @@ describe('period list (B)', () => {
     await settleUntil(
       () => app!.location() === '/payroll/periods?status=finalized',
     );
+  });
+
+  it('the tutor filter lists the Payroll tutors on a click and writes the URL (#548)', async () => {
+    const tutorUrls: URL[] = [];
+    stub({
+      'GET /api/v1/payroll/tutors': (request) => {
+        tutorUrls.push(new URL(request.url));
+        return jsonResponse(200, TUTORS_PAGE);
+      },
+    });
+    await open('/payroll/periods?page=3');
+    await settleUntil(() => rows().length === 3);
+    const field = fieldByLabel(main(), 'Tutor');
+
+    expect(field.getAttribute('role')).toBe('combobox');
+    field.focus();
+    await click(field);
+    await settleUntil(() => comboboxOptions().length === 3);
+    expect(Object.fromEntries(tutorUrls[0]!.searchParams)).toEqual({
+      limit: '100',
+    });
+    await click(comboboxOption(TUTOR_HOURLY.display_name)!);
+
+    await settleUntil(
+      () =>
+        app!.location() === `/payroll/periods?tutor=${TUTOR_HOURLY.user_id}`,
+    );
+    expect(text()).toContain(`Tutor: ${TUTOR_HOURLY.display_name}`);
+    expect(field.value).toBe(TUTOR_HOURLY.display_name);
   });
 
   it('says payroll is off, with the Settings link, when it is', async () => {

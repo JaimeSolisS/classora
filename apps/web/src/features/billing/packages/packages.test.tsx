@@ -2,7 +2,6 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionUserBody } from '@/features/auth/session';
 import { problemWith } from '@/features/academics/testing';
-import { PICKER_DEBOUNCE_MS } from '@/features/guardians/SearchPicker';
 import { applyLanguage } from '@/i18n';
 import {
   meAs,
@@ -113,6 +112,7 @@ const familiesPage = {
 let listUrls: URL[] = [];
 let productUrls: URL[] = [];
 let chargeUrls: URL[] = [];
+let familyUrls: URL[] = [];
 
 function stub(
   routes: Record<string, Responder | Responder[]> = {},
@@ -139,7 +139,10 @@ function stub(
     'GET /api/v1/students': () => jsonResponse(200, studentsPage),
     [`GET /api/v1/students/${STUDENT_ANA.id}`]: () =>
       jsonResponse(200, { ...studentsPage.items[0] }),
-    'GET /api/v1/families': () => jsonResponse(200, familiesPage),
+    'GET /api/v1/families': (request) => {
+      familyUrls.push(new URL(request.url));
+      return jsonResponse(200, familiesPage);
+    },
     [`GET /api/v1/families/${FAMILY_LOPEZ.id}`]: () =>
       jsonResponse(200, { ...familiesPage.items[0] }),
     [`GET /api/v1/billing/packages/${PACKAGE_ACTIVE.id}`]: () =>
@@ -191,25 +194,14 @@ async function renderAt(path: string) {
 }
 
 /**
- * Types into a picker: the student/target combobox (#545) loads its first
- * page on focus and filters it; a SearchPicker (the family filter) waits
- * for its debounced radios.
+ * Types into a combobox (#545, #548): it loads its first page on focus and
+ * filters it.
  */
 async function search(root: ParentNode, label: string, q: string) {
   const field = input(root, label);
-  if (field.getAttribute('role') === 'combobox') {
-    act(() => field.focus());
-    setFieldValue(field, q);
-    await settleUntil(() => comboboxOptions().length > 0);
-    return;
-  }
+  act(() => field.focus());
   setFieldValue(field, q);
-  await new Promise((resolve) => setTimeout(resolve, PICKER_DEBOUNCE_MS + 30));
-  await settleUntil(() =>
-    [...root.querySelectorAll('fieldset input[type="radio"]')].some(
-      (radio) => (radio as HTMLInputElement).value.length > 20,
-    ),
-  );
+  await settleUntil(() => comboboxOptions().length > 0);
 }
 
 async function openSell() {
@@ -227,6 +219,7 @@ beforeEach(() => {
   applyLanguage('en');
   listUrls = [];
   productUrls = [];
+  familyUrls = [];
   chargeUrls = [];
   vi.useFakeTimers({ toFake: ['Date'] });
   // 12:00 on 2026-10-20 in Mexico City.
@@ -309,7 +302,7 @@ describe('the sold list (C1, C2)', () => {
     await click(comboboxOption('Ana López')!);
     await settleUntil(() => listUrls.length >= 2);
     await search(main(), 'Search family', 'López');
-    await click(choice(main(), 'Familia López'));
+    await click(comboboxOption('Familia López')!);
     await settleUntil(() => listUrls.length >= 3);
 
     expect(app!.location()).toBe(
@@ -324,6 +317,28 @@ describe('the sold list (C1, C2)', () => {
     await settleUntil(() => listUrls.length >= 4);
     expect(app!.location()).toBe(
       `/billing/packages?student_id=${STUDENT_ANA.id}`,
+    );
+  });
+
+  it('lists the families on a click on the empty family filter (#548)', async () => {
+    stub();
+    await renderAt('/billing/packages');
+    const field = input(main(), 'Search family');
+
+    act(() => field.focus());
+    await click(field);
+    await settleUntil(() => comboboxOption('Familia López'));
+
+    expect(field.getAttribute('aria-expanded')).toBe('true');
+    const request = familyUrls.at(-1)!.searchParams;
+    expect(request.has('q')).toBe(false);
+    expect(request.get('status')).toBe('all');
+    expect(request.get('limit')).toBe('100');
+
+    await click(comboboxOption('Familia López')!);
+    await settleUntil(() => app!.location().includes('family_id='));
+    expect(app!.location()).toBe(
+      `/billing/packages?family_id=${FAMILY_LOPEZ.id}`,
     );
   });
 

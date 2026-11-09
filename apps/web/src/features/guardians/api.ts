@@ -25,8 +25,6 @@ export type GuardianStatusFilter = 'active' | 'inactive' | 'all';
 
 /** Rows per page of the guardian list (the API default). */
 export const GUARDIANS_PAGE_SIZE = 25;
-/** How many results a picker shows. */
-export const PICKER_LIMIT = 10;
 
 /** Every cached guardian query (list, detail and picker searches). */
 export const GUARDIANS_QUERY_KEY = ['guardians'] as const;
@@ -86,25 +84,10 @@ export function fetchGuardian(
   );
 }
 
-/** Up to 10 active guardians matching `q` (the link dialog's picker). */
-export async function searchActiveGuardians(
-  q: string,
-  signal: AbortSignal,
-): Promise<GuardianListItem[]> {
-  const page = await apiCall(
-    () =>
-      api.GET('/api/v1/guardians', {
-        params: { query: { q, status: 'active', limit: PICKER_LIMIT } },
-        signal,
-      }),
-    { signal },
-  );
-  return page.items;
-}
-
 /**
- * The family dialog's guardian combobox (#545): the active guardians, or the
- * matches for `q` (blank `q` is never sent).
+ * The active guardians, or the matches for `q` (blank `q` is never sent):
+ * the family dialog's guardian combobox (#545) and the student's "Link
+ * guardian" dialog (#548).
  */
 export async function fetchGuardianOptions(
   q: string | null,
@@ -129,22 +112,30 @@ export async function fetchGuardianOptions(
 }
 
 /**
- * Up to 10 accounts holding the guardian role that match `q` (the account
- * picker). Every family.manage holder also holds user.view.
+ * The accounts holding the guardian role, or the matches for `q` (the
+ * account picker, #548; blank `q` is never sent). Every family.manage
+ * holder also holds user.view.
  */
 export async function searchGuardianAccounts(
-  q: string,
+  q: string | null,
   signal: AbortSignal,
-): Promise<AccountOption[]> {
+): Promise<OptionsPage<AccountOption>> {
+  const text = q?.trim() ?? '';
   const page = await apiCall(
     () =>
       api.GET('/api/v1/users', {
-        params: { query: { q, role: 'guardian', limit: PICKER_LIMIT } },
+        params: {
+          query: {
+            ...(text ? { q: text } : {}),
+            role: 'guardian',
+            limit: COMBOBOX_PAGE_SIZE,
+          },
+        },
         signal,
       }),
     { signal },
   );
-  return page.items;
+  return { items: page.items, total: page.total };
 }
 
 export function createGuardian(body: GuardianCreate): Promise<GuardianDetail> {

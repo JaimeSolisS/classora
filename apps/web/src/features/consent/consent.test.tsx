@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyLanguage } from '@/i18n';
 import type { SessionUserBody } from '@/features/auth/session';
 import { JOSE } from '@/features/students/fixtures';
-import { PICKER_DEBOUNCE_MS } from '@/features/guardians/SearchPicker';
 import {
   meAs,
   problem,
@@ -12,7 +11,7 @@ import {
   type ApiStub,
   type Responder,
 } from '@/test/api-stub';
-import { click, fieldByLabel, typeInto } from '@/test/dom';
+import { click, comboboxOptions, fieldByLabel, typeInto } from '@/test/dom';
 import {
   buttonNamed,
   jsonResponse,
@@ -139,13 +138,13 @@ function choose(element: HTMLSelectElement, value: string) {
   });
 }
 
-async function afterDebounce() {
-  await act(async () => {
-    await new Promise((resolve) =>
-      setTimeout(resolve, PICKER_DEBOUNCE_MS + 30),
-    );
-  });
-  await settle();
+/** The open combobox option whose text contains `text` (#548). */
+function option(text: string): HTMLElement {
+  const found = comboboxOptions().find((o) => o.textContent?.includes(text));
+  if (!found) {
+    throw new Error(`No option "${text}"`);
+  }
+  return found;
 }
 
 beforeEach(() => {
@@ -446,15 +445,31 @@ describe('login account (I1)', () => {
     await click(buttonNamed(dialog()!, 'Link'));
     expect(dialog()!.textContent).toContain('Choose an account.');
 
-    typeInto(
-      fieldByLabel(dialog()!, 'Search accounts by username or name'),
-      'jose',
+    const picker = fieldByLabel(
+      dialog()!,
+      'Search accounts by username or name',
     );
-    await afterDebounce();
-    const archived = radio(dialog()!, 'jose.old');
-    expect(archived.disabled).toBe(true);
-    expect(dialog()!.textContent).toContain('Student');
-    await click(radio(dialog()!, 'jose.nunez'));
+    expect(picker.getAttribute('role')).toBe('combobox');
+    // A click on the empty field lists every account (#548 C2): no q.
+    await click(picker);
+    await settle();
+    expect(comboboxOptions()).toHaveLength(2);
+    expect(api.requests.filter((r) => r.path === '/api/v1/users')).toHaveLength(
+      1,
+    );
+    expect(
+      new URL(
+        api.fetch.mock.calls
+          .map(([request]) => request.url)
+          .find((url) => url.includes('/api/v1/users'))!,
+      ).search,
+    ).toBe('?limit=100');
+    typeInto(picker, 'jose');
+    await settle();
+    const archived = option('jose.old');
+    expect(archived.getAttribute('aria-disabled')).toBe('true');
+    expect(archived.textContent).toContain('Student');
+    await click(option('jose.nunez'));
     await click(buttonNamed(dialog()!, 'Link'));
     expect(dialog()!.querySelector('[role="alert"]')?.textContent).toContain(
       'The student is a minor and needs consent from a linked guardian.',

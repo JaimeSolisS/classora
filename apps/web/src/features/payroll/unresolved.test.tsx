@@ -11,7 +11,14 @@ import {
   type ApiStub,
   type Responder,
 } from '@/test/api-stub';
-import { alerts, click, labelled, setFieldValue } from '@/test/dom';
+import {
+  alerts,
+  click,
+  comboboxOption,
+  comboboxOptions,
+  labelled,
+  setFieldValue,
+} from '@/test/dom';
 import {
   buttonNamed,
   jsonResponse,
@@ -267,13 +274,19 @@ describe('filters in the URL (C1)', () => {
     expect(app!.location()).toBe('/payroll/unresolved?reason=no_pay_terms');
   });
 
-  it('the picker searches the Payroll list and sets the tutor', async () => {
+  it('the picker lists the Payroll tutors on a click and sets the tutor (#548)', async () => {
     const api = stub();
     await openWithRows();
-    setFieldValue(labelled<HTMLInputElement>(main(), 'Tutor'), 'ana');
-    await settleUntil(() => main().querySelector('input[type="radio"]'), 2000);
+    const field = labelled<HTMLInputElement>(main(), 'Tutor');
+    act(() => field.focus());
+    await click(field);
+    await settleUntil(() => comboboxOptions().length === 3);
     expect(api.calls(TUTORS)).toHaveLength(1);
-    await click(main().querySelector<HTMLInputElement>('input[type="radio"]')!);
+    // Local filtering (3 of 3 loaded): no request while typing.
+    setFieldValue(field, 'tutora');
+    await settleUntil(() => comboboxOptions().length === 1);
+    expect(api.calls(TUTORS)).toHaveLength(1);
+    await click(comboboxOption(TUTOR_HOURLY.display_name)!);
     await settleUntil(
       () =>
         app!.location() === `/payroll/unresolved?tutor=${TUTOR_HOURLY.user_id}`,
@@ -290,10 +303,11 @@ describe('filters in the URL (C1)', () => {
       },
     });
     await openWithRows();
-    setFieldValue(labelled<HTMLInputElement>(main(), 'Tutor'), 'ana');
-    await settleUntil(() => main().querySelector('input[type="radio"]'), 2000);
-    expect(search.searchParams.get('q')).toBe('ana');
-    expect(search.searchParams.get('state')).toBeNull();
+    const field = labelled<HTMLInputElement>(main(), 'Tutor');
+    act(() => field.focus());
+    await click(field);
+    await settleUntil(() => comboboxOptions().length > 0);
+    expect(Object.fromEntries(search.searchParams)).toEqual({ limit: '100' });
   });
 
   it('the chip and "Clear filters" remove the filters', async () => {

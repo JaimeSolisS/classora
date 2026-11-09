@@ -359,7 +359,8 @@ function render(
     fetchCalendar:
       options.fetchCalendar ??
       vi.fn(() => Promise.resolve<CalendarPage>(page(items))),
-    searchTutors: () => Promise.resolve(TUTOR_OPTIONS),
+    searchTutors: () =>
+      Promise.resolve({ items: TUTOR_OPTIONS, total: TUTOR_OPTIONS.length }),
     searchStudents: () =>
       Promise.resolve({
         items: STUDENT_OPTIONS,
