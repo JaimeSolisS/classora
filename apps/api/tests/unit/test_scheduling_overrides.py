@@ -7,7 +7,7 @@ from types import ModuleType
 from typing import Any
 
 import pytest
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from app.modules.scheduling.conflicts import CODE_ORDER, HARD, SOFT, WARNING, Conflict
 from app.modules.scheduling.models import SOFT_CODES_IN_ORDER, ClassSessionOverride
@@ -16,7 +16,13 @@ from app.modules.scheduling.overrides import (
     evaluate_override,
     overridden_codes,
 )
-from app.modules.scheduling.schemas import ClassSessionCreate, SessionOverride
+from app.modules.scheduling.schemas import (
+    ClassSessionCreate,
+    ClassSessionCreateBody,
+    CourseSessionCreate,
+    GroupSessionCreate,
+    SessionOverride,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -28,6 +34,7 @@ HOURS = Conflict(
     {"date": "2031-01-12", "opens_at": None, "closes_at": None},
 )
 UNQUALIFIED = Conflict("tutor_not_qualified", {"subject_id": "s"})
+STUDENT_ID = "0190f0f0-0000-7000-8000-000000000001"
 STUDENT = Conflict("student_overlap", {"student_id": "x", "class_session_ids": []})
 
 
@@ -188,6 +195,53 @@ def test_the_create_body_takes_an_optional_override():
         base | {"override": {"codes": ["center_closed"], "reason": " Sí "}}
     )
     assert body.override == SessionOverride(codes=["center_closed"], reason="Sí")
+
+
+@pytest.mark.parametrize(
+    "owner",
+    [
+        {"kind": "individual", "student_id": STUDENT_ID, "subject_id": STUDENT_ID},
+        {"kind": "group", "group_id": STUDENT_ID},
+        {"kind": "course", "cohort_id": STUDENT_ID},
+    ],
+)
+def test_the_create_union_keeps_the_field_paths_untagged(owner):
+    # #592: the body is discriminated on kind; an error's path never starts
+    # with the union tag (the web reads path[1] == "override").
+    adapter: TypeAdapter[Any] = TypeAdapter(ClassSessionCreateBody)
+    body = owner | {
+        "starts_at": "2031-01-06T10:00:00-06:00",
+        "ends_at": "2031-01-06T11:00:00-06:00",
+        "override": {"codes": ["center_closed"]},
+        "extra": 1,
+    }
+
+    with pytest.raises(ValidationError) as caught:
+        adapter.validate_python(body)
+
+    assert sorted((e["loc"], e["type"]) for e in caught.value.errors()) == [
+        (("extra",), "extra_forbidden"),
+        (("override", "reason"), "reason_required"),
+    ]
+
+
+def test_the_create_union_types_each_kind():
+    adapter: TypeAdapter[Any] = TypeAdapter(ClassSessionCreateBody)
+    times = {
+        "starts_at": "2031-01-06T10:00:00-06:00",
+        "ends_at": "2031-01-06T11:00:00-06:00",
+    }
+
+    group = adapter.validate_python({"kind": "group", "group_id": STUDENT_ID} | times)
+    course = adapter.validate_python(
+        {"kind": "course", "cohort_id": STUDENT_ID} | times
+    )
+
+    assert isinstance(group, GroupSessionCreate)
+    assert isinstance(course, CourseSessionCreate)
+    for unknown in ({"kind": "series"}, {}):
+        with pytest.raises(ValidationError):
+            adapter.validate_python(unknown | times)
 
 
 # --- D1: the CHECK drift guard --------------------------------------------------

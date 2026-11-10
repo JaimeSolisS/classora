@@ -170,6 +170,8 @@
   "subject_not_in_template": "Choose one of the course template's subjects.",
   "too_many_occurrences": "The schedule can't fit the course's sessions within the maximum number of dates, counting the closures. Choose more weekdays or another start.",
   "cohort_ended": "This cohort has ended: no student can join it.",
+  "roster_changed": "The enrolled students changed while scheduling. Check the list and try again.",
+  "session_outside_cohort_dates": "The date must fall between the cohort's first and last sessions.",
   "max_students_below_enrolled": "The maximum can't be lower than the students enrolled.",
   "student_ids_duplicate": "Each student can be added only once.",
   "no_changes": "Change the name or the maximum first.",

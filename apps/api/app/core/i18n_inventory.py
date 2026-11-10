@@ -487,6 +487,9 @@ DYNAMIC_FIELD_CODE_SITES: Final[Mapping[str, Callable[[], Iterable[str]]]] = {
         _time_reasons
     ),
     "app/modules/scheduling/occurrence_approval.py:approve": _time_reasons,
+    # The create body's errors re-raised without the union tag (#592): the
+    # same pydantic and body-validator codes, collected where they are raised.
+    "app/modules/scheduling/schemas.py:_untagged_errors": _none,
     # ``search_range_error``'s ``PydanticCustomError`` types, collected there.
     "app/modules/scheduling/slot_search.py:_window": _none,
     # ``rules.RangeIssue`` tuples, collected where they are written.

@@ -756,6 +756,9 @@ from app.modules.scheduling.overrides import (
 from app.modules.scheduling.overrides import (
     record_session_override as record_session_override,
 )
+from app.modules.scheduling.owner_booking import (
+    create_owner_session as create_owner_session,
+)
 from app.modules.scheduling.permissions import STAFF_VIEWER as STAFF_VIEWER
 from app.modules.scheduling.permissions import RecordViewer as RecordViewer
 from app.modules.scheduling.reassignment import (

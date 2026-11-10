@@ -53,7 +53,7 @@ architecture §4.3 step 7); implemented by M1-09 in `apps/api/app/core/errors.py
 | `detail`     | no     | A fixed, safe sentence. Never built from submitted values. |
 | `errors`     | no     | Field errors (422): a list of `{path, code, message}`. |
 | `conflicts`  | no     | Scheduling conflicts (`409 scheduling_conflict`, ADR-0005): a list of `{code, severity, details}`, `severity` `hard` or `soft` (see Class sessions). |
-| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10), `already_enrolled` `{enrollment_id}` (M4-11); `closeout_attendance_incomplete` `{missing_student_ids: [ids]}` (a list of ids, M5-10) and `session_not_closable` `{state}` (M5-10); `closeout_review_route_required` `{review_path}` (M5-11); `progress_report_exists` `{report_id}` and `progress_report_review_route_required` `{review_path}` (M5-16); `progress_report_schedule_exists` `{schedule_id}` (M5-16c); `service_price_exists` `{service_price_id}` (M6-04); `makeup_already_scheduled` `{class_session_id}` (M7-04a); `import_too_large` `{max_bytes}`, `import_file_invalid` `{reason, line?, columns?, max?}` and `import_too_many_rows` `{max}` (M8-05). Never record data. |
+| `details`    | no     | A flat object of short codes for a few state errors (M4-07): `class_session_not_offerable` `{state}` or `{reason: "started"}`, `offer_not_pending` `{status}`, `series_not_offerable` `{reason}` (M4-07b), `class_session_not_substitutable` `{reason, state?, substitution_id?}` and `class_session_not_cancellable` `{reason, state?}` (M4-10), `already_enrolled` `{enrollment_id}` (M4-11); `closeout_attendance_incomplete` `{missing_student_ids: [ids]}` (a list of ids, M5-10) and `session_not_closable` `{state}` (M5-10); `closeout_review_route_required` `{review_path}` (M5-11); `progress_report_exists` `{report_id}` and `progress_report_review_route_required` `{review_path}` (M5-16); `progress_report_schedule_exists` `{schedule_id}` (M5-16c); `service_price_exists` `{service_price_id}` (M6-04); `makeup_already_scheduled` `{class_session_id}` (M7-04a); `import_too_large` `{max_bytes}`, `import_file_invalid` `{reason, line?, columns?, max?}` and `import_too_many_rows` `{max}` (M8-05); `roster_changed` `{group_id}` or `{cohort_id}` (HF-11). Never record data. |
 
 - A field error's `path` is the location as a list of strings and integers
   (for example `["body", "items", 0, "amount"]`), `code` is the Pydantic error
@@ -129,11 +129,12 @@ web labels each one, #130):
 | `group_not_found` | 404 | A tutoring group that doesn't exist or that the caller can't see (M4-11; never `403`); see Tutoring groups. |
 | `enrollment_not_found` | 404 | Withdrawing an enrollment that doesn't exist or belongs to another group or cohort (see Tutoring groups, Course cohorts). |
 | `group_name_taken` | 409 | Creating or renaming a tutoring group to a name another group has, ignoring case (see Tutoring groups). |
-| `group_ended` | 409 | Enrolling in a group that has no series still producing sessions (see Tutoring groups). |
+| `group_ended` | 409 | Enrolling in, or scheduling an extra session of (HF-11), a group that has no series still producing sessions (see Tutoring groups, Class sessions). |
 | `already_enrolled` | 409 | Enrolling a student who already has an active enrollment in the group or cohort (`details.enrollment_id`; see Tutoring groups, Course cohorts). |
 | `enrollment_not_active` | 409 | Withdrawing an enrollment that was already withdrawn (see Tutoring groups, Course cohorts). |
 | `cohort_not_found` | 404 | A course cohort that doesn't exist, or that the caller can't see (M4-20, M4-21; never `403`); see Course cohorts. |
-| `cohort_ended` | 409 | Enrolling in a cohort that has no series still producing sessions: its last session has started or passed (M4-21; see Course cohorts). |
+| `cohort_ended` | 409 | Enrolling in, or scheduling an extra session of (HF-11), a cohort that has no series still producing sessions: its last session has started or passed (M4-21; see Course cohorts, Class sessions). |
+| `roster_changed` | 409 | `POST /api/v1/class-sessions` for a group or course: a student enrolled or was withdrawn while the session was being created (`details.group_id` or `details.cohort_id`). Nothing is stored; read again and retry (HF-11; see Class sessions). |
 | `cohort_name_taken` | 409 | Creating or renaming a cohort to a name another cohort has, ignoring case (see Course cohorts). |
 | `template_unknown` / `template_inactive` | 422 | `POST /api/v1/cohorts` with an unknown or an inactive course template; on `["body","template_id"]` (see Course cohorts). |
 | `subject_not_in_template` | 422 | `POST /api/v1/cohorts` with a subject that isn't one of the template snapshot's subjects; on `["body","subject_id"]`. |
@@ -2690,8 +2691,10 @@ Overrides of soft conflicts: M4-04 (#49; spec §3, W1.6), `overrides.py`.
 Workload warnings and suggested times: M4-05 (#50; spec §3), `workload.py`
 and `suggestions.py` (pure rules), `workload_sessions.py` and
 `slot_search.py` (the reads). The create takes one-off **individual**
-sessions; group sessions are the occurrences of a tutoring group's series
-(M4-11, Tutoring groups below) and courses come later. Offers (M4-07,
+sessions and, since HF-11 (#592, `owner_booking.py`), one extra **group** or
+**course** session of an existing group or cohort (below); a group's or
+cohort's regular sessions are the occurrences of its series (M4-11 Tutoring
+groups, M4-20 Course cohorts). Offers (M4-07,
 #52): see Assignment offers below. The
 calendar's range read and tutor options (M4-12, #57) are in
 `calendar_read.py` and `markers.py`. Tutor suggestions (M4-06, #51; spec
@@ -2789,6 +2792,68 @@ In `ClassSessionDetail`, `makeup_of_session_id` is the target, `null` on an
 ordinary session. `makeup` is `null` unless the session is `cancelled`;
 otherwise `{allowed, until | null, session_id | null}`, with the deadline and
 the live makeup.
+
+**One extra group or course session (HF-11, #592).** The body is
+discriminated on `kind`; `individual` is the body above, unchanged. A group
+or course body names the group or cohort instead of a student and subject:
+
+```json
+{"kind": "group", "group_id": "…",
+ "tutor_user_id": "…" | null, "classroom_id": "…" | null,
+ "starts_at": "…", "ends_at": "…", "override": {…} | null, "respond_by": "…" | null}
+{"kind": "course", "cohort_id": "…", …the same members…}
+```
+
+`student_id`, `subject_id` and `makeup_of_session_id` are unknown fields
+there (`422 validation_error`), and so is a `kind` other than these three.
+Field paths stay `["body", <field>, …]` for every kind. The session gets the
+group's or cohort's subject, its `group_id` or `cohort_id`, and one
+participant per student **actively enrolled now** (none is allowed: the
+session is stored with `participants: []`). It belongs to no series
+(`series_id` and `original_start` `null`, `is_exception` false). Order:
+
+1. `401`/`403` (an `override` without `schedule.override` as above), `422`
+   for the schema;
+2. the group or cohort and its active enrollments, read unlocked: an unknown
+   one is `422 group_unknown` on `group_id` / `cohort_unknown` on
+   `cohort_id`;
+3. the student lock of every enrolled student, the zone `FOR SHARE`, the
+   group or cohort row `FOR UPDATE`;
+4. the active enrollments read again: a different set is `409
+   roster_changed` (`details.group_id` or `details.cohort_id`; nothing is
+   stored; read again and retry);
+5. with a tutor, the tutor lock;
+6. `422` for the bounds, as above;
+7. `422` for the references, every one in one response: the subject
+   (`subject_inactive`) and the enrolled students (`student_unknown`,
+   `student_inactive`, once per code) on `group_id` / `cohort_id`; the tutor
+   and classroom codes as above; for a course, `session_outside_cohort_dates`
+   on `starts_at` when the session's local date is before the cohort's first
+   or after its last session date (from its series rules); then `respond_by`
+   as above;
+8. `409 group_ended` / `409 cohort_ended` when no series of the group or
+   cohort still produces sessions (`last_occurrence_on` null or on/after the
+   local today);
+9. every conflict check with every participant (`student_overlap` once per
+   student; `room_capacity_exceeded` when the roster is above the room
+   capacity). The group or cohort maximum is not checked
+   (`group_capacity_exceeded` never comes from here: the enrollments enforced
+   or overrode it, as for the nightly materialization). Then the override
+   decision, `class_session_not_offerable`, the workload warnings, the
+   session and its participants, the override row and the offer, as steps
+   7–10 above.
+
+Afterwards the session is the group's or cohort's like any of its
+occurrences: a later enrollment adds its student and a withdrawal removes
+them (when it hasn't started and is in `unassigned`, `offered`,
+`confirmed`, `conflict` or `skipped_closure`), and `PATCH`, cancelling,
+offers, substitutions, closeout, billing, payroll and the reads include it.
+The nightly materialization, a closure added later and the series edits and
+cancellations never touch it. Billing and payroll apply the existing rules:
+a session-priced group charges each participant once it is `confirmed` or
+`completed`; a fee-priced or tuition-plan group and every course charge
+nothing more; the tutor is paid at their group or course rate; a cohort's
+planned sessions (the per-course rate) count it.
 
 **Order of the create:**
 

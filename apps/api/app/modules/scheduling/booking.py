@@ -1,6 +1,11 @@
 """Creating and reading one-off individual sessions (#48 C, D, E; spec W1.1,
 W1.2; ADR-0005 D1, D2, D7, D9).
 
+The create body is discriminated on ``kind`` (#592): this module creates
+``individual`` sessions; one extra ``group`` or ``course`` session is
+:mod:`~app.modules.scheduling.owner_booking`'s, which reuses the bounds,
+tutor and classroom checks, the offer deadline and the response below.
+
 **Create** (:func:`create_class_session`), in this order, after the route's
 ``401``/``403`` and the body's ``422``:
 
@@ -262,23 +267,9 @@ async def references(
     elif not (subject.is_active and subject.education_level_is_active):
         reject("subject_id", "subject_inactive")
 
-    tutor = None
-    if body.tutor_user_id is not None:
-        tutor = await identity.get_role_member(session, TUTOR_ROLE, body.tutor_user_id)
-        if tutor is None:
-            reject("tutor_user_id", "tutor_unknown")
-        elif tutor.state != ACTIVE:
-            reject("tutor_user_id", "tutor_inactive")
-
-    classroom = None
-    if body.classroom_id is not None:
-        classroom = (
-            await catalog.classroom_references(session, [body.classroom_id])
-        ).get(body.classroom_id)
-        if classroom is None:
-            reject("classroom_id", "classroom_unknown")
-        elif not classroom.is_active:
-            reject("classroom_id", "classroom_inactive")
+    tutor, classroom = await tutor_and_room_references(
+        session, body.tutor_user_id, body.classroom_id, errors
+    )
 
     if errors:
         raise SessionValidationError(errors)
@@ -296,19 +287,66 @@ async def references(
             education_level_name=subject.education_level_name,
             is_active=subject.is_active and subject.education_level_is_active,
         ),
-        tutor=(
-            None
-            if tutor is None
-            else SessionTutor(id=tutor.id, display_name=tutor.display_name)
-        ),
-        classroom=(
-            None
-            if classroom is None
-            else SessionClassroom(
-                id=classroom.id, name=classroom.name, is_active=classroom.is_active
-            )
-        ),
+        tutor=tutor,
+        classroom=classroom,
     )
+
+
+async def tutor_and_room_references(
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID | None,
+    classroom_id: uuid.UUID | None,
+    errors: list[FieldError],
+) -> tuple[SessionTutor | None, SessionClassroom | None]:
+    """The tutor and the classroom of a create (step 4; also the #592 group
+    and course create): ``tutor_unknown`` / ``tutor_inactive`` and
+    ``classroom_unknown`` / ``classroom_inactive`` are appended to
+    ``errors``; a refused one comes back as ``None``."""
+
+    def reject(field: str, code: str) -> None:
+        errors.append(_field_error(field, code, REFERENCE_MESSAGES[code]))
+
+    tutor = None
+    if tutor_user_id is not None:
+        member = await identity.get_role_member(session, TUTOR_ROLE, tutor_user_id)
+        if member is None:
+            reject("tutor_user_id", "tutor_unknown")
+        elif member.state != ACTIVE:
+            reject("tutor_user_id", "tutor_inactive")
+        else:
+            tutor = SessionTutor(id=member.id, display_name=member.display_name)
+
+    classroom = None
+    if classroom_id is not None:
+        room = (await catalog.classroom_references(session, [classroom_id])).get(
+            classroom_id
+        )
+        if room is None:
+            reject("classroom_id", "classroom_unknown")
+        elif not room.is_active:
+            reject("classroom_id", "classroom_inactive")
+        else:
+            classroom = SessionClassroom(
+                id=room.id, name=room.name, is_active=room.is_active
+            )
+    return tutor, classroom
+
+
+class OfferedBody(Protocol):
+    """A create body that may name a tutor (the individual, group and course
+    creates, #592)."""
+
+    @property
+    def tutor_user_id(self) -> uuid.UUID | None: ...
+
+    @property
+    def classroom_id(self) -> uuid.UUID | None: ...
+
+    @property
+    def starts_at(self) -> datetime: ...
+
+    @property
+    def respond_by(self) -> datetime | None: ...
 
 
 # --- Conflict checks (D) -------------------------------------------------------------
@@ -353,7 +391,7 @@ async def find_conflicts(
 # --- Create (C) and read (E) ---------------------------------------------------------
 
 
-def _race_conflict(code: str, body: ClassSessionSlot) -> Conflict:
+def _race_conflict(code: str, body: OfferedBody | ClassSessionSlot) -> Conflict:
     if code == ROOM_OVERLAP:
         return Conflict(
             ROOM_OVERLAP,
@@ -432,7 +470,7 @@ def _override_item(
 
 
 async def _respond_by(
-    session: AsyncSession, body: ClassSessionCreate, offered_at: datetime
+    session: AsyncSession, body: OfferedBody, offered_at: datetime
 ) -> datetime | None:
     """#52 C1: the offer's deadline with a tutor (``None`` without one, or
     when the session has already begun: the create refuses it after the

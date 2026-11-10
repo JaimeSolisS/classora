@@ -10828,14 +10828,33 @@
           "class-sessions"
         ],
         "summary": "Create Class Session",
-        "description": "Schedule a one-off individual session. With a tutor it is created\n`offered` to them, with a pending offer (deadline `respond_by`, by\ndefault the scheduling policy's response time but never after the\nstart) and a notification to the tutor; without one `unassigned`. Every\nrule is checked first; with an `override` the listed soft conflicts are\nallowed, stored with the reason and audited. `warnings` lists the\ntutor's workload warnings.",
+        "description": "Schedule a one-off session. `kind` `individual`: one student and\nsubject. `group` or `course` (#592): one extra session of an active\ngroup or course cohort, with its subject and the students enrolled now\nas participants (none is allowed), and no series. With a tutor it is\ncreated `offered` to them, with a pending offer (deadline `respond_by`,\nby default the scheduling policy's response time but never after the\nstart) and a notification to the tutor; without one `unassigned`. Every\nrule is checked first; with an `override` the listed soft conflicts are\nallowed, stored with the reason and audited. `warnings` lists the\ntutor's workload warnings.",
         "operationId": "create_class_session_api_v1_class_sessions_post",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ClassSessionCreate"
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ClassSessionCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GroupSessionCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CourseSessionCreate"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "kind",
+                  "mapping": {
+                    "individual": "#/components/schemas/ClassSessionCreate",
+                    "group": "#/components/schemas/GroupSessionCreate",
+                    "course": "#/components/schemas/CourseSessionCreate"
+                  }
+                },
+                "title": "Body"
               }
             }
           }
@@ -10872,7 +10891,7 @@
             }
           },
           "409": {
-            "description": "The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is created. With a tutor, a session that has already begun can't be offered (class_session_not_offerable, details.reason = started). A cancelled session has one live makeup (makeup_already_scheduled, details.class_session_id).",
+            "description": "The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is created. With a tutor, a session that has already begun can't be offered (class_session_not_offerable, details.reason = started). A cancelled session has one live makeup (makeup_already_scheduled, details.class_session_id). Group or course: the group or cohort has ended (group_ended, cohort_ended); a student enrolled or was withdrawn meanwhile (roster_changed, details.group_id or details.cohort_id: read again and retry).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -40577,7 +40596,7 @@
           "ends_at"
         ],
         "title": "ClassSessionCreate",
-        "description": "A one-off individual session (``POST /api/v1/class-sessions``).\n\nGroups and courses (#56, #65) extend ``kind``. ``override`` (#49) needs\n``schedule.override``."
+        "description": "A one-off individual session (``POST /api/v1/class-sessions``).\n\nThe ``individual`` member of :data:`ClassSessionCreateBody`; groups and\ncourses are :class:`GroupSessionCreate` and :class:`CourseSessionCreate`\n(#592). ``override`` (#49) needs ``schedule.override``."
       },
       "ClassSessionCreated": {
         "properties": {
@@ -44614,6 +44633,93 @@
         ],
         "title": "CourseProfitability",
         "description": "``GET /api/v1/reports/kpis/course-profitability`` (K2, accrual, no\noverhead): ``Σ cohorts + not_attributed = total`` = #117's ``course``\nrow."
+      },
+      "CourseSessionCreate": {
+        "properties": {
+          "tutor_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tutor User Id",
+            "description": "The tutor to offer the session to; null creates it unassigned."
+          },
+          "classroom_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classroom Id",
+            "description": "The classroom; null is no room."
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At",
+            "description": "An instant with an offset (RFC 3339)."
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At",
+            "description": "An instant with an offset (RFC 3339)."
+          },
+          "override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionOverride"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Override the listed soft conflicts with a reason (needs schedule.override). Null or absent: every conflict blocks."
+          },
+          "respond_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Respond By",
+            "description": "With a tutor only: an earlier deadline for the tutor's answer, as for an individual session. Null or absent: the default."
+          },
+          "kind": {
+            "type": "string",
+            "const": "course",
+            "title": "Kind"
+          },
+          "cohort_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Cohort Id",
+            "description": "An existing cohort still producing sessions (not ended); the session's date falls within its first and last session dates."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "starts_at",
+          "ends_at",
+          "kind",
+          "cohort_id"
+        ],
+        "title": "CourseSessionCreate",
+        "description": "One extra session of a course cohort (#592): its subject is the\ncohort's, its participants the students actively enrolled now, and its\nlocal date within the cohort's first and last session dates. It belongs\nto no series."
       },
       "CourseTemplateAssessment": {
         "properties": {
@@ -52251,6 +52357,93 @@
         ],
         "title": "GroupSessionClassroom",
         "description": "The session's classroom."
+      },
+      "GroupSessionCreate": {
+        "properties": {
+          "tutor_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tutor User Id",
+            "description": "The tutor to offer the session to; null creates it unassigned."
+          },
+          "classroom_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classroom Id",
+            "description": "The classroom; null is no room."
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At",
+            "description": "An instant with an offset (RFC 3339)."
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At",
+            "description": "An instant with an offset (RFC 3339)."
+          },
+          "override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionOverride"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Override the listed soft conflicts with a reason (needs schedule.override). Null or absent: every conflict blocks."
+          },
+          "respond_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Respond By",
+            "description": "With a tutor only: an earlier deadline for the tutor's answer, as for an individual session. Null or absent: the default."
+          },
+          "kind": {
+            "type": "string",
+            "const": "group",
+            "title": "Kind"
+          },
+          "group_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Group Id",
+            "description": "An existing group still producing sessions (not ended)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "starts_at",
+          "ends_at",
+          "kind",
+          "group_id"
+        ],
+        "title": "GroupSessionCreate",
+        "description": "One extra session of an ongoing group (#592): its subject is the\ngroup's and its participants are the students actively enrolled now.\nIt belongs to no series."
       },
       "GroupSessionItem": {
         "properties": {

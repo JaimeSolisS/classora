@@ -23,10 +23,12 @@ change's impact check. It is taken, **before the availability is read**, by:
 the impact source of a direct change (``scheduling.reassignment``, after
 the weekly ``PUT``'s settings row), the approval of a change request
 (``app.workflows.availability_change``, after the request and the settings
-row), the #48 create with a tutor (after the students and the zone), the
+row), the #48 create with a tutor (after the students and the zone), the #592
+group or course create with a tutor (after the group or cohort row), the
 #52 re-offer, the #55 substitution (for the substitute) and the #233
 series offer (after their session or series locks and before the zone).
-Nothing that holds it waits for a student lock, so the two never deadlock.
+Nothing that holds it waits for a student lock, or for a group or cohort
+row, so neither order deadlocks.
 
 **Lock order** for every writer that changes a group's or a cohort's
 sessions or participants (#56; #65 G1, also in ``_docs/api.md``):
@@ -42,6 +44,12 @@ nightly extension, the #233 series offer, the #54 series edits and
 ``PATCH`` of a course series or occurrence, and the #66 enrollment and
 withdrawal in ``app.workflows.cohort_enrollment``, each after the students
 and the zone).
+The #592 group or course one-off create
+(:mod:`~app.modules.scheduling.owner_booking`) follows it too: it reads the
+active roster unlocked, takes every enrolled student's lock, the zone and
+the group or cohort row, then reads the roster again (a change is ``409
+roster_changed``: an enrollment holding a new student's lock waits for that
+row, so the create can't take that lock now), then the tutor lock.
 The ``courses`` module never takes a scheduling lock. Any step a writer
 does not need is skipped, never reordered.
 """

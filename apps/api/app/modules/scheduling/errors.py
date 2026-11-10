@@ -321,6 +321,20 @@ class GroupEndedError(AppError):
         super().__init__()
 
 
+class RosterChangedError(AppError):
+    """``409 roster_changed`` (#592 step 5): a student enrolled in or was
+    withdrawn from the group or cohort between the create's roster read and
+    its lock of the group or cohort row (``details.group_id`` or
+    ``details.cohort_id``). Nothing is created; read again and retry."""
+
+    status = 409
+    code = "roster_changed"
+    detail = "The enrolled students changed while scheduling. Try again."
+
+    def __init__(self, owner_field: Literal["group_id", "cohort_id"], owner_id: str):
+        super().__init__(details={owner_field: owner_id})
+
+
 class AlreadyEnrolledError(AppError):
     """``409 already_enrolled`` (#56 E1 step 8): the student has an active
     enrollment in the group (``details.enrollment_id``)."""
