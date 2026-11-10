@@ -14,6 +14,8 @@ import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
 import '@/features/calendar/calendar.css';
 import { CenterHoursCaption } from '@/features/calendar/CenterHoursCaption';
+import { KindLegend } from '@/features/calendar/KindBadge';
+import { kindStrong } from '@/features/calendar/kinds';
 import {
   rangeInstants,
   shiftDate,
@@ -168,6 +170,8 @@ export function MyScheduleCalendar({
         start: entry.item.starts_at,
         end: entry.item.ends_at,
         title: entry.item.subject.name,
+        // HF-07: the List view's dot (and Month's) is the type's colour.
+        color: kindStrong(entry.item.kind),
         editable: false,
         extendedProps: { entry } satisfies EventProps,
       })),
@@ -206,7 +210,14 @@ export function MyScheduleCalendar({
       eventMinHeight: 22,
       eventClass: (info) => {
         const { entry } = info.event.extendedProps as EventProps;
-        return ['cl-event', `cl-event--${entry.item.state}`].join(' ');
+        return [
+          'cl-event',
+          `cl-event--${entry.item.state}`,
+          `cl-event--kind-${entry.item.kind}`,
+          info.view.type.startsWith('list') ? 'cl-event--list' : '',
+        ]
+          .filter(Boolean)
+          .join(' ');
       },
       eventContent: (info) => {
         const { entry } = info.event.extendedProps as EventProps;
@@ -344,6 +355,7 @@ export function MyScheduleCalendar({
             view={position.view}
             language={language}
           />
+          <KindLegend />
         </div>
       </div>
 

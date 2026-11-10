@@ -9,6 +9,7 @@ import { expect, within } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import type { Session, SessionUserBody } from '@/features/auth/session';
 import { calendarQueryKey } from '@/features/calendar/api';
+import { SESSION_KINDS } from '@/features/calendar/kinds';
 import {
   OWN_FAMILY_KEY,
   portalKeys,
@@ -22,6 +23,7 @@ import { StoryRouter } from '@/test/StoryRouter';
 import { homeKeys } from './api';
 import {
   BUSY_TODAY,
+  FAMILY_COURSE,
   FAMILY_ID,
   FAMILY_TODAY,
   FINANCE,
@@ -49,8 +51,36 @@ import { TodayPanel } from './TodayPanel';
 // Home (HF-06 F3): the staff "Today" panel (Owner busy, Finance), the role
 // home (a tutor with pending items, a guardian with two children and a
 // balance, a student with nothing, an account with no role), one section in
-// error, and the narrow layout. Every query is seeded: no request. axe
-// runs on each story in both themes.
+// error, and the narrow layout. HF-07: the staff, tutor and family agendas
+// each show all three class types (swatch, icon and text) and the tutor.
+// Every query is seeded: no request. axe runs on each story in both themes.
+
+const KIND_LABELS = SESSION_KINDS.map((kind) =>
+  i18n.t(`scheduling.calendar.filters.kinds.${kind}`),
+);
+
+/** HF-07: the section's rows show every class type and a tutor line. */
+async function kindsShown(canvasElement: HTMLElement, code: string) {
+  const section = canvasElement.querySelector<HTMLElement>(
+    `[data-home-section="${code}"]`,
+  )!;
+  const rows = [
+    ...section.querySelectorAll<HTMLElement>('[data-home-session]'),
+  ];
+  for (const label of KIND_LABELS) {
+    await expect(
+      rows.some(
+        (row) => row.querySelector('[data-kind]')?.textContent === label,
+      ),
+    ).toBe(true);
+  }
+  for (const row of rows) {
+    await expect(row.querySelector('[data-kind-swatch]')).not.toBeNull();
+    await expect(row.textContent).toContain(
+      i18n.t('scheduling.calendar.tutorLine', { name: '' }).trim(),
+    );
+  }
+}
 
 const ZONE = 'America/Mexico_City';
 const STAFF = staffWindow(TODAY, ZONE);
@@ -106,7 +136,7 @@ const GUARDIAN_SEED: Seed = [
   ],
   [
     [...MY_SCHEDULE_KEY, 'schedule', OTHER_KID.student_id, range(PERSONAL)],
-    familyEntries(FAMILY_TODAY.slice(1)),
+    familyEntries([...FAMILY_TODAY.slice(1), FAMILY_COURSE]),
   ],
   [homeKeys.studentHomework(KID_A.student_id), homeworkSummary(2, 1).summary],
   [
@@ -210,7 +240,7 @@ type Story = StoryObj<typeof meta>;
 export const OwnerBusy: Story = {
   name: 'Owner busy (Today panel)',
   render: () => <Page user={OWNER} seed={STAFF_SEED} staff />,
-  play: async ({ canvas }) => {
+  play: async ({ canvas, canvasElement }) => {
     await expect(
       await canvas.findByRole('heading', {
         level: 2,
@@ -225,6 +255,7 @@ export const OwnerBusy: Story = {
     await expect(
       canvas.getByText(i18n.t('home.more', { count: 2, shown: '2' })),
     ).toBeVisible();
+    await kindsShown(canvasElement, 'staff');
   },
 };
 
@@ -255,7 +286,7 @@ export const Finance: Story = {
 export const TutorWithPending: Story = {
   name: 'Tutor with pending items',
   render: () => <Page user={TUTOR} seed={TUTOR_SEED} />,
-  play: async ({ canvas }) => {
+  play: async ({ canvas, canvasElement }) => {
     await expect(
       await canvas.findByRole('heading', {
         level: 1,
@@ -267,13 +298,14 @@ export const TutorWithPending: Story = {
         name: i18n.t('home.pending.toGrade', { count: 50, shown: '50+' }),
       }),
     ).toBeVisible();
+    await kindsShown(canvasElement, 'tutor');
   },
 };
 
 export const GuardianTwoChildren: Story = {
   name: 'Guardian with two children and a balance',
   render: () => <Page user={GUARDIAN} seed={GUARDIAN_SEED} />,
-  play: async ({ canvas }) => {
+  play: async ({ canvas, canvasElement }) => {
     await expect(
       await canvas.findByText(
         i18n.t('home.family.consent', { name: KID_B.display_name }),
@@ -284,6 +316,7 @@ export const GuardianTwoChildren: Story = {
         new RegExp(i18n.t('home.forStudent', { name: OTHER_KID.display_name })),
       ).length,
     ).toBeGreaterThan(0);
+    await kindsShown(canvasElement, 'family');
   },
 };
 
@@ -354,6 +387,33 @@ export const Narrow: Story = {
     await canvas.findByText(
       i18n.t('home.family.consent', { name: KID_B.display_name }),
     );
+    const root = canvasElement.ownerDocument.documentElement;
+    await expect(root.scrollWidth).toBeLessThanOrEqual(root.clientWidth);
+  },
+};
+
+/** HF-07: at 320 px the staff rows wrap; the type cue stays first and there
+ * is no horizontal scroll. */
+export const NarrowStaff: Story = {
+  name: 'Narrow staff agenda (320 px)',
+  parameters: Narrow.parameters,
+  globals: { viewport: { value: 'narrow320' } },
+  render: () => <Page user={OWNER} seed={STAFF_SEED} staff />,
+  play: async ({ canvasElement, canvas }) => {
+    const view = canvasElement.ownerDocument.defaultView!;
+    await expect(view.innerWidth).toBe(320);
+    await canvas.findByText(i18n.t('home.more', { count: 2, shown: '2' }));
+    await kindsShown(canvasElement, 'staff');
+    for (const row of canvasElement.querySelectorAll<HTMLElement>(
+      '[data-home-session]',
+    )) {
+      const badge = row.querySelector<HTMLElement>('[data-kind]')!;
+      const first = row.firstElementChild!.getBoundingClientRect();
+      // The cue sits on the row's first line.
+      await expect(badge.getBoundingClientRect().top).toBeLessThan(
+        first.top + 20,
+      );
+    }
     const root = canvasElement.ownerDocument.documentElement;
     await expect(root.scrollWidth).toBeLessThanOrEqual(root.clientWidth);
   },

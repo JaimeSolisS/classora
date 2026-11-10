@@ -116,10 +116,17 @@ export function calendarPage(
   return { items, truncated };
 }
 
+/** The class types by row (HF-07): the first three rows are one of each. */
+const KINDS = ['individual', 'group', 'course'] as const;
+
 /** A busy center: 10 classes today, one without a tutor, one in conflict. */
 export const BUSY_TODAY: CalendarItem[] = [
   ...Array.from({ length: 8 }, (_, index) =>
-    staffItem({ starts_at: at(0, 8 + index), ends_at: at(0, 9 + index) }),
+    staffItem({
+      kind: KINDS[index % 3]!,
+      starts_at: at(0, 8 + index),
+      ends_at: at(0, 9 + index),
+    }),
   ),
   staffItem({
     state: 'unassigned',
@@ -152,6 +159,7 @@ export const TUTOR_TODAY: TutorScheduleItem[] = [
   }),
   tutorItem({
     id: '00000000-0000-4000-8000-000000549a02',
+    kind: 'group',
     state: 'offered',
     starts_at: at(0, 16),
     ends_at: at(0, 17),
@@ -159,6 +167,7 @@ export const TUTOR_TODAY: TutorScheduleItem[] = [
   }),
   tutorItem({
     id: '00000000-0000-4000-8000-000000549a03',
+    kind: 'course',
     starts_at: at(2, 16),
     ends_at: at(2, 17),
   }),
@@ -200,10 +209,19 @@ export const FAMILY_TODAY: FamilyScheduleItem[] = [
   }),
   familyItem({
     id: '00000000-0000-4000-8000-000000549d02',
+    kind: 'group',
     starts_at: at(4, 10),
     ends_at: at(4, 11),
   }),
 ];
+
+/** An upcoming course class (HF-07: the family's third class type). */
+export const FAMILY_COURSE: FamilyScheduleItem = familyItem({
+  id: '00000000-0000-4000-8000-000000549d03',
+  kind: 'course',
+  starts_at: at(5, 16),
+  ends_at: at(5, 17),
+});
 
 export const scheduleOf = <T>(items: T[]) => ({ items, truncated: false });
 

@@ -43,15 +43,36 @@ export function studentNames(item: CalendarItem, { t }: LabelContext): string {
     : t('scheduling.calendar.noStudents');
 }
 
+/** HF-07 E3: "Tutor: Carmen Ruiz", or "No tutor". The session's current
+ * tutor (the substitute after a cover). */
+export function tutorText(
+  item: Pick<CalendarItem, 'tutor'>,
+  { t }: Pick<LabelContext, 't'>,
+): string {
+  return item.tutor
+    ? t('scheduling.calendar.tutorLine', { name: item.tutor.display_name })
+    : t('scheduling.calendar.noTutor');
+}
+
+/** The class type as text: "Individual", "Group" or "Course". */
+export function kindText(
+  item: Pick<CalendarItem, 'kind'>,
+  { t }: Pick<LabelContext, 't'>,
+): string {
+  return t(`scheduling.calendar.filters.kinds.${item.kind}`);
+}
+
 /**
- * The event's accessible name: subject, students, time range, tutor (or "No
- * tutor"), state, room (if any) and markers, e.g. "Mathematics, Ana López,
- * 10:00–11:00, No tutor, Unassigned, Room 2, Center closed".
+ * The event's accessible name: subject, class type, students, time range,
+ * tutor (or "No tutor"), state, room (if any) and markers, e.g.
+ * "Mathematics, Individual, Ana López, 10:00–11:00, No tutor, Unassigned,
+ * Room 2, Center closed".
  */
 export function sessionName(item: CalendarItem, context: LabelContext): string {
   const { t } = context;
   return [
     item.subject.name,
+    kindText(item, context),
     studentNames(item, context),
     sessionTimeText(item, context),
     item.tutor?.display_name ?? t('scheduling.calendar.noTutor'),

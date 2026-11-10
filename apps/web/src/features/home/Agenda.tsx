@@ -4,7 +4,12 @@ import { ApiError } from '@/app/api';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { LoadingState } from '@/components/feedback/LoadingState';
 import type { CalendarItem } from '@/features/calendar/api';
-import { sessionTimeText, type LabelContext } from '@/features/calendar/labels';
+import { KindBadge } from '@/features/calendar/KindBadge';
+import {
+  sessionTimeText,
+  tutorText,
+  type LabelContext,
+} from '@/features/calendar/labels';
 import type { FamilyStudent } from '@/features/my-schedule/api';
 import { roomText, stateLabel, whoText } from '@/features/my-schedule/labels';
 import { TEACHING } from '@/features/my-schedule/whose';
@@ -37,7 +42,9 @@ import {
 // The agenda sections of Home (HF-06 B1–B5): the center's classes today
 // (staff), "My classes" (tutor) and the family's classes (student or
 // guardian). Each section loads, fails and retries on its own; a failure in
-// one leaves the others in place. Times are in the center zone.
+// one leaves the others in place. Times are in the center zone. HF-07: every
+// row starts with the class type (swatch, icon and text, the calendar's
+// colours) and names the tutor.
 
 interface AgendaProps {
   today: LocalDate;
@@ -67,7 +74,7 @@ function StaffRow({
 }) {
   const { t } = context;
   const details = [
-    item.tutor?.display_name ?? t('scheduling.calendar.noTutor'),
+    tutorText(item, context),
     item.classroom?.name,
     t(`scheduling.states.${item.state}`),
   ].filter((part): part is string => Boolean(part));
@@ -79,6 +86,7 @@ function StaffRow({
         data-home-session={item.id}
       >
         <span className="text-sm font-medium">
+          <KindBadge kind={item.kind} swatch className="font-normal" />{' '}
           <span className="tabular-nums">{sessionTimeText(item, context)}</span>{' '}
           {item.subject.name}
         </span>
@@ -161,10 +169,13 @@ function PersonalRow({
   row,
   today,
   context,
+  tutorName,
 }: {
   row: AgendaRow;
   today: LocalDate;
   context: LabelContext;
+  /** A tutor's own rows: the signed-in tutor's name (HF-07). */
+  tutorName?: string;
 }) {
   const { t } = context;
   const { formatLocalDate } = useFormatters();
@@ -173,6 +184,10 @@ function PersonalRow({
   const whose = row.studentId ?? TEACHING;
   const details = [
     row.studentName ? t('home.forStudent', { name: row.studentName }) : null,
+    // A family's who is already "Tutor: …"; a tutor's is the students.
+    tutorName === undefined
+      ? null
+      : t('scheduling.calendar.tutorLine', { name: tutorName }),
     whoText(row.entry, t),
     roomText(row.entry, t),
     stateLabel(row.entry, t),
@@ -185,6 +200,7 @@ function PersonalRow({
         data-home-session={item.id}
       >
         <span className="text-sm font-medium">
+          <KindBadge kind={item.kind} swatch className="font-normal" />{' '}
           <span className="tabular-nums">
             {date === today ? null : `${formatLocalDate(date)}, `}
             {sessionTimeText(item, context)}
@@ -201,10 +217,12 @@ function PersonalList({
   rows,
   today,
   timeZone,
+  tutorName,
 }: {
   rows: readonly AgendaRow[];
   today: LocalDate;
   timeZone: string;
+  tutorName?: string;
 }) {
   const { t } = useTranslation();
   const context = useLabelContext(timeZone);
@@ -223,6 +241,7 @@ function PersonalList({
               row={row}
               today={today}
               context={context}
+              tutorName={tutorName}
             />
           ))}
         </ul>
@@ -237,6 +256,7 @@ function PersonalList({
                 row={row}
                 today={today}
                 context={context}
+                tutorName={tutorName}
               />
             ))}
           </ul>
@@ -259,11 +279,12 @@ function ScheduleLink({ today }: { today: LocalDate }) {
 
 export function TutorAgendaSection({
   userId,
+  userName,
   today,
   timeZone,
   window,
   level,
-}: AgendaProps & { userId: string }) {
+}: AgendaProps & { userId: string; userName: string }) {
   const { t } = useTranslation();
   const schedule = useTutorSchedule(userId, window, true);
   return (
@@ -288,6 +309,7 @@ export function TutorAgendaSection({
           }))}
           today={today}
           timeZone={timeZone}
+          tutorName={userName}
         />
       )}
       <ScheduleLink today={today} />

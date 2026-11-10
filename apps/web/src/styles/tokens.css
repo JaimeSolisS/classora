@@ -39,6 +39,16 @@
   --chart-2: #c2410c;
   --chart-3: #0d9488;
   --chart-4: #9333ea;
+  /* Class types (HF-07 E1): a tint for the event background (card-,
+     muted-foreground and destructive text reach 4.5:1 on it) and a strong
+     shade for swatches, legend and list dots (3:1 against background and
+     card). One colour cannot do both, so each type has the pair. */
+  --kind-individual: #dbeafe;
+  --kind-individual-strong: #2563eb;
+  --kind-group: #fde68a;
+  --kind-group-strong: #b45309;
+  --kind-course: #f5d0fe;
+  --kind-course-strong: #a21caf;
 
   /* Base radius; sm/md/lg derive from it in @theme. */
   --radius: 0.5rem;
@@ -70,6 +80,12 @@
   --chart-2: #ea580c;
   --chart-3: #0d9488;
   --chart-4: #a855f7;
+  --kind-individual: #1e3066;
+  --kind-individual-strong: #60a5fa;
+  --kind-group: #4a2a06;
+  --kind-group-strong: #fbbf24;
+  --kind-course: #4a1658;
+  --kind-course-strong: #e879f9;
 }
 
 @theme inline {

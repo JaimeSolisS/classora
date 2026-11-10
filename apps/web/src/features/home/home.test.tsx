@@ -25,6 +25,7 @@ import {
   calendarPage,
   COORDINATOR,
   COORDINATOR_TUTOR,
+  FAMILY_COURSE,
   FAMILY_ID,
   FAMILY_TODAY,
   FINANCE,
@@ -518,6 +519,119 @@ describe('the family (B3, C1)', () => {
     expect(
       section('pending')!.querySelector('[data-home-nothing]'),
     ).toBeTruthy();
+  });
+});
+
+// HF-07 (E2 b): every agenda row starts with the class type (swatch, icon
+// and text) and names the tutor; the row link's name carries both.
+describe('the class type and the tutor on each row (HF-07)', () => {
+  const LABELS = { individual: 'Individual', group: 'Group', course: 'Course' };
+
+  function rows(code: string): HTMLAnchorElement[] {
+    return [
+      ...section(code)!.querySelectorAll<HTMLAnchorElement>(
+        '[data-home-session]',
+      ),
+    ];
+  }
+
+  /** The type cue at the start of the row: swatch, icon and text. */
+  function expectKind(row: HTMLAnchorElement, kind: keyof typeof LABELS) {
+    const badge = row.querySelector(`[data-kind="${kind}"]`)!;
+    expect(badge).toBeTruthy();
+    // The first thing in the row (its first line).
+    expect(row.querySelector('[data-kind]')).toBe(badge);
+    expect(badge.textContent).toBe(LABELS[kind]);
+    const swatch = badge.querySelector(`[data-kind-swatch="${kind}"]`);
+    expect(swatch?.getAttribute('aria-hidden')).toBe('true');
+    expect(swatch?.getAttribute('style')).toContain(`var(--kind-${kind})`);
+    expect(badge.querySelector('svg')?.getAttribute('aria-hidden')).toBe(
+      'true',
+    );
+    // The link's name is its text: the type is in it.
+    expect(row.textContent).toContain(LABELS[kind]);
+  }
+
+  it('staff rows: the type cue and "Tutor: …" or "No tutor"', async () => {
+    const none = staffItem({
+      kind: 'group',
+      state: 'unassigned',
+      tutor: null,
+      starts_at: at(0, 13),
+      ends_at: at(0, 14),
+    });
+    stub(OWNER, {
+      [`GET ${P.sessions}`]: ok(
+        calendarPage([...BUSY_TODAY.slice(0, 3), none]),
+      ),
+    });
+    await open();
+    const shown = rows('staff');
+    expect(shown.map((row) => row.getAttribute('data-home-session'))).toEqual([
+      BUSY_TODAY[0]!.id,
+      BUSY_TODAY[1]!.id,
+      BUSY_TODAY[2]!.id,
+      none.id,
+    ]);
+    expectKind(shown[0]!, 'individual');
+    expectKind(shown[1]!, 'group');
+    expectKind(shown[2]!, 'course');
+    expectKind(shown[3]!, 'group');
+    expect(shown[0]!.textContent).toContain('Tutor: Carmen Ruiz · Aula 2');
+    expect(shown[3]!.textContent).toContain('No tutor · Aula 2 · Unassigned');
+  });
+
+  it("tutor rows: the type cue and the tutor's own name, then the students", async () => {
+    stub(TUTOR);
+    await open();
+    const shown = rows('tutor');
+    // Today (individual, group), then upcoming (course); cancelled stays out.
+    expect(shown).toHaveLength(3);
+    expectKind(shown[0]!, 'individual');
+    expectKind(shown[1]!, 'group');
+    expectKind(shown[2]!, 'course');
+    for (const row of shown) {
+      expect(row.textContent).toContain(
+        `Tutor: ${TUTOR.display_name} · Lucía Pérez`,
+      );
+    }
+  });
+
+  it('family rows: the type cue and the existing "Tutor: …"', async () => {
+    stub(GUARDIAN, {
+      [`GET ${P.schedule(KID_A.student_id)}`]: ok(
+        scheduleOf([...FAMILY_TODAY, FAMILY_COURSE]),
+      ),
+    });
+    await open();
+    const shown = rows('family');
+    expect(shown).toHaveLength(3);
+    expectKind(shown[0]!, 'individual');
+    expectKind(shown[1]!, 'group');
+    expectKind(shown[2]!, 'course');
+    for (const row of shown) {
+      expect(row.textContent).toContain('Tutor: Carmen Ruiz');
+    }
+  });
+
+  it('in Spanish: "Tutor(a): …", "Sin tutor(a)" and the type labels', async () => {
+    applyLanguage('es');
+    const none = staffItem({
+      kind: 'course',
+      state: 'unassigned',
+      tutor: null,
+      starts_at: at(0, 13),
+      ends_at: at(0, 14),
+    });
+    stub(COORDINATOR, {
+      [`GET ${P.sessions}`]: ok(calendarPage([BUSY_TODAY[1]!, none])),
+    });
+    await open();
+    const [group, course] = rows('staff');
+    expect(group!.querySelector('[data-kind]')?.textContent).toBe('Grupal');
+    expect(group!.textContent).toContain('Tutor(a): Carmen Ruiz');
+    expect(course!.querySelector('[data-kind]')?.textContent).toBe('Curso');
+    expect(course!.textContent).toContain('Sin tutor(a)');
   });
 });
 

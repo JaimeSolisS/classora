@@ -46,6 +46,8 @@ import {
 } from './dnd/rules';
 import { useMoveSession } from './dnd/useMoveSession';
 import { EventContent } from './EventContent';
+import { KindLegend } from './KindBadge';
+import { kindStrong } from './kinds';
 import { isCompact, type LabelContext } from './labels';
 import {
   clickPrefill,
@@ -289,6 +291,8 @@ export function ScheduleCalendar({
         start: item.starts_at,
         end: item.ends_at,
         title: item.subject.name,
+        // HF-07: the List view's dot (and Month's) is the type's colour.
+        color: kindStrong(item.kind),
         // Editable events follow the calendar's (and the view's) options;
         // the others, and one being saved, are fixed (#58 D3, D6).
         ...(movable ? {} : { editable: false }),
@@ -354,7 +358,9 @@ export function ScheduleCalendar({
       businessHours,
       nonBusinessHoursClass: 'cl-non-business',
       slotHeaderFormat: SLOT_FORMATS[language],
-      slotMinHeight: 36,
+      // HF-07: room for a 60-minute compact event's five lines (state,
+      // time, subject, first student, tutor), conflict borders included.
+      slotMinHeight: 48,
       views: VIEW_OPTIONS,
       eventColor: 'var(--card)',
       eventContrastColor: 'var(--card-foreground)',
@@ -381,6 +387,8 @@ export function ScheduleCalendar({
         return [
           'cl-event',
           `cl-event--${item.state}`,
+          `cl-event--kind-${item.kind}`,
+          info.view.type.startsWith('list') ? 'cl-event--list' : '',
           pending ? 'cl-event--pending' : '',
           movable ? 'cl-event--movable' : '',
         ]
@@ -572,6 +580,7 @@ export function ScheduleCalendar({
             view={state.view}
             language={language}
           />
+          <KindLegend />
         </div>
       </div>
 

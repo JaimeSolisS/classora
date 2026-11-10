@@ -2532,7 +2532,8 @@
       "count_many": "{{count}} sesiones en este periodo.",
       "count_other": "{{count}} sesiones en este periodo.",
       "truncated": "Se muestran las primeras 1000 sesiones. Acota las fechas o los filtros.",
-      "noTutor": "Sin tutor",
+      "noTutor": "Sin tutor(a)",
+      "tutorLine": "Tutor(a): {{name}}",
       "noStudents": "Sin estudiantes",
       "listAlternative": "La vista Lista muestra las mismas sesiones como texto.",
       "selectHint": "Para programar una sesión, arrastra sobre horas libres en la vista Día o Semana, o haz clic en una hora para una sesión de una hora. Con el teclado, usa «Programar una sesión».",
@@ -2604,6 +2605,9 @@
         "cancel": "Cancelar",
         "submit": "Guardar",
         "submitting": "Guardando…"
+      },
+      "legend": {
+        "title": "Tipos de clase"
       }
     },
     "states": {

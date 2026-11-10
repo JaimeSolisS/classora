@@ -86,6 +86,7 @@ export const FAMILY_ITEMS: FamilyScheduleItem[] = [
   familyItem(),
   familyItem({
     id: '00000000-0000-4000-8000-000000067d02',
+    kind: 'course',
     state: 'completed',
     starts_at: at(1, 9),
     ends_at: at(1, 10),
@@ -129,6 +130,7 @@ export const TUTOR_ITEMS: TutorScheduleItem[] = [
   tutorItem(),
   tutorItem({
     id: '00000000-0000-4000-8000-000000067e02',
+    kind: 'course',
     state: 'offered',
     starts_at: at(1, 15),
     ends_at: at(1, 16),

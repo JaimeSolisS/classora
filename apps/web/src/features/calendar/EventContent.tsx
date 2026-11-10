@@ -14,18 +14,22 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { CalendarItem, MarkerCode, SessionState } from './api';
+import { KindBadge } from './KindBadge';
 import {
   sessionName,
   sessionTimeText,
   studentNames,
+  tutorText,
   type LabelContext,
 } from './labels';
 
 // One event on the calendar (#57 D7). The state shows as a border style
 // (calendar.css) and as an icon with its text; markers as an icon with
-// text. Screen readers get one name with every detail (sessionName); the
-// visible parts are hidden from them so nothing is read twice. A move being
-// saved (#58 D6) shows "Saving…" (icon and text) and is part of the name.
+// text. HF-07: the class type shows as the background colour (calendar.css)
+// and its icon (with its text where there's room); the tutor as a line.
+// Screen readers get one name with every detail (sessionName); the visible
+// parts are hidden from them so nothing is read twice. A move being saved
+// (#58 D6) shows "Saving…" (icon and text) and is part of the name.
 
 export const STATE_ICONS: Record<SessionState, LucideIcon> = {
   unassigned: CircleDashed,
@@ -108,23 +112,42 @@ export function EventContent({
   const name = pending
     ? `${sessionName(item, context)}, ${context.t('scheduling.calendar.move.saving')}`
     : sessionName(item, context);
+  const students = studentNames(item, context);
+  const tutor = tutorText(item, context);
   if (compact) {
+    // HF-07: every line after the status is one line with an ellipsis (the
+    // full text is in the name, the dialog and the tooltip), so a 60-minute
+    // event shows the state, time, subject, first student and tutor.
     return (
       <span className="cl-event-content">
         <span className="sr-only">{name}</span>
-        <span aria-hidden="true" className="cl-event-body">
+        <span
+          aria-hidden="true"
+          className="cl-event-body cl-event-body--compact"
+        >
           <span className="cl-event-status">
             {pending ? <SavingLabel /> : null}
             <StateLabel state={item.state} />
+            <KindBadge kind={item.kind} iconOnly className="shrink-0" />
             {item.markers.map((code) => (
               <MarkerIcon key={code} code={code} />
             ))}
           </span>
-          <span className="cl-event-time">
+          <span className="cl-event-time cl-event-clip">
             {sessionTimeText(item, context)}
           </span>
-          <span className="cl-event-title">{item.subject.name}</span>
-          <span className="cl-event-line">{studentNames(item, context)}</span>
+          <span
+            className="cl-event-title cl-event-clip"
+            title={item.subject.name}
+          >
+            {item.subject.name}
+          </span>
+          <span className="cl-event-clip" title={students}>
+            {students}
+          </span>
+          <span className="cl-event-clip" title={tutor} data-event-tutor>
+            {tutor}
+          </span>
         </span>
       </span>
     );
@@ -137,7 +160,7 @@ export function EventContent({
           <span className="cl-event-time">
             {sessionTimeText(item, context)}
           </span>{' '}
-          <StateLabel state={item.state} />
+          <StateLabel state={item.state} /> <KindBadge kind={item.kind} />
           {pending ? (
             <>
               {' '}
@@ -153,7 +176,10 @@ export function EventContent({
           </span>
         ) : null}
         <span className="cl-event-title">{item.subject.name}</span>
-        <span className="cl-event-line">{studentNames(item, context)}</span>
+        <span className="cl-event-line">{students}</span>
+        <span className="cl-event-line" data-event-tutor>
+          {tutor}
+        </span>
       </span>
     </span>
   );

@@ -115,9 +115,11 @@ export const MOVABLE: CalendarItem = item({
   ends_at: '2026-11-09T17:00:00Z',
 });
 
-/** An occurrence of a weekly series, confirmed, Tuesday 10:00–11:00. */
+/** An occurrence of a weekly series (a group, HF-07), confirmed, Tuesday
+ * 10:00–11:00. */
 export const OCCURRENCE: CalendarItem = item({
   id: '00000000-0000-4000-8000-0000000058b2',
+  kind: 'group',
   state: 'confirmed',
   version: 2,
   series_id: '00000000-0000-4000-8000-0000000058c1',
@@ -125,9 +127,10 @@ export const OCCURRENCE: CalendarItem = item({
   ends_at: '2026-11-10T17:00:00Z',
 });
 
-/** A completed session: never movable. */
+/** A completed session (a course, HF-07): never movable. */
 export const FIXED: CalendarItem = item({
   id: '00000000-0000-4000-8000-0000000058b3',
+  kind: 'course',
   state: 'completed',
   starts_at: '2026-11-11T16:00:00Z',
   ends_at: '2026-11-11T17:00:00Z',

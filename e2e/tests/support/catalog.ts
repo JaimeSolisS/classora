@@ -711,7 +711,14 @@ type Common = {
       regionLabel: string;
       scheduleSession: string;
       views: Record<'day' | 'week' | 'month' | 'list', string>;
-      filters: { student: string; room: string };
+      filters: {
+        student: string;
+        room: string;
+        kinds: Record<'individual' | 'group' | 'course', string>;
+      };
+      // HF-07: the tutor line and the class type legend.
+      noTutor: string;
+      legend: { title: string };
       // #58: rescheduling.
       move: Record<
         'moved' | 'movedWithOverride' | 'notSaved' | 'overrideAction' | 'close',

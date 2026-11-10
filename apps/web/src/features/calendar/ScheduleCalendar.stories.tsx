@@ -9,6 +9,7 @@ import type { LocalDate } from '@/lib/time';
 import type { BusinessSettings } from '@/features/settings/api';
 import { SETTINGS } from '@/features/settings/fixtures';
 import type { CalendarLoaders, CalendarPage, SessionState } from './api';
+import { SESSION_KINDS, type SessionKind } from './kinds';
 import {
   ANA,
   calendarState,
@@ -16,10 +17,12 @@ import {
   DST_ITEMS,
   DST_WEEK,
   item,
+  KIND_SIZE_ITEMS,
   page,
   ROOM,
   ROOM_OPTIONS,
   SHORT_ITEMS,
+  STATE_KIND_ITEMS,
   STUDENT_OPTIONS,
   TIJUANA,
   TUTOR_OPTIONS,
@@ -33,8 +36,10 @@ import type { CalendarState } from './urlState';
 
 // The calendar (#57 E6): Week, Day, Month and List with fixture data; every
 // state and both markers in one week; active filters (chips); loading,
-// empty, error and truncated; the event dialog; a Tijuana DST week. The
-// loaders are stubs: no request leaves the story.
+// empty, error and truncated; the event dialog; a Tijuana DST week. HF-07:
+// every class type in the fixture week, the legend, event sizes per type
+// and every state on every type. The loaders are stubs: no request leaves
+// the story.
 
 interface StoryArgs {
   initial: CalendarState;
@@ -311,7 +316,7 @@ async function statusVisible(event: HTMLElement) {
   await expect(status).not.toBeNull();
   for (const part of [
     status!,
-    ...status!.querySelectorAll<HTMLElement>('.cl-badge'),
+    ...status!.querySelectorAll<HTMLElement>('.cl-badge, [data-kind]'),
   ]) {
     const rect = part.getBoundingClientRect();
     await expect(rect.width).toBeGreaterThan(0);
@@ -343,6 +348,116 @@ export const ShortEvents: Story = {
         i18n.t(`scheduling.states.${state}`),
       );
       await statusVisible(event);
+    }
+  },
+};
+
+// --- HF-07: the class type and the tutor --------------------------------------
+
+const kindLabel = (kind: SessionKind) =>
+  i18n.t(`scheduling.calendar.filters.kinds.${kind}`);
+const kindName = (kind: SessionKind) =>
+  new RegExp(`, ${escape(kindLabel(kind))}, `);
+
+/** The event element (FullCalendar's, with the `cl-event` classes). */
+function eventOf(canvasElement: HTMLElement, id: string): HTMLElement {
+  const event = canvasElement.querySelector<HTMLElement>(
+    `[data-session-id="${id}"]`,
+  );
+  if (!event) {
+    throw new Error(`No event ${id}`);
+  }
+  return event;
+}
+
+/** The fixture week shows every type, with the legend above the grid. */
+export const KindsAndLegend: Story = {
+  play: async ({ canvasElement }) => {
+    await events(canvasElement);
+    for (const kind of SESSION_KINDS) {
+      const item = WEEK_ITEMS.find((entry) => entry.kind === kind)!;
+      const event = eventOf(canvasElement, item.id);
+      await expect(event).toHaveClass(`cl-event--kind-${kind}`);
+      await expect(event).toHaveAccessibleName(kindName(kind));
+      await expect(
+        event.querySelector(`[data-kind="${kind}"] svg`),
+      ).not.toBeNull();
+    }
+    const legend = within(canvasElement).getByRole('list', {
+      name: i18n.t('scheduling.calendar.legend.title'),
+    });
+    await expect(within(legend).getAllByRole('listitem')).toHaveLength(3);
+    for (const kind of SESSION_KINDS) {
+      await expect(within(legend).getByText(kindLabel(kind))).toBeVisible();
+    }
+  },
+};
+
+/** AC3: 15/30/60/120-minute events of each type. A short event keeps its
+ * status line; a 60-minute one shows its state, time, subject, first
+ * student and tutor, each line whole (cut with an ellipsis, not in half). */
+export const KindSizes: Story = {
+  args: { result: () => Promise.resolve(page(KIND_SIZE_ITEMS)) },
+  parameters: { viewport: { defaultViewport: 'responsive' } },
+  play: async ({ canvasElement }) => {
+    await events(canvasElement);
+    for (const item of KIND_SIZE_ITEMS) {
+      const event = eventOf(canvasElement, item.id);
+      await expect(event).toHaveClass(`cl-event--kind-${item.kind}`);
+      const minutes =
+        (Date.parse(item.ends_at) - Date.parse(item.starts_at)) / 60_000;
+      if (minutes < 90) {
+        await statusVisible(event);
+      }
+      if (minutes === 60) {
+        const box = event.getBoundingClientRect();
+        const lines = [
+          ...event.querySelectorAll<HTMLElement>('.cl-event-body > *'),
+        ];
+        await expect(lines).toHaveLength(5);
+        for (const line of lines) {
+          const rect = line.getBoundingClientRect();
+          await expect(rect.height).toBeGreaterThan(0);
+          await expect(rect.bottom).toBeLessThanOrEqual(box.bottom + 1);
+        }
+      }
+    }
+  },
+};
+
+/** AC4: each state keeps its border style and its icon with text on every
+ * type's background; the background differs by type. */
+export const StatesByKind: Story = {
+  args: {
+    initial: calendarState({
+      filters: { ...calendarState().filters, cancelled: true },
+    }),
+    result: () => Promise.resolve(page(STATE_KIND_ITEMS)),
+  },
+  play: async ({ canvasElement }) => {
+    await events(canvasElement);
+    const states = [...new Set(STATE_KIND_ITEMS.map((entry) => entry.state))];
+    await expect(states).toHaveLength(7);
+    for (const state of states) {
+      const boxes = STATE_KIND_ITEMS.filter(
+        (entry) => entry.state === state,
+      ).map((entry) => eventOf(canvasElement, entry.id));
+      await expect(boxes).toHaveLength(3);
+      const styles = boxes.map((box) => getComputedStyle(box));
+      for (const style of styles.slice(1)) {
+        await expect(style.borderTopStyle).toBe(styles[0]!.borderTopStyle);
+        await expect(style.borderTopColor).toBe(styles[0]!.borderTopColor);
+      }
+      await expect(
+        new Set(styles.map((style) => style.backgroundColor)).size,
+      ).toBe(3);
+      for (const box of boxes) {
+        await expect(box).toHaveClass(`cl-event--${state}`);
+        await expect(box).toHaveAccessibleName(stateName(state));
+        await expect(box).toHaveTextContent(
+          i18n.t(`scheduling.states.${state}`),
+        );
+      }
     }
   },
 };

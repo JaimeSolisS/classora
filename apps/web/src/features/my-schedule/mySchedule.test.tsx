@@ -49,8 +49,13 @@ import { resolveWhose, TEACHING, whoseEntries } from './whose';
 
 interface StubCalendarProps {
   initialView: string;
-  events: { id: string; extendedProps: { entry: ScheduleEntry } }[];
+  events: {
+    id: string;
+    color?: string;
+    extendedProps: { entry: ScheduleEntry };
+  }[];
   eventContent: (info: unknown) => ReactNode;
+  eventClass: (info: unknown) => string;
   datesSet: (info: { startStr: string; endStr: string }) => void;
   slotMinTime: string;
   slotMaxTime: string;
@@ -60,6 +65,8 @@ interface StubCalendarProps {
 
 const calendarProps = vi.hoisted(() => ({
   last: null as StubCalendarProps | null,
+  /** The view the stub renders events in (List unless a test says). */
+  viewType: 'listWeek',
 }));
 
 vi.mock('@fullcalendar/react', async () => {
@@ -73,8 +80,20 @@ vi.mock('@fullcalendar/react', async () => {
     return (
       <div data-testid="calendar">
         {props.events.map((event) => (
-          <div key={event.id} role="button" tabIndex={0}>
-            {props.eventContent({ event, view: { type: 'listWeek' } })}
+          <div
+            key={event.id}
+            role="button"
+            tabIndex={0}
+            className={props.eventClass({
+              event,
+              view: { type: calendarProps.viewType },
+            })}
+            data-color={event.color}
+          >
+            {props.eventContent({
+              event,
+              view: { type: calendarProps.viewType },
+            })}
           </div>
         ))}
       </div>
@@ -206,10 +225,10 @@ describe('accessible names (E6)', () => {
 
   it('in English', () => {
     expect(entryName(family, context('en'))).toBe(
-      'Matemáticas, November 9, 2026, 10:00 AM–11:00 AM, Confirmed, Tutor: Carmen Ruiz, Room: Aula 2',
+      'Matemáticas, Individual, November 9, 2026, 10:00 AM–11:00 AM, Confirmed, Tutor: Carmen Ruiz, Room: Aula 2',
     );
     expect(entryName(tutor, context('en'))).toBe(
-      'Matemáticas, November 9, 2026, 10:00 AM–11:00 AM, Awaiting your answer, Lucía Pérez, Room: Aula 2',
+      'Matemáticas, Individual, November 9, 2026, 10:00 AM–11:00 AM, Awaiting your answer, Lucía Pérez, Room: Aula 2',
     );
     expect(entryName(skipped, context('en'))).toContain(
       'Not held: center closed, Tutor: Carmen Ruiz',
@@ -218,12 +237,31 @@ describe('accessible names (E6)', () => {
 
   it('in Spanish', () => {
     expect(entryName(family, context('es'))).toBe(
-      'Matemáticas, 9 de noviembre de 2026, 10:00–11:00, Confirmada, Tutor(a): Carmen Ruiz, Aula: Aula 2',
+      'Matemáticas, Individual, 9 de noviembre de 2026, 10:00–11:00, Confirmada, Tutor(a): Carmen Ruiz, Aula: Aula 2',
     );
     expect(entryName(tutor, context('es'))).toContain(
       'Esperando tu respuesta, Lucía Pérez',
     );
   });
+
+  it.each([
+    ['group', 'Group', 'Grupal'],
+    ['course', 'Course', 'Curso'],
+  ] as const)(
+    'name the class type %s after the subject (HF-07)',
+    (kind, en, es) => {
+      const entry: ScheduleEntry = {
+        audience: 'family',
+        item: familyItem({ kind }),
+      };
+      expect(entryName(entry, context('en'))).toMatch(
+        new RegExp(`^Matemáticas, ${en}, `),
+      );
+      expect(entryName(entry, context('es'))).toMatch(
+        new RegExp(`^Matemáticas, ${es}, `),
+      );
+    },
+  );
 
   it('never name markers or other students on a family item', () => {
     const name = entryName(
@@ -280,6 +318,7 @@ describe('the My schedule page', () => {
   beforeEach(() => {
     applyLanguage('en');
     calendarProps.last = null;
+    calendarProps.viewType = 'listWeek';
   });
 
   afterEach(() => {
@@ -337,6 +376,95 @@ describe('the My schedule page', () => {
     expect(text()).toContain('Tutor: Carmen Ruiz');
     expect(text()).toContain('Not held: center closed');
     expect(api.calls(scheduleOf(MATEO.student_id))).toHaveLength(0);
+  });
+
+  // HF-07 AC6: the class type (colour, icon, text, name, legend) on both
+  // calendars; the family keeps its tutor line, the tutor has none.
+  describe('the class type (HF-07)', () => {
+    function events(): HTMLElement[] {
+      return [
+        ...app!.container.querySelectorAll<HTMLElement>(
+          '[data-testid="calendar"] > [role="button"]',
+        ),
+      ];
+    }
+
+    function legend(): (string | null)[] {
+      return [...app!.container.querySelectorAll('[data-kind-legend] li')].map(
+        (li) => li.textContent,
+      );
+    }
+
+    async function asTutor() {
+      api = stubApi({
+        ...SETTINGS_ROUTE,
+        'GET /api/v1/auth/me': meAs(user('tutor')),
+        [TUTOR_SCHEDULE]: () =>
+          jsonResponse(200, { items: TUTOR_ITEMS, truncated: false }),
+      });
+      app = await renderApp('/my-schedule', ROUTES);
+      await loaded();
+    }
+
+    async function asGuardian() {
+      api = stubApi({
+        ...SETTINGS_ROUTE,
+        'GET /api/v1/auth/me': meAs(user('guardian')),
+        [FAMILY_STUDENTS]: () => jsonResponse(200, familyStudents(LUCIA)),
+        [scheduleOf(LUCIA.student_id)]: () =>
+          jsonResponse(200, {
+            student_id: LUCIA.student_id,
+            items: FAMILY_ITEMS,
+            truncated: false,
+          }),
+      });
+      app = await renderApp('/my-schedule', ROUTES);
+      await loaded();
+    }
+
+    it("colours a tutor's classes by type, with no tutor line (List)", async () => {
+      await asTutor();
+
+      const shown = events();
+      expect(shown).toHaveLength(TUTOR_ITEMS.length);
+      shown.forEach((event, index) => {
+        const { kind } = TUTOR_ITEMS[index]!;
+        expect(event.classList).toContain(`cl-event--kind-${kind}`);
+        expect(event.classList).toContain('cl-event--list');
+        expect(event.dataset.color).toBe(`var(--kind-${kind}-strong)`);
+        expect(event.querySelector(`[data-kind="${kind}"]`)?.textContent).toBe(
+          { individual: 'Individual', group: 'Group', course: 'Course' }[kind],
+        );
+        expect(event.querySelector('.sr-only')?.textContent).toContain(
+          `, ${{ individual: 'Individual', group: 'Group', course: 'Course' }[kind]}, `,
+        );
+      });
+      expect(text()).not.toContain('Tutor: ');
+      expect(legend()).toEqual(['Individual', 'Group', 'Course']);
+      expect(text()).toContain('Class types');
+    });
+
+    it("keeps the family's tutor line and shows the type icon in Week", async () => {
+      calendarProps.viewType = 'timeGridWeek';
+      await asGuardian();
+
+      const shown = events();
+      expect(shown).toHaveLength(FAMILY_ITEMS.length);
+      shown.forEach((event, index) => {
+        const { kind } = FAMILY_ITEMS[index]!;
+        expect(event.classList).toContain(`cl-event--kind-${kind}`);
+        expect(event.classList).not.toContain('cl-event--list');
+        // The time grid: the icon only, its text as the tooltip.
+        const badge = event.querySelector(`[data-kind="${kind}"]`)!;
+        expect(badge.querySelector('svg')).not.toBeNull();
+        expect(badge.textContent).toBe('');
+        expect(badge.getAttribute('title')).toBe(
+          { individual: 'Individual', group: 'Group', course: 'Course' }[kind],
+        );
+        expect(event.textContent).toContain('Tutor: Carmen Ruiz');
+      });
+      expect(legend()).toEqual(['Individual', 'Group', 'Course']);
+    });
   });
 
   it('a consent-required child shows the message and sends no request', async () => {
