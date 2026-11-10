@@ -1,4 +1,4 @@
-.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-demo seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image
+.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -56,11 +56,6 @@ bootstrap-owner:
 reset-owner-password:
 	@test -n "$(USERNAME)" || { echo "usage: make reset-owner-password USERNAME=<name>" >&2; exit 2; }
 	docker compose run --rm --build api python -m app.cli reset-owner-password --username "$(USERNAME)"
-
-## Generate synthetic es_MX demo data on the host (refused unless APP_ENV is local or dev; needs .env).
-# Runs with the API dev dependencies (Factory Boy, Faker), which the image does not contain.
-seed-demo:
-	cd apps/api && uv run --env-file ../../.env python -m tests.factories.demo
 
 ## Generate the simulated operations data in Spanish on the host (APP_ENV=local only; needs a freshly migrated database and .env).
 # A deterministic center from 1 Sep to 5 Dec 2026 (history to 18 Nov), through the services; README "Simulated operations data".

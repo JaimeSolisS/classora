@@ -80,7 +80,7 @@ def account_rows(url: str) -> dict[str, Any]:
 
 
 def test_the_accounts_are_the_documented_ones():
-    # A1: the values the README table lists, in order.
+    # A1: the documented values (_docs/testing-guidelines.md), in order.
     assert [
         (a.username, a.password, a.role, a.display_name) for a in DEMO_ACCOUNTS
     ] == [

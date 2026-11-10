@@ -122,7 +122,7 @@ async def persist_batch(
 class GeneratorSkipped:
     """What a demo generator returns when it writes nothing on purpose.
 
-    ``make seed-demo`` prints ``<name>: skipped (<reason>)``.
+    The demo command prints ``<name>: skipped (<reason>)``.
     """
 
     reason: str

@@ -7,7 +7,7 @@
    (local only)`` and exits 2 before any engine, connection or Faker call.
 2. Load the settings (a configuration error exits 1).
 3. :func:`~.timeline.run_simulation` in one Unit of Work: the Alembic head
-   (exit 1 when not at head, as ``make seed-demo``), the reference seeds,
+   (exit 1 when not at head, as ``make seed``), the reference seeds,
    the clean-database check (exit 3 with the reason and the reset steps;
    nothing written), then every module.
 4. Print the reference-seed lines, then ``<module>: <n> rows`` (or

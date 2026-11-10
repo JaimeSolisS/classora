@@ -3,9 +3,10 @@
 5 Dec 2026, written through the real services on a clean local database.
 
 Test-support code only (nothing under ``app/`` imports it), separate from
-``make seed-demo`` (E1): its own accounts, plan and timeline. The package
-name must not start with ``demo`` (``test_demo_guard.py`` matches recipe
-lines containing ``python -m tests.factories.demo``).
+the demo fixture data (``tests/factories/demo.py``, E1): its own accounts,
+plan and timeline. The package name must not start with ``demo``
+(``test_demo_guard.py`` requires that no Makefile recipe line contains
+``python -m tests.factories.demo``).
 
 - ``anchor``: the fixed timeline and :func:`~.anchor.sim_clock`;
 - ``plan``: the pure plan; ``texts``: the language pools;

@@ -1,5 +1,8 @@
-"""``make seed-demo`` / ``python -m tests.factories.demo [--seed N]
-[--without-billing]``.
+"""``python -m tests.factories.demo [--seed N] [--without-billing]``.
+
+The E2E and test fixture data; no make target (HF-587: the local example data
+is ``make seed-data-spanish`` / ``make seed-data-english``). ``e2e/scripts/run.sh``
+runs it, and tests call its generators.
 
 Generates synthetic ``es_MX`` demo data for local and DEV databases:
 
@@ -21,9 +24,9 @@ Generates synthetic ``es_MX`` demo data for local and DEV databases:
 6. Print generator names and row counts (or ``skipped (<reason>)``), never
    generated values.
 
-``--without-billing`` (M6-demo E3; ``e2e/scripts/run.sh`` passes it, ``make
-seed-demo`` doesn't) makes the billing, payroll (#499 E3), expense (#501)
-and M8 administration (#539 E1) generators print ``skipped
+``--without-billing`` (M6-demo E3; ``e2e/scripts/run.sh`` passes it) makes
+the billing, payroll (#499 E3), expense (#501) and M8 administration
+(#539 E1) generators print ``skipped
 (--without-billing)`` without touching the database, so billing, payroll,
 expenses and the M8 administration data stay off in the E2E database.
 
@@ -34,8 +37,7 @@ M6-demo, M7-demo, M7-demo-b and M8-demo data keep the dates of their first
 run. A future generator may add
 rows on a rerun unless its issue says otherwise. The payroll start date locks
 once a payroll period exists (#106 E6), so the payroll data can't be moved
-either. To start over, reset with ``docker compose down -v``, then ``make
-migrate`` and ``make seed-demo``.
+either. To start over, run it again on a freshly migrated database.
 
 Like ``make seed``, it connects directly to PostgreSQL (``DATABASE_DIRECT_URL``,
 ADR-0003).
