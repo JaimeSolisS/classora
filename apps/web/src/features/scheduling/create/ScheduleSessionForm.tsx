@@ -11,6 +11,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '@/app/api';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
+import { LoadingState } from '@/components/feedback/LoadingState';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
 import { Combobox, type OptionsPage } from '@/components/ui/combobox';
@@ -60,8 +61,11 @@ import {
   isChosenTutorUnsuggested,
   isConflictCode,
   isMakeupTaken,
+  isRoomTooSmall,
   overrideAction,
   overrideReasonError,
+  ownerRefusal,
+  ownerServerErrors,
   serverErrors,
   sessionOverride,
   slotValues,
@@ -70,12 +74,17 @@ import {
   takenMakeupId,
   TUTOR_SUGGESTIONS_DELAY_MS,
   tutorSuggestionKey,
+  validateOwnerSchedule,
   validateSchedule,
   weeklyAvailabilityText,
+  type OwnerKind,
+  type OwnerOption,
+  type OwnerSummary,
   type ScheduleErrors,
   type ScheduleField,
   type ScheduleMessage,
   type ScheduleValues,
+  type SessionKindChoice,
   type SessionOverride,
 } from './rules';
 import { useSlotParts } from './slotParts';
@@ -146,6 +155,55 @@ import { useWarningMessage } from './warningMessages';
 // notice sits on top, a taken target links to its makeup, and the success
 // panel links to the target; "Schedule another" is the page's, to leave the
 // mode.
+//
+// Group and course sessions (HF-11b, #593): with `owners` a "Class type"
+// radio group (Individual, the default; Group; Course) sits before the
+// student, never in makeup mode. Group or Course hides the student, the
+// subject, "Repeats weekly" and the suggested and free times, and shows a
+// type-ahead picker of the active groups or current cohorts, then the
+// chosen one's subject, a cohort's dates and its enrolled students (an
+// empty roster is allowed: later enrollments join). Tutor suggestions use
+// the derived subject; the classroom options show their capacity, with a
+// warning when the roster is larger. Switching type keeps the date, times,
+// tutor and classroom and clears the other types' selection. A
+// `student_overlap` names the student; `group_ended` / `cohort_ended` clear
+// the selection and `roster_changed` reads the roster again, both as an
+// alert. Individual mode is unchanged.
+
+/** A group or course session's sources (HF-11b). */
+export interface ScheduleOwners {
+  /** The active groups (`q`: the name contains it); none: no Group option. */
+  searchGroups?:
+    | ((
+        q: string | null,
+        signal: AbortSignal,
+      ) => Promise<OptionsPage<OwnerOption>>)
+    | undefined;
+  /** The current cohorts; none: no Course option. */
+  searchCohorts?:
+    | ((
+        q: string | null,
+        signal: AbortSignal,
+      ) => Promise<OptionsPage<OwnerOption>>)
+    | undefined;
+  /** The chosen group or cohort with its students enrolled now. */
+  loadOwner: (
+    kind: OwnerKind,
+    id: string,
+    signal: AbortSignal,
+  ) => Promise<OwnerSummary>;
+  /** Creates the session (with the override when given); rejects with the error. */
+  onSubmit: (
+    kind: OwnerKind,
+    ownerId: string,
+    values: ScheduleValues,
+    override?: SessionOverride,
+  ) => Promise<ClassSessionCreated>;
+  /** Each active room's capacity, by id; none: no capacity shown. */
+  classroomCapacities?: Readonly<Record<string, number>> | undefined;
+  /** A link to the group's or cohort's page (the success panel). */
+  ownerLink?: (kind: OwnerKind, id: string) => ReactNode;
+}
 
 /** Makeup mode: what the form shows around the fixed values (#436). */
 export interface ScheduleMakeup {
@@ -226,6 +284,12 @@ export interface ScheduleSessionFormProps {
   initialRecurrence?: RecurrenceValues;
   /** Makeup mode (#436); none: the plain form. */
   makeup?: ScheduleMakeup | undefined;
+  /** Group and course sessions (HF-11b); none: individual only. */
+  owners?: ScheduleOwners | undefined;
+  /** The type to start from (stories). */
+  initialKind?: SessionKindChoice;
+  /** The group or cohort to start from (stories). */
+  initialOwner?: OwnerOption | null;
 }
 
 export function ScheduleSessionForm({
@@ -252,6 +316,9 @@ export function ScheduleSessionForm({
   initialRepeats = false,
   initialRecurrence = EMPTY_RECURRENCE,
   makeup,
+  owners,
+  initialKind = 'individual',
+  initialOwner = null,
 }: ScheduleSessionFormProps) {
   const { t, i18n } = useTranslation();
   const language = toLanguage(i18n.resolvedLanguage);
@@ -271,6 +338,13 @@ export function ScheduleSessionForm({
   const [conflicts, setConflicts] = useState<SchedulingConflict[] | null>(null);
   const [failure, setFailure] = useState<unknown>(null);
   const [created, setCreated] = useState<ClassSessionCreated | null>(null);
+  // HF-11b: the type, the chosen group or cohort, and what a 201 was for.
+  const [kind, setKind] = useState<SessionKindChoice>(initialKind);
+  const [owner, setOwner] = useState<OwnerOption | null>(initialOwner);
+  const [createdFor, setCreatedFor] = useState<{
+    kind: OwnerKind;
+    owner: OwnerOption;
+  } | null>(null);
   const [repeats, setRepeats] = useState(
     initialRepeats && onSubmitSeries !== undefined,
   );
@@ -320,6 +394,29 @@ export function ScheduleSessionForm({
   const focusAfterDialog = useRef<'button' | 'panel'>('button');
 
   const fixed = makeup !== undefined;
+  const ownerKinds: OwnerKind[] = fixed
+    ? []
+    : [
+        ...(owners?.searchGroups ? (['group'] as const) : []),
+        ...(owners?.searchCohorts ? (['course'] as const) : []),
+      ];
+  // The group or course being scheduled; null: an individual session.
+  const ownerKind: OwnerKind | null =
+    kind !== 'individual' && ownerKinds.includes(kind) ? kind : null;
+  const ownerSummary = useQuery({
+    queryKey: ['scheduling', 'create', 'owner', ownerKind, owner?.id ?? ''],
+    queryFn: ({ signal }) =>
+      owners && ownerKind && owner
+        ? owners.loadOwner(ownerKind, owner.id, signal)
+        : Promise.reject(new Error('no group or cohort')),
+    enabled: ownerKind !== null && owner !== null,
+  });
+  const summary: OwnerSummary | undefined =
+    ownerKind && owner ? ownerSummary.data : undefined;
+  // What the tutor suggestions load for: a group or course has its subject.
+  const slotSource: ScheduleValues = ownerKind
+    ? { ...values, student: null, subjectId: summary?.subject.id ?? '' }
+    : values;
   const fieldId = (field: ScheduleField) => `${id}-${field}`;
   const errorId = (field: ScheduleField) => `${id}-${field}-error`;
 
@@ -376,9 +473,10 @@ export function ScheduleSessionForm({
     }
   }
 
-  const seriesMode = repeats && onSubmitSeries !== undefined;
+  const seriesMode =
+    ownerKind === null && repeats && onSubmitSeries !== undefined;
   const suggestionKey = onSuggestTutors
-    ? tutorSuggestionKey(values, seriesMode, recurrence)
+    ? tutorSuggestionKey(slotSource, seriesMode, recurrence)
     : null;
   let tutorSuggestions: TutorSuggestionsState | null = null;
   if (suggestionKey !== null) {
@@ -403,8 +501,8 @@ export function ScheduleSessionForm({
       const request = tutorRequest.current;
       const series = seriesMode && onSuggestSeriesTutors !== undefined;
       const call = series
-        ? onSuggestSeriesTutors(values, recurrence, signal)
-        : onSuggestTutors(values, signal);
+        ? onSuggestSeriesTutors(slotSource, recurrence, signal)
+        : onSuggestTutors(slotSource, signal);
       call.then(
         (result) => {
           if (request !== tutorRequest.current || signal.aborted) {
@@ -514,9 +612,9 @@ export function ScheduleSessionForm({
       return;
     }
     const element =
-      first === 'student'
+      first === 'student' || first === 'owner'
         ? document
-            .getElementById(`${fieldId('student')}-picker`)
+            .getElementById(`${fieldId(first)}-picker`)
             ?.querySelector('input')
         : document.getElementById(fieldId(first));
     element?.focus();
@@ -634,11 +732,13 @@ export function ScheduleSessionForm({
     clearSuggestions();
     setAnnouncement('');
     setFailure(null);
-    if (repeats && onSubmitSeries) {
+    if (seriesMode && onSubmitSeries) {
       await submitSeries(onSubmitSeries);
       return;
     }
-    const found = validateSchedule(values);
+    const found = ownerKind
+      ? validateOwnerSchedule(values, ownerKind, owner?.id ?? null)
+      : validateSchedule(values);
     setErrors(found);
     if (Object.keys(found).length > 0) {
       focusFirst(found);
@@ -646,14 +746,29 @@ export function ScheduleSessionForm({
     }
     setSubmitting(true);
     try {
-      const session = await onSubmit(values);
-      setCreated(session);
-      window.setTimeout(() => successHeading.current?.focus(), 0);
+      const session = await create();
+      showCreated(session);
     } catch (caught) {
       handleFailure(caught);
     } finally {
       setSubmitting(false);
     }
+  }
+
+  /** The create for the current type (an override only when given). */
+  function create(override?: SessionOverride): Promise<ClassSessionCreated> {
+    if (ownerKind && owners && owner) {
+      return override
+        ? owners.onSubmit(ownerKind, owner.id, values, override)
+        : owners.onSubmit(ownerKind, owner.id, values);
+    }
+    return override ? onSubmit(values, override) : onSubmit(values);
+  }
+
+  function showCreated(session: ClassSessionCreated) {
+    setCreated(session);
+    setCreatedFor(ownerKind && owner ? { kind: ownerKind, owner } : null);
+    window.setTimeout(() => successHeading.current?.focus(), 0);
   }
 
   function onFormSubmit(event: FormEvent<HTMLFormElement>) {
@@ -669,11 +784,25 @@ export function ScheduleSessionForm({
 
   function handleFailure(caught: unknown) {
     const list = conflictsOf(caught);
+    const refusal = ownerKind ? ownerRefusal(caught) : null;
     if (list) {
       setConflicts(list);
-      suggest(values);
+      if (!ownerKind) {
+        suggest(values);
+      }
+    } else if (refusal) {
+      // An ended group or cohort can't be chosen again; a changed roster
+      // is read again (#592).
+      if (refusal === 'ended') {
+        setOwner(null);
+      } else {
+        void ownerSummary.refetch();
+      }
+      setFailure(caught);
     } else if (caught instanceof ApiError && caught.fieldErrors.length > 0) {
-      const { fields, page } = splitServerErrors(caught.fieldErrors, fixed);
+      const { fields, page } = ownerKind
+        ? { fields: ownerServerErrors(caught.fieldErrors, ownerKind), page: [] }
+        : splitServerErrors(caught.fieldErrors, fixed);
       const onFields = Object.keys(fields).length > 0;
       if (onFields) {
         setErrors(fields);
@@ -692,16 +821,12 @@ export function ScheduleSessionForm({
       return;
     }
     try {
-      const session = await onSubmit(
-        values,
-        sessionOverride(conflicts, reason),
-      );
+      const session = await create(sessionOverride(conflicts, reason));
       // The success panel replaces the form (and the dialog with it).
       setOverriding(false);
       setConflicts(null);
       clearSuggestions();
-      setCreated(session);
-      window.setTimeout(() => successHeading.current?.focus(), 0);
+      showCreated(session);
     } catch (caught) {
       const list = conflictsOf(caught);
       const onReason =
@@ -712,9 +837,11 @@ export function ScheduleSessionForm({
         caught instanceof ApiError &&
         !onReason &&
         caught.fieldErrors.length > 0;
-      if (list || onForm || isMakeupTaken(caught)) {
-        // A new conflict list, a 422 on the form's own fields or a taken
-        // makeup target: close the dialog and show it on the page.
+      const refused = ownerKind !== null && ownerRefusal(caught) !== null;
+      if (list || onForm || isMakeupTaken(caught) || refused) {
+        // A new conflict list, a 422 on the form's own fields, a taken
+        // makeup target or an ended group or cohort or changed roster:
+        // close the dialog and show it on the page.
         focusAfterDialog.current = list ? 'panel' : 'button';
         setOverriding(false);
         handleFailure(caught);
@@ -741,6 +868,8 @@ export function ScheduleSessionForm({
       return;
     }
     setCreated(null);
+    setCreatedFor(null);
+    setOwner(null);
     setCreatedSeries(null);
     setRepeats(false);
     setRecurrence(EMPTY_RECURRENCE);
@@ -749,6 +878,35 @@ export function ScheduleSessionForm({
     setAnnouncement('');
     setErrors({});
     setValues({ ...EMPTY_SCHEDULE, date: values.date });
+  }
+
+  /** Switching type keeps the date, times, tutor and classroom (HF-11b). */
+  function changeKind(next: SessionKindChoice) {
+    if (next === kind) {
+      return;
+    }
+    setKind(next);
+    setOwner(null);
+    setValues((current) => ({ ...current, student: null, subjectId: '' }));
+    setRepeats(false);
+    setRecurrenceErrors({});
+    setErrors({});
+    setConflicts(null);
+    setSeriesConflicts(null);
+    clearSuggestions();
+    setFreeTimes(null);
+    setFailure(null);
+  }
+
+  function chooseOwner(next: OwnerOption) {
+    setOwner(next);
+    setErrors((current) => {
+      const rest = { ...current };
+      delete rest.owner;
+      return rest;
+    });
+    setConflicts(null);
+    setFailure(null);
   }
 
   const ruleName = (code: string) =>
@@ -839,7 +997,11 @@ export function ScheduleSessionForm({
           tabIndex={-1}
           className="text-lg font-semibold outline-none focus-visible:ring-3 focus-visible:ring-ring"
         >
-          {t('scheduling.success.heading')}
+          {createdFor
+            ? createdFor.kind === 'group'
+              ? t('scheduling.create.owner.groupScheduled')
+              : t('scheduling.create.owner.courseScheduled')
+            : t('scheduling.success.heading')}
         </h2>
         {overriddenCodes.length > 0 ? (
           <div className="flex flex-col gap-1">
@@ -874,8 +1036,31 @@ export function ScheduleSessionForm({
           </div>
         ) : null}
         <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-[auto_1fr]">
-          <dt className="font-medium">{t('scheduling.fields.student')}</dt>
-          <dd>{created.participants.map((p) => p.display_name).join(', ')}</dd>
+          {createdFor ? (
+            <>
+              <dt className="font-medium">
+                {createdFor.kind === 'group'
+                  ? t('scheduling.create.owner.group')
+                  : t('scheduling.create.owner.course')}
+              </dt>
+              <dd className="break-words">{createdFor.owner.name}</dd>
+              <dt className="font-medium">
+                {t('scheduling.create.owner.participants')}
+              </dt>
+              <dd>
+                {t('scheduling.create.owner.participantCount', {
+                  count: created.participants.length,
+                })}
+              </dd>
+            </>
+          ) : (
+            <>
+              <dt className="font-medium">{t('scheduling.fields.student')}</dt>
+              <dd>
+                {created.participants.map((p) => p.display_name).join(', ')}
+              </dd>
+            </>
+          )}
           <dt className="font-medium">{t('scheduling.fields.subject')}</dt>
           <dd>
             {t('scheduling.success.subject', {
@@ -907,6 +1092,9 @@ export function ScheduleSessionForm({
         </dl>
         <div className="flex flex-wrap items-center gap-4">
           {sessionLink ? sessionLink(created.id) : null}
+          {createdFor && owners?.ownerLink
+            ? owners.ownerLink(createdFor.kind, createdFor.owner.id)
+            : null}
           {calendarLink ? calendarLink(values.date) : null}
           <Button type="button" onClick={scheduleAnother}>
             {t('scheduling.success.another')}
@@ -951,7 +1139,12 @@ export function ScheduleSessionForm({
     );
   }
 
-  function timeField(field: 'date' | 'start' | 'end', label: string) {
+  function timeField(
+    field: 'date' | 'start' | 'end',
+    label: string,
+    help?: string,
+  ) {
+    const helpId = `${fieldId(field)}-help`;
     return (
       <div className="flex flex-col gap-2">
         <label htmlFor={fieldId(field)} className="text-sm font-medium">
@@ -965,10 +1158,15 @@ export function ScheduleSessionForm({
           aria-invalid={errors[field] ? true : undefined}
           aria-describedby={describedBy(
             field,
-            field === 'date' ? undefined : zoneId,
+            field === 'date' ? (help ? helpId : undefined) : zoneId,
           )}
           onChange={(event) => change(field, event.target.value)}
         />
+        {help ? (
+          <p id={helpId} className="text-sm text-muted-foreground">
+            {help}
+          </p>
+        ) : null}
         <FieldError id={errorId(field)} message={message(errors[field])} />
       </div>
     );
@@ -976,9 +1174,11 @@ export function ScheduleSessionForm({
 
   const tutorName =
     tutors.find((tutor) => tutor.id === values.tutorId)?.name ?? '';
-  const subjectName = makeup
-    ? makeup.subjectName
-    : subjects.find((subject) => subject.id === values.subjectId)?.name;
+  const subjectName = ownerKind
+    ? summary?.subject.name
+    : makeup
+      ? makeup.subjectName
+      : subjects.find((subject) => subject.id === values.subjectId)?.name;
   const loadedSuggestions =
     tutorSuggestions?.status === 'loaded' ? tutorSuggestions.result : null;
   const unsuggestedId = `${id}-tutor-unsuggested`;
@@ -1036,12 +1236,45 @@ export function ScheduleSessionForm({
   }
 
   const action = conflicts ? overrideAction(conflicts, canOverride) : null;
-  const failureMessage =
-    failure instanceof ApiError
-      ? splitServerErrors(failure.fieldErrors, fixed)
-          .page.map(message)
-          .join(' ') || undefined
-      : undefined;
+  const refusal = ownerKind ? ownerRefusal(failure) : null;
+  let failureMessage: string | undefined;
+  if (refusal === 'ended') {
+    failureMessage =
+      ownerKind === 'group'
+        ? t('scheduling.create.owner.groupEnded')
+        : t('scheduling.create.owner.courseEnded');
+  } else if (refusal === 'rosterChanged') {
+    failureMessage = t('scheduling.create.owner.rosterChanged');
+  } else if (failure instanceof ApiError) {
+    failureMessage =
+      splitServerErrors(failure.fieldErrors, fixed)
+        .page.map(message)
+        .join(' ') || undefined;
+  }
+  const rosterNames = new Map(
+    (summary?.students ?? []).map((student) => [student.id, student.name]),
+  );
+  const studentName = ownerKind
+    ? (studentId: string) => rosterNames.get(studentId)
+    : undefined;
+  const capacities = owners?.classroomCapacities;
+  const searchOwners =
+    ownerKind === 'group' ? owners?.searchGroups : owners?.searchCohorts;
+  const roomCapacity = values.classroomId
+    ? capacities?.[values.classroomId]
+    : undefined;
+  const roomWarningId = `${id}-room-warning`;
+  const roomTooSmall =
+    ownerKind !== null &&
+    summary !== undefined &&
+    isRoomTooSmall(roomCapacity, summary.students.length);
+  const cohortDates =
+    ownerKind === 'course' && summary?.firstSessionOn && summary.lastSessionOn
+      ? {
+          first: formatLocalDate(summary.firstSessionOn),
+          last: formatLocalDate(summary.lastSessionOn),
+        }
+      : null;
   const takenId = takenMakeupId(failure);
 
   return (
@@ -1049,7 +1282,7 @@ export function ScheduleSessionForm({
       {makeup?.notice}
       {conflicts ? (
         <div ref={panel} className="flex flex-col gap-3">
-          <ConflictPanel conflicts={conflicts} />
+          <ConflictPanel conflicts={conflicts} studentName={studentName} />
           {action === 'override' ? (
             <div>
               <Button
@@ -1106,7 +1339,138 @@ export function ScheduleSessionForm({
         onSubmit={onFormSubmit}
         className="flex flex-col gap-6"
       >
-        {makeup ? (
+        {ownerKinds.length > 0 ? (
+          <fieldset className="flex flex-col gap-2">
+            <legend className="text-sm font-medium">
+              {t('scheduling.create.type.legend')}
+            </legend>
+            <div className="flex flex-wrap gap-x-6 gap-y-1">
+              {(['individual', ...ownerKinds] as const).map((choice) => (
+                <label
+                  key={choice}
+                  className="flex min-h-9 items-center gap-2 text-sm"
+                >
+                  <input
+                    type="radio"
+                    name={`${id}-kind`}
+                    value={choice}
+                    checked={kind === choice}
+                    onChange={() => changeKind(choice)}
+                    className="size-4 accent-foreground"
+                  />
+                  {t(`scheduling.create.type.${choice}`)}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        ) : null}
+        {ownerKind && searchOwners ? (
+          <>
+            <div id={`${fieldId('owner')}-picker`}>
+              <Combobox<OwnerOption>
+                key={ownerKind}
+                label={
+                  ownerKind === 'group'
+                    ? t('scheduling.create.owner.group')
+                    : t('scheduling.create.owner.course')
+                }
+                help={
+                  ownerKind === 'group'
+                    ? t('scheduling.create.owner.groupHelp')
+                    : t('scheduling.create.owner.courseHelp')
+                }
+                queryKey={['scheduling', 'create', 'owners', ownerKind]}
+                load={searchOwners}
+                optionId={(option) => option.id}
+                optionLabel={(option) => option.name}
+                optionNote={(option) => option.subjectName}
+                emptyText={
+                  ownerKind === 'group'
+                    ? t('scheduling.create.owner.noGroups')
+                    : t('scheduling.create.owner.noCourses')
+                }
+                selected={owner ? { id: owner.id, label: owner.name } : null}
+                onSelect={chooseOwner}
+                errorMessage={message(errors.owner)}
+              />
+            </div>
+            <p aria-live="polite" className="sr-only">
+              {owner && summary
+                ? t('scheduling.create.owner.announce', {
+                    name: owner.name,
+                    subject: summary.subject.name,
+                    count: summary.students.length,
+                  })
+                : ''}
+            </p>
+            {owner ? (
+              <section
+                aria-labelledby={`${id}-owner-summary`}
+                className="flex min-w-0 flex-col gap-3 rounded-md border border-border p-4"
+              >
+                <h2
+                  id={`${id}-owner-summary`}
+                  className="font-medium break-words"
+                >
+                  {owner.name}
+                </h2>
+                {summary ? (
+                  <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-[auto_1fr]">
+                    <dt className="font-medium">
+                      {t('scheduling.fields.subject')}
+                    </dt>
+                    <dd className="break-words">
+                      {t('scheduling.success.subject', {
+                        subject: summary.subject.name,
+                        level: summary.subject.levelName,
+                      })}
+                    </dd>
+                    {ownerKind === 'course' ? (
+                      <>
+                        <dt className="font-medium">
+                          {t('scheduling.create.owner.dates')}
+                        </dt>
+                        <dd>
+                          {cohortDates
+                            ? t(
+                                'scheduling.create.owner.dateRange',
+                                cohortDates,
+                              )
+                            : t('scheduling.create.owner.noDates')}
+                        </dd>
+                      </>
+                    ) : null}
+                    <dt className="font-medium">
+                      {t('scheduling.create.owner.enrolled', {
+                        count: summary.students.length,
+                      })}
+                    </dt>
+                    <dd className="min-w-0">
+                      {summary.students.length > 0 ? (
+                        <ul className="flex flex-wrap gap-x-4 gap-y-1">
+                          {summary.students.map((student) => (
+                            <li key={student.id} className="break-words">
+                              {student.name}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p>{t('scheduling.create.owner.emptyRoster')}</p>
+                      )}
+                    </dd>
+                  </dl>
+                ) : ownerSummary.isError ? (
+                  <ErrorAlert
+                    error={ownerSummary.error}
+                    onRetry={() => void ownerSummary.refetch()}
+                  />
+                ) : (
+                  <LoadingState rows={2} />
+                )}
+              </section>
+            ) : null}
+          </>
+        ) : makeup ? (
           <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-[auto_1fr]">
             <dt className="font-medium">{t('scheduling.fields.student')}</dt>
             <dd className="break-words">{makeup.studentName}</dd>
@@ -1137,7 +1501,7 @@ export function ScheduleSessionForm({
             />
           </div>
         )}
-        {makeup
+        {makeup || ownerKind
           ? null
           : select(
               'subject',
@@ -1164,7 +1528,7 @@ export function ScheduleSessionForm({
           <p id={zoneId} className="text-sm text-muted-foreground">
             {t('scheduling.zone', { zone: timeZone })}
           </p>
-          {onSubmitSeries ? (
+          {onSubmitSeries && !ownerKind ? (
             <label className="flex min-h-9 w-fit items-center gap-2 text-sm font-medium">
               <input
                 type="checkbox"
@@ -1182,6 +1546,9 @@ export function ScheduleSessionForm({
               repeats
                 ? t('scheduling.series.startsOn')
                 : t('scheduling.fields.date'),
+              cohortDates
+                ? t('scheduling.create.owner.dateHelp', cohortDates)
+                : undefined,
             )}
             {timeField('start', t('scheduling.fields.start'))}
             {timeField('end', t('scheduling.fields.end'))}
@@ -1235,15 +1602,38 @@ export function ScheduleSessionForm({
             (value) => change('classroomId', value),
             <>
               <option value="">{t('scheduling.noClassroom')}</option>
-              {classrooms.map((room) => (
-                <option key={room.id} value={room.id}>
-                  {room.name}
-                </option>
-              ))}
+              {classrooms.map((room) => {
+                const capacity = ownerKind ? capacities?.[room.id] : undefined;
+                return (
+                  <option key={room.id} value={room.id}>
+                    {capacity === undefined
+                      ? room.name
+                      : t('scheduling.create.owner.roomOption', {
+                          name: room.name,
+                          capacity,
+                        })}
+                  </option>
+                );
+              })}
             </>,
+            {
+              describedBy: roomTooSmall ? roomWarningId : undefined,
+              after:
+                roomTooSmall && summary ? (
+                  <p
+                    id={roomWarningId}
+                    className="border-s-4 border-chart-2 ps-2 text-sm break-words"
+                  >
+                    {t('scheduling.create.owner.roomTooSmall', {
+                      count: summary.students.length,
+                      capacity: roomCapacity,
+                    })}
+                  </p>
+                ) : null,
+            },
           )}
         </div>
-        {onFindFreeTimes && !seriesMode && values.tutorId ? (
+        {onFindFreeTimes && !seriesMode && !ownerKind && values.tutorId ? (
           <div className="flex flex-col gap-3">
             <div>
               <Button

@@ -10,13 +10,15 @@ import { orderedConflicts } from './rules';
 // shows a translated message and a label: "Not allowed" (hard) or "Can be
 // overridden" (soft). The override action is rendered under it by the form.
 // Another write (#58: a calendar move) passes its own heading and hint, and
-// can leave the focus to its dialog (`focusOnChange={false}`).
+// can leave the focus to its dialog (`focusOnChange={false}`). A group or
+// course session names each overlapping student (`studentName`, HF-11b).
 
 export function ConflictPanel({
   conflicts,
   heading,
   hint,
   focusOnChange = true,
+  studentName,
 }: {
   conflicts: readonly SchedulingConflict[];
   /** Default: "The session can't be scheduled: N conflicts". */
@@ -24,9 +26,11 @@ export function ConflictPanel({
   /** Default: "Change the form and try again; nothing was saved." */
   hint?: string;
   focusOnChange?: boolean;
+  /** The roster's name of a `student_overlap`'s student (HF-11b). */
+  studentName?: ((studentId: string) => string | undefined) | undefined;
 }) {
   const { t } = useTranslation();
-  const message = useConflictMessage();
+  const message = useConflictMessage(studentName);
   const headingId = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
 

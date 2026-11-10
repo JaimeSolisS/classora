@@ -9,8 +9,15 @@ import {
   CONFLICTS,
   CREATED,
   CARMEN_AVAILABILITY,
+  COHORT_OPTION,
+  COHORT_SUMMARY,
   CREATED_WITH_WARNINGS,
+  EMPTY_GROUP_SUMMARY,
   FILLED,
+  GROUP_CONFLICTS,
+  GROUP_OPTION,
+  GROUP_SUMMARY,
+  OWNER_FILLED,
   NO_QUALIFIED_TUTORS,
   NO_SUGGESTIONS,
   NO_TUTOR_SUGGESTIONS,
@@ -24,7 +31,8 @@ import {
   TUTORS,
   UNASSIGNED,
 } from './fixtures';
-import type { SessionOverride } from './rules';
+import type { OwnerSummary, SessionOverride } from './rules';
+import type { ScheduleOwners } from './ScheduleSessionForm';
 import {
   SERIES_CONFLICTS,
   SERIES_CREATED,
@@ -46,7 +54,9 @@ import { ScheduleSessionForm } from './ScheduleSessionForm';
 // times. No request:
 // `onSubmit`, `onSuggest`, `onSuggestTutors` and the student search are
 // stubs. Repeats weekly (#54b E3): the section on, a 409 grouped by date
-// (no override for series yet) and the series success panel.
+// (no override for series yet) and the series success panel. Group and
+// course sessions (HF-11b): a group chosen with its roster, a cohort with
+// its dates, an empty roster, and a group's student-overlap conflict.
 
 const meta = {
   title: 'Scheduling/ScheduleSessionForm',
@@ -754,5 +764,115 @@ export const RepeatsSuccess: Story = {
     await expect(
       await canvas.findByText(i18n.t('scheduling.series.success.heading')),
     ).toBeVisible();
+  },
+};
+
+// --- Group and course sessions (HF-11b) ---------------------------------------
+
+function owners(
+  summary: OwnerSummary,
+  onSubmit: ScheduleOwners['onSubmit'] = fn(() => Promise.resolve(CREATED)),
+): ScheduleOwners {
+  return {
+    searchGroups: fn(() =>
+      Promise.resolve({ items: [GROUP_OPTION], total: 1 }),
+    ),
+    searchCohorts: fn(() =>
+      Promise.resolve({ items: [COHORT_OPTION], total: 1 }),
+    ),
+    loadOwner: fn(() => Promise.resolve(summary)),
+    onSubmit,
+    classroomCapacities: { [CLASSROOMS[0]!.id]: 1 },
+  };
+}
+
+export const GroupChosen: Story = {
+  args: {
+    initialValues: { ...OWNER_FILLED, classroomId: CLASSROOMS[0]!.id },
+    initialKind: 'group',
+    initialOwner: GROUP_OPTION,
+    owners: owners(GROUP_SUMMARY),
+  },
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.getByRole('radio', {
+        name: i18n.t('scheduling.create.type.group'),
+      }),
+    ).toBeChecked();
+    await expect(
+      await canvas.findByText(
+        i18n.t('scheduling.create.owner.enrolled', { count: 2 }),
+      ),
+    ).toBeVisible();
+    await expect(
+      canvas.queryByLabelText(i18n.t('scheduling.fields.student')),
+    ).toBeNull();
+    // The room is smaller than the roster: a warning, not a block.
+    await expect(
+      canvas.getByLabelText(i18n.t('scheduling.fields.classroom')),
+    ).toHaveAccessibleDescription(
+      i18n.t('scheduling.create.owner.roomTooSmall', {
+        count: 2,
+        capacity: 1,
+      }),
+    );
+  },
+};
+
+export const CourseChosen: Story = {
+  args: {
+    initialValues: OWNER_FILLED,
+    initialKind: 'course',
+    initialOwner: COHORT_OPTION,
+    owners: owners(COHORT_SUMMARY),
+  },
+  play: async ({ canvas }) => {
+    await expect(
+      await canvas.findByText(i18n.t('scheduling.create.owner.dates')),
+    ).toBeVisible();
+    await waitFor(() =>
+      expect(
+        canvas.getByLabelText(i18n.t('scheduling.fields.date')),
+      ).toHaveAccessibleDescription(/2031/),
+    );
+  },
+};
+
+export const EmptyRoster: Story = {
+  args: {
+    initialValues: OWNER_FILLED,
+    initialKind: 'group',
+    initialOwner: GROUP_OPTION,
+    owners: owners(EMPTY_GROUP_SUMMARY),
+  },
+  play: async ({ canvas }) => {
+    await expect(
+      await canvas.findByText(i18n.t('scheduling.create.owner.emptyRoster')),
+    ).toBeVisible();
+  },
+};
+
+export const GroupStudentOverlap: Story = {
+  args: {
+    initialValues: OWNER_FILLED,
+    initialKind: 'group',
+    initialOwner: GROUP_OPTION,
+    owners: owners(
+      GROUP_SUMMARY,
+      fn(() => Promise.reject(conflictError(GROUP_CONFLICTS))),
+    ),
+  },
+  play: async ({ canvas, userEvent }) => {
+    await canvas.findByText(
+      i18n.t('scheduling.create.owner.enrolled', { count: 2 }),
+    );
+    await userEvent.click(canvas.getByRole('button', { name: submitName() }));
+    const alert = await canvas.findByRole('alert');
+    await expect(alert).toHaveTextContent(
+      i18n.t('scheduling.create.owner.studentOverlap', {
+        name: GROUP_SUMMARY.students[1]!.name,
+      }),
+    );
+    await waitFor(() => expect(alert.querySelector('h2')).toHaveFocus());
   },
 };

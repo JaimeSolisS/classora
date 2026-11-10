@@ -9,10 +9,10 @@ import type {
   TutorSuggestionList,
 } from './api';
 import type { TutorAvailability } from '@/features/tutors/api';
-import type { ScheduleValues } from './rules';
+import type { OwnerOption, OwnerSummary, ScheduleValues } from './rules';
 
 // Sample data for the scheduling form's tests and stories (#48 F4, #49 F5,
-// #50 C3, #51 G3).
+// #50 C3, #51 G3; group and course sessions, HF-11b).
 
 export const ANA: Option = {
   id: '00000000-0000-4000-8000-0000000004a1',
@@ -368,3 +368,93 @@ export const CARMEN_AVAILABILITY: TutorAvailability = {
   pending_changes: [],
   recent_changes: [],
 };
+
+// --- Group and course sessions (HF-11b) ---------------------------------------
+
+export const BRUNO: Option = {
+  id: '00000000-0000-4000-8000-0000000004a2',
+  name: 'Bruno Díaz Hernández de la Fuente',
+};
+
+export const GROUP_OPTION: OwnerOption = {
+  id: '00000000-0000-4000-8000-0000000006a1',
+  name: 'Club de Matemáticas',
+  subjectName: 'Álgebra',
+};
+
+export const COHORT_OPTION: OwnerOption = {
+  id: '00000000-0000-4000-8000-0000000006b1',
+  name: 'Olimpiada de física 2031',
+  subjectName: 'Física',
+};
+
+export const GROUP_SUMMARY: OwnerSummary = {
+  id: GROUP_OPTION.id,
+  name: GROUP_OPTION.name,
+  subject: SUBJECTS[0]!,
+  firstSessionOn: null,
+  lastSessionOn: null,
+  students: [ANA, BRUNO],
+};
+
+export const EMPTY_GROUP_SUMMARY: OwnerSummary = {
+  ...GROUP_SUMMARY,
+  students: [],
+};
+
+export const COHORT_SUMMARY: OwnerSummary = {
+  id: COHORT_OPTION.id,
+  name: COHORT_OPTION.name,
+  subject: SUBJECTS[1]!,
+  firstSessionOn: '2031-01-06',
+  lastSessionOn: '2031-03-28',
+  students: [ANA],
+};
+
+/** The date and times of a group or course session (no student or subject). */
+export const OWNER_FILLED: ScheduleValues = {
+  ...FILLED,
+  student: null,
+  subjectId: '',
+  tutorId: '',
+  classroomId: '',
+};
+
+export const GROUP_CREATED: ClassSessionCreated = {
+  ...UNASSIGNED,
+  kind: 'group',
+  group_id: GROUP_OPTION.id,
+  participants: [
+    { student_id: ANA.id, display_name: ANA.name, is_active: true },
+    { student_id: BRUNO.id, display_name: BRUNO.name, is_active: true },
+  ],
+};
+
+export const COURSE_CREATED: ClassSessionCreated = {
+  ...CREATED,
+  kind: 'course',
+  cohort_id: COHORT_OPTION.id,
+  subject: {
+    id: SUBJECTS[1]!.id,
+    name: 'Física',
+    education_level_name: 'Secundaria',
+    is_active: true,
+  },
+};
+
+/** A `student_overlap` for Bruno (hard) and a soft one. */
+export const GROUP_CONFLICTS: SchedulingConflict[] = [
+  {
+    code: 'student_overlap',
+    severity: 'hard',
+    details: {
+      student_id: BRUNO.id,
+      class_session_ids: ['00000000-0000-4000-8000-0000000007a1'],
+    },
+  },
+  {
+    code: 'tutor_not_qualified',
+    severity: 'soft',
+    details: {},
+  },
+];

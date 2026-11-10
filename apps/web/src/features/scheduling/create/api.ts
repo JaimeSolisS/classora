@@ -1,13 +1,23 @@
 import type { components } from '@classora/api-client';
 import { api, apiCall, ApiError } from '@/app/api';
-import type { OptionsPage } from '@/components/ui/combobox';
+import { COMBOBOX_PAGE_SIZE, type OptionsPage } from '@/components/ui/combobox';
+import { fetchCohort } from '@/features/courses/cohorts/api';
+import { fetchGroup } from '@/features/groups/api';
 import { fetchStudentOptions } from '@/features/students/api';
+import type { OwnerKind, OwnerOption, OwnerSummary } from './rules';
 
 // The calls of "Schedule a session" (#48 F): the create, the suggested
 // times after a conflict (#50 C1), the suggested tutors (#51 G), and the options of the form (active
-// subjects, tutors and classrooms; the student search).
+// subjects, tutors and classrooms; the student search). A group or course
+// session (HF-11b): the active groups and current cohorts, and the chosen
+// one's subject, dates and roster.
 
 export type ClassSessionCreate = components['schemas']['ClassSessionCreate'];
+export type GroupSessionCreate = components['schemas']['GroupSessionCreate'];
+export type CourseSessionCreate = components['schemas']['CourseSessionCreate'];
+/** The create's body: an individual, group or course session (#592). */
+export type ClassSessionCreateBody =
+  ClassSessionCreate | GroupSessionCreate | CourseSessionCreate;
 export type ClassSessionCreated = components['schemas']['ClassSessionCreated'];
 export type SchedulingConflict = components['schemas']['SchedulingConflict'];
 export type SchedulingWarning = components['schemas']['SchedulingWarning'];
@@ -53,7 +63,7 @@ export const SCHEDULE_OPTIONS_KEY = [
 ] as const;
 
 export function createClassSession(
-  body: ClassSessionCreate,
+  body: ClassSessionCreateBody,
 ): Promise<ClassSessionCreated> {
   return apiCall(() => api.POST('/api/v1/class-sessions', { body }));
 }
@@ -175,4 +185,118 @@ export async function fetchClassroomOptions(
   return page.items
     .filter((room) => room.is_active)
     .map((room) => ({ id: room.id, name: room.name }));
+}
+
+/** A cursor page as an options page: one more than loaded when there are more. */
+function cursorTotal(page: { items: unknown[]; next_cursor?: string | null }) {
+  return page.items.length + (page.next_cursor ? 1 : 0);
+}
+
+/** The group picker's options (HF-11b): the active groups, or the matches for `q`. */
+export async function searchGroupOptions(
+  q: string | null,
+  signal: AbortSignal,
+): Promise<OptionsPage<OwnerOption>> {
+  const text = q?.trim() ?? '';
+  const page = await apiCall(
+    () =>
+      api.GET('/api/v1/groups', {
+        params: {
+          query: {
+            ...(text ? { q: text } : {}),
+            status: 'active',
+            limit: COMBOBOX_PAGE_SIZE,
+          },
+        },
+        signal,
+      }),
+    { signal },
+  );
+  return {
+    items: page.items.map((group) => ({
+      id: group.id,
+      name: group.name,
+      subjectName: group.subject.name,
+    })),
+    total: cursorTotal(page),
+  };
+}
+
+/** The cohort picker's options (HF-11b): the current cohorts, or the matches for `q`. */
+export async function searchCohortOptions(
+  q: string | null,
+  signal: AbortSignal,
+): Promise<OptionsPage<OwnerOption>> {
+  const text = q?.trim() ?? '';
+  const page = await apiCall(
+    () =>
+      api.GET('/api/v1/cohorts', {
+        params: {
+          query: {
+            ...(text ? { q: text } : {}),
+            status: 'current',
+            limit: COMBOBOX_PAGE_SIZE,
+          },
+        },
+        signal,
+      }),
+    { signal },
+  );
+  return {
+    items: page.items.map((cohort) => ({
+      id: cohort.id,
+      name: cohort.name,
+      subjectName: cohort.subject.name,
+    })),
+    total: cursorTotal(page),
+  };
+}
+
+type RosterItem = {
+  student: { id: string; display_name: string };
+  withdrawn_at: string | null;
+};
+
+/** The students enrolled now, by name. */
+function enrolledStudents(roster: readonly RosterItem[] | null | undefined) {
+  return (roster ?? [])
+    .filter((item) => item.withdrawn_at === null)
+    .map((item) => ({ id: item.student.id, name: item.student.display_name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The chosen group or cohort: its subject, a cohort's dates, the roster. */
+export async function fetchOwnerSummary(
+  kind: OwnerKind,
+  id: string,
+  signal: AbortSignal,
+): Promise<OwnerSummary> {
+  if (kind === 'group') {
+    const group = await fetchGroup(id, signal);
+    return {
+      id: group.id,
+      name: group.name,
+      subject: {
+        id: group.subject.id,
+        name: group.subject.name,
+        levelName: group.subject.level.name,
+      },
+      firstSessionOn: null,
+      lastSessionOn: null,
+      students: enrolledStudents(group.roster),
+    };
+  }
+  const cohort = await fetchCohort(id, signal);
+  return {
+    id: cohort.id,
+    name: cohort.name,
+    subject: {
+      id: cohort.subject.id,
+      name: cohort.subject.name,
+      levelName: cohort.subject.level.name,
+    },
+    firstSessionOn: cohort.first_session_on ?? null,
+    lastSessionOn: cohort.last_session_on ?? null,
+    students: enrolledStudents(cohort.roster),
+  };
 }
