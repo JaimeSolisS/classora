@@ -2502,7 +2502,8 @@
       "dateRequired": "Escribe la fecha.",
       "startRequired": "Escribe la hora de inicio.",
       "endRequired": "Escribe la hora de fin.",
-      "endAfterStart": "El fin debe ser después del inicio, el mismo día."
+      "endAfterStart": "El fin debe ser después del inicio, el mismo día.",
+      "timeFormat": "Escribe una hora, por ejemplo 9:30."
     },
     "success": {
       "heading": "Sesión programada",

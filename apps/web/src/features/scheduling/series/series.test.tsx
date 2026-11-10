@@ -73,6 +73,7 @@ import {
 import {
   cancelBody,
   canEditOccurrence,
+  clearSeriesEditServerErrors,
   defaultFromDate,
   isSeriesOver,
   occurrenceBody,
@@ -80,6 +81,7 @@ import {
   seriesCreateBody,
   seriesEditBody,
   seriesEditValues,
+  shownSeriesEditErrors,
   summaryParts,
   validateCancel,
 } from './rules';
@@ -441,6 +443,60 @@ describe('one occurrence in the center zone (C1)', () => {
     ).toMatchObject({
       starts_at: '2026-03-09T23:00:00.000Z',
       classroom_id: 'r',
+    });
+  });
+});
+
+describe('the series edit errors (HF-13 E4)', () => {
+  const before = {
+    mode: 'following' as const,
+    fromDate: '2031-01-13',
+    start: '10:00',
+    end: '11:00',
+    classroomId: '',
+    recurrence: { ...EMPTY_RECURRENCE, weekdays: [1] },
+  };
+  const server = {
+    fromDate: 'errors:validation_error',
+    slot: {
+      end: 'errors:duration_out_of_range',
+      classroom: 'errors:classroom_inactive',
+    },
+    recurrence: { until: 'errors:validation_error' },
+  } as const;
+
+  it('clears a changed field: start and end together, the scope by its date', () => {
+    expect(
+      clearSeriesEditServerErrors(server, before, {
+        ...before,
+        start: '09:00',
+      }),
+    ).toEqual({
+      fromDate: 'errors:validation_error',
+      slot: { classroom: 'errors:classroom_inactive' },
+      recurrence: { until: 'errors:validation_error' },
+    });
+    expect(
+      clearSeriesEditServerErrors(server, before, {
+        ...before,
+        fromDate: '2031-01-20',
+      }),
+    ).toEqual({ slot: server.slot, recurrence: server.recurrence });
+  });
+
+  it('shows the client checks over the server errors once checked', () => {
+    const client = () => ({
+      slot: { end: 'scheduling.validation.endRequired' as const },
+      recurrence: {},
+    });
+    expect(shownSeriesEditErrors(false, server, client)).toBe(server);
+    expect(shownSeriesEditErrors(true, server, client)).toEqual({
+      fromDate: 'errors:validation_error',
+      slot: {
+        end: 'scheduling.validation.endRequired',
+        classroom: 'errors:classroom_inactive',
+      },
+      recurrence: { until: 'errors:validation_error' },
     });
   });
 });
@@ -866,6 +922,19 @@ describe('the dialogs (C1-C4)', () => {
     expect(first.textContent).toContain('Edited');
   });
 
+  it('clears an occurrence error once a valid time is typed after a failed save (HF-13 E4)', async () => {
+    const { api } = await openOccurrence({});
+    const dialog = openDialog()!;
+    typeInto(fieldByLabel(dialog, 'End'), '');
+    await click(buttonNamed(dialog, 'Save occurrence'));
+    expect(dialog.textContent).toContain('Enter the end time.');
+
+    typeInto(fieldByLabel(dialog, 'End'), '11:30');
+    expect(dialog.textContent).not.toContain('Enter the end time.');
+    expect(fieldByLabel(dialog, 'End').getAttribute('aria-invalid')).toBeNull();
+    expect(api.calls(PATCH)).toHaveLength(0);
+  });
+
   it('shows a conflict, a version conflict with a reload and a 409 message', async () => {
     const { api } = await openOccurrence({
       [PATCH]: [
@@ -956,6 +1025,24 @@ describe('the dialogs (C1-C4)', () => {
     await settle();
     expect(openDialog()).toBeNull();
     expect(document.activeElement).toBe(trigger);
+  });
+
+  it('clears a series edit error once a valid time is typed after a failed save (HF-13 E4)', async () => {
+    const api = stub(MANAGER, {});
+    app = await renderSeries();
+    await click(buttonNamed(main(), 'Edit series'));
+    const dialog = openDialog()!;
+    typeInto(fieldByLabel(dialog, 'From'), '2031-01-13');
+    typeInto(fieldByLabel(dialog, 'Start'), '');
+    await click(buttonNamed(dialog, 'Save series'));
+    expect(dialog.textContent).toContain('Enter the start time.');
+
+    typeInto(fieldByLabel(dialog, 'Start'), '09:00');
+    expect(dialog.textContent).not.toContain('Enter the start time.');
+    expect(
+      fieldByLabel(dialog, 'Start').getAttribute('aria-invalid'),
+    ).toBeNull();
+    expect(api.calls(EDIT)).toHaveLength(0);
   });
 
   it('edits the series from a date and opens the resulting series', async () => {

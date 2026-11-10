@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FieldError } from '@/features/auth/FieldError';
 import { SELECT_CLASS } from '@/features/students/styles';
+import { shownErrors, withoutErrors } from '@/lib/fieldErrors';
 import {
   conflictsOf,
   type Option,
@@ -32,6 +33,7 @@ import {
   offerServerErrors,
   REASON_MAX_LENGTH,
   reasonLength,
+  OFFER_VALUE_FIELDS,
   validateOffer,
   type OfferErrors,
   type OfferField,
@@ -165,7 +167,10 @@ export function OfferPanel<T = AssignmentOfferCreated>({
   const headingId = `${id}-heading`;
   const zoneId = `${id}-zone`;
   const [values, setValues] = useState<OfferValues>(initialValues);
-  const [errors, setErrors] = useState<OfferErrors>({});
+  // HF-13 (#598 E4): after the first submit the client checks follow the
+  // values; the server's errors stay until their field changes.
+  const [checked, setChecked] = useState(false);
+  const [serverErrors, setServerErrors] = useState<OfferErrors>({});
   const [conflicts, setConflicts] = useState<SchedulingConflict[] | null>(
     initialConflicts ?? null,
   );
@@ -191,6 +196,22 @@ export function OfferPanel<T = AssignmentOfferCreated>({
   const fieldId = (field: OfferField | 'deadlineTime') => `${id}-${field}`;
   const counterId = `${id}-reason-counter`;
   const errorId = (field: OfferField) => `${id}-${field}-error`;
+
+  const errors = shownErrors(checked, serverErrors, () =>
+    validateOffer(values, { requireReason: substitute }),
+  );
+
+  function update(change: Partial<OfferValues>) {
+    setValues((current) => ({ ...current, ...change }));
+    setServerErrors((current) =>
+      withoutErrors(
+        current,
+        (Object.keys(change) as (keyof OfferValues)[]).map(
+          (key) => OFFER_VALUE_FIELDS[key],
+        ),
+      ),
+    );
+  }
 
   function message(key: OfferMessage | undefined): string | undefined {
     if (!key) {
@@ -234,7 +255,7 @@ export function OfferPanel<T = AssignmentOfferCreated>({
   }
 
   function choose(suggestion: TutorSuggestion) {
-    setValues((current) => ({ ...current, tutorId: suggestion.tutor.id }));
+    update({ tutorId: suggestion.tutor.id });
     suggestRequest.current += 1;
     setSuggestions(null);
     setAnnouncement(
@@ -261,7 +282,7 @@ export function OfferPanel<T = AssignmentOfferCreated>({
     if (caught instanceof ApiError && caught.fieldErrors.length > 0) {
       const mapped = offerServerErrors(caught.fieldErrors);
       if (Object.keys(mapped).length > 0) {
-        setErrors(mapped);
+        setServerErrors(mapped);
         focusFirst(mapped);
         return;
       }
@@ -284,7 +305,8 @@ export function OfferPanel<T = AssignmentOfferCreated>({
     setFailure(null);
     setAnnouncement('');
     const found = validateOffer(values, { requireReason: substitute });
-    setErrors(found);
+    setChecked(true);
+    setServerErrors({});
     if (Object.keys(found).length > 0) {
       focusFirst(found);
       return;
@@ -478,12 +500,7 @@ export function OfferPanel<T = AssignmentOfferCreated>({
             value={values.tutorId}
             aria-invalid={errors.tutor ? true : undefined}
             aria-describedby={describedBy('tutor')}
-            onChange={(event) =>
-              setValues((current) => ({
-                ...current,
-                tutorId: event.target.value,
-              }))
-            }
+            onChange={(event) => update({ tutorId: event.target.value })}
           >
             <option value="">{labels.chooseTutor}</option>
             {tutors.map((tutor) => (
@@ -528,12 +545,7 @@ export function OfferPanel<T = AssignmentOfferCreated>({
               value={values.classroomId ?? ''}
               aria-invalid={errors.classroom ? true : undefined}
               aria-describedby={describedBy('classroom')}
-              onChange={(event) =>
-                setValues((current) => ({
-                  ...current,
-                  classroomId: event.target.value,
-                }))
-              }
+              onChange={(event) => update({ classroomId: event.target.value })}
             >
               <option value="">{t('scheduling.noClassroom')}</option>
               {classrooms.map((room) => (
@@ -560,12 +572,7 @@ export function OfferPanel<T = AssignmentOfferCreated>({
               value={values.reason ?? ''}
               aria-invalid={errors.reason ? true : undefined}
               aria-describedby={describedBy('reason', counterId)}
-              onChange={(event) =>
-                setValues((current) => ({
-                  ...current,
-                  reason: event.target.value,
-                }))
-              }
+              onChange={(event) => update({ reason: event.target.value })}
               className="w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 py-1.5 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive md:text-sm dark:bg-input/30"
             />
             <FieldError
@@ -609,10 +616,7 @@ export function OfferPanel<T = AssignmentOfferCreated>({
                 aria-invalid={errors.deadline ? true : undefined}
                 aria-describedby={describedBy('deadline', zoneId)}
                 onChange={(event) =>
-                  setValues((current) => ({
-                    ...current,
-                    deadlineDate: event.target.value,
-                  }))
+                  update({ deadlineDate: event.target.value })
                 }
               />
             </div>
@@ -631,10 +635,7 @@ export function OfferPanel<T = AssignmentOfferCreated>({
                 aria-invalid={errors.deadline ? true : undefined}
                 aria-describedby={describedBy('deadline', zoneId)}
                 onChange={(event) =>
-                  setValues((current) => ({
-                    ...current,
-                    deadlineTime: event.target.value,
-                  }))
+                  update({ deadlineTime: event.target.value })
                 }
               />
             </div>

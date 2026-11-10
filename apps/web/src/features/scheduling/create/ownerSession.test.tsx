@@ -666,8 +666,8 @@ describe('the pre-fill across types (AC4)', () => {
 
     const check = () => {
       expect(fieldByLabel(main(), 'Date').value).toBe('2031-03-10');
-      expect(fieldByLabel(main(), 'Start').value).toBe('10:00');
-      expect(fieldByLabel(main(), 'End').value).toBe('11:30');
+      expect(fieldByLabel(main(), 'Start').value).toBe('10:00 AM');
+      expect(fieldByLabel(main(), 'End').value).toBe('11:30 AM');
       expect(selectByLabel('Tutor').value).toBe(TUTOR);
       expect(selectByLabel('Classroom').value).toBe(ROOM);
     };
@@ -830,4 +830,36 @@ describe('refusals and conflicts (AC5)', () => {
     expect(main().textContent).toContain('Group session scheduled');
     expect(main().textContent).toContain('0 students');
   });
+});
+
+describe('HF-13 errors follow the values (#598 AC1)', () => {
+  it.each([
+    ['Group', 'Choose a group.', 'Club', 'Club de Matemáticas · Álgebra'],
+    ['Course', 'Choose a course.', 'Olim', 'Olimpiada de física 2031 · Física'],
+  ])(
+    'clears the time errors of a %s session once the times are typed',
+    async (type, ownerRequired, query, option) => {
+      const api = stub();
+      app = await renderApp('/schedule/new');
+      await chooseType(type);
+
+      await click(buttonNamed(main(), 'Schedule session'));
+      expect(main().textContent).toContain('Enter the start time.');
+      expect(main().textContent).toContain(ownerRequired);
+
+      fillWhen();
+      expect(main().textContent).not.toContain('Enter the start time.');
+      expect(main().textContent).not.toContain('Enter the end time.');
+      expect(main().textContent).not.toContain('Enter the date.');
+      expect(
+        fieldByLabel(main(), 'Start').getAttribute('aria-invalid'),
+      ).toBeNull();
+      // The group or course is still missing.
+      expect(main().textContent).toContain(ownerRequired);
+
+      await pickOwner(query, option);
+      expect(main().textContent).not.toContain(ownerRequired);
+      expect(api.calls(CREATE)).toHaveLength(0);
+    },
+  );
 });

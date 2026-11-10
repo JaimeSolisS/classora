@@ -209,6 +209,31 @@ export function recurrenceServerErrors(
   return errors;
 }
 
+/**
+ * The server's rule errors once the rule changes from `before` to `after`
+ * (HF-13, #598 E4): a changed field's error goes, and so does the one on
+ * "Ends" (`no_occurrences` concerns the whole rule).
+ */
+export function clearRecurrenceServerErrors(
+  errors: RecurrenceErrors,
+  before: RecurrenceValues,
+  after: RecurrenceValues,
+): RecurrenceErrors {
+  const changed = (Object.keys(after) as RecurrenceField[]).filter(
+    (field) => before[field] !== after[field],
+  );
+  if (changed.length === 0) {
+    return errors;
+  }
+  const next = { ...errors };
+  for (const field of [...changed, 'ends' as const]) {
+    delete next[field];
+  }
+  return Object.keys(next).length === Object.keys(errors).length
+    ? errors
+    : next;
+}
+
 /** The id of a control (the focus target of its error). */
 export function recurrenceFieldId(prefix: string, field: RecurrenceField) {
   return field === 'weekdays'

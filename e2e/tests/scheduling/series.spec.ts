@@ -5,6 +5,7 @@ import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
 import { pickOption } from '../support/combobox';
 import { createStudentViaApi } from '../support/students';
+import { fillTime } from '../support/scheduling';
 import { createSubjectViaApi } from '../support/tutors';
 
 // Chromium logs every 4xx resource as a console error: the expected 409.
@@ -132,12 +133,14 @@ test('an Owner schedules, edits and cancels a weekly series', async ({
     .selectOption({ label: subjectName });
   await main.getByRole('switch', { name: series.repeats }).check();
   await main.getByLabel(series.startsOn, { exact: true }).fill(monday);
-  await main
-    .getByLabel(common.scheduling.fields.start, { exact: true })
-    .fill('10:00');
-  await main
-    .getByLabel(common.scheduling.fields.end, { exact: true })
-    .fill('11:00');
+  await fillTime(
+    main.getByLabel(common.scheduling.fields.start, { exact: true }),
+    '10:00',
+  );
+  await fillTime(
+    main.getByLabel(common.scheduling.fields.end, { exact: true }),
+    '11:00',
+  );
   await expect(
     main.getByRole('checkbox', { name: common.weeklyWindows.weekdays['1'] }),
   ).toBeChecked();
@@ -297,12 +300,14 @@ test('an Owner overrides the closed Sundays of a weekly series', async ({
     .selectOption({ label: subjectName });
   await main.getByRole('switch', { name: series.repeats }).check();
   await main.getByLabel(series.startsOn, { exact: true }).fill(sunday);
-  await main
-    .getByLabel(common.scheduling.fields.start, { exact: true })
-    .fill('10:00');
-  await main
-    .getByLabel(common.scheduling.fields.end, { exact: true })
-    .fill('11:00');
+  await fillTime(
+    main.getByLabel(common.scheduling.fields.start, { exact: true }),
+    '10:00',
+  );
+  await fillTime(
+    main.getByLabel(common.scheduling.fields.end, { exact: true }),
+    '11:00',
+  );
   await expect(
     main.getByRole('checkbox', { name: common.weeklyWindows.weekdays['7'] }),
   ).toBeChecked();

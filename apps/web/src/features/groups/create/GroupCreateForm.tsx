@@ -17,6 +17,7 @@ import {
 import { subjectsByLevel } from '@/features/scheduling/create/rules';
 import { useFieldMessage } from '@/features/scheduling/series/hooks';
 import {
+  clearRecurrenceServerErrors,
   EMPTY_RECURRENCE,
   RECURRENCE_FIELD_ORDER,
   recurrenceFieldId,
@@ -27,6 +28,7 @@ import {
 import { RecurrenceFields } from '@/features/scheduling/series/RecurrenceFields';
 import { SeriesOverrideSection } from '@/features/scheduling/series/SeriesOverrideSection';
 import { SELECT_CLASS } from '@/features/students/styles';
+import { changedFields, shownErrors, withoutErrors } from '@/lib/fieldErrors';
 import type {
   ClassroomCapacityOption,
   GroupCreated,
@@ -34,6 +36,7 @@ import type {
 } from '../api';
 import {
   CREATE_FIELD_ORDER,
+  CREATE_VALUE_FIELDS,
   createAccepts,
   createServerErrors,
   EMPTY_GROUP,
@@ -110,14 +113,16 @@ export function GroupCreateForm({
   const message = useFieldMessage();
   const id = useId();
   const [values, setValues] = useState<GroupCreateValues>(initialValues);
-  const [errors, setErrors] = useState<CreateErrors>({});
+  // HF-13 (#598 E4): after the first submit the client checks follow the
+  // values; the server's errors stay until their field changes.
+  const [checked, setChecked] = useState(false);
+  const [serverErrors, setServerErrors] = useState<CreateErrors>({});
   const [studentErrors, setStudentErrors] =
     useState<Record<number, GroupMessage>>(initialStudentErrors);
   const [recurrence, setRecurrence] =
     useState<RecurrenceValues>(initialRecurrence);
-  const [recurrenceErrors, setRecurrenceErrors] = useState<RecurrenceErrors>(
-    {},
-  );
+  const [serverRecurrenceErrors, setServerRecurrenceErrors] =
+    useState<RecurrenceErrors>({});
   const weekdaysTouched = useRef(initialRecurrence.weekdays.length > 0);
   const [conflicts, setConflicts] = useState<SchedulingConflict[] | null>(
     initialConflicts ?? null,
@@ -131,11 +136,26 @@ export function GroupCreateForm({
   const zoneId = `${id}-zone`;
   const recurrencePrefix = `${id}-recurrence`;
 
+  const clientChecks = () => validateGroupCreate(values, recurrence);
+  const errors = shownErrors(
+    checked,
+    serverErrors,
+    () => clientChecks().errors,
+  );
+  const recurrenceErrors = shownErrors(
+    checked,
+    serverRecurrenceErrors,
+    () => clientChecks().recurrence,
+  );
+
   function change<K extends keyof GroupCreateValues>(
     key: K,
     value: GroupCreateValues[K],
   ) {
     setValues((current) => ({ ...current, [key]: value }));
+    setServerErrors((current) =>
+      withoutErrors(current, changedFields(CREATE_VALUE_FIELDS[key])),
+    );
     if (key === 'startsOn' && !weekdaysTouched.current) {
       setRecurrence((current) => ({
         ...current,
@@ -149,6 +169,9 @@ export function GroupCreateForm({
       weekdaysTouched.current = true;
     }
     setRecurrence(next);
+    setServerRecurrenceErrors((current) =>
+      clearRecurrenceServerErrors(current, recurrence, next),
+    );
   }
 
   function addStudent(student: Option) {
@@ -207,8 +230,8 @@ export function GroupCreateForm({
     if (caught instanceof ApiError) {
       const found = createServerErrors(caught);
       if (hasServerErrors(found)) {
-        setErrors(found.fields);
-        setRecurrenceErrors(found.recurrence);
+        setServerErrors(found.fields);
+        setServerRecurrenceErrors(found.recurrence);
         setStudentErrors(found.students);
         const firstChip = Object.keys(found.students)[0];
         if (Object.keys(found.fields).length === 0 && firstChip !== undefined) {
@@ -226,9 +249,10 @@ export function GroupCreateForm({
     setFailure(null);
     setConflicts(null);
     setStudentErrors({});
-    const found = validateGroupCreate(values, recurrence);
-    setErrors(found.errors);
-    setRecurrenceErrors(found.recurrence);
+    const found = clientChecks();
+    setChecked(true);
+    setServerErrors({});
+    setServerRecurrenceErrors({});
     if (
       Object.keys(found.errors).length > 0 ||
       Object.keys(found.recurrence).length > 0

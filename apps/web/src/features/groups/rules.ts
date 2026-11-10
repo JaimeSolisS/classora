@@ -357,6 +357,20 @@ export const CREATE_FIELD_ORDER: readonly CreateField[] = [
   'students',
 ];
 
+/** The field each value is shown on (its server error goes on a change). */
+export const CREATE_VALUE_FIELDS: Record<keyof GroupCreateValues, CreateField> =
+  {
+    name: 'name',
+    subjectId: 'subject',
+    max: 'max',
+    tutorId: 'tutor',
+    classroomId: 'classroom',
+    startsOn: 'startsOn',
+    start: 'start',
+    end: 'end',
+    students: 'students',
+  };
+
 export const EMPTY_GROUP: GroupCreateValues = {
   name: '',
   subjectId: '',

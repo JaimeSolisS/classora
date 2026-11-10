@@ -1105,6 +1105,21 @@ describe('/groups/new (E)', () => {
     expect(main().textContent).toContain('Group created: 2 upcoming sessions.');
   });
 
+  it('clears an error once a valid value is entered after a failed submit (HF-13 E4)', async () => {
+    const api = stub(OWNER);
+    app = await open('/groups/new');
+    await click(buttonNamed(main(), 'Create group'));
+    expect(main().textContent).toContain('Enter the start time.');
+    expect(main().textContent).toContain('Enter the end time.');
+
+    typeInto(fieldByLabel(main(), 'Start'), '10:00');
+    typeInto(fieldByLabel(main(), 'End'), '11:00');
+    expect(main().textContent).not.toContain('Enter the start time.');
+    expect(main().textContent).not.toContain('Enter the end time.');
+    expect(fieldByLabel(main(), 'End').getAttribute('aria-invalid')).toBeNull();
+    expect(api.calls(CREATE)).toHaveLength(0);
+  });
+
   it('labels a soft code the create does not accept, and keeps the form', async () => {
     stub(OWNER, {
       [CREATE]: () =>

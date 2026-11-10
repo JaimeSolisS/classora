@@ -691,6 +691,11 @@ type Common = {
       string
     >;
     submit: string;
+    // HF-13: the time fields' messages.
+    validation: Record<
+      'dateRequired' | 'startRequired' | 'endRequired',
+      string
+    >;
     success: {
       heading: string;
       unassigned: string;

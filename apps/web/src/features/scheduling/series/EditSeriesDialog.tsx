@@ -28,9 +28,11 @@ import { RECURRENCE_FIELD_ORDER, recurrenceFieldId } from './recurrence';
 import { RecurrenceFields } from './RecurrenceFields';
 import {
   bodyError,
+  clearSeriesEditServerErrors,
   hasErrors,
   seriesEditServerErrors,
   seriesEditValues,
+  shownSeriesEditErrors,
   validateSeriesEdit,
   type SeriesEditErrors,
   type SeriesEditValues,
@@ -132,7 +134,21 @@ function EditSeriesContent({
   const [values, setValues] = useState<SeriesEditValues>(
     () => initialValues ?? seriesEditValues(series, defaultFromDate),
   );
-  const [errors, setErrors] = useState<SeriesEditErrors>(NO_ERRORS);
+  // HF-13 (#598 E4): after the first submit the client checks follow the
+  // values; the server's errors stay until their field changes.
+  const [checked, setChecked] = useState(false);
+  const [serverErrors, setServerErrors] = useState<SeriesEditErrors>(NO_ERRORS);
+  const errors = shownSeriesEditErrors(checked, serverErrors, () =>
+    validateSeriesEdit(values, defaultFromDate),
+  );
+
+  function update(change: Partial<SeriesEditValues>) {
+    const next = { ...values, ...change };
+    setValues(next);
+    setServerErrors((current) =>
+      clearSeriesEditServerErrors(current, values, next),
+    );
+  }
   const [formError, setFormError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<SchedulingConflict[] | null>(
     initialConflicts ?? null,
@@ -168,7 +184,8 @@ function EditSeriesContent({
     setFailure(null);
     setFormError(null);
     const found = validateSeriesEdit(values, defaultFromDate);
-    setErrors(found);
+    setChecked(true);
+    setServerErrors(NO_ERRORS);
     if (hasErrors(found)) {
       focus(found);
       return;
@@ -196,7 +213,7 @@ function EditSeriesContent({
       const mapped = seriesEditServerErrors(caught.fieldErrors);
       const onBody = bodyError(caught.fieldErrors);
       if (hasErrors(mapped) || onBody) {
-        setErrors(mapped);
+        setServerErrors(mapped);
         setFormError(onBody);
         focus(mapped);
         return;
@@ -257,9 +274,7 @@ function EditSeriesContent({
         fromDate={values.fromDate}
         error={message(errors.fromDate)}
         disabled={submitting}
-        onChange={(mode, fromDate) =>
-          setValues((current) => ({ ...current, mode, fromDate }))
-        }
+        onChange={(mode, fromDate) => update({ mode, fromDate })}
       />
       <p id={zoneId} className="text-sm text-muted-foreground">
         {t('scheduling.zone', { zone: timeZone })}
@@ -273,7 +288,7 @@ function EditSeriesContent({
           error={message(errors.slot.start)}
           describedBy={zoneId}
           disabled={submitting}
-          onChange={(start) => setValues((current) => ({ ...current, start }))}
+          onChange={(start) => update({ start })}
         />
         <SlotInput
           id={`${id}-end`}
@@ -283,7 +298,7 @@ function EditSeriesContent({
           error={message(errors.slot.end)}
           describedBy={zoneId}
           disabled={submitting}
-          onChange={(end) => setValues((current) => ({ ...current, end }))}
+          onChange={(end) => update({ end })}
         />
       </div>
       <ClassroomSelect
@@ -297,18 +312,14 @@ function EditSeriesContent({
         }
         error={message(errors.slot.classroom)}
         disabled={submitting}
-        onChange={(classroomId) =>
-          setValues((current) => ({ ...current, classroomId }))
-        }
+        onChange={(classroomId) => update({ classroomId })}
       />
       <RecurrenceFields
         idPrefix={recurrencePrefix}
         values={values.recurrence}
         errors={errors.recurrence}
         disabled={submitting}
-        onChange={(recurrence) =>
-          setValues((current) => ({ ...current, recurrence }))
-        }
+        onChange={(recurrence) => update({ recurrence })}
       />
       <p id={noticeId} className="rounded-md border border-border p-3 text-sm">
         {t('scheduling.series.edit.notice')}

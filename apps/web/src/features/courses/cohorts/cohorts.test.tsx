@@ -670,6 +670,37 @@ describe('/courses/cohorts/new (C)', () => {
     );
   });
 
+  it('clears an error once a valid value is entered after a failed submit (HF-13 E4)', async () => {
+    const api = stub(OWNER);
+    app = await open('/courses/cohorts/new');
+    await click(buttonNamed(main(), 'Create cohort'));
+    expect(main().textContent).toContain('Enter the start time.');
+
+    typeInto(fieldByLabel(main(), 'Start'), '10:00');
+    expect(main().textContent).not.toContain('Enter the start time.');
+    expect(
+      fieldByLabel(main(), 'Start').getAttribute('aria-invalid'),
+    ).toBeNull();
+    expect(api.calls(CREATE)).toHaveLength(0);
+  });
+
+  it('keeps a server error until its own field changes (HF-13 E4)', async () => {
+    stub(OWNER, {
+      [CREATE]: () =>
+        invalid([{ path: ['body', 'template_id'], code: 'template_inactive' }]),
+    });
+    app = await open('/courses/cohorts/new');
+    await fill();
+    await click(buttonNamed(main(), 'Create cohort'));
+    const inactive = 'This course template is inactive. Choose an active one.';
+    expect(main().textContent).toContain(inactive);
+    typeInto(fieldByLabel(main(), 'Name'), 'Álgebra febrero');
+    expect(main().textContent).toContain(inactive);
+    choose(main(), 'Course template', PHYSICS_LAB.id);
+    await settle();
+    expect(main().textContent).not.toContain(inactive);
+  });
+
   it('puts the 422s on their fields and keeps what was typed', async () => {
     stub(OWNER, {
       [CREATE]: [

@@ -18,6 +18,7 @@ import {
   type Option,
   type SchedulingConflict,
 } from '../create/api';
+import { changedFields, shownErrors, withoutErrors } from '@/lib/fieldErrors';
 import type { ClassSessionDetail } from '../session/api';
 import type { SeriesOccurrence } from './api';
 import { ClassroomSelect, DialogFailure, SlotInput } from './dialogParts';
@@ -126,7 +127,13 @@ function EditOccurrenceContent({
       timeZone,
     ),
   );
-  const [errors, setErrors] = useState<SlotErrors>({});
+  // HF-13 (#598 E4): after the first submit the client checks follow the
+  // values; the server's errors stay until their field changes.
+  const [checked, setChecked] = useState(false);
+  const [serverErrors, setServerErrors] = useState<SlotErrors>({});
+  const errors = shownErrors(checked, serverErrors, () =>
+    validateOccurrence(values),
+  );
   const [formError, setFormError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<SchedulingConflict[] | null>(
     initialConflicts ?? null,
@@ -141,6 +148,12 @@ function EditOccurrenceContent({
     value: OccurrenceValues[K],
   ) {
     setValues((current) => ({ ...current, [key]: value }));
+    setServerErrors((current) =>
+      withoutErrors(
+        current,
+        changedFields<SlotField>(key === 'classroomId' ? 'classroom' : key),
+      ),
+    );
   }
 
   function focus(found: SlotErrors) {
@@ -160,7 +173,8 @@ function EditOccurrenceContent({
     setFailure(null);
     setFormError(null);
     const found = validateOccurrence(values);
-    setErrors(found);
+    setChecked(true);
+    setServerErrors({});
     if (Object.keys(found).length > 0) {
       focus(found);
       return;
@@ -177,7 +191,7 @@ function EditOccurrenceContent({
         const mapped = slotServerErrors(caught.fieldErrors);
         const onBody = bodyError(caught.fieldErrors);
         if (Object.keys(mapped).length > 0 || onBody) {
-          setErrors(mapped);
+          setServerErrors(mapped);
           setFormError(onBody);
           focus(mapped);
         } else {

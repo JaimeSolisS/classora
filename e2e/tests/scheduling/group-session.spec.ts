@@ -8,6 +8,7 @@ import {
   addDays,
   createCohortViaApi,
   createGroupViaApi,
+  fillTime,
   firstWeekdayAhead,
 } from '../support/scheduling';
 import { createStudentViaApi } from '../support/students';
@@ -44,8 +45,11 @@ const EXPECTED_RESOURCE_ERROR =
 async function fillWhen(page: Page, date: string, start: string, end: string) {
   const main = page.getByRole('main');
   await main.getByLabel(scheduling.fields.date, { exact: true }).fill(date);
-  await main.getByLabel(scheduling.fields.start, { exact: true }).fill(start);
-  await main.getByLabel(scheduling.fields.end, { exact: true }).fill(end);
+  await fillTime(
+    main.getByLabel(scheduling.fields.start, { exact: true }),
+    start,
+  );
+  await fillTime(main.getByLabel(scheduling.fields.end, { exact: true }), end);
 }
 
 async function expectNoAxeViolations(page: Page) {

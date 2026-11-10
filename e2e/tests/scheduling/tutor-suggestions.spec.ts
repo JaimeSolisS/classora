@@ -4,7 +4,7 @@ import { api, csrfTokenOf } from '../support/api';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common, fill } from '../support/catalog';
 import { pickOption } from '../support/combobox';
-import { CENTER_ZONE } from '../support/scheduling';
+import { CENTER_ZONE, fillTime } from '../support/scheduling';
 import { createStudentViaApi } from '../support/students';
 import { createSubjectViaApi } from '../support/tutors';
 
@@ -207,8 +207,8 @@ test('suggested tutors follow the subject and time, and a granted subject', asyn
   await pickOption(main, fields.student, familyNames, studentName);
   await field(fields.subject).selectOption({ label: subjectName });
   await field(fields.date).fill(day);
-  await field(fields.start).fill(start);
-  await field(fields.end).fill(end);
+  await fillTime(field(fields.start), start);
+  await fillTime(field(fields.end), end);
   const panel = main.getByRole('region', { name: suggestions.heading });
   // The summary line up to the date (its format is the app's).
   await expect(panel).toContainText(

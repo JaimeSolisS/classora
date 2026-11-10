@@ -920,6 +920,27 @@ describe('the Reschedule dialog (E)', () => {
     );
   });
 
+  it('clears an error once a valid value is typed after a failed save (HF-13 E4)', async () => {
+    const update = vi.fn();
+    const dialog = await openReschedule(update);
+
+    typeInto(fieldByLabel(dialog, 'Start'), '');
+    await click(button(dialog, 'Save')!);
+    expect(dialog.textContent).toContain('Enter the start time.');
+
+    typeInto(fieldByLabel(dialog, 'Start'), '10:30');
+    expect(dialog.textContent).not.toContain('Enter the start time.');
+    expect(
+      fieldByLabel(dialog, 'Start').getAttribute('aria-invalid'),
+    ).toBeNull();
+    // Live now: an end before the start shows at once.
+    typeInto(fieldByLabel(dialog, 'End'), '10:00');
+    expect(dialog.textContent).toContain(
+      'The end must be after the start, on the same day.',
+    );
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('sends the same PATCH as a drop, then closes and returns focus to the event', async () => {
     const update = vi.fn((_id: string, body: ClassSessionUpdate) =>
       Promise.resolve(updated(MOVABLE, body)),

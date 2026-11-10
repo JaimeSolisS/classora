@@ -23,6 +23,7 @@ import {
 } from '@/features/scheduling/create/rules';
 import { SlotInput } from '@/features/scheduling/series/dialogParts';
 import { useFieldMessage } from '@/features/scheduling/series/hooks';
+import { changedFields, shownErrors, withoutErrors } from '@/lib/fieldErrors';
 import {
   bodyError,
   slotServerErrors,
@@ -143,7 +144,15 @@ function RescheduleForm({
   const [values, setValues] = useState<RescheduleValues>(() =>
     rescheduleValues(item, timeZone),
   );
-  const [errors, setErrors] = useState<SlotErrors>(initialErrors ?? {});
+  // HF-13 (#598 E4): after the first submit the client checks follow the
+  // values; the server's errors stay until their field changes.
+  const [checked, setChecked] = useState(false);
+  const [serverErrors, setServerErrors] = useState<SlotErrors>(
+    initialErrors ?? {},
+  );
+  const errors = shownErrors(checked, serverErrors, () =>
+    validateOccurrence({ ...values, classroomId: '' }),
+  );
   const [formError, setFormError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<SchedulingConflict[] | null>(
     initialConflicts ?? null,
@@ -164,6 +173,7 @@ function RescheduleForm({
 
   function set<K extends keyof RescheduleValues>(key: K, value: string) {
     setValues((current) => ({ ...current, [key]: value }));
+    setServerErrors((current) => withoutErrors(current, changedFields(key)));
   }
 
   function focusFirst(found: SlotErrors) {
@@ -183,7 +193,7 @@ function RescheduleForm({
     if (Object.keys(mapped).length === 0 && !onBody) {
       return false;
     }
-    setErrors(mapped);
+    setServerErrors(mapped);
     setFormError(onBody);
     focusFirst(mapped);
     return true;
@@ -193,7 +203,8 @@ function RescheduleForm({
     setConflicts(null);
     setFormError(null);
     const found = validateOccurrence({ ...values, classroomId: '' });
-    setErrors(found);
+    setChecked(true);
+    setServerErrors({});
     if (Object.keys(found).length > 0) {
       focusFirst(found);
       return;

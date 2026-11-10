@@ -9,6 +9,8 @@ import {
   toLocalDate,
   toLocalTime,
 } from '@/lib/time';
+import { changedFields, withoutErrors } from '@/lib/fieldErrors';
+import { minutesOfDay, timeOfMinutes, TIME_OF_DAY } from '@/lib/timeOfDay';
 import {
   durationMinutes,
   recurrenceBody,
@@ -89,7 +91,7 @@ export const FIELD_ORDER: readonly ScheduleField[] = [
   'end',
 ];
 
-const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+const TIME = TIME_OF_DAY;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** The client checks: every required field, and the end after the start. */
@@ -114,6 +116,90 @@ export function validateSchedule(values: ScheduleValues): ScheduleErrors {
     errors.end = 'scheduling.validation.endAfterStart';
   }
   return errors;
+}
+
+/** Whether the start or end field holds text that isn't a time (HF-13). */
+export interface UnreadableTimes {
+  start: boolean;
+  end: boolean;
+}
+
+export const READABLE_TIMES: UnreadableTimes = { start: false, end: false };
+
+/**
+ * A missing start or end whose field holds text that can't be read as a
+ * time says how to write one instead (HF-13, #598 AC4).
+ */
+export function withTimeFormat(
+  errors: ScheduleErrors,
+  unreadable: UnreadableTimes,
+): ScheduleErrors {
+  const next = { ...errors };
+  if (
+    unreadable.start &&
+    next.start === 'scheduling.validation.startRequired'
+  ) {
+    next.start = 'scheduling.validation.timeFormat';
+  }
+  if (unreadable.end && next.end === 'scheduling.validation.endRequired') {
+    next.end = 'scheduling.validation.timeFormat';
+  }
+  return next;
+}
+
+/**
+ * The server's field errors once `field` changed (HF-13, #598 E4): its own
+ * error goes; start and end go together (their codes concern the pair).
+ */
+export function clearServerError(
+  errors: ScheduleErrors,
+  field: ScheduleField,
+): ScheduleErrors {
+  return withoutErrors(errors, changedFields(field));
+}
+
+/** The field each value is shown on (its errors go when it changes). */
+export const VALUE_FIELDS: Record<keyof ScheduleValues, ScheduleField> = {
+  student: 'student',
+  subjectId: 'subject',
+  tutorId: 'tutor',
+  classroomId: 'classroom',
+  date: 'date',
+  start: 'start',
+  end: 'end',
+};
+
+/** A new start's default end: one hour (HF-13, #598 E3). */
+export const DEFAULT_DURATION_MINUTES = 60;
+
+/**
+ * The end once the start changes from `oldStart` to `newStart` (HF-13,
+ * #598 E3): an end after the old start moves with it (same duration); an
+ * empty end, or one not after the old start, becomes the new start + 1 h.
+ * An end that would pass 23:59, or a start that isn't a time, leaves the
+ * end as it was. With no old start, an end already after the new start is
+ * kept (the user typed the end first).
+ */
+export function endAfterStartChange(
+  oldStart: string,
+  newStart: string,
+  end: string,
+): string {
+  const to = minutesOfDay(newStart);
+  if (to === null) {
+    return end;
+  }
+  const from = minutesOfDay(oldStart);
+  const until = minutesOfDay(end);
+  let next: string | null;
+  if (until !== null && from !== null && until > from) {
+    next = timeOfMinutes(to + (until - from));
+  } else if (until !== null && from === null && until > to) {
+    next = end;
+  } else {
+    next = timeOfMinutes(to + DEFAULT_DURATION_MINUTES);
+  }
+  return next ?? end;
 }
 
 /**

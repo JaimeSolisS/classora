@@ -16,6 +16,7 @@ import { subjectsByLevel } from '@/features/scheduling/create/rules';
 import { describeRecurrence } from '@/features/scheduling/series/describeRecurrence';
 import { useFieldMessage } from '@/features/scheduling/series/hooks';
 import {
+  clearRecurrenceServerErrors,
   EMPTY_RECURRENCE,
   RECURRENCE_FIELD_ORDER,
   recurrenceFieldId,
@@ -27,6 +28,7 @@ import { RecurrenceFields } from '@/features/scheduling/series/RecurrenceFields'
 import { SeriesOverrideSection } from '@/features/scheduling/series/SeriesOverrideSection';
 import { SELECT_CLASS } from '@/features/students/styles';
 import { toLanguage } from '@/i18n/language';
+import { changedFields, shownErrors, withoutErrors } from '@/lib/fieldErrors';
 import type { CohortCreated, CohortOverride, TemplateOption } from '../api';
 import {
   cohortCreateOverride,
@@ -34,6 +36,7 @@ import {
   createAccepts,
   createServerErrors,
   CREATE_FIELD_ORDER,
+  CREATE_VALUE_FIELDS,
   EMPTY_COHORT,
   hasServerErrors,
   MAX_STUDENTS,
@@ -107,12 +110,14 @@ export function CohortCreateForm({
   const message = useFieldMessage();
   const id = useId();
   const [values, setValues] = useState<CohortCreateValues>(initialValues);
-  const [errors, setErrors] = useState<CreateErrors>(initialErrors);
+  // HF-13 (#598 E4): after the first submit the client checks follow the
+  // values; the server's errors stay until their field changes.
+  const [checked, setChecked] = useState(false);
+  const [serverErrors, setServerErrors] = useState<CreateErrors>(initialErrors);
   const [recurrence, setRecurrence] =
     useState<RecurrenceValues>(initialRecurrence);
-  const [recurrenceErrors, setRecurrenceErrors] = useState<RecurrenceErrors>(
-    initialRecurrenceErrors,
-  );
+  const [serverRecurrenceErrors, setServerRecurrenceErrors] =
+    useState<RecurrenceErrors>(initialRecurrenceErrors);
   const weekdaysTouched = useRef(initialRecurrence.weekdays.length > 0);
   const [conflicts, setConflicts] = useState<SchedulingConflict[] | null>(
     initialConflicts ?? null,
@@ -130,11 +135,29 @@ export function CohortCreateForm({
   const template = templates.find((item) => item.id === values.templateId);
   const subjects = templateSubjects(template);
 
+  const clientChecks = () => validateCohortCreate(values, recurrence);
+  const errors = shownErrors(
+    checked,
+    serverErrors,
+    () => clientChecks().errors,
+  );
+  const recurrenceErrors = shownErrors(
+    checked,
+    serverRecurrenceErrors,
+    () => clientChecks().recurrence,
+  );
+
+  /** A value's server error goes once it changes (#598 E4). */
+  function changed(fields: readonly CreateField[]) {
+    setServerErrors((current) => withoutErrors(current, fields));
+  }
+
   function change<K extends keyof CohortCreateValues>(
     key: K,
     value: CohortCreateValues[K],
   ) {
     setValues((current) => ({ ...current, [key]: value }));
+    changed(changedFields(CREATE_VALUE_FIELDS[key]));
     if (key === 'startsOn' && !weekdaysTouched.current) {
       setRecurrence((current) => ({
         ...current,
@@ -148,6 +171,9 @@ export function CohortCreateForm({
       weekdaysTouched.current = true;
     }
     setRecurrence(next);
+    setServerRecurrenceErrors((current) =>
+      clearRecurrenceServerErrors(current, recurrence, next),
+    );
   }
 
   function focusFirst(found: CreateErrors, rule: RecurrenceErrors) {
@@ -174,8 +200,8 @@ export function CohortCreateForm({
     if (caught instanceof ApiError) {
       const found = createServerErrors(caught);
       if (hasServerErrors(found)) {
-        setErrors(found.fields);
-        setRecurrenceErrors(found.recurrence);
+        setServerErrors(found.fields);
+        setServerRecurrenceErrors(found.recurrence);
         focusFirst(found.fields, found.recurrence);
         return;
       }
@@ -186,9 +212,10 @@ export function CohortCreateForm({
   async function submit() {
     setFailure(null);
     setConflicts(null);
-    const found = validateCohortCreate(values, recurrence);
-    setErrors(found.errors);
-    setRecurrenceErrors(found.recurrence);
+    const found = clientChecks();
+    setChecked(true);
+    setServerErrors({});
+    setServerRecurrenceErrors({});
     if (
       Object.keys(found.errors).length > 0 ||
       Object.keys(found.recurrence).length > 0
@@ -331,13 +358,15 @@ export function CohortCreateForm({
           select(
             'template',
             values.templateId,
-            (value) =>
+            (value) => {
               setValues((current) =>
                 withTemplate(
                   current,
                   templates.find((item) => item.id === value),
                 ),
-              ),
+              );
+              changed(['template', 'subject']);
+            },
             <>
               <option value="">
                 {t('courses.cohorts.create.chooseTemplate')}

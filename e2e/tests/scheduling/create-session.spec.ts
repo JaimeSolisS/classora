@@ -9,6 +9,7 @@ import {
   pickOption,
 } from '../support/combobox';
 import { createStudentViaApi } from '../support/students';
+import { fillTime } from '../support/scheduling';
 import { createSubjectViaApi } from '../support/tutors';
 
 // Scheduling a one-off session (#48 G6). The demo Owner (the shared state;
@@ -95,12 +96,14 @@ async function fillWhen(page: Page, date: string, start: string, end: string) {
   await main
     .getByLabel(common.scheduling.fields.date, { exact: true })
     .fill(date);
-  await main
-    .getByLabel(common.scheduling.fields.start, { exact: true })
-    .fill(start);
-  await main
-    .getByLabel(common.scheduling.fields.end, { exact: true })
-    .fill(end);
+  await fillTime(
+    main.getByLabel(common.scheduling.fields.start, { exact: true }),
+    start,
+  );
+  await fillTime(
+    main.getByLabel(common.scheduling.fields.end, { exact: true }),
+    end,
+  );
 }
 
 test('an Owner schedules a session and meets a student overlap', async ({
@@ -155,10 +158,35 @@ test('an Owner schedules a session and meets a student overlap', async ({
   await main
     .getByLabel(common.scheduling.fields.subject, { exact: true })
     .selectOption({ label: subjectName });
-  await fillWhen(page, date, '10:00', '11:00');
+  // HF-13 (#598): submitted without a date or times, then filled in, the
+  // "required" messages go without another submit. The start is picked
+  // from its list; the end follows it (start + 1 h).
+  const submit = main.getByRole('button', {
+    name: common.scheduling.submit,
+    exact: true,
+  });
+  await submit.click();
+  const required = (key: 'dateRequired' | 'startRequired' | 'endRequired') =>
+    main.getByText(common.scheduling.validation[key], { exact: true });
+  await expect(required('startRequired')).toBeVisible();
+  await expect(required('endRequired')).toBeVisible();
   await main
-    .getByRole('button', { name: common.scheduling.submit, exact: true })
-    .click();
+    .getByLabel(common.scheduling.fields.date, { exact: true })
+    .fill(date);
+  const start = main.getByLabel(common.scheduling.fields.start, {
+    exact: true,
+  });
+  await start.click();
+  await page.getByRole('option', { name: '10:00', exact: true }).click();
+  await expect(start).toHaveValue('10:00');
+  await expect(
+    main.getByLabel(common.scheduling.fields.end, { exact: true }),
+  ).toHaveValue('11:00');
+  await expect(required('dateRequired')).toHaveCount(0);
+  await expect(required('startRequired')).toHaveCount(0);
+  await expect(required('endRequired')).toHaveCount(0);
+  await expect(start).not.toHaveAttribute('aria-invalid', 'true');
+  await submit.click();
   await expect(
     main.getByRole('heading', { name: common.scheduling.success.heading }),
   ).toBeVisible();
