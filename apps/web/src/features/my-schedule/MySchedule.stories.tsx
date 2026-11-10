@@ -8,7 +8,12 @@ import { TUTOR_CHANGES_REQUESTED } from '@/features/tutor-portal/closeout/fixtur
 import { i18n } from '@/i18n';
 import { StoryQueryClient } from '@/test/StoryQueryClient';
 import { StoryRouter } from '@/test/StoryRouter';
-import type { FamilyStudents, MyScheduleLoaders, SchedulePage } from './api';
+import type {
+  FamilyStudents,
+  MyScheduleLoaders,
+  ScheduleEntry,
+  SchedulePage,
+} from './api';
 import {
   FAMILY_ITEMS,
   familyStudents,
@@ -143,11 +148,36 @@ export const TutorList: Story = {
   },
 };
 
+const kindLabel = (kind: ScheduleEntry['item']['kind']) =>
+  i18n.t(`scheduling.calendar.filters.kinds.${kind}`);
+
+/** The legend above the grid (HF-07): the three class types. */
+async function legendShown(canvasElement: HTMLElement) {
+  const legend = within(canvasElement).getByRole('list', {
+    name: i18n.t('scheduling.calendar.legend.title'),
+  });
+  await expect(within(legend).getAllByRole('listitem')).toHaveLength(3);
+}
+
+/** HF-07: one class of each type, coloured, with its icon and name. */
 export const TutorWeek: Story = {
   args: { initial: { ...LIST, view: 'week' } },
   play: async ({ canvasElement }) => {
     const region = await events(canvasElement);
     await expect(region.getAllByRole('button')).toHaveLength(3);
+    for (const item of TUTOR_ITEMS) {
+      const event = canvasElement.querySelector<HTMLElement>(
+        `[data-session-id="${item.id}"]`,
+      )!;
+      await expect(event).toHaveClass(`cl-event--kind-${item.kind}`);
+      await expect(event).toHaveAccessibleName(
+        new RegExp(`, ${escape(kindLabel(item.kind))}, `),
+      );
+      await expect(
+        event.querySelector(`[data-kind="${item.kind}"] svg`),
+      ).not.toBeNull();
+    }
+    await legendShown(canvasElement);
   },
 };
 
@@ -172,6 +202,17 @@ export const FamilyList: Story = {
         }).length,
       ).toBeGreaterThan(0);
     }
+    // HF-07: the type as text in List, and the family's tutor line.
+    for (const item of FAMILY_ITEMS) {
+      const event = canvasElement.querySelector<HTMLElement>(
+        `[data-session-id="${item.id}"]`,
+      )!;
+      await expect(event).toHaveTextContent(kindLabel(item.kind));
+      await expect(event).toHaveTextContent(
+        i18n.t('mySchedule.tutor', { name: 'Carmen Ruiz' }),
+      );
+    }
+    await legendShown(canvasElement);
   },
 };
 

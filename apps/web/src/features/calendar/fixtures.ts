@@ -62,7 +62,7 @@ export function item(overrides: Partial<CalendarItem> = {}): CalendarItem {
   };
 }
 
-/** One week with every state and both markers. */
+/** One week with every state, both markers and every class type (HF-07). */
 export const WEEK_ITEMS: CalendarItem[] = [
   item({
     state: 'unassigned',
@@ -87,6 +87,7 @@ export const WEEK_ITEMS: CalendarItem[] = [
   }),
   item({
     state: 'completed',
+    kind: 'course',
     starts_at: '2026-11-11T15:00:00Z',
     ends_at: '2026-11-11T16:00:00Z',
   }),
@@ -166,5 +167,51 @@ export const SHORT_ITEMS: CalendarItem[] = [15, 30, 60].map((minutes, index) =>
       Date.parse(`2026-11-1${index}T16:00:00Z`) + minutes * 60_000,
     ).toISOString(),
     markers: ['center_closed', 'tutor_not_qualified'],
+  }),
+);
+
+const VALENTINA = {
+  student_id: '00000000-0000-4000-8000-000000584c01',
+  display_name: 'Valentina Rodríguez Hernández',
+};
+
+/** HF-07 AC3: 15-, 30-, 60- and 120-minute events (Monday to Thursday) of
+ * each class type (10:00 individual, 13:00 group, 16:00 course). */
+export const KIND_SIZE_ITEMS: CalendarItem[] = [15, 30, 60, 120].flatMap(
+  (minutes, day) =>
+    (['individual', 'group', 'course'] as const).map((kind, index) => {
+      const start = Date.UTC(2026, 10, 9 + day, 16 + index * 3);
+      return item({
+        kind,
+        state: 'confirmed',
+        participants: [VALENTINA, ANA],
+        starts_at: new Date(start).toISOString(),
+        ends_at: new Date(start + minutes * 60_000).toISOString(),
+      });
+    }),
+);
+
+/** HF-07 AC4: every state (one a day, Monday to Sunday) on each class type
+ * (09:00 individual, 12:00 group, 15:00 course), 90 minutes each. */
+export const STATE_KIND_ITEMS: CalendarItem[] = (
+  [
+    'unassigned',
+    'offered',
+    'confirmed',
+    'completed',
+    'cancelled',
+    'skipped_closure',
+    'conflict',
+  ] as const
+).flatMap((state, day) =>
+  (['individual', 'group', 'course'] as const).map((kind, index) => {
+    const start = Date.UTC(2026, 10, 9 + day, 15 + index * 3);
+    return item({
+      kind,
+      state,
+      tutor: state === 'unassigned' ? null : CARMEN,
+      starts_at: new Date(start).toISOString(),
+      ends_at: new Date(start + 90 * 60_000).toISOString(),
+    });
   }),
 );

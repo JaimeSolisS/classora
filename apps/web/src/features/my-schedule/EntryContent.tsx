@@ -1,4 +1,5 @@
 import { STATE_ICONS } from '@/features/calendar/EventContent';
+import { KindBadge } from '@/features/calendar/KindBadge';
 import { sessionTimeText } from '@/features/calendar/labels';
 import type { ScheduleEntry } from './api';
 import {
@@ -12,7 +13,8 @@ import {
 // One event of "My schedule" (#67 E5, E6): the state as an icon with its
 // text (and the #57 border style, calendar.css), the time range, the
 // subject, who (the tutor for a family, the students for a tutor) and the
-// room. Screen readers get one name with every detail (entryName); the
+// room. HF-07: the class type as the background colour (calendar.css) and
+// its icon (with its text outside the time grid). Screen readers get one name with every detail (entryName); the
 // visible parts are hidden from them so nothing is read twice. No markers.
 
 export function EntryStateLabel({
@@ -50,6 +52,7 @@ export function EntryContent({
           <>
             <span className="cl-event-status">
               <EntryStateLabel entry={entry} context={context} />
+              <KindBadge kind={entry.item.kind} iconOnly className="shrink-0" />
             </span>
             <span className="cl-event-time">
               {sessionTimeText(entry.item, context)}
@@ -60,7 +63,8 @@ export function EntryContent({
             <span className="cl-event-time">
               {sessionTimeText(entry.item, context)}
             </span>{' '}
-            <EntryStateLabel entry={entry} context={context} />
+            <EntryStateLabel entry={entry} context={context} />{' '}
+            <KindBadge kind={entry.item.kind} />
           </span>
         )}
         <span className="cl-event-title">{entry.item.subject.name}</span>

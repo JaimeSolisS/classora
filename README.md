@@ -161,14 +161,15 @@ unless a bullet says otherwise.
 - Staff (including academic coordinators and finance staff) see every class
   session on the Schedule calendar (FullCalendar), by day, week, month or as
   a list, in the center's time zone, filtered by tutor, student, room and
-  class type. Each session shows its state, and is marked when it falls on a
-  center closure, its tutor is no longer qualified for the subject, or it was
-  booked or moved with an override. The day and week views show the
+  class type. Each session shows its state and its tutor, is coloured by
+  class type (individual, group or course, with an icon and a legend), and
+  is marked when it falls on a center closure, its tutor is no longer
+  qualified for the subject, or it was booked or moved with an override. The day and week views show the
   center's opening hours, shaded where it is closed, and widen to show any
   class outside them.
 - Tutors, students and guardians see their own schedules under My schedule,
-  as a phone-friendly list or a calendar (with the same opening hours), and
-  guardians choose a child.
+  as a phone-friendly list or a calendar (with the same opening hours and
+  class type colours), and guardians choose a child.
   Families see only confirmed and completed classes, and cancelled ones they
   had seen confirmed.
 - Owners and Administrators reschedule a session on the calendar by dragging
@@ -478,7 +479,8 @@ unless a bullet says otherwise.
   the KPI widgets their role may see; each user shows, hides and reorders
   the widgets (mouse, keyboard or buttons), saved per user. Tutors,
   students and guardians get a home with their own classes and pending
-  items (offers, closeouts, homework, balance due).
+  items (offers, closeouts, homework, balance due). Every agenda row shows
+  the class type (colour, icon and name) and the tutor.
 
 **Imports**
 

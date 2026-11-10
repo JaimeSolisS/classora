@@ -2500,6 +2500,7 @@
       "count_other": "{{count}} sessions in this range.",
       "truncated": "Showing the first 1000 sessions. Narrow the dates or filters.",
       "noTutor": "No tutor",
+      "tutorLine": "Tutor: {{name}}",
       "noStudents": "No students",
       "listAlternative": "The List view shows the same sessions as text.",
       "selectHint": "To schedule a session, drag over free times in Day or Week view, or click a time for a one-hour session. With the keyboard, use \"Schedule a session\".",
@@ -2570,6 +2571,9 @@
         "cancel": "Cancel",
         "submit": "Save",
         "submitting": "Saving…"
+      },
+      "legend": {
+        "title": "Class types"
       }
     },
     "states": {

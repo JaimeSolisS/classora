@@ -1,5 +1,9 @@
 import type { TFunction } from 'i18next';
-import { sessionTimeText, type LabelContext } from '@/features/calendar/labels';
+import {
+  kindText,
+  sessionTimeText,
+  type LabelContext,
+} from '@/features/calendar/labels';
 import { formatLocalDate, toLocalDate } from '@/lib/time';
 import type { ScheduleEntry } from './api';
 
@@ -46,14 +50,16 @@ export function dateText(entry: ScheduleEntry, context: LabelContext): string {
 }
 
 /**
- * The item's accessible name: subject, date, time range, state, who and the
- * room (if any), e.g. "Mathematics, November 9, 2026, 10:00–11:00,
- * Confirmed, Tutor: Carmen Ruiz, Room: Aula 2". No markers (#67 E6).
+ * The item's accessible name: subject, class type (HF-07), date, time range,
+ * state, who and the room (if any), e.g. "Mathematics, Group, November 9,
+ * 2026, 10:00–11:00, Confirmed, Tutor: Carmen Ruiz, Room: Aula 2". No
+ * markers (#67 E6).
  */
 export function entryName(entry: ScheduleEntry, context: LabelContext): string {
   const { t } = context;
   return [
     entry.item.subject.name,
+    kindText(entry.item, context),
     dateText(entry, context),
     sessionTimeText(entry.item, context),
     stateLabel(entry, t),

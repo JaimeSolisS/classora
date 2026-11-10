@@ -39,6 +39,7 @@ import {
   isCompact,
   sessionName,
   sessionTimeText,
+  tutorText,
   type LabelContext,
 } from './labels';
 import {
@@ -64,8 +65,14 @@ interface StubCalendarProps {
   initialView: string;
   initialDate: string;
   plugins: unknown[];
-  events: { id: string; extendedProps: { item: CalendarItem } }[];
+  events: {
+    id: string;
+    color?: string;
+    extendedProps: { item: CalendarItem };
+  }[];
   eventContent: (info: unknown) => ReactNode;
+  eventClass: (info: unknown) => string;
+  slotMinHeight: number;
   datesSet: (info: { startStr: string; endStr: string }) => void;
   slotMinTime: string;
   slotMaxTime: string;
@@ -98,7 +105,16 @@ vi.mock('@fullcalendar/react', async () => {
     return (
       <div data-testid="calendar">
         {props.events.map((event) => (
-          <div key={event.id} role="button" tabIndex={0}>
+          <div
+            key={event.id}
+            role="button"
+            tabIndex={0}
+            className={props.eventClass({
+              event,
+              view: { type: props.initialView },
+            })}
+            data-color={event.color}
+          >
             {props.eventContent({ event, view: { type: props.initialView } })}
           </div>
         ))}
@@ -149,6 +165,12 @@ const VIEWER: SessionUserBody = {
 const MANAGER: SessionUserBody = {
   ...TEST_USER,
   permissions: ['schedule.view', 'schedule.manage', 'student.view'],
+};
+
+/** A substitute tutor (#63): the API sends the session's current tutor. */
+const SUBSTITUTE = {
+  id: '00000000-0000-4000-8000-000000584b01',
+  display_name: 'Diego Núñez',
 };
 
 const DEFAULTS = { view: 'week', date: '2026-11-09' as LocalDate } as const;
@@ -284,14 +306,32 @@ describe('the accessible name', () => {
     markers: ['center_closed'],
   });
 
-  it('names subject, students, time, tutor, state, room and markers', () => {
+  it('names subject, type, students, time, tutor, state, room and markers', () => {
     expect(sessionName(unassigned, context('en'))).toBe(
-      'Matemáticas, Ana López, 10:00 AM–11:00 AM, No tutor, Unassigned, Aula 2, Center closed',
+      'Matemáticas, Individual, Ana López, 10:00 AM–11:00 AM, No tutor, Unassigned, Aula 2, Center closed',
     );
     expect(sessionName(unassigned, context('es'))).toBe(
-      'Matemáticas, Ana López, 10:00–11:00, Sin tutor, Sin asignar, Aula 2, Centro cerrado',
+      'Matemáticas, Individual, Ana López, 10:00–11:00, Sin tutor(a), Sin asignar, Aula 2, Centro cerrado',
     );
   });
+
+  it.each([
+    ['individual', 'Individual', 'Individual'],
+    ['group', 'Group', 'Grupal'],
+    ['course', 'Course', 'Curso'],
+  ] as const)(
+    'names the class type %s after the subject (HF-07)',
+    (kind, en, es) => {
+      const session = item({ kind });
+
+      expect(sessionName(session, context('en'))).toMatch(
+        new RegExp(`^Matemáticas, ${en}, `),
+      );
+      expect(sessionName(session, context('es'))).toMatch(
+        new RegExp(`^Matemáticas, ${es}, `),
+      );
+    },
+  );
 
   it('leaves out a missing room and names the tutor', () => {
     const offered = item({
@@ -302,7 +342,7 @@ describe('the accessible name', () => {
     });
 
     expect(sessionName(offered, context('en'))).toBe(
-      'Matemáticas, No students, 10:00 AM–11:00 AM, Carmen Ruiz, Offered, Center closed, Tutor no longer qualified',
+      'Matemáticas, Individual, No students, 10:00 AM–11:00 AM, Carmen Ruiz, Offered, Center closed, Tutor no longer qualified',
     );
   });
 
@@ -352,6 +392,24 @@ describe('the accessible name', () => {
         context('es', TIJUANA),
       ),
     ).toBe('08:00–09:00');
+  });
+});
+
+describe('the tutor line (HF-07 E3)', () => {
+  it('names the tutor, or says there is none', () => {
+    expect(tutorText(item(), context('en'))).toBe('Tutor: Carmen Ruiz');
+    expect(tutorText(item(), context('es'))).toBe('Tutor(a): Carmen Ruiz');
+    expect(tutorText(item({ tutor: null }), context('en'))).toBe('No tutor');
+    expect(tutorText(item({ tutor: null }), context('es'))).toBe(
+      'Sin tutor(a)',
+    );
+  });
+
+  it("names the session's current tutor: the substitute after a cover (AC1)", () => {
+    const covered = item({ tutor: SUBSTITUTE });
+
+    expect(tutorText(covered, context('es'))).toBe('Tutor(a): Diego Núñez');
+    expect(sessionName(covered, context('es'))).toContain(', Diego Núñez, ');
   });
 });
 
@@ -830,6 +888,134 @@ describe('the Schedule page', () => {
       expect(slots()).toEqual(['08:00:00', '18:00:00', '08:00:00']);
       expect(app.container.textContent).toContain(caption('08:00', '18:00'));
       expect(sessionUrls()).toHaveLength(1);
+    });
+  });
+
+  // HF-07: the class type (colour, icon, text, name, legend) and the tutor.
+  describe('the class type and the tutor (HF-07)', () => {
+    function events(): HTMLElement[] {
+      return [
+        ...app!.container.querySelectorAll<HTMLElement>(
+          '[data-testid="calendar"] > [role="button"]',
+        ),
+      ];
+    }
+
+    async function open(view: string) {
+      stub(VIEWER, () =>
+        jsonResponse(200, { items: WEEK_ITEMS, truncated: false }),
+      );
+      app = await renderApp(`/schedule?view=${view}&date=2026-11-09`, ROUTES);
+      await calendarLoaded();
+      return events();
+    }
+
+    it('colours each event by type, with its icon, tutor and name, in Week (AC1, AC2, AC3)', async () => {
+      const shown = await open('week');
+
+      expect(shown).toHaveLength(WEEK_ITEMS.length);
+      shown.forEach((event, index) => {
+        const { kind, state } = WEEK_ITEMS[index]!;
+        expect(event.classList).toContain(`cl-event--kind-${kind}`);
+        expect(event.classList).toContain(`cl-event--${state}`);
+        expect(event.classList).not.toContain('cl-event--list');
+        expect(event.dataset.color).toBe(`var(--kind-${kind}-strong)`);
+        expect(event.querySelector(`[data-kind="${kind}"] svg`)).not.toBeNull();
+        expect(event.querySelector('[data-event-tutor]')).not.toBeNull();
+      });
+      const [unassigned, , group, course] = shown;
+      // A short (compact) event: the icon only, its text as the tooltip.
+      const icon = unassigned!.querySelector('[data-kind]')!;
+      expect(icon.textContent).toBe('');
+      expect(icon.getAttribute('title')).toBe('Individual');
+      expect(course!.querySelector('[data-kind]')?.getAttribute('title')).toBe(
+        'Course',
+      );
+      // A 90-minute event: icon and text.
+      expect(group!.querySelector('[data-kind]')?.textContent).toBe('Group');
+      // The tutor, or "No tutor"; compact lines carry their full text.
+      const none = unassigned!.querySelector('[data-event-tutor]')!;
+      expect(none.textContent).toBe('No tutor');
+      expect(none.getAttribute('title')).toBe('No tutor');
+      expect(group!.querySelector('[data-event-tutor]')?.textContent).toBe(
+        'Tutor: Carmen Ruiz',
+      );
+      // The type is in the accessible name.
+      expect(unassigned!.querySelector('.sr-only')?.textContent).toMatch(
+        /^Matemáticas, Individual, /,
+      );
+      expect(group!.querySelector('.sr-only')?.textContent).toMatch(
+        /^Física, Group, /,
+      );
+      expect(course!.querySelector('.sr-only')?.textContent).toMatch(
+        /^Matemáticas, Course, /,
+      );
+      // Taller slots: a 60-minute compact event fits its five lines.
+      expect(calendarProps.last?.slotMinHeight).toBe(48);
+    });
+
+    it.each([
+      ['month', false],
+      ['list', true],
+      ['day', false],
+    ] as const)(
+      'shows the type and tutor in %s (AC1, AC2)',
+      async (view, list) => {
+        const shown = await open(view);
+
+        const [unassigned, , group] = shown;
+        expect(unassigned!.classList.contains('cl-event--list')).toBe(list);
+        expect(group!.classList).toContain('cl-event--kind-group');
+        expect(group!.querySelector('[data-kind="group"]')?.textContent).toBe(
+          'Group',
+        );
+        expect(
+          unassigned!.querySelector('[data-event-tutor]')?.textContent,
+        ).toBe('No tutor');
+        expect(group!.querySelector('[data-event-tutor]')?.textContent).toBe(
+          'Tutor: Carmen Ruiz',
+        );
+      },
+    );
+
+    it('shows the legend: swatch, icon and text per type (AC2)', async () => {
+      await open('week');
+
+      const legend = app!.container.querySelector('[data-kind-legend]')!;
+      const list = legend.querySelector('ul')!;
+      const labelId = list.getAttribute('aria-labelledby')!;
+      expect(document.getElementById(labelId)?.textContent).toBe('Class types');
+      const items = [...list.querySelectorAll('li')];
+      expect(items.map((li) => li.textContent)).toEqual([
+        'Individual',
+        'Group',
+        'Course',
+      ]);
+      items.forEach((li, index) => {
+        const kind = ['individual', 'group', 'course'][index];
+        const swatch = li.querySelector(`[data-kind-swatch="${kind}"]`);
+        expect(swatch?.getAttribute('aria-hidden')).toBe('true');
+        expect(swatch?.getAttribute('style')).toContain(`var(--kind-${kind})`);
+        expect(li.querySelector(`[data-kind="${kind}"] svg`)).not.toBeNull();
+      });
+    });
+
+    it('shows the tutor line and the legend in Spanish (AC9)', async () => {
+      applyLanguage('es');
+      const [unassigned, , group] = await open('week');
+
+      expect(unassigned!.querySelector('[data-event-tutor]')?.textContent).toBe(
+        'Sin tutor(a)',
+      );
+      expect(group!.querySelector('[data-event-tutor]')?.textContent).toBe(
+        'Tutor(a): Carmen Ruiz',
+      );
+      expect(
+        [...app!.container.querySelectorAll('[data-kind-legend] li')].map(
+          (li) => li.textContent,
+        ),
+      ).toEqual(['Individual', 'Grupal', 'Curso']);
+      expect(app!.container.textContent).toContain('Tipos de clase');
     });
   });
 

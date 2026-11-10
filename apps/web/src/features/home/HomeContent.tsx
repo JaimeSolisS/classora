@@ -47,6 +47,7 @@ export function HomeContent({
       {plan.tutor ? (
         <TutorAgendaSection
           userId={user.id}
+          userName={user.display_name}
           today={today}
           timeZone={timeZone}
           window={personal}

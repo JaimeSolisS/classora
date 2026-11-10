@@ -80,7 +80,6 @@
   border-style: solid;
   border-inline-start-width: 6px;
   border-color: var(--primary);
-  background-color: var(--secondary);
 }
 
 .cl-calendar .cl-event--completed {
@@ -113,6 +112,23 @@
   border-style: double;
   border-width: 4px;
   border-color: var(--destructive);
+}
+
+/* HF-07 E1: the class type is the background in Day, Week and Month, in
+ * every state (more specific than the state rules above, which keep their
+ * border style, icon and text colour). Its icon and text, the accessible
+ * name and the legend carry it too. The List view keeps the list's own row
+ * background; its dot is the type's strong shade (the event `color`). */
+.cl-calendar .cl-event--kind-individual:not(.cl-event--list) {
+  background-color: var(--kind-individual);
+}
+
+.cl-calendar .cl-event--kind-group:not(.cl-event--list) {
+  background-color: var(--kind-group);
+}
+
+.cl-calendar .cl-event--kind-course:not(.cl-event--list) {
+  background-color: var(--kind-course);
 }
 
 /* --- Event content. --- */
@@ -161,6 +177,21 @@
   flex-wrap: wrap;
   align-items: center;
   column-gap: calc(var(--spacing) * 2);
+}
+
+/* HF-07: compact events stack one-line rows with no gap (state, time,
+   subject, first student, tutor); each is cut with an ellipsis, never in
+   half. The full text is in the accessible name and the tooltip. */
+.cl-calendar .cl-event-body--compact {
+  gap: 0;
+}
+
+.cl-calendar .cl-event-clip {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Compact (short time-grid) events: the first line is the state and the

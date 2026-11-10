@@ -17,6 +17,8 @@ import { createSubjectViaApi } from '../support/tutors';
 // event), and runs axe on Week and List. HF-08: Week shows the center's
 // opening hours, so no slot row before 07:00 exists (settings.spec may open
 // Sunday from 07:00 while this runs), and the 10:00 event is visible.
+// HF-07: the event's name has its class type ("Individual"), it shows "No
+// tutor" in every view, and the legend lists the three class types.
 //
 // Budgets (#27, ADR-0008; see support/auth.ts): no login, no redemption and
 // no registration (three API creates with the shared Owner session). It
@@ -145,6 +147,16 @@ test('an Owner finds a session on the calendar in every view', async ({
   await expect(
     calendar.locator('[data-time="10:00:00"]').first(),
   ).toBeVisible();
+  const kinds = common.scheduling.calendar.filters.kinds;
+  await expect(event).toHaveAccessibleName(
+    new RegExp(`^${subjectName}, ${kinds.individual}, `),
+  );
+  await expect(event).toContainText(common.scheduling.calendar.noTutor);
+  await expect(
+    main
+      .getByRole('list', { name: common.scheduling.calendar.legend.title })
+      .getByRole('listitem'),
+  ).toHaveText([kinds.individual, kinds.group, kinds.course]);
   await expectNoAxeViolations(page);
 
   // 3. Keyboard: the event takes focus, Enter opens the dialog, Escape
@@ -176,6 +188,7 @@ test('an Owner finds a session on the calendar in every view', async ({
     ).toHaveAttribute('aria-pressed', 'true');
     await loaded();
     await expect(event).toHaveCount(1);
+    await expect(event).toContainText(common.scheduling.calendar.noTutor);
   }
   await expectNoAxeViolations(page);
 
