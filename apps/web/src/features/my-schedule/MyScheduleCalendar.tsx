@@ -13,11 +13,16 @@ import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
 import '@/features/calendar/calendar.css';
+import { CenterHoursCaption } from '@/features/calendar/CenterHoursCaption';
 import {
   rangeInstants,
   shiftDate,
   type LocalRange,
 } from '@/features/calendar/urlState';
+import {
+  useGridHours,
+  type FetchSettings,
+} from '@/features/calendar/useGridHours';
 import {
   CALENDAR_PLUGINS,
   CALENDAR_VIEWS,
@@ -41,7 +46,8 @@ import type { LabelContext } from './labels';
 // Monday first, with the #57 toolbar. No drag, select or date-click (#58
 // edits the staff calendar only). One query per (whose, range); the
 // details dialog shows the loaded item and the page's action for it
-// (`renderAction`, #62b A1).
+// (`renderAction`, #62b A1). Day and Week show the center's opening hours
+// (HF-08, features/calendar/hours.ts), as the staff calendar does.
 
 export interface CalendarPosition {
   view: CalendarView;
@@ -53,6 +59,8 @@ export interface MyScheduleCalendarProps {
   whoseKey: string;
   /** Reads the schedule of one range. */
   load: (query: RangeQuery, signal: AbortSignal) => Promise<SchedulePage>;
+  /** The business settings: the opening hours (HF-08). */
+  fetchSettings: FetchSettings;
   position: CalendarPosition;
   onPositionChange: (position: CalendarPosition) => void;
   timeZone: string;
@@ -90,6 +98,7 @@ function localDateOf(edge: string): LocalDate {
 export function MyScheduleCalendar({
   whoseKey,
   load,
+  fetchSettings,
   position,
   onPositionChange,
   timeZone,
@@ -106,7 +115,7 @@ export function MyScheduleCalendar({
   const opener = useRef<HTMLElement | null>(null);
   const returnId = useRef<string | null>(null);
   const region = useRef<HTMLDivElement | null>(null);
-  const [initial] = useState(() => position);
+  const [initial, setInitial] = useState(() => position);
 
   // Keep FullCalendar on the URL's view and date.
   useEffect(() => {
@@ -135,6 +144,23 @@ export function MyScheduleCalendar({
     [t, timeZone, language],
   );
 
+  const items = useMemo(() => entries.map((entry) => entry.item), [entries]);
+  const { ready, grid, businessHours } = useGridHours(
+    fetchSettings,
+    position.view,
+    position.date,
+    items,
+    timeZone,
+  );
+  const { slotMinTime, slotMaxTime, scrollTime } = grid;
+  // Until the grid mounts, its first view and date follow the URL.
+  if (
+    !ready &&
+    (initial.view !== position.view || initial.date !== position.date)
+  ) {
+    setInitial(position);
+  }
+
   const events = useMemo(
     () =>
       entries.map((entry) => ({
@@ -161,7 +187,11 @@ export function MyScheduleCalendar({
       height: 'auto',
       allDaySlot: false,
       nowIndicator: true,
-      scrollTime: '07:00:00',
+      slotMinTime,
+      slotMaxTime,
+      scrollTime,
+      businessHours,
+      nonBusinessHoursClass: 'cl-non-business',
       slotHeaderFormat: SLOT_FORMATS[language],
       slotMinHeight: 36,
       views: VIEW_OPTIONS,
@@ -210,7 +240,17 @@ export function MyScheduleCalendar({
         );
       },
     }),
-    [t, timeZone, language, context, initial],
+    [
+      t,
+      timeZone,
+      language,
+      context,
+      initial,
+      slotMinTime,
+      slotMaxTime,
+      scrollTime,
+      businessHours,
+    ],
   );
 
   const fetching = schedule.isFetching || query === null;
@@ -295,9 +335,16 @@ export function MyScheduleCalendar({
         >
           {controller.view?.title ?? ''}
         </h2>
-        <p className="text-sm text-muted-foreground">
-          {t('scheduling.calendar.zone', { zone: timeZone })}
-        </p>
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <p className="text-sm text-muted-foreground">
+            {t('scheduling.calendar.zone', { zone: timeZone })}
+          </p>
+          <CenterHoursCaption
+            hours={grid.hours}
+            view={position.view}
+            language={language}
+          />
+        </div>
       </div>
 
       <p role="status" className="flex min-h-5 items-center gap-2 text-sm">
@@ -329,7 +376,9 @@ export function MyScheduleCalendar({
         <p id={`${id}-alt`} className="sr-only">
           {t('scheduling.calendar.listAlternative')}
         </p>
-        <FullCalendar controller={controller} {...options} events={events} />
+        {ready ? (
+          <FullCalendar controller={controller} {...options} events={events} />
+        ) : null}
       </div>
 
       <EntryDialog

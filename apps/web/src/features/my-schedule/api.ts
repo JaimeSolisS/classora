@@ -1,5 +1,6 @@
 import type { components } from '@classora/api-client';
 import { api, apiCall } from '@/app/api';
+import { fetchSettings } from '@/features/settings/api';
 import type { Instant } from '@/lib/time';
 
 // The calls of "My schedule" (#67 E): the whose-schedule choices
@@ -85,10 +86,13 @@ export interface MyScheduleLoaders {
   fetchFamilyStudents: typeof fetchFamilyStudents;
   fetchTutorSchedule: typeof fetchTutorSchedule;
   fetchFamilySchedule: typeof fetchFamilySchedule;
+  /** The business settings: the opening hours the grid shows (HF-08). */
+  fetchSettings: typeof fetchSettings;
 }
 
 export const API_LOADERS: MyScheduleLoaders = {
   fetchFamilyStudents,
   fetchTutorSchedule,
   fetchFamilySchedule,
+  fetchSettings,
 };

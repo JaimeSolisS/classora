@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import { closeoutKey } from '@/features/tutor-portal/closeout/api';
+import { SETTINGS } from '@/features/settings/fixtures';
 import { TUTOR_CHANGES_REQUESTED } from '@/features/tutor-portal/closeout/fixtures';
 import { i18n } from '@/i18n';
 import { StoryQueryClient } from '@/test/StoryQueryClient';
@@ -50,6 +51,7 @@ function MyScheduleStory({
     fetchFamilyStudents: () => students(),
     fetchTutorSchedule: () => schedule(),
     fetchFamilySchedule: () => schedule(),
+    fetchSettings: () => Promise.resolve(SETTINGS),
   };
   return (
     <main className="flex min-w-0 flex-col gap-6 p-4">

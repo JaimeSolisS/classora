@@ -43,6 +43,14 @@
   cursor: pointer;
 }
 
+/* HF-08: the times the center is closed (FullCalendar's `businessHours`
+ * fill, `nonBusinessHoursClass`) in Day and Week. The caption states the
+ * hours, so the shading never carries them alone; slot labels sit outside
+ * the lanes and keep their contrast. */
+.cl-calendar .cl-non-business {
+  background-color: var(--muted);
+}
+
 /* --- Events: the state is a border style AND an icon with its text. --- */
 
 .cl-calendar .cl-event {

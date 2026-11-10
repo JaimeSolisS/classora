@@ -14,7 +14,9 @@ import { createSubjectViaApi } from '../support/tutors';
 // new student (other specs' sessions stay out), finds the event by its
 // accessible name ("Unassigned"), switches to Day, Month and List, opens the
 // event's dialog with the keyboard and closes it (focus returns to the
-// event), and runs axe on Week and List.
+// event), and runs axe on Week and List. HF-08: Week shows the center's
+// opening hours, so no slot row before 07:00 exists (settings.spec may open
+// Sunday from 07:00 while this runs), and the 10:00 event is visible.
 //
 // Budgets (#27, ADR-0008; see support/auth.ts): no login, no redemption and
 // no registration (three API creates with the shared Owner session). It
@@ -135,6 +137,14 @@ test('an Owner finds a session on the calendar in every view', async ({
   await expect(page).toHaveURL(new RegExp(`student=${studentId}`));
   await loaded();
   await expect(event).toHaveCount(1);
+  await expect(event).toBeVisible();
+  const early = ['00', '01', '02', '03', '04', '05', '06'].map(
+    (hour) => `[data-time^="${hour}:"]`,
+  );
+  await expect(calendar.locator(early.join(', '))).toHaveCount(0);
+  await expect(
+    calendar.locator('[data-time="10:00:00"]').first(),
+  ).toBeVisible();
   await expectNoAxeViolations(page);
 
   // 3. Keyboard: the event takes focus, Enter opens the dialog, Escape

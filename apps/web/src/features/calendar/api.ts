@@ -1,6 +1,7 @@
 import type { components } from '@classora/api-client';
 import { api, apiCall } from '@/app/api';
 import type { OptionsPage } from '@/components/ui/combobox';
+import { fetchSettings } from '@/features/settings/api';
 import { fetchStudentOptions } from '@/features/students/api';
 import type { Instant } from '@/lib/time';
 import type { FilterQuery } from './urlState';
@@ -176,6 +177,8 @@ export interface CalendarLoaders {
   fetchSeriesId?: typeof fetchSessionSeriesId;
   /** Moves a session (#58); none: the calendar is read-only. */
   updateSession?: typeof updateSession;
+  /** The business settings: the opening hours the grid shows (HF-08). */
+  fetchSettings: typeof fetchSettings;
 }
 
 export const API_LOADERS: CalendarLoaders = {
@@ -185,4 +188,5 @@ export const API_LOADERS: CalendarLoaders = {
   fetchRooms: fetchRoomOptions,
   fetchSeriesId: fetchSessionSeriesId,
   updateSession,
+  fetchSettings,
 };

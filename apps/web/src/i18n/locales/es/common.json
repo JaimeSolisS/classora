@@ -2500,6 +2500,10 @@
       "title": "Agenda",
       "regionLabel": "Calendario de sesiones",
       "zone": "Horas en {{zone}}",
+      "hours": {
+        "center": "Horario del centro: {{from}}–{{to}}",
+        "outside": "Horario del centro: {{from}}–{{to}} · se muestran clases fuera del horario"
+      },
       "toolbar": "Controles del calendario",
       "viewsLabel": "Vista",
       "views": {
