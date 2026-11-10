@@ -34,6 +34,7 @@ import {
   type ClassSessionUpdate,
 } from './api';
 import { CalendarFilters } from './CalendarFilters';
+import { CenterHoursCaption } from './CenterHoursCaption';
 import { MoveNotSavedDialog } from './dnd/MoveNotSavedDialog';
 import { MoveNoticeView } from './dnd/MoveNotice';
 import { RescheduleDialog } from './dnd/RescheduleDialog';
@@ -63,6 +64,7 @@ import {
   type CalendarState,
   type LocalRange,
 } from './urlState';
+import { useGridHours } from './useGridHours';
 import { CALENDAR_PLUGINS, CALENDAR_VIEWS, VIEW_ORDER } from './views';
 import './calendar.css';
 
@@ -88,6 +90,10 @@ import './calendar.css';
 // opens nothing: `dateClick` handles it, so one gesture navigates once.
 // Ranges that started, span two local days or last over 480 minutes are
 // refused (`selectAllow`). Month and List don't select; nobody else selects.
+//
+// Opening hours (HF-08): Day and Week show the center's hours (hours.ts),
+// grown to show any loaded session outside them, with the closed parts
+// shaded; the grid mounts once the settings have settled.
 
 export interface ScheduleCalendarProps {
   state: CalendarState;
@@ -168,7 +174,10 @@ export function ScheduleCalendar({
   const returnId = useRef<string | null>(null);
   // FullCalendar's first view and date; later changes go through the
   // controller (the effect below).
-  const [initial] = useState(() => ({ view: state.view, date: state.date }));
+  const [initial, setInitial] = useState(() => ({
+    view: state.view,
+    date: state.date,
+  }));
   const region = useRef<HTMLDivElement | null>(null);
   const noticeRef = useRef<HTMLDivElement | null>(null);
   const canMove = canSchedule && loaders.updateSession !== undefined;
@@ -308,6 +317,22 @@ export function ScheduleCalendar({
     [t, timeZone, language],
   );
 
+  // HF-08: the options take the window's strings, so a reload that keeps
+  // the same window keeps the options (and the range) as they are.
+  const { ready, grid, businessHours } = useGridHours(
+    loaders.fetchSettings,
+    state.view,
+    state.date,
+    items,
+    timeZone,
+  );
+  const { slotMinTime, slotMaxTime, scrollTime } = grid;
+  // Until the grid mounts, its first view and date follow the URL (the
+  // toolbar works while the settings load).
+  if (!ready && (initial.view !== state.view || initial.date !== state.date)) {
+    setInitial({ view: state.view, date: state.date });
+  }
+
   // Stable options: FullCalendar recomputes its range (and calls datesSet)
   // when an option changes identity, so nothing here is rebuilt per render.
   const options = useMemo<CalendarOptions>(
@@ -323,7 +348,11 @@ export function ScheduleCalendar({
       height: 'auto',
       allDaySlot: false,
       nowIndicator: true,
-      scrollTime: '07:00:00',
+      slotMinTime,
+      slotMaxTime,
+      scrollTime,
+      businessHours,
+      nonBusinessHoursClass: 'cl-non-business',
       slotHeaderFormat: SLOT_FORMATS[language],
       slotMinHeight: 36,
       views: VIEW_OPTIONS,
@@ -405,6 +434,10 @@ export function ScheduleCalendar({
       allowSelect,
       onSelect,
       onDateClick,
+      slotMinTime,
+      slotMaxTime,
+      scrollTime,
+      businessHours,
     ],
   );
   const refused = move.refused;
@@ -530,9 +563,16 @@ export function ScheduleCalendar({
         >
           {controller.view?.title ?? ''}
         </h2>
-        <p className="text-sm text-muted-foreground">
-          {t('scheduling.calendar.zone', { zone: timeZone })}
-        </p>
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <p className="text-sm text-muted-foreground">
+            {t('scheduling.calendar.zone', { zone: timeZone })}
+          </p>
+          <CenterHoursCaption
+            hours={grid.hours}
+            view={state.view}
+            language={language}
+          />
+        </div>
       </div>
 
       {canMove ? (
@@ -578,7 +618,9 @@ export function ScheduleCalendar({
             {t('scheduling.calendar.selectHint')}
           </p>
         ) : null}
-        <FullCalendar controller={controller} {...options} events={events} />
+        {ready ? (
+          <FullCalendar controller={controller} {...options} events={events} />
+        ) : null}
       </div>
 
       <SessionDialog

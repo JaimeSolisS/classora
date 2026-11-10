@@ -14,6 +14,7 @@ import {
   tutorItem,
 } from '@/features/my-schedule/fixtures';
 import { MyScheduleView } from '@/features/my-schedule/MySchedulePage';
+import { SETTINGS } from '@/features/settings/fixtures';
 import { NOTIFICATION_LINKS } from '@/features/notifications/messages';
 import { applyLanguage, i18n } from '@/i18n';
 import {
@@ -737,6 +738,7 @@ describe('from the My schedule details dialog', () => {
               Promise.resolve(familyStudents(LUCIA, MATEO)),
             fetchTutorSchedule: schedule,
             fetchFamilySchedule: schedule,
+            fetchSettings: () => Promise.resolve(SETTINGS),
           },
         }),
       ),

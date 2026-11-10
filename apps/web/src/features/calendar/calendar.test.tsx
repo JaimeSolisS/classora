@@ -3,14 +3,22 @@ import dayGridPlugin from '@fullcalendar/react/daygrid';
 import interactionPlugin from '@fullcalendar/react/interaction';
 import listPlugin from '@fullcalendar/react/list';
 import timeGridPlugin from '@fullcalendar/react/timegrid';
-import { createElement, type ReactNode } from 'react';
+import { act, createElement, type ReactNode } from 'react';
 import type { RouteObject } from 'react-router';
 import { routes } from '@/app/router';
+import { SETTINGS_QUERY_KEY } from '@/features/settings/api';
+import { SETTINGS } from '@/features/settings/fixtures';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionUserBody } from '@/features/auth/session';
 import { applyLanguage, i18n } from '@/i18n';
 import type { LocalDate } from '@/lib/time';
-import { meAs, stubApi, TEST_USER, type ApiStub } from '@/test/api-stub';
+import {
+  meAs,
+  problem,
+  stubApi,
+  TEST_USER,
+  type ApiStub,
+} from '@/test/api-stub';
 import {
   click,
   comboboxOption,
@@ -26,6 +34,7 @@ import {
 import type { CalendarItem } from './api';
 import { ANA, CARMEN, item, ROOM, TIJUANA, WEEK_ITEMS, ZONE } from './fixtures';
 import { CalendarPage } from './CalendarPage';
+import { formatHour } from './hours';
 import {
   isCompact,
   sessionName,
@@ -58,6 +67,10 @@ interface StubCalendarProps {
   events: { id: string; extendedProps: { item: CalendarItem } }[];
   eventContent: (info: unknown) => ReactNode;
   datesSet: (info: { startStr: string; endStr: string }) => void;
+  slotMinTime: string;
+  slotMaxTime: string;
+  scrollTime: string;
+  businessHours: unknown;
   selectable: boolean;
   selectMirror: boolean;
   selectAllow?: (span: { start: Date; end: Date }) => boolean;
@@ -103,6 +116,11 @@ vi.mock('@fullcalendar/react', async () => {
 });
 
 const SESSIONS = 'GET /api/v1/class-sessions';
+const SETTINGS_PATH = 'GET /api/v1/business-settings';
+/** HF-08: the grid mounts once the business settings have settled. */
+const SETTINGS_ROUTE = {
+  [SETTINGS_PATH]: () => jsonResponse(200, SETTINGS),
+};
 
 /** The app's routes with the calendar loaded eagerly (the lazy import is
  * checked on its own below). */
@@ -382,6 +400,7 @@ describe('the Schedule page', () => {
 
   function stub(user: SessionUserBody, sessions: () => Response) {
     api = stubApi({
+      ...SETTINGS_ROUTE,
       'GET /api/v1/auth/me': meAs(user),
       [SESSIONS]: sessions,
       'GET /api/v1/classrooms': () =>
@@ -679,6 +698,141 @@ describe('the Schedule page', () => {
     });
   });
 
+  // HF-08: Day and Week show the center's opening hours.
+  describe('the opening hours (HF-08)', () => {
+    const EARLY = item({
+      starts_at: '2026-11-11T13:00:00Z', // 07:00 in Mexico City
+      ends_at: '2026-11-11T14:00:00Z',
+    });
+
+    function slots() {
+      const props = calendarProps.last!;
+      return [props.slotMinTime, props.slotMaxTime, props.scrollTime];
+    }
+
+    const caption = (from: string, to: string) =>
+      `Center hours: ${formatHour(from, 'en')}–${formatHour(to, 'en')}`;
+
+    it('shows the opening hours in Week, with the closed times shaded (AC1)', async () => {
+      stub(VIEWER, () =>
+        jsonResponse(200, { items: WEEK_ITEMS, truncated: false }),
+      );
+      app = await renderApp('/schedule?view=week&date=2026-11-09', ROUTES);
+      await calendarLoaded();
+
+      expect(slots()).toEqual(['09:00:00', '20:00:00', '09:00:00']);
+      expect(calendarProps.last?.businessHours).toHaveLength(6);
+      expect(app.container.textContent).toContain(caption('09:00', '20:00'));
+      expect(app.container.textContent).not.toContain('outside these hours');
+    });
+
+    it("shows that day's hours in Day: Saturday 09:00–14:00 (AC2)", async () => {
+      stub(VIEWER, () => jsonResponse(200, { items: [], truncated: false }));
+      app = await renderApp('/schedule?view=day&date=2026-11-14', ROUTES);
+      await calendarLoaded();
+
+      expect(calendarProps.last?.initialView).toBe('timeGridDay');
+      expect(slots()).toEqual(['09:00:00', '14:00:00', '09:00:00']);
+      expect(app.container.textContent).toContain(caption('09:00', '14:00'));
+    });
+
+    it('grows to show a class outside the hours and says so (AC3)', async () => {
+      stub(VIEWER, () =>
+        jsonResponse(200, { items: [...WEEK_ITEMS, EARLY], truncated: false }),
+      );
+      app = await renderApp('/schedule?view=week&date=2026-11-09', ROUTES);
+      await calendarLoaded();
+
+      expect(slots()).toEqual(['07:00:00', '20:00:00', '07:00:00']);
+      expect(app.container.textContent).toContain(
+        `${caption('09:00', '20:00')} · showing classes outside these hours`,
+      );
+      // The window changed after the load: still one request (AC6).
+      expect(sessionUrls()).toHaveLength(1);
+    });
+
+    it('falls back to the whole day with no open weekday (AC4)', async () => {
+      stub(VIEWER, () =>
+        jsonResponse(200, { items: WEEK_ITEMS, truncated: false }),
+      );
+      api.set({
+        'GET /api/v1/business-settings': () =>
+          jsonResponse(200, { ...SETTINGS, operating_hours: [] }),
+      });
+      app = await renderApp('/schedule?view=week&date=2026-11-09', ROUTES);
+      await calendarLoaded();
+
+      expect(slots()).toEqual(['00:00:00', '24:00:00', '07:00:00']);
+      expect(calendarProps.last?.businessHours).toBe(false);
+      expect(app.container.textContent).not.toContain('Center hours');
+      expect(status()).toContain('7 sessions in this range.');
+    });
+
+    it('falls back to the whole day, without an alert, when the settings fail (AC4)', async () => {
+      stub(VIEWER, () =>
+        jsonResponse(200, { items: WEEK_ITEMS, truncated: false }),
+      );
+      api.set({
+        'GET /api/v1/business-settings': () => problem(500, 'internal_error'),
+      });
+      app = await renderApp('/schedule?view=week&date=2026-11-09', ROUTES);
+      await calendarLoaded();
+
+      expect(slots()).toEqual(['00:00:00', '24:00:00', '07:00:00']);
+      expect(calendarProps.last?.businessHours).toBe(false);
+      expect(app.container.textContent).not.toContain('Center hours');
+      expect(app.container.querySelector('[role="alert"]')).toBeNull();
+      expect(status()).toContain('7 sessions in this range.');
+    });
+
+    it('mounts the grid only once the settings have settled', async () => {
+      stub(VIEWER, () => jsonResponse(200, { items: [], truncated: false }));
+      api.set({
+        'GET /api/v1/business-settings': () => new Promise(() => {}),
+      });
+      app = await renderApp('/schedule?view=week&date=2026-11-09', ROUTES);
+      await settle();
+
+      expect(calendarProps.last).toBeNull();
+      expect(sessionUrls()).toHaveLength(0);
+      expect(status()).toContain('Loading');
+    });
+
+    it('follows saved hours with no reload, and a week change sends one request (AC6)', async () => {
+      stub(VIEWER, () =>
+        jsonResponse(200, { items: WEEK_ITEMS, truncated: false }),
+      );
+      app = await renderApp('/schedule?view=week&date=2026-11-09', ROUTES);
+      await calendarLoaded();
+      const { datesSet } = calendarProps.last!;
+
+      // Same window next week: the options (and the range) stay as they are.
+      await click(
+        [...app.container.querySelectorAll('button')].find(
+          (b) => b.getAttribute('aria-label') === 'Next week',
+        )!,
+      );
+      await settle();
+      expect(app.location()).toBe('/schedule?view=week&date=2026-11-16');
+      expect(calendarProps.last?.datesSet).toBe(datesSet);
+      expect(sessionUrls()).toHaveLength(1);
+
+      // The Settings page writes the shared cache entry after a save.
+      act(() => {
+        app!.queryClient.setQueryData(SETTINGS_QUERY_KEY, {
+          ...SETTINGS,
+          operating_hours: [
+            { weekday: 1, opens_at: '08:00', closes_at: '18:00' },
+          ],
+        });
+      });
+      await settle();
+      expect(slots()).toEqual(['08:00:00', '18:00:00', '08:00:00']);
+      expect(app.container.textContent).toContain(caption('08:00', '18:00'));
+      expect(sessionUrls()).toHaveLength(1);
+    });
+  });
+
   it('denies the page without schedule.view', async () => {
     stub({ ...TEST_USER, permissions: [] }, () =>
       jsonResponse(200, { items: [], truncated: false }),
@@ -707,6 +861,7 @@ describe('scheduling from the grid (HF-02)', () => {
     url = '/schedule?view=week',
   ): Promise<void> {
     stubApi({
+      ...SETTINGS_ROUTE,
       'GET /api/v1/auth/me': meAs(user),
       [SESSIONS]: () => jsonResponse(200, { items: [], truncated: false }),
       'GET /api/v1/classrooms': () =>

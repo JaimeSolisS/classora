@@ -18,8 +18,11 @@ import { createClassroomViaApi, createSubjectViaApi } from '../support/tutors';
 //    new session at 10:00–11:30;
 // 2. a click at 14:00 in D's lane opens the form at 14:00–15:00 (one hour);
 // 3. with the room filter on the new classroom, a click fills Classroom;
-// 4. on today's lane, a click at 00:00 (past) opens nothing, and a click at
-//    23:00 opens 23:00–23:45 (the cap); skipped near midnight center time;
+// 4. on today's lane, a click on the first row the grid renders (past)
+//    opens nothing, and a click on the last row opens it for one hour
+//    (capped at 23:45); the grid shows the center's opening hours (HF-08),
+//    so both rows are read from `data-time`; skipped unless now lies between
+//    them (center time);
 // 5. axe is clean on the calendar and the pre-filled form; CSP is clean.
 //
 // Gestures use page.mouse on the rendered FullCalendar v7 DOM, as
@@ -202,20 +205,44 @@ test('an Owner schedules by selecting times in the calendar', async ({
   );
   await expect(field(fields.classroom)).toHaveValue(roomId);
 
-  // 4. Today: a past time opens nothing; a later one opens, capped at 23:45.
+  // 4. Today: a past time opens nothing; a later one opens (one hour, capped
+  // at 23:45). HF-08: the first and last rows are the opening hours (or
+  // wider), read from the grid, not fixed times.
+  await page.goto(
+    `/schedule?view=week&date=${centerNow().today}&student=${studentId}`,
+  );
+  await loaded();
+  const rows = [
+    ...new Set(
+      await calendar
+        .locator('[data-time]')
+        .evaluateAll((elements) =>
+          elements.map((element) =>
+            (element.getAttribute('data-time') ?? '').slice(0, 5),
+          ),
+        ),
+    ),
+  ]
+    .filter(Boolean)
+    .sort();
+  const minutesOf = (time: string) =>
+    Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+  const first = rows[0]!;
+  const last = rows.at(-1)!;
   const now = centerNow();
-  if (now.minutes >= 30 && now.minutes < 22 * 60 + 45) {
-    await page.goto(
-      `/schedule?view=week&date=${now.today}&student=${studentId}`,
-    );
-    await loaded();
-    await clickAt(page, calendar, now.today, '00:00');
+  if (
+    now.minutes >= minutesOf(first) + 30 &&
+    now.minutes < minutesOf(last) - 15
+  ) {
+    await clickAt(page, calendar, now.today, first);
     await expect(calendar).toBeVisible();
-    await clickAt(page, calendar, now.today, '23:00');
+    await clickAt(page, calendar, now.today, last);
+    const end = Math.min(minutesOf(last) + 60, 23 * 60 + 45);
+    const endText = `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
     // Had the past click navigated, the calendar would be gone and this
-    // URL could not be the 23:00 one.
+    // URL could not be the last row's.
     await expect(page).toHaveURL(
-      `/schedule/new?date=${now.today}&start=23:00&end=23:45`,
+      `/schedule/new?date=${now.today}&start=${last}&end=${endText}`,
     );
   }
 

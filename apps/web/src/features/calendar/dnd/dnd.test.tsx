@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { createMemoryRouter, RouterProvider } from 'react-router';
+import { SETTINGS } from '@/features/settings/fixtures';
 import {
   afterAll,
   afterEach,
@@ -136,6 +137,8 @@ vi.mock('@fullcalendar/react', async () => {
   };
 });
 
+/** Before the fixtures' week (Monday 2026-11-09). */
+const FIXED_NOW = '2026-11-02T12:00:00Z';
 const HOST_ZONE = 'Asia/Tokyo';
 let previousZone: string | undefined;
 
@@ -370,6 +373,7 @@ function render(
       }),
     fetchRooms: () => Promise.resolve(ROOM_OPTIONS),
     updateSession: options.update,
+    fetchSettings: () => Promise.resolve(SETTINGS),
   };
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -470,9 +474,13 @@ function button(root: ParentNode, name: string): HTMLButtonElement | undefined {
 beforeEach(() => {
   applyLanguage('en');
   stub.last = null;
+  // The fixtures' week (2026-11-09) stays upcoming (D2: only sessions that
+  // haven't started move): a fixed clock, Date only (timers stay real).
+  vi.useFakeTimers({ toFake: ['Date'], now: Date.parse(FIXED_NOW) });
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   if (rendered) {
     const { root, container, client } = rendered;
     act(() => root.unmount());

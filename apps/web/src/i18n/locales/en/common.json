@@ -2468,6 +2468,10 @@
       "title": "Schedule",
       "regionLabel": "Class sessions calendar",
       "zone": "Times in {{zone}}",
+      "hours": {
+        "center": "Center hours: {{from}}–{{to}}",
+        "outside": "Center hours: {{from}}–{{to}} · showing classes outside these hours"
+      },
       "toolbar": "Calendar controls",
       "viewsLabel": "View",
       "views": {

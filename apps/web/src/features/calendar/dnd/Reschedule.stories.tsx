@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { expect, fn, screen, userEvent, waitFor, within } from 'storybook/test';
+import { SETTINGS } from '@/features/settings/fixtures';
 import { i18n } from '@/i18n';
 import { useLanguage } from '@/i18n/use-language';
 import { StoryQueryClient } from '@/test/StoryQueryClient';
@@ -87,6 +88,7 @@ function Week({ canSchedule }: { canSchedule: boolean }) {
       }),
     fetchRooms: () => Promise.resolve(ROOM_OPTIONS),
     updateSession: (_id, body) => Promise.resolve(updated(MOVABLE, body)),
+    fetchSettings: () => Promise.resolve(SETTINGS),
   };
   return (
     <StoryQueryClient>
@@ -117,6 +119,16 @@ function Week({ canSchedule }: { canSchedule: boolean }) {
   );
 }
 
+/** A fixed clock before the fixtures' week (Monday 2026-11-09), so its
+ * sessions stay upcoming (D2) whatever the real date. */
+function beforeTheWeek() {
+  const realNow = Date.now;
+  Date.now = () => Date.parse('2026-11-02T12:00:00Z');
+  return () => {
+    Date.now = realNow;
+  };
+}
+
 async function weekLoaded(canvasElement: HTMLElement) {
   const region = within(canvasElement).getByRole('region', {
     name: i18n.t('scheduling.calendar.regionLabel'),
@@ -129,6 +141,7 @@ async function weekLoaded(canvasElement: HTMLElement) {
 }
 
 export const WeekOwner: Story = {
+  beforeEach: beforeTheWeek,
   render: () => <Week canSchedule />,
   play: async ({ canvasElement }) => {
     const region = await weekLoaded(canvasElement);
@@ -145,6 +158,7 @@ export const WeekOwner: Story = {
 };
 
 export const WeekCoordinatorReadOnly: Story = {
+  beforeEach: beforeTheWeek,
   render: () => <Week canSchedule={false} />,
   play: async ({ canvasElement }) => {
     const region = await weekLoaded(canvasElement);

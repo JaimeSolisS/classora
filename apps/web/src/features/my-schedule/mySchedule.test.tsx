@@ -1,8 +1,11 @@
-import { createElement, type ReactNode } from 'react';
+import { act, createElement, type ReactNode } from 'react';
 import type { RouteObject } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { routes } from '@/app/router';
 import type { SessionUserBody } from '@/features/auth/session';
+import { formatHour } from '@/features/calendar/hours';
+import { SETTINGS_QUERY_KEY } from '@/features/settings/api';
+import { SETTINGS } from '@/features/settings/fixtures';
 import { NOTIFICATION_LINKS } from '@/features/notifications/messages';
 import { applyLanguage, i18n } from '@/i18n';
 import {
@@ -49,6 +52,10 @@ interface StubCalendarProps {
   events: { id: string; extendedProps: { entry: ScheduleEntry } }[];
   eventContent: (info: unknown) => ReactNode;
   datesSet: (info: { startStr: string; endStr: string }) => void;
+  slotMinTime: string;
+  slotMaxTime: string;
+  scrollTime: string;
+  businessHours: unknown;
 }
 
 const calendarProps = vi.hoisted(() => ({
@@ -102,6 +109,11 @@ const ROUTES = eager(routes);
 
 const FAMILY_STUDENTS = 'GET /api/v1/schedule/family-students';
 const TUTOR_SCHEDULE = `GET /api/v1/tutors/${TUTOR_ID}/schedule`;
+const SETTINGS_PATH = 'GET /api/v1/business-settings';
+/** HF-08: the grid mounts once the business settings have settled. */
+const SETTINGS_ROUTE = {
+  [SETTINGS_PATH]: () => jsonResponse(200, SETTINGS),
+};
 const scheduleOf = (studentId: string) =>
   `GET /api/v1/students/${studentId}/schedule`;
 
@@ -278,6 +290,7 @@ describe('the My schedule page', () => {
 
   it('is in the nav for a tutor and shows their teaching', async () => {
     api = stubApi({
+      ...SETTINGS_ROUTE,
       'GET /api/v1/auth/me': meAs(user('tutor')),
       [TUTOR_SCHEDULE]: () =>
         jsonResponse(200, { items: TUTOR_ITEMS, truncated: false }),
@@ -302,6 +315,7 @@ describe('the My schedule page', () => {
 
   it('a guardian chooses a child; the family item shows the tutor', async () => {
     api = stubApi({
+      ...SETTINGS_ROUTE,
       'GET /api/v1/auth/me': meAs(user('guardian')),
       [FAMILY_STUDENTS]: () => jsonResponse(200, familyStudents(LUCIA, MATEO)),
       [scheduleOf(LUCIA.student_id)]: () =>
@@ -327,6 +341,7 @@ describe('the My schedule page', () => {
 
   it('a consent-required child shows the message and sends no request', async () => {
     api = stubApi({
+      ...SETTINGS_ROUTE,
       'GET /api/v1/auth/me': meAs(user('guardian')),
       [FAMILY_STUDENTS]: () => jsonResponse(200, familyStudents(LUCIA, MATEO)),
     });
@@ -349,6 +364,7 @@ describe('the My schedule page', () => {
 
   it('a 403 student_consent_required shows the same message', async () => {
     api = stubApi({
+      ...SETTINGS_ROUTE,
       'GET /api/v1/auth/me': meAs(user('guardian')),
       [FAMILY_STUDENTS]: () => jsonResponse(200, familyStudents(LUCIA)),
       [scheduleOf(LUCIA.student_id)]: () =>
@@ -367,6 +383,7 @@ describe('the My schedule page', () => {
 
   it("a shared note's link opens the second child's schedule (#325)", async () => {
     api = stubApi({
+      ...SETTINGS_ROUTE,
       'GET /api/v1/auth/me': meAs(user('guardian')),
       [FAMILY_STUDENTS]: () => jsonResponse(200, familyStudents(LUCIA, TOMAS)),
       [scheduleOf(TOMAS.student_id)]: () =>
@@ -404,6 +421,7 @@ describe('the My schedule page', () => {
   it('an unknown ?for= falls back to the default without a request for it', async () => {
     const foreign = '00000000-0000-4000-8000-0000000000ff';
     api = stubApi({
+      ...SETTINGS_ROUTE,
       'GET /api/v1/auth/me': meAs(user('student')),
       [FAMILY_STUDENTS]: () => jsonResponse(200, familyStudents(SELF)),
       [scheduleOf(SELF.student_id)]: () =>
@@ -424,6 +442,7 @@ describe('the My schedule page', () => {
 
   it('shows the truncated notice', async () => {
     api = stubApi({
+      ...SETTINGS_ROUTE,
       'GET /api/v1/auth/me': meAs(user('tutor')),
       [TUTOR_SCHEDULE]: () =>
         jsonResponse(200, { items: TUTOR_ITEMS, truncated: true }),
@@ -436,8 +455,106 @@ describe('the My schedule page', () => {
     );
   });
 
+  // HF-08 AC5: Day and Week show the center's opening hours, as /schedule.
+  describe('the opening hours (HF-08)', () => {
+    const slots = () => {
+      const props = calendarProps.last!;
+      return [props.slotMinTime, props.slotMaxTime, props.scrollTime];
+    };
+    const caption = (from: string, to: string) =>
+      `Center hours: ${formatHour(from, 'en')}–${formatHour(to, 'en')}`;
+
+    function tutorStub(items = TUTOR_ITEMS) {
+      api = stubApi({
+        ...SETTINGS_ROUTE,
+        'GET /api/v1/auth/me': meAs(user('tutor')),
+        [TUTOR_SCHEDULE]: () => jsonResponse(200, { items, truncated: false }),
+      });
+    }
+
+    it('Week shows the opening hours, shaded where closed', async () => {
+      tutorStub();
+      app = await renderApp('/my-schedule?view=week&date=2026-11-09', ROUTES);
+      await loaded();
+
+      expect(slots()).toEqual(['09:00:00', '20:00:00', '09:00:00']);
+      expect(calendarProps.last?.businessHours).toHaveLength(6);
+      expect(text()).toContain(caption('09:00', '20:00'));
+    });
+
+    it("Day shows that day's hours: Saturday 09:00–14:00", async () => {
+      tutorStub([]);
+      app = await renderApp('/my-schedule?view=day&date=2026-11-14', ROUTES);
+      await loaded();
+
+      expect(calendarProps.last?.initialView).toBe('timeGridDay');
+      expect(slots()).toEqual(['09:00:00', '14:00:00', '09:00:00']);
+      expect(text()).toContain(caption('09:00', '14:00'));
+    });
+
+    it('grows to show a class outside the hours', async () => {
+      tutorStub([
+        ...TUTOR_ITEMS,
+        tutorItem({
+          id: '00000000-0000-4000-8000-000000067e09',
+          starts_at: '2026-11-11T13:00:00Z', // 07:00 in Mexico City
+          ends_at: '2026-11-11T14:00:00Z',
+        }),
+      ]);
+      app = await renderApp('/my-schedule?view=week&date=2026-11-09', ROUTES);
+      await loaded();
+
+      expect(slots()).toEqual(['07:00:00', '20:00:00', '07:00:00']);
+      expect(text()).toContain('showing classes outside these hours');
+      expect(api.calls(TUTOR_SCHEDULE)).toHaveLength(1);
+    });
+
+    it('falls back to the whole day, without an alert, when the settings fail or have no hours', async () => {
+      tutorStub();
+      api.set({ [SETTINGS_PATH]: () => problem(500, 'internal_error') });
+      app = await renderApp('/my-schedule?view=week&date=2026-11-09', ROUTES);
+      await loaded();
+
+      expect(slots()).toEqual(['00:00:00', '24:00:00', '07:00:00']);
+      expect(calendarProps.last?.businessHours).toBe(false);
+      expect(text()).not.toContain('Center hours');
+      expect(app.container.querySelector('[role="alert"]')).toBeNull();
+      expect(text()).toContain('3 classes in this period.');
+      app.unmount();
+
+      tutorStub();
+      api.set({
+        [SETTINGS_PATH]: () =>
+          jsonResponse(200, { ...SETTINGS, operating_hours: [] }),
+      });
+      app = await renderApp('/my-schedule?view=week&date=2026-11-09', ROUTES);
+      await loaded();
+      expect(slots()).toEqual(['00:00:00', '24:00:00', '07:00:00']);
+      expect(text()).not.toContain('Center hours');
+    });
+
+    it('follows saved hours with no reload and no new schedule request', async () => {
+      tutorStub();
+      app = await renderApp('/my-schedule?view=week&date=2026-11-09', ROUTES);
+      await loaded();
+
+      act(() => {
+        app!.queryClient.setQueryData(SETTINGS_QUERY_KEY, {
+          ...SETTINGS,
+          operating_hours: [
+            { weekday: 1, opens_at: '08:00', closes_at: '18:00' },
+          ],
+        });
+      });
+      await settle();
+      expect(slots()).toEqual(['08:00:00', '18:00:00', '08:00:00']);
+      expect(api.calls(TUTOR_SCHEDULE)).toHaveLength(1);
+    });
+  });
+
   it('is forbidden to staff-only users and absent from their nav', async () => {
     api = stubApi({
+      ...SETTINGS_ROUTE,
       'GET /api/v1/auth/me': meAs({
         ...TEST_USER,
         roles: ['owner'],

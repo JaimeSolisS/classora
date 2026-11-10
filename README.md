@@ -163,9 +163,12 @@ unless a bullet says otherwise.
   a list, in the center's time zone, filtered by tutor, student, room and
   class type. Each session shows its state, and is marked when it falls on a
   center closure, its tutor is no longer qualified for the subject, or it was
-  booked or moved with an override.
+  booked or moved with an override. The day and week views show the
+  center's opening hours, shaded where it is closed, and widen to show any
+  class outside them.
 - Tutors, students and guardians see their own schedules under My schedule,
-  as a phone-friendly list or a calendar, and guardians choose a child.
+  as a phone-friendly list or a calendar (with the same opening hours), and
+  guardians choose a child.
   Families see only confirmed and completed classes, and cancelled ones they
   had seen confirmed.
 - Owners and Administrators reschedule a session on the calendar by dragging

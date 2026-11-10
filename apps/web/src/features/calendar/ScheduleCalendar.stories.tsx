@@ -6,6 +6,8 @@ import { i18n } from '@/i18n';
 import { StoryQueryClient } from '@/test/StoryQueryClient';
 import { StoryRouter } from '@/test/StoryRouter';
 import type { LocalDate } from '@/lib/time';
+import type { BusinessSettings } from '@/features/settings/api';
+import { SETTINGS } from '@/features/settings/fixtures';
 import type { CalendarLoaders, CalendarPage, SessionState } from './api';
 import {
   ANA,
@@ -13,6 +15,7 @@ import {
   CARMEN,
   DST_ITEMS,
   DST_WEEK,
+  item,
   page,
   ROOM,
   ROOM_OPTIONS,
@@ -24,6 +27,7 @@ import {
   WEEK_ITEMS,
   ZONE,
 } from './fixtures';
+import { formatHour } from './hours';
 import { ScheduleCalendar } from './ScheduleCalendar';
 import type { CalendarState } from './urlState';
 
@@ -38,6 +42,8 @@ interface StoryArgs {
   today: LocalDate;
   result: () => Promise<CalendarPage>;
   canSchedule: boolean;
+  /** HF-08: the business settings (the opening hours). */
+  settings: () => Promise<BusinessSettings>;
 }
 
 function CalendarStory({
@@ -46,6 +52,7 @@ function CalendarStory({
   today,
   result,
   canSchedule,
+  settings,
 }: StoryArgs) {
   const [state, setState] = useState(initial);
   const loaders: CalendarLoaders = {
@@ -61,6 +68,7 @@ function CalendarStory({
     // #54b D2: every event is an occurrence of one series here.
     fetchSeriesId: () =>
       Promise.resolve('00000000-0000-4000-8000-0000000007a1'),
+    fetchSettings: () => settings(),
   };
   return (
     <main className="p-4">
@@ -88,6 +96,7 @@ const meta = {
     today: WEEK,
     result: () => Promise.resolve(page(WEEK_ITEMS)),
     canSchedule: true,
+    settings: () => Promise.resolve(SETTINGS),
   },
   render: (args) => (
     <StoryQueryClient>
@@ -335,5 +344,77 @@ export const ShortEvents: Story = {
       );
       await statusVisible(event);
     }
+  },
+};
+
+// --- HF-08: the center's opening hours -----------------------------------------
+
+/** The `data-time` of the grid's first and last slot rows. */
+function slotTimes(canvasElement: HTMLElement): string[] {
+  return [
+    ...new Set(
+      [...canvasElement.querySelectorAll<HTMLElement>('[data-time]')].map(
+        (row) => row.dataset.time ?? '',
+      ),
+    ),
+  ].sort();
+}
+
+const hoursCaption = (
+  from: string,
+  to: string,
+  key: 'center' | 'outside' = 'center',
+) => {
+  const language = i18n.language === 'en' ? 'en' : 'es';
+  return i18n.t(`scheduling.calendar.hours.${key}`, {
+    from: formatHour(from, language),
+    to: formatHour(to, language),
+  });
+};
+
+/** Saturday (09:00–14:00): Day shows that day's hours only. */
+export const SaturdayDay: Story = {
+  args: {
+    initial: calendarState({ view: 'day', date: '2026-11-14' as LocalDate }),
+    result: () => Promise.resolve(page([])),
+  },
+  play: async ({ canvasElement }) => {
+    await events(canvasElement);
+    const times = slotTimes(canvasElement);
+    await expect(times[0]).toBe('09:00:00');
+    await expect(times.at(-1)).toBe('13:30:00');
+    await expect(
+      within(canvasElement).getByText(hoursCaption('09:00', '14:00')),
+    ).toBeInTheDocument();
+  },
+};
+
+/** A class at 07:00 (an override): the window grows to show it. */
+export const OutsideHours: Story = {
+  args: {
+    result: () =>
+      Promise.resolve(
+        page([
+          ...WEEK_ITEMS,
+          item({
+            starts_at: '2026-11-11T13:00:00Z',
+            ends_at: '2026-11-11T14:00:00Z',
+          }),
+        ]),
+      ),
+  },
+  play: async ({ canvasElement }) => {
+    const region = await events(canvasElement);
+    const times = slotTimes(canvasElement);
+    await expect(times[0]).toBe('07:00:00');
+    await expect(times.at(-1)).toBe('19:30:00');
+    await expect(
+      region.getAllByRole('button', { name: /7:00/ }).length,
+    ).toBeGreaterThan(0);
+    await expect(
+      within(canvasElement).getByText(
+        hoursCaption('09:00', '20:00', 'outside'),
+      ),
+    ).toBeInTheDocument();
   },
 };

@@ -115,6 +115,7 @@ export function MyScheduleView({
             <MyScheduleCalendar
               key={selected.key}
               whoseKey={selected.key}
+              fetchSettings={loaders.fetchSettings}
               load={(query, signal) =>
                 selected.kind === 'teaching'
                   ? loaders.fetchTutorSchedule(userId, query, signal)
