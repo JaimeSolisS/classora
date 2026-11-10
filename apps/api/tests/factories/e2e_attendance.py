@@ -25,7 +25,7 @@ attendance**, the subject :data:`OVERDUE_SUBJECT_NAME` (same level), 60
 minutes, in the latest free slot that ends at or before the closeout
 session's start.
 
-Separate from ``make seed-demo`` (``tests/factories/demo.py``): it is test
+Separate from the demo command (``tests/factories/demo.py``): it is test
 data for one spec, not demo data.
 
 - **Guard:** only with ``APP_ENV`` in ``demo.ALLOWED_APP_ENVS`` (``local``,

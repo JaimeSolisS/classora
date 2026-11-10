@@ -63,7 +63,7 @@ def test_make_targets_run_the_command_per_language():
             "\tcd apps/api && uv run --env-file ../../.env python -m"
             f" tests.factories.simulation --language {language}"
         )
-        # A `##` help comment right above the target, in the seed-demo style.
+        # A `##` help comment right above the target, like the other targets.
         above = [line for line in lines[:index] if line.startswith("##")][-1]
         assert "APP_ENV=local only" in above
         assert f" {target} " in f" {lines[0]} "  # in .PHONY
@@ -170,7 +170,7 @@ def test_dev_refusal_as_a_process_returns_immediately():
 
 
 def test_the_package_name_does_not_match_the_demo_recipe_pin():
-    # test_demo_guard.py matches recipe lines containing this string.
+    # test_demo_guard.py requires that no recipe line contains this string.
     makefile = (REPO_ROOT / "Makefile").read_text()
     recipes = [
         line for line in makefile.splitlines() if "tests.factories.simulation" in line

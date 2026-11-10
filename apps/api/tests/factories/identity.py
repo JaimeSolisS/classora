@@ -122,9 +122,8 @@ async def persist_user(
 
 # Local development placeholders, never real credentials: the demo accounts
 # exist only in local stacks (APP_ENV=local), including the E2E stack.
-# Documented in the README ("Seed data") and in _docs/testing-guidelines.md
-# ("E2E data rules"); the E2E tests read the demo Owner's values from
-# e2e/tests/support/credentials.ts.
+# Documented in _docs/testing-guidelines.md ("E2E data rules"); the E2E
+# tests read the demo Owner's values from e2e/tests/support/credentials.ts.
 DEMO_OWNER_USERNAME = "demo.owner"
 DEMO_OWNER_DISPLAY_NAME = "Demo Owner"
 DEMO_OWNER_PASSWORD = "classora-demo-owner"
@@ -174,7 +173,7 @@ DEMO_ACCOUNTS: tuple[DemoAccount, ...] = (
         DEMO_TUTOR2_USERNAME, "Demo Second Tutor", "classora-demo-tutor2", TUTOR
     ),
 )
-"""Every demo account, in ``make seed-demo`` order (#195 A1; ``demo.tutor2``
+"""Every demo account, in the demo command's order (#195 A1; ``demo.tutor2``
 last, #303 A1)."""
 
 DEMO_OWNER = DEMO_ACCOUNTS[0]
@@ -223,7 +222,7 @@ class DemoAccountGenerator:
     Also stores its preferences (#36 E3): :data:`DEMO_ACCOUNT_LANGUAGE` and
     :data:`DEMO_ACCOUNT_THEME`. Writes nothing outside ``APP_ENV=local``
     (skipped), and nothing when the username already exists, in any state (0
-    rows; nothing is repaired), so a second ``make seed-demo`` passes. The
+    rows; nothing is repaired), so a second demo run passes. The
     password is hashed with ``hash_password`` (the current parameters). No
     privacy-notice acceptance is stored.
 

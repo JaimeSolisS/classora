@@ -1,5 +1,5 @@
 """The E2E attendance fixture (#76 E5, H9; #77 H8; #301b H3):
-``python -m tests.factories.e2e_attendance`` after ``make seed-demo``.
+``python -m tests.factories.e2e_attendance`` after the demo command.
 
 One started ``confirmed`` group session of ``demo.tutor`` with two students,
 in the latest free hour before now (never on the #299 demo schedule's

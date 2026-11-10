@@ -1,4 +1,4 @@
-"""Helpers for the ``make seed-demo`` generator tests (#23, #195, #299, #303,
+"""Helpers for the demo generator tests (#23, #195, #299, #303,
 #353, #354, M6-demo #413, M6-demo-b #420, M7-demo #499, M7-demo-b #501,
 M8-demo #539).
 

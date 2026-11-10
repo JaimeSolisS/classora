@@ -160,15 +160,16 @@ def test_the_billing_flag_passes_the_guard(env, app_env):
         demo.main(["--without-billing"], engine_factory=failing_engine_factory)
 
 
-def test_make_seed_demo_does_not_skip_billing_and_e2e_does():
-    # M6-demo A5: only e2e/scripts/run.sh passes the flag.
+def test_no_make_target_runs_the_demo_command_and_e2e_skips_billing():
+    # HF-587: no make target runs the demo command; it is E2E and test
+    # fixture data. M6-demo A5: run.sh still passes the flag.
     makefile = (API_ROOT.parents[1] / "Makefile").read_text()
-    [recipe] = [
+    recipes = [
         line
         for line in makefile.splitlines()
         if "python -m tests.factories.demo" in line
     ]
-    assert "--without-billing" not in recipe
+    assert recipes == []
     run_sh = (API_ROOT.parents[1] / "e2e" / "scripts" / "run.sh").read_text()
     [step] = [
         line for line in run_sh.splitlines() if "python -m tests.factories.demo" in line

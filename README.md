@@ -648,157 +648,23 @@ up to date changes nothing.
 
 ```bash
 make seed                # reference data
-make seed-demo           # small synthetic demo data (local and dev only)
 make seed-data-spanish   # a simulated term of a tutoring center, in Spanish (local only)
 make seed-data-english   # the same simulated term, in English (local only)
 ```
 
-Use `make seed-demo` for a handful of accounts to try each role, and
-`make seed-data-spanish` or `make seed-data-english` to see the system with a
-term's worth of realistic data (see
-[Simulated operations data](#simulated-operations-data)). The demo data
-and each simulated language need a database of their own; they cannot be
-combined.
+`make seed` applies the reference data every environment needs: the user
+roles and their permissions. Run `make migrate` first: it refuses to run on a
+database with pending migrations. It is safe to repeat; a second run changes
+nothing.
 
-`make seed` applies the reference data every environment needs. Run
-`make migrate` first: it refuses to run on a database with pending migrations.
-It is safe to repeat; a second run changes nothing.
-
-`make seed-demo` runs on the host (with the API's development dependencies, via
-`uv`) and needs `.env`. It applies the reference data and then generates
-synthetic Spanish (Mexico) demo data. It never uses real personal data, and it
-refuses to run unless `APP_ENV` is `local` or `dev`. Running it again leaves
-the demo data as it is; to start over, run
-`docker compose down -v`, then `make dev`, `make migrate` and `make seed-demo`.
-
-The reference data currently consists of the user roles and their
-permissions. The demo data consists of one demo account per role, plus a
-second tutor:
-
-| Username | Password | Role |
-|---|---|---|
-| `demo.owner` | `classora-demo-owner` | Owner |
-| `demo.admin` | `classora-demo-admin` | Administrator |
-| `demo.coordinator` | `classora-demo-coordinator` | Academic coordinator |
-| `demo.finance` | `classora-demo-finance` | Finance staff |
-| `demo.tutor` | `classora-demo-tutor` | Tutor |
-| `demo.tutor2` | `classora-demo-tutor2` | Tutor |
-| `demo.student` | `classora-demo-student` | Student |
-| `demo.guardian` | `classora-demo-guardian` | Parent/Guardian |
-
-These passwords are development placeholders: the accounts, families and the
-rest of the demo data exist only when `APP_ENV` is `local` (a `dev` run skips
-them). There are also three demo families; `demo.student` is a minor in
-`demo.guardian`'s family, with a recorded guardian consent. The rest of the
-demo data:
-
-- **Catalog**: example subjects for the four levels, three classrooms, the
-  current school year and one holiday in the coming week.
-- **`demo.tutor`**: a profile, three approved qualifications and one pending
-  request (on Approvals), weekly availability with one day off, teaching
-  limits and a preferred classroom.
-- **Schedule**, around the day you run it: completed classes in the past week
-  and upcoming classes for `demo.student` and a sibling, a weekly series (one
-  date skipped for the holiday), a Saturday group, one offer waiting in
-  `demo.tutor`'s My offers, one declined offer waiting for reassignment on
-  Approvals, and one unassigned session.
-- **Courses**: a course template (8 sessions, three modules, two assessments)
-  and a cohort taught by `demo.tutor2`, with `demo.student` and another
-  student enrolled; it shows in My courses for them, their guardian and the
-  tutor.
-- **Requests and changes**: `demo.guardian`'s pending session request and
-  reschedule request, `demo.tutor`'s pending time-off request (all three on
-  Approvals), one class `demo.tutor2` took over as a substitute, and one
-  cancelled course class.
-- **Classes held and results**: past classes of `demo.tutor` and
-  `demo.tutor2` with attendance and approved closeouts; a finished course
-  cohort whose completion shows one student completed and two not completed;
-  notes shared with `demo.guardian`'s family and one internal note; evaluation
-  templates; and evaluations, one still a draft. They show in the session log,
-  the academic history, the progress dashboard and the cohort's completion
-  (the cohort is under the "ended" or "all" filter of the cohort list).
-- **Learning plans, homework and progress reports**: for `demo.student`, an
-  active learning plan with one overdue milestone and a completed plan;
-  homework that is assigned, handed in and graded; progress reports in draft,
-  waiting for review (on Approvals) and approved for the family; and a weekly
-  report schedule for `demo.tutor` (the worker adds the next draft after each
-  week ends).
-- **Billing** (local `make seed-demo` only; `make e2e` seeds without it):
-  billing is on from about three weeks back; catalog prices with one change
-  next month, a sibling discount and a scholarship; charges for the demo
-  classes, the course cohort and a monthly tuition plan, so the family
-  accounts have overdue amounts; an English package for `demo.student` with
-  one session used and an expired package for the sibling; one class of
-  `demo.student` cancelled by the center and credited; two payments with receipts for `demo.guardian`'s
-  family, one paying the oldest charges and one kept as account credit; a due
-  date moved with a reason and payment reminders for `demo.guardian`; and,
-  for the second family, a due-date offset and a manual charge whose payment
-  was reversed. While the worker runs, it keeps charging new classes and
-  sends payment reminders.
-- **Payroll** (local `make seed-demo` only; `make e2e` seeds without it):
-  payroll is on with weekly periods from about three weeks back.
-  `demo.tutor` is paid by the hour with a weekly punctuality bonus and a
-  one-time deduction; `demo.tutor2` has a weekly salary and a per-course rate
-  for the finished cohort. Every ended week is finalized with a payslip. The
-  last one carries a late-approved class and a manual adjustment, and the
-  current week holds an hours correction. `demo.tutor`'s first week is paid,
-  the second partly paid with one reversed payment, and `demo.tutor2` is
-  still unpaid, so "Mi pago" and the Reports page have data.
-- **Expenses and reports** (local `make seed-demo` only; `make e2e` seeds
-  without it): one default category renamed, a "Mobiliario" category and a
-  vendor that were deactivated after use, and four vendors in all; expenses in
-  every state (unpaid, overdue, partly paid, paid in two payments, a payment
-  reversed and entered again, an amount adjusted, and a voided expense entered
-  again); and recurring expenses (monthly rent, a monthly service anchored on
-  the 31st, a paused weekly cleaning with one week paid, one voided and one
-  overdue, an ended weekly print job and an annual maintenance contract) with
-  their expenses generated. The finished course cohort is now charged too, so
-  the Reports page shows the demo's revenue, tutor cost, expenses and
-  balances; group tutoring shows only deferred revenue, because its classes
-  are still upcoming.
-- **Administration and reports** (local `make seed-demo` only; `make e2e`
-  seeds without it):
-  - Approvals: `demo.tutor`'s pending qualification is assigned to
-    `demo.admin`, who gets a notification, and the waiting progress report to
-    `demo.coordinator`, who muted assignment notices (Notificaciones →
-    Preferencias de notificaciones); the other items stay unassigned.
-  - The receipt message (Configuración → Pagos y recibos) is set in Spanish
-    and English and printed on the demo receipts.
-  - Importaciones: a committed students import with one duplicate row, a
-    tutors import still waiting to be committed (it expires after 7 days), a
-    schedules import with one conflict whose series waits in `demo.tutor`'s
-    My offers (the offer expires after 48 hours and then waits on
-    Approvals), and opening balances imported by `demo.finance` for the third
-    family.
-  - Exportaciones → Configuraciones guardadas: `demo.finance`'s expenses
-    setup, shared with the Owner, and `demo.admin`'s private students setup.
-  - Signing in as `demo.owner`, `demo.finance`, `demo.admin` or
-    `demo.coordinator` opens the dashboard on Inicio, where «Personalizar»
-    shows, hides and reorders the widgets each role may see.
-  - Reportes → Indicadores shows each account the indicators its role allows.
-    The demo has about three weeks of history, so on «Últimos 3 meses» every
-    active student counts as new; a two-week custom range ending today shows
-    retained and new students (no student is lost yet).
-  - Tareas fallidas (Owner and Administrator) is normally empty: the demo
-    seeds no jobs.
-  - Eliminados recientemente: `demo.tutor` deleted one learning-plan draft,
-    restorable for 30 days.
-
-The dates stay those of the first run (a second run changes nothing), so reset
-with `docker compose down -v`, `make dev`, `make migrate` and `make seed-demo`
-to get a fresh schedule. A database seeded before the courses and requests,
-the classes held and results, the learning plans, homework and progress
-reports, the billing data (charges, then payments and reminders), the
-payroll data, the expense data or the administration data were added keeps
-its schedule and skips them
-(`make seed-demo` says
-so) until you reset the same way. The payroll start date locks once payroll
-periods exist, so re-seeding payroll also needs a clean database
-(`docker compose down -v`). The pending offer expires after the
-scheduling policy's 48 hours and then also waits on Approvals. With classes scheduled, the
-center time zone can no longer be changed. `make bootstrap-owner` (below) is
-refused once any Owner exists, so locally use either the demo Owner or
-`make bootstrap-owner`, not both.
+The simulated seeds are the local demo data: `make seed-data-spanish` or
+`make seed-data-english` fills a database with a term's worth of realistic,
+synthetic data and accounts for every role (see
+[Simulated operations data](#simulated-operations-data)). They are **local
+only** (`APP_ENV=local`) and each language needs a **freshly migrated
+database** of its own. They refuse a database that already has an account,
+and `make bootstrap-owner` (below) is refused once any Owner exists, so use
+either the simulated data or `make bootstrap-owner` on a database, not both.
 
 #### Simulated operations data
 
@@ -1021,20 +887,20 @@ account ends when the new password is set.
 
 ### Logging in locally
 
-Open the web app at <http://127.0.0.1:5173> and sign in with any demo account
-from the table in [Seed data](#seed-data) (for example `demo.owner` /
-`classora-demo-owner`, from `make seed-demo`), with a simulated-data account
-(for example `direccion` / `classora-sim-owner`, from `make seed-data-spanish`;
-see [Simulated operations data](#simulated-operations-data)) or with the
-account from `make bootstrap-owner`. The first time an account signs in, the
-app shows the privacy notice; accept it to continue. To call the API directly,
-log in against it and keep the session cookie, for example with the demo
-Owner:
+Open the web app at <http://127.0.0.1:5173> and sign in with a
+simulated-data account from [Seed data](#seed-data) (for example the Owner
+`direccion` / `classora-sim-owner` from `make seed-data-spanish`, or `owner` /
+`classora-sim-owner` from `make seed-data-english`; the other accounts are in
+[Simulated operations data](#simulated-operations-data)) or with the account
+from `make bootstrap-owner`. The first time an account signs in, the app
+shows the privacy notice; accept it to continue. To call the API directly,
+log in against it and keep the session cookie, for example with the
+simulated Spanish Owner:
 
 ```bash
 curl -s -c cookies.txt -H 'Content-Type: application/json' \
   -H 'Origin: http://127.0.0.1:5173' \
-  -d '{"username": "demo.owner", "password": "classora-demo-owner"}' \
+  -d '{"username": "direccion", "password": "classora-sim-owner"}' \
   http://127.0.0.1:8000/api/v1/auth/login
 curl -s -b cookies.txt http://127.0.0.1:8000/api/v1/auth/me
 curl -s -b cookies.txt -X POST -H 'Origin: http://127.0.0.1:5173' \
@@ -1057,7 +923,7 @@ the seconds to wait), even with the right password. Every `POST`, `PUT`,
 `APP_ORIGIN`), and once signed in also the `X-CSRF-Token` header; otherwise
 the API answers `403 csrf_failed`. For the same reason the Swagger UI on the
 API port cannot send them. Sessions expire after 30 idle minutes (12 hours at
-most) for staff accounts such as the demo Owner, and after 7 idle days (30 days
+most) for staff accounts such as the Owner, and after 7 idle days (30 days
 at most) for tutors, students and guardians; `/api/v1/auth/me` then answers
 `401 session_expired`, so log in again. Details: [`_docs/api.md`](_docs/api.md) and
 [`_docs/security-headers.md`](_docs/security-headers.md).
@@ -1074,7 +940,7 @@ make db-create NAME=<name>        # create a database and role <name> ([a-z0-9_]
 make api-native                   # migrations, then the API with reload on API_PORT
 make worker-native                # the background worker
 make web-native                   # Vite with hot reload on WEB_PORT
-make seed-demo                    # demo data into the same database
+make seed-data-spanish            # simulated data into the same, freshly migrated database (or seed-data-english)
 make db-drop NAME=<name>          # drop the database and role
 make db-shared-down               # stop the server (V=1 also deletes its volume)
 ```
@@ -1095,7 +961,7 @@ example, two worktrees, each with its own database:
 # worktree B (.env):  API_PORT=8102  WEB_PORT=5275  APP_ORIGIN=http://127.0.0.1:5275
 #   DATABASE_URL and DATABASE_DIRECT_URL: postgresql://wt_b:classora_local_only@127.0.0.1:55432/wt_b
 make db-shared && make db-create NAME=wt_a   # in A (B: NAME=wt_b)
-make api-native                              # then worker-native, web-native, seed-demo
+make api-native                              # then worker-native, web-native, seed-data-spanish
 ```
 
 Browsers share cookies between ports of `127.0.0.1`, so sign in to two stacks
@@ -1131,7 +997,8 @@ The API uses two database URLs: `DATABASE_URL` is the pooled one (through
 PgBouncer) and `DATABASE_DIRECT_URL` the direct one to PostgreSQL (used by
 migrations, seeds and the worker). Inside Compose both are built from the `POSTGRES_*`
 values; the values in `.env` only matter when you run the API, Alembic or
-`make seed-demo` on the host.
+the simulated seeds (`make seed-data-spanish`, `make seed-data-english`) on
+the host.
 
 If your `.env` was copied before a variable was added, refresh it from
 `.env.example` (for example, copy it again).
@@ -1172,8 +1039,9 @@ make e2e               # smoke, accessibility (axe, light and dark), session-coo
 
 `make e2e` builds and starts a separate Compose project, `classora-e2e`, on its
 own ports (web 15173, API 18000, PostgreSQL 15432, PgBouncer 16432) with an empty
-volume, applies the migrations, the reference seeds and the demo data
-(`--seed 1`), runs the tests and always removes the stack again (`down -v`).
+volume, applies the migrations, the reference seeds and its own test fixture
+data (`demo.*` accounts, `--seed 1`; see
+[`_docs/testing-guidelines.md`](_docs/testing-guidelines.md)), runs the tests and always removes the stack again (`down -v`).
 It needs Docker, uv and Node 24 but no `.env` (it uses `.env.example`), and it
 can run while `make dev` is up without touching that stack or its data. A
 failed run leaves Playwright traces, screenshots and the Compose logs

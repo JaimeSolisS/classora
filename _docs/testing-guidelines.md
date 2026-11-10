@@ -101,9 +101,11 @@ threshold is enforced.
 | Values | Fixed literals; no Faker, randomness, current date or environment-specific value | Factories with a fixed seed (`--seed`, default 1) |
 | Idempotent | Yes (upsert on a key) | The registered generators (#23, #195, #299, #303, #353, #354, #413, #420, #499, #501) write nothing on a rerun; a future generator may add rows unless its issue says otherwise |
 | Where to register | Append to `REFERENCE_SEEDS` in `apps/api/app/seeds/registry.py`, in dependency order | Append a generator to `DEMO_GENERATORS` in `apps/api/tests/factories/demo.py` |
-| Command | `make seed` (`python -m app.seeds`) | `make seed-demo` (`python -m tests.factories.demo`); refused unless `APP_ENV` is `local` or `dev` |
+| Command | `make seed` (`python -m app.seeds`) | No make target: `python -m tests.factories.demo` (run by `e2e/scripts/run.sh`; tests call its generators); refused unless `APP_ENV` is `local` or `dev` |
 | Deletes rows | Never, with one exception: `identity.role_permissions` also deletes the pairs of the seeded roles that `ROLE_PERMISSIONS` no longer lists, so the database's role permission sets equal the code (ADR-0007). `roles` and `permissions` rows are never deleted. | Never |
 | Never | Creates user accounts or credentials | Runs in PROD |
+
+Example data for people (local demos, trying a role) is `make seed-data-spanish` / `make seed-data-english`, not the demo data (HF-587).
 
 - The simulated-operations seed (#543 HF-01; `make seed-data-spanish` /
   `make seed-data-english`) is test-support code in
@@ -479,7 +481,7 @@ which `ci-required` checks whenever the API changed.
   `confirmed` group session of `demo.tutor` with two synthetic students
   (subject `E2E Attendance`, no room) in the latest free hour before now. It
   is test data for `e2e/tests/scheduling/offers.spec.ts` only, separate
-  from `make seed-demo`, guarded like the demo command (`local`/`dev`) and
+  from the demo fixture data, guarded like the demo command (`local`/`dev`) and
   idempotent; no other spec may use that subject or session. #77 adds a
   second session for the closeout steps: one started `confirmed`
   individual session of `demo.tutor` with one synthetic student (subject
@@ -530,7 +532,12 @@ which `ci-required` checks whenever the API changed.
   - `demo.owner` (password `classora-demo-owner`): an active Owner, from the
     `identity.demo_owner` demo generator. It exists only in local stacks
     (`APP_ENV=local`, including the E2E stack); the E2E tests read it from
-    `e2e/tests/support/credentials.ts`.
+    `e2e/tests/support/credentials.ts`. The other demo accounts, one per
+    role plus a second tutor (`demo.admin`, `demo.coordinator`,
+    `demo.finance`, `demo.tutor`, `demo.tutor2`, `demo.student`,
+    `demo.guardian`, each with the password `classora-demo-<name after
+    "demo.">`), are listed in `DEMO_ACCOUNTS`
+    (`apps/api/tests/factories/identity.py`) under the same rules.
   - `e2e.coordinator`: the Academic coordinator that
     `e2e/tests/auth/invitations.spec.ts` invites and activates (#29). It is
     created by that test in every run (unique per run, because every run
