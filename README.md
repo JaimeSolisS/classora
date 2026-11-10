@@ -681,8 +681,9 @@ via `uv`), need `.env`, and are **local only**: they refuse every `APP_ENV`
 except `local`.
 
 They need a **freshly migrated database** (the reference data and nothing
-else). They refuse a database with any account, demo data or billing
-configured, and say how to reset. Running the same command again changes
+else). They refuse a database that already has any account, student, class,
+charge, expense or payroll, or billing or payroll configured, and say how to
+reset. Running the same command again changes
 nothing. The other language refuses that database, so give each language
 its own:
 
@@ -699,8 +700,8 @@ docker compose down -v && make dev && make migrate && make seed-data-spanish
 
 Then open <http://127.0.0.1:5173> (native stack: start `make web-native`
 too) and sign in as the Owner (`direccion` in
-Spanish, `owner` in English, password `classora-sim-owner`); the other
-accounts are in the table below. To keep both languages, point
+Spanish, `owner` in English, password `classora-sim-owner`); every other
+login is listed below. To keep both languages, point
 `DATABASE_URL` and `DATABASE_DIRECT_URL` in `.env` at the other language's
 database and restart `make api-native` to switch.
 
@@ -720,8 +721,9 @@ The timeline is fixed, whatever day you run it. History runs from
 scheduled or pending.
 
 The staff accounts use development passwords. Tutors, guardians and
-students with a login use one password per role. Their usernames are in the
-Owner's user list.
+students who can sign in use one password per role. The lists below are
+exactly the logins each command creates (with its default seed), and every
+one of them is active.
 
 | Spanish username | English username | Password | Role |
 |---|---|---|---|
@@ -729,9 +731,127 @@ Owner's user list.
 | `administracion` | `admin` | `classora-sim-admin` | Administrator |
 | `coordinacion` | `coordinator` | `classora-sim-coordinator` | Academic coordinator |
 | `finanzas` | `finance` | `classora-sim-finance` | Finance staff |
-| (12 tutors) | (12 tutors) | `classora-sim-tutor` | Tutor |
-| (30 guardians) | (30 guardians) | `classora-sim-guardian` | Parent or guardian |
-| (6 students) | (6 students) | `classora-sim-student` | Student |
+
+<details>
+<summary>Spanish accounts (<code>make seed-data-spanish</code>): 12 tutors, 30 guardians, 6 students</summary>
+
+<!-- sim-accounts:es:start -->
+| Username | Name | Role | Family | Password |
+|---|---|---|---|---|
+| `gustavo.acevedo` | Gustavo Acevedo Ramírez | Tutor | — | `classora-sim-tutor` |
+| `camilo.giron` | Camilo Girón Villareal | Tutor | — | `classora-sim-tutor` |
+| `aldonza.angulo` | Aldonza Angulo Alonzo | Tutor | — | `classora-sim-tutor` |
+| `juan.toro` | Juan Toro Aguirre | Tutor | — | `classora-sim-tutor` |
+| `aldo.galvez` | Aldo Gálvez Pichardo | Tutor | — | `classora-sim-tutor` |
+| `oswaldo.garibay` | Oswaldo Garibay Quezada | Tutor | — | `classora-sim-tutor` |
+| `gabriel.gonzales` | Gabriel Gonzales Montaño | Tutor | — | `classora-sim-tutor` |
+| `humberto.gaona` | Humberto Gaona Rico | Tutor | — | `classora-sim-tutor` |
+| `sara.pena` | Sara Peña Valadez | Tutor | — | `classora-sim-tutor` |
+| `bianca.escamilla` | Bianca Escamilla Lucio | Tutor | — | `classora-sim-tutor` |
+| `manuel.mercado` | Manuel Mercado Sanches | Tutor | — | `classora-sim-tutor` |
+| `horacio.espinal` | Horacio Espinal Madrigal | Tutor | — | `classora-sim-tutor` |
+| `patricia.sanabria` | Patricia Sanabria Santiago | Parent or guardian | Familia Villagómez Sanabria | `classora-sim-guardian` |
+| `pamela.armas` | Pamela Armas Manzanares | Parent or guardian | Familia Rodarte Armas | `classora-sim-guardian` |
+| `minerva.olivera` | Minerva Olivera Sepúlveda | Parent or guardian | Familia Adame Olivera | `classora-sim-guardian` |
+| `maria.tijerina` | María Cristina Tijerina Toledo | Parent or guardian | Familia Abreu Tijerina | `classora-sim-guardian` |
+| `margarita.batista` | Margarita Batista Botello | Parent or guardian | Familia Apodaca Batista | `classora-sim-guardian` |
+| `maria.renteria` | María José Rentería Medina | Parent or guardian | Familia Lozano Rentería | `classora-sim-guardian` |
+| `alta.almanza` | Alta  Gracia Almanza Osorio | Parent or guardian | Familia Garza Almanza | `classora-sim-guardian` |
+| `guillermina.angulo` | Guillermina Angulo Ortega | Parent or guardian | Familia Soria Angulo | `classora-sim-guardian` |
+| `maria.villanueva` | María Cristina Villanueva Gamboa | Parent or guardian | Familia Archuleta Villanueva | `classora-sim-guardian` |
+| `aida.lucio` | Aida Lucio Santana | Parent or guardian | Familia Orellana Lucio | `classora-sim-guardian` |
+| `tania.portillo` | Tania Portillo Gallardo | Parent or guardian | Familia Mojica Portillo | `classora-sim-guardian` |
+| `antonia.gollum` | Antonia Gollum Barragán | Parent or guardian | Familia Tejada Gollum | `classora-sim-guardian` |
+| `berta.nazario` | Berta Nazario Mireles | Parent or guardian | Familia Herrera Nazario | `classora-sim-guardian` |
+| `leticia.cano` | Leticia Cano Mayorga | Parent or guardian | Familia Ureña Cano | `classora-sim-guardian` |
+| `nayeli.ochoa` | Nayeli Ochoa Bermúdez | Parent or guardian | Familia Villagómez Ochoa | `classora-sim-guardian` |
+| `esther.tellez` | Esther Téllez Carrero | Parent or guardian | Familia Valle Téllez | `classora-sim-guardian` |
+| `elvia.carrero` | Elvia Carrero Arenas | Parent or guardian | Familia Pedraza Carrero | `classora-sim-guardian` |
+| `luisa.guardado` | Luisa Guardado Covarrubias | Parent or guardian | Familia de la Fuente Guardado | `classora-sim-guardian` |
+| `abraham.franco` | Abraham Franco Amador | Parent or guardian | Familia Franco Matías | `classora-sim-guardian` |
+| `cesar.barela` | César Barela Reséndez | Parent or guardian | Familia Barela Mateo | `classora-sim-guardian` |
+| `emilia.franco` | Emilia Franco Maldonado | Parent or guardian | Familia Toro Franco | `classora-sim-guardian` |
+| `julia.velasco` | Julia Velasco Mojica | Parent or guardian | Familia Bustamante Velasco | `classora-sim-guardian` |
+| `asuncion.madrigal` | Asunción Madrigal Guillen | Parent or guardian | Familia Véliz Madrigal | `classora-sim-guardian` |
+| `laura.garay` | Laura Garay Almonte | Parent or guardian | Familia Guevara Garay | `classora-sim-guardian` |
+| `oswaldo.alonzo` | Oswaldo Alonzo Muñoz | Parent or guardian | Familia Alonzo Alarcón | `classora-sim-guardian` |
+| `catalina.saucedo` | Catalina Saucedo Delgadillo | Parent or guardian | Familia Bermúdez Saucedo | `classora-sim-guardian` |
+| `gilberto.zarate` | Gilberto Zarate Lozada | Parent or guardian | Familia Zarate Lozada | `classora-sim-guardian` |
+| `jorge.florez` | Jorge Luis Flórez Domínguez | Parent or guardian | Familia Flórez Domínguez | `classora-sim-guardian` |
+| `evelio.barela` | Evelio Barela Ramón | Parent or guardian | Familia Barela Ramón | `classora-sim-guardian` |
+| `fernando.alba` | Fernando Alba Ortiz | Parent or guardian | Familia Alba Ortiz | `classora-sim-guardian` |
+| `gabriel.rodarte` | Gabriel Rodarte Armas | Student | Familia Rodarte Armas | `classora-sim-student` |
+| `delia.adame` | Delia Adame Olivera | Student | Familia Adame Olivera | `classora-sim-student` |
+| `carmen.zarate` | Carmen Zarate Lozada | Student | Familia Zarate Lozada | `classora-sim-student` |
+| `rene.florez` | René Flórez Domínguez | Student | Familia Flórez Domínguez | `classora-sim-student` |
+| `esmeralda.barela` | Esmeralda Barela Ramón | Student | Familia Barela Ramón | `classora-sim-student` |
+| `esperanza.alba` | Esperanza Alba Ortiz | Student | Familia Alba Ortiz | `classora-sim-student` |
+<!-- sim-accounts:es:end -->
+
+</details>
+
+<details>
+<summary>English accounts (<code>make seed-data-english</code>): 12 tutors, 30 guardians, 6 students</summary>
+
+<!-- sim-accounts:en:start -->
+| Username | Name | Role | Family | Password |
+|---|---|---|---|---|
+| `pamela.reynolds` | Pamela Reynolds | Tutor | — | `classora-sim-tutor` |
+| `deborah.dominguez` | Deborah Dominguez | Tutor | — | `classora-sim-tutor` |
+| `ashley.garza` | Ashley Garza | Tutor | — | `classora-sim-tutor` |
+| `allison.johnson` | Allison Johnson | Tutor | — | `classora-sim-tutor` |
+| `stanley.smith` | Stanley Smith | Tutor | — | `classora-sim-tutor` |
+| `javier.robinson` | Javier Robinson | Tutor | — | `classora-sim-tutor` |
+| `pamela.rose` | Pamela Rose | Tutor | — | `classora-sim-tutor` |
+| `gregory.tran` | Gregory Tran | Tutor | — | `classora-sim-tutor` |
+| `joe.robinson` | Joe Robinson | Tutor | — | `classora-sim-tutor` |
+| `jennifer.house` | Jennifer House | Tutor | — | `classora-sim-tutor` |
+| `brett.nielsen` | Brett Nielsen | Tutor | — | `classora-sim-tutor` |
+| `scott.riddle` | Scott Riddle | Tutor | — | `classora-sim-tutor` |
+| `faith.martinez` | Faith Martinez | Parent or guardian | The Martinez family | `classora-sim-guardian` |
+| `kimberly.thompson` | Kimberly Thompson | Parent or guardian | The Thompson family | `classora-sim-guardian` |
+| `kathryn.jackson` | Kathryn Jackson | Parent or guardian | The Jackson family | `classora-sim-guardian` |
+| `monica.lynch` | Monica Lynch | Parent or guardian | The Lynch family | `classora-sim-guardian` |
+| `laura.berg` | Laura Berg | Parent or guardian | The Berg family | `classora-sim-guardian` |
+| `krista.reid` | Krista Reid | Parent or guardian | The Reid family | `classora-sim-guardian` |
+| `ashley.wright` | Ashley Wright | Parent or guardian | The Wright family | `classora-sim-guardian` |
+| `erica.gibson` | Erica Gibson | Parent or guardian | The Gibson family | `classora-sim-guardian` |
+| `toni.johnson` | Toni Johnson | Parent or guardian | The Johnson family | `classora-sim-guardian` |
+| `mary.lara` | Mary Lara | Parent or guardian | The Lara family | `classora-sim-guardian` |
+| `elizabeth.stark` | Elizabeth Stark | Parent or guardian | The Stark family | `classora-sim-guardian` |
+| `sabrina.johnson` | Sabrina Johnson | Parent or guardian | The Johnson family | `classora-sim-guardian` |
+| `hannah.gray` | Hannah Gray | Parent or guardian | The Gray family | `classora-sim-guardian` |
+| `jeanette.hurley` | Jeanette Hurley | Parent or guardian | The Hurley family | `classora-sim-guardian` |
+| `christina.smith` | Christina Smith | Parent or guardian | The Smith family | `classora-sim-guardian` |
+| `sara.craig` | Sara Craig | Parent or guardian | The Craig family | `classora-sim-guardian` |
+| `ana.patel` | Ana Patel | Parent or guardian | The Patel family | `classora-sim-guardian` |
+| `olivia.lewis` | Olivia Lewis | Parent or guardian | The Lewis family | `classora-sim-guardian` |
+| `mike.chan` | Mike Chan | Parent or guardian | The Chan family | `classora-sim-guardian` |
+| `charles.esparza` | Charles Esparza | Parent or guardian | The Esparza family | `classora-sim-guardian` |
+| `tiffany.knight` | Tiffany Knight | Parent or guardian | The Knight family | `classora-sim-guardian` |
+| `destiny.ellis` | Destiny Ellis | Parent or guardian | The Ellis family | `classora-sim-guardian` |
+| `ashley.davis` | Ashley Davis | Parent or guardian | The Davis family | `classora-sim-guardian` |
+| `candice.willis` | Candice Willis | Parent or guardian | The Willis family | `classora-sim-guardian` |
+| `thomas.garcia` | Thomas Garcia | Parent or guardian | The Garcia family | `classora-sim-guardian` |
+| `karen.king` | Karen King | Parent or guardian | The King family | `classora-sim-guardian` |
+| `william.buchanan` | William Buchanan | Parent or guardian | The Buchanan family | `classora-sim-guardian` |
+| `tyler.edwards` | Tyler Edwards | Parent or guardian | The Edwards family | `classora-sim-guardian` |
+| `william.rodriguez` | William Rodriguez | Parent or guardian | The Rodriguez family | `classora-sim-guardian` |
+| `ricky.dillon` | Ricky Dillon | Parent or guardian | The Dillon family | `classora-sim-guardian` |
+| `john.thompson` | John Thompson | Student | The Thompson family | `classora-sim-student` |
+| `patricia.jackson` | Patricia Jackson | Student | The Jackson family | `classora-sim-student` |
+| `tammy.buchanan` | Tammy Buchanan | Student | The Buchanan family | `classora-sim-student` |
+| `arthur.edwards` | Arthur Edwards | Student | The Edwards family | `classora-sim-student` |
+| `cindy.rodriguez` | Cindy Rodriguez | Student | The Rodriguez family | `classora-sim-student` |
+| `julie.dillon` | Julie Dillon | Student | The Dillon family | `classora-sim-student` |
+<!-- sim-accounts:en:end -->
+
+</details>
+
+Two more people can't sign in yet, so they aren't listed: a pending
+self-registration (`camila.chavarria` in Spanish, `ann.wilkins` in English),
+which you can approve on Approvals, and a pending tutor invitation
+(`hernan.chavarria` / `brandon.mullins`), which has no password.
 
 What's in it:
 - **People:** 40 students in 30 families with 46 guardians (each adult
