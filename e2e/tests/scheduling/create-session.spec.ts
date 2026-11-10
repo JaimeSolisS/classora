@@ -186,6 +186,18 @@ test('an Owner schedules a session and meets a student overlap', async ({
   await expect(required('startRequired')).toHaveCount(0);
   await expect(required('endRequired')).toHaveCount(0);
   await expect(start).not.toHaveAttribute('aria-invalid', 'true');
+  // QA round 1 (D1): typed key by key, the start keeps the hour from
+  // before the edit, whatever the in-between values.
+  const end = main.getByLabel(common.scheduling.fields.end, { exact: true });
+  await start.clear();
+  await start.pressSequentially('830');
+  await expect(start).toHaveValue('830');
+  await expect(end).toHaveValue('09:30');
+  await start.clear();
+  await start.pressSequentially('1000');
+  await start.press('Tab');
+  await expect(start).toHaveValue('10:00');
+  await expect(end).toHaveValue('11:00');
   await submit.click();
   await expect(
     main.getByRole('heading', { name: common.scheduling.success.heading }),

@@ -261,3 +261,94 @@ describe('TimeField: the keyboard (AC5)', () => {
     expect(enter.defaultPrevented).toBe(false);
   });
 });
+
+describe('TimeField: the list opens scrolled (#598 QA D2)', () => {
+  // jsdom has no layout: each option sits at 10 px per quarter hour, and
+  // the list records where it was scrolled to.
+  let scrolledTo: number[];
+  beforeEach(() => {
+    scrolledTo = [];
+    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(
+      function (this: HTMLElement) {
+        const time = this.dataset.time;
+        if (!time) {
+          return 0;
+        }
+        const [hours, minutes] = time.split(':').map(Number) as [
+          number,
+          number,
+        ];
+        return ((hours * 60 + minutes) / 15) * 10;
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, 'scrollTop', 'set').mockImplementation(
+      (top: number) => {
+        scrolledTo.push(top);
+      },
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function openByClick() {
+    await focus();
+    act(() => field().click());
+    await settle();
+  }
+
+  it('opens at the chosen time on a click', async () => {
+    render({ initial: '10:00' });
+    await openByClick();
+    expect(listbox()).not.toBeNull();
+    expect(scrolledTo.at(-1)).toBe(400);
+  });
+
+  it('opens at `scrollTo` (start + 1 h for the end), else 08:00', async () => {
+    render({ scrollTo: '11:00' });
+    await openByClick();
+    expect(scrolledTo.at(-1)).toBe(440);
+    act(() => root.render(<Harness key="other" />));
+    await openByClick();
+    expect(scrolledTo.at(-1)).toBe(320);
+  });
+
+  it('opens at the quarter hour before a time off the grid', async () => {
+    render({ initial: '10:10' });
+    await openByClick();
+    expect(scrolledTo.at(-1)).toBe(400);
+  });
+
+  it('opens scrolled from the clock button too', async () => {
+    render({ initial: '16:45' });
+    const toggle = container.querySelector<HTMLButtonElement>(
+      'button[type="button"]',
+    )!;
+    act(() => toggle.click());
+    await settle();
+    expect(listbox()).not.toBeNull();
+    expect(scrolledTo.at(-1)).toBe(670);
+  });
+});
+
+describe('TimeField: one edit per focus (#598 QA D1)', () => {
+  it('ends the edit on blur, Tab, Enter, Escape and a chosen option', async () => {
+    const ended = vi.fn();
+    render({ initial: '10:00', onEditEnd: ended });
+    await focus();
+    await type('11');
+    await press('Tab');
+    expect(ended).toHaveBeenCalledTimes(1);
+    await type('12');
+    await press('Escape');
+    expect(ended).toHaveBeenCalledTimes(2);
+    act(() => field().click());
+    await settle();
+    act(() => options()[0]!.click());
+    await settle();
+    expect(ended).toHaveBeenCalledTimes(3);
+    await blur();
+    expect(ended).toHaveBeenCalledTimes(4);
+  });
+});

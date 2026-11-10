@@ -203,6 +203,21 @@ export function endAfterStartChange(
 }
 
 /**
+ * The end while the start is being edited (#598 QA D1): E3 from the start
+ * and end as they were before the edit began, never from an in-between
+ * value. Back to the old start (Escape) or a start that isn't a time (a
+ * cleared field, `93`, `25:00`): the end as it was.
+ */
+export function endForStart(
+  before: { start: string; end: string },
+  newStart: string,
+): string {
+  return newStart === before.start
+    ? before.end
+    : endAfterStartChange(before.start, newStart, before.end);
+}
+
+/**
  * The POST body: the local date and times as instants in `timeZone`, with
  * the override when one is given (#49) and the cancelled session it makes up
  * in makeup mode (#436 B6).

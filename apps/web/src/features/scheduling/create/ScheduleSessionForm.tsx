@@ -62,7 +62,7 @@ import {
   clearServerError,
   DEFAULT_DURATION_MINUTES,
   EMPTY_SCHEDULE,
-  endAfterStartChange,
+  endForStart,
   FIELD_ORDER,
   isChosenTutorUnsuggested,
   isConflictCode,
@@ -351,6 +351,8 @@ export function ScheduleSessionForm({
     {},
   );
   const [unreadable, setUnreadable] = useState<UnreadableTimes>(READABLE_TIMES);
+  // The start and end when the current edit of the start began (#598 QA D1).
+  const startEdit = useRef<{ start: string; end: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [conflicts, setConflicts] = useState<SchedulingConflict[] | null>(null);
   const [failure, setFailure] = useState<unknown>(null);
@@ -484,13 +486,19 @@ export function ScheduleSessionForm({
     isUnreadable: boolean,
   ) {
     if (field === 'start') {
-      const end = endAfterStartChange(values.start, value, values.end);
+      // Every keystroke of one edit is measured from the start and end
+      // before the edit (#598 QA D1), so the result doesn't depend on the
+      // in-between values (a cleared field, `93`, Escape).
+      startEdit.current ??= { start: values.start, end: values.end };
+      const end = endForStart(startEdit.current, value);
       setValues((current) => ({ ...current, start: value, end }));
       setUnreadable((current) => ({
         start: isUnreadable,
         end: end !== values.end ? false : current.end,
       }));
     } else {
+      // A changed end ends any edit of the start.
+      startEdit.current = null;
       setValues((current) => ({ ...current, end: value }));
       setUnreadable((current) => ({ ...current, end: isUnreadable }));
     }
@@ -722,6 +730,7 @@ export function ScheduleSessionForm({
 
   function chooseSlot(slot: SuggestedSlot) {
     setValues((current) => ({ ...current, ...slotValues(slot, timeZone) }));
+    startEdit.current = null;
     setUnreadable(READABLE_TIMES);
     setServerFieldErrors({});
     setConflicts(null);
@@ -955,6 +964,7 @@ export function ScheduleSessionForm({
     setChecked(false);
     setServerFieldErrors({});
     setUnreadable(READABLE_TIMES);
+    startEdit.current = null;
     setValues({ ...EMPTY_SCHEDULE, date: values.date });
   }
 
@@ -1257,6 +1267,11 @@ export function ScheduleSessionForm({
             onChange={(value, isUnreadable) =>
               changeTime(field, value, isUnreadable)
             }
+            onEditEnd={() => {
+              if (field === 'start') {
+                startEdit.current = null;
+              }
+            }}
           />
         )}
         {help ? (

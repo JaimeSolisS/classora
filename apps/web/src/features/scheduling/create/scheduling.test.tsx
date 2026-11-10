@@ -2061,3 +2061,119 @@ describe('HF-13 the time fields (#598 AC4, AC5, AC6)', () => {
     expect(fieldByLabel(main(), 'End').value).toBe('11:30 AM');
   });
 });
+
+describe('HF-13 QA round 1: typing key by key (#598 D1, D2)', () => {
+  /**
+   * What a browser does per keystroke: one input event per key, with the
+   * text as it is after that key (`\b` = Backspace, `^A\b` = select all
+   * and delete).
+   */
+  function typeKeys(field: HTMLInputElement, keys: string) {
+    let text = field.value;
+    for (let i = 0; i < keys.length; i += 1) {
+      if (keys.startsWith('^A\b', i)) {
+        text = '';
+        i += 2;
+      } else if (keys[i] === '\b') {
+        text = text.slice(0, -1);
+      } else {
+        text += keys[i];
+      }
+      typeInto(field, text);
+    }
+  }
+  const start = () => fieldByLabel(main(), 'Start');
+  const end = () => fieldByLabel(main(), 'End');
+  async function leave(field: HTMLInputElement) {
+    act(() => field.focus());
+    act(() => field.blur());
+    await settle();
+  }
+  async function press(field: HTMLInputElement, key: string) {
+    act(() => {
+      field.dispatchEvent(
+        new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+      );
+    });
+    await settle();
+  }
+
+  it('gives start + 1 h for 930 typed into an empty start', async () => {
+    stub();
+    app = await renderApp('/schedule/new');
+    act(() => start().focus());
+    typeKeys(start(), '930');
+    await leave(start());
+    expect(start().value).toBe('9:30 AM');
+    expect(end().value).toBe('10:30 AM');
+  });
+
+  it.each([
+    ['10:00', '11:30', '14:00', '2:00 PM', '3:30 PM'],
+    ['10:00', '11:00', '930', '9:30 AM', '10:30 AM'],
+    ['10:00', '11:00', '8:30', '8:30 AM', '9:30 AM'],
+  ])(
+    'keeps the duration of %s-%s when the start is cleared and %s typed',
+    async (from, to, keys, shownStart, shownEnd) => {
+      stub();
+      app = await renderApp(
+        `/schedule/new?date=2031-03-10&start=${from}&end=${to}`,
+      );
+      act(() => start().focus());
+      typeKeys(start(), `^A\b${keys}`);
+      await leave(start());
+      expect(start().value).toBe(shownStart);
+      expect(end().value).toBe(shownEnd);
+    },
+  );
+
+  it('restores both start and end on Escape after clearing and typing', async () => {
+    stub();
+    app = await renderApp(
+      '/schedule/new?date=2031-03-10&start=08:15&end=09:15',
+    );
+    act(() => start().focus());
+    typeKeys(start(), '^A\b1145');
+    expect(end().value).toBe('12:45 PM');
+    await press(start(), 'Escape');
+    expect(start().value).toBe('8:15 AM');
+    expect(end().value).toBe('9:15 AM');
+  });
+
+  it('leaves no end behind after Escape from an empty form', async () => {
+    stub();
+    app = await renderApp('/schedule/new');
+    act(() => start().focus());
+    typeKeys(start(), '14');
+    await press(start(), 'Escape');
+    expect(start().value).toBe('');
+    expect(end().value).toBe('');
+  });
+
+  it('changes no end for unreadable text', async () => {
+    stub();
+    app = await renderApp(
+      '/schedule/new?date=2031-03-10&start=10:00&end=11:00',
+    );
+    act(() => start().focus());
+    typeKeys(start(), '^A\b25:00');
+    await leave(start());
+    expect(start().value).toBe('25:00');
+    expect(end().value).toBe('11:00 AM');
+  });
+
+  it("measures a second edit from the first one's result", async () => {
+    stub();
+    app = await renderApp(
+      '/schedule/new?date=2031-03-10&start=10:00&end=11:30',
+    );
+    act(() => start().focus());
+    typeKeys(start(), '^A\b12');
+    await leave(start());
+    expect(end().value).toBe('1:30 PM');
+    act(() => start().focus());
+    typeKeys(start(), '^A\b9');
+    await leave(start());
+    expect(end().value).toBe('10:30 AM');
+  });
+});

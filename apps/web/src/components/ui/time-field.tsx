@@ -1,5 +1,13 @@
 import { ClockIcon } from 'lucide-react';
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/input';
 import { toLanguage } from '@/i18n/language';
@@ -41,6 +49,11 @@ export interface TimeFieldProps {
    * time (empty text is not unreadable).
    */
   onChange: (value: string, unreadable: boolean) => void;
+  /**
+   * An edit is over (blur, Tab, Enter, Escape or a chosen option): the
+   * caller can drop what it kept from before the edit (#598 QA D1).
+   */
+  onEditEnd?: () => void;
   /** Where the list opens with no time chosen (`HH:MM`); default 08:00. */
   scrollTo?: string | undefined;
   /** Minutes between options; default 15 (the calendar's snap). */
@@ -58,6 +71,7 @@ export function TimeField({
   labelId,
   value,
   onChange,
+  onEditEnd,
   scrollTo,
   stepMinutes = 15,
   invalid,
@@ -99,29 +113,49 @@ export function TimeField({
     rows[0];
   const shown = open && rows.length > 0;
 
-  // On open, the anchor is at the top of the list; then the active option
-  // scrolls into view.
-  useEffect(() => {
-    if (!shown) {
-      return;
-    }
+  // On open, the anchor is at the top of the list. The list is portalled
+  // and mounts after the field's render, so the scroll happens when it
+  // mounts (#598 QA D2), whichever way it was opened.
+  const [listNode, setListNode] = useState<HTMLUListElement | null>(null);
+  const attachList = useCallback((node: HTMLUListElement | null) => {
+    listRef.current = node;
+    setListNode(node);
+  }, []);
+  const scrollToAnchor = useEffectEvent((node: HTMLUListElement) => {
     const target = activeOption ?? (query === '' ? anchorOption : undefined);
-    if (target === undefined) {
+    const element =
+      target === undefined
+        ? null
+        : node.querySelector<HTMLElement>(`[data-time="${target}"]`);
+    if (element) {
+      node.scrollTop = element.offsetTop;
+    }
+  });
+  useLayoutEffect(() => {
+    if (listNode) {
+      scrollToAnchor(listNode);
+    }
+  }, [listNode]);
+
+  // Then the active option scrolls into view.
+  useEffect(() => {
+    if (!shown || activeOption === null) {
       return;
     }
-    const element = listRef.current?.querySelector<HTMLElement>(
-      `[data-time="${target}"]`,
-    );
-    if (activeOption) {
-      element?.scrollIntoView?.({ block: 'nearest' });
-    } else if (element && listRef.current) {
-      listRef.current.scrollTop = element.offsetTop;
-    }
-  }, [shown, activeOption, anchorOption, query]);
+    listRef.current
+      ?.querySelector<HTMLElement>(`[data-time="${activeOption}"]`)
+      ?.scrollIntoView?.({ block: 'nearest' });
+  }, [shown, activeOption]);
 
   function closeList() {
     setOpen(false);
     setActive(null);
+  }
+
+  /** Closes the list and ends the edit (the caller's baseline goes). */
+  function finish() {
+    closeList();
+    onEditEnd?.();
   }
 
   /** Shows the committed value again in the language's format. */
@@ -150,8 +184,8 @@ export function TimeField({
 
   function choose(option: string) {
     setDraft(null);
-    closeList();
     onChange(option, false);
+    finish();
   }
 
   function move(step: 1 | -1) {
@@ -183,23 +217,23 @@ export function TimeField({
           choose(activeOption);
         } else if (open || typing) {
           event.preventDefault();
-          closeList();
+          finish();
           settle();
         }
         return;
       case 'Escape':
         if (open || typing) {
           event.preventDefault();
-          closeList();
           if (typing && draft !== null) {
             // Back to the time before typing.
             onChange(draft.before, false);
           }
           setDraft(null);
+          finish();
         }
         return;
       case 'Tab':
-        closeList();
+        finish();
         settle();
         return;
       default:
@@ -243,7 +277,7 @@ export function TimeField({
             onChange={(event) => type(event.target.value)}
             onKeyDown={onKeyDown}
             onBlur={() => {
-              closeList();
+              finish();
               settle();
             }}
           />
@@ -293,7 +327,7 @@ export function TimeField({
         onTouchMove={(event) => event.stopPropagation()}
       >
         <ul
-          ref={listRef}
+          ref={attachList}
           id={listId}
           role="listbox"
           aria-labelledby={labelId}
