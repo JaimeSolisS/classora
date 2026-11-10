@@ -5,7 +5,9 @@ import { isConflictCode } from './rules';
 
 // The translated message of one conflict (#48 F3), shared by the conflict
 // panel and the override dialog (#49 F3): the details that help (the
-// tutor's reasons, the date, the opening hours, the notice hours).
+// tutor's reasons, the date, the opening hours, the notice hours). For a
+// group or course session (HF-11b) `studentName` names the student of a
+// `student_overlap` from the roster.
 
 const REASONS = ['time_off', 'outside_weekly_availability'] as const;
 
@@ -13,7 +15,9 @@ function text(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-export function useConflictMessage(): (conflict: SchedulingConflict) => string {
+export function useConflictMessage(
+  studentName?: (studentId: string) => string | undefined,
+): (conflict: SchedulingConflict) => string {
   const { t } = useTranslation();
   const { formatLocalDate } = useFormatters();
 
@@ -56,6 +60,12 @@ export function useConflictMessage(): (conflict: SchedulingConflict) => string {
         return typeof details.cohort_id === 'string'
           ? t('scheduling.conflicts.cohort_capacity_exceeded')
           : t('scheduling.conflicts.group_capacity_exceeded');
+      case 'student_overlap': {
+        const name = studentName?.(text(details.student_id));
+        return name
+          ? t('scheduling.create.owner.studentOverlap', { name })
+          : t('scheduling.conflicts.student_overlap');
+      }
       case 'notice_window':
         return t('scheduling.conflicts.notice_window', {
           hours: Number(details.booking_notice_hours ?? 0),

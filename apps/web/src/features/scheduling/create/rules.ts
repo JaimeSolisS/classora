@@ -18,6 +18,8 @@ import {
 import type { ClassSessionDetail } from '../session/api';
 import type {
   ClassSessionCreate,
+  CourseSessionCreate,
+  GroupSessionCreate,
   Option,
   SchedulingConflict,
   SeriesTutorSuggestionQuery,
@@ -50,7 +52,15 @@ export interface ScheduleValues {
 }
 
 export type ScheduleField =
-  'student' | 'subject' | 'tutor' | 'classroom' | 'date' | 'start' | 'end';
+  | 'student'
+  | 'subject'
+  /** The group or cohort of a group or course session (HF-11b). */
+  | 'owner'
+  | 'tutor'
+  | 'classroom'
+  | 'date'
+  | 'start'
+  | 'end';
 
 /** A message: a `common` key, or an `errors` key prefixed with `errors:`. */
 export type ScheduleMessage = ParseKeys<'common'> | `errors:${ErrorMessageKey}`;
@@ -71,6 +81,7 @@ export const EMPTY_SCHEDULE: ScheduleValues = {
 export const FIELD_ORDER: readonly ScheduleField[] = [
   'student',
   'subject',
+  'owner',
   'tutor',
   'classroom',
   'date',
@@ -760,4 +771,143 @@ export function freeTimesBody(
     search_from: values.date,
     search_to: addDays(values.date, FREE_TIMES_DAYS - 1),
   };
+}
+
+// --- Group and course sessions (HF-11b, #593) ---------------------------------
+
+/** The type selector's choice ("Class type"); not in the URL (E5 a). */
+export type SessionKindChoice = 'individual' | 'group' | 'course';
+
+/** A group session or a course (cohort) session. */
+export type OwnerKind = Exclude<SessionKindChoice, 'individual'>;
+
+/** One option of the group or cohort picker: its name and subject. */
+export interface OwnerOption {
+  id: string;
+  name: string;
+  subjectName: string;
+}
+
+/** The chosen group or cohort, as the summary shows it. */
+export interface OwnerSummary {
+  id: string;
+  name: string;
+  subject: SubjectOption;
+  /** A cohort's first and last session dates (YYYY-MM-DD); null: unknown. */
+  firstSessionOn: string | null;
+  lastSessionOn: string | null;
+  /** The students enrolled now, by name. */
+  students: Option[];
+}
+
+/**
+ * The client checks of a group or course session: the group or cohort,
+ * and the same date and time rules as an individual one.
+ */
+export function validateOwnerSchedule(
+  values: ScheduleValues,
+  kind: OwnerKind,
+  ownerId: string | null,
+): ScheduleErrors {
+  const { date, start, end } = validateSchedule(values);
+  const errors: ScheduleErrors = {};
+  if (!ownerId) {
+    errors.owner =
+      kind === 'group'
+        ? 'scheduling.create.owner.groupRequired'
+        : 'scheduling.create.owner.courseRequired';
+  }
+  if (date) errors.date = date;
+  if (start) errors.start = start;
+  if (end) errors.end = end;
+  return errors;
+}
+
+/** The POST body of a group or course session: no student and no subject. */
+export function ownerSessionBody(
+  kind: OwnerKind,
+  ownerId: string,
+  values: ScheduleValues,
+  timeZone: string,
+  override?: SessionOverride,
+): GroupSessionCreate | CourseSessionCreate {
+  const common = {
+    ...(override ? { override } : {}),
+    tutor_user_id: values.tutorId || null,
+    classroom_id: values.classroomId || null,
+    starts_at: localDateTimeToInstant(values.date, values.start, timeZone),
+    ends_at: localDateTimeToInstant(values.date, values.end, timeZone),
+  };
+  return kind === 'group'
+    ? { kind: 'group', group_id: ownerId, ...common }
+    : { kind: 'course', cohort_id: ownerId, ...common };
+}
+
+const OWNER_PATHS: ReadonlySet<string> = new Set(['group_id', 'cohort_id']);
+
+/**
+ * The 422 field errors of a group or course session (#592): the owner's
+ * codes on the picker, a date outside the cohort's on the date, the rest
+ * as for an individual session.
+ */
+export function ownerServerErrors(
+  fieldErrors: readonly FieldError[],
+  kind: OwnerKind,
+): ScheduleErrors {
+  const own = ({ path, code }: FieldError) =>
+    OWNER_PATHS.has(String(path[path.length - 1])) ||
+    code === 'session_outside_cohort_dates';
+  const errors = serverErrors(fieldErrors.filter((error) => !own(error)));
+  for (const { path, code } of fieldErrors) {
+    if (code === 'session_outside_cohort_dates') {
+      errors.date ??= 'errors:session_outside_cohort_dates';
+    } else if (OWNER_PATHS.has(String(path[path.length - 1]))) {
+      errors.owner ??= ownerCodeMessage(code, kind);
+    }
+  }
+  return errors;
+}
+
+function ownerCodeMessage(code: string, kind: OwnerKind): ScheduleMessage {
+  switch (code) {
+    case 'group_unknown':
+      return 'errors:group_unknown';
+    case 'cohort_unknown':
+      return 'errors:cohort_unknown';
+    case 'student_inactive':
+      return kind === 'group'
+        ? 'scheduling.create.owner.studentInactiveGroup'
+        : 'scheduling.create.owner.studentInactiveCourse';
+    case 'subject_inactive':
+      return kind === 'group'
+        ? 'scheduling.create.owner.subjectInactiveGroup'
+        : 'scheduling.create.owner.subjectInactiveCourse';
+    default:
+      return 'errors:validation_error';
+  }
+}
+
+/**
+ * A refusal of a group or course session shown as an alert (#592): the
+ * group or cohort has ended (the selection is cleared), or its roster
+ * changed while scheduling (the roster is read again).
+ */
+export type OwnerRefusal = 'ended' | 'rosterChanged';
+
+export function ownerRefusal(error: unknown): OwnerRefusal | null {
+  if (!(error instanceof ApiError)) {
+    return null;
+  }
+  if (error.code === 'group_ended' || error.code === 'cohort_ended') {
+    return 'ended';
+  }
+  return error.code === 'roster_changed' ? 'rosterChanged' : null;
+}
+
+/** Whether the chosen room holds fewer people than the roster (a warning). */
+export function isRoomTooSmall(
+  capacity: number | undefined,
+  enrolled: number,
+): boolean {
+  return capacity !== undefined && enrolled > capacity;
 }

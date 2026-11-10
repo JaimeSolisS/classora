@@ -11,14 +11,21 @@ import { useCan } from '@/features/auth/useSession';
 import {
   createClassSession,
   fetchClassroomOptions,
+  fetchOwnerSummary,
   fetchSubjectOptions,
   fetchTutorOptions,
   SCHEDULE_OPTIONS_KEY,
+  searchCohortOptions,
+  searchGroupOptions,
   searchStudents,
   suggestSeriesTutors,
   suggestSlots,
   suggestTutors,
 } from './api';
+import {
+  fetchClassroomCapacityOptions,
+  GROUP_OPTIONS_KEY,
+} from '@/features/groups/api';
 import { fetchAvailability } from '@/features/tutors/api';
 import { MakeupTargetNotice, MakeupUnusableNotice } from './MakeupNotices';
 import {
@@ -29,6 +36,7 @@ import {
   MAKEUP_PARAM,
   makeupTargetProblem,
   makeupValues,
+  ownerSessionBody,
   PREFILL_PARAMS,
   prefillValues,
   scheduleBody,
@@ -67,6 +75,11 @@ import { ScheduleSessionForm } from './ScheduleSessionForm';
 // once, when the form mounts (rules.prefillValues; invalid values are
 // ignored), never in makeup mode. A different pre-fill mounts a new form.
 // After a pre-filled save, the success panel links back to that week.
+//
+// Group and course sessions (HF-11b, #593): the type selector offers Group
+// to schedule.view holders (the groups list) and Course to course.view
+// holders (the cohorts list), never in makeup mode. The rooms' capacities
+// come from the classrooms list, without holding up the form.
 
 export function ScheduleSessionPage() {
   const { t } = useTranslation();
@@ -78,6 +91,8 @@ export function ScheduleSessionPage() {
   const canViewTutors = useCan('tutor.view');
   const canManageTutors = useCan('tutor.manage');
   const canReviewQualifications = useCan('qualification.review');
+  const canViewGroups = useCan('schedule.view');
+  const canViewCohorts = useCan('course.view');
   const subjects = useQuery({
     queryKey: [...SCHEDULE_OPTIONS_KEY, 'subjects'],
     queryFn: ({ signal }) => fetchSubjectOptions(signal),
@@ -113,6 +128,12 @@ export function ScheduleSessionPage() {
       problem = makeupTargetProblem(target, makeupTarget.dataUpdatedAt);
     }
   }
+  const offersOwners = makeupOf === null && (canViewGroups || canViewCohorts);
+  const capacities = useQuery({
+    queryKey: [...GROUP_OPTIONS_KEY, 'classrooms'],
+    queryFn: ({ signal }) => fetchClassroomCapacityOptions(signal),
+    enabled: offersOwners,
+  });
   const queries = [subjects, tutors, classrooms];
   const failed = queries.find((query) => query.isError);
 
@@ -285,6 +306,38 @@ export function ScheduleSessionPage() {
         }
         onFindFreeTimes={(values) =>
           suggestSlots(freeTimesBody(values, timeZone))
+        }
+        owners={
+          offersOwners
+            ? {
+                searchGroups: canViewGroups ? searchGroupOptions : undefined,
+                searchCohorts: canViewCohorts ? searchCohortOptions : undefined,
+                loadOwner: fetchOwnerSummary,
+                onSubmit: (kind, ownerId, values, override) =>
+                  createClassSession(
+                    ownerSessionBody(kind, ownerId, values, timeZone, override),
+                  ),
+                classroomCapacities: capacities.data
+                  ? Object.fromEntries(
+                      capacities.data.map((room) => [room.id, room.capacity]),
+                    )
+                  : undefined,
+                ownerLink: (kind, ownerId) => (
+                  <Link
+                    to={
+                      kind === 'group'
+                        ? `/groups/${encodeURIComponent(ownerId)}`
+                        : `/courses/cohorts/${encodeURIComponent(ownerId)}`
+                    }
+                    className="text-sm underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+                  >
+                    {kind === 'group'
+                      ? t('scheduling.create.owner.openGroup')
+                      : t('scheduling.create.owner.openCourse')}
+                  </Link>
+                ),
+              }
+            : undefined
         }
       />
     );

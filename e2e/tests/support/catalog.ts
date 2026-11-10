@@ -671,6 +671,21 @@ type Common = {
   roles: Record<string, string>;
   scheduling: {
     title: string;
+    // HF-11b: the class type and the group or course session.
+    create: {
+      type: Record<'legend' | 'individual' | 'group' | 'course', string>;
+      owner: Record<
+        | 'group'
+        | 'course'
+        | 'studentOverlap'
+        | 'groupScheduled'
+        | 'courseScheduled'
+        | 'participantCount_one'
+        | 'enrolled_one'
+        | 'dateHelp',
+        string
+      >;
+    };
     fields: Record<
       'student' | 'subject' | 'tutor' | 'classroom' | 'date' | 'start' | 'end',
       string
