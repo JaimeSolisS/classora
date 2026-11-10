@@ -350,3 +350,5 @@ class CohortLock(BaseModel):
 
     id: uuid.UUID
     max_students: int
+    subject_id: uuid.UUID
+    """The cohort's subject (#592: a one-off course session takes it)."""

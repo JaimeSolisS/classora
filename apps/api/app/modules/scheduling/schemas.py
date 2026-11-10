@@ -27,15 +27,18 @@ A series ``override`` (#236 B, :class:`SeriesOverride`) lists
 import re
 import uuid
 from datetime import UTC, date, datetime, time
-from typing import Any, Final, Literal
+from typing import Annotated, Any, Final, Literal
 
 from pydantic import (
     AwareDatetime,
     BaseModel,
     ConfigDict,
+    Discriminator,
     Field,
     ValidationError,
     ValidationInfo,
+    ValidatorFunctionWrapHandler,
+    WrapValidator,
     field_validator,
     model_validator,
 )
@@ -236,8 +239,9 @@ class ClassSessionSlot(BaseModel):
 class ClassSessionCreate(ClassSessionSlot):
     """A one-off individual session (``POST /api/v1/class-sessions``).
 
-    Groups and courses (#56, #65) extend ``kind``. ``override`` (#49) needs
-    ``schedule.override``."""
+    The ``individual`` member of :data:`ClassSessionCreateBody`; groups and
+    courses are :class:`GroupSessionCreate` and :class:`CourseSessionCreate`
+    (#592). ``override`` (#49) needs ``schedule.override``."""
 
     override: SessionOverride | None = Field(
         default=None,
@@ -264,6 +268,100 @@ class ClassSessionCreate(ClassSessionSlot):
             " ordinary session."
         ),
     )
+
+
+class _OwnerSessionCreate(BaseModel):
+    """The members a one-off group or course session shares (#592 E1): the
+    individual body without the student, the subject (the group's or the
+    cohort's) and the makeup link."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tutor_user_id: uuid.UUID | None = Field(
+        default=None,
+        description=("The tutor to offer the session to; null creates it unassigned."),
+    )
+    classroom_id: uuid.UUID | None = Field(
+        default=None, description="The classroom; null is no room."
+    )
+    starts_at: datetime = Field(description="An instant with an offset (RFC 3339).")
+    ends_at: datetime = Field(description="An instant with an offset (RFC 3339).")
+    override: SessionOverride | None = Field(
+        default=None,
+        description=(
+            "Override the listed soft conflicts with a reason (needs"
+            " schedule.override). Null or absent: every conflict blocks."
+        ),
+    )
+    respond_by: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "With a tutor only: an earlier deadline for the tutor's answer, as"
+            " for an individual session. Null or absent: the default."
+        ),
+    )
+
+
+class GroupSessionCreate(_OwnerSessionCreate):
+    """One extra session of an ongoing group (#592): its subject is the
+    group's and its participants are the students actively enrolled now.
+    It belongs to no series."""
+
+    kind: Literal["group"]
+    group_id: uuid.UUID = Field(
+        description="An existing group still producing sessions (not ended)."
+    )
+
+
+class CourseSessionCreate(_OwnerSessionCreate):
+    """One extra session of a course cohort (#592): its subject is the
+    cohort's, its participants the students actively enrolled now, and its
+    local date within the cohort's first and last session dates. It belongs
+    to no series."""
+
+    kind: Literal["course"]
+    cohort_id: uuid.UUID = Field(
+        description=(
+            "An existing cohort still producing sessions (not ended); the"
+            " session's date falls within its first and last session dates."
+        )
+    )
+
+
+_CREATE_KINDS: Final = frozenset({"individual", "group", "course"})
+
+
+def _untagged_errors(value: Any, handler: ValidatorFunctionWrapHandler) -> Any:
+    """Validate the create body, then drop the union tag (``individual``,
+    ``group``, ``course``) pydantic puts first in each error's ``loc``, so
+    the field paths stay ``["body", <field>, ...]`` as before #592 (the web
+    reads ``path[1] == "override"``)."""
+    try:
+        return handler(value)
+    except ValidationError as exc:
+        details: list[InitErrorDetails] = []
+        for error in exc.errors():
+            loc = error["loc"]
+            if loc and loc[0] in _CREATE_KINDS:
+                loc = loc[1:]
+            details.append(
+                {
+                    "type": PydanticCustomError(error["type"], error["msg"]),
+                    "loc": loc,
+                    "input": error["input"],
+                }
+            )
+        raise ValidationError.from_exception_data(exc.title, details) from None
+
+
+ClassSessionCreateBody = Annotated[
+    ClassSessionCreate | GroupSessionCreate | CourseSessionCreate,
+    Discriminator("kind"),
+    WrapValidator(_untagged_errors),
+]
+"""The ``POST /api/v1/class-sessions`` body, by ``kind`` (#592 E1): an
+individual session (unchanged), or one extra session of a group or a
+course cohort."""
 
 
 class SessionSubject(BaseModel):

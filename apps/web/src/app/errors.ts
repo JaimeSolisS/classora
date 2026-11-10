@@ -123,6 +123,9 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
   ['too_many_occurrences', 'too_many_occurrences'],
   // Cohort enrollment (#66; the other enrollment codes are the #56 ones).
   ['cohort_ended', 'cohort_ended'],
+  // One extra group or course session (#592).
+  ['roster_changed', 'roster_changed'],
+  ['session_outside_cohort_dates', 'session_outside_cohort_dates'],
   // Session requests by families (#59).
   ['student_consent_required', 'student_consent_required'],
   ['slot_unavailable', 'slot_unavailable'],

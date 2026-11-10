@@ -831,11 +831,14 @@ def test_bounds_are_422(
 @pytest.mark.parametrize(
     "change",
     [
+        # A group body (#592) takes group_id, never student_id/subject_id.
         {"kind": "group"},
+        {"kind": "course"},
+        {"kind": "series"},
         {"student_id": None},
     ],
 )
-def test_the_schema_rejects_other_kinds(
+def test_the_schema_rejects_an_individual_body_of_another_kind(
     module_seeded_url, client, cookie, setup, change
 ):
     response = create(client, cookie, body(setup) | change)

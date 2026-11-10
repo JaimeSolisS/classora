@@ -977,7 +977,9 @@ async def lock_cohort(session: AsyncSession, cohort_id: uuid.UUID) -> CohortLock
     )
     if cohort is None:
         return None
-    return CohortLock(id=cohort.id, max_students=cohort.max_students)
+    return CohortLock(
+        id=cohort.id, max_students=cohort.max_students, subject_id=cohort.subject_id
+    )
 
 
 def cohort_name_columns() -> Select[uuid.UUID, str]:

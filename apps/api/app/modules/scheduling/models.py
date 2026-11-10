@@ -71,9 +71,11 @@ database agree (the integration drift test reads them back). See
 - ``class_series_participants``: the students of a series (the #47
   participants pattern); the series ``version`` covers them. ``Audited``.
 - ``class_sessions`` occurrence columns (#53 B4): ``series_id`` and
-  ``original_start`` (both set, or both ``NULL`` for a one-off session),
-  ``is_exception`` (set by #54 only) and ``conflict_codes`` (the codes that
-  put a generated occurrence in ``conflict``; informational, kept after it
+  ``original_start`` (both set, or both ``NULL`` for a one-off session:
+  an individual one, or since #592 one extra ``group`` / ``course`` session
+  with its ``group_id`` / ``cohort_id`` and no series), ``is_exception``
+  (set by #54 only) and ``conflict_codes`` (the codes that put a generated
+  occurrence in ``conflict``; informational, kept after it
   leaves ``conflict``). ``uq_class_sessions_series_original_start`` makes
   materialization idempotent (ADR-0005 D4).
 

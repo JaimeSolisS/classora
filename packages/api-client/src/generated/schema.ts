@@ -2361,9 +2361,12 @@ export interface paths {
         put?: never;
         /**
          * Create Class Session
-         * @description Schedule a one-off individual session. With a tutor it is created
-         *     `offered` to them, with a pending offer (deadline `respond_by`, by
-         *     default the scheduling policy's response time but never after the
+         * @description Schedule a one-off session. `kind` `individual`: one student and
+         *     subject. `group` or `course` (#592): one extra session of an active
+         *     group or course cohort, with its subject and the students enrolled now
+         *     as participants (none is allowed), and no series. With a tutor it is
+         *     created `offered` to them, with a pending offer (deadline `respond_by`,
+         *     by default the scheduling policy's response time but never after the
          *     start) and a notification to the tutor; without one `unassigned`. Every
          *     rule is checked first; with an `override` the listed soft conflicts are
          *     allowed, stored with the reason and audited. `warnings` lists the
@@ -10122,13 +10125,14 @@ export interface components {
          * ClassSessionCreate
          * @description A one-off individual session (``POST /api/v1/class-sessions``).
          *
-         *     Groups and courses (#56, #65) extend ``kind``. ``override`` (#49) needs
-         *     ``schedule.override``.
+         *     The ``individual`` member of :data:`ClassSessionCreateBody`; groups and
+         *     courses are :class:`GroupSessionCreate` and :class:`CourseSessionCreate`
+         *     (#592). ``override`` (#49) needs ``schedule.override``.
          */
         ClassSessionCreate: {
             /**
-             * Kind
-             * @constant
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
              */
             kind: "individual";
             /**
@@ -12088,6 +12092,55 @@ export interface components {
             /** @description Course-class revenue and cost tied to no cohort. */
             not_attributed: components["schemas"]["CourseFigures"];
             total: components["schemas"]["CourseFigures"];
+        };
+        /**
+         * CourseSessionCreate
+         * @description One extra session of a course cohort (#592): its subject is the
+         *     cohort's, its participants the students actively enrolled now, and its
+         *     local date within the cohort's first and last session dates. It belongs
+         *     to no series.
+         */
+        CourseSessionCreate: {
+            /**
+             * Tutor User Id
+             * @description The tutor to offer the session to; null creates it unassigned.
+             */
+            tutor_user_id?: string | null;
+            /**
+             * Classroom Id
+             * @description The classroom; null is no room.
+             */
+            classroom_id?: string | null;
+            /**
+             * Starts At
+             * Format: date-time
+             * @description An instant with an offset (RFC 3339).
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             * @description An instant with an offset (RFC 3339).
+             */
+            ends_at: string;
+            /** @description Override the listed soft conflicts with a reason (needs schedule.override). Null or absent: every conflict blocks. */
+            override?: components["schemas"]["SessionOverride"] | null;
+            /**
+             * Respond By
+             * @description With a tutor only: an earlier deadline for the tutor's answer, as for an individual session. Null or absent: the default.
+             */
+            respond_by?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "course";
+            /**
+             * Cohort Id
+             * Format: uuid
+             * @description An existing cohort still producing sessions (not ended); the session's date falls within its first and last session dates.
+             */
+            cohort_id: string;
         };
         /**
          * CourseTemplateAssessment
@@ -15494,6 +15547,54 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+        };
+        /**
+         * GroupSessionCreate
+         * @description One extra session of an ongoing group (#592): its subject is the
+         *     group's and its participants are the students actively enrolled now.
+         *     It belongs to no series.
+         */
+        GroupSessionCreate: {
+            /**
+             * Tutor User Id
+             * @description The tutor to offer the session to; null creates it unassigned.
+             */
+            tutor_user_id?: string | null;
+            /**
+             * Classroom Id
+             * @description The classroom; null is no room.
+             */
+            classroom_id?: string | null;
+            /**
+             * Starts At
+             * Format: date-time
+             * @description An instant with an offset (RFC 3339).
+             */
+            starts_at: string;
+            /**
+             * Ends At
+             * Format: date-time
+             * @description An instant with an offset (RFC 3339).
+             */
+            ends_at: string;
+            /** @description Override the listed soft conflicts with a reason (needs schedule.override). Null or absent: every conflict blocks. */
+            override?: components["schemas"]["SessionOverride"] | null;
+            /**
+             * Respond By
+             * @description With a tutor only: an earlier deadline for the tutor's answer, as for an individual session. Null or absent: the default.
+             */
+            respond_by?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "group";
+            /**
+             * Group Id
+             * Format: uuid
+             * @description An existing group still producing sessions (not ended).
+             */
+            group_id: string;
         };
         /**
          * GroupSessionItem
@@ -32601,7 +32702,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ClassSessionCreate"];
+                "application/json": components["schemas"]["ClassSessionCreate"] | components["schemas"]["GroupSessionCreate"] | components["schemas"]["CourseSessionCreate"];
             };
         };
         responses: {
@@ -32632,7 +32733,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is created. With a tutor, a session that has already begun can't be offered (class_session_not_offerable, details.reason = started). A cancelled session has one live makeup (makeup_already_scheduled, details.class_session_id). */
+            /** @description The session breaks scheduling rules (scheduling_conflict); `conflicts` lists every one, hard and soft. A hard conflict, or a soft one the `override` doesn't list, always refuses. Nothing is created. With a tutor, a session that has already begun can't be offered (class_session_not_offerable, details.reason = started). A cancelled session has one live makeup (makeup_already_scheduled, details.class_session_id). Group or course: the group or cohort has ended (group_ended, cohort_ended); a student enrolled or was withdrawn meanwhile (roster_changed, details.group_id or details.cohort_id: read again and retry). */
             409: {
                 headers: {
                     [name: string]: unknown;

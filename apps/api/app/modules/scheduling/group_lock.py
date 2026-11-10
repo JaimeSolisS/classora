@@ -5,7 +5,8 @@
 takes the group row ``FOR UPDATE`` after ``lock_students`` and the center
 zone ``FOR SHARE``, and before the series row** (the enrollments and
 withdrawals, the group materialization and closure reconcile, #54's series
-edits and ``PATCH``; #55 and #58 follow it for any such change). The full
+edits and ``PATCH``, the #592 one-off group session create; #55 and #58
+follow it for any such change). The full
 order is **students → zone → group → series → sessions → offers**, so no
 two writers wait on each other in a cycle; a course series takes its
 cohort row in the group's place (the complete order, with the cohort and
@@ -15,7 +16,9 @@ A writer that read a group series' participants before its locks re-reads
 them once it holds the series row (an enrollment may have committed in
 between): the nightly job retries the series (:class:`SeriesParticipantsChangedError`,
 #56 C2); the series edits and ``PATCH`` rely on the series and session
-``version``, which every enrollment change bumps.
+``version``, which every enrollment change bumps. The #592 one-off create
+re-reads the active enrollments under the group (or cohort) row and answers
+``409 roster_changed`` when they changed.
 """
 
 import uuid

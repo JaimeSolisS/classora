@@ -10,7 +10,11 @@
   without one). An ``override`` needs
   ``schedule.override`` (the Owner, or an Administrator while an Owner's
   delegation is active): ``403`` right after the body's ``422``, before
-  anything is read or locked.
+  anything is read or locked. The body is discriminated on ``kind``
+  (#592): ``group`` (``group_id``) or ``course`` (``cohort_id``) creates
+  one extra session of the group or cohort, with its subject and the
+  students enrolled now and no series
+  (:mod:`~app.modules.scheduling.owner_booking` gives that order).
 - ``POST /api/v1/class-sessions/suggestions`` (#50 B): read-only,
   ``require("schedule.manage")`` (the holders of the create it serves). The
   free times nearest the requested start for the same student, subject,
@@ -128,6 +132,7 @@ from app.modules.scheduling.schemas import (
     ClassSessionCalendar,
     ClassSessionCancel,
     ClassSessionCreate,
+    ClassSessionCreateBody,
     ClassSessionCreated,
     ClassSessionDetail,
     ClassSessionOffers,
@@ -187,10 +192,16 @@ TUTOR_OPTIONS_MAX_LIMIT: Final = 50
             " begun can't be offered (class_session_not_offerable,"
             " details.reason = started). A cancelled session has one live"
             " makeup (makeup_already_scheduled, details.class_session_id)."
+            " Group or course: the group or cohort has ended (group_ended,"
+            " cohort_ended); a student enrolled or was withdrawn meanwhile"
+            " (roster_changed, details.group_id or details.cohort_id: read"
+            " again and retry)."
         ),
         422: problem_response_doc(
             "The body is not valid (validation_error): a missing or unknown"
-            " field, a kind other than individual; the `override`"
+            " field (a group or course body takes no student_id, subject_id"
+            " or makeup_of_session_id), a kind other than individual, group"
+            " or course; the `override`"
             " (reason_required, reason_too_long, codes_required,"
             " duplicate_code, code_not_overridable, code_unknown);"
             " the bounds (naive_datetime, not_whole_minutes,"
@@ -203,24 +214,36 @@ TUTOR_OPTIONS_MAX_LIMIT: Final = 50
             " makeup_not_allowed, makeup_student_mismatch,"
             " makeup_subject_mismatch, makeup_window_passed), added to them; or"
             " `respond_by` (respond_by_requires_tutor, respond_by_invalid)."
+            " Group or course: an unknown group or cohort (group_unknown,"
+            " cohort_unknown); the subject and the enrolled students' codes"
+            " on group_id or cohort_id; a course date outside the cohort's"
+            " first and last session dates (session_outside_cohort_dates, on"
+            " starts_at)."
         ),
     },
 )
 async def create_class_session(
     principal: Annotated[Principal, require(SCHEDULE_MANAGE)],
-    body: ClassSessionCreate,
+    body: ClassSessionCreateBody,
     uow: UnitOfWorkDep,
 ) -> ClassSessionCreated:
-    """Schedule a one-off individual session. With a tutor it is created
-    `offered` to them, with a pending offer (deadline `respond_by`, by
-    default the scheduling policy's response time but never after the
+    """Schedule a one-off session. `kind` `individual`: one student and
+    subject. `group` or `course` (#592): one extra session of an active
+    group or course cohort, with its subject and the students enrolled now
+    as participants (none is allowed), and no series. With a tutor it is
+    created `offered` to them, with a pending offer (deadline `respond_by`,
+    by default the scheduling policy's response time but never after the
     start) and a notification to the tutor; without one `unassigned`. Every
     rule is checked first; with an `override` the listed soft conflicts are
     allowed, stored with the reason and audited. `warnings` lists the
     tutor's workload warnings."""
     if body.override is not None:
         ensure_permission(principal, SCHEDULE_OVERRIDE)
-    return await service.create_class_session(
+    if isinstance(body, ClassSessionCreate):
+        return await service.create_class_session(
+            uow.session, body, actor_id=principal.user_id
+        )
+    return await service.create_owner_session(
         uow.session, body, actor_id=principal.user_id
     )
 
