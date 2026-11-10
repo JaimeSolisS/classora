@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { api, csrfTokenOf } from './api';
 
 // One-off class sessions through the real API (#57, #58) with the page's
@@ -7,6 +7,16 @@ import { api, csrfTokenOf } from './api';
 // America/Mexico_City, which has no DST, so local times carry -06:00.
 
 export const CENTER_ZONE = 'America/Mexico_City';
+
+/**
+ * Types a time into the type-or-pick time field of "Schedule a session"
+ * (HF-13, #598) and leaves it with Tab, which commits the time and closes
+ * its list (an open list would cover the next controls).
+ */
+export async function fillTime(field: Locator, time: string): Promise<void> {
+  await field.fill(time);
+  await field.press('Tab');
+}
 const OFFSET = '-06:00';
 
 /** Today in the center zone, plus `days`, as YYYY-MM-DD. */

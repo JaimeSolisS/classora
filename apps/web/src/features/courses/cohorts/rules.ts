@@ -332,6 +332,23 @@ export type CreateField =
 
 export type CreateErrors = Partial<Record<CreateField, CohortMessage>>;
 
+/** The field each value is shown on (its server error goes on a change). */
+export const CREATE_VALUE_FIELDS: Record<
+  keyof CohortCreateValues,
+  CreateField
+> = {
+  name: 'name',
+  templateId: 'template',
+  subjectId: 'subject',
+  max: 'max',
+  classroomId: 'classroom',
+  tutorId: 'tutor',
+  respondByDate: 'respondBy',
+  respondByTime: 'respondBy',
+  startsOn: 'startsOn',
+  start: 'start',
+};
+
 /** The fields in form order (the first one with an error gets the focus). */
 export const CREATE_FIELD_ORDER: readonly CreateField[] = [
   'name',

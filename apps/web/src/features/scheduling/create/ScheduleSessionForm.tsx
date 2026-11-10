@@ -16,14 +16,17 @@ import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
 import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
+import { TimeField } from '@/components/ui/time-field';
 import { FieldError } from '@/features/auth/FieldError';
 import { SELECT_CLASS } from '@/features/students/styles';
 import { availabilityKey, type TutorAvailability } from '@/features/tutors/api';
 import { useFormatters } from '@/lib/formatters';
 import { toLanguage } from '@/i18n/language';
+import { addMinutes } from '@/lib/timeOfDay';
 import type { ClassSeriesCreated } from '../series/api';
 import { describeRecurrence } from '../series/describeRecurrence';
 import {
+  clearRecurrenceServerErrors,
   EMPTY_RECURRENCE,
   RECURRENCE_FIELD_ORDER,
   recurrenceFieldId,
@@ -56,7 +59,10 @@ import { ConflictPanel } from './ConflictPanel';
 import { OverrideDialog } from './OverrideDialog';
 import {
   canFindFreeTimes,
+  clearServerError,
+  DEFAULT_DURATION_MINUTES,
   EMPTY_SCHEDULE,
+  endForStart,
   FIELD_ORDER,
   isChosenTutorUnsuggested,
   isConflictCode,
@@ -65,6 +71,7 @@ import {
   overrideAction,
   overrideReasonError,
   ownerRefusal,
+  READABLE_TIMES,
   ownerServerErrors,
   serverErrors,
   sessionOverride,
@@ -76,7 +83,9 @@ import {
   tutorSuggestionKey,
   validateOwnerSchedule,
   validateSchedule,
+  VALUE_FIELDS,
   weeklyAvailabilityText,
+  withTimeFormat,
   type OwnerKind,
   type OwnerOption,
   type OwnerSummary,
@@ -86,6 +95,7 @@ import {
   type ScheduleValues,
   type SessionKindChoice,
   type SessionOverride,
+  type UnreadableTimes,
 } from './rules';
 import { useSlotParts } from './slotParts';
 import { SuggestedSlots, type SuggestionsState } from './SuggestedSlots';
@@ -333,7 +343,16 @@ export function ScheduleSessionForm({
   const { formatInstant, formatLocalDate } = useFormatters();
   const id = useId();
   const [values, setValues] = useState<ScheduleValues>(initialValues);
-  const [errors, setErrors] = useState<ScheduleErrors>({});
+  // HF-13 (#598 E4): after the first submit attempt the client checks run
+  // on every render; the server's field errors stay until their field
+  // changes. `unreadable`: a time field holds text that isn't a time.
+  const [checked, setChecked] = useState(false);
+  const [serverFieldErrors, setServerFieldErrors] = useState<ScheduleErrors>(
+    {},
+  );
+  const [unreadable, setUnreadable] = useState<UnreadableTimes>(READABLE_TIMES);
+  // The start and end when the current edit of the start began (#598 QA D1).
+  const startEdit = useRef<{ start: string; end: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [conflicts, setConflicts] = useState<SchedulingConflict[] | null>(null);
   const [failure, setFailure] = useState<unknown>(null);
@@ -350,7 +369,8 @@ export function ScheduleSessionForm({
   );
   const [recurrence, setRecurrence] =
     useState<RecurrenceValues>(initialRecurrence);
-  const [recurrenceErrors, setRecurrenceErrors] = useState<RecurrenceErrors>(
+  const [ruleChecked, setRuleChecked] = useState(false);
+  const [serverRuleErrors, setServerRuleErrors] = useState<RecurrenceErrors>(
     {},
   );
   // Until the user changes the weekdays, they follow the start date.
@@ -429,11 +449,25 @@ export function ScheduleSessionForm({
       : t(key as 'scheduling.validation.studentRequired');
   }
 
+  /** The client checks of the current type (one-off or series fields). */
+  function checkFields(forValues: ScheduleValues): ScheduleErrors {
+    const found = ownerKind
+      ? validateOwnerSchedule(forValues, ownerKind, owner?.id ?? null)
+      : validateSchedule(forValues);
+    return withTimeFormat(found, unreadable);
+  }
+
+  /** A server field error goes once its field changes (#598 E4). */
+  function changedField(field: ScheduleField) {
+    setServerFieldErrors((current) => clearServerError(current, field));
+  }
+
   function change<K extends keyof ScheduleValues>(
     key: K,
     value: ScheduleValues[K],
   ) {
     setValues((current) => ({ ...current, [key]: value }));
+    changedField(VALUE_FIELDS[key]);
     if (key === 'date' && !weekdaysTouched.current) {
       setRecurrence((current) => ({
         ...current,
@@ -442,13 +476,44 @@ export function ScheduleSessionForm({
     }
   }
 
+  /**
+   * A typed or picked start or end (#598). A new start moves the end
+   * (E3): it keeps the duration, or is the start + 1 h.
+   */
+  function changeTime(
+    field: 'start' | 'end',
+    value: string,
+    isUnreadable: boolean,
+  ) {
+    if (field === 'start') {
+      // Every keystroke of one edit is measured from the start and end
+      // before the edit (#598 QA D1), so the result doesn't depend on the
+      // in-between values (a cleared field, `93`, Escape).
+      startEdit.current ??= { start: values.start, end: values.end };
+      const end = endForStart(startEdit.current, value);
+      setValues((current) => ({ ...current, start: value, end }));
+      setUnreadable((current) => ({
+        start: isUnreadable,
+        end: end !== values.end ? false : current.end,
+      }));
+    } else {
+      // A changed end ends any edit of the start.
+      startEdit.current = null;
+      setValues((current) => ({ ...current, end: value }));
+      setUnreadable((current) => ({ ...current, end: isUnreadable }));
+    }
+    changedField(field);
+  }
+
   function toggleRepeats(on: boolean) {
     setRepeats(on);
     setConflicts(null);
     setSeriesConflicts(null);
     clearSuggestions();
     setFailure(null);
-    setRecurrenceErrors({});
+    // The rule's checks start with the next series submit.
+    setRuleChecked(false);
+    setServerRuleErrors({});
     if (on && !weekdaysTouched.current) {
       setRecurrence((current) => ({
         ...current,
@@ -462,6 +527,9 @@ export function ScheduleSessionForm({
       weekdaysTouched.current = true;
     }
     setRecurrence(next);
+    setServerRuleErrors((current) =>
+      clearRecurrenceServerErrors(current, recurrence, next),
+    );
   }
 
   function focusRecurrence(found: RecurrenceErrors) {
@@ -475,6 +543,18 @@ export function ScheduleSessionForm({
 
   const seriesMode =
     ownerKind === null && repeats && onSubmitSeries !== undefined;
+  // What the fields show (#598 E4): the client checks once checked (they
+  // win), else the server's errors.
+  const errors: ScheduleErrors = checked
+    ? { ...serverFieldErrors, ...checkFields(values) }
+    : serverFieldErrors;
+  const recurrenceErrors: RecurrenceErrors =
+    seriesMode && ruleChecked
+      ? {
+          ...serverRuleErrors,
+          ...validateRecurrence(recurrence, values.date),
+        }
+      : serverRuleErrors;
   const suggestionKey = onSuggestTutors
     ? tutorSuggestionKey(slotSource, seriesMode, recurrence)
     : null;
@@ -527,8 +607,8 @@ export function ScheduleSessionForm({
             ) {
               // On the fields, without moving the focus (D1).
               setTutorLoad({ key, state: null });
-              setErrors(mapped);
-              setRecurrenceErrors(mappedRule);
+              setServerFieldErrors(mapped);
+              setServerRuleErrors(mappedRule);
               return;
             }
           }
@@ -566,6 +646,7 @@ export function ScheduleSessionForm({
 
   function chooseTutor(suggestion: TutorSuggestion) {
     setValues((current) => ({ ...current, tutorId: suggestion.tutor.id }));
+    changedField('tutor');
     setAnnouncement(
       t('scheduling.tutorSuggestions.chosen', {
         name: suggestion.tutor.display_name,
@@ -649,7 +730,9 @@ export function ScheduleSessionForm({
 
   function chooseSlot(slot: SuggestedSlot) {
     setValues((current) => ({ ...current, ...slotValues(slot, timeZone) }));
-    setErrors({});
+    startEdit.current = null;
+    setUnreadable(READABLE_TIMES);
+    setServerFieldErrors({});
     setConflicts(null);
     clearSuggestions();
     setAnnouncement(t('scheduling.suggestions.chosen', slotParts(slot)));
@@ -659,10 +742,12 @@ export function ScheduleSessionForm({
   async function submitSeries(
     submitSeriesFn: NonNullable<typeof onSubmitSeries>,
   ) {
-    const found = validateSchedule(values);
+    const found = checkFields(values);
     const foundRule = validateRecurrence(recurrence, values.date);
-    setErrors(found);
-    setRecurrenceErrors(foundRule);
+    setChecked(true);
+    setRuleChecked(true);
+    setServerFieldErrors({});
+    setServerRuleErrors({});
     if (Object.keys(found).length > 0) {
       focusFirst(found);
       return;
@@ -697,8 +782,8 @@ export function ScheduleSessionForm({
         Object.keys(mapped).length > 0 ||
         Object.keys(mappedRule).length > 0
       ) {
-        setErrors(mapped);
-        setRecurrenceErrors(mappedRule);
+        setServerFieldErrors(mapped);
+        setServerRuleErrors(mappedRule);
         if (Object.keys(mapped).length > 0) {
           focusFirst(mapped);
         } else {
@@ -728,7 +813,7 @@ export function ScheduleSessionForm({
   async function submit() {
     setConflicts(null);
     setSeriesConflicts(null);
-    setRecurrenceErrors({});
+    setServerRuleErrors({});
     clearSuggestions();
     setAnnouncement('');
     setFailure(null);
@@ -736,10 +821,9 @@ export function ScheduleSessionForm({
       await submitSeries(onSubmitSeries);
       return;
     }
-    const found = ownerKind
-      ? validateOwnerSchedule(values, ownerKind, owner?.id ?? null)
-      : validateSchedule(values);
-    setErrors(found);
+    const found = checkFields(values);
+    setChecked(true);
+    setServerFieldErrors({});
     if (Object.keys(found).length > 0) {
       focusFirst(found);
       return;
@@ -805,7 +889,7 @@ export function ScheduleSessionForm({
         : splitServerErrors(caught.fieldErrors, fixed);
       const onFields = Object.keys(fields).length > 0;
       if (onFields) {
-        setErrors(fields);
+        setServerFieldErrors(fields);
         focusFirst(fields);
       }
       if (page.length > 0 || !onFields) {
@@ -873,10 +957,14 @@ export function ScheduleSessionForm({
     setCreatedSeries(null);
     setRepeats(false);
     setRecurrence(EMPTY_RECURRENCE);
-    setRecurrenceErrors({});
+    setRuleChecked(false);
+    setServerRuleErrors({});
     weekdaysTouched.current = false;
     setAnnouncement('');
-    setErrors({});
+    setChecked(false);
+    setServerFieldErrors({});
+    setUnreadable(READABLE_TIMES);
+    startEdit.current = null;
     setValues({ ...EMPTY_SCHEDULE, date: values.date });
   }
 
@@ -889,8 +977,10 @@ export function ScheduleSessionForm({
     setOwner(null);
     setValues((current) => ({ ...current, student: null, subjectId: '' }));
     setRepeats(false);
-    setRecurrenceErrors({});
-    setErrors({});
+    setRuleChecked(false);
+    setServerRuleErrors({});
+    setChecked(false);
+    setServerFieldErrors({});
     setConflicts(null);
     setSeriesConflicts(null);
     clearSuggestions();
@@ -900,11 +990,7 @@ export function ScheduleSessionForm({
 
   function chooseOwner(next: OwnerOption) {
     setOwner(next);
-    setErrors((current) => {
-      const rest = { ...current };
-      delete rest.owner;
-      return rest;
-    });
+    changedField('owner');
     setConflicts(null);
     setFailure(null);
   }
@@ -1145,23 +1231,49 @@ export function ScheduleSessionForm({
     help?: string,
   ) {
     const helpId = `${fieldId(field)}-help`;
+    const labelId = `${fieldId(field)}-label`;
     return (
-      <div className="flex flex-col gap-2">
-        <label htmlFor={fieldId(field)} className="text-sm font-medium">
+      <div className="flex min-w-0 flex-col gap-2">
+        <label
+          id={labelId}
+          htmlFor={fieldId(field)}
+          className="text-sm font-medium"
+        >
           {label}
         </label>
-        <Input
-          id={fieldId(field)}
-          type={field === 'date' ? 'date' : 'time'}
-          step={field === 'date' ? undefined : 60}
-          value={values[field]}
-          aria-invalid={errors[field] ? true : undefined}
-          aria-describedby={describedBy(
-            field,
-            field === 'date' ? (help ? helpId : undefined) : zoneId,
-          )}
-          onChange={(event) => change(field, event.target.value)}
-        />
+        {field === 'date' ? (
+          <Input
+            id={fieldId(field)}
+            type="date"
+            value={values.date}
+            aria-invalid={errors.date ? true : undefined}
+            aria-describedby={describedBy(field, help ? helpId : undefined)}
+            onChange={(event) => change('date', event.target.value)}
+          />
+        ) : (
+          // Type or pick (#598 E1 a); the end's list opens at start + 1 h.
+          <TimeField
+            id={fieldId(field)}
+            labelId={labelId}
+            value={values[field]}
+            scrollTo={
+              field === 'end'
+                ? (addMinutes(values.start, DEFAULT_DURATION_MINUTES) ??
+                  undefined)
+                : undefined
+            }
+            invalid={errors[field] !== undefined}
+            aria-describedby={describedBy(field, zoneId)}
+            onChange={(value, isUnreadable) =>
+              changeTime(field, value, isUnreadable)
+            }
+            onEditEnd={() => {
+              if (field === 'start') {
+                startEdit.current = null;
+              }
+            }}
+          />
+        )}
         {help ? (
           <p id={helpId} className="text-sm text-muted-foreground">
             {help}

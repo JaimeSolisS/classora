@@ -46,12 +46,17 @@ import {
   TUTOR_SUGGESTIONS_WITH_WARNINGS,
   TUTORS,
 } from './fixtures';
-import { EMPTY_RECURRENCE } from '../series/recurrence';
+import {
+  clearRecurrenceServerErrors,
+  EMPTY_RECURRENCE,
+} from '../series/recurrence';
 import {
   calendarWeekPath,
   canFindFreeTimes,
   canSuggestTutors,
+  clearServerError,
   EMPTY_SCHEDULE,
+  endAfterStartChange,
   freeTimesBody,
   isChosenTutorUnsuggested,
   overrideAction,
@@ -70,6 +75,7 @@ import {
   validateOverrideReason,
   validateSchedule,
   weeklyAvailabilityText,
+  withTimeFormat,
 } from './rules';
 
 // #48 F1-F4: the route behind schedule.manage and its nav entry, the client
@@ -726,8 +732,8 @@ describe('suggested times (#50 C1)', () => {
     await click(buttonNamed(section, 'January 6, 2031, 11:00 AM to 12:00 PM'));
 
     expect(fieldByLabel(main(), 'Date').value).toBe('2031-01-06');
-    expect(fieldByLabel(main(), 'Start').value).toBe('11:00');
-    expect(fieldByLabel(main(), 'End').value).toBe('12:00');
+    expect(fieldByLabel(main(), 'Start').value).toBe('11:00 AM');
+    expect(fieldByLabel(main(), 'End').value).toBe('12:00 PM');
     expect(main().querySelector('[role="alert"]')).toBeNull();
     expect(main().textContent).not.toContain('Suggested times');
     await act(async () => {
@@ -1563,8 +1569,8 @@ describe('the chosen tutor (HF-05b C)', () => {
     await click(section.querySelectorAll<HTMLButtonElement>('ul button')[0]!);
 
     expect(fieldByLabel(main(), 'Date').value).toBe('2031-01-06');
-    expect(fieldByLabel(main(), 'Start').value).toBe('11:00');
-    expect(fieldByLabel(main(), 'End').value).toBe('12:00');
+    expect(fieldByLabel(main(), 'Start').value).toBe('11:00 AM');
+    expect(fieldByLabel(main(), 'End').value).toBe('12:00 PM');
     expect(freeTimes()).toBeUndefined();
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 450));
@@ -1693,8 +1699,8 @@ describe('the pre-filled page (HF-02 F2)', () => {
     app = await renderApp(PREFILLED);
 
     expect(fieldByLabel(main(), 'Date').value).toBe('2031-03-10');
-    expect(fieldByLabel(main(), 'Start').value).toBe('10:00');
-    expect(fieldByLabel(main(), 'End').value).toBe('11:30');
+    expect(fieldByLabel(main(), 'Start').value).toBe('10:00 AM');
+    expect(fieldByLabel(main(), 'End').value).toBe('11:30 AM');
     expect(selected('Tutor')).toBe(TUTOR);
     expect(selected('Classroom')).toBe(ROOM);
     expect(selected('Subject')).toBe('');
@@ -1711,8 +1717,8 @@ describe('the pre-filled page (HF-02 F2)', () => {
     await click(main().querySelector<HTMLInputElement>('[role="switch"]')!);
 
     expect(fieldByLabel(main(), 'Starts on').value).toBe('2031-03-10');
-    expect(fieldByLabel(main(), 'Start').value).toBe('10:00');
-    expect(fieldByLabel(main(), 'End').value).toBe('11:30');
+    expect(fieldByLabel(main(), 'Start').value).toBe('10:00 AM');
+    expect(fieldByLabel(main(), 'End').value).toBe('11:30 AM');
     // 2031-03-10 is a Monday: its weekday is pre-checked.
     const monday = [...main().querySelectorAll('label')].find(
       (label) => label.textContent?.trim() === 'Monday',
@@ -1765,5 +1771,409 @@ describe('the pre-filled page (HF-02 F2)', () => {
 
     expect(main().textContent).toContain("You don't have access to this page");
     expect(main().querySelector('form')).toBeNull();
+  });
+});
+
+describe('HF-13 rules (#598 E3, E4, AC3, AC4, AC6)', () => {
+  it('moves the end with the start, or sets start + 1 h (E3)', () => {
+    // End empty: start + 1 h.
+    expect(endAfterStartChange('', '10:00', '')).toBe('11:00');
+    // The end keeps the duration.
+    expect(endAfterStartChange('10:00', '14:00', '11:30')).toBe('15:30');
+    expect(endAfterStartChange('10:00', '09:00', '11:30')).toBe('10:30');
+    // An end not after the old start becomes start + 1 h.
+    expect(endAfterStartChange('10:00', '12:00', '09:00')).toBe('13:00');
+    expect(endAfterStartChange('10:00', '12:00', '10:00')).toBe('13:00');
+    // Past 23:59: the end is left as it was.
+    expect(endAfterStartChange('', '23:30', '')).toBe('');
+    expect(endAfterStartChange('10:00', '23:00', '11:30')).toBe('11:30');
+    // No new start: nothing changes.
+    expect(endAfterStartChange('10:00', '', '11:30')).toBe('11:30');
+    // No old start: an end after the new start is kept (typed first).
+    expect(endAfterStartChange('', '10:00', '11:30')).toBe('11:30');
+    expect(endAfterStartChange('', '12:00', '11:30')).toBe('13:00');
+  });
+
+  it('says how to write a time when the text is unreadable (AC4)', () => {
+    const errors = validateSchedule(EMPTY_SCHEDULE);
+    expect(withTimeFormat(errors, { start: true, end: false })).toMatchObject({
+      start: 'scheduling.validation.timeFormat',
+      end: 'scheduling.validation.endRequired',
+    });
+    expect(
+      withTimeFormat(
+        { end: 'scheduling.validation.endAfterStart' },
+        { start: false, end: true },
+      ),
+    ).toEqual({ end: 'scheduling.validation.endAfterStart' });
+  });
+
+  it('clears a server error on its field; start and end together (AC3)', () => {
+    const errors = {
+      tutor: 'errors:tutor_inactive',
+      end: 'errors:duration_out_of_range',
+    } as const;
+    expect(clearServerError(errors, 'start')).toEqual({
+      tutor: 'errors:tutor_inactive',
+    });
+    expect(clearServerError(errors, 'tutor')).toEqual({
+      end: 'errors:duration_out_of_range',
+    });
+    expect(clearServerError(errors, 'date')).toBe(errors);
+  });
+
+  it('clears the server rule errors of a changed rule field, and on Ends', () => {
+    const errors = {
+      count: 'errors:validation_error',
+      ends: 'errors:no_occurrences',
+      until: 'errors:validation_error',
+    } as const;
+    const before = { ...EMPTY_RECURRENCE, ends: 'count' as const, count: '5' };
+    expect(
+      clearRecurrenceServerErrors(errors, before, { ...before, count: '6' }),
+    ).toEqual({ until: 'errors:validation_error' });
+    expect(clearRecurrenceServerErrors(errors, before, before)).toBe(errors);
+  });
+});
+
+describe('HF-13 errors follow the values (#598 AC1, AC3)', () => {
+  const START_REQUIRED = 'Enter the start time.';
+  const END_REQUIRED = 'Enter the end time.';
+  const END_AFTER = 'The end must be after the start, on the same day.';
+  const invalid = (label: string) =>
+    fieldByLabel(main(), label).getAttribute('aria-invalid');
+
+  it('clears "required" once both times are typed, and shows it again when cleared', async () => {
+    const api = stub();
+    app = await renderApp('/schedule/new');
+
+    // The #598 repro: submit empty, then choose the times.
+    await click(buttonNamed(main(), 'Schedule session'));
+    expect(main().textContent).toContain(START_REQUIRED);
+    expect(main().textContent).toContain(END_REQUIRED);
+
+    typeInto(fieldByLabel(main(), 'Start'), '10:00');
+    typeInto(fieldByLabel(main(), 'End'), '11:00');
+
+    expect(fieldByLabel(main(), 'Start').value).toBe('10:00');
+    expect(main().textContent).not.toContain(START_REQUIRED);
+    expect(main().textContent).not.toContain(END_REQUIRED);
+    expect(invalid('Start')).toBeNull();
+    expect(invalid('End')).toBeNull();
+    // The other fields still say what's missing.
+    expect(main().textContent).toContain('Choose a student.');
+
+    typeInto(fieldByLabel(main(), 'Start'), '');
+    expect(main().textContent).toContain(START_REQUIRED);
+    expect(invalid('Start')).toBe('true');
+
+    typeInto(fieldByLabel(main(), 'Start'), '10:00');
+    typeInto(fieldByLabel(main(), 'End'), '09:00');
+    expect(main().textContent).toContain(END_AFTER);
+    typeInto(fieldByLabel(main(), 'End'), '10:30');
+    expect(main().textContent).not.toContain(END_AFTER);
+    expect(api.calls(CREATE)).toHaveLength(0);
+  });
+
+  it('shows nothing while typing before the first submit', async () => {
+    stub();
+    app = await renderApp('/schedule/new');
+    typeInto(fieldByLabel(main(), 'Start'), '10:00');
+    typeInto(fieldByLabel(main(), 'End'), '09:00');
+    expect(main().textContent).not.toContain(END_AFTER);
+    expect(invalid('End')).toBeNull();
+  });
+
+  it('clears the errors live in "Repeats weekly" too, the rule included', async () => {
+    stub();
+    app = await renderApp('/schedule/new');
+    await click(main().querySelector<HTMLInputElement>('[role="switch"]')!);
+
+    await click(buttonNamed(main(), 'Schedule series'));
+    expect(main().textContent).toContain(START_REQUIRED);
+    expect(main().textContent).toContain(
+      'Choose at least one day of the week.',
+    );
+
+    // The start date pre-checks its weekday: the rule's error goes too.
+    typeInto(fieldByLabel(main(), 'Starts on'), '2031-03-10');
+    typeInto(fieldByLabel(main(), 'Start'), '10:00');
+    typeInto(fieldByLabel(main(), 'End'), '11:00');
+    expect(main().textContent).not.toContain(START_REQUIRED);
+    expect(main().textContent).not.toContain(END_REQUIRED);
+    expect(main().textContent).not.toContain(
+      'Choose at least one day of the week.',
+    );
+  });
+
+  it('keeps a 422 on start or end until either changes; others stay (AC3)', async () => {
+    stub(SCHEDULER, { [CREATE]: invalidResponse });
+    app = await renderApp('/schedule/new');
+    await fillForm();
+    await click(buttonNamed(main(), 'Schedule session'));
+    const crosses = 'A session must start and end on the same day.';
+    const tutor = "This tutor's account is not active. Choose another tutor.";
+    expect(main().textContent).toContain(crosses);
+
+    // Another field's change keeps it.
+    choose('Classroom', CLASSROOMS[0]!.id);
+    expect(main().textContent).toContain(crosses);
+
+    typeInto(fieldByLabel(main(), 'Start'), '10:30');
+    expect(main().textContent).not.toContain(crosses);
+    expect(invalid('End')).toBeNull();
+    expect(main().textContent).toContain(tutor);
+
+    choose('Tutor', TUTORS[1]!.id);
+    expect(main().textContent).not.toContain(tutor);
+  });
+});
+
+describe('HF-13 the time fields (#598 AC4, AC5, AC6)', () => {
+  const listOptions = () => [
+    ...document.querySelectorAll<HTMLElement>('[role="option"]'),
+  ];
+
+  async function openList(label: string) {
+    const field = fieldByLabel(main(), label);
+    act(() => field.focus());
+    act(() => field.click());
+    await settle();
+  }
+
+  it('reads typed times and says how to write an unreadable one (AC4)', async () => {
+    const api = stub(SCHEDULER, { [CREATE]: () => jsonResponse(201, CREATED) });
+    app = await renderApp('/schedule/new');
+    await pickStudent();
+    choose('Subject', SUBJECTS[0]!.id);
+    typeInto(fieldByLabel(main(), 'Date'), '2031-01-06');
+    typeInto(fieldByLabel(main(), 'Start'), 'abc');
+    typeInto(fieldByLabel(main(), 'End'), '9:75');
+
+    await click(buttonNamed(main(), 'Schedule session'));
+    expect(api.calls(CREATE)).toHaveLength(0);
+    const format = 'Enter a time, for example 9:30.';
+    expect(main().textContent?.split(format)).toHaveLength(3);
+
+    typeInto(fieldByLabel(main(), 'Start'), '9:30 am');
+    typeInto(fieldByLabel(main(), 'End'), '1030');
+    expect(main().textContent).not.toContain(format);
+
+    await click(buttonNamed(main(), 'Schedule session'));
+    // 09:30 and 10:30 in Mexico City (UTC-6).
+    expect(api.calls(CREATE)[0]!.body).toMatchObject({
+      starts_at: '2031-01-06T15:30:00.000Z',
+      ends_at: '2031-01-06T16:30:00.000Z',
+    });
+  });
+
+  it('picks from the quarter-hour list, opened at start + 1 h for the end (AC5)', async () => {
+    const api = stub(SCHEDULER, { [CREATE]: () => jsonResponse(201, CREATED) });
+    app = await renderApp('/schedule/new');
+    await pickStudent();
+    choose('Subject', SUBJECTS[0]!.id);
+    typeInto(fieldByLabel(main(), 'Date'), '2031-01-06');
+
+    await openList('Start');
+    expect(listOptions()).toHaveLength(96);
+    act(() =>
+      listOptions()
+        .find((o) => o.textContent === '9:30 AM')!
+        .click(),
+    );
+    await settle();
+    expect(fieldByLabel(main(), 'Start').value).toBe('9:30 AM');
+    // E3: the end follows.
+    expect(fieldByLabel(main(), 'End').value).toBe('10:30 AM');
+
+    await openList('End');
+    const end = fieldByLabel(main(), 'End');
+    act(() => {
+      end.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }),
+      );
+    });
+    await settle();
+    const active = document.getElementById(
+      end.getAttribute('aria-activedescendant')!,
+    );
+    expect(active?.textContent).toBe('10:30 AM');
+    act(() =>
+      listOptions()
+        .find((o) => o.textContent === '10:45 AM')!
+        .click(),
+    );
+    await settle();
+
+    await click(buttonNamed(main(), 'Schedule session'));
+    expect(api.calls(CREATE)[0]!.body).toMatchObject({
+      starts_at: '2031-01-06T15:30:00.000Z',
+      ends_at: '2031-01-06T16:45:00.000Z',
+    });
+  });
+
+  it('lists 24-hour options in Spanish and keeps a time off the grid', async () => {
+    applyLanguage('es');
+    const api = stub(SCHEDULER, { [CREATE]: () => jsonResponse(201, CREATED) });
+    app = await renderApp('/schedule/new');
+    await pickOption(main(), 'Estudiante', 'Ana', 'Ana López');
+    choose('Materia', SUBJECTS[0]!.id);
+    typeInto(fieldByLabel(main(), 'Fecha'), '2031-01-06');
+
+    await openList('Inicio');
+    expect(listOptions()[38]!.textContent).toBe('09:30');
+    typeInto(fieldByLabel(main(), 'Inicio'), '10:10');
+    act(() => fieldByLabel(main(), 'Inicio').blur());
+    await settle();
+    expect(fieldByLabel(main(), 'Inicio').value).toBe('10:10');
+    expect(fieldByLabel(main(), 'Fin').value).toBe('11:10');
+
+    await click(buttonNamed(main(), 'Programar sesión'));
+    expect(api.calls(CREATE)[0]!.body).toMatchObject({
+      starts_at: '2031-01-06T16:10:00.000Z',
+      ends_at: '2031-01-06T17:10:00.000Z',
+    });
+  });
+
+  it('moves the end with the start (AC6)', async () => {
+    stub();
+    app = await renderApp('/schedule/new');
+    const start = () => fieldByLabel(main(), 'Start');
+    const end = () => fieldByLabel(main(), 'End');
+
+    typeInto(start(), '10:00');
+    expect(end().value).toBe('11:00 AM');
+
+    typeInto(end(), '11:30');
+    typeInto(start(), '14:00');
+    expect(end().value).toBe('3:30 PM');
+
+    typeInto(end(), '');
+    typeInto(start(), '23:30');
+    expect(end().value).toBe('');
+  });
+
+  it('keeps the pre-filled end from the calendar (AC6)', async () => {
+    stub();
+    app = await renderApp(
+      '/schedule/new?date=2031-03-10&start=10:00&end=11:30',
+    );
+    expect(fieldByLabel(main(), 'End').value).toBe('11:30 AM');
+  });
+});
+
+describe('HF-13 QA round 1: typing key by key (#598 D1, D2)', () => {
+  /**
+   * What a browser does per keystroke: one input event per key, with the
+   * text as it is after that key (`\b` = Backspace, `^A\b` = select all
+   * and delete).
+   */
+  function typeKeys(field: HTMLInputElement, keys: string) {
+    let text = field.value;
+    for (let i = 0; i < keys.length; i += 1) {
+      if (keys.startsWith('^A\b', i)) {
+        text = '';
+        i += 2;
+      } else if (keys[i] === '\b') {
+        text = text.slice(0, -1);
+      } else {
+        text += keys[i];
+      }
+      typeInto(field, text);
+    }
+  }
+  const start = () => fieldByLabel(main(), 'Start');
+  const end = () => fieldByLabel(main(), 'End');
+  async function leave(field: HTMLInputElement) {
+    act(() => field.focus());
+    act(() => field.blur());
+    await settle();
+  }
+  async function press(field: HTMLInputElement, key: string) {
+    act(() => {
+      field.dispatchEvent(
+        new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+      );
+    });
+    await settle();
+  }
+
+  it('gives start + 1 h for 930 typed into an empty start', async () => {
+    stub();
+    app = await renderApp('/schedule/new');
+    act(() => start().focus());
+    typeKeys(start(), '930');
+    await leave(start());
+    expect(start().value).toBe('9:30 AM');
+    expect(end().value).toBe('10:30 AM');
+  });
+
+  it.each([
+    ['10:00', '11:30', '14:00', '2:00 PM', '3:30 PM'],
+    ['10:00', '11:00', '930', '9:30 AM', '10:30 AM'],
+    ['10:00', '11:00', '8:30', '8:30 AM', '9:30 AM'],
+  ])(
+    'keeps the duration of %s-%s when the start is cleared and %s typed',
+    async (from, to, keys, shownStart, shownEnd) => {
+      stub();
+      app = await renderApp(
+        `/schedule/new?date=2031-03-10&start=${from}&end=${to}`,
+      );
+      act(() => start().focus());
+      typeKeys(start(), `^A\b${keys}`);
+      await leave(start());
+      expect(start().value).toBe(shownStart);
+      expect(end().value).toBe(shownEnd);
+    },
+  );
+
+  it('restores both start and end on Escape after clearing and typing', async () => {
+    stub();
+    app = await renderApp(
+      '/schedule/new?date=2031-03-10&start=08:15&end=09:15',
+    );
+    act(() => start().focus());
+    typeKeys(start(), '^A\b1145');
+    expect(end().value).toBe('12:45 PM');
+    await press(start(), 'Escape');
+    expect(start().value).toBe('8:15 AM');
+    expect(end().value).toBe('9:15 AM');
+  });
+
+  it('leaves no end behind after Escape from an empty form', async () => {
+    stub();
+    app = await renderApp('/schedule/new');
+    act(() => start().focus());
+    typeKeys(start(), '14');
+    await press(start(), 'Escape');
+    expect(start().value).toBe('');
+    expect(end().value).toBe('');
+  });
+
+  it('changes no end for unreadable text', async () => {
+    stub();
+    app = await renderApp(
+      '/schedule/new?date=2031-03-10&start=10:00&end=11:00',
+    );
+    act(() => start().focus());
+    typeKeys(start(), '^A\b25:00');
+    await leave(start());
+    expect(start().value).toBe('25:00');
+    expect(end().value).toBe('11:00 AM');
+  });
+
+  it("measures a second edit from the first one's result", async () => {
+    stub();
+    app = await renderApp(
+      '/schedule/new?date=2031-03-10&start=10:00&end=11:30',
+    );
+    act(() => start().focus());
+    typeKeys(start(), '^A\b12');
+    await leave(start());
+    expect(end().value).toBe('1:30 PM');
+    act(() => start().focus());
+    typeKeys(start(), '^A\b9');
+    await leave(start());
+    expect(end().value).toBe('10:30 AM');
   });
 });

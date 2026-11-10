@@ -36,6 +36,15 @@ export const EMPTY_OFFER: OfferValues = {
 
 export type OfferField = 'tutor' | 'deadline' | 'reason' | 'classroom';
 
+/** The field each value is shown on (its server error goes on a change). */
+export const OFFER_VALUE_FIELDS: Record<keyof OfferValues, OfferField> = {
+  tutorId: 'tutor',
+  deadlineDate: 'deadline',
+  deadlineTime: 'deadline',
+  reason: 'reason',
+  classroomId: 'classroom',
+};
+
 /** The most characters of a substitution or cancellation reason (#55). */
 export const REASON_MAX_LENGTH = 1000;
 

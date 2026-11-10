@@ -136,6 +136,36 @@ export const Filled: Story = {
   },
 };
 
+/**
+ * HF-13 (#598 QA D1, D2): a start typed key by key over 10:00-11:00 keeps
+ * the hour, whatever the in-between values; the End list opens at its time.
+ */
+export const TypedStartKeepsDuration: Story = {
+  args: { initialValues: FILLED },
+  play: async ({ canvas, canvasElement, userEvent }) => {
+    const start = canvas.getByRole('combobox', {
+      name: i18n.t('scheduling.fields.start'),
+    });
+    const end = canvas.getByRole('combobox', {
+      name: i18n.t('scheduling.fields.end'),
+    });
+    await userEvent.clear(start);
+    await userEvent.type(start, '830');
+    await userEvent.tab();
+    await expect(start).toHaveValue('08:30');
+    await expect(end).toHaveValue('09:30');
+    await userEvent.click(end);
+    const list = await within(canvasElement.ownerDocument.body).findByRole(
+      'listbox',
+      { name: i18n.t('scheduling.fields.end') },
+    );
+    const chosen = within(list).getByRole('option', { selected: true });
+    await waitFor(() =>
+      expect(list.scrollTop).toBeGreaterThanOrEqual(chosen.offsetTop - 1),
+    );
+  },
+};
+
 export const Submitting: Story = {
   args: {
     initialValues: FILLED,

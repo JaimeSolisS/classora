@@ -6,6 +6,7 @@ import { common } from '../support/catalog';
 import {
   cancelClassSessionViaApi,
   createClassSessionViaApi,
+  fillTime,
   firstWeekdayAhead,
 } from '../support/scheduling';
 import { createStudentViaApi } from '../support/students';
@@ -92,12 +93,14 @@ test('an Owner schedules a makeup from a cancelled session', async ({
   await main
     .getByLabel(common.scheduling.fields.date, { exact: true })
     .fill(sevenDaysAfter(date));
-  await main
-    .getByLabel(common.scheduling.fields.start, { exact: true })
-    .fill('10:00');
-  await main
-    .getByLabel(common.scheduling.fields.end, { exact: true })
-    .fill('11:00');
+  await fillTime(
+    main.getByLabel(common.scheduling.fields.start, { exact: true }),
+    '10:00',
+  );
+  await fillTime(
+    main.getByLabel(common.scheduling.fields.end, { exact: true }),
+    '11:00',
+  );
   await main
     .getByRole('button', { name: common.scheduling.submit, exact: true })
     .click();

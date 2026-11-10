@@ -2467,7 +2467,8 @@
       "dateRequired": "Enter the date.",
       "startRequired": "Enter the start time.",
       "endRequired": "Enter the end time.",
-      "endAfterStart": "The end must be after the start, on the same day."
+      "endAfterStart": "The end must be after the start, on the same day.",
+      "timeFormat": "Enter a time, for example 9:30."
     },
     "success": {
       "heading": "Session scheduled",

@@ -9,7 +9,7 @@ import {
   type ApiStub,
   type Responder,
 } from '@/test/api-stub';
-import { click } from '@/test/dom';
+import { click, setFieldValue } from '@/test/dom';
 import {
   buttonNamed,
   jsonResponse,
@@ -306,6 +306,30 @@ describe('/schedule/sessions/:id', () => {
     });
     expect(main().textContent).toContain('Offered to Diego Torres.');
     expect(main().textContent).toContain('Workload warnings');
+  });
+
+  it('clears an offer error once a valid value is entered after a failed submit (HF-13 E4)', async () => {
+    const api = stub(ASSIGNER);
+    app = await renderApp(`/schedule/sessions/${ID}`);
+    const form = main().querySelector('form')!;
+    const byId = (suffix: string) =>
+      form.querySelector<HTMLInputElement>(`[id$="${suffix}"]`)!;
+    setFieldValue(byId('-deadline'), '2031-01-05');
+
+    await click(buttonByText(main(), 'Offer the session')!);
+    expect(main().textContent).toContain('Choose a tutor.');
+    expect(main().textContent).toContain(
+      'Give both a date and a time, or leave both empty.',
+    );
+
+    setFieldValue(byId('-deadlineTime'), '09:30');
+    expect(main().textContent).not.toContain(
+      'Give both a date and a time, or leave both empty.',
+    );
+    expect(byId('-deadlineTime').getAttribute('aria-invalid')).toBeNull();
+    setFieldValue(form.querySelector('select')!, TUTORS[1]!.id);
+    expect(main().textContent).not.toContain('Choose a tutor.');
+    expect(api.calls(OFFER)).toHaveLength(0);
   });
 
   it('a conflict shows the panel; the Owner overrides and resends', async () => {

@@ -4,6 +4,7 @@ import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
 import { pickOption } from '../support/combobox';
 import { createStudentViaApi } from '../support/students';
+import { fillTime } from '../support/scheduling';
 import { createSubjectViaApi } from '../support/tutors';
 
 // Overriding a soft conflict (#49 G9). The demo Owner (the shared state;
@@ -95,12 +96,14 @@ test('an Owner overrides a soft conflict with a reason', async ({
   await main
     .getByLabel(common.scheduling.fields.date, { exact: true })
     .fill(firstSundayAhead());
-  await main
-    .getByLabel(common.scheduling.fields.start, { exact: true })
-    .fill('15:00');
-  await main
-    .getByLabel(common.scheduling.fields.end, { exact: true })
-    .fill('16:00');
+  await fillTime(
+    main.getByLabel(common.scheduling.fields.start, { exact: true }),
+    '15:00',
+  );
+  await fillTime(
+    main.getByLabel(common.scheduling.fields.end, { exact: true }),
+    '16:00',
+  );
   await main
     .getByRole('button', { name: common.scheduling.submit, exact: true })
     .click();

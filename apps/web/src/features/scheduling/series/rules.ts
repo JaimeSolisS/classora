@@ -1,6 +1,7 @@
 import type { FieldError } from '@classora/api-client';
 import { ApiError } from '@/app/api';
 import type { ErrorMessageKey } from '@/app/errors';
+import { withoutErrors } from '@/lib/fieldErrors';
 import { localDateTimeToInstant, toLocalDate, toLocalTime } from '@/lib/time';
 import { FIELD_ERROR_CODES, type ScheduleValues } from '../create/rules';
 import type { ClassSeriesDetail } from '../session/api';
@@ -15,6 +16,7 @@ import type {
 } from './api';
 import type { SeriesOverride } from './overrides';
 import {
+  clearRecurrenceServerErrors,
   durationMinutes,
   endTime,
   recurrenceBody,
@@ -339,6 +341,59 @@ export function hasErrors(errors: SeriesEditErrors): boolean {
     Object.keys(errors.slot).length > 0 ||
     Object.keys(errors.recurrence).length > 0
   );
+}
+
+/**
+ * What the dialog shows (HF-13, #598 E4): once `checked`, the client checks
+ * over the server's errors, else the server's errors only.
+ */
+export function shownSeriesEditErrors(
+  checked: boolean,
+  server: SeriesEditErrors,
+  client: () => SeriesEditErrors,
+): SeriesEditErrors {
+  if (!checked) {
+    return server;
+  }
+  const found = client();
+  const fromDate = found.fromDate ?? server.fromDate;
+  return {
+    ...(fromDate ? { fromDate } : {}),
+    slot: { ...server.slot, ...found.slot },
+    recurrence: { ...server.recurrence, ...found.recurrence },
+  };
+}
+
+/**
+ * The server's errors once the values change from `before` to `after`
+ * (HF-13, #598 E4): a changed field's error goes; start and end together.
+ */
+export function clearSeriesEditServerErrors(
+  errors: SeriesEditErrors,
+  before: SeriesEditValues,
+  after: SeriesEditValues,
+): SeriesEditErrors {
+  const slot: SlotField[] = [];
+  if (before.start !== after.start || before.end !== after.end) {
+    slot.push('start', 'end');
+  }
+  if (before.classroomId !== after.classroomId) {
+    slot.push('classroom');
+  }
+  const scope =
+    before.mode !== after.mode || before.fromDate !== after.fromDate;
+  const next: SeriesEditErrors = {
+    slot: withoutErrors(errors.slot, slot),
+    recurrence: clearRecurrenceServerErrors(
+      errors.recurrence,
+      before.recurrence,
+      after.recurrence,
+    ),
+  };
+  if (errors.fromDate && !scope) {
+    next.fromDate = errors.fromDate;
+  }
+  return next;
 }
 
 /**
