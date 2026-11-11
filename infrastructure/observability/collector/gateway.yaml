@@ -1,0 +1,59 @@
+# OpenTelemetry Collector (contrib) gateway: the monitoring stack's single entry
+# point (ADR-0014). It receives OTLP/HTTP from the app hosts' agents (and, in the
+# local profile, nothing: local.yaml runs instead) and fans out to Prometheus
+# (metrics, OTLP receiver), Loki (logs, OTLP) and Tempo (traces, OTLP).
+#
+# The same file runs on the monitoring host (M9-09, #617), mounted unchanged.
+# collector/local.yaml copies its exporters exactly; `make check-observability`
+# fails when they drift apart.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        # Inside the container. The monitoring host publishes 4318 on its
+        # private IP only, behind the security group (ADR-0014 "Ingest security").
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # First in every pipeline: refuses data before the container's mem_limit is
+  # reached (percentages of the cgroup limit, so the same file fits any host).
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+  batch: {}
+
+exporters:
+  otlp_http/prometheus:
+    metrics_endpoint: http://prometheus:9090/api/v1/otlp/v1/metrics
+  otlp_http/loki:
+    logs_endpoint: http://loki:3100/otlp/v1/logs
+  otlp_http/tempo:
+    traces_endpoint: http://tempo:4318/v1/traces
+
+service:
+  telemetry:
+    logs:
+      level: warn
+    # The collector's own metrics, scraped by Prometheus (prometheus.yml).
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/loki]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/tempo]

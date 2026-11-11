@@ -1,0 +1,139 @@
+# OpenTelemetry Collector (contrib) for the local observability profile
+# (`make dev-observability`, ADR-0014): agent and gateway in one process.
+#
+# - receivers: collector/agent.yaml's, minus file_log (Docker Desktop keeps
+#   container log files inside its VM) and host_metrics (the host is that VM);
+# - exporters: collector/gateway.yaml's.
+# `make check-observability` fails when either copy drifts from its source.
+#
+# Environment (root compose.yaml): PG_MONITOR_USER, PG_MONITOR_PASSWORD and
+# PG_MONITOR_DATABASE come from .env's POSTGRES_USER, POSTGRES_PASSWORD and
+# POSTGRES_DB. Before `make migrate` the sql_query receiver logs errors (no
+# Procrastinate tables yet); its series appear once the tables exist.
+
+receivers:
+  # The API and worker export here (OTEL_EXPORTER_OTLP_ENDPOINT, M9-04).
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # Per-container CPU and memory. Needs /var/run/docker.sock mounted read-only.
+  docker_stats:
+    endpoint: unix:///var/run/docker.sock
+    collection_interval: 30s
+    # Empty: negotiate the API version with the daemon (the receiver's default,
+    # 1.44, is refused by Docker 24 and older).
+    api_version: ""
+
+  # PostgreSQL connections, sizes, commits and rollbacks, over a direct
+  # connection to the db container (never PgBouncer).
+  postgresql:
+    endpoint: db:5432
+    transport: tcp
+    username: ${env:PG_MONITOR_USER}
+    password: ${env:PG_MONITOR_PASSWORD}
+    databases: ["${env:PG_MONITOR_DATABASE}"]
+    collection_interval: 30s
+    tls:
+      insecure: true
+
+  # Readiness from inside the host network (the edge returns 404 for /health/*).
+  http_check:
+    collection_interval: 30s
+    targets:
+      - endpoint: http://api:8000/health/ready
+        method: GET
+
+  # Procrastinate queue state, read from PostgreSQL (no queue code in the app).
+  # Every query returns one row per series even when the count is 0, so the
+  # series never disappear.
+  sql_query:
+    driver: postgres
+    datasource: "host=db port=5432 user=${env:PG_MONITOR_USER} password=${env:PG_MONITOR_PASSWORD} dbname=${env:PG_MONITOR_DATABASE} sslmode=disable connect_timeout=5"
+    collection_interval: 60s
+    queries:
+      # Jobs by status (todo, doing, succeeded, failed, cancelled, aborted).
+      - sql: >-
+          SELECT s.status::text AS status, count(j.id) AS jobs
+          FROM unnest(enum_range(NULL::procrastinate_job_status)) AS s(status)
+          LEFT JOIN procrastinate_jobs AS j ON j.status = s.status
+          WHERE s.status <> 'aborting'
+          GROUP BY s.status
+        metrics:
+          - metric_name: classora.procrastinate.jobs
+            value_column: jobs
+            attribute_columns: [status]
+            data_type: gauge
+            value_type: int
+      # Jobs that ended as failed or aborted in the last hour.
+      - sql: >-
+          SELECT t.outcome::text AS outcome, count(e.id) AS jobs
+          FROM unnest(ARRAY['failed', 'aborted']::procrastinate_job_event_type[]) AS t(outcome)
+          LEFT JOIN procrastinate_events AS e
+            ON e.type = t.outcome AND e.at > now() - interval '1 hour'
+          GROUP BY t.outcome
+        metrics:
+          - metric_name: classora.procrastinate.jobs.ended_last_hour
+            value_column: jobs
+            attribute_columns: [outcome]
+            data_type: gauge
+            value_type: int
+      # Jobs `doing` for over 30 minutes (stalled), measured from their last
+      # `started` event (procrastinate_jobs has no start time of its own).
+      - sql: >-
+          SELECT count(*) AS jobs
+          FROM procrastinate_jobs AS j
+          WHERE j.status = 'doing'
+            AND (SELECT max(e.at) FROM procrastinate_events AS e
+                 WHERE e.job_id = j.id AND e.type = 'started') < now() - interval '30 minutes'
+        metrics:
+          - metric_name: classora.procrastinate.jobs.stalled
+            value_column: jobs
+            data_type: gauge
+            value_type: int
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+  resource:
+    attributes:
+      - key: deployment.environment.name
+        value: local
+        action: upsert
+  batch: {}
+
+exporters:
+  otlp_http/prometheus:
+    metrics_endpoint: http://prometheus:9090/api/v1/otlp/v1/metrics
+  otlp_http/loki:
+    logs_endpoint: http://loki:3100/otlp/v1/logs
+  otlp_http/tempo:
+    traces_endpoint: http://tempo:4318/v1/traces
+
+service:
+  telemetry:
+    logs:
+      level: warn
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  pipelines:
+    metrics:
+      receivers: [otlp, docker_stats, postgresql, http_check, sql_query]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp_http/prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp_http/loki]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp_http/tempo]

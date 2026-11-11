@@ -13,6 +13,11 @@
 # here.
 # Host ports for db and pgbouncer come only from compose.override.yaml, which
 # `docker compose` loads automatically next to this file.
+#
+# The local observability stack (ADR-0014; otel-collector, prometheus, loki,
+# tempo, grafana) comes from infrastructure/observability/compose.observability.yaml
+# under Compose profile `observability`: off by default, so `make dev` and plain
+# `docker compose up` never start it. `make dev-observability` does.
 name: classora
 
 services:
@@ -50,5 +55,55 @@ services:
       file: infrastructure/docker/compose.app.yaml
       service: web
 
+  # --- Optional local observability (profile `observability`) -------------
+  # One collector plays agent and gateway (collector/local.yaml): container
+  # stats from the Docker socket (read-only), PostgreSQL metrics and the
+  # Procrastinate queries over a direct connection as POSTGRES_USER, and the
+  # API's readiness.
+  otel-collector:
+    extends:
+      file: infrastructure/observability/compose.observability.yaml
+      service: otel-collector
+    profiles: [observability]
+    command: ["--config=/etc/otelcol/local.yaml"]
+    # Docker Desktop's socket inside containers is root-only (srwxr-xr-x
+    # root:root), so docker_stats needs root here. Local only: an AWS host's
+    # agent joins the socket's `docker` group instead (M9-06).
+    user: "0:0"
+    environment:
+      PG_MONITOR_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      PG_MONITOR_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      PG_MONITOR_DATABASE: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  prometheus:
+    extends:
+      file: infrastructure/observability/compose.observability.yaml
+      service: prometheus
+    profiles: [observability]
+
+  loki:
+    extends:
+      file: infrastructure/observability/compose.observability.yaml
+      service: loki
+    profiles: [observability]
+
+  tempo:
+    extends:
+      file: infrastructure/observability/compose.observability.yaml
+      service: tempo
+    profiles: [observability]
+
+  grafana:
+    extends:
+      file: infrastructure/observability/compose.observability.yaml
+      service: grafana
+    profiles: [observability]
+
 volumes:
   db-data:
+  prometheus-data:
+  loki-data:
+  tempo-data:
+  grafana-data:

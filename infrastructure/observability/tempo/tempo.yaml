@@ -1,0 +1,37 @@
+# Tempo, single binary, for the monitoring stack (ADR-0014): traces arrive over
+# OTLP/HTTP from the Collector. Local filesystem storage on the host's data
+# volume (no S3, decision 15); retention from TEMPO_RETENTION (default
+# 168h = 7 days). Started with -config.expand-env=true.
+# The same file runs locally and on the monitoring host (M9-09, #617).
+
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+  log_level: warn
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  # Small blocks, flushed often: a single small host.
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: ${TEMPO_RETENTION:-168h}
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+usage_report:
+  reporting_enabled: false

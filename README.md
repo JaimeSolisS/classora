@@ -663,6 +663,31 @@ Live notifications need no extra service: the API listens for them on a
 direct PostgreSQL connection (`DATABASE_DIRECT_URL`), and the web dev server
 proxies the stream like any other API call.
 
+### Observability (optional)
+
+An optional monitoring stack runs next to the app: an OpenTelemetry Collector,
+Prometheus, Loki, Tempo and Grafana, from the same configuration files the AWS
+monitoring host will use (`infrastructure/observability/`,
+[ADR-0014](_docs/adr/0014-observability-error-tracking-and-alerting.md)). It is
+**off by default**: `make dev` never starts it, and CI only validates its
+configuration (`make check-observability`).
+
+```bash
+make dev-observability        # the app stack plus the five observability services
+make dev-observability-down   # stops only those five; V=1 also deletes their data
+```
+
+- It needs about **700 MB more RAM** (each service has a hard memory limit).
+  On an 8 GB machine, run it alone, not next to test suites or builds.
+- Grafana: <http://127.0.0.1:3000> (`GRAFANA_PORT`, `127.0.0.1` only). Sign in
+  as `admin` with `GRAFANA_ADMIN_PASSWORD` from `.env`; there is no anonymous
+  access. Grafana keeps the password from its first start: to change it, run
+  `make dev-observability-down V=1` first.
+- The "Host and containers" dashboard shows per-container CPU and memory,
+  PostgreSQL connections, the API's readiness and the background jobs by status
+  (after `make migrate`). Data appears within about two minutes.
+- Metrics are kept 15 days, logs and traces 7 days (in Docker volumes).
+
 ### Database migrations
 
 ```bash
@@ -1301,6 +1326,7 @@ command:
 | `api-client` | `make check-api-client` |
 | `e2e` | `make lint-e2e`, `make e2e`, `make check-pdf-image` (builds the API image and renders a sample PDF in es and en inside it) (on failure, uploads traces, the HTML report and the Compose logs as the `e2e-report` artifact) |
 | `images` | `make build-images`, `make check-images`, `make check-pdf-image`, `make smoke-edge`, `make scan-image IMAGE=<ref>` for each image (CI builds the `api`, `web` (Caddy edge with the built SPA) and `pgbouncer` images natively for `linux/arm64` with `PLATFORM=linux/arm64`; locally the default is `linux/amd64`) |
+| `infra` | `make check-observability` (validates the observability configuration with the pinned images: Collector, Prometheus, Loki, Tempo, Grafana provisioning; starts nothing). M9-05 adds Terraform checks |
 | `security-deps` | `make audit-deps` (pip-audit and `pnpm audit` over both lockfiles) |
 | `security-secrets` | `make scan-secrets` (gitleaks, full history); on pull requests also `make scan-secrets-diff BASE=<sha> HEAD=<sha>` |
 | `security-sast` | `make sast` (Semgrep); Ruff's security (`S`) rules run in `make lint-api` |
@@ -1312,7 +1338,10 @@ and Docker files, the Node toolchain files or `.env.example`; all of them for
 `Makefile` and workflow changes; none for documentation). The `images` job runs
 for changes to `infrastructure/docker/`, the API and Node lockfiles and manifests,
 `.nvmrc`, `.dockerignore` and the SPA's security headers, and for `Makefile` and
-workflow changes, not for application code alone.
+workflow changes, not for application code alone. The `infra` job runs for
+changes to `infrastructure/observability/`, `infrastructure/terraform/`,
+`infrastructure/scripts/`, `infrastructure/host/` and `compose.yaml`, and for
+`Makefile` and workflow changes.
 The `api-client` drift check runs whenever the API or web jobs run. The three
 security jobs run on every pull request and push, documentation included.
 `ci-required` is the one required check: it reports on every pull request and
@@ -1430,8 +1459,9 @@ flowchart TB
 
 When M9 is built, DEV will deploy on every merge to `develop`, and PROD from a
 `main` release after the owner approves it. Logs, metrics and traces stay on
-the monitoring host's own disk, which can also run on DEV; the same stack will
-also run locally as an optional profile. Alerts and the budget alarm reach the
+the monitoring host's own disk, which can also run on DEV; the same stack
+already runs locally as an optional profile
+([Observability (optional)](#observability-optional)). Alerts and the budget alarm reach the
 owner by email.
 
 ## Documentation

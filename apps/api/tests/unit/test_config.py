@@ -61,6 +61,10 @@ COMPOSE_ONLY_VARIABLES = {
     "PGBOUNCER_PORT",
     "API_PORT",
     "WEB_PORT",
+    # The optional observability profile (make dev-observability, #611): read by
+    # the Grafana service in Compose, not API settings.
+    "GRAFANA_PORT",
+    "GRAFANA_ADMIN_PASSWORD",
 }
 
 

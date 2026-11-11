@@ -1,0 +1,117 @@
+# Monitoring stack (ADR-0014): OpenTelemetry Collector, Prometheus, Loki, Tempo
+# and Grafana, configured from the files next to this one.
+#
+# - Locally: the root compose.yaml pulls each service in with `extends:` under
+#   Compose profile `observability`, off by default (`make dev-observability`).
+#   There the collector runs collector/local.yaml (agent and gateway in one).
+# - On the monitoring host (M9-09, #617): the same file and configs, with the
+#   collector as gateway (collector/gateway.yaml, the default command below).
+#   Only environment variables differ (retention, memory limits, Grafana's
+#   admin password, root URL and SMTP).
+#
+# Only Grafana publishes a port, on 127.0.0.1. Every service has a hard
+# mem_limit (the local defaults add up to under 700 MB; README "Observability
+# (optional)"). Images are pinned by tag and multi-arch index digest
+# (ADR-0001 "Observability images"); every one has linux/amd64 and linux/arm64.
+
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.164.0@sha256:340c9ca6a36617084c6661bdc4f0fe92b7cda5a805d61673ec8db375fddc522b
+    command: ["--config=/etc/otelcol/gateway.yaml"]
+    volumes:
+      - ./collector:/etc/otelcol:ro
+    environment:
+      GOMEMLIMIT: ${OTEL_COLLECTOR_GOMEMLIMIT:-76MiB}
+    mem_limit: ${OTEL_COLLECTOR_MEM_LIMIT:-96m}
+    # Distroless image: no shell or HTTP client for a healthcheck.
+
+  prometheus:
+    image: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}
+      # Metrics arrive over OTLP from the collector (/api/v1/otlp).
+      - --web.enable-otlp-receiver
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    environment:
+      GOMEMLIMIT: ${PROMETHEUS_GOMEMLIMIT:-104MiB}
+    mem_limit: ${PROMETHEUS_MEM_LIMIT:-128m}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 5s
+
+  loki:
+    image: grafana/loki:3.7.9@sha256:0db216b630ae1f348a1584c67f3cead8b4c1fc839169a39501db664744158e28
+    command: ["-config.file=/etc/loki/loki.yaml", "-config.expand-env=true"]
+    volumes:
+      - ./loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    environment:
+      LOKI_RETENTION: ${LOKI_RETENTION:-168h}
+      GOMEMLIMIT: ${LOKI_GOMEMLIMIT:-128MiB}
+    mem_limit: ${LOKI_MEM_LIMIT:-160m}
+    # Distroless image: no shell or HTTP client for a healthcheck.
+
+  tempo:
+    image: grafana/tempo:2.10.10@sha256:12b0820f13ffa10ce956b6e9acc3b03f3cffded99109be6cc09d106fe56e5d38
+    command: ["-config.file=/etc/tempo/tempo.yaml", "-config.expand-env=true"]
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    environment:
+      TEMPO_RETENTION: ${TEMPO_RETENTION:-168h}
+      GOMEMLIMIT: ${TEMPO_GOMEMLIMIT:-76MiB}
+    mem_limit: ${TEMPO_MEM_LIMIT:-96m}
+    # Distroless image: no shell or HTTP client for a healthcheck.
+
+  grafana:
+    image: grafana/grafana:12.4.14@sha256:ae509d9ae8c1021ca32ec370a9ca975d40165eda9fccd1e1102d317ff8787cd7
+    # Refuses to start without an admin password (Grafana would otherwise
+    # create admin/admin). Grafana applies it only when its database is
+    # created, on the first start.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        if [ -z "$${GF_SECURITY_ADMIN_PASSWORD}" ] || [ "$${GF_SECURITY_ADMIN_PASSWORD}" = admin ]; then
+        echo "grafana: set GRAFANA_ADMIN_PASSWORD (not empty, not 'admin')" >&2; exit 1; fi;
+        exec /run.sh
+    volumes:
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      # Empty values are ignored by Grafana (it keeps grafana.ini's or its default).
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-}
+      GOMEMLIMIT: ${GRAFANA_GOMEMLIMIT:-168MiB}
+    # Host port GRAFANA_PORT (default 3000), on 127.0.0.1 only.
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    mem_limit: ${GRAFANA_MEM_LIMIT:-208m}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 36
+      start_period: 10s
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+
+volumes:
+  prometheus-data:
+  loki-data:
+  tempo-data:
+  grafana-data:
