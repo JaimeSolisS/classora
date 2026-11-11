@@ -533,7 +533,8 @@ jobs:
 
   # Infrastructure configuration checks (changes.sh `infra`). Validates every
   # observability config with its pinned image and starts nothing (#611,
-  # ADR-0014). M9-05 (#613) adds Terraform fmt and validate here.
+  # ADR-0014), then Terraform fmt/validate for every root and shellcheck, in
+  # pinned containers with no AWS credentials (#613, ADR-0011).
   infra:
     name: infra
     needs: changes
@@ -554,6 +555,9 @@ jobs:
 
       - name: make check-observability
         run: make check-observability
+
+      - name: make check-infra
+        run: make check-infra
 
   # Security scans (ADR-0016). Not path-filtered: a new advisory or a secret in
   # any file (documentation included) must turn every pull request red. The
