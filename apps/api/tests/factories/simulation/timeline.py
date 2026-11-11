@@ -90,8 +90,8 @@ SEEDED_EARLIER: Final = "seeded by an earlier version; reset to add it"
 
 RESET_STEPS: Final = (
     "Reset: native stack: make db-drop NAME=<db> && make db-create NAME=<db>,"
-    " set DATABASE_URL and DATABASE_DIRECT_URL to it and run make api-native"
-    " (migrates); Compose: docker compose down -v, make dev, make migrate."
+    " set the three URLs it prints and run make api-native"
+    " (migrates); Compose: docker compose down -v, make migrate, make dev."
     " Then run the target again."
 )
 NOT_EMPTY_MESSAGE: Final = (

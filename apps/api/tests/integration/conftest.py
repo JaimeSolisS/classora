@@ -37,6 +37,7 @@ import asyncio
 import os
 import uuid
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -113,11 +114,28 @@ def database_url(postgres_container: PostgresContainer) -> str:
 
 
 @pytest.fixture(scope="session")
-def pgbouncer_url(postgres_container: PostgresContainer) -> Iterator[str]:
-    """Plain ``postgresql://`` DSN of the container's default database, through
-    a Testcontainers PgBouncer built from the committed image and config."""
-    user = postgres_container.username
-    password = postgres_container.password
+def pgbouncer_image() -> Iterator[str]:
+    """The PgBouncer image built once per session from the committed context.
+
+    Every PgBouncer container (the owner's ``pgbouncer_url``, the runtime
+    role's in ``test_runtime_role.py``) runs it, and it is removed only after
+    the last of them has stopped: two builds of the same context share one
+    image ID, so a module-scoped removal failed with 409 while the session
+    container still ran it (#165 QA round 1).
+    """
+    with DockerImage(
+        path=PGBOUNCER_BUILD_CONTEXT, tag="classora-pgbouncer-test:latest"
+    ) as image:
+        yield str(image)
+
+
+@contextmanager
+def started_pgbouncer(
+    postgres_container: PostgresContainer, image: str, user: str, password: str
+) -> Iterator[str]:
+    """A PgBouncer container of ``image`` (:func:`pgbouncer_image`) with the
+    committed config, whose auth file holds only ``user``; yields the DSN of
+    the container's default database through it, as ``user``."""
     dbname = postgres_container.dbname
     # The committed config, with only the server pool size lowered.
     command = (
@@ -133,23 +151,36 @@ def pgbouncer_url(postgres_container: PostgresContainer) -> Iterator[str]:
     postgres_ip = postgres_container.get_docker_client().bridge_ip(
         postgres_container.get_wrapped_container().id
     )
-    with DockerImage(
-        path=PGBOUNCER_BUILD_CONTEXT, tag="classora-pgbouncer-test:latest"
-    ) as image:
-        container = (
-            DockerContainer(str(image))
-            .with_kwargs(extra_hosts={"db": postgres_ip})
-            .with_env("POSTGRES_USER", user)
-            .with_env("POSTGRES_PASSWORD", password)
-            .with_env("POSTGRES_DB", dbname)
-            .with_command(["sh", "-c", command])
-            .with_exposed_ports(6432)
-            .waiting_for(LogMessageWaitStrategy("process up"))
-        )
-        with container:
-            host = container.get_container_host_ip()
-            port = container.get_exposed_port(6432)
-            yield f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
+    container = (
+        DockerContainer(image)
+        .with_kwargs(extra_hosts={"db": postgres_ip})
+        .with_env("PGBOUNCER_AUTH_USER", user)
+        .with_env("PGBOUNCER_AUTH_PASSWORD", password)
+        .with_env("POSTGRES_DB", dbname)
+        .with_command(["sh", "-c", command])
+        .with_exposed_ports(6432)
+        .waiting_for(LogMessageWaitStrategy("process up"))
+    )
+    with container:
+        host = container.get_container_host_ip()
+        port = container.get_exposed_port(6432)
+        yield f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
+
+
+@pytest.fixture(scope="session")
+def pgbouncer_url(
+    postgres_container: PostgresContainer, pgbouncer_image: str
+) -> Iterator[str]:
+    """Plain ``postgresql://`` DSN of the container's default database, through
+    a Testcontainers PgBouncer that authenticates the container's superuser
+    (the owner). The runtime-role PgBouncer is ``test_runtime_role.py``'s."""
+    with started_pgbouncer(
+        postgres_container,
+        pgbouncer_image,
+        postgres_container.username,
+        postgres_container.password,
+    ) as url:
+        yield url
 
 
 def settings_for(

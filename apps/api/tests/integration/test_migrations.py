@@ -17,7 +17,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import text
+from sqlalchemy import make_url, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0095"
+HEAD = "0096"
 FINANCE_TABLES_0083 = frozenset({"expense_categories", "vendors"})
 EXPENSE_TABLES_0084 = frozenset(
     {"expenses", "expense_payments", "expense_payment_reversals", "expense_adjustments"}
@@ -18332,3 +18332,104 @@ def test_0095_adds_the_subjects_seed_key_and_downgrade_drops_it(fresh_database_u
     command.upgrade(config, "head")
 
     assert metadata_diff(dsn) == []
+
+
+# --- 0096: least-privilege runtime role classora_app (M10-10, #165) -----
+
+
+def _runtime_acl_0096(dsn: str) -> dict[str, int]:
+    """How many ACL entries of this database name ``classora_app``: on the
+    database, schema ``public``, relations and default privileges."""
+    [row] = run_sql(
+        dsn,
+        """
+        SELECT
+          (SELECT count(*) FROM pg_database d, aclexplode(d.datacl) a
+             WHERE d.datname = current_database()
+               AND a.grantee = 'classora_app'::regrole) AS on_database,
+          (SELECT count(*) FROM pg_namespace n, aclexplode(n.nspacl) a
+             WHERE n.nspname = 'public'
+               AND a.grantee = 'classora_app'::regrole) AS on_schema,
+          (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) a
+             WHERE c.relnamespace = 'public'::regnamespace
+               AND a.grantee = 'classora_app'::regrole) AS on_relations,
+          (SELECT count(*) FROM pg_default_acl d, aclexplode(d.defaclacl) a
+             WHERE a.grantee = 'classora_app'::regrole) AS default_acl
+        """,
+    )
+    return dict(row._mapping)
+
+
+def _public_may_create_temp_0096(dsn: str) -> bool:
+    [row] = run_sql(
+        dsn,
+        "SELECT bool_or(a.grantee = 0 AND a.privilege_type = 'TEMPORARY') AS ok"
+        " FROM pg_database d, aclexplode(coalesce(d.datacl,"
+        " acldefault('d', d.datdba))) a WHERE d.datname = current_database()",
+    )
+    return bool(row.ok)
+
+
+def test_0096_grants_the_runtime_role_and_downgrade_revokes_everything(
+    fresh_database_url, database_url
+):
+    """0096 creates (or reuses) the cluster role and grants it DML in this
+    database; downgrading to 0095 leaves it no privilege, no default ACL and
+    gives TEMPORARY back to PUBLIC, without dropping the role; re-upgrading
+    passes with the role already present."""
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0095")
+    assert _public_may_create_temp_0096(dsn)
+
+    command.upgrade(config, "0096")
+
+    assert version_nums(dsn) == ["0096"]
+    assert metadata_diff(dsn) == []
+    granted = _runtime_acl_0096(dsn)
+    assert granted["on_database"] > 0
+    assert granted["on_schema"] > 0
+    assert granted["on_relations"] > 0
+    assert granted["default_acl"] > 0
+    assert not _public_may_create_temp_0096(dsn)
+
+    command.downgrade(config, "0095")
+
+    assert version_nums(dsn) == ["0095"]
+    assert _runtime_acl_0096(dsn) == {
+        "on_database": 0,
+        "on_schema": 0,
+        "on_relations": 0,
+        "default_acl": 0,
+    }
+    assert _public_may_create_temp_0096(dsn)
+    assert run_sql(
+        database_url, "SELECT 1 FROM pg_roles WHERE rolname = 'classora_app'"
+    )
+
+    command.upgrade(config, "head")
+
+    assert version_nums(dsn) == [HEAD]
+    assert _runtime_acl_0096(dsn)["on_relations"] > 0
+
+
+def test_0096_runs_in_two_databases_of_one_cluster(database_url):
+    """The role is cluster-wide: a second database's 0096 reuses it."""
+    names = [f"test_{uuid.uuid4().hex}" for _ in range(2)]
+    urls = [
+        make_url(database_url).set(database=name).render_as_string(False)
+        for name in names
+    ]
+    try:
+        for name, url in zip(names, urls, strict=True):
+            run_sql(database_url, f'CREATE DATABASE "{name}"', autocommit=True)
+            command.upgrade(alembic_config(url), "head")
+            assert version_nums(url) == [HEAD]
+            assert _runtime_acl_0096(url)["on_relations"] > 0
+    finally:
+        for name in names:
+            run_sql(
+                database_url,
+                f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)',
+                autocommit=True,
+            )

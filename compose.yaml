@@ -4,7 +4,7 @@
 # The services are defined in two stack files, split the way the hosts run them
 # (architecture §9.1, _docs/adr/0003-database-connection-topology.md):
 #   infrastructure/docker/compose.data.yaml  db, pgbouncer
-#   infrastructure/docker/compose.app.yaml   api, worker, web
+#   infrastructure/docker/compose.app.yaml   api, worker, web, migrate (profile tools)
 # Locally they run as ONE Compose project ("classora", same db-data volume).
 # Each service here pulls its definition in with `extends:` (Compose `include:`
 # needs v2.20+, and the development host runs v2.19). `extends:` keeps each
@@ -54,6 +54,18 @@ services:
     extends:
       file: infrastructure/docker/compose.app.yaml
       service: web
+
+  # Tools service (#165): migrations, sync-runtime-role, seeds and the operator
+  # CLI as the database owner, directly to db. Profile `tools`: only
+  # `docker compose run --rm migrate ...` (make migrate/seed/bootstrap-owner).
+  migrate:
+    extends:
+      file: infrastructure/docker/compose.app.yaml
+      service: migrate
+    profiles: [tools]
+    depends_on:
+      db:
+        condition: service_healthy
 
   # --- Optional local observability (profile `observability`) -------------
   # One collector plays agent and gateway (collector/local.yaml): container

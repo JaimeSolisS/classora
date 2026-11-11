@@ -52,7 +52,7 @@ mount=(-v "$PWD/$obs:/obs:ro")
 # COMPOSE_PROFILES or project name must not change the answer.
 compose_services() {
   env -u COMPOSE_PROFILES COMPOSE_PROJECT_NAME=classora-obs-check \
-    POSTGRES_USER=check POSTGRES_PASSWORD=check POSTGRES_DB=check \
+    POSTGRES_USER=check POSTGRES_PASSWORD=check POSTGRES_APP_PASSWORD=check POSTGRES_DB=check \
     docker compose --env-file /dev/null "$@" config --services
 }
 check_profile() {

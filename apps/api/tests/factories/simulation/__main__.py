@@ -13,8 +13,9 @@
 4. Print the reference-seed lines, then ``<module>: <n> rows`` (or
    ``skipped (<reason>)``) per module; generated values are never printed.
 
-Like ``make seed``, it connects directly to PostgreSQL
-(``DATABASE_DIRECT_URL``, ADR-0003).
+Like ``make seed``, it connects directly to PostgreSQL as the database owner
+(``DATABASE_MIGRATION_URL``, else ``DATABASE_DIRECT_URL``; ADR-0003, #165): its
+``ANALYZE`` needs the table owner.
 """
 
 import argparse

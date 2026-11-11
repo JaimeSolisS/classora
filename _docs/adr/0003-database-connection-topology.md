@@ -156,6 +156,26 @@ This is a psycopg runtime requirement, not a Procrastinate limitation. How the A
   - the failed-job visibility and retry UI (ISSUE-J3);
   - idempotency mechanics for generated records (ISSUE-J4).
 
+## Amendment (#165, M10-10): a database role per connection path
+
+Recorded 2026-11-11. Decisions #165 E1–E5 (a), orchestrator-recommended and owner-delegated. No new ADR.
+
+Until #165 every path connected as the database owner (the `postgres` image's superuser locally and in CI). From migration `0096` the API and the worker log in as the least-privilege runtime role `classora_app`, and only the tools use the owner.
+
+| Path | Role | Variable |
+| --- | --- | --- |
+| API request traffic and API-side Procrastinate deferral, through PgBouncer | runtime `classora_app` | `DATABASE_URL` |
+| The API's direct `LISTEN` connection and the whole `worker` container | runtime `classora_app` | `DATABASE_DIRECT_URL` |
+| Alembic, the seeds, the operator CLI (`python -m app.cli`) and the local data factories | owner | `DATABASE_MIGRATION_URL` (optional; unset: `DATABASE_DIRECT_URL`) |
+
+- **One runtime role** for the API and the worker (E5 (a)): they run the same business code. The name is fixed, not configurable. It is not a superuser, has no special attribute, is `NOINHERIT`, a member of no role and the owner of nothing.
+- **Grants (migration `0096`):** `CONNECT`, `USAGE` on schema `public`, `SELECT, INSERT, UPDATE, DELETE` on every table and `USAGE, SELECT` on every sequence in `public` (the Procrastinate tables included). `alembic_version` is `SELECT` only; `audit_events` is `SELECT, INSERT` only (E2 (a)). `TRUNCATE`, `REFERENCES` and `TRIGGER` are never granted. `TEMPORARY` is revoked from `PUBLIC`. The other append-only tables keep their DML grants and their triggers, which the runtime role can't disable or drop because it owns no table (#619 tracks revoking more).
+- **Default privileges.** `0096` sets `ALTER DEFAULT PRIVILEGES` for the migrating role in `public`, so a table or sequence a later migration adds is usable at once. That only works when migrations run as the owner. A later migration that adds an append-only table adds its own `REVOKE`, and the privilege-matrix test (`tests/integration/test_runtime_role.py`) pins every table.
+- **Login.** The migration creates the role `NOLOGIN` and contains no secret. `python -m app.cli sync-runtime-role` (owner connection, after `alembic upgrade head`) gives it `LOGIN` and the password of `DATABASE_DIRECT_URL`, sent as a SCRAM-SHA-256 verifier computed in Python. `make migrate`, `make e2e` and the hosts' deploy run it.
+- **PgBouncer** knows only the runtime role (`PGBOUNCER_AUTH_USER`/`PGBOUNCER_AUTH_PASSWORD`). The owner never connects through it.
+- **Compose.** `api`, `worker` and `pgbouncer` receive only the runtime credentials (`POSTGRES_APP_PASSWORD`). A `migrate` tools service (profile `tools`, the api image) gets the owner URL. On a new volume the role exists only after `make migrate`, so `make migrate` runs before `make dev`.
+- **Fails closed.** A tool that falls back to a runtime `DATABASE_DIRECT_URL` gets SQLSTATE 42501 and changes nothing.
+
 ## Alternatives considered
 
 - **A separate PgBouncer pool in session mode** for `LISTEN`, the worker and Alembic. Considered and rejected in favor of direct connections on the internal Docker network.

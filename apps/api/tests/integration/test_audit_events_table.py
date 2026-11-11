@@ -1,8 +1,10 @@
 """``audit_events``: append-only triggers, CHECKs and the actor key (M2-04 B5).
 
-Raw SQL, as the role the application uses (the Testcontainers superuser,
-like ``POSTGRES_USER`` in Compose), both directly and through the test
-PgBouncer (the API's connection path, ADR-0003).
+Raw SQL, as the Testcontainers superuser (the owner, like ``POSTGRES_USER``
+in Compose), both directly and through the test PgBouncer (the API's
+connection path, ADR-0003): the triggers bind every role, the owner
+included. The runtime role ``classora_app`` additionally lacks ``UPDATE``,
+``DELETE`` and ``TRUNCATE`` on the table (#165, ``test_runtime_role.py``).
 """
 
 from collections.abc import Callable

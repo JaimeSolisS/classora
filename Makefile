@@ -29,9 +29,12 @@ SEMGREP = docker run --rm $(REPO_MOUNT) $(SEMGREP_IMAGE) \
 	semgrep scan --metrics=off --disable-version-check --no-git-ignore $(SEMGREP_CONFIGS) $(SEMGREP_TARGETS)
 
 ## Build the images and start db, pgbouncer, api, worker and web in the background (idempotent).
-# The worker (same image as api) waits for its tables until `make migrate` has run.
+## On a new checkout or volume run `make migrate` first: it creates the database role
+## (classora_app) the api, worker and PgBouncer log in as (#165).
 dev:
-	docker compose up -d --build --wait
+	@docker compose up -d --build --wait || { status=$$?; \
+	  echo "If this is a new checkout or volume, run make migrate first (it creates the database role the app uses)." >&2; \
+	  exit $$status; }
 
 # Optional local observability (ADR-0014, #611): OTel Collector, Prometheus, Loki,
 # Tempo and Grafana, Compose profile `observability` (root compose.yaml). Off by
@@ -93,29 +96,31 @@ tf-destroy:
 	$(TF_ROOT_CHECK)
 	$(TF) destroy $(ENV)
 
-## Apply Alembic migrations to the local Compose database (starts db if needed; make dev never migrates).
-# --build: uses the migrations in the working tree. Alembic connects directly to PostgreSQL (ADR-0003).
+## Apply Alembic migrations to the local Compose database, then give the runtime role
+## classora_app its login and password (starts db if needed; make dev never migrates).
+# --build: uses the migrations in the working tree. The `migrate` tools service connects
+# directly to PostgreSQL as the owner (DATABASE_MIGRATION_URL; ADR-0003 amendment, #165).
 migrate:
-	docker compose run --rm --build api alembic upgrade head
+	docker compose run --rm --build migrate sh -c 'alembic upgrade head && python -m app.cli sync-runtime-role'
 
 ## Apply the reference seeds to the local Compose database (idempotent; run `make migrate` first).
-# Same image and direct connection as `make migrate` (ADR-0003); never migrates.
+# Same tools service and owner connection as `make migrate` (ADR-0003); never migrates.
 seed:
-	docker compose run --rm --build api python -m app.seeds
+	docker compose run --rm --build migrate python -m app.seeds
 
 ## Create the first Owner account: make bootstrap-owner USERNAME=<name> (prompts for the
 ## password twice; refused once any Owner exists). Run `make migrate` and `make seed` first.
 # Same image and direct connection as `make seed` (ADR-0003); runs in every APP_ENV.
 bootstrap-owner:
 	@test -n "$(USERNAME)" || { echo "usage: make bootstrap-owner USERNAME=<name>" >&2; exit 2; }
-	docker compose run --rm --build api python -m app.cli bootstrap-owner --username "$(USERNAME)"
+	docker compose run --rm --build migrate python -m app.cli bootstrap-owner --username "$(USERNAME)"
 
 ## Print a one-time password-reset link for a locked-out active Owner:
 ## make reset-owner-password USERNAME=<name> (shown once; expires in 24 hours).
 # Same image and direct connection as `make bootstrap-owner` (ADR-0003); runs in every APP_ENV.
 reset-owner-password:
 	@test -n "$(USERNAME)" || { echo "usage: make reset-owner-password USERNAME=<name>" >&2; exit 2; }
-	docker compose run --rm --build api python -m app.cli reset-owner-password --username "$(USERNAME)"
+	docker compose run --rm --build migrate python -m app.cli reset-owner-password --username "$(USERNAME)"
 
 ## Generate the simulated operations data in Spanish on the host (APP_ENV=local only; needs a freshly migrated database and .env).
 # A deterministic center from 1 Sep to 5 Dec 2026 (history to 18 Nov), through the services; README "Simulated operations data".
@@ -354,16 +359,18 @@ db-shared-down:
 	$(SHARED_DB_COMPOSE) down $(if $(filter 1,$(V)),-v)
 
 ## Create a database and its role on the shared server: make db-create NAME=<name>
-## (name: [a-z0-9_]+; idempotent). Prints the DATABASE_URL and DATABASE_DIRECT_URL to set.
+## (name: [a-z0-9_]+; idempotent). Also creates the cluster-wide runtime role classora_app once.
+## Prints the DATABASE_URL, DATABASE_DIRECT_URL (runtime role) and DATABASE_MIGRATION_URL (owner) to set.
 db-create:
 	@infrastructure/scripts/shared-db.sh create "$(NAME)"
 
-## Drop a database and its role from the shared server: make db-drop NAME=<name>.
+## Drop a database and its role from the shared server: make db-drop NAME=<name>
+## (classora_app stays: other databases use it).
 db-drop:
 	@infrastructure/scripts/shared-db.sh drop "$(NAME)"
 
-## Apply the migrations, then run the API on the host with reload on 127.0.0.1:API_PORT
-## (default 8000) against DATABASE_URL / DATABASE_DIRECT_URL.
+## Apply the migrations (as the owner, DATABASE_MIGRATION_URL), then run the API on the host
+## with reload on 127.0.0.1:API_PORT (default 8000) against DATABASE_URL / DATABASE_DIRECT_URL.
 api-native:
 	$(WITH_ENV) sh -c 'cd apps/api && uv run alembic upgrade head && \
 	  exec uv run uvicorn --factory app.main:create_app --host 127.0.0.1 --port "$${API_PORT:-8000}" \

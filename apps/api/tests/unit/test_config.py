@@ -31,8 +31,12 @@ VALID_DSN = f"postgresql://{DB_USER}:{DB_PASSWORD}@pooler.example:6432/classora"
 DIRECT_PASSWORD = "Direct-S3cret-pw-55"
 DIRECT_DSN = f"postgresql://{DB_USER}:{DIRECT_PASSWORD}@db.example:5432/classora"
 STORAGE_SECRET = "Storage-S3cret-key-88"
+MIGRATION_PASSWORD = "migration-placeholder-pw"
+MIGRATION_DSN = f"postgresql://owner:{MIGRATION_PASSWORD}@db.example:5432/classora"
 
 DATABASE_URL_NAMES = ["DATABASE_URL", "DATABASE_DIRECT_URL"]
+# Same validation; the migration URL is optional (#165).
+VALIDATED_URL_NAMES = [*DATABASE_URL_NAMES, "DATABASE_MIGRATION_URL"]
 MINIMAL_ENV = {
     "APP_ENV": "local",
     "APP_ORIGIN": "http://127.0.0.1:5173",
@@ -49,13 +53,25 @@ FULL_ENV = {
     "STORAGE_ENDPOINT_URL": "http://storage:9000",
     "STORAGE_ACCESS_KEY_ID": "access-key-id",
     "STORAGE_SECRET_ACCESS_KEY": STORAGE_SECRET,
+    "DATABASE_MIGRATION_URL": MIGRATION_DSN,
 }
-SECRETS = (VALID_DSN, DB_PASSWORD, DIRECT_DSN, DIRECT_PASSWORD, STORAGE_SECRET)
+SECRETS = (
+    VALID_DSN,
+    DB_PASSWORD,
+    DIRECT_DSN,
+    DIRECT_PASSWORD,
+    STORAGE_SECRET,
+    MIGRATION_DSN,
+    MIGRATION_PASSWORD,
+)
 
 # Variables that the Compose files interpolate from .env; not read by the API.
 COMPOSE_ONLY_VARIABLES = {
     "POSTGRES_USER",
     "POSTGRES_PASSWORD",
+    # The runtime role's password (#165): Compose builds the api and worker
+    # URLs and PgBouncer's auth file from it.
+    "POSTGRES_APP_PASSWORD",
     "POSTGRES_DB",
     "POSTGRES_PORT",
     "PGBOUNCER_PORT",
@@ -107,6 +123,7 @@ def test_minimal_environment_loads_with_defaults(monkeypatch):
     assert settings.storage_access_key_id is None
     assert settings.storage_secret_access_key is None
     assert settings.trusted_proxies == ()
+    assert settings.database_migration_url is None
 
 
 def test_full_environment_loads(monkeypatch):
@@ -123,9 +140,13 @@ def test_full_environment_loads(monkeypatch):
     assert settings.storage_access_key_id == "access-key-id"
     assert settings.storage_secret_access_key is not None
     assert settings.storage_secret_access_key.get_secret_value() == STORAGE_SECRET
+    assert settings.database_migration_url is not None
+    assert settings.database_migration_url.get_secret_value() == MIGRATION_DSN
 
 
-@pytest.mark.parametrize("name", ["STORAGE_BUCKET", "STORAGE_ENDPOINT_URL"])
+@pytest.mark.parametrize(
+    "name", ["STORAGE_BUCKET", "STORAGE_ENDPOINT_URL", "DATABASE_MIGRATION_URL"]
+)
 def test_empty_optional_value_counts_as_unset(monkeypatch, name):
     set_env(monkeypatch, {**MINIMAL_ENV, name: ""})
 
@@ -196,7 +217,7 @@ def test_invalid_app_env_lists_allowed_values(monkeypatch):
         assert allowed in line
 
 
-@pytest.mark.parametrize("name", DATABASE_URL_NAMES)
+@pytest.mark.parametrize("name", VALIDATED_URL_NAMES)
 def test_non_postgresql_scheme_is_rejected(monkeypatch, name):
     dsn = f"mysql://{DB_USER}:{DB_PASSWORD}@db/x"
 
@@ -216,7 +237,7 @@ def test_non_postgresql_scheme_is_rejected(monkeypatch, name):
         (f"postgresql://{DB_USER}:{DB_PASSWORD}@[db.example/classora", "valid URL"),
     ],
 )
-@pytest.mark.parametrize("name", DATABASE_URL_NAMES)
+@pytest.mark.parametrize("name", VALIDATED_URL_NAMES)
 def test_dsn_without_host_or_database_is_rejected(monkeypatch, dsn, reason, name):
     message = config_error(monkeypatch, {**MINIMAL_ENV, name: dsn})
 
@@ -428,6 +449,7 @@ def test_repr_and_str_mask_secrets(monkeypatch):
         assert DB_PASSWORD not in rendered
         assert DIRECT_PASSWORD not in rendered
         assert STORAGE_SECRET not in rendered
+        assert MIGRATION_PASSWORD not in rendered
 
 
 # --- startup entry point ----------------------------------------------------
@@ -543,6 +565,7 @@ def test_settings_reads_exactly_the_documented_variables():
         "APP_ORIGIN",
         "DATABASE_URL",
         "DATABASE_DIRECT_URL",
+        "DATABASE_MIGRATION_URL",
         "SESSION_COOKIE_SECURE",
         "STORAGE_BUCKET",
         "STORAGE_REGION",
@@ -688,9 +711,71 @@ def test_compose_passes_the_otlp_endpoint_to_api_and_worker():
     )
 
 
-def test_compose_passes_trusted_proxies_to_api_and_worker():
+@pytest.mark.parametrize("service", ["api", "worker", "migrate"])
+def test_compose_passes_trusted_proxies_to_api_worker_and_migrate(service):
+    # migrate (#165) validates the same settings as the api.
+    environment = compose_service_environment(service)
+
+    assert environment.count("TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}") == 1
+
+
+# --- #165: least-privilege runtime role ---------------------------------------
+
+
+def compose_service_environment(service: str) -> str:
+    """The ``environment:`` block of one service in compose.app.yaml."""
     compose = (
         API_ROOT.parents[1] / "infrastructure/docker/compose.app.yaml"
     ).read_text()
+    match = re.search(
+        rf"^  {service}:\n(?:    .*\n|\n)*?    environment:\n((?:      .*\n)+)",
+        compose,
+        re.MULTILINE,
+    )
+    assert match, f"no environment block for {service}"
+    return match.group(1)
 
-    assert compose.count("TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}") == 2
+
+@pytest.mark.parametrize("service", ["api", "worker"])
+def test_compose_gives_api_and_worker_only_the_runtime_role(service):
+    environment = compose_service_environment(service)
+
+    assert (
+        "DATABASE_URL: postgresql://classora_app:${POSTGRES_APP_PASSWORD" in environment
+    )
+    assert (
+        "DATABASE_DIRECT_URL: postgresql://classora_app:${POSTGRES_APP_PASSWORD"
+        in environment
+    )
+    for owner_value in ("POSTGRES_PASSWORD", "POSTGRES_USER", "DATABASE_MIGRATION_URL"):
+        assert owner_value not in environment
+
+
+def test_compose_migrate_service_gets_the_owner_url():
+    environment = compose_service_environment("migrate")
+
+    assert (
+        "DATABASE_MIGRATION_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}"
+        "@db:5432/${POSTGRES_DB}"
+    ) in environment
+
+
+def env_example_values() -> dict[str, str]:
+    values = {}
+    for line in ENV_EXAMPLE.read_text().splitlines():
+        name, sep, value = line.partition("=")
+        if sep and re.fullmatch(r"[A-Z][A-Z0-9_]*", name):
+            values[name] = value
+    return values
+
+
+def test_env_example_host_urls_use_the_runtime_role_and_the_owner():
+    values = env_example_values()
+
+    for name in ("DATABASE_URL", "DATABASE_DIRECT_URL"):
+        assert values[name].startswith(
+            f"postgresql://classora_app:{values['POSTGRES_APP_PASSWORD']}@"
+        ), name
+    assert values["DATABASE_MIGRATION_URL"].startswith(
+        f"postgresql://{values['POSTGRES_USER']}:{values['POSTGRES_PASSWORD']}@"
+    )

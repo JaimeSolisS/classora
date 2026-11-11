@@ -153,10 +153,12 @@ def test_sensitive_key_rule():
         "dsn",
         "database_url",
         "database_direct_url",
+        "database_migration_url",
     }
     for key in (
         "DATABASE_URL",
         "DATABASE_DIRECT_URL",
+        "DATABASE_MIGRATION_URL",
         "X-Api-Key",
         "Set-Cookie",
         "refreshToken",
