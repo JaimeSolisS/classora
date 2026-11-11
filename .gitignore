@@ -53,6 +53,11 @@ e2e/.auth/
 *.tfstate
 *.tfstate.*
 *.tfplan
+tfplan
+tfplan-destroy
+*.tfvars
+*.tfvars.json
+backend.hcl
 crash.log
 crash.*.log
 override.tf

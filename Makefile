@@ -1,4 +1,4 @@
-.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability
+.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability check-infra tf-plan tf-apply tf-destroy
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -65,6 +65,36 @@ dev-observability-down:
 ## Needs Docker and uv (CI job `infra`).
 check-observability:
 	infrastructure/observability/check.sh
+
+# --- Terraform (ADR-0011, #613; _docs/runbooks/terraform.md) -----------------
+# check-infra runs Terraform and shellcheck from these images (by multi-arch index
+# digest; the tag is informational), so neither needs a local install.
+TERRAFORM_IMAGE := hashicorp/terraform:1.13.4@sha256:eebc943e69008b6d6d986800087164274d8c92d83db8d53fb9baa4ccff309884
+SHELLCHECK_IMAGE := koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
+TF := infrastructure/scripts/terraform.sh
+TF_ROOT_CHECK = @test -n "$(ENV)" || { echo "usage: make $@ ENV=<bootstrap|shared|dev|prod|monitoring>" >&2; exit 2; }
+
+## Static infrastructure checks, no AWS credentials (CI job `infra`): terraform fmt -check
+## and validate for every root, and shellcheck on infrastructure/scripts and infrastructure/host.
+check-infra:
+	TERRAFORM_IMAGE=$(TERRAFORM_IMAGE) SHELLCHECK_IMAGE=$(SHELLCHECK_IMAGE) $(TF) check
+
+## Plan a Terraform root (AWS_PROFILE defaults to jsolisdev): make tf-plan ENV=<root>.
+## Saves <root>/tfplan; the first bootstrap plan runs on local state.
+tf-plan:
+	$(TF_ROOT_CHECK)
+	$(TF) plan $(ENV)
+
+## Apply the saved plan after typing the root's name (no auto-approve): make tf-apply ENV=<root>.
+tf-apply:
+	$(TF_ROOT_CHECK)
+	$(TF) apply $(ENV)
+
+## Destroy a root after typing its name: make tf-destroy ENV=<root>. Refuses bootstrap,
+## and prod until M9-10 adds the final-dump guard.
+tf-destroy:
+	$(TF_ROOT_CHECK)
+	$(TF) destroy $(ENV)
 
 ## Apply Alembic migrations to the local Compose database, then give the runtime role
 ## classora_app its login and password (starts db if needed; make dev never migrates).
