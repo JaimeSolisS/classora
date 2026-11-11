@@ -711,12 +711,12 @@ def test_compose_passes_the_otlp_endpoint_to_api_and_worker():
     )
 
 
-def test_compose_passes_trusted_proxies_to_api_and_worker():
-    compose = (
-        API_ROOT.parents[1] / "infrastructure/docker/compose.app.yaml"
-    ).read_text()
+@pytest.mark.parametrize("service", ["api", "worker", "migrate"])
+def test_compose_passes_trusted_proxies_to_api_worker_and_migrate(service):
+    # migrate (#165) validates the same settings as the api.
+    environment = compose_service_environment(service)
 
-    assert compose.count("TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}") == 2
+    assert environment.count("TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}") == 1
 
 
 # --- #165: least-privilege runtime role ---------------------------------------
