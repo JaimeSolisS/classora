@@ -1,0 +1,116 @@
+# DEV release build (ADR-0011; #614 E1 (a)). Manual only for now: builds the
+# three arm64 images with the M9-02 Dockerfiles, runs the M9-02 checks, pushes
+# them to ECR as sha-<commit>, and uploads the release bundle to the DEV ops
+# bucket as releases/<commit>.tgz. Then, over Session Manager:
+#   sudo /opt/classora/bin/deploy.sh <commit>
+# M9-07 (#615) adds the push-to-develop trigger, the SSM deploy document, the
+# skip-when-absent logic and the dev-<sha> tag to this workflow.
+#
+# GitHub environment `dev` variables (no secrets; OIDC, ADR-0012):
+#   AWS_ROLE_ARN   the classora-gha-dev role (bootstrap output gha_role_arns.dev)
+#   OPS_BUCKET     the DEV ops bucket (envs/dev output ops_bucket)
+name: deploy-dev
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-24.04-arm
+    environment: dev
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PLATFORM: linux/arm64
+      AWS_REGION: us-east-2
+      SHA: ${{ github.sha }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # smoke-edge reads PRODUCTION_HEADERS with Node (no install needed).
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      # The same checks as the CI `images` job (#610), before anything is pushed.
+      - name: make build-images (linux/arm64)
+        run: make build-images
+
+      - name: make check-images
+        run: make check-images
+
+      - name: make check-pdf-image (arm64)
+        run: make check-pdf-image
+
+      - name: make smoke-edge
+        run: make smoke-edge
+
+      - name: make scan-image (api, web, pgbouncer)
+        run: |
+          fail=0
+          for image in classora/api:local classora/web:local classora/pgbouncer:local; do
+            echo "::group::scan-image $image"
+            make scan-image IMAGE="$image" || fail=1
+            echo "::endgroup::"
+          done
+          exit "$fail"
+
+      - name: Configure AWS credentials (OIDC, classora-gha-dev)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-2
+          mask-aws-account-id: true
+
+      # Tags are immutable: a commit already pushed keeps its images.
+      - name: Push sha-<commit> to ECR
+        run: |
+          set -euo pipefail
+          registry="$(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
+          : >images.env
+          for name in api web pgbouncer; do
+            repo="classora/$name"
+            tag="sha-$SHA"
+            if ! aws ecr describe-images --repository-name "$repo" --image-ids "imageTag=$tag" >/dev/null 2>&1; then
+              docker tag "classora/$name:local" "$registry/$repo:$tag"
+              docker push --quiet "$registry/$repo:$tag"
+            fi
+            digest=$(aws ecr describe-images --repository-name "$repo" --image-ids "imageTag=$tag" \
+              --query 'imageDetails[0].imageDigest' --output text)
+            var=$(echo "$name" | tr '[:lower:]' '[:upper:]')_IMAGE
+            echo "$var=$registry/$repo@$digest" >>images.env
+          done
+
+      # The host's release bundle: its Compose files, scripts and units, the
+      # collector agent config and the image digests (no secrets).
+      - name: Upload the release bundle
+        env:
+          OPS_BUCKET: ${{ vars.OPS_BUCKET }}
+        run: |
+          set -euo pipefail
+          tar -czf "release.tgz" images.env \
+            infrastructure/host \
+            infrastructure/docker/compose.data.yaml \
+            infrastructure/docker/compose.app.yaml \
+            infrastructure/observability/collector/agent.yaml
+          aws s3 cp --only-show-errors release.tgz "s3://$OPS_BUCKET/releases/$SHA.tgz"
+          {
+            echo "### DEV release $SHA"
+            echo "Deploy over Session Manager: \`sudo /opt/classora/bin/deploy.sh $SHA\`"
+          } >>"$GITHUB_STEP_SUMMARY"
