@@ -18,6 +18,12 @@ import {
   type Option,
   type SchedulingConflict,
 } from '../create/api';
+import {
+  DEFAULT_DURATION_MINUTES,
+  lengthMinutes,
+  withTimeFormat,
+} from '../create/rules';
+import { useEndFollowsStart } from '../create/useEndFollowsStart';
 import { changedFields, shownErrors, withoutErrors } from '@/lib/fieldErrors';
 import type { ClassSessionDetail } from '../session/api';
 import type { SeriesOccurrence } from './api';
@@ -127,13 +133,19 @@ function EditOccurrenceContent({
       timeZone,
     ),
   );
+  // #600: the end follows the start per edit; an empty end (or one not
+  // after the old start) gets the length the dialog opened with (E2 a).
+  const [openedLength] = useState(
+    () => lengthMinutes(values.start, values.end) ?? DEFAULT_DURATION_MINUTES,
+  );
+  const times = useEndFollowsStart(openedLength);
   // HF-13 (#598 E4): after the first submit the client checks follow the
   // values; the server's errors stay until their field changes.
   const [checked, setChecked] = useState(false);
   const [serverErrors, setServerErrors] = useState<SlotErrors>({});
-  const errors = shownErrors(checked, serverErrors, () =>
-    validateOccurrence(values),
-  );
+  const check = () =>
+    withTimeFormat(validateOccurrence(values), times.unreadable);
+  const errors = shownErrors(checked, serverErrors, check);
   const [formError, setFormError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<SchedulingConflict[] | null>(
     initialConflicts ?? null,
@@ -156,6 +168,13 @@ function EditOccurrenceContent({
     );
   }
 
+  /** A typed or picked start or end (#600): a new start moves the end. */
+  function setTime(field: 'start' | 'end', value: string, unreadable: boolean) {
+    const pair = times.change(values, field, value, unreadable);
+    setValues((current) => ({ ...current, ...pair }));
+    setServerErrors((current) => withoutErrors(current, changedFields(field)));
+  }
+
   function focus(found: SlotErrors) {
     const first = (['date', 'start', 'end', 'classroom'] as const).find(
       (field) => found[field],
@@ -172,7 +191,7 @@ function EditOccurrenceContent({
     setConflicts(null);
     setFailure(null);
     setFormError(null);
-    const found = validateOccurrence(values);
+    const found = check();
     setChecked(true);
     setServerErrors({});
     if (Object.keys(found).length > 0) {
@@ -249,7 +268,7 @@ function EditOccurrenceContent({
           <SlotInput
             id={fieldId('date')}
             label={t('scheduling.fields.date')}
-            type="date"
+            kind="date"
             value={values.date}
             error={message(errors.date)}
             disabled={submitting}
@@ -258,22 +277,26 @@ function EditOccurrenceContent({
           <SlotInput
             id={fieldId('start')}
             label={t('scheduling.fields.start')}
-            type="time"
+            kind="time"
             value={values.start}
             error={message(errors.start)}
             describedBy={zoneId}
             disabled={submitting}
-            onChange={(value) => set('start', value)}
+            onChange={(value, unreadable) =>
+              setTime('start', value, unreadable)
+            }
+            onEditEnd={times.endEdit}
           />
           <SlotInput
             id={fieldId('end')}
             label={t('scheduling.fields.end')}
-            type="time"
+            kind="time"
             value={values.end}
             error={message(errors.end)}
             describedBy={zoneId}
             disabled={submitting}
-            onChange={(value) => set('end', value)}
+            scrollTo={times.endScrollTo(values.start)}
+            onChange={(value, unreadable) => setTime('end', value, unreadable)}
           />
         </div>
         <ClassroomSelect

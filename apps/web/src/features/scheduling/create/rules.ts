@@ -126,25 +126,28 @@ export interface UnreadableTimes {
 
 export const READABLE_TIMES: UnreadableTimes = { start: false, end: false };
 
+/** The message of a time field whose text isn't a time (#598 AC4). */
+export const TIME_FORMAT_MESSAGE = 'scheduling.validation.timeFormat';
+
 /**
  * A missing start or end whose field holds text that can't be read as a
- * time says how to write one instead (HF-13, #598 AC4).
+ * time says how to write one instead (HF-13, #598 AC4). Any form's errors
+ * whose start and end messages include `TIME_FORMAT_MESSAGE` (#600).
  */
-export function withTimeFormat(
-  errors: ScheduleErrors,
-  unreadable: UnreadableTimes,
-): ScheduleErrors {
-  const next = { ...errors };
+export function withTimeFormat<
+  E extends Partial<Record<'start' | 'end', string>>,
+>(errors: E, unreadable: UnreadableTimes): E {
+  const next: Partial<Record<'start' | 'end', string>> = { ...errors };
   if (
     unreadable.start &&
     next.start === 'scheduling.validation.startRequired'
   ) {
-    next.start = 'scheduling.validation.timeFormat';
+    next.start = TIME_FORMAT_MESSAGE;
   }
   if (unreadable.end && next.end === 'scheduling.validation.endRequired') {
-    next.end = 'scheduling.validation.timeFormat';
+    next.end = TIME_FORMAT_MESSAGE;
   }
-  return next;
+  return next as E;
 }
 
 /**
@@ -173,9 +176,20 @@ export const VALUE_FIELDS: Record<keyof ScheduleValues, ScheduleField> = {
 export const DEFAULT_DURATION_MINUTES = 60;
 
 /**
+ * The minutes from `start` to `end`, when both are times and the end is
+ * after the start; else null (#600 E2: a dialog's length on opening).
+ */
+export function lengthMinutes(start: string, end: string): number | null {
+  const from = minutesOfDay(start);
+  const until = minutesOfDay(end);
+  return from !== null && until !== null && until > from ? until - from : null;
+}
+
+/**
  * The end once the start changes from `oldStart` to `newStart` (HF-13,
  * #598 E3): an end after the old start moves with it (same duration); an
- * empty end, or one not after the old start, becomes the new start + 1 h.
+ * empty end, or one not after the old start, becomes the new start +
+ * `fallbackMinutes` (1 h, or the length a dialog opened with, #600 E2).
  * An end that would pass 23:59, or a start that isn't a time, leaves the
  * end as it was. With no old start, an end already after the new start is
  * kept (the user typed the end first).
@@ -184,6 +198,7 @@ export function endAfterStartChange(
   oldStart: string,
   newStart: string,
   end: string,
+  fallbackMinutes: number = DEFAULT_DURATION_MINUTES,
 ): string {
   const to = minutesOfDay(newStart);
   if (to === null) {
@@ -197,7 +212,7 @@ export function endAfterStartChange(
   } else if (until !== null && from === null && until > to) {
     next = end;
   } else {
-    next = timeOfMinutes(to + DEFAULT_DURATION_MINUTES);
+    next = timeOfMinutes(to + fallbackMinutes);
   }
   return next ?? end;
 }
@@ -211,10 +226,11 @@ export function endAfterStartChange(
 export function endForStart(
   before: { start: string; end: string },
   newStart: string,
+  fallbackMinutes: number = DEFAULT_DURATION_MINUTES,
 ): string {
   return newStart === before.start
     ? before.end
-    : endAfterStartChange(before.start, newStart, before.end);
+    : endAfterStartChange(before.start, newStart, before.end, fallbackMinutes);
 }
 
 /**

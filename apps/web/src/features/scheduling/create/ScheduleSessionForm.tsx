@@ -22,7 +22,6 @@ import { SELECT_CLASS } from '@/features/students/styles';
 import { availabilityKey, type TutorAvailability } from '@/features/tutors/api';
 import { useFormatters } from '@/lib/formatters';
 import { toLanguage } from '@/i18n/language';
-import { addMinutes } from '@/lib/timeOfDay';
 import type { ClassSeriesCreated } from '../series/api';
 import { describeRecurrence } from '../series/describeRecurrence';
 import {
@@ -60,9 +59,7 @@ import { OverrideDialog } from './OverrideDialog';
 import {
   canFindFreeTimes,
   clearServerError,
-  DEFAULT_DURATION_MINUTES,
   EMPTY_SCHEDULE,
-  endForStart,
   FIELD_ORDER,
   isChosenTutorUnsuggested,
   isConflictCode,
@@ -71,7 +68,6 @@ import {
   overrideAction,
   overrideReasonError,
   ownerRefusal,
-  READABLE_TIMES,
   ownerServerErrors,
   serverErrors,
   sessionOverride,
@@ -96,9 +92,9 @@ import {
   type ScheduleValues,
   type SessionKindChoice,
   type SessionOverride,
-  type UnreadableTimes,
 } from './rules';
 import { useSlotParts } from './slotParts';
+import { useEndFollowsStart } from './useEndFollowsStart';
 import { SuggestedSlots, type SuggestionsState } from './SuggestedSlots';
 import {
   TutorSuggestions,
@@ -351,9 +347,9 @@ export function ScheduleSessionForm({
   const [serverFieldErrors, setServerFieldErrors] = useState<ScheduleErrors>(
     {},
   );
-  const [unreadable, setUnreadable] = useState<UnreadableTimes>(READABLE_TIMES);
-  // The start and end when the current edit of the start began (#598 QA D1).
-  const startEdit = useRef<{ start: string; end: string } | null>(null);
+  // The end follows the start per edit (#598 E3, QA D1; the shared hook).
+  const times = useEndFollowsStart();
+  const { unreadable } = times;
   const [submitting, setSubmitting] = useState(false);
   const [conflicts, setConflicts] = useState<SchedulingConflict[] | null>(null);
   const [failure, setFailure] = useState<unknown>(null);
@@ -490,18 +486,12 @@ export function ScheduleSessionForm({
       // Every keystroke of one edit is measured from the start and end
       // before the edit (#598 QA D1), so the result doesn't depend on the
       // in-between values (a cleared field, `93`, Escape).
-      startEdit.current ??= { start: values.start, end: values.end };
-      const end = endForStart(startEdit.current, value);
-      setValues((current) => ({ ...current, start: value, end }));
-      setUnreadable((current) => ({
-        start: isUnreadable,
-        end: end !== values.end ? false : current.end,
-      }));
+      const pair = times.changeStart(values, value, isUnreadable);
+      setValues((current) => ({ ...current, ...pair }));
     } else {
       // A changed end ends any edit of the start.
-      startEdit.current = null;
+      times.changeEnd(isUnreadable);
       setValues((current) => ({ ...current, end: value }));
-      setUnreadable((current) => ({ ...current, end: isUnreadable }));
     }
     changedField(field);
   }
@@ -731,8 +721,7 @@ export function ScheduleSessionForm({
 
   function chooseSlot(slot: SuggestedSlot) {
     setValues((current) => ({ ...current, ...slotValues(slot, timeZone) }));
-    startEdit.current = null;
-    setUnreadable(READABLE_TIMES);
+    times.reset();
     setServerFieldErrors({});
     setConflicts(null);
     clearSuggestions();
@@ -964,8 +953,7 @@ export function ScheduleSessionForm({
     setAnnouncement('');
     setChecked(false);
     setServerFieldErrors({});
-    setUnreadable(READABLE_TIMES);
-    startEdit.current = null;
+    times.reset();
     setValues({
       ...EMPTY_SCHEDULE,
       subjectId: generalSubjectId(subjects),
@@ -1267,21 +1255,14 @@ export function ScheduleSessionForm({
             labelId={labelId}
             value={values[field]}
             scrollTo={
-              field === 'end'
-                ? (addMinutes(values.start, DEFAULT_DURATION_MINUTES) ??
-                  undefined)
-                : undefined
+              field === 'end' ? times.endScrollTo(values.start) : undefined
             }
             invalid={errors[field] !== undefined}
             aria-describedby={describedBy(field, zoneId)}
             onChange={(value, isUnreadable) =>
               changeTime(field, value, isUnreadable)
             }
-            onEditEnd={() => {
-              if (field === 'start') {
-                startEdit.current = null;
-              }
-            }}
+            onEditEnd={field === 'start' ? times.endEdit : undefined}
           />
         )}
         {help ? (

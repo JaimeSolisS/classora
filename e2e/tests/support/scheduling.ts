@@ -9,9 +9,10 @@ import { api, csrfTokenOf } from './api';
 export const CENTER_ZONE = 'America/Mexico_City';
 
 /**
- * Types a time into the type-or-pick time field of "Schedule a session"
- * (HF-13, #598) and leaves it with Tab, which commits the time and closes
- * its list (an open list would cover the next controls).
+ * Types a time into a type-or-pick time field (HF-13, #598; the scheduling
+ * forms and dialogs, the respond-by times, #600) and leaves it with Tab,
+ * which commits the time and closes its list (an open list would cover the
+ * next controls and match `getByLabel` through `aria-labelledby`).
  */
 export async function fillTime(field: Locator, time: string): Promise<void> {
   await field.fill(time);

@@ -4,6 +4,7 @@ import { api, csrfTokenOf } from '../support/api';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common, fill } from '../support/catalog';
 import { pickOption } from '../support/combobox';
+import { fillTime } from '../support/scheduling';
 import { createStudentViaApi } from '../support/students';
 import { createSubjectViaApi } from '../support/tutors';
 
@@ -276,9 +277,10 @@ test('an Owner creates a cohort whose syllabus stays frozen', async ({
   await main
     .getByLabel(common.scheduling.series.startsOn, { exact: true })
     .fill(firstTuesdayAhead());
-  await main
-    .getByLabel(common.scheduling.fields.start, { exact: true })
-    .fill('10:00');
+  await fillTime(
+    main.getByLabel(common.scheduling.fields.start, { exact: true }),
+    '10:00',
+  );
   await expect(
     main.getByRole('checkbox', { name: common.weeklyWindows.weekdays['2'] }),
   ).toBeChecked();

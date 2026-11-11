@@ -20,9 +20,14 @@ import {
   comboboxOption,
   comboboxOptions,
   fieldByLabel,
+  leaveField,
   openDialog,
   pressEscape,
+  pressKey,
+  stubbedOffset,
+  stubTimeListLayout,
   typeInto,
+  typeKeys,
 } from '@/test/dom';
 import {
   buttonNamed,
@@ -1171,6 +1176,120 @@ describe('/groups/new (E)', () => {
     expect(main().textContent).not.toContain('Enter the end time.');
     expect(fieldByLabel(main(), 'End').getAttribute('aria-invalid')).toBeNull();
     expect(api.calls(CREATE)).toHaveLength(0);
+  });
+
+  describe('the time fields (#600)', () => {
+    const start = () => fieldByLabel(main(), 'Start');
+    const end = () => fieldByLabel(main(), 'End');
+
+    it('are comboboxes; 930 typed key by key into an empty start gives 09:30-10:30 (AC1-AC3)', async () => {
+      stub(OWNER);
+      app = await open('/groups/new');
+      expect(start().getAttribute('role')).toBe('combobox');
+      expect(end().getAttribute('role')).toBe('combobox');
+      expect(main().querySelector('input[type="time"]')).toBeNull();
+      act(() => start().focus());
+      typeKeys(start(), '930');
+      await leaveField(start());
+      expect(start().value).toBe('9:30 AM');
+      expect(end().value).toBe('10:30 AM');
+    });
+
+    it('restores both on Escape, ignores 25:00, and measures a second edit from the first', async () => {
+      stub(OWNER);
+      app = await open('/groups/new');
+      act(() => start().focus());
+      typeKeys(start(), '10');
+      await pressKey(start(), 'Escape');
+      expect(start().value).toBe('');
+      expect(end().value).toBe('');
+
+      act(() => start().focus());
+      typeKeys(start(), '10:00');
+      await leaveField(start());
+      expect(end().value).toBe('11:00 AM');
+      act(() => start().focus());
+      typeKeys(start(), '^A\b25:00');
+      await leaveField(start());
+      expect(start().value).toBe('25:00');
+      expect(end().value).toBe('11:00 AM');
+      act(() => start().focus());
+      typeKeys(start(), '^A\b12');
+      await leaveField(start());
+      // Measured from the 25:00 edit's baseline (no start): 60 min.
+      expect(end().value).toBe('1:00 PM');
+      act(() => start().focus());
+      typeKeys(start(), '^A\b9');
+      await leaveField(start());
+      expect(end().value).toBe('10:00 AM');
+    });
+
+    it('leaves an empty end empty past 22:59, and the end never moves the start', async () => {
+      stub(OWNER);
+      app = await open('/groups/new');
+      act(() => start().focus());
+      typeKeys(start(), '23:30');
+      await leaveField(start());
+      expect(end().value).toBe('');
+      act(() => end().focus());
+      typeKeys(end(), '23:45');
+      await leaveField(end());
+      expect(start().value).toBe('11:30 PM');
+    });
+
+    it.each([
+      ['930', '09:30'],
+      ['9:30 pm', '21:30'],
+      ['9 p.m.', '21:00'],
+    ])('reads %s in the request body (AC1)', async (keys, startTime) => {
+      const api = stub(OWNER, {
+        [CREATE]: () => jsonResponse(201, CREATED_GROUP),
+      });
+      app = await open('/groups/new');
+      await fillForm();
+      act(() => start().focus());
+      typeKeys(start(), `^A\b${keys}`);
+      await leaveField(start());
+      await click(buttonNamed(main(), 'Create group'));
+      const body = api.calls(CREATE)[0]!.body as Record<string, unknown>;
+      expect(body.start_time).toBe(startTime);
+      expect(body.duration_minutes).toBe(60);
+    });
+
+    it('says how to write a time for an unreadable start, and sends nothing (AC5)', async () => {
+      const api = stub(OWNER);
+      app = await open('/groups/new');
+      await fillForm();
+      act(() => start().focus());
+      typeKeys(start(), '^A\babc');
+      await leaveField(start());
+      await click(buttonNamed(main(), 'Create group'));
+      expect(api.calls(CREATE)).toHaveLength(0);
+      expect(main().textContent).toContain('Enter a time, for example 9:30.');
+      expect(main().textContent).not.toContain('Enter the start time.');
+      act(() => start().focus());
+      typeKeys(start(), '^A\b9:30');
+      expect(main().textContent).not.toContain(
+        'Enter a time, for example 9:30.',
+      );
+    });
+
+    it('opens the End list at start + 60 min (AC4)', async () => {
+      const scrolledTo = stubTimeListLayout();
+      stub(OWNER);
+      app = await open('/groups/new');
+      act(() => start().focus());
+      typeKeys(start(), '10:00');
+      await leaveField(start());
+      act(() => end().focus());
+      typeKeys(end(), '^A\b');
+      await leaveField(end());
+      expect(end().value).toBe('');
+      act(() => end().focus());
+      await click(end());
+      expect(scrolledTo.at(-1)).toBe(stubbedOffset('11:00'));
+      vi.restoreAllMocks();
+    });
   });
 
   it('labels a soft code the create does not accept, and keeps the form', async () => {

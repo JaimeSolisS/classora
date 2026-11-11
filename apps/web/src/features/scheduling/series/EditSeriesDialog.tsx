@@ -16,6 +16,12 @@ import {
   type Option,
   type SchedulingConflict,
 } from '../create/api';
+import {
+  DEFAULT_DURATION_MINUTES,
+  lengthMinutes,
+  withTimeFormat,
+} from '../create/rules';
+import { useEndFollowsStart } from '../create/useEndFollowsStart';
 import type { ClassSeriesDetail } from '../session/api';
 import {
   ClassroomSelect,
@@ -134,13 +140,21 @@ function EditSeriesContent({
   const [values, setValues] = useState<SeriesEditValues>(
     () => initialValues ?? seriesEditValues(series, defaultFromDate),
   );
+  // #600: the end follows the start per edit; an empty end (or one not
+  // after the old start) gets the length the dialog opened with (E2 a).
+  const [openedLength] = useState(
+    () => lengthMinutes(values.start, values.end) ?? DEFAULT_DURATION_MINUTES,
+  );
+  const times = useEndFollowsStart(openedLength);
   // HF-13 (#598 E4): after the first submit the client checks follow the
   // values; the server's errors stay until their field changes.
   const [checked, setChecked] = useState(false);
   const [serverErrors, setServerErrors] = useState<SeriesEditErrors>(NO_ERRORS);
-  const errors = shownSeriesEditErrors(checked, serverErrors, () =>
-    validateSeriesEdit(values, defaultFromDate),
-  );
+  const check = (): SeriesEditErrors => {
+    const found = validateSeriesEdit(values, defaultFromDate);
+    return { ...found, slot: withTimeFormat(found.slot, times.unreadable) };
+  };
+  const errors = shownSeriesEditErrors(checked, serverErrors, check);
 
   function update(change: Partial<SeriesEditValues>) {
     const next = { ...values, ...change };
@@ -148,6 +162,11 @@ function EditSeriesContent({
     setServerErrors((current) =>
       clearSeriesEditServerErrors(current, values, next),
     );
+  }
+
+  /** A typed or picked start or end (#600): a new start moves the end. */
+  function setTime(field: 'start' | 'end', value: string, unreadable: boolean) {
+    update(times.change(values, field, value, unreadable));
   }
   const [formError, setFormError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<SchedulingConflict[] | null>(
@@ -183,7 +202,7 @@ function EditSeriesContent({
     setConflicts(null);
     setFailure(null);
     setFormError(null);
-    const found = validateSeriesEdit(values, defaultFromDate);
+    const found = check();
     setChecked(true);
     setServerErrors(NO_ERRORS);
     if (hasErrors(found)) {
@@ -283,22 +302,24 @@ function EditSeriesContent({
         <SlotInput
           id={`${id}-start`}
           label={t('scheduling.fields.start')}
-          type="time"
+          kind="time"
           value={values.start}
           error={message(errors.slot.start)}
           describedBy={zoneId}
           disabled={submitting}
-          onChange={(start) => update({ start })}
+          onChange={(start, unreadable) => setTime('start', start, unreadable)}
+          onEditEnd={times.endEdit}
         />
         <SlotInput
           id={`${id}-end`}
           label={t('scheduling.fields.end')}
-          type="time"
+          kind="time"
           value={values.end}
           error={message(errors.slot.end)}
           describedBy={zoneId}
           disabled={submitting}
-          onChange={(end) => update({ end })}
+          scrollTo={times.endScrollTo(values.start)}
+          onChange={(end, unreadable) => setTime('end', end, unreadable)}
         />
       </div>
       <ClassroomSelect

@@ -7,7 +7,7 @@ import { TimeField, type TimeFieldProps } from './time-field';
 // list in the app language (es by default, the locale toolbar), typing,
 // a time off the grid, an error, and a 320 px viewport. Axe runs in light
 // and dark (the storybook projects). The label and error are the caller's,
-// as on "Schedule a session".
+// as on "Schedule a session". Disabled while a dialog sends (#600).
 
 function Field({
   initial = '',
@@ -123,5 +123,19 @@ export const Narrow320: Story = {
     await page(canvasElement).findByRole('listbox');
     const root = canvasElement.ownerDocument.documentElement;
     await expect(root.scrollWidth).toBeLessThanOrEqual(root.clientWidth);
+  },
+};
+
+/** #600 AC7: while a dialog sends, the field and its button are disabled. */
+export const Disabled: Story = {
+  args: { initial: '10:00', disabled: true },
+  play: async ({ canvas, canvasElement }) => {
+    const field = canvas.getByRole('combobox', { name: 'Start' });
+    await expect(field).toBeDisabled();
+    await expect(field).toHaveValue('10:00');
+    await expect(
+      canvas.getByRole('button', { hidden: true, name: /./ }),
+    ).toBeDisabled();
+    await expect(page(canvasElement).queryByRole('listbox')).toBeNull();
   },
 };

@@ -56,6 +56,7 @@ export function reasonLength(reason: string): number {
 export type OfferMessage =
   | 'scheduling.offer.validation.tutorRequired'
   | 'scheduling.offer.validation.deadlineIncomplete'
+  | 'scheduling.validation.timeFormat'
   | 'scheduling.substitution.validation.reasonRequired'
   | 'scheduling.substitution.validation.reasonTooLong'
   | 'errors:tutor_unknown'
@@ -74,10 +75,16 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /**
  * The client checks: a tutor, and both deadline parts or neither; with
  * `requireReason` (the substitution form), a reason of 1-1000 characters.
+ * With `deadlineUnreadable` (the time field's text isn't a time, #600) the
+ * deadline says how to write a time, even with no date: the text would
+ * otherwise be dropped and the default deadline sent.
  */
 export function validateOffer(
   values: OfferValues,
-  { requireReason = false }: { requireReason?: boolean } = {},
+  {
+    requireReason = false,
+    deadlineUnreadable = false,
+  }: { requireReason?: boolean; deadlineUnreadable?: boolean } = {},
 ): OfferErrors {
   const errors: OfferErrors = {};
   if (requireReason) {
@@ -93,7 +100,9 @@ export function validateOffer(
   }
   const date = values.deadlineDate.trim();
   const time = values.deadlineTime.trim();
-  if ((date || time) && !(DATE.test(date) && TIME.test(time))) {
+  if (deadlineUnreadable) {
+    errors.deadline = 'scheduling.validation.timeFormat';
+  } else if ((date || time) && !(DATE.test(date) && TIME.test(time))) {
     errors.deadline = 'scheduling.offer.validation.deadlineIncomplete';
   }
   return errors;

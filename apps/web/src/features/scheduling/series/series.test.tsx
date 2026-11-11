@@ -16,10 +16,15 @@ import {
 import {
   click,
   fieldByLabel,
+  leaveField,
   openDialog,
   pressEscape,
+  pressKey,
   pickOption,
+  stubbedOffset,
+  stubTimeListLayout,
   typeInto,
+  typeKeys,
 } from '@/test/dom';
 import {
   buttonNamed,
@@ -904,7 +909,7 @@ describe('the dialogs (C1-C4)', () => {
       'Edit this occurrence',
     );
     expect(fieldByLabel(dialog, 'Date').value).toBe('2031-01-06');
-    expect(fieldByLabel(dialog, 'Start').value).toBe('10:00');
+    expect(fieldByLabel(dialog, 'Start').value).toBe('10:00 AM');
     typeInto(fieldByLabel(dialog, 'Start'), '12:00');
     typeInto(fieldByLabel(dialog, 'End'), '13:00');
     choose(dialog, 'Classroom', '');
@@ -985,7 +990,7 @@ describe('the dialogs (C1-C4)', () => {
       ],
     });
     let dialog = openDialog()!;
-    expect(fieldByLabel(dialog, 'Start').value).toBe('10:00');
+    expect(fieldByLabel(dialog, 'Start').value).toBe('10:00 AM');
     await click(buttonNamed(dialog, 'Save occurrence'));
     await click(buttonNamed(dialog, 'Reload'));
     await settle();
@@ -993,8 +998,8 @@ describe('the dialogs (C1-C4)', () => {
     // Someone moved it to 14:00-15:00 without a room meanwhile.
     dialog = openDialog()!;
     expect(fieldByLabel(dialog, 'Date').value).toBe('2031-01-06');
-    expect(fieldByLabel(dialog, 'Start').value).toBe('14:00');
-    expect(fieldByLabel(dialog, 'End').value).toBe('15:00');
+    expect(fieldByLabel(dialog, 'Start').value).toBe('2:00 PM');
+    expect(fieldByLabel(dialog, 'End').value).toBe('3:00 PM');
     const room = [...dialog.querySelectorAll('label')].find(
       (l) => l.textContent === 'Classroom',
     )!;
@@ -1173,6 +1178,168 @@ describe('the dialogs (C1-C4)', () => {
     );
     expect(main().textContent).toContain('Ended');
     expect(main().querySelectorAll('button')).toHaveLength(0);
+  });
+});
+
+describe('the dialog time fields (#600)', () => {
+  async function openOccurrence(
+    routes: Record<string, Responder | Responder[]> = {},
+  ) {
+    const api = stub(MANAGER, {
+      [SESSION]: () => jsonResponse(200, OCCURRENCE_SESSION),
+      ...routes,
+    });
+    app = await renderSeries();
+    const trigger = main().querySelector<HTMLButtonElement>('ol > li button')!;
+    await click(trigger);
+    return { api, dialog: openDialog()! };
+  }
+  async function openSeriesEdit(routes: Record<string, Responder> = {}) {
+    const api = stub(MANAGER, routes);
+    app = await renderSeries();
+    await click(buttonNamed(main(), 'Edit series'));
+    const dialog = openDialog()!;
+    typeInto(fieldByLabel(dialog, 'From'), '2031-01-13');
+    return { api, dialog };
+  }
+  const start = (dialog: HTMLElement) => fieldByLabel(dialog, 'Start');
+  const end = (dialog: HTMLElement) => fieldByLabel(dialog, 'End');
+  async function retype(field: HTMLInputElement, keys: string) {
+    act(() => field.focus());
+    typeKeys(field, `^A\b${keys}`);
+    await leaveField(field);
+  }
+
+  it('Edit occurrence: comboboxes; the end keeps the length, typed key by key (AC1, AC3)', async () => {
+    const { api, dialog } = await openOccurrence({
+      [PATCH]: () => jsonResponse(200, { ...OCCURRENCE_SESSION, version: 3 }),
+    });
+    expect(start(dialog).getAttribute('role')).toBe('combobox');
+    expect(end(dialog).getAttribute('role')).toBe('combobox');
+    expect(dialog.querySelector('input[type="time"]')).toBeNull();
+    await retype(start(dialog), '930');
+    expect(start(dialog).value).toBe('9:30 AM');
+    expect(end(dialog).value).toBe('10:30 AM');
+    await click(buttonNamed(dialog, 'Save occurrence'));
+    expect(api.calls(PATCH)[0]!.body).toMatchObject({
+      starts_at: '2031-01-06T15:30:00.000Z',
+      ends_at: '2031-01-06T16:30:00.000Z',
+    });
+  });
+
+  it("Edit occurrence: an empty end gets the dialog's length (E2 a)", async () => {
+    const { dialog } = await openOccurrence({
+      [SESSION]: () =>
+        jsonResponse(200, {
+          ...OCCURRENCE_SESSION,
+          ends_at: '2031-01-06T17:30:00Z',
+        }),
+    });
+    expect(end(dialog).value).toBe('11:30 AM');
+    await retype(end(dialog), '');
+    await retype(start(dialog), '15:00');
+    expect(end(dialog).value).toBe('4:30 PM');
+  });
+
+  it('Edit occurrence: unreadable start says how to write a time (AC5)', async () => {
+    const { api, dialog } = await openOccurrence();
+    await retype(start(dialog), 'abc');
+    await click(buttonNamed(dialog, 'Save occurrence'));
+    expect(api.calls(PATCH)).toHaveLength(0);
+    expect(dialog.textContent).toContain('Enter a time, for example 9:30.');
+    act(() => start(dialog).focus());
+    typeKeys(start(dialog), '^A\b9:30');
+    expect(dialog.textContent).not.toContain('Enter a time, for example 9:30.');
+  });
+
+  describe('off the grid (AC4, AC8)', () => {
+    let scrolledTo: number[];
+    beforeEach(() => {
+      scrolledTo = stubTimeListLayout();
+    });
+
+    it.each(['en', 'es'] as const)(
+      'shows 10:10 unchanged, opens End at 11:00 and sends the same instants (%s)',
+      async (language) => {
+        applyLanguage(language);
+        const offGrid = {
+          ...OCCURRENCE_SESSION,
+          starts_at: '2031-01-06T16:10:00Z',
+          ends_at: '2031-01-06T17:10:00Z',
+        };
+        const { api, dialog } = await openOccurrence({
+          [SESSION]: () => jsonResponse(200, offGrid),
+          [PATCH]: () => jsonResponse(200, { ...offGrid, version: 3 }),
+        });
+        const startField = fieldByLabel(
+          dialog,
+          language === 'en' ? 'Start' : 'Inicio',
+        );
+        const endField = fieldByLabel(
+          dialog,
+          language === 'en' ? 'End' : 'Fin',
+        );
+        expect(startField.value).toBe(language === 'en' ? '10:10 AM' : '10:10');
+        expect(endField.value).toBe(language === 'en' ? '11:10 AM' : '11:10');
+        act(() => endField.focus());
+        await click(endField);
+        expect(scrolledTo.at(-1)).toBe(stubbedOffset('11:00'));
+        await pressKey(endField, 'Escape');
+        const form = dialog.querySelector('form')!;
+        act(() => form.requestSubmit());
+        await settle();
+        expect(api.calls(PATCH)[0]!.body).toMatchObject({
+          starts_at: '2031-01-06T16:10:00.000Z',
+          ends_at: '2031-01-06T17:10:00.000Z',
+        });
+      },
+    );
+  });
+
+  it('Edit series: 10:00-11:00, start to 16:00 gives 17:00 (AC3)', async () => {
+    const { api, dialog } = await openSeriesEdit({
+      [EDIT]: () => jsonResponse(200, SERIES_EDITED),
+      [`GET /api/v1/class-series/${LATER_SERIES_ID}`]: () =>
+        jsonResponse(200, SPLIT_SERIES),
+    });
+    expect(start(dialog).value).toBe('10:00 AM');
+    expect(end(dialog).value).toBe('11:00 AM');
+    act(() => start(dialog).focus());
+    typeKeys(start(dialog), '^A\b16:00');
+    await pressKey(start(dialog), 'Tab');
+    await leaveField(start(dialog));
+    expect(end(dialog).value).toBe('5:00 PM');
+    await click(buttonNamed(dialog, 'Save series'));
+    expect(api.calls(EDIT)[0]!.body).toMatchObject({
+      start_time: '16:00',
+      duration_minutes: 60,
+    });
+  });
+
+  it.each([
+    ['930', '09:30'],
+    ['9:30 pm', '21:30'],
+    ['9 p.m.', '21:00'],
+  ])('Edit series reads %s (AC1)', async (keys, startTime) => {
+    const { api, dialog } = await openSeriesEdit({
+      [EDIT]: () => jsonResponse(200, SERIES_EDITED),
+      [`GET /api/v1/class-series/${LATER_SERIES_ID}`]: () =>
+        jsonResponse(200, SPLIT_SERIES),
+    });
+    await retype(start(dialog), keys);
+    await click(buttonNamed(dialog, 'Save series'));
+    expect(api.calls(EDIT)[0]!.body).toMatchObject({
+      start_time: startTime,
+      duration_minutes: 60,
+    });
+  });
+
+  it('Edit series: unreadable end says how to write a time (AC5)', async () => {
+    const { api, dialog } = await openSeriesEdit();
+    await retype(end(dialog), '9:75');
+    await click(buttonNamed(dialog, 'Save series'));
+    expect(api.calls(EDIT)).toHaveLength(0);
+    expect(dialog.textContent).toContain('Enter a time, for example 9:30.');
   });
 });
 
