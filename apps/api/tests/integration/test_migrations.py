@@ -18336,6 +18336,7 @@ def test_0095_adds_the_subjects_seed_key_and_downgrade_drops_it(fresh_database_u
 
 # --- 0096: least-privilege runtime role classora_app (M10-10, #165) -----
 
+
 def _runtime_acl_0096(dsn: str) -> dict[str, int]:
     """How many ACL entries of this database name ``classora_app``: on the
     database, schema ``public``, relations and default privileges."""

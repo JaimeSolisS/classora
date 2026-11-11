@@ -135,9 +135,7 @@ def started_pgbouncer(
     postgres_ip = postgres_container.get_docker_client().bridge_ip(
         postgres_container.get_wrapped_container().id
     )
-    with DockerImage(
-        path=PGBOUNCER_BUILD_CONTEXT, tag=tag
-    ) as image:
+    with DockerImage(path=PGBOUNCER_BUILD_CONTEXT, tag=tag) as image:
         container = (
             DockerContainer(str(image))
             .with_kwargs(extra_hosts={"db": postgres_ip})

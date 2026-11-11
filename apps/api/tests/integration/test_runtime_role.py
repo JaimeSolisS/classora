@@ -33,7 +33,9 @@ from sqlalchemy import make_url, text
 from sqlalchemy.exc import DBAPIError
 from testcontainers.community.postgres import PostgresContainer
 
+from app import cli
 from app.core import jobs
+from app.core.config import get_settings
 from app.core.db import RUNTIME_ROLE, create_sessionmaker
 from app.core.runtime_role import sync_runtime_role
 from app.core.uow import UnitOfWork
@@ -154,19 +156,21 @@ def table_privileges(owner_url: str) -> dict[str, frozenset[str]]:
         " AND c.relkind IN ('r', 'p', 'v', 'm', 'f') ORDER BY c.relname",
     )
     return {
-        row.relname: frozenset(p for p in TABLE_PRIVILEGES if getattr(row, f"p_{p.lower()}"))
+        row.relname: frozenset(
+            p for p in TABLE_PRIVILEGES if getattr(row, f"p_{p.lower()}")
+        )
         for row in rows
     }
 
 
-def test_every_table_has_dml_except_the_pinned_exceptions(runtime_url, module_seeded_url):
+def test_every_table_has_dml_except_the_pinned_exceptions(
+    runtime_url, module_seeded_url
+):
     privileges = table_privileges(module_seeded_url)
 
     assert len(privileges) > 100
     assert "procrastinate_jobs" in privileges
-    expected = {
-        table: EXPECTED_EXCEPTIONS.get(table, DML) for table in privileges
-    }
+    expected = {table: EXPECTED_EXCEPTIONS.get(table, DML) for table in privileges}
     assert privileges == expected
 
 
@@ -182,7 +186,9 @@ def test_every_sequence_has_usage_and_select_only(runtime_url, module_seeded_url
     )
 
     assert rows
-    assert [r.relname for r in rows if not (r.p_usage and r.p_select) or r.p_update] == []
+    assert [
+        r.relname for r in rows if not (r.p_usage and r.p_select) or r.p_update
+    ] == []
 
 
 def test_schema_and_database_privileges(runtime_url, module_seeded_url):
@@ -198,7 +204,13 @@ def test_schema_and_database_privileges(runtime_url, module_seeded_url):
         " AS p_create_schema",
     )
 
-    assert (row.p_create, row.p_usage, row.p_temporary, row.p_connect, row.p_create_schema) == (
+    assert (
+        row.p_create,
+        row.p_usage,
+        row.p_temporary,
+        row.p_connect,
+        row.p_create_schema,
+    ) == (
         False,
         True,
         False,
@@ -287,7 +299,9 @@ def test_the_runtime_role_is_refused(name, runtime_path):
 
 def test_the_runtime_role_may_insert_audit_events(runtime_path, module_seeded_url):
     # Letters only (ck_audit_events_action_valid).
-    action = "runtime.probe_" + "".join(chr(97 + int(c, 16)) for c in uuid.uuid4().hex[:8])
+    action = "runtime.probe_" + "".join(
+        chr(97 + int(c, 16)) for c in uuid.uuid4().hex[:8]
+    )
 
     run_sql(
         runtime_path,
@@ -302,7 +316,9 @@ def test_the_runtime_role_may_insert_audit_events(runtime_path, module_seeded_ur
     )
 
 
-def test_the_runtime_pgbouncer_refuses_the_owner(runtime_pgbouncer_url, module_seeded_url):
+def test_the_runtime_pgbouncer_refuses_the_owner(
+    runtime_pgbouncer_url, module_seeded_url
+):
     owner = make_url(module_seeded_url)
     as_owner = (
         make_url(runtime_pgbouncer_url)
@@ -476,7 +492,9 @@ async def test_a_retention_run_deletes_and_audits_as_the_runtime_role(
     assert result.failed == ()
     assert result.total >= 1
     assert not await run_sql_async(
-        module_seeded_url, "SELECT 1 FROM procrastinate_jobs WHERE id = :id", {"id": job_id}
+        module_seeded_url,
+        "SELECT 1 FROM procrastinate_jobs WHERE id = :id",
+        {"id": job_id},
     )
     assert await run_sql_async(
         module_seeded_url,
@@ -489,9 +507,7 @@ async def test_listen_receives_a_notification_written_by_the_runtime_role(
     runtime_url, module_seeded_url
 ):
     register_dev_notification_type()
-    recipient = await asyncio.to_thread(
-        create_user, module_seeded_url, roles=(OWNER,)
-    )
+    recipient = await asyncio.to_thread(create_user, module_seeded_url, roles=(OWNER,))
     listen_engine = short_lived_engine(runtime_url)
     work_engine = short_lived_engine(runtime_url)
     payloads: asyncio.Queue[str] = asyncio.Queue()
@@ -521,3 +537,91 @@ async def test_listen_receives_a_notification_written_by_the_runtime_role(
         "user_id": str(recipient.id),
         "notification_id": str(created),
     }
+
+
+# --- AC 6: default privileges for a later migration's objects ---------------------
+
+
+def test_a_later_owner_table_is_usable_and_another_roles_is_not(runtime_url, head_url):
+    """A table and a bigserial the migrating role adds after 0096 get the
+    runtime grants at once; a table created by another role does not, so
+    migrations must run as the owner."""
+    other = f"other_{uuid.uuid4().hex[:12]}"
+    run_sql(head_url, "CREATE TABLE later_probe (id bigserial PRIMARY KEY, v integer)")
+    runtime = as_runtime(head_url)
+
+    [inserted] = run_sql(runtime, "INSERT INTO later_probe (v) VALUES (1) RETURNING id")
+    run_sql(runtime, "UPDATE later_probe SET v = 2 WHERE id = :id", {"id": inserted.id})
+    [following] = run_sql(runtime, "SELECT nextval('later_probe_id_seq') AS n")
+    run_sql(runtime, "DELETE FROM later_probe WHERE id = :id", {"id": inserted.id})
+    assert following.n > inserted.id
+
+    run_sql(head_url, f"CREATE ROLE {other} NOLOGIN")
+    try:
+        run_sql(head_url, f"GRANT CREATE ON SCHEMA public TO {other}")
+        run_sql(
+            head_url,
+            f"DO $$ BEGIN SET LOCAL ROLE {other};"
+            " CREATE TABLE foreign_probe (id integer); END $$",
+        )
+
+        sqlstate, message = sqlstate_and_message(runtime, "SELECT * FROM foreign_probe")
+
+        assert sqlstate == INSUFFICIENT_PRIVILEGE, message
+    finally:
+        run_sql(head_url, "DROP TABLE IF EXISTS foreign_probe")
+        run_sql(head_url, f"REVOKE CREATE ON SCHEMA public FROM {other}")
+        run_sql(head_url, f"DROP ROLE {other}")
+
+
+# --- AC 8: sync-runtime-role against PostgreSQL --------------------------------------
+
+
+def test_sync_runtime_role_sets_login_and_a_scram_verifier_idempotently(
+    runtime_url, module_seeded_url, monkeypatch, capsys
+):
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("APP_ORIGIN", origin_for("local"))
+    monkeypatch.setenv("DATABASE_URL", runtime_url)
+    monkeypatch.setenv("DATABASE_DIRECT_URL", runtime_url)
+    monkeypatch.setenv("DATABASE_MIGRATION_URL", module_seeded_url)
+
+    for _ in range(2):
+        assert cli.main(["sync-runtime-role"]) == 0
+        get_settings.cache_clear()
+
+    [role] = run_sql(
+        module_seeded_url,
+        "SELECT rolcanlogin, rolpassword LIKE 'SCRAM-SHA-256$%' AS scram"
+        " FROM pg_authid WHERE rolname = 'classora_app'",
+    )
+    assert (role.rolcanlogin, role.scram) == (True, True)
+    assert runtime_user(runtime_url) == RUNTIME_ROLE
+    output = capsys.readouterr()
+    assert RUNTIME_PASSWORD not in output.out + output.err
+
+
+# --- AC 11: migrations as the runtime role fail closed --------------------------------
+
+
+def test_upgrading_as_the_runtime_role_fails_and_changes_nothing(
+    runtime_url, fresh_database_url
+):
+    owner = fresh_database_url
+    command.upgrade(alembic_config(owner), "0095")
+
+    with pytest.raises(DBAPIError) as raised:
+        command.upgrade(alembic_config(as_runtime(owner)), "head")
+
+    orig = raised.value.orig
+    assert (getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)) == (
+        INSUFFICIENT_PRIVILEGE
+    )
+    assert version_nums(owner) == ["0095"]
+    [acl] = run_sql(
+        owner,
+        "SELECT count(*) AS n FROM pg_class c, aclexplode(c.relacl) a"
+        " WHERE c.relnamespace = 'public'::regnamespace"
+        " AND a.grantee = 'classora_app'::regrole",
+    )
+    assert acl.n == 0
