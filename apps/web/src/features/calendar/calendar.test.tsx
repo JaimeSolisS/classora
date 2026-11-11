@@ -520,7 +520,9 @@ describe('the Schedule page', () => {
 
     expect(app.location()).toBe('/schedule');
     expect(calendarProps.last?.timeZone).toBe('America/Mexico_City');
-    const [url] = sessionUrls();
+    // The calendar's own request: Home ('/') may already have asked for
+    // today's sessions (its "Today" panel) before the click (#604).
+    const url = sessionUrls().at(-1);
     expect(url!.searchParams.get('from')).toBe('2026-11-09T06:00:00.000Z');
     expect(url!.searchParams.get('to')).toBe('2026-11-16T06:00:00.000Z');
     expect(status()).toContain('7 sessions in this range.');
