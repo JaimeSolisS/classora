@@ -230,7 +230,9 @@ Restates [ADR-0010](adr/0010-hosting-edge-and-https.md) (hosting, edge, HTTPS), 
 | Compose stack | Services |
 |---|---|
 | **Data stack** (stateful) | PostgreSQL 18, PgBouncer (ADR-0003) |
-| **App stack** | `web` (Caddy edge: HTTPS, SPA, `/api` proxy), `api`, `worker`, OTel Collector agent (Compose profile `telemetry`, on when an OTLP endpoint is published) |
+| **App stack** | `web` (Caddy edge: HTTPS, SPA, `/api` proxy), `api`, `worker`, OTel Collector agent (Compose profile `telemetry`, on when an OTLP endpoint is published); `migrate` tools service (Compose profile `tools`, run only with `docker compose run --rm`) |
+
+- **Database roles (#165, ADR-0003 amendment).** `api`, `worker` and `pgbouncer` receive only the least-privilege runtime role `classora_app` (its password `POSTGRES_APP_PASSWORD`; Parameter Store `app_db_password` on the hosts). `db` and the `migrate` tools service receive the owner credentials. `migrate` (the api image) runs `alembic upgrade head && python -m app.cli sync-runtime-role`, the seeds and the operator CLI as the owner over `DATABASE_MIGRATION_URL`. On a new volume it runs before the app stack, because PgBouncer and the worker authenticate as the runtime role.
 
 - One arm64 EC2 instance (t4g.small to start; t4g.medium for DEV when monitoring is colocated) on Amazon Linux 2023. Instance type and volume sizes are Terraform variables; M10-04 (#152) measures them.
 - Docker restart policy is `unless-stopped`. systemd units start the data stack before the app stack.
@@ -255,7 +257,7 @@ flowchart LR
 
 - GitHub Actions authenticates with OIDC using least-privilege DEV and PROD roles. The deploy role may send only the `classora-deploy` document, whose one parameter is a 40-hex commit SHA, to its own environment's instance.
 - Images are built **only** on `develop`, arm64, tagged `sha-<commit>`, and promoted by **immutable digest**. PROD deploys the release pull request's head commit and refuses a digest without a `dev-<sha>` tag. Release tag `vYYYY.MM.DD-<sha7>`.
-- `deploy.sh` saves the current release, pulls by digest, migrates on the direct connection, runs the reference seeds, starts the app stack and polls readiness for up to 90 s; on failure it restores the previous digests. Migrations run before the new version starts and are **never** reversed automatically.
+- `deploy.sh` saves the current release, pulls by digest, migrates on the direct connection as the owner (the `migrate` tools service, which also runs `sync-runtime-role`), runs the reference seeds, starts the app stack and polls readiness for up to 90 s; on failure it restores the previous digests. Migrations run before the new version starts and are **never** reversed automatically.
 - The ECR lifecycle policy keeps the newest 10 `prod-*`, 10 `dev-*` and 30 `sha-*` images.
 - While DEV is destroyed, the DEV deploy is skipped with a notice and `develop` stays green. Neither deploy workflow is part of `ci-required`.
 - Terraform: one state per root (`bootstrap`, `shared`, `envs/dev`, `envs/prod`, `envs/monitoring`) in an encrypted, versioned S3 backend with native locking. Applies and destroys run from the owner's machine after a shown plan; there is no plan pipeline and no apply from CI (CI runs `fmt` and `validate`). `prevent_destroy` only on the state bucket, the hosted zone and the archive bucket. Every resource is tagged `Project=classora`.
@@ -341,7 +343,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - **What is captured.** Automatic `create`, `update`, `delete`, `soft_delete` and `restore` events for models marked `Audited`, with JSONB diffs `{column: {old, new}}`. Explicit dotted events (for example `identity.owner_bootstrapped`) for actions that are not column changes. Each event records the actor (the request's principal, or the `actor_id` of a job or command; `NULL` for none), the time and the request ID. ORM bulk statements on audited tables are refused because they skip the hook.
   - **Excluded and masked fields.** `__audit_exclude__` columns never appear (password hashes, tokens, file contents). `__audit_mask__` columns appear only as `"[masked]"`. A test fails any audited model with an unlisted `password|token|secret|hash` or binary column.
   - **Audited set.** M2-04 audits `users`, `user_roles` and `user_delegations` (role assignments, delegations and user state changes). Role and permission reference data is not audited. Each later issue marks its own models: financial records, payroll, attendance corrections, schedule overrides, consent, settings, academic report approvals.
-  - **Append-only.** `audit_events` has `BEFORE UPDATE OR DELETE` and `BEFORE TRUNCATE` triggers that raise SQLSTATE 42501 for every role, because the local, test and CI role is a superuser and a `REVOKE` would not bind it. Follow-up #165 adds a least-privilege runtime role so that a `REVOKE` applies as well.
+  - **Append-only.** `audit_events` has `BEFORE UPDATE OR DELETE` and `BEFORE TRUNCATE` triggers that raise SQLSTATE 42501 for every role, the owner (a superuser locally, in tests and CI) included. Since #165 (migration `0096`) the API and the worker connect as the least-privilege runtime role `classora_app`, which has only `SELECT, INSERT` on `audit_events`, so the `REVOKE` of `UPDATE`, `DELETE` and `TRUNCATE` applies as well (ADR-0003 amendment).
   - **Read endpoint.** `GET /api/v1/audit-events` in the `administration` module, for holders of `audit.view`: newest first, cursor-paginated, filtered by record, actor and time range.
 
 ### 10.3 Data layer
@@ -502,7 +504,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - One **family billing account** per family (`family_id` unique) owns the ledger, and every charge also references the student it covers. A student with no family isn't billed; guardians in `family_guardians` see the account.
   - Typed append-only tables: charges, signed adjustments against a charge, payments and reversals, allocations and releases, refunds. Credits are negative adjustments; account credit is a payment's unallocated remainder.
   - `net = amount + Σ adjustments`; `open = net − Σ valid allocations`; outstanding = Σ open; account credit = Σ over unreversed payments of (amount − valid allocations − refunds); net balance = outstanding − account credit. Computed, not stored; a verified snapshot only for reporting.
-  - Posted rows are immutable through `BEFORE UPDATE OR DELETE` and `BEFORE TRUNCATE` triggers raising 42501 (the migration 0004 pattern); the least-privilege role follows in #165.
+  - Posted rows are immutable through `BEFORE UPDATE OR DELETE` and `BEFORE TRUNCATE` triggers raising 42501 (the migration 0004 pattern). The runtime role `classora_app` (#165) can't disable or drop those triggers because it owns no table.
   - When several packages apply, credit is consumed **first-expiring-first**.
   - Data model: [`data-model.md`](data-model.md).
 

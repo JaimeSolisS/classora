@@ -829,7 +829,7 @@ Every append-only table gets the migration 0004 pattern (`apps/api/migrations/ve
 - `CREATE TRIGGER <table>_no_update_delete BEFORE UPDATE OR DELETE ON <table> FOR EACH ROW …`;
 - `CREATE TRIGGER <table>_no_truncate BEFORE TRUNCATE ON <table> FOR EACH STATEMENT …`.
 
-Privileges alone can't do it: the local, test and CI database role is a superuser. #165 (M10-10) adds the least-privilege role later; the triggers stay. A migration may disable a trigger only in its **own downgrade**, for that one statement.
+The triggers bind every role, the owner included (a superuser locally, in tests and CI). Since #165 (M10-10, migration `0096`) the API and the worker connect as the least-privilege runtime role `classora_app` (ADR-0003 amendment): DML on every table and `USAGE, SELECT` on every sequence in `public`, never `TRUNCATE`, `REFERENCES` or `TRIGGER`, no DDL, and the owner of nothing, so it can't disable or drop a trigger. `alembic_version` is `SELECT` only and `audit_events` `SELECT, INSERT` only. Migrations run as the owner, whose default privileges grant the runtime DML on every new table and sequence. **A migration that adds an append-only table also runs `REVOKE UPDATE, DELETE ON <table> FROM classora_app` when its table should lose those grants, and updates the privilege-matrix pin** (`EXPECTED_EXCEPTIONS` in `apps/api/tests/integration/test_runtime_role.py`). The other append-only tables keep DML for now (#619). A migration may disable a trigger only in its **own downgrade**, for that one statement.
 
 ### 5.2 Guarded tables
 
