@@ -228,3 +228,84 @@ def test_the_role_has_no_special_attribute_no_membership_and_owns_nothing(
 
     assert tuple(role) == (False, False, False, False, False, False, True)
     assert tuple(counts) == (0, 0, 0, 0, 0)
+
+
+# --- AC 3: no DDL, no bypass, directly and through PgBouncer -----------------------
+
+REFUSED_STATEMENTS = {
+    "create_table": "CREATE TABLE runtime_probe (id integer)",
+    "create_temp_table": "CREATE TEMP TABLE runtime_probe (id integer)",
+    "create_function": (
+        "CREATE FUNCTION public.runtime_probe() RETURNS integer"
+        " LANGUAGE sql AS 'SELECT 1'"
+    ),
+    "alter_audit_events": "ALTER TABLE audit_events ADD COLUMN runtime_probe integer",
+    "drop_audit_events": "DROP TABLE audit_events",
+    "truncate_audit_events": "TRUNCATE audit_events",
+    "truncate_other_table": "TRUNCATE rate_limit_counters",
+    "session_replication_role": "SET session_replication_role = replica",
+    "update_audit_events": "UPDATE audit_events SET action = action",
+    "delete_audit_events": "DELETE FROM audit_events",
+    "take_ownership": "ALTER TABLE rate_limit_counters OWNER TO classora_app",
+    "insert_alembic_version": "INSERT INTO alembic_version VALUES ('9999')",
+}
+# The privilege error, not the append-only trigger's: the REVOKE applies.
+PRIVILEGE_ERROR = {
+    "update_audit_events": "permission denied for table audit_events",
+    "delete_audit_events": "permission denied for table audit_events",
+}
+
+
+@pytest.fixture(params=["direct", "pgbouncer"])
+def runtime_path(request: pytest.FixtureRequest, runtime_url: str) -> str:
+    """The runtime role directly, then through the runtime PgBouncer."""
+    if request.param == "direct":
+        return runtime_url
+    return str(request.getfixturevalue("runtime_pgbouncer_url"))
+
+
+def runtime_user(url: str) -> str:
+    [row] = run_sql(url, "SELECT current_user AS name")
+    return str(row.name)
+
+
+@pytest.mark.parametrize("name", sorted(REFUSED_STATEMENTS))
+def test_the_runtime_role_is_refused(name, runtime_path):
+    assert runtime_user(runtime_path) == RUNTIME_ROLE
+
+    sqlstate, message = sqlstate_and_message(runtime_path, REFUSED_STATEMENTS[name])
+
+    assert sqlstate == INSUFFICIENT_PRIVILEGE, message
+    if name in PRIVILEGE_ERROR:
+        assert PRIVILEGE_ERROR[name] in message
+
+
+def test_the_runtime_role_may_insert_audit_events(runtime_path, module_seeded_url):
+    # Letters only (ck_audit_events_action_valid).
+    action = "runtime.probe_" + "".join(chr(97 + int(c, 16)) for c in uuid.uuid4().hex[:8])
+
+    run_sql(
+        runtime_path,
+        "INSERT INTO audit_events (action) VALUES (:action)",
+        {"action": action},
+    )
+
+    assert run_sql(
+        module_seeded_url,
+        "SELECT 1 FROM audit_events WHERE action = :action",
+        {"action": action},
+    )
+
+
+def test_the_runtime_pgbouncer_refuses_the_owner(runtime_pgbouncer_url, module_seeded_url):
+    owner = make_url(module_seeded_url)
+    as_owner = (
+        make_url(runtime_pgbouncer_url)
+        .set(username=owner.username, password=owner.password)
+        .render_as_string(hide_password=False)
+    )
+
+    with pytest.raises(DBAPIError) as raised:
+        run_sql(as_owner, "SELECT 1")
+
+    assert "authentication failed" in str(raised.value.orig)
