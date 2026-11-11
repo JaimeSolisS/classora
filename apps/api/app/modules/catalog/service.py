@@ -56,7 +56,13 @@ nothing changes no version and writes no audit event.
   be created or reactivated under an inactive level (``409
   education_level_inactive``; the level row is locked ``FOR SHARE`` first).
   Either lock order makes a concurrent pair end consistent: one of them fails;
-- a subject's level never changes.
+- a subject's level never changes;
+- the built-in "General" subject (HF-12, #597; ``subjects.seed_key =
+  'general'``, created by the ``catalog.general_subject`` reference seed)
+  can't be deactivated (``409 general_subject_protected``), so its level
+  can't be either; it can be renamed. :func:`general_subject_id` gives its
+  id (the staff module's qualification exemption), and ``SubjectDetail``
+  flags it with ``is_general``.
 
 **Audit:** automatic only (#22): ``create`` and ``update`` events of both
 tables with the actor and request ID. No named event and no ``details`` key.
@@ -110,9 +116,11 @@ from app.modules.catalog.classrooms import (
 from app.modules.catalog.errors import (
     EducationLevelHasActiveSubjectsError,
     EducationLevelInactiveError,
+    GeneralSubjectProtectedError,
     NameTakenError,
 )
 from app.modules.catalog.models import (
+    GENERAL_SEED_KEY,
     LEVEL_NAME_INDEX,
     SORT_ORDER_MAX,
     SUBJECT_NAME_INDEX,
@@ -219,6 +227,7 @@ def _subject_detail(subject: Subject, level_name: str) -> SubjectDetail:
         education_level_name=level_name,
         name=subject.name,
         is_active=subject.is_active,
+        is_general=subject.seed_key == GENERAL_SEED_KEY,
         version=subject.version,
         created_at=subject.created_at,
         updated_at=subject.updated_at,
@@ -524,6 +533,18 @@ async def list_subjects(
     )
 
 
+async def general_subject_id(session: AsyncSession) -> uuid.UUID | None:
+    """The id of the built-in "General" subject (HF-12, #597), active or not;
+    ``None`` on a database the ``catalog.general_subject`` seed hasn't run on.
+    One statement on ``seed_key``. Any user holding the ``tutor`` role may
+    teach it without a qualification (:mod:`app.modules.staff.qualifications`).
+    """
+    found: uuid.UUID | None = await session.scalar(
+        select(Subject.id).where(Subject.seed_key == GENERAL_SEED_KEY)
+    )
+    return found
+
+
 async def get_subject(session: AsyncSession, subject_id: uuid.UUID) -> SubjectDetail:
     """One subject, active or not; ``404 not_found`` when unknown."""
     row = (
@@ -705,9 +726,11 @@ async def update_subject(
     """Rename, deactivate or reactivate a subject.
 
     Order (after the body's ``422``): ``404`` → ``409 version_conflict`` →
-    ``409 name_taken`` → ``409 education_level_inactive`` (when reactivating;
-    the level row is locked ``FOR SHARE`` first) → the update. Renaming or
-    deactivating a subject of an inactive level is allowed.
+    ``409 name_taken`` → ``409 general_subject_protected`` (deactivating the
+    built-in General subject, HF-12; renaming it is allowed) → ``409
+    education_level_inactive`` (when reactivating; the level row is locked
+    ``FOR SHARE`` first) → the update. Renaming or deactivating a subject of
+    an inactive level is allowed.
     """
     subject = await session.get(Subject, subject_id)
     if subject is None:
@@ -723,6 +746,12 @@ async def update_subject(
         changed = True
     level: EducationLevel | None = None
     if "is_active" in sent and body.is_active is not None:
+        if (
+            subject.is_active
+            and not body.is_active
+            and subject.seed_key == GENERAL_SEED_KEY
+        ):
+            raise GeneralSubjectProtectedError()
         if body.is_active and not subject.is_active:
             level = await _active_level_for_share(session, subject.education_level_id)
         if body.is_active != subject.is_active:

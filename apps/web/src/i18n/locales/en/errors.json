@@ -32,6 +32,7 @@
   "name_taken": "That name is already in use (possibly by an inactive record).",
   "education_level_has_active_subjects": "Deactivate this level's active subjects first.",
   "education_level_inactive": "The education level is inactive. Reactivate it first.",
+  "general_subject_protected": "The built-in General subject can't be deactivated.",
   "education_level_unavailable": "Choose an active education level.",
   "emergency_contact_unknown": "One of the contacts no longer exists. Reload and try again.",
   "guardian_account_unavailable": "Choose an active or pending account with the guardian role.",

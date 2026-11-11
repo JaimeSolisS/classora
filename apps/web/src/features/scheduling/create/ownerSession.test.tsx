@@ -37,6 +37,7 @@ import {
   GROUP_CREATED,
   GROUP_OPTION,
   OVERRIDDEN,
+  GENERAL_SUBJECT,
   SOFT_CONFLICTS,
   SUBJECTS,
   TUTORS,
@@ -682,6 +683,32 @@ describe('the pre-fill across types (AC4)', () => {
     check();
     expect(hasLabel('Student')).toBe(true);
     expect(selectByLabel('Subject').value).toBe('');
+  });
+
+  it('preselects General again when switching back to Individual (HF-12)', async () => {
+    stub({
+      'GET /api/v1/subjects': page(
+        [GENERAL_SUBJECT, ...SUBJECTS].map((s) => ({
+          id: s.id,
+          name: s.name,
+          education_level_id: LEVEL.id,
+          education_level_name: s.levelName,
+          is_active: true,
+          is_general: s.isGeneral ?? false,
+          version: 1,
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        })),
+      ),
+    });
+    app = await renderApp('/schedule/new');
+    expect(selectByLabel('Subject').value).toBe(GENERAL_SUBJECT.id);
+
+    await chooseType('Group');
+    expect(hasLabel('Subject')).toBe(false);
+    await chooseType('Individual');
+
+    expect(selectByLabel('Subject').value).toBe(GENERAL_SUBJECT.id);
   });
 });
 

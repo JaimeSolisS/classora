@@ -110,6 +110,7 @@ from app.modules.identity.imports import TUTORS_IMPORT_KIND
 from app.modules.identity.members import (
     get_role_member,
     list_role_members,
+    role_member_ids,
     role_members_by_username,
     update_account_contact,
 )
@@ -212,6 +213,7 @@ __all__ = [
     "has_accepted_current_privacy_notice",
     "hash_password",
     "list_role_members",
+    "role_member_ids",
     "load_principal",
     "lock_owner_guard",
     "lock_user",

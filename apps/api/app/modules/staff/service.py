@@ -8,7 +8,9 @@ grant, HF-05 A, in :mod:`app.modules.staff.qualification_grant`).
 For other modules (M4-03, M4-06): :func:`approved_subject_ids`,
 :func:`is_qualified`, :func:`qualified_pairs` (its batch twin, #57) and
 :func:`qualified_tutor_ids` count **approved**
-qualifications only (a revoked one stops counting at once).
+qualifications only (a revoked one stops counting at once), except for the
+built-in General subject (HF-12, #597), which every tutor may teach without
+one.
 
 Tutor availability (#45, implemented in
 :mod:`app.modules.staff.tutor_availability`; the rules in

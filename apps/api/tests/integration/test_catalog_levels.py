@@ -42,7 +42,8 @@ from tests.integration.conftest import run_sql
 from tests.integration.invitation_support import sign_in
 from tests.integration.lifecycle_support import code_of, events
 
-SEEDED_NAMES = ["Primaria", "Secundaria", "Preparatoria", "Universidad"]
+# HF-12 (#597): the built-in "General" level (sort_order 0) comes first.
+SEEDED_NAMES = ["General", "Primaria", "Secundaria", "Preparatoria", "Universidad"]
 
 
 @pytest.fixture(scope="module")
@@ -63,8 +64,8 @@ def cookie(client, owner):
 
 @pytest.fixture
 def fresh(seeded_url: str) -> Iterator[tuple[str, TestClient, Any]]:
-    """A database of this test only (the four seeded levels), its client and
-    a signed-in Owner."""
+    """A database of this test only (the four seeded levels and the General
+    one), its client and a signed-in Owner."""
     with auth_client(seeded_url) as fresh_client:
         person = create_user(seeded_url, roles=(OWNER,))
         yield seeded_url, fresh_client, sign_in(fresh_client, person.username)
@@ -153,6 +154,7 @@ def test_equal_positions_fall_back_to_the_name_ignoring_case(fresh):
         create_level(fresh_client, owner_cookie, name, sort_order=20)
 
     assert names(get(fresh_client, owner_cookie, LEVELS)) == [
+        "General",
         "Primaria",
         "Alfa",
         "beta",
@@ -166,13 +168,13 @@ def test_equal_positions_fall_back_to_the_name_ignoring_case(fresh):
 def test_limit_offset_and_total(fresh):
     _, fresh_client, owner_cookie = fresh
 
-    response = get(fresh_client, owner_cookie, LEVELS, limit=2, offset=1)
+    response = get(fresh_client, owner_cookie, LEVELS, limit=2, offset=2)
 
     assert names(response) == ["Secundaria", "Preparatoria"]
     body = response.json()
-    assert (body["total"], body["limit"], body["offset"]) == (4, 2, 1)
+    assert (body["total"], body["limit"], body["offset"]) == (5, 2, 2)
     beyond = get(fresh_client, owner_cookie, LEVELS, offset=10).json()
-    assert (beyond["items"], beyond["total"]) == ([], 4)
+    assert (beyond["items"], beyond["total"]) == ([], 5)
 
 
 def test_active_subject_count_counts_only_active_subjects(client, cookie):
@@ -265,6 +267,8 @@ def test_without_a_position_a_level_goes_last(fresh):
 
 def test_the_first_level_defaults_to_position_10(fresh):
     url, fresh_client, owner_cookie = fresh
+    # HF-12: the General subject refers to its level (ON DELETE RESTRICT).
+    run_sql(url, "DELETE FROM subjects")
     run_sql(url, "DELETE FROM education_levels")
 
     level = create_level(fresh_client, owner_cookie)

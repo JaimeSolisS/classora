@@ -45,7 +45,7 @@ Permissions use predefined roles plus record-level ownership checks. Tutors acce
 
 ### Schedule administration
 - Tutors publish recurring weekly availability and exceptions (time off, holidays, changes), preferred classrooms, teaching limits and required breaks. Changes affecting existing assignments require administrator approval.
-- Tutors request subject + education-level qualifications, approved by an administrator, or are granted them directly by an administrator (HF-05 E1, owner-approved 2026-11-07).
+- Tutors request subject + education-level qualifications, approved by an administrator, or are granted them directly by an administrator (HF-05 E1, owner-approved 2026-11-07). An approved qualification is not needed for the built-in "General" subject, which any active tutor may teach (HF-12, owner decision 2026-11-10).
 - Administrators schedule all confirmed classes, make final tutor assignments, and manage group/course enrollment (including additions/removals after a start date with appropriate financial adjustments).
 - Parents and students can see available individual-session slots and **request**, not automatically book, them.
 - Tutors accept/decline offered assignments; declined assignments return for reassignment.
@@ -69,7 +69,7 @@ Permissions use predefined roles plus record-level ownership checks. Tutors acce
 
 - Student profile: personal/contact details, emergency contacts, school information, education level, documents and optional account credentials. *(Profile documents: deferred to a later version, see §5.)*
 - Tutor profile: contact details, qualifications, teaching subjects/levels, professional experience, supporting documents and availability. *(Supporting documents: deferred to a later version, see §5.)*
-- Subject catalog by education level (e.g., elementary, middle school, high school, university).
+- Subject catalog by education level (e.g., elementary, middle school, high school, university). Every center also has a built-in "General" subject in its own "General" level, listed first and preselected on new sessions, groups and course templates; it can be renamed but not deactivated, needs no tutor qualification and is priced like any other subject (HF-12, owner decision 2026-11-10).
 - Complete academic history grouped by school year/semester/period while maintaining chronological history.
 - Structured diagnostic and ongoing evaluations with templates, grading criteria, scores and tutor feedback; independent tutor contributions roll up into a unified student history by subject/period.
 - Structured learning plans with objectives, milestones, due dates, activities and progress visible to students/guardians.
@@ -317,7 +317,7 @@ The scenarios below translate the approved capabilities into checkable end-to-en
 ### W1. Tutor assignment and class scheduling
 
 1. An administrator selects an individual, group or course session, a student/cohort, subject, date/time and classroom if applicable.
-2. The backend checks student, tutor, room, approved qualification, availability, enrollment/capacity and relevant policies. A conflicting booking must not be silently created.
+2. The backend checks student, tutor, room, approved qualification (not needed for the built-in General subject), availability, enrollment/capacity and relevant policies. A conflicting booking must not be silently created.
 3. The administrator selects an eligible tutor; the assignment is offered to that tutor for acceptance or decline.
 4. An accepted assignment appears on authorized student, guardian and tutor calendars. A declined assignment returns to an actionable administrative state.
 5. A recurring series can be modified for a single occurrence or future occurrences without rewriting already completed session history.

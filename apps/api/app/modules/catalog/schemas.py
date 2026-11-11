@@ -120,6 +120,14 @@ class SubjectDetail(BaseModel):
     education_level_name: str
     name: str
     is_active: bool
+    is_general: bool = Field(
+        description=(
+            "True only for the built-in General subject (HF-12): any active"
+            " tutor may teach it without a qualification, it can't be"
+            " deactivated, and the web preselects it on new sessions, groups"
+            " and course templates."
+        )
+    )
     version: int
     created_at: datetime
     updated_at: datetime

@@ -32,6 +32,7 @@
   "name_taken": "Ya existe un registro con ese nombre (puede estar inactivo).",
   "education_level_has_active_subjects": "Primero desactiva las materias activas de este nivel.",
   "education_level_inactive": "El nivel educativo está inactivo. Reactívalo primero.",
+  "general_subject_protected": "La materia General viene incluida y no se puede desactivar.",
   "education_level_unavailable": "Elige un nivel educativo activo.",
   "emergency_contact_unknown": "Uno de los contactos ya no existe. Recarga e inténtalo de nuevo.",
   "guardian_account_unavailable": "Elige una cuenta activa o pendiente con el rol de padre, madre o tutor legal.",

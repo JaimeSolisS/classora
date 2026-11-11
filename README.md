@@ -100,7 +100,10 @@ unless a bullet says otherwise.
 - On the Catalog page, staff maintain the education levels and the subjects
   taught at each level. Records are deactivated instead of deleted; the
   reference seed creates four example levels (Primaria, Secundaria,
-  Preparatoria, Universidad).
+  Preparatoria, Universidad) and a built-in "General" subject in its own
+  "General" level, listed first. General can be renamed but not
+  deactivated, any active tutor may teach it without a qualification, and
+  it is priced like any other subject.
 - Staff define academic periods (school years, semesters and terms; active
   periods of one type can't overlap) and center closures (holidays, closures
   and vacations), which tell later features whether the center is closed on a
@@ -178,7 +181,9 @@ unless a bullet says otherwise.
   conflicts can be overridden with a reason.
 - Staff schedule one-off individual sessions from the calendar's "Schedule a
   session" page (one student, a subject, an optional tutor and classroom, a
-  date and times in the center's time zone). On the same page they can
+  date and times in the center's time zone). The General subject is
+  preselected there, on New group and on a new course template; staff can
+  choose another. On the same page they can
   instead add a one-off session to an active group or a current course: the
   students enrolled in it take part. Owners and Administrators can
   also open that page from the calendar by dragging over free times (or

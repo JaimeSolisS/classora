@@ -497,6 +497,27 @@ export function splitServerErrors(
   return { fields, page };
 }
 
+/**
+ * The built-in General subject's id among the loaded active subjects, or ''
+ * when it isn't there (HF-12, #597: a database not yet seeded, or General
+ * renamed away is still flagged). New sessions and groups start with it.
+ */
+export function generalSubjectId(subjects: readonly SubjectOption[]): string {
+  return subjects.find((subject) => subject.isGeneral)?.id ?? '';
+}
+
+/** The form's first values without a makeup target: the calendar pre-fill
+ * (or none) with the General subject preselected (HF-12). */
+export function newSessionValues(
+  prefill: ScheduleValues | null,
+  subjects: readonly SubjectOption[],
+): ScheduleValues {
+  return {
+    ...(prefill ?? EMPTY_SCHEDULE),
+    subjectId: generalSubjectId(subjects),
+  };
+}
+
 /** Subjects grouped by level, in the order given. */
 export function subjectsByLevel(
   subjects: readonly SubjectOption[],

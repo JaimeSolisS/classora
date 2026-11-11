@@ -47,12 +47,14 @@ SEED_LINES: Final = [
     "identity.roles: 7 inserted, 0 updated",
     "identity.role_permissions: 118 inserted, 0 updated",
     "catalog.education_levels: 4 inserted, 0 updated",
+    "catalog.general_subject: 2 inserted, 0 updated",
 ]
 RERUN_SEED_LINES: Final = [
     "identity.permissions: 0 inserted, 0 updated",
     "identity.roles: 0 inserted, 0 updated",
     "identity.role_permissions: 0 inserted, 0 updated",
     "catalog.education_levels: 0 inserted, 0 updated",
+    "catalog.general_subject: 0 inserted, 0 updated",
 ]
 
 SMALL_PEOPLE_ROWS: Final = 184

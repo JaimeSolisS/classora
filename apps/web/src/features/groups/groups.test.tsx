@@ -1105,6 +1105,59 @@ describe('/groups/new (E)', () => {
     expect(main().textContent).toContain('Group created: 2 upcoming sessions.');
   });
 
+  it('opens with the built-in General subject selected (HF-12)', async () => {
+    const GENERAL_ID = '00000000-0000-4000-8000-0000000004b0';
+    const subject = (
+      id: string,
+      name: string,
+      level: string,
+      general: boolean,
+    ) => ({
+      id,
+      name,
+      education_level_id: '00000000-0000-4000-8000-0000000004f1',
+      education_level_name: level,
+      is_active: true,
+      is_general: general,
+      version: 1,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    });
+    const api = stub(OWNER, {
+      'GET /api/v1/subjects': page([
+        subject(GENERAL_ID, 'General', 'General', true),
+        subject(SUBJECT_ID, 'Álgebra', 'Secundaria', false),
+      ]),
+      [CREATE]: () => jsonResponse(201, CREATED_GROUP),
+    });
+    app = await open('/groups/new');
+    const select = () =>
+      document.getElementById(
+        [...main().querySelectorAll('label')].find(
+          (l) => l.textContent === 'Subject',
+        )!.htmlFor,
+      ) as HTMLSelectElement;
+    expect(select().value).toBe(GENERAL_ID);
+
+    // It can be changed; the chosen subject is sent.
+    await fillForm();
+    await click(buttonNamed(main(), 'Create group'));
+    expect(api.calls(CREATE)[0]!.body).toMatchObject({
+      subject_id: SUBJECT_ID,
+    });
+  });
+
+  it('starts without a subject when General is not offered', async () => {
+    stub(OWNER);
+    app = await open('/groups/new');
+    const label = [...main().querySelectorAll('label')].find(
+      (l) => l.textContent === 'Subject',
+    )!;
+    expect(
+      (document.getElementById(label.htmlFor) as HTMLSelectElement).value,
+    ).toBe('');
+  });
+
   it('clears an error once a valid value is entered after a failed submit (HF-13 E4)', async () => {
     const api = stub(OWNER);
     app = await open('/groups/new');

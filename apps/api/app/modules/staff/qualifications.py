@@ -39,6 +39,15 @@ directly (HF-05 A) is :mod:`app.modules.staff.qualification_grant`.
 qualifications. Whether the user still holds the ``tutor`` role is the
 caller's check (M4-06).
 
+**The built-in General subject needs no qualification** (HF-12, #597; spec
+W1): :func:`is_qualified`, :func:`qualified_pairs` and
+:func:`qualified_tutor_ids` treat every tutor as qualified for it
+(``catalog.general_subject_id``). This is the only place the exemption
+lives; every scheduling check, suggestion, calendar marker and family slot
+goes through these three. Qualifications for General can still be requested
+or granted; they have no effect. :func:`approved_subject_ids` and
+``teaching_subjects`` list only real qualifications.
+
 Every function runs in the caller's Unit of Work and never commits.
 """
 
@@ -345,7 +354,9 @@ async def is_qualified(
     session: AsyncSession, tutor_user_id: uuid.UUID, subject_id: uuid.UUID
 ) -> bool:
     """Whether the tutor holds an approved qualification for the subject
-    (pending, rejected, cancelled and revoked never count)."""
+    (pending, rejected, cancelled and revoked never count), or the subject is
+    the built-in General one, which needs none (HF-12). One statement, two
+    when the tutor holds no approved qualification for it."""
     found = await session.scalar(
         select(TutorQualification.id)
         .where(TutorQualification.tutor_user_id == tutor_user_id)
@@ -353,15 +364,19 @@ async def is_qualified(
         .where(TutorQualification.status == APPROVED)
         .limit(1)
     )
-    return found is not None
+    if found is not None:
+        return True
+    return subject_id == await catalog.general_subject_id(session)
 
 
 async def qualified_pairs(
     session: AsyncSession, pairs: Iterable[tuple[uuid.UUID, uuid.UUID]]
 ) -> frozenset[tuple[uuid.UUID, uuid.UUID]]:
     """The ``(tutor_user_id, subject_id)`` pairs of ``pairs`` that hold an
-    approved qualification: the batch twin of :func:`is_qualified` (#57, the
-    calendar's read-time marker). One statement; none for an empty input."""
+    approved qualification, plus every pair with the built-in General subject
+    (HF-12): the batch twin of :func:`is_qualified` (#57, the calendar's
+    read-time marker). One statement, a second only when some pair is not
+    qualified; none for an empty input."""
     wanted = set(pairs)
     if not wanted:
         return frozenset()
@@ -374,15 +389,22 @@ async def qualified_pairs(
         )
         .where(TutorQualification.status == APPROVED)
     )
-    return frozenset((row.tutor_user_id, row.subject_id) for row in rows)
+    qualified = {(row.tutor_user_id, row.subject_id) for row in rows}
+    if wanted - qualified:
+        general = await catalog.general_subject_id(session)
+        qualified |= {pair for pair in wanted if pair[1] == general}
+    return frozenset(qualified)
 
 
 async def qualified_tutor_ids(
     session: AsyncSession, subject_id: uuid.UUID
 ) -> frozenset[uuid.UUID]:
-    """The users holding an approved qualification for the subject. Whether
-    they still hold the ``tutor`` role and are active is the caller's check
-    (M4-06)."""
+    """The users holding an approved qualification for the subject; for the
+    built-in General subject (HF-12), every user holding the ``tutor`` role.
+    Whether they still hold the ``tutor`` role and are active is the caller's
+    check (M4-06). Two statements."""
+    if subject_id == await catalog.general_subject_id(session):
+        return await identity.role_member_ids(session, TUTOR)
     rows = await session.scalars(
         select(TutorQualification.tutor_user_id)
         .where(TutorQualification.subject_id == subject_id)

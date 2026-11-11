@@ -475,7 +475,11 @@ def test_every_login_accepts_the_notice_and_stores_the_language(es_url, en_url):
 
 def free_texts(url: str) -> list[str]:
     return [
-        *(r.name for r in rows(url, "SELECT name FROM subjects")),
+        # HF-12: the reference seed's General subject is not simulation text.
+        *(
+            r.name
+            for r in rows(url, "SELECT name FROM subjects WHERE seed_key IS NULL")
+        ),
         *(r.name for r in rows(url, "SELECT name FROM classrooms")),
         *(r.name for r in rows(url, "SELECT name FROM closures")),
         *(r.name for r in rows(url, "SELECT name FROM academic_periods")),
@@ -570,7 +574,9 @@ def test_free_text_comes_from_the_run_languages_pool(es_url, en_url):
 def test_reference_names_are_english_only_in_english(es_url, en_url):
     levels = "SELECT name FROM education_levels ORDER BY sort_order"
     categories = "SELECT name FROM expense_categories ORDER BY name"
+    # HF-12 (#597): the built-in General level (sort 0) keeps its name.
     assert [r.name for r in rows(en_url, levels)] == [
+        "General",
         "Elementary school",
         "Middle school",
         "High school",
@@ -585,6 +591,7 @@ def test_reference_names_are_english_only_in_english(es_url, en_url):
         "Utilities",
     ]
     assert [r.name for r in rows(es_url, levels)] == [
+        "General",
         "Primaria",
         "Secundaria",
         "Preparatoria",
@@ -640,7 +647,14 @@ def test_catalog(es_url):
         == 0
     )
     levels = scalar(es_url, "SELECT count(DISTINCT education_level_id) FROM subjects")
-    assert levels == 4
+    assert levels == 5  # HF-12: the four example levels and General's
+    general = rows(
+        es_url,
+        "SELECT s.name, l.name AS level, l.sort_order FROM subjects s"
+        " JOIN education_levels l ON l.id = s.education_level_id"
+        " WHERE s.seed_key = 'general'",
+    )
+    assert [tuple(r) for r in general] == [("General", "General", 0)]
 
 
 def test_full_staff_profiles(full_url):
@@ -781,15 +795,23 @@ def test_writes_went_through_the_services_with_their_actors(es_url):
     ids = {r.username: r.id for r in rows(es_url, "SELECT id, username FROM users")}
     admin, owner = ids["administracion"], ids["direccion"]
 
+    # HF-12 (#597): the reference seed's General subject is created by
+    # `make seed` without an actor, like the seeded levels; only the rows the
+    # simulation writes must carry their actor.
+    seeded = {
+        r.id for r in rows(es_url, "SELECT id FROM subjects WHERE seed_key IS NOT NULL")
+    }
+
     def actors(table: str) -> set[Any]:
         return {
             r.actor_user_id
             for r in rows(
                 es_url,
-                "SELECT actor_user_id FROM audit_events"
+                "SELECT actor_user_id, record_id FROM audit_events"
                 " WHERE record_type = :table AND action = 'create'",
                 table=table,
             )
+            if not (table == "subjects" and r.record_id in seeded)
         }
 
     for table in (

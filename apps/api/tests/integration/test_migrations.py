@@ -72,7 +72,7 @@ def metadata_diff(dsn: str) -> list[object]:
     return asyncio.run(_run())
 
 
-HEAD = "0094"
+HEAD = "0095"
 FINANCE_TABLES_0083 = frozenset({"expense_categories", "vendors"})
 EXPENSE_TABLES_0084 = frozenset(
     {"expenses", "expense_payments", "expense_payment_reversals", "expense_adjustments"}
@@ -1348,6 +1348,8 @@ def test_subjects_columns_constraints_and_indexes(fresh_database_url):
         "education_level_id": ("uuid", "NO", None, None),
         "name": ("character varying", "NO", 100, None),
         "is_active": ("boolean", "NO", None, "true"),
+        # HF-12 (0095): the built-in General subject's key.
+        "seed_key": ("character varying", "YES", 40, None),
     }
     constraints = _constraints(fresh_database_url, "subjects")
     assert set(constraints) == {
@@ -1355,6 +1357,8 @@ def test_subjects_columns_constraints_and_indexes(fresh_database_url):
         "fk_subjects_education_level_id_education_levels",
         "ck_subjects_name_trimmed",
         "ck_subjects_name_not_blank",
+        "ck_subjects_seed_key_format",
+        "uq_subjects_seed_key",
     }
     assert (
         "ON DELETE RESTRICT"
@@ -1365,6 +1369,7 @@ def test_subjects_columns_constraints_and_indexes(fresh_database_url):
         "pk_subjects",
         "ix_subjects_education_level_id",
         "uq_subjects_level_name_ci",
+        "uq_subjects_seed_key",
     }
     assert "UNIQUE INDEX" in indexes["uq_subjects_level_name_ci"]
     assert (
@@ -5001,9 +5006,29 @@ def _of_0093(diff: Any) -> bool:
     return diff[0] == "add_index" and diff[1].table.name == FAILURES_0093
 
 
+SEED_KEY_0095 = "seed_key"
+SEED_KEY_UNIQUE_0095 = "uq_subjects_seed_key"
+
+
+def _of_0095(diff: Any) -> bool:
+    """A metadata difference that revision 0095 adds: ``subjects.seed_key``
+    and its unique constraint (HF-12, #597). CHECKs are not compared."""
+    if diff[0] == "add_column":
+        return bool(diff[2] == "subjects" and diff[3].name == SEED_KEY_0095)
+    if diff[0] == "add_constraint":
+        return bool(diff[1].name == SEED_KEY_UNIQUE_0095)
+    return False
+
+
+def _of_0093_on(diff: Any) -> bool:
+    """A metadata difference that revision 0093 or a later one adds (0094
+    adds none)."""
+    return _of_0093(diff) or _of_0095(diff)
+
+
 def _of_0092_on(diff: Any) -> bool:
     """A metadata difference that revision 0092 or a later one adds."""
-    return _of_0092(diff) or _of_0093(diff)
+    return _of_0092(diff) or _of_0093_on(diff)
 
 
 def _of_0091_on(diff: Any) -> bool:
@@ -17947,7 +17972,7 @@ def test_0092_adds_the_table_and_downgrade_restores_0091(fresh_database_url):
     command.upgrade(config, "0092")
 
     assert version_nums(dsn) == ["0092"]
-    assert [d for d in metadata_diff(dsn) if not _of_0093(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0093_on(d)] == []
     assert public_tables(dsn) - tables == {LAYOUTS_0092}
 
     command.downgrade(config, "0091")
@@ -18077,14 +18102,14 @@ def test_0093_adds_the_table_and_downgrade_restores_0092(fresh_database_url):
     command.upgrade(config, "0093")
 
     assert version_nums(dsn) == ["0093"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0095(d)] == []
     assert public_tables(dsn) - tables == {FAILURES_0093}
 
     command.downgrade(config, "0092")
 
     assert version_nums(dsn) == ["0092"]
     assert public_tables(dsn) == tables
-    assert [d for d in metadata_diff(dsn) if not _of_0093(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0093_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -18230,7 +18255,7 @@ def test_0094_allows_deleting_only_soft_deleted_reports(fresh_database_url):
     command.upgrade(config, "0094")
 
     assert version_nums(dsn) == ["0094"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0095(d)] == []
     run_sql(dsn, "DELETE FROM progress_reports WHERE id = :id", {"id": first.id})
     assert not run_sql(
         dsn, "SELECT 1 FROM progress_reports WHERE id = :id", {"id": first.id}
@@ -18251,6 +18276,58 @@ def test_0094_allows_deleting_only_soft_deleted_reports(fresh_database_url):
     [second] = run_sql(dsn, REPORT_INSERT, deleted_values)
     with pytest.raises(DBAPIError, match="never deleted"):
         run_sql(dsn, "DELETE FROM progress_reports WHERE id = :id", {"id": second.id})
+
+    command.upgrade(config, "head")
+
+    assert metadata_diff(dsn) == []
+
+
+# --- 0095: subjects.seed_key (HF-12, #597) -----
+
+
+def test_0095_adds_the_subjects_seed_key_and_downgrade_drops_it(fresh_database_url):
+    """0095 adds a nullable, unique ``subjects.seed_key`` in the levels'
+    format; existing rows keep NULL; downgrading drops exactly the column."""
+    dsn = fresh_database_url
+    config = alembic_config(dsn)
+    command.upgrade(config, "0094")
+    [level] = run_sql(
+        dsn,
+        "INSERT INTO education_levels (name, sort_order) VALUES ('Primaria', 10)"
+        " RETURNING id",
+    )
+    insert = (
+        "INSERT INTO subjects (education_level_id, name) VALUES (:level, :name)"
+        " RETURNING id"
+    )
+    [existing] = run_sql(dsn, insert, {"level": level.id, "name": "Física"})
+    before = _columns(dsn, "subjects")
+
+    command.upgrade(config, "0095")
+
+    assert version_nums(dsn) == ["0095"]
+    assert metadata_diff(dsn) == []
+    assert set(_columns(dsn, "subjects")) - set(before) == {"seed_key"}
+    [row] = run_sql(
+        dsn, "SELECT seed_key FROM subjects WHERE id = :id", {"id": existing.id}
+    )
+    assert row.seed_key is None
+    keyed = (
+        "INSERT INTO subjects (education_level_id, name, seed_key)"
+        " VALUES (:level, :name, :key) RETURNING id"
+    )
+    run_sql(dsn, keyed, {"level": level.id, "name": "General", "key": "general"})
+    with pytest.raises(IntegrityError) as duplicate:
+        run_sql(dsn, keyed, {"level": level.id, "name": "Otra", "key": "general"})
+    assert getattr(duplicate.value.orig, "sqlstate", None) == "23505"
+    with pytest.raises(IntegrityError) as malformed:
+        run_sql(dsn, keyed, {"level": level.id, "name": "Mala", "key": "General"})
+    assert getattr(malformed.value.orig, "sqlstate", None) == "23514"
+
+    command.downgrade(config, "0094")
+
+    assert version_nums(dsn) == ["0094"]
+    assert _columns(dsn, "subjects") == before
 
     command.upgrade(config, "head")
 

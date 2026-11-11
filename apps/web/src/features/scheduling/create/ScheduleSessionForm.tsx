@@ -78,6 +78,7 @@ import {
   slotValues,
   splitServerErrors,
   subjectsByLevel,
+  generalSubjectId,
   takenMakeupId,
   TUTOR_SUGGESTIONS_DELAY_MS,
   tutorSuggestionKey,
@@ -965,7 +966,11 @@ export function ScheduleSessionForm({
     setServerFieldErrors({});
     setUnreadable(READABLE_TIMES);
     startEdit.current = null;
-    setValues({ ...EMPTY_SCHEDULE, date: values.date });
+    setValues({
+      ...EMPTY_SCHEDULE,
+      subjectId: generalSubjectId(subjects),
+      date: values.date,
+    });
   }
 
   /** Switching type keeps the date, times, tutor and classroom (HF-11b). */
@@ -975,7 +980,12 @@ export function ScheduleSessionForm({
     }
     setKind(next);
     setOwner(null);
-    setValues((current) => ({ ...current, student: null, subjectId: '' }));
+    // Back to Individual: General is preselected again (HF-12).
+    setValues((current) => ({
+      ...current,
+      student: null,
+      subjectId: next === 'individual' ? generalSubjectId(subjects) : '',
+    }));
     setRepeats(false);
     setRuleChecked(false);
     setServerRuleErrors({});

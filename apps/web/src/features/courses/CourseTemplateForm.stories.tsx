@@ -3,7 +3,7 @@ import { expect, fn } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
 import { CourseTemplateForm } from './CourseTemplateForm';
-import { ALGEBRA, SUBJECT_OPTIONS } from './fixtures';
+import { ALGEBRA, GENERAL_OPTION, SUBJECT_OPTIONS } from './fixtures';
 
 // The course template editor (#64 G3, G4, G7): a new template (empty), a
 // stored one (filled), the row errors of the checks, and the server's
@@ -40,6 +40,18 @@ export const Empty: Story = {
     await expect(
       canvas.getByText(i18n.t('courses.templates.noAssessments')),
     ).toBeVisible();
+  },
+};
+
+/** HF-12 (#597): a new template starts with the built-in General subject. */
+export const GeneralPreselected: Story = {
+  args: {
+    subjects: { status: 'ready', items: [GENERAL_OPTION, ...SUBJECT_OPTIONS] },
+  },
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.getByRole('checkbox', { name: /^General/ }),
+    ).toBeChecked();
   },
 };
 

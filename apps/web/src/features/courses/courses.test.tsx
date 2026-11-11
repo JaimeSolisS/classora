@@ -18,10 +18,11 @@ import {
   settle,
   type RenderedApp,
 } from '@/test/render-app';
-import type { CourseTemplate } from './api';
+import type { CourseTemplate, SubjectOption } from './api';
 import {
   ALGEBRA,
   CHEMISTRY_ID,
+  GENERAL_OPTION,
   MATH_ID,
   pageOf,
   PHYSICS_ID,
@@ -64,22 +65,27 @@ const FINANCE: SessionUserBody = {
   permissions: ['course.view'],
 };
 
-const subjectPage: Responder = () =>
-  jsonResponse(200, {
-    items: SUBJECT_OPTIONS.map((option) => ({
-      id: option.id,
-      name: option.name,
-      education_level_id: '01900000-0000-7000-8000-00000000e001',
-      education_level_name: option.levelName,
-      is_active: true,
-      version: 1,
-      created_at: '2026-10-01T00:00:00Z',
-      updated_at: '2026-10-01T00:00:00Z',
-    })),
-    total: SUBJECT_OPTIONS.length,
-    limit: 100,
-    offset: 0,
-  });
+const subjectsOf =
+  (options: readonly SubjectOption[]): Responder =>
+  () =>
+    jsonResponse(200, {
+      items: options.map((option) => ({
+        id: option.id,
+        name: option.name,
+        education_level_id: '01900000-0000-7000-8000-00000000e001',
+        education_level_name: option.levelName,
+        is_active: true,
+        is_general: option.isGeneral ?? false,
+        version: 1,
+        created_at: '2026-10-01T00:00:00Z',
+        updated_at: '2026-10-01T00:00:00Z',
+      })),
+      total: options.length,
+      limit: 100,
+      offset: 0,
+    });
+
+const subjectPage = subjectsOf(SUBJECT_OPTIONS);
 
 function stub(
   user: SessionUserBody = MANAGER,
@@ -649,6 +655,55 @@ describe('the new template editor (G3)', () => {
     expect(errorOf(name)).toBe(
       'Another course template already has this name, possibly an inactive one.',
     );
+  });
+});
+
+describe('the built-in General subject (HF-12)', () => {
+  const WITH_GENERAL = {
+    [SUBJECTS]: subjectsOf([GENERAL_OPTION, ...SUBJECT_OPTIONS]),
+  };
+  const checked = (name: string) => {
+    const label = [...main().querySelectorAll('label')].find((candidate) =>
+      candidate.textContent?.startsWith(name),
+    );
+    return document
+      .getElementById(label!.htmlFor)!
+      .getAttribute('aria-checked');
+  };
+
+  it('a new template starts with General, which can be removed or joined', async () => {
+    const api = stub(MANAGER, {
+      ...WITH_GENERAL,
+      [CREATE]: () => jsonResponse(201, ALGEBRA),
+    });
+    app = await renderApp('/courses/templates/new');
+    expect(checked('General')).toBe('true');
+    expect(checked('Matemáticas')).toBe('false');
+
+    typeInto(fieldByLabel(main(), 'Name'), 'Curso general');
+    await checkSubject('Matemáticas');
+    await checkSubject('General');
+    typeInto(fieldByLabel(main(), 'Number of sessions'), '10');
+    typeInto(fieldByLabel(main(), 'Session length (minutes)'), '60');
+    typeInto(named('Module 1 title'), 'Uno');
+    await click(buttonNamed(main(), 'Save'));
+
+    expect(api.calls(CREATE)[0]!.body).toMatchObject({
+      subject_ids: [MATH_ID],
+    });
+  });
+
+  it('starts without subjects when General is not offered', async () => {
+    stub(MANAGER);
+    app = await renderApp('/courses/templates/new');
+    expect(checked('Matemáticas')).toBe('false');
+    expect(main().textContent).not.toContain('General ·');
+  });
+
+  it('editing a stored template keeps its subjects', async () => {
+    stub(MANAGER, WITH_GENERAL);
+    app = await renderApp(`/courses/templates/${ALGEBRA.id}`);
+    expect(checked('General')).toBe('false');
   });
 });
 

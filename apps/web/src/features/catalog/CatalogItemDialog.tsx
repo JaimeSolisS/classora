@@ -61,6 +61,9 @@ export interface CatalogDialogItem {
   sortOrder?: number;
   isActive: boolean;
   version: number;
+  /** Why the record can't be deactivated (HF-12: the built-in General
+   * subject); the Deactivate button is then disabled with this as its help. */
+  deactivateBlocked?: string;
 }
 
 export interface CatalogItemDialogProps {
@@ -299,7 +302,10 @@ function DialogBody({
             <Button
               type="button"
               variant={item.isActive ? 'destructive' : 'outline'}
-              disabled={working !== null}
+              disabled={
+                working !== null ||
+                (item.isActive && item.deactivateBlocked !== undefined)
+              }
               aria-describedby={item.isActive ? ids.statusHelp : undefined}
               onClick={() =>
                 void run('status', () => onSetActive(!item.isActive))
@@ -315,7 +321,7 @@ function DialogBody({
             </Button>
             {item.isActive ? (
               <p id={ids.statusHelp} className="text-sm text-muted-foreground">
-                {t('catalog.deactivateHelp')}
+                {item.deactivateBlocked ?? t('catalog.deactivateHelp')}
               </p>
             ) : null}
           </div>

@@ -27,6 +27,18 @@ class EducationLevelHasActiveSubjectsError(AppError):
         super().__init__()
 
 
+class GeneralSubjectProtectedError(AppError):
+    """The built-in "General" subject (HF-12, #597 E3 (a)) can't be
+    deactivated. Renaming it is allowed."""
+
+    status = 409
+    code = "general_subject_protected"
+    detail = "The built-in General subject can't be deactivated."
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
 class EducationLevelInactiveError(AppError):
     """A subject can't be created or reactivated under an inactive level."""
 

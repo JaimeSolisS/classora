@@ -60,6 +60,7 @@ export function subject(
     education_level_name: of.name,
     name,
     is_active: true,
+    is_general: false,
     version: 1,
     created_at: AT,
     updated_at: AT,
@@ -68,6 +69,8 @@ export function subject(
 }
 
 export const ALGEBRA = subject(1, 'Álgebra');
+/** The built-in General subject (HF-12), here on Secundaria's page. */
+export const GENERAL = subject(4, 'General', SECUNDARIA, { is_general: true });
 export const HISTORIA = subject(2, 'Historia', SECUNDARIA, {
   is_active: false,
   version: 3,

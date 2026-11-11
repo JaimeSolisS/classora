@@ -275,8 +275,10 @@ def test_dev_writes_no_demo_data(migrated_url, env_for, capsys):
     assert demo.main([]) == 0
 
     assert capsys.readouterr().out.splitlines() == DEV_LINES
+    # HF-12 (#597): only the reference seed's General subject.
+    subjects = run_sql(migrated_url, "SELECT seed_key FROM subjects")
+    assert [row.seed_key for row in subjects] == ["general"]
     for table in (
-        "subjects",
         "classrooms",
         "tutor_profiles",
         "class_sessions",

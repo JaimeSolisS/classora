@@ -109,6 +109,7 @@ def test_the_detail_has_exactly_the_documented_fields(client, cookie):
         "education_level_name",
         "name",
         "is_active",
+        "is_general",
         "version",
         "created_at",
         "updated_at",
@@ -116,6 +117,7 @@ def test_the_detail_has_exactly_the_documented_fields(client, cookie):
     assert subject["education_level_id"] == level["id"]
     assert subject["education_level_name"] == level["name"]
     assert (subject["is_active"], subject["version"]) == (True, 1)
+    assert subject["is_general"] is False
 
 
 def test_status_and_level_filters(client, cookie):
@@ -486,6 +488,106 @@ def test_subject_create_rename_and_deactivation_are_audited(
         "education_level_id": {"old": None, "new": level["id"]},
         "name": {"old": None, "new": "Lógica"},
         "is_active": {"old": None, "new": True},
+        # HF-12: like a level's, only the seed sets it.
+        "seed_key": {"old": None, "new": None},
     }
     assert recorded[1].changes == {"name": {"old": "Lógica", "new": "Lógica I"}}
     assert recorded[2].changes == {"is_active": {"old": True, "new": False}}
+
+
+# --- HF-12 (#597 AC3): the built-in General subject --------------------------------
+
+
+def general_subject(client, cookie) -> dict[str, Any]:
+    everything = get(client, cookie, SUBJECTS, status="all", limit=100).json()
+    [general] = [item for item in everything["items"] if item["is_general"]]
+    return general
+
+
+def test_only_the_general_subject_is_flagged(module_seeded_url, client, cookie):
+    level = create_level(client, cookie)
+    # A center's own "General" under another level is an ordinary subject.
+    other = create_subject(client, cookie, level["id"], "General")
+
+    general = general_subject(client, cookie)
+
+    assert other["is_general"] is False
+    assert (general["name"], general["education_level_name"]) == (
+        "General",
+        "General",
+    )
+    assert general["is_active"] is True
+    assert get(client, cookie, subject_path(general["id"])).json() == general
+    # The General level (sort_order 0) comes first in the active list.
+    assert get(client, cookie, SUBJECTS).json()["items"][0] == general
+
+
+def test_the_general_subject_cant_be_deactivated(module_seeded_url, client, cookie):
+    general = general_subject(client, cookie)
+    before = catalog_event_count(module_seeded_url)
+
+    response = patch(
+        client,
+        cookie,
+        subject_path(general["id"]),
+        {"version": general["version"], "is_active": False},
+    )
+
+    assert code_of(response) == (409, "general_subject_protected")
+    row = subject_row(module_seeded_url, general["id"])
+    assert (row.is_active, row.version) == (True, general["version"])
+    assert catalog_event_count(module_seeded_url) == before
+    # Sending is_active: true (no change) is still allowed.
+    unchanged = patch(
+        client,
+        cookie,
+        subject_path(general["id"]),
+        {"version": general["version"], "is_active": True},
+    )
+    assert unchanged.status_code == 200, unchanged.text
+
+
+def test_the_general_subject_can_be_renamed(module_seeded_url, client, cookie):
+    general = general_subject(client, cookie)
+    path = subject_path(general["id"])
+
+    renamed = patch(
+        client, cookie, path, {"version": general["version"], "name": "Tutoría"}
+    )
+
+    assert renamed.status_code == 200, renamed.text
+    assert (renamed.json()["name"], renamed.json()["is_general"]) == ("Tutoría", True)
+    restored = patch(
+        client, cookie, path, {"version": renamed.json()["version"], "name": "General"}
+    )
+    assert restored.status_code == 200, restored.text
+
+
+def test_the_general_level_cant_be_deactivated_while_general_is_active(
+    module_seeded_url, client, cookie
+):
+    general = general_subject(client, cookie)
+    level = get(client, cookie, level_path(general["education_level_id"])).json()
+
+    response = patch(
+        client,
+        cookie,
+        level_path(level["id"]),
+        {"version": level["version"], "is_active": False},
+    )
+
+    assert code_of(response) == (409, "education_level_has_active_subjects")
+    assert (level["name"], level["sort_order"]) == ("General", 0)
+
+
+async def _general_id(session):
+    return await service.general_subject_id(session)
+
+
+def test_general_subject_id_is_one_statement(module_seeded_url, client, cookie):
+    general = general_subject(client, cookie)
+
+    statements, found = count_statements(module_seeded_url, _general_id)
+
+    assert found == uuid.UUID(general["id"])
+    assert statements == 1

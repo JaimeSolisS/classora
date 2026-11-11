@@ -28,7 +28,13 @@ from app.modules.identity.permissions import (
 from app.modules.scheduling import service as scheduling
 from tests.conftest import frozen_clock
 from tests.integration.auth_support import CreatedUser, auth_client, create_user
-from tests.integration.catalog_support import count_statements, get, patch, post
+from tests.integration.catalog_support import (
+    count_statements,
+    general_subject,
+    get,
+    patch,
+    post,
+)
 from tests.integration.conftest import run_sql
 from tests.integration.invitation_support import sign_in
 from tests.integration.lifecycle_support import code_of, events
@@ -477,6 +483,23 @@ def test_the_substitute_is_checked(
     assert [o["codes"] for o in detail(client, owner, session["id"])["overrides"]] == [
         ["tutor_not_qualified"]
     ]
+
+
+def test_a_general_session_needs_no_qualified_substitute(
+    module_seeded_url, client, owner
+):
+    # HF-12 (#597 AC4): neither tutor holds a qualification for General.
+    url = module_seeded_url
+    general = Setup(
+        new_student(url), general_subject(url), new_tutor_user(url), new_room(url)
+    )
+    session = confirmed(client, owner, general)
+    unqualified = new_tutor_user(url)
+
+    response = substitute_with(client, owner, session, unqualified.id)
+
+    assert code_of(response) == CREATED, response.text
+    assert detail(client, owner, session["id"])["overrides"] == []
 
 
 def test_the_booking_notice_is_not_checked_again(

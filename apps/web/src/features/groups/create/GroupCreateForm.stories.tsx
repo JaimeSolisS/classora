@@ -2,7 +2,11 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, within } from 'storybook/test';
 import { i18n } from '@/i18n';
 import { StoryQueryClient } from '@/test/StoryQueryClient';
-import { SUBJECTS, TUTORS } from '@/features/scheduling/create/fixtures';
+import {
+  GENERAL_SUBJECT,
+  SUBJECTS,
+  TUTORS,
+} from '@/features/scheduling/create/fixtures';
 import {
   CREATE_ROOM_CONFLICT,
   CREATE_SOFT_CONFLICTS,
@@ -74,6 +78,19 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Empty: Story = {};
+
+/** HF-12 (#597): a new group starts with the built-in General subject. */
+export const GeneralPreselected: Story = {
+  args: {
+    subjects: [GENERAL_SUBJECT, ...SUBJECTS],
+    initialValues: { ...EMPTY_GROUP, subjectId: GENERAL_SUBJECT.id },
+  },
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.getByLabelText(i18n.t('scheduling.fields.subject')),
+    ).toHaveValue(GENERAL_SUBJECT.id);
+  },
+};
 
 export const Filled: Story = {
   args: { initialValues: FILLED, initialRecurrence: WEEKLY },

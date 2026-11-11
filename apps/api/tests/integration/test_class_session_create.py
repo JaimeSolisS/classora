@@ -47,6 +47,7 @@ from tests.factories.scheduling import (
 from tests.integration.auth_support import CreatedUser, auth_client, create_user
 from tests.integration.catalog_support import (
     count_statements,
+    general_subject,
     get,
     patch,
     post,
@@ -528,6 +529,21 @@ def test_a_revoked_qualification_no_longer_counts(
     codes = assert_refused(module_seeded_url, client, cookie, body(setup))
 
     assert codes == [("tutor_not_qualified", "soft")]
+
+
+def test_the_general_subject_needs_no_qualification(
+    module_seeded_url, client, cookie, setup
+):
+    # HF-12 (#597 AC4): no tutor_not_qualified, no override.
+    unqualified = new_tutor(module_seeded_url)
+    payload = body(
+        setup, subject_id=general_subject(module_seeded_url), tutor_user_id=unqualified
+    )
+
+    response = create(client, cookie, payload)
+
+    assert code_of(response) == CREATED, response.text
+    assert response.json()["overrides"] == []
 
 
 def test_notice_window(module_seeded_url, client, setup):

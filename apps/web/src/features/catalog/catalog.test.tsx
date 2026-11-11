@@ -25,6 +25,7 @@ import type {
 } from './api';
 import {
   ALGEBRA,
+  GENERAL,
   HISTORIA,
   LEVELS,
   POSGRADO,
@@ -443,6 +444,41 @@ describe('the level page (I1, I2)', () => {
 
     expect(fieldByLabel(dialog()!, 'Name').getAttribute('aria-invalid')).toBe(
       'true',
+    );
+  });
+
+  it('General can be renamed but its Deactivate is disabled with the reason (HF-12)', async () => {
+    stub(MANAGER, { [SUBJECTS]: subjectsPage([GENERAL, ALGEBRA]) });
+    app = await renderApp(`/catalog/education-levels/${SECUNDARIA.id}`);
+
+    await openWith(editButton('General'));
+    const deactivate = buttonNamed(dialog()!, 'Deactivate');
+    expect(deactivate.disabled).toBe(true);
+    const help = document.getElementById(
+      deactivate.getAttribute('aria-describedby')!,
+    );
+    expect(help?.textContent).toContain("it can't be deactivated");
+    expect(fieldByLabel(dialog()!, 'Name').disabled).toBe(false);
+    await click(buttonNamed(dialog()!, 'Cancel'));
+
+    // An ordinary subject keeps its Deactivate button.
+    await openWith(editButton('Álgebra'));
+    expect(buttonNamed(dialog()!, 'Deactivate').disabled).toBe(false);
+  });
+
+  it('general_subject_protected shows its label (HF-12)', async () => {
+    const editable = { ...GENERAL, is_general: false };
+    stub(MANAGER, {
+      [SUBJECTS]: subjectsPage([editable]),
+      [subjectPatch(editable)]: () => problem(409, 'general_subject_protected'),
+    });
+    app = await renderApp(`/catalog/education-levels/${SECUNDARIA.id}`);
+    await openWith(editButton('General'));
+
+    await click(buttonNamed(dialog()!, 'Deactivate'));
+
+    expect(alerts(dialog()!).join('')).toContain(
+      "The built-in General subject can't be deactivated.",
     );
   });
 

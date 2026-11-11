@@ -5,7 +5,11 @@
   ``catalog.education_levels`` reference seed created, so the seed recognizes
   them after a rename; it never appears in the API.
 - ``subjects``: a subject taught at exactly one level. Its level never
-  changes.
+  changes. ``seed_key`` (HF-12, #597) is set only on the built-in "General"
+  subject the ``catalog.general_subject`` reference seed created or claimed
+  (``'general'``); it never appears in the API. That subject can't be
+  deactivated and needs no tutor qualification
+  (:func:`app.modules.catalog.service.general_subject_id`).
 
 Names are free text, stored once and shown as stored in every language
 (owner decision #32 E1 (a)). They are trimmed (CHECK ``name = btrim(name)``),
@@ -51,6 +55,8 @@ from app.core.models import Model, VersionedMixin
 NAME_MAX_LENGTH = 100
 SORT_ORDER_MAX = 9999
 SEED_KEY_PATTERN = "^[a-z][a-z_]*$"
+GENERAL_SEED_KEY = "general"
+"""``seed_key`` of the built-in "General" level and subject (HF-12, #597)."""
 
 # Explicit names of the expression indexes (NAMING_CONVENTION has no column
 # name to use for them); the service maps a violation of either to
@@ -95,6 +101,7 @@ class Subject(Audited, VersionedMixin, Model):
             func.lower(text("name")),
             unique=True,
         ),
+        CheckConstraint(f"seed_key ~ '{SEED_KEY_PATTERN}'", name="seed_key_format"),
     )
 
     education_level_id: Mapped[uuid.UUID] = mapped_column(
@@ -106,6 +113,7 @@ class Subject(Audited, VersionedMixin, Model):
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true")
     )
+    seed_key: Mapped[str | None] = mapped_column(String(40), nullable=True, unique=True)
 
 
 # --- Academic periods and closures (#38) ---------------------------------------------

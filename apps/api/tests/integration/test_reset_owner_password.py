@@ -62,7 +62,8 @@ def audit_count(dsn: str) -> int:
         run_sql(
             dsn,
             "SELECT count(*) FROM audit_events"
-            " WHERE record_type IS DISTINCT FROM 'education_levels'",
+            " WHERE coalesce(record_type, '')"
+            " NOT IN ('education_levels', 'subjects')",
         )[0][0]
     )
 
