@@ -101,15 +101,13 @@ def runtime_url(module_seeded_url: str) -> str:
 
 @pytest.fixture(scope="module")
 def runtime_pgbouncer_url(
-    postgres_container: PostgresContainer, runtime_url: str
+    postgres_container: PostgresContainer, pgbouncer_image: str, runtime_url: str
 ) -> Iterator[str]:
     """The module's database through a PgBouncer that knows only
-    ``classora_app`` (the committed image, config and entrypoint)."""
+    ``classora_app`` (the session's image of the committed context, config
+    and entrypoint; the image outlives this container)."""
     with started_pgbouncer(
-        postgres_container,
-        RUNTIME_ROLE,
-        RUNTIME_PASSWORD,
-        tag="classora-pgbouncer-runtime-test:latest",
+        postgres_container, pgbouncer_image, RUNTIME_ROLE, RUNTIME_PASSWORD
     ) as url:
         yield with_database(url, runtime_url)
 
