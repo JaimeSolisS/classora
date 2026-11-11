@@ -7,8 +7,9 @@ Commands (one subparser each):
     USERNAME=<name>`` wraps it.
 
     1. Load settings (a configuration error prints the M1-05 message, exit 1).
-    2. Connect **directly** to PostgreSQL (``DATABASE_DIRECT_URL``, ADR-0003),
-       like ``make seed``; refuse unless the database is at the Alembic head,
+    2. Connect **directly** to PostgreSQL as the database owner
+       (``DATABASE_MIGRATION_URL``, else ``DATABASE_DIRECT_URL``; ADR-0003,
+       #165), like ``make seed``; refuse unless the database is at the Alembic head,
        the ``owner`` role is seeded and no user holds it (in any state).
     3. Normalize the username; ``--display-name`` defaults to it.
     4. Read the password: an interactive prompt, twice (default), or the first
@@ -50,6 +51,25 @@ Commands (one subparser each):
     including ``prod`` (through SSM in AWS). Exit 0 on success, 1 on any
     refusal; a refusal writes nothing.
 
+``sync-runtime-role``
+    Gives the least-privilege runtime role ``classora_app`` (#165, migration
+    0096) ``LOGIN`` and the password of ``DATABASE_DIRECT_URL``. ``make
+    migrate``, ``make e2e`` and the hosts' deploy run it right after ``alembic
+    upgrade head``.
+
+    1. Load settings (a configuration error prints the M1-05 message, exit 1).
+    2. Refuse unless ``DATABASE_DIRECT_URL`` logs in as ``classora_app`` with a
+       password, and the owner URL (``DATABASE_MIGRATION_URL``) logs in as
+       another role.
+    3. Connect directly as the owner; refuse when the role does not exist
+       ("run ``alembic upgrade head`` first") or the owner may not change it.
+    4. ``ALTER ROLE classora_app WITH LOGIN PASSWORD '<SCRAM-SHA-256
+       verifier>'``: the verifier is computed in Python
+       (:mod:`app.core.runtime_role`), so the plaintext is never sent.
+    5. Print one line without any secret.
+
+    Idempotent; runs in every ``APP_ENV``. Exit 0 on success, 1 on any refusal.
+
 ``pdf-smoke``
     Renders the sample document ``documents/smoke.html`` in es and en (#98a D5,
     :mod:`app.core.pdf_smoke`) and prints each one's byte size and page count.
@@ -68,14 +88,20 @@ from collections.abc import Callable, Sequence
 from datetime import UTC
 from typing import TextIO
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, make_url, select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core import pdf_smoke
 from app.core.audit import record_audit_event
 from app.core.config import ConfigurationError, Settings, get_settings
-from app.core.db import create_sessionmaker
+from app.core.db import RUNTIME_ROLE, async_migration_database_url, create_sessionmaker
 from app.core.logging import configure_logging
+from app.core.runtime_role import (
+    RuntimeRoleRefusal,
+    check_runtime_credentials,
+    sync_runtime_role,
+)
 from app.core.uow import UnitOfWork
 from app.modules.families import service as families_service
 from app.modules.identity import recovery
@@ -335,9 +361,52 @@ def reset_owner_password(
     return 0
 
 
+RUNTIME_ROLE_FORBIDDEN_MESSAGE = (
+    f"The owner URL (DATABASE_MIGRATION_URL) may not change the role {RUNTIME_ROLE}:"
+    " connect as the database owner (a superuser locally and on the hosts)."
+)
+INSUFFICIENT_PRIVILEGE = "42501"
+
+
+def sync_runtime_role_command(
+    args: argparse.Namespace,
+    settings: Settings,
+    *,
+    engine_factory: EngineFactory,
+    stdin: TextIO,
+    prompt: PasswordPrompt,
+) -> int:
+    direct = make_url(settings.database_direct_url.get_secret_value())
+    password = check_runtime_credentials(
+        direct_user=direct.username,
+        direct_password=direct.password,
+        migration_user=async_migration_database_url(settings).username,
+    )
+
+    async def _run() -> None:
+        engine = engine_factory(settings)
+        try:
+            async with engine.begin() as connection:
+                await sync_runtime_role(connection, password=password)
+        except DBAPIError as exc:
+            sqlstate = getattr(exc.orig, "sqlstate", None) or getattr(
+                exc.orig, "pgcode", None
+            )
+            if sqlstate == INSUFFICIENT_PRIVILEGE:
+                raise Refusal(RUNTIME_ROLE_FORBIDDEN_MESSAGE) from None
+            raise
+        finally:
+            await engine.dispose()
+
+    asyncio.run(_run())
+    print(f"The role {RUNTIME_ROLE} can log in with the DATABASE_DIRECT_URL password.")
+    return 0
+
+
 COMMANDS: dict[str, Command] = {
     "bootstrap-owner": bootstrap_owner,
     "reset-owner-password": reset_owner_password,
+    "sync-runtime-role": sync_runtime_role_command,
 }
 """Subcommand name -> handler(args, settings, *, engine_factory, stdin, prompt)."""
 
@@ -370,6 +439,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print a one-time password-reset link for an existing active Owner.",
     )
     reset.add_argument("--username", required=True)
+    commands.add_parser(
+        "sync-runtime-role",
+        help=(
+            f"Give the runtime role {RUNTIME_ROLE} LOGIN and the DATABASE_DIRECT_URL"
+            " password (after alembic upgrade head)."
+        ),
+    )
     commands.add_parser(
         "pdf-smoke",
         help="Render the sample PDF document in es and en (no settings or database).",
@@ -409,7 +485,7 @@ def main(
             stdin=stdin if stdin is not None else sys.stdin,
             prompt=prompt,
         )
-    except (Refusal, DatabaseNotAtHeadError) as exc:
+    except (Refusal, DatabaseNotAtHeadError, RuntimeRoleRefusal) as exc:
         print(exc, file=sys.stderr)
         return 1
 

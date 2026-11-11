@@ -56,10 +56,17 @@ class Settings(BaseSettings):
     app_env: AppEnv
     # Pooled URL (through PgBouncer): the API's request engine (ADR-0003).
     database_url: SecretStr
-    # Direct URL to PostgreSQL: Alembic now, and later the LISTEN connection and
-    # the worker (ADR-0003). Required, never derived from DATABASE_URL, so a
-    # missing value can never silently send them through PgBouncer.
+    # Direct URL to PostgreSQL: the API's LISTEN connection and the worker
+    # (ADR-0003). Required, never derived from DATABASE_URL, so a missing value
+    # can never silently send them through PgBouncer. Both URLs carry the
+    # least-privilege runtime role ``classora_app`` (#165).
     database_direct_url: SecretStr
+    # Optional direct URL as the database **owner** (#165, ADR-0003
+    # amendment): read only by Alembic, the seeds, the operator CLI and the
+    # local factories (app.core.db.async_migration_database_url), never by the
+    # API or the worker. Unset: they use DATABASE_DIRECT_URL (single-role
+    # setups); as the runtime role that fails closed, since it has no DDL.
+    database_migration_url: SecretStr | None = None
     # The origin the SPA is served from (ADR-0007 D9). Unsafe API requests
     # (POST, PUT, PATCH, DELETE) whose ``Origin`` differs get 403 (#24).
     # Required, no default; normalized as browsers serialize ``Origin``.
@@ -104,10 +111,12 @@ class Settings(BaseSettings):
         # Process environment only: no .env file and no secrets directory.
         return (init_settings, env_settings)
 
-    @field_validator("database_url", "database_direct_url")
+    @field_validator("database_url", "database_direct_url", "database_migration_url")
     @classmethod
-    def _check_database_url(cls, value: SecretStr) -> SecretStr:
+    def _check_database_url(cls, value: SecretStr | None) -> SecretStr | None:
         # Messages never include the value: it contains the password.
+        if value is None:
+            return value
         try:
             parts = urlsplit(value.get_secret_value())
             host = parts.hostname

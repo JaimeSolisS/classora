@@ -39,8 +39,8 @@ rows on a rerun unless its issue says otherwise. The payroll start date locks
 once a payroll period exists (#106 E6), so the payroll data can't be moved
 either. To start over, run it again on a freshly migrated database.
 
-Like ``make seed``, it connects directly to PostgreSQL (``DATABASE_DIRECT_URL``,
-ADR-0003).
+Like ``make seed``, it connects directly to PostgreSQL as the database owner
+(``DATABASE_MIGRATION_URL``, else ``DATABASE_DIRECT_URL``; ADR-0003, #165).
 """
 
 import argparse

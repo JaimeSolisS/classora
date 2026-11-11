@@ -5,7 +5,9 @@ from pydantic import SecretStr
 from app.core.config import Settings
 from app.core.db import (
     async_database_url,
+    RUNTIME_ROLE,
     async_direct_database_url,
+    async_migration_database_url,
     create_direct_engine,
     create_engine,
     create_sessionmaker,
@@ -23,13 +25,49 @@ PGBOUNCER_CONNECT_ARGS = (
 )
 
 
-def settings(dsn: str = DSN, direct_dsn: str = DIRECT_DSN) -> Settings:
+MIGRATION_DSN = "postgresql://owner:owner-pw@db:5432/classora"
+
+
+def settings(
+    dsn: str = DSN, direct_dsn: str = DIRECT_DSN, migration_dsn: str | None = None
+) -> Settings:
     return Settings(
         app_env="local",
         app_origin=TEST_APP_ORIGIN,
         database_url=SecretStr(dsn),
         database_direct_url=SecretStr(direct_dsn),
+        database_migration_url=SecretStr(migration_dsn) if migration_dsn else None,
     )
+
+
+def test_the_runtime_role_name_is_fixed():
+    # Migration 0096 writes the same name out in its statements (#165).
+    assert RUNTIME_ROLE == "classora_app"
+
+
+def test_the_migration_url_is_the_owner_url_when_set():
+    url = async_migration_database_url(settings(POOLED_DSN, DIRECT_DSN, MIGRATION_DSN))
+
+    assert url.drivername == "postgresql+asyncpg"
+    assert (url.username, url.password, url.host, url.port) == (
+        "owner",
+        "owner-pw",
+        "db",
+        5432,
+    )
+    assert "owner-pw" not in str(url)
+
+
+def test_the_migration_url_falls_back_to_the_direct_url_when_unset():
+    s = settings(POOLED_DSN, DIRECT_DSN)
+
+    assert async_migration_database_url(s) == async_direct_database_url(s)
+
+
+def test_the_direct_url_never_uses_the_migration_url():
+    s = settings(POOLED_DSN, DIRECT_DSN, MIGRATION_DSN)
+
+    assert async_direct_database_url(s).username == "classora"
 
 
 def test_async_url_uses_asyncpg_and_keeps_the_dsn_parts():
