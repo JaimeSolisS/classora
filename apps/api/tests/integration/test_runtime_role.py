@@ -29,7 +29,7 @@ from typing import Any
 import pytest
 from alembic import command
 from fastapi.testclient import TestClient
-from sqlalchemy import make_url
+from sqlalchemy import make_url, text
 from sqlalchemy.exc import DBAPIError
 from testcontainers.community.postgres import PostgresContainer
 
@@ -309,3 +309,99 @@ def test_the_runtime_pgbouncer_refuses_the_owner(runtime_pgbouncer_url, module_s
         run_sql(as_owner, "SELECT 1")
 
     assert "authentication failed" in str(raised.value.orig)
+
+
+# --- AC 4: no trigger can be disabled or dropped ------------------------------------
+
+
+def public_triggers(owner_url: str) -> list[Any]:
+    return run_sql(
+        owner_url,
+        "SELECT c.relname AS table_name, t.tgname AS trigger_name,"
+        " t.tgenabled::text AS enabled"
+        " FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid"
+        " WHERE c.relnamespace = 'public'::regnamespace AND NOT t.tgisinternal"
+        " ORDER BY 1, 2",
+    )
+
+
+def test_no_trigger_can_be_disabled_or_dropped(runtime_url, module_seeded_url):
+    triggers = public_triggers(module_seeded_url)
+    assert len(triggers) > 30
+    assert {t.enabled for t in triggers} == {"O"}
+
+    allowed = []
+    for trigger in triggers:
+        table = f'"{trigger.table_name}"'
+        name = f'"{trigger.trigger_name}"'
+        for statement in (
+            f"ALTER TABLE {table} DISABLE TRIGGER {name}",
+            f"DROP TRIGGER {name} ON {table}",
+        ):
+            sqlstate, message = sqlstate_and_message(runtime_url, statement)
+            if sqlstate != INSUFFICIENT_PRIVILEGE:
+                allowed.append((statement, sqlstate, message))
+
+    assert allowed == []
+    assert public_triggers(module_seeded_url) == triggers
+
+
+# --- AC 5: the runtime role does all real work ----------------------------------------
+
+
+@pytest.fixture
+def runtime_client(
+    runtime_pgbouncer_url: str, runtime_url: str, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[TestClient]:
+    """The real app (lifespan included) configured like a deployed one: the
+    pooled URL is the runtime PgBouncer, the direct URL the runtime role."""
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("APP_ORIGIN", origin_for("local"))
+    monkeypatch.setenv("DATABASE_URL", runtime_pgbouncer_url)
+    monkeypatch.setenv("DATABASE_DIRECT_URL", runtime_url)
+    monkeypatch.delenv("DATABASE_MIGRATION_URL", raising=False)
+    with TestClient(
+        create_app(), raise_server_exceptions=False, headers=ORIGIN_HEADER
+    ) as client:
+        yield client
+
+
+def test_the_api_signs_in_through_pgbouncer_and_audits_as_the_runtime_role(
+    runtime_client, module_seeded_url
+):
+    owner = create_user(module_seeded_url, roles=(OWNER,))
+    app_state: Any = runtime_client.app.state  # type: ignore[attr-defined]
+
+    async def request_engine_user() -> str:
+        async with app_state.engine.connect() as connection:
+            return str(await connection.scalar(text("SELECT current_user")))
+
+    async def listener_pid() -> int | None:
+        listener: NotificationListener = app_state.notification_listener
+        await asyncio.wait_for(listener.connected.wait(), 10)
+        return listener.backend_pid
+
+    assert runtime_client.portal is not None
+    assert runtime_client.portal.call(request_engine_user) == RUNTIME_ROLE
+    pid = runtime_client.portal.call(listener_pid)
+    [listening] = run_sql(
+        module_seeded_url,
+        "SELECT usename FROM pg_stat_activity WHERE pid = :pid",
+        {"pid": pid},
+    )
+    assert listening.usename == RUNTIME_ROLE
+
+    response = login(runtime_client, owner.username)
+
+    assert response.status_code == 200, response.text
+    assert run_sql(
+        module_seeded_url,
+        "SELECT 1 FROM audit_events WHERE record_id = :actor"
+        " AND action = 'identity.login_succeeded'",
+        {"actor": owner.id},
+    )
+    assert run_sql(
+        module_seeded_url,
+        "SELECT 1 FROM auth_sessions WHERE user_id = :actor",
+        {"actor": owner.id},
+    )
