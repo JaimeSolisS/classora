@@ -10,7 +10,8 @@ request it:
   the request carries it;
 * sets exactly one ``X-Request-ID`` response header;
 * turns any unhandled exception into a generic ``500 internal_error`` Problem
-  and logs it once, with the traceback, at ``ERROR``;
+  and logs it once, with the traceback (types and frames, no message;
+  ``app.core.logging``), at ``ERROR``, and records it on the current span;
 * writes one access line to ``app.access`` (method, path without query string,
   status, duration). Successful health probes are not logged.
 """
@@ -20,6 +21,7 @@ import re
 import time
 import uuid
 
+from opentelemetry import trace
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core.errors import internal_error_response
@@ -75,10 +77,14 @@ class RequestContextMiddleware:
         try:
             try:
                 await self.app(scope, receive, send_with_request_id)
-            except Exception:
+            except Exception as exc:
                 # Logged once here; not re-raised, so neither Starlette nor
                 # uvicorn logs it again or renders their own error page.
                 error_logger.exception("Unhandled exception while handling a request")
+                # The request's span (telemetry on) gets an exception event,
+                # type and frames only once scrubbed (#612 E2); a no-op on the
+                # API's non-recording default span while telemetry is off.
+                trace.get_current_span().record_exception(exc)
                 if status is None:
                     response = internal_error_response()
                     await response(scope, receive, send_with_request_id)

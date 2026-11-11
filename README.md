@@ -39,7 +39,9 @@ liveness and readiness health checks, a PostgreSQL database reached through
 PgBouncer (schema managed with Alembic migrations), a background worker for
 queued and periodic jobs (Procrastinate), server-rendered PDF documents
 (Jinja2 and WeasyPrint) and Excel files (openpyxl) with es/en server message
-catalogs, and a React + TypeScript + Vite web app. The web app has a routed
+catalogs, and a React + TypeScript + Vite web app. The API and worker can send
+OpenTelemetry traces, metrics and logs, which stays off unless the optional
+observability profile is on. The web app has a routed
 shell (layout with a collapsible side navigation, a 404 page and
 central error handling), a TanStack Query data layer, a typed API client
 generated from the API's OpenAPI document, a design system foundation
@@ -686,6 +688,10 @@ make dev-observability-down   # stops only those five; V=1 also deletes their da
 - The "Host and containers" dashboard shows per-container CPU and memory,
   PostgreSQL connections, the API's readiness and the background jobs by status
   (after `make migrate`). Data appears within about two minutes.
+- The API and worker send traces, metrics and logs only while the profile is on
+  (`make dev-observability` sets `OTEL_EXPORTER_OTLP_ENDPOINT`; `make dev` leaves
+  telemetry off). The API, Database, Jobs, Errors and Logs dashboards and the
+  alert rules come from the same files.
 - Metrics are kept 15 days, logs and traces 7 days (in Docker volumes).
 
 ### Database migrations

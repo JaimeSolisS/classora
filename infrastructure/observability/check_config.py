@@ -8,6 +8,12 @@ It never starts anything. It checks what the services' own validators don't:
   are unique; every data-source reference (links between data sources and
   every panel's data source) points at a provisioned uid; grafana.ini keeps
   anonymous access and sign-up off.
+- Grafana alert rules (provisioning/alerting): structure, unique uids, every
+  condition and expression reference resolves, every query's data source is
+  provisioned, and the ADR-0014 rules are all there (#612).
+- PromQL: with `--promql-out FILE`, every Prometheus expression of the alert
+  rules and dashboards is written to FILE as a Prometheus rule file (Grafana
+  variables replaced), so check.sh can parse them with `promtool check rules`.
 - Collector drift: collector/local.yaml's receivers are agent.yaml's minus
   file_log and host_metrics, and its exporters are gateway.yaml's.
 - compose.observability.yaml: every image is pinned by tag and digest, every
@@ -24,10 +30,39 @@ from pathlib import Path
 import yaml
 
 LOCAL_ONLY_RECEIVERS = {"file_log", "host_metrics"}
+# The ADR-0014 rules this issue provisions (#612); M9-09 adds the backup ones.
+REQUIRED_ALERT_RULES = {
+    "classora-host-cpu-high",
+    "classora-host-memory-low",
+    "classora-disk-high",
+    "classora-readiness-failing",
+    "classora-job-failed",
+    "classora-job-stalled",
+}
+# The dashboards ADR-0014 and #612 list.
+REQUIRED_DASHBOARDS = {
+    "classora-host-containers",
+    "classora-api",
+    "classora-database",
+    "classora-jobs",
+    "classora-errors",
+    "classora-logs",
+}
+NO_DATA_STATES = {"OK", "NoData", "Alerting", "KeepLast"}
+EXEC_ERR_STATES = {"OK", "Error", "Alerting", "KeepLast"}
+DURATION = re.compile(r"\d+[smhd]")
+# Grafana's template variables, replaced so promtool can parse the expression.
+GRAFANA_VARIABLES = {
+    "$__rate_interval": "1m",
+    "$__interval": "1m",
+    "$__range": "1h",
+    "$__auto": "1m",
+}
 MEM_BUDGET_BYTES = 700 * 1024 * 1024
 UNITS = {"k": 1024, "m": 1024**2, "g": 1024**3}
 
 errors: list[str] = []
+promql: list[tuple[str, str]] = []  # (where, expression)
 
 
 def fail(message: str) -> None:
@@ -56,7 +91,7 @@ def walk(node: object, key: str) -> list[object]:
     return found
 
 
-def check_grafana(root: Path) -> None:
+def check_grafana(root: Path) -> dict[str, str]:
     grafana = root / "grafana"
     datasources: dict[str, str] = {}
     ds_files = sorted((grafana / "provisioning" / "datasources").glob("*.yaml"))
@@ -111,6 +146,12 @@ def check_grafana(root: Path) -> None:
             fail(f"{path}: id must be null (Grafana assigns it)")
         if not dashboard.get("panels"):
             fail(f"{path}: no panels")
+        for panel in dashboard.get("panels") or []:
+            for target in panel.get("targets") or []:
+                ds = target.get("datasource") or panel.get("datasource") or {}
+                if ds.get("type") == "prometheus" and target.get("expr"):
+                    where = f"{path.name}: {panel.get('title')!r} {target.get('refId')}"
+                    promql.append((where, target["expr"]))
         for ref in walk(dashboard, "datasource"):
             if not isinstance(ref, dict):
                 fail(f"{path}: data source {ref!r} must be {{type, uid}}")
@@ -135,6 +176,95 @@ def check_grafana(root: Path) -> None:
     home = ini.get("dashboards", "default_home_dashboard_path", fallback="")
     if home and Path(home).name not in {p.name for p in dashboard_files}:
         fail(f"grafana.ini: home dashboard {home} is not in grafana/dashboards")
+    missing = REQUIRED_DASHBOARDS - uids
+    if missing:
+        fail(f"grafana/dashboards: missing dashboards {sorted(missing)}")
+    return datasources
+
+
+def check_alerting(root: Path, datasources: dict[str, str]) -> None:
+    files = sorted((root / "grafana" / "provisioning" / "alerting").glob("*.yaml"))
+    if not files:
+        fail("grafana/provisioning/alerting: no alert rule file")
+    uids: set[str] = set()
+    for path in files:
+        doc = load_yaml(path)
+        if not isinstance(doc, dict) or doc.get("apiVersion") != 1:
+            fail(f"{path}: expected a mapping with apiVersion: 1")
+            continue
+        for group in doc.get("groups") or []:
+            gname = group.get("name")
+            if not gname or not group.get("folder") or group.get("orgId") != 1:
+                fail(f"{path}: group {gname!r} needs name, folder and orgId: 1")
+            if not DURATION.fullmatch(str(group.get("interval", ""))):
+                fail(f"{path}: group {gname!r}: interval must be a duration")
+            for rule in group.get("rules") or []:
+                check_rule(path, rule, uids, datasources)
+    missing = REQUIRED_ALERT_RULES - uids
+    if missing:
+        fail(f"grafana/provisioning/alerting: missing rules {sorted(missing)}")
+
+
+def check_rule(
+    path: Path, rule: dict, uids: set[str], datasources: dict[str, str]
+) -> None:
+    uid = rule.get("uid")
+    where = f"{path}: rule {uid!r}"
+    if not uid or len(uid) > 40 or not re.fullmatch(r"[a-zA-Z0-9_-]+", uid):
+        fail(f"{where}: uid must be 1-40 letters, digits, - or _")
+    elif uid in uids:
+        fail(f"{where}: duplicate uid")
+    else:
+        uids.add(uid)
+    if not rule.get("title"):
+        fail(f"{where}: no title")
+    if not DURATION.fullmatch(str(rule.get("for", ""))):
+        fail(f"{where}: 'for' must be a duration")
+    if rule.get("noDataState") not in NO_DATA_STATES:
+        fail(f"{where}: noDataState must be one of {sorted(NO_DATA_STATES)}")
+    if rule.get("execErrState") not in EXEC_ERR_STATES:
+        fail(f"{where}: execErrState must be one of {sorted(EXEC_ERR_STATES)}")
+    if not (rule.get("annotations") or {}).get("summary"):
+        fail(f"{where}: no summary annotation")
+    data = rule.get("data") or []
+    ref_ids = [d.get("refId") for d in data]
+    if len(set(ref_ids)) != len(ref_ids) or not data:
+        fail(f"{where}: data needs unique refIds")
+    if rule.get("condition") not in ref_ids:
+        fail(f"{where}: condition {rule.get('condition')!r} is not a refId")
+    for query in data:
+        ref, ds_uid = query.get("refId"), query.get("datasourceUid")
+        model = query.get("model") or {}
+        if model.get("refId") != ref:
+            fail(f"{where}: {ref}: model.refId must match")
+        if ds_uid == "__expr__":
+            if model.get("expression") not in ref_ids:
+                fail(f"{where}: {ref}: expression {model.get('expression')!r} unknown")
+            if model.get("type") not in {"reduce", "threshold", "math", "classic_conditions", "resample"}:
+                fail(f"{where}: {ref}: unknown expression type {model.get('type')!r}")
+            continue
+        if ds_uid not in datasources:
+            fail(f"{where}: {ref}: data source {ds_uid!r} is not provisioned")
+            continue
+        if not (query.get("relativeTimeRange") or {}).get("from"):
+            fail(f"{where}: {ref}: needs relativeTimeRange.from")
+        if datasources[ds_uid] == "prometheus":
+            if not model.get("expr"):
+                fail(f"{where}: {ref}: no expr")
+            else:
+                promql.append((f"{path.name}: {uid} {ref}", model["expr"]))
+
+
+def write_promql_rules(out: Path) -> None:
+    """Every collected PromQL expression as a Prometheus recording-rule file."""
+    rules = []
+    for n, (where, expr) in enumerate(promql):
+        for variable, value in GRAFANA_VARIABLES.items():
+            expr = expr.replace(variable, value)
+        expr = re.sub(r"\$\{?(\w+)\}?", ".*", expr)  # dashboard variables ($env)
+        rules.append({"record": f"check:expr_{n}", "expr": expr, "labels": {"source": where}})
+    out.write_text(yaml.safe_dump({"groups": [{"name": "check", "rules": rules}]}))
+    print(f"{len(rules)} PromQL expressions written for promtool")
 
 
 def check_collector_drift(root: Path) -> None:
@@ -200,14 +330,23 @@ def check_compose(root: Path) -> None:
 
 
 def main() -> int:
-    root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent
-    check_grafana(root)
+    args = sys.argv[1:]
+    promql_out = None
+    if "--promql-out" in args:
+        at = args.index("--promql-out")
+        promql_out = Path(args[at + 1])
+        del args[at : at + 2]
+    root = Path(args[0]) if args else Path(__file__).parent
+    datasources = check_grafana(root)
+    check_alerting(root, datasources)
     check_collector_drift(root)
     check_compose(root)
+    if promql_out is not None:
+        write_promql_rules(promql_out)
     for message in errors:
         print(f"FAIL {message}", file=sys.stderr)
     if not errors:
-        print("grafana provisioning, collector drift and compose limits: OK")
+        print("grafana provisioning, alert rules, collector drift and compose limits: OK")
     return 1 if errors else 0
 
 

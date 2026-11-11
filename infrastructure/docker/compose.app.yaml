@@ -30,6 +30,8 @@ services:
       WORKER_SHUTDOWN_TIMEOUT_SECONDS: ${WORKER_SHUTDOWN_TIMEOUT_SECONDS:-}
       SCHEDULING_HORIZON_WEEKS: ${SCHEDULING_HORIZON_WEEKS:-}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      # Empty: telemetry off (ADR-0014, #612). `make dev-observability` sets it.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     # Host port API_PORT (default 8000), on 127.0.0.1 only.
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
@@ -67,6 +69,8 @@ services:
       WORKER_SHUTDOWN_TIMEOUT_SECONDS: ${WORKER_SHUTDOWN_TIMEOUT_SECONDS:-}
       SCHEDULING_HORIZON_WEEKS: ${SCHEDULING_HORIZON_WEEKS:-}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      # Empty: telemetry off (ADR-0014, #612). `make dev-observability` sets it.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     # Healthy while the process runs and PostgreSQL answers on the direct URL,
     # whether or not the Procrastinate schema exists yet. Before `make migrate`
     # the worker waits (logging that it needs `make migrate`) instead of

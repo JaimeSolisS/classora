@@ -84,6 +84,13 @@ class Settings(BaseSettings):
     # comma-separated IP addresses or CIDR networks. Empty: no proxy is
     # trusted and the client is always the TCP peer (app.core.client_ip).
     trusted_proxies: Annotated[tuple[TrustedProxy, ...], NoDecode] = ()
+    # Telemetry (ADR-0014, #612): the OTLP/HTTP base URL the API and worker
+    # export traces, metrics and logs to (``/v1/traces`` etc. are appended).
+    # Empty: telemetry is off and no OpenTelemetry SDK object is created
+    # (app.core.telemetry). The service name is fixed per process
+    # (``classora-api``, ``classora-worker``); ``APP_ENV`` becomes
+    # ``deployment.environment.name``.
+    otel_exporter_otlp_endpoint: HttpUrl | None = None
 
     @classmethod
     def settings_customise_sources(
@@ -164,6 +171,18 @@ class Settings(BaseSettings):
                 )
             networks.append(network)
         return tuple(networks)
+
+    @field_validator("otel_exporter_otlp_endpoint")
+    @classmethod
+    def _check_otlp_endpoint(cls, value: HttpUrl | None) -> HttpUrl | None:
+        # Messages never include the value.
+        if value is None:
+            return value
+        if value.username is not None or value.password is not None:
+            raise ValueError("must not contain credentials")
+        if value.query is not None or value.fragment is not None:
+            raise ValueError("must not contain a query or a fragment")
+        return value
 
     @field_validator("storage_secret_access_key")
     @classmethod

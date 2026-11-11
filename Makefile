@@ -42,10 +42,12 @@ OBS_VOLUMES := prometheus-data loki-data tempo-data grafana-data
 ## Start the app stack plus the observability profile (about 700 MB more RAM; a heavy
 ## command). Grafana on http://127.0.0.1:GRAFANA_PORT (default 3000), login admin and
 ## GRAFANA_ADMIN_PASSWORD from .env. Stop only the profile with `make dev-observability-down`.
+## The API and worker export telemetry to the local collector (OTEL_EXPORTER_OTLP_ENDPOINT,
+## #612); a later `make dev` recreates them with telemetry off.
 dev-observability:
 	@if docker compose --profile observability config | grep -qE '^ +GF_SECURITY_ADMIN_PASSWORD: ("")?$$'; then \
 	  echo "dev-observability: set GRAFANA_ADMIN_PASSWORD in .env (see .env.example)" >&2; exit 2; fi
-	docker compose --profile observability up -d --build --wait
+	OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 docker compose --profile observability up -d --build --wait
 
 ## Stop and remove only the observability containers (the app stack keeps running).
 ## Their data volumes are kept unless V=1.

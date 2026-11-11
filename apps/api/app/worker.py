@@ -42,6 +42,12 @@ from app.core.jobs import (
     worker_healthcheck_connector,
 )
 from app.core.logging import configure_logging
+from app.core.telemetry import (
+    WORKER_SERVICE,
+    configure_telemetry,
+    shutdown_telemetry,
+    worker_middleware,
+)
 from app.modules.families import service as families_service
 from app.modules.identity.service import register_student_login_gate
 from app.wiring import register_approval_wiring
@@ -96,8 +102,10 @@ def worker_options(settings: Settings) -> dict[str, object]:
         "shutdown_graceful_timeout": float(settings.worker_shutdown_timeout_seconds),
         # Signals are handled by run() for the whole process lifetime.
         "install_signal_handlers": False,
-        # Every failed run's sanitized error goes to job_failures (#128 A1).
-        "worker_middleware": [record_job_failure],
+        # One span per job when telemetry is on (outermost, so it covers the
+        # failure insert; #612), and every failed run's sanitized error goes
+        # to job_failures (#128 A1).
+        "worker_middleware": [*worker_middleware(), record_job_failure],
     }
 
 
@@ -181,7 +189,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("usage: python -m app.worker [--healthcheck]", file=sys.stderr)
         return 2
     configure_logging()
-    return asyncio.run(_main_async(settings))
+    # Off (no SDK object) unless OTEL_EXPORTER_OTLP_ENDPOINT is set (#612).
+    configure_telemetry(settings, WORKER_SERVICE)
+    try:
+        return asyncio.run(_main_async(settings))
+    finally:
+        shutdown_telemetry()
 
 
 if __name__ == "__main__":

@@ -41,21 +41,31 @@ def test_log_line_shape_outside_a_request(test_app, capsys):
     assert line["logger"] == "tests.any"
     assert line["message"] == "outside"
     assert line["request_id"] is None
+    # Telemetry is off in tests: no span, so no trace ids (#612).
+    assert line["trace_id"] is None
+    assert line["span_id"] is None
     timestamp = datetime.fromisoformat(line["timestamp"])
     assert timestamp.utcoffset() is not None
     assert timestamp.utcoffset().total_seconds() == 0
 
 
-def test_exception_adds_formatted_traceback(test_app, capsys):
+def test_exception_adds_traceback_without_the_message(test_app, capsys):
+    # #612 E3 (a): the type and frames stay, the message (which can quote
+    # submitted values) is dropped. The source line is code and stays, so the
+    # value is built at run time.
+    value = "-".join(("boom", "value"))
     try:
-        raise ValueError("boom-value")
+        raise ValueError(value)
     except ValueError:
         logging.getLogger("tests.any").exception("failed")
 
     [line] = read_log_lines(capsys)
     assert line["level"] == "ERROR"
-    assert "Traceback" in line["exception"]
-    assert "ValueError: boom-value" in line["exception"]
+    assert line["exception"].startswith("Traceback (most recent call last):")
+    assert 'File "' in line["exception"]
+    assert "test_exception_adds_traceback_without_the_message" in line["exception"]
+    assert line["exception"].splitlines()[-1] == "ValueError"
+    assert "boom-value" not in line["exception"]
 
 
 # --- B4 request ID in every line ----------------------------------------------
@@ -103,8 +113,9 @@ def test_unhandled_exception_logged_once_with_traceback_and_request_id(
     assert len(errors) == 1
     [error] = errors
     assert error["request_id"] == "qa-boom"
-    assert LEAK_MARKER in error["exception"]
-    assert "RuntimeError" in error["exception"]
+    # Type and frames only (#612 E3 (a)): the message is not logged.
+    assert error["exception"].splitlines()[-1] == "RuntimeError"
+    assert LEAK_MARKER not in error["exception"]
     assert LEAK_MARKER not in error["message"]
     [access] = access_lines(lines)
     assert access["status"] == 500
