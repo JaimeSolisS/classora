@@ -17,4 +17,13 @@ if [ -f "$mirrors" ]; then
   printf 'http://mirrors.edge.kernel.org/ubuntu/\nhttp://archive.ubuntu.com/ubuntu/\n' | sudo tee "$mirrors" >/dev/null
   echo "apt mirrors now:"; cat "$mirrors"
 fi
+# The security pocket is a separate source pointing at security.ubuntu.com;
+# the kernel.org mirror carries it too.
+for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; do
+  [ -f "$f" ] || continue
+  if grep -q 'security.ubuntu.com' "$f"; then
+    sudo sed -i 's#https\?://security.ubuntu.com/ubuntu/\?#http://mirrors.edge.kernel.org/ubuntu/#g' "$f"
+    echo "rewrote the security source in $f"
+  fi
+done
 printf 'Acquire::Retries "5";\n' | sudo tee /etc/apt/apt.conf.d/80-retries >/dev/null
