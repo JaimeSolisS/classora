@@ -221,7 +221,28 @@ def test_qualified_pairs_counts_approved_only(module_seeded_url):
     )
 
     assert found == frozenset({(tutor, subjects["approved"])})
-    assert statements == 1
+    # HF-12 (#597): some pairs are unqualified, so one more statement looks
+    # up the built-in General subject (exempt from qualifications).
+    assert statements == 2
+
+
+def test_qualified_pairs_of_qualified_pairs_only_is_one_statement(
+    module_seeded_url,
+):
+    url = module_seeded_url
+    tutor = create_user(url, roles=(TUTOR,)).id
+    subject = uuid.UUID(str(new_subject(url)))
+
+    async def _add(session: AsyncSession) -> None:
+        session.add(qualification("approved", tutor, subject))
+
+    in_uow(url, _add)
+
+    statements, found = count_statements(
+        url, lambda session: staff.qualified_pairs(session, [(tutor, subject)])
+    )
+
+    assert (statements, found) == (1, frozenset({(tutor, subject)}))
 
 
 def test_qualified_pairs_of_nothing_sends_no_statement(module_seeded_url):

@@ -475,7 +475,11 @@ def test_every_login_accepts_the_notice_and_stores_the_language(es_url, en_url):
 
 def free_texts(url: str) -> list[str]:
     return [
-        *(r.name for r in rows(url, "SELECT name FROM subjects")),
+        # HF-12: the reference seed's General subject is not simulation text.
+        *(
+            r.name
+            for r in rows(url, "SELECT name FROM subjects WHERE seed_key IS NULL")
+        ),
         *(r.name for r in rows(url, "SELECT name FROM classrooms")),
         *(r.name for r in rows(url, "SELECT name FROM closures")),
         *(r.name for r in rows(url, "SELECT name FROM academic_periods")),
@@ -791,15 +795,23 @@ def test_writes_went_through_the_services_with_their_actors(es_url):
     ids = {r.username: r.id for r in rows(es_url, "SELECT id, username FROM users")}
     admin, owner = ids["administracion"], ids["direccion"]
 
+    # HF-12 (#597): the reference seed's General subject is created by
+    # `make seed` without an actor, like the seeded levels; only the rows the
+    # simulation writes must carry their actor.
+    seeded = {
+        r.id for r in rows(es_url, "SELECT id FROM subjects WHERE seed_key IS NOT NULL")
+    }
+
     def actors(table: str) -> set[Any]:
         return {
             r.actor_user_id
             for r in rows(
                 es_url,
-                "SELECT actor_user_id FROM audit_events"
+                "SELECT actor_user_id, record_id FROM audit_events"
                 " WHERE record_type = :table AND action = 'create'",
                 table=table,
             )
+            if not (table == "subjects" and r.record_id in seeded)
         }
 
     for table in (

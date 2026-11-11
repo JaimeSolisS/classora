@@ -5006,9 +5006,29 @@ def _of_0093(diff: Any) -> bool:
     return diff[0] == "add_index" and diff[1].table.name == FAILURES_0093
 
 
+SEED_KEY_0095 = "seed_key"
+SEED_KEY_UNIQUE_0095 = "uq_subjects_seed_key"
+
+
+def _of_0095(diff: Any) -> bool:
+    """A metadata difference that revision 0095 adds: ``subjects.seed_key``
+    and its unique constraint (HF-12, #597). CHECKs are not compared."""
+    if diff[0] == "add_column":
+        return bool(diff[2] == "subjects" and diff[3].name == SEED_KEY_0095)
+    if diff[0] == "add_constraint":
+        return bool(diff[1].name == SEED_KEY_UNIQUE_0095)
+    return False
+
+
+def _of_0093_on(diff: Any) -> bool:
+    """A metadata difference that revision 0093 or a later one adds (0094
+    adds none)."""
+    return _of_0093(diff) or _of_0095(diff)
+
+
 def _of_0092_on(diff: Any) -> bool:
     """A metadata difference that revision 0092 or a later one adds."""
-    return _of_0092(diff) or _of_0093(diff)
+    return _of_0092(diff) or _of_0093_on(diff)
 
 
 def _of_0091_on(diff: Any) -> bool:
@@ -17952,7 +17972,7 @@ def test_0092_adds_the_table_and_downgrade_restores_0091(fresh_database_url):
     command.upgrade(config, "0092")
 
     assert version_nums(dsn) == ["0092"]
-    assert [d for d in metadata_diff(dsn) if not _of_0093(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0093_on(d)] == []
     assert public_tables(dsn) - tables == {LAYOUTS_0092}
 
     command.downgrade(config, "0091")
@@ -18082,14 +18102,14 @@ def test_0093_adds_the_table_and_downgrade_restores_0092(fresh_database_url):
     command.upgrade(config, "0093")
 
     assert version_nums(dsn) == ["0093"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0095(d)] == []
     assert public_tables(dsn) - tables == {FAILURES_0093}
 
     command.downgrade(config, "0092")
 
     assert version_nums(dsn) == ["0092"]
     assert public_tables(dsn) == tables
-    assert [d for d in metadata_diff(dsn) if not _of_0093(d)] == []
+    assert [d for d in metadata_diff(dsn) if not _of_0093_on(d)] == []
 
     command.upgrade(config, "head")
 
@@ -18235,7 +18255,7 @@ def test_0094_allows_deleting_only_soft_deleted_reports(fresh_database_url):
     command.upgrade(config, "0094")
 
     assert version_nums(dsn) == ["0094"]
-    assert metadata_diff(dsn) == []
+    assert [d for d in metadata_diff(dsn) if not _of_0095(d)] == []
     run_sql(dsn, "DELETE FROM progress_reports WHERE id = :id", {"id": first.id})
     assert not run_sql(
         dsn, "SELECT 1 FROM progress_reports WHERE id = :id", {"id": first.id}
