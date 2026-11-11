@@ -51,6 +51,7 @@ const ERROR_CODE_KEYS: ReadonlyMap<string, ErrorMessageKey> = new Map<
     'education_level_has_active_subjects',
   ],
   ['education_level_inactive', 'education_level_inactive'],
+  ['general_subject_protected', 'general_subject_protected'],
   ['education_level_unavailable', 'education_level_unavailable'],
   ['emergency_contact_unknown', 'emergency_contact_unknown'],
   ['guardian_account_unavailable', 'guardian_account_unavailable'],

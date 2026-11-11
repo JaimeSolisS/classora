@@ -32,7 +32,13 @@ from tests.factories.scheduling import (
     persist_subject,
 )
 from tests.integration.auth_support import CreatedUser, auth_client, create_user
-from tests.integration.catalog_support import count_statements, get, post, unique_year
+from tests.integration.catalog_support import (
+    count_statements,
+    general_subject,
+    get,
+    post,
+    unique_year,
+)
 from tests.integration.invitation_support import sign_in
 from tests.integration.lifecycle_support import code_of, in_uow
 from tests.integration.series_support import create_series, series_body, timeline
@@ -531,6 +537,33 @@ def test_tutor_not_qualified_for_future_offered_or_confirmed(
     assert found[str(offered)] == ["tutor_not_qualified"]
     for session_id in (fine, completed, unassigned, conflict):
         assert found[str(session_id)] == []
+
+
+def test_no_tutor_marker_for_the_general_subject(module_seeded_url, client, cookie):
+    # HF-12 (#597 AC4): any tutor may teach General without a qualification.
+    url = module_seeded_url
+    monday = first_monday()
+    general = general_subject(url)
+    never = new_tutor(url)
+    other = new_subject(url)
+
+    confirmed = stored(
+        url, at(monday, "09:00"), subject_id=general, tutor_user_id=never
+    )
+    offered = stored(
+        url,
+        at(monday, "11:00"),
+        state="offered",
+        subject_id=general,
+        tutor_user_id=never,
+    )
+    elsewhere = stored(url, at(monday, "13:00"), subject_id=other, tutor_user_id=never)
+
+    found = markers(client, cookie, monday)
+
+    assert found[str(confirmed)] == []
+    assert found[str(offered)] == []
+    assert found[str(elsewhere)] == ["tutor_not_qualified"]
 
 
 def test_no_tutor_marker_in_the_past(module_seeded_url, client, cookie):

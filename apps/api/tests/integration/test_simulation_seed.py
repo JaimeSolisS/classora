@@ -570,7 +570,9 @@ def test_free_text_comes_from_the_run_languages_pool(es_url, en_url):
 def test_reference_names_are_english_only_in_english(es_url, en_url):
     levels = "SELECT name FROM education_levels ORDER BY sort_order"
     categories = "SELECT name FROM expense_categories ORDER BY name"
+    # HF-12 (#597): the built-in General level (sort 0) keeps its name.
     assert [r.name for r in rows(en_url, levels)] == [
+        "General",
         "Elementary school",
         "Middle school",
         "High school",
@@ -585,6 +587,7 @@ def test_reference_names_are_english_only_in_english(es_url, en_url):
         "Utilities",
     ]
     assert [r.name for r in rows(es_url, levels)] == [
+        "General",
         "Primaria",
         "Secundaria",
         "Preparatoria",
@@ -640,7 +643,14 @@ def test_catalog(es_url):
         == 0
     )
     levels = scalar(es_url, "SELECT count(DISTINCT education_level_id) FROM subjects")
-    assert levels == 4
+    assert levels == 5  # HF-12: the four example levels and General's
+    general = rows(
+        es_url,
+        "SELECT s.name, l.name AS level, l.sort_order FROM subjects s"
+        " JOIN education_levels l ON l.id = s.education_level_id"
+        " WHERE s.seed_key = 'general'",
+    )
+    assert [tuple(r) for r in general] == [("General", "General", 0)]
 
 
 def test_full_staff_profiles(full_url):

@@ -1553,7 +1553,8 @@
       "title": "Subjects",
       "add": "Add subject",
       "edit": "Edit subject",
-      "empty": "This level has no subjects yet."
+      "empty": "This level has no subjects yet.",
+      "generalProtected": "General is built in: any tutor may teach it without a qualification, and it can't be deactivated. It can be renamed."
     },
     "status": {
       "active": "Active",

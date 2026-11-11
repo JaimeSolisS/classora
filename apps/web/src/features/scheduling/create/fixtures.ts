@@ -37,6 +37,14 @@ export const SUBJECTS: SubjectOption[] = [
   },
 ];
 
+/** The built-in General subject (HF-12): preselected on a new session. */
+export const GENERAL_SUBJECT: SubjectOption = {
+  id: '00000000-0000-4000-8000-0000000004b0',
+  name: 'General',
+  levelName: 'General',
+  isGeneral: true,
+};
+
 export const TUTORS: Option[] = [
   { id: '00000000-0000-4000-8000-0000000004c1', name: 'Carmen Ruiz' },
   { id: '00000000-0000-4000-8000-0000000004c2', name: 'Diego Torres' },

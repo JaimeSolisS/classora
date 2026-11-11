@@ -14,6 +14,7 @@ import {
   CREATED_WITH_WARNINGS,
   EMPTY_GROUP_SUMMARY,
   FILLED,
+  GENERAL_SUBJECT,
   GROUP_CONFLICTS,
   GROUP_OPTION,
   GROUP_SUMMARY,
@@ -31,6 +32,7 @@ import {
   TUTORS,
   UNASSIGNED,
 } from './fixtures';
+import { EMPTY_SCHEDULE } from './rules';
 import type { OwnerSummary, SessionOverride } from './rules';
 import type { ScheduleOwners } from './ScheduleSessionForm';
 import {
@@ -124,6 +126,19 @@ export const Empty: Story = {
     await expect(
       canvas.getByRole('option', { name: i18n.t('scheduling.noTutor') }),
     ).toBeInTheDocument();
+  },
+};
+
+/** HF-12 (#597): a new session starts with the built-in General subject. */
+export const GeneralPreselected: Story = {
+  args: {
+    subjects: [GENERAL_SUBJECT, ...SUBJECTS],
+    initialValues: { ...EMPTY_SCHEDULE, subjectId: GENERAL_SUBJECT.id },
+  },
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.getByLabelText(i18n.t('scheduling.fields.subject')),
+    ).toHaveValue(GENERAL_SUBJECT.id);
   },
 };
 

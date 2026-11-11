@@ -1580,7 +1580,8 @@
       "title": "Materias",
       "add": "Agregar materia",
       "edit": "Editar materia",
-      "empty": "Este nivel aún no tiene materias."
+      "empty": "Este nivel aún no tiene materias.",
+      "generalProtected": "General viene incluida: cualquier tutor puede impartirla sin calificación y no se puede desactivar. Sí se puede renombrar."
     },
     "status": {
       "active": "Activo",

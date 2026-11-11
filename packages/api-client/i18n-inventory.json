@@ -451,6 +451,7 @@
     "export_range_invalid",
     "family_inactive",
     "family_member_conflict",
+    "general_subject_protected",
     "group_ended",
     "group_name_taken",
     "group_not_found",

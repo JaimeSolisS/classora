@@ -136,6 +136,18 @@ async def list_role_members(
     )
 
 
+async def role_member_ids(session: AsyncSession, role: str) -> frozenset[uuid.UUID]:
+    """The ids of every user holding ``role``, whatever their state (HF-12:
+    the tutors who may teach the built-in General subject; the caller keeps
+    the active ones). One statement."""
+    rows = await session.scalars(
+        select(UserRole.user_id)
+        .join(Role, Role.id == UserRole.role_id)
+        .where(Role.code == role)
+    )
+    return frozenset(rows)
+
+
 async def get_role_member(
     session: AsyncSession, role: str, user_id: uuid.UUID
 ) -> RoleMember | None:

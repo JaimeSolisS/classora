@@ -21,7 +21,8 @@ import {
   GROUPS_KEY,
   groupKey,
 } from '../api';
-import { groupCreateBody } from '../rules';
+import { generalSubjectId } from '@/features/scheduling/create/rules';
+import { EMPTY_GROUP, groupCreateBody } from '../rules';
 import { GroupCreateForm } from './GroupCreateForm';
 
 // /groups/new (#234 E), for schedule.manage holders: loads the active
@@ -73,6 +74,11 @@ export function NewGroupPage() {
     content = (
       <GroupCreateForm
         subjects={subjects.data}
+        // HF-12 (#597): the built-in General subject is preselected.
+        initialValues={{
+          ...EMPTY_GROUP,
+          subjectId: generalSubjectId(subjects.data),
+        }}
         tutors={tutors.data}
         classrooms={classrooms.data}
         searchStudents={searchStudents}

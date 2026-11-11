@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn } from 'storybook/test';
+import { expect, fn, userEvent, within } from 'storybook/test';
 import { i18n } from '@/i18n';
 import { StoryRouter } from '@/test/StoryRouter';
-import { POSGRADO, POSGRADO_SUBJECT } from './fixtures';
+import { GENERAL, POSGRADO, POSGRADO_SUBJECT, SECUNDARIA } from './fixtures';
 import { LevelPageView } from './LevelPage';
 
 // The level page of an inactive level (#32 I2, J4): the note, "Add subject"
@@ -53,6 +53,33 @@ export const InactiveLevel: Story = {
     await expect(
       canvas.getByRole('link', { name: i18n.t('catalog.levels.back') }),
     ).toHaveAttribute('href', '/catalog/education-levels');
+  },
+};
+
+/** HF-12 (#597): the built-in General subject's dialog: Deactivate is
+ * disabled, with the reason as its help; the name stays editable. */
+export const GeneralSubjectDialog: Story = {
+  args: {
+    level: { ...SECUNDARIA, name: 'General', sort_order: 0 },
+    subjects: {
+      status: 'ready',
+      page: { items: [GENERAL], total: 1, limit: 25, offset: 0 },
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(
+      canvas.getByRole('button', {
+        name: i18n.t('catalog.actions.editNamed', { name: 'General' }),
+      }),
+    );
+    const dialog = within(document.body).getByRole('dialog');
+    const deactivate = within(dialog).getByRole('button', {
+      name: i18n.t('catalog.actions.deactivate'),
+    });
+    await expect(deactivate).toBeDisabled();
+    await expect(deactivate).toHaveAccessibleDescription(
+      i18n.t('catalog.subjects.generalProtected'),
+    );
   },
 };
 

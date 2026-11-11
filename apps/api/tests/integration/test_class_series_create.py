@@ -24,7 +24,12 @@ from app.modules.scheduling.recurrence import (
 )
 from tests.conftest import frozen_clock
 from tests.integration.auth_support import auth_client, create_user
-from tests.integration.catalog_support import count_statements, get, patch
+from tests.integration.catalog_support import (
+    count_statements,
+    general_subject,
+    get,
+    patch,
+)
 from tests.integration.invitation_support import reauthenticate, sign_in
 from tests.integration.lifecycle_support import code_of, events, in_uow
 from tests.integration.series_support import (
@@ -148,6 +153,25 @@ def test_a_clean_monday_wednesday_series_fills_the_horizon(
     assert [o["state"] for o in created["occurrences"]] == [state] * 24
     assert created["occurrences"][0]["starts_at"] == iso_z(tl.at(tl.monday, "16:00"))
     assert (created["tutor"] is not None) is with_tutor
+
+
+def test_a_general_series_needs_no_qualification(module_seeded_url, client, refs):
+    # HF-12 (#597 AC4): an unqualified tutor, no tutor_not_qualified.
+    tl = timeline()
+    general = refs | {
+        "subject": general_subject(module_seeded_url),
+        "tutor": new_tutor(module_seeded_url),
+    }
+
+    with frozen_clock(tl.now):
+        cookie = owner_cookie(module_seeded_url, client)
+        response = create_series(client, cookie, payload(general, tl.monday, count=3))
+
+    assert code_of(response) == CREATED, response.text
+    rows = series_rows(module_seeded_url, response.json()["id"])
+    assert len(rows) == 3
+    assert {tuple(r.conflict_codes) for r in rows} == {()}
+    assert {r.state for r in rows} == {"offered"}
 
 
 def test_count_3_creates_3_rows_and_stores_the_last_date(

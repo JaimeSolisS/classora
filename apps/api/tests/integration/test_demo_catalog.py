@@ -55,6 +55,7 @@ def test_a_first_run_writes_the_catalog(migrated_url, env_for, clock, capsys):
         " ORDER BY l.sort_order, s.name",
     )
     assert [(row.level, row.name, row.is_active) for row in subjects] == [
+        ("General", "General", True),  # HF-12: the reference seed's
         ("Primaria", "Español", True),
         ("Primaria", "Matemáticas", True),
         ("Secundaria", "Ciencias", True),

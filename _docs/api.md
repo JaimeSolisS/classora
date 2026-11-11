@@ -109,6 +109,7 @@ web labels each one, #130):
 | `name_taken` | 409 | A catalog record (an education level, or a subject within its level), a classroom or a course template would get a name another record already has, ignoring case; inactive records count (see Academic catalog, Classrooms, Course templates). |
 | `education_level_has_active_subjects` | 409 | Deactivating an education level that still has an active subject (see Academic catalog). |
 | `education_level_inactive` | 409 | Creating or reactivating a subject of an inactive education level (see Academic catalog). |
+| `general_subject_protected` | 409 | `PATCH /api/v1/subjects/{subject_id}` with `is_active: false` on the built-in General subject (HF-12; see Academic catalog). Renaming it is allowed. |
 | `notification_type_duplicate` | 422 | `PATCH /api/v1/notifications/preferences` with a type in more than one item; `errors[].path` names each repeat (see Notifications, Preferences). |
 | `notification_type_unknown` | 422 | `PATCH /api/v1/notifications/preferences` with a type outside the caller's catalogue (unregistered, `dev.demo` or not for their roles); `errors[].path` names each item. |
 | `notification_type_mandatory` | 422 | `PATCH /api/v1/notifications/preferences` turning a mandatory type off; `errors[].path` names each item. |
@@ -1861,7 +1862,7 @@ exactly one level and never moves to another.
 | `PATCH /api/v1/education-levels/{level_id}` | `require("catalog.manage")` | Body `{version, name?, sort_order?, is_active?}`. |
 | `POST /api/v1/education-levels/{level_id}/subjects` | `require("catalog.manage")` | Body `{name}`. `201`. |
 | `GET /api/v1/subjects` | `authenticated()` | Query `education_level_id` (an unknown id gives an empty page), `status` (as above), offset pagination. Sorted by the level's position and name, then the subject's name. |
-| `GET /api/v1/subjects/{subject_id}` | `authenticated()` | Active or inactive. Fields: `id`, `education_level_id`, `education_level_name`, `name`, `is_active`, `version`, `created_at`, `updated_at`. |
+| `GET /api/v1/subjects/{subject_id}` | `authenticated()` | Active or inactive. Fields: `id`, `education_level_id`, `education_level_name`, `name`, `is_active`, `is_general` (HF-12: true only for the built-in General subject), `version`, `created_at`, `updated_at`. |
 | `PATCH /api/v1/subjects/{subject_id}` | `require("catalog.manage")` | Body `{version, name?, is_active?}`; `education_level_id` can't be sent (`422`). |
 
 - **Read for every signed-in user**, students and guardians included: later
@@ -1882,12 +1883,31 @@ exactly one level and never moves to another.
   name is allowed.
 - **Updates:** fields not sent stay unchanged; `null` and unknown fields are
   `422`. Check order: `422` → `404` → `409 version_conflict` → `409
-  name_taken` → `409 education_level_has_active_subjects` /
-  `education_level_inactive`. A body that changes nothing returns `200` with
-  no new version.
+  name_taken` → `409 general_subject_protected` (subjects) → `409
+  education_level_has_active_subjects` / `education_level_inactive`. A body
+  that changes nothing returns `200` with no new version.
 - **Reference data:** `make seed` inserts four example levels (Primaria,
   Secundaria, Preparatoria, Universidad) once; later runs never change or
   restore them.
+- **The built-in General subject (HF-12, #597):** `make seed` (the
+  `catalog.general_subject` reference seed) also creates a level "General"
+  (`sort_order` 0, so it comes first) and a subject "General" in it, once; a
+  center's existing level or subject named "General" (any case, the subject
+  within that level) is claimed instead of duplicated. It is flagged
+  `is_general: true` in `SubjectDetail` (its `seed_key` never appears in the
+  API), and:
+  - it can't be deactivated (`409 general_subject_protected`), so its level
+    can't either (`409 education_level_has_active_subjects`); both can be
+    renamed;
+  - any active tutor may teach it without a qualification: no
+    `tutor_not_qualified` conflict or calendar marker, and tutor suggestions
+    (one slot, a series, replacements) and the family slot finder consider
+    every active tutor. Every other check is unchanged;
+  - it is priced like any subject: without a General price a session is
+    `no_price` on the unbilled list;
+  - the web preselects it on "Schedule a session" (Individual, outside
+    makeup mode), New group and a new course template; the user can choose
+    another.
 - **Audit:** automatic only (`education_levels` and `subjects` `create` and
   `update` with the changed fields); no named event. `403`, `404`, `409`,
   `422` and a body that changes nothing write no event.

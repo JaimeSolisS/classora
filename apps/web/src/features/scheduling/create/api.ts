@@ -51,6 +51,9 @@ export interface Option {
 /** A subject option, with its level for the grouping. */
 export interface SubjectOption extends Option {
   levelName: string;
+  /** The built-in General subject (HF-12): preselected on new sessions and
+   * groups. */
+  isGeneral?: boolean;
 }
 
 /** The most options a select loads (one page). */
@@ -150,6 +153,7 @@ export async function fetchSubjectOptions(
       id: subject.id,
       name: subject.name,
       levelName: subject.education_level_name,
+      isGeneral: subject.is_general,
     }));
 }
 

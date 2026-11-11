@@ -188,7 +188,9 @@ DEMO_DELETED_ROWS = 3
 """M8-demo G5: the deleted draft, its objective and its milestone."""
 
 DEMO_TABLE_COUNTS = {
-    "subjects": 8,
+    # The 8 demo subjects and the built-in General one (HF-12, a reference
+    # seed that ``demo.main`` applies first).
+    "subjects": 9,
     "classrooms": 3,
     "classroom_availability_windows": 11,
     "academic_periods": 1,
@@ -531,12 +533,14 @@ REFERENCE_LINES = [
     "identity.roles: 7 inserted, 0 updated",
     "identity.role_permissions: 118 inserted, 0 updated",
     "catalog.education_levels: 4 inserted, 0 updated",
+    "catalog.general_subject: 2 inserted, 0 updated",
 ]
 RERUN_REFERENCE_LINES = [
     "identity.permissions: 0 inserted, 0 updated",
     "identity.roles: 0 inserted, 0 updated",
     "identity.role_permissions: 0 inserted, 0 updated",
     "catalog.education_levels: 0 inserted, 0 updated",
+    "catalog.general_subject: 0 inserted, 0 updated",
 ]
 ACCOUNT_GENERATORS = [generator.name for generator in DEMO_ACCOUNT_GENERATORS]
 GENERATOR_NAMES = [

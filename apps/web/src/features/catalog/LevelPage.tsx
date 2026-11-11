@@ -35,7 +35,9 @@ import { SubjectsTable, type SubjectsTableState } from './SubjectsTable';
 // and its subjects (active or not) with "Add subject" and "Edit". After a
 // change the subject queries and the level queries (whose counts change) are
 // invalidated. An inactive level shows a note and disables "Add subject";
-// the API still answers 409 education_level_inactive.
+// the API still answers 409 education_level_inactive. The built-in General
+// subject (HF-12) can be renamed but not deactivated: its Deactivate button
+// is disabled with the reason (the API answers 409 general_subject_protected).
 
 export function LevelPage() {
   const { t } = useTranslation();
@@ -228,6 +230,9 @@ export function LevelPageView({
                 name: editing.name,
                 isActive: editing.is_active,
                 version: editing.version,
+                deactivateBlocked: editing.is_general
+                  ? t('catalog.subjects.generalProtected')
+                  : undefined,
               }
             : null
         }

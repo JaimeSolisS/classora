@@ -298,3 +298,9 @@ def window_events(url: str, classroom_id: Any) -> list[tuple[str, dict[str, Any]
         {"id": str(classroom_id)},
     )
     return [(row.action, row.changes) for row in rows]
+
+
+def general_subject(url: str) -> uuid.UUID:
+    """The built-in General subject's id (HF-12; the reference seed's)."""
+    [row] = run_sql(url, "SELECT id FROM subjects WHERE seed_key = 'general'")
+    return uuid.UUID(str(row.id))

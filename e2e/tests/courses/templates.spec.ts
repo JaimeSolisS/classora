@@ -26,6 +26,14 @@ async function fillNewTemplate(
 ) {
   const main = page.getByRole('main');
   await main.getByLabel(t.name, { exact: true }).fill(name);
+  // HF-12 (#597): a new template starts with the built-in General subject;
+  // this one keeps a single subject, so General is unchecked.
+  const general = main.getByLabel(
+    fill(t.subjectOption, { name: 'General', level: 'General' }),
+    { exact: true },
+  );
+  await expect(general).toBeChecked();
+  await general.uncheck();
   await main
     .getByLabel(fill(t.subjectOption, { name: subject, level: 'Secundaria' }), {
       exact: true,

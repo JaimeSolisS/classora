@@ -36,6 +36,7 @@ import {
   MAKEUP_PARAM,
   makeupTargetProblem,
   makeupValues,
+  newSessionValues,
   ownerSessionBody,
   PREFILL_PARAMS,
   prefillValues,
@@ -74,6 +75,8 @@ import { ScheduleSessionForm } from './ScheduleSessionForm';
 // Pre-filled from the calendar (HF-02 C1), `?date&start&end&tutor&room`: read
 // once, when the form mounts (rules.prefillValues; invalid values are
 // ignored), never in makeup mode. A different pre-fill mounts a new form.
+// The built-in General subject (HF-12, #597) is preselected outside makeup
+// mode (rules.newSessionValues); the user can pick another.
 // After a pre-filled save, the success panel links back to that week.
 //
 // Group and course sessions (HF-11b, #593): the type selector offers Group
@@ -212,7 +215,11 @@ export function ScheduleSessionPage() {
             {t('scheduling.series.success.openSeries')}
           </Link>
         )}
-        initialValues={target ? makeupValues(target) : (prefill ?? undefined)}
+        initialValues={
+          target
+            ? makeupValues(target)
+            : newSessionValues(prefill, subjects.data)
+        }
         calendarLink={
           prefill
             ? (date) => (

@@ -34,6 +34,7 @@ import {
   CREATED,
   NO_SUGGESTIONS,
   SOFT_CONFLICTS,
+  GENERAL_SUBJECT,
   SUBJECTS,
   TUTORS,
 } from './fixtures';
@@ -462,6 +463,33 @@ describe('makeup mode (B)', () => {
     expect(main().textContent).toContain('Session scheduled');
     expect(main().textContent).toContain('Makeup of');
     expect(linkTo(TARGET_PATH)).toBeDefined();
+  });
+
+  it('keeps the target subject with General in the options (HF-12)', async () => {
+    const api = stub({
+      'GET /api/v1/subjects': page(
+        [GENERAL_SUBJECT, ...SUBJECTS].map((s) => ({
+          id: s.id,
+          name: s.name,
+          education_level_id: '00000000-0000-4000-8000-0000000004f1',
+          education_level_name: s.levelName,
+          is_active: true,
+          is_general: s.isGeneral ?? false,
+          version: 1,
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        })),
+      ),
+      [CREATE]: () => jsonResponse(201, CREATED),
+    });
+    app = await renderApp(MAKEUP_URL);
+    fillWhen();
+
+    await click(buttonNamed(main(), 'Schedule session'));
+
+    expect(api.calls(CREATE)[0]!.body).toMatchObject({
+      subject_id: MAKEUP_AVAILABLE.subject.id,
+    });
   });
 
   it('ignores the calendar pre-fill parameters (HF-02 C4)', async () => {

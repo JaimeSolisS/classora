@@ -11,6 +11,7 @@
 
 Check order of a ``PATCH``: ``401`` → ``csrf_failed`` → ``permission_denied``
 → ``422`` → ``404`` → ``409 version_conflict`` → ``409 name_taken`` → ``409
+general_subject_protected`` (subjects) → ``409
 education_level_has_active_subjects`` / ``education_level_inactive``.
 """
 
@@ -207,8 +208,9 @@ async def get_subject(
         404: SUBJECT_NOT_FOUND,
         409: problem_response_doc(
             f"{VERSION_CONFLICT} Or {NAME_TAKEN} (within the level) Or the"
-            " subject is reactivated while its level is inactive"
-            " (education_level_inactive)."
+            " built-in General subject is deactivated"
+            " (general_subject_protected) Or the subject is reactivated while"
+            " its level is inactive (education_level_inactive)."
         ),
         422: problem_response_doc(
             f"{NAME_INVALID} (education_level_id can't be changed), a null"

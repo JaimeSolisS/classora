@@ -17,6 +17,16 @@ export const SUBJECT_OPTIONS: SubjectOption[] = [
   { id: CHEMISTRY_ID, name: 'Química', levelName: 'Preparatoria' },
 ];
 
+export const GENERAL_ID = '01900000-0000-7000-8000-00000000a000';
+
+/** The built-in General subject (HF-12): a new template starts with it. */
+export const GENERAL_OPTION: SubjectOption = {
+  id: GENERAL_ID,
+  name: 'General',
+  levelName: 'General',
+  isGeneral: true,
+};
+
 const MODULE_IDS = [
   '01900000-0000-7000-8000-00000000b001',
   '01900000-0000-7000-8000-00000000b002',

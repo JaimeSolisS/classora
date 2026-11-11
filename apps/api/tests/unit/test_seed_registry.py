@@ -13,6 +13,7 @@ from app.modules.identity.models import User, UserDelegation, UserRole
 from app.modules.identity.permissions import PERMISSIONS, ROLE_CODES, ROLE_PERMISSIONS
 from app.seeds import runner
 from app.seeds.education_levels import InsertOnlySeed
+from app.seeds.general_subject import GENERAL_SUBJECT_SEED, GeneralSubjectSeed
 from app.seeds.registry import REFERENCE_SEEDS, UpsertSeed
 from app.seeds.role_permissions import RolePermissionsSeed
 from app.seeds.upsert import UpsertResult, upsert_rows
@@ -81,7 +82,7 @@ def test_identity_seeds_are_registered_in_dependency_order():
     ]
 
 
-def test_education_levels_come_after_the_identity_seeds():
+def test_the_catalog_seeds_come_after_the_identity_seeds():
     # Insert-only through the ORM (#32 B1, B2), so not an UpsertSeed.
     names = [seed.name for seed in REFERENCE_SEEDS]
     assert names == [
@@ -89,6 +90,7 @@ def test_education_levels_come_after_the_identity_seeds():
         "identity.roles",
         "identity.role_permissions",
         "catalog.education_levels",
+        "catalog.general_subject",
     ]
     seed = REFERENCE_SEEDS[3]
     assert isinstance(seed, InsertOnlySeed)
@@ -99,6 +101,15 @@ def test_education_levels_come_after_the_identity_seeds():
         {"seed_key": "high_school", "name": "Preparatoria", "sort_order": 30},
         {"seed_key": "university", "name": "Universidad", "sort_order": 40},
     ]
+
+
+def test_the_general_subject_seed_comes_last():
+    # HF-12 (#597 E2 (a)): after the levels, so a center's own "General"
+    # level can be claimed; insert-only through the ORM.
+    seed = REFERENCE_SEEDS[4]
+    assert isinstance(seed, GeneralSubjectSeed)
+    assert seed is GENERAL_SUBJECT_SEED
+    assert seed.name == "catalog.general_subject"
 
 
 def test_identity_seed_rows_come_from_the_catalog_constants():
@@ -193,7 +204,7 @@ def test_summary_of_an_empty_registry():
 
 
 def test_alembic_heads_reads_the_migration_scripts():
-    assert runner.alembic_heads() == {"0094"}
+    assert runner.alembic_heads() == {"0095"}
 
 
 def test_configuration_error_exits_1_without_traceback(capsys):

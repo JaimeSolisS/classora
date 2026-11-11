@@ -21,7 +21,9 @@ Rules for every seed:
   administrator's rename or deactivation on the next run, and its Core insert
   would skip the audit trail (#22); the ORM insert writes a ``create`` event
   per row (actor ``NULL``), and a row whose key or name already exists is
-  left alone.
+  left alone. ``catalog.general_subject``
+  (:mod:`app.seeds.general_subject`, HF-12) follows the same rule and, once,
+  claims an existing "General" level or subject by setting its ``seed_key``.
 - It never deletes rows. **One exception:** ``identity.role_permissions``
   (:mod:`app.seeds.role_permissions`) also deletes the pairs of the seeded
   roles that ``ROLE_PERMISSIONS`` no longer lists, so the database's role
@@ -40,6 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.identity.models import Permission, Role
 from app.modules.identity.permissions import PERMISSIONS, ROLE_CODES, ROLE_PERMISSIONS
 from app.seeds.education_levels import EDUCATION_LEVELS_SEED
+from app.seeds.general_subject import GENERAL_SUBJECT_SEED
 from app.seeds.role_permissions import RolePermissionsSeed
 from app.seeds.upsert import UpsertResult, upsert_rows
 
@@ -84,5 +87,8 @@ REFERENCE_SEEDS: tuple[ReferenceSeed, ...] = (
     RolePermissionsSeed(name="identity.role_permissions", mapping=ROLE_PERMISSIONS),
     # Example education levels (M2-14): inserted once, never updated.
     EDUCATION_LEVELS_SEED,
+    # The built-in "General" level and subject (HF-12, #597): inserted once
+    # (or claimed by name), never updated afterwards.
+    GENERAL_SUBJECT_SEED,
 )
 """Every reference seed, in the order they are applied."""

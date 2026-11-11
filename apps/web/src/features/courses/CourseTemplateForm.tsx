@@ -88,6 +88,16 @@ export function CourseTemplateForm({
   const [values, setValues] = useState<TemplateFormValues>(() =>
     template ? templateValues(template) : emptyValues(),
   );
+  // HF-12 (#597): a new template starts with the built-in General subject,
+  // once the subjects have loaded and only if none was chosen yet.
+  const [subjectDefaulted, setSubjectDefaulted] = useState(template !== null);
+  if (!subjectDefaulted && subjects.status === 'ready') {
+    setSubjectDefaulted(true);
+    const general = subjects.items.find((subject) => subject.isGeneral);
+    if (general && values.subjectIds.length === 0) {
+      setValues({ ...values, subjectIds: [general.id] });
+    }
+  }
   const [errors, setErrors] = useState<TemplateErrors>(NO_ERRORS);
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);

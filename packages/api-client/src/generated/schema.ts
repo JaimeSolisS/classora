@@ -23119,6 +23119,11 @@ export interface components {
             name: string;
             /** Is Active */
             is_active: boolean;
+            /**
+             * Is General
+             * @description True only for the built-in General subject (HF-12): any active tutor may teach it without a qualification, it can't be deactivated, and the web preselects it on new sessions, groups and course templates.
+             */
+            is_general: boolean;
             /** Version */
             version: number;
             /**
@@ -29186,7 +29191,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description The record changed since it was loaded (version_conflict); reload and retry. Or Another record already has this name, ignoring case; inactive records count (name_taken). (within the level) Or the subject is reactivated while its level is inactive (education_level_inactive). */
+            /** @description The record changed since it was loaded (version_conflict); reload and retry. Or Another record already has this name, ignoring case; inactive records count (name_taken). (within the level) Or the built-in General subject is deactivated (general_subject_protected) Or the subject is reactivated while its level is inactive (education_level_inactive). */
             409: {
                 headers: {
                     [name: string]: unknown;

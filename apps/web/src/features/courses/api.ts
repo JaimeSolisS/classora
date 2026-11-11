@@ -21,6 +21,8 @@ export interface SubjectOption {
   id: string;
   name: string;
   levelName: string;
+  /** The built-in General subject (HF-12): a new template starts with it. */
+  isGeneral?: boolean;
 }
 
 /** Rows per page of the list (the API default). */
@@ -127,5 +129,6 @@ export async function fetchSubjectOptions(
       id: item.id,
       name: item.name,
       levelName: item.education_level_name,
+      isGeneral: item.is_general,
     }));
 }

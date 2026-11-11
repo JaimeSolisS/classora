@@ -39,7 +39,7 @@ from tests.factories.scheduling import (
     persist_subject,
 )
 from tests.integration.auth_support import SetCookie, auth_client, create_user
-from tests.integration.catalog_support import count_statements, get
+from tests.integration.catalog_support import count_statements, general_subject, get
 from tests.integration.conftest import run_sql
 from tests.integration.invitation_support import sign_in
 from tests.integration.lifecycle_support import code_of, in_uow
@@ -149,6 +149,24 @@ def test_both_reasons_with_the_item_shape(client, staff, module_seeded_url):
         "id": str(unpriced.family),
         "name": family_name(url, unpriced.family),
     }
+
+
+def test_a_general_session_is_priced_like_any_subject(client, staff, module_seeded_url):
+    # HF-12 (#597 AC5): no General price, no_price; with one, one charge.
+    url = module_seeded_url
+    general = general_subject(url)
+    it = item(url, starts_at=local(DAY, 10), subject=general, price=None)
+    set_floor(url, FLOOR)
+
+    [entry] = listed(client, staff)["items"]
+
+    assert entry["reason"] == "no_price"
+    assert entry["subject"]["id"] == str(general)
+    add_price(url, general, [(PRICE_FROM, "320.00")])
+    assert run(url).posted == 1
+    [charge] = charges_of(url, it.session)
+    assert charge.list_amount == Decimal("320.00")
+    assert listed(client, staff)["total"] == 0
 
 
 def test_no_family_comes_before_no_price(client, staff, module_seeded_url):

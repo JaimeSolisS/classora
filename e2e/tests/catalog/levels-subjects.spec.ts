@@ -10,7 +10,14 @@ import { common, errors } from '../support/catalog';
 // seeded levels. Read access for the other roles is proven by the API's
 // runtime permission matrix (K2).
 
-const SEEDED_LEVELS = ['Primaria', 'Secundaria', 'Preparatoria', 'Universidad'];
+// HF-12 (#597): the built-in "General" level (position 0) comes first.
+const SEEDED_LEVELS = [
+  'General',
+  'Primaria',
+  'Secundaria',
+  'Preparatoria',
+  'Universidad',
+];
 
 // Chromium logs every 4xx resource as a console error: the two expected
 // 409 answers (name_taken, education_level_has_active_subjects).
@@ -66,9 +73,9 @@ test('managing education levels and subjects', async ({ page }, testInfo) => {
   await page.goto('/');
   await openLevels(page);
   await expect(firstCells(page).first()).toHaveText(SEEDED_LEVELS[0]!);
-  expect((await firstCells(page).allTextContents()).slice(0, 4)).toEqual(
-    SEEDED_LEVELS,
-  );
+  expect(
+    (await firstCells(page).allTextContents()).slice(0, SEEDED_LEVELS.length),
+  ).toEqual(SEEDED_LEVELS);
 
   // 2. Add a level: its row shows 0 active subjects; focus is back on the
   // button.
