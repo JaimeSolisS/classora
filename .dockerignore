@@ -1,5 +1,12 @@
+# Build context exclusions for the repository-root image builds (api, web).
+# No .env file at any depth reaches a build, except the committed
+# .env.example; `make check-images` (CI `images` job) checks it (#610).
 .env
 .env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
 **/.venv
 **/venv
 .git

@@ -1300,6 +1300,7 @@ command:
 | `web-storybook` | `make test-storybook` |
 | `api-client` | `make check-api-client` |
 | `e2e` | `make lint-e2e`, `make e2e`, `make check-pdf-image` (builds the API image and renders a sample PDF in es and en inside it) (on failure, uploads traces, the HTML report and the Compose logs as the `e2e-report` artifact) |
+| `images` | `make build-images`, `make check-images`, `make check-pdf-image`, `make smoke-edge`, `make scan-image IMAGE=<ref>` for each image (CI builds the `api`, `web` (Caddy edge with the built SPA) and `pgbouncer` images natively for `linux/arm64` with `PLATFORM=linux/arm64`; locally the default is `linux/amd64`) |
 | `security-deps` | `make audit-deps` (pip-audit and `pnpm audit` over both lockfiles) |
 | `security-secrets` | `make scan-secrets` (gitleaks, full history); on pull requests also `make scan-secrets-diff BASE=<sha> HEAD=<sha>` |
 | `security-sast` | `make sast` (Semgrep); Ruff's security (`S`) rules run in `make lint-api` |
@@ -1308,11 +1309,15 @@ Pull requests run only the jobs their changed files can affect (API jobs for
 `apps/api/` and the PgBouncer image, web jobs for the web app, its packages and the Node toolchain
 files; the `e2e` job for changes to either app, its packages, `e2e/`, the Compose
 and Docker files, the Node toolchain files or `.env.example`; all of them for
-`Makefile` and workflow changes; none for documentation).
+`Makefile` and workflow changes; none for documentation). The `images` job runs
+for changes to `infrastructure/docker/`, the API and Node lockfiles and manifests,
+`.nvmrc`, `.dockerignore` and the SPA's security headers, and for `Makefile` and
+workflow changes, not for application code alone.
 The `api-client` drift check runs whenever the API or web jobs run. The three
 security jobs run on every pull request and push, documentation included.
 `ci-required` is the one required check: it reports on every pull request and
-fails if any job that ran failed or was cancelled, or if a security job was skipped.
+fails if any job that ran failed or was cancelled, if a job was skipped although
+its paths changed, or if a security job was skipped.
 
 ### Security scans
 

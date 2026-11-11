@@ -14,7 +14,7 @@ this document together; the web unit tests check the invariants below.
 | ----- | ------- | ------ |
 | Vite dev server (`make dev`, `make e2e`) | `DEVELOPMENT_HEADERS`, enforced (not `-Report-Only`) through `server.headers` in `apps/web/vite.config.ts` | Now. The E2E spec `e2e/tests/security/headers.spec.ts` checks the headers, zero CSP violations during a sign-in round trip and that the app cannot be framed. |
 | `vite preview` of a production build | `PRODUCTION_HEADERS` through `preview.headers` | Now. Checked by hand (see below). |
-| Caddy in front of the built SPA | `PRODUCTION_HEADERS` | **M9-02 (#610)** copies them into the edge image's Caddyfile and tests them automatically against the built SPA, together with HSTS, `Referrer-Policy` and `Permissions-Policy` (edge headers, out of scope here). |
+| Caddy in front of the built SPA (the edge image, `infrastructure/docker/edge/Caddyfile`) | `PRODUCTION_HEADERS` plus the edge headers below | Now (M9-02, #610), automated: the web unit test `apps/web/src/security-headers.caddy.test.ts` fails when the Caddyfile's values differ from `PRODUCTION_HEADERS`, and `make smoke-edge` (CI `images` job) compares the headers the edge image serves on the built SPA with the module. Live on DEV from M9-06 (#614). |
 | Storybook | none (Storybook keeps its own headers) | Not a deployed surface. |
 
 ## Production Content Security Policy
@@ -61,9 +61,28 @@ because Chromium matches `ws://` to the same host and port with `'self'` in
 Vitest reuse `vite.config.ts` but serve their own inline scripts, so the
 config does not apply the policy to them.
 
+## Edge headers
+
+The edge (Caddy, ADR-0010) adds three headers to every SPA response. They are
+not in `PRODUCTION_HEADERS`, because `vite preview` serves plain HTTP and the
+Vite servers never face the internet:
+
+| Header | Value | Reason |
+| ------ | ----- | ------ |
+| `Strict-Transport-Security` | `max-age=31536000` | HTTPS sites only (a plain-HTTP site never sends it). `.dev` is HSTS-preloaded anyway; this also covers any other hostname. Sent on API responses too, as it applies to the whole host. |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Another origin sees at most the app's origin, never a path with an id in it. |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=(), usb=()` | The app uses none of these browser features, so no page (or injected script) can ask for them. |
+
+API responses (`/api/*`) keep the API's own headers: the edge adds no CSP,
+`X-Frame-Options` or `Referrer-Policy` to them. The live-notification stream
+(`/api/v1/notifications/stream`) is proxied unbuffered and never compressed;
+other responses may be gzip- or zstd-encoded. `/health/*` answers `404` from
+outside.
+
 ## Checking the production policy by hand
 
-Until M9-02 (#610) automates it in Caddy, check the production build once by hand
+`make smoke-edge` checks the edge image automatically. To look at the
+production build in a browser without Docker, check it by hand
 (with `make dev` running, so `/api` answers):
 
 ```bash
@@ -107,8 +126,9 @@ In short (details in [`api.md`](api.md) "CSRF and `Origin`"):
 - **New UI libraries.** A library that injects inline `<script>` elements or
   needs `eval` violates the policy; the E2E headers spec catches it under the
   development policy. Prefer a library that does not.
-- **M9-02 (#610).** Copy `PRODUCTION_HEADERS` into the Caddyfile for the SPA, test
-  them there with zero CSP violations against the built SPA, and add the edge
-  headers. Caddy is the edge (no CloudFront, ADR-0010), so `Origin` and
-  `X-CSRF-Token` reach `/api/*` unchanged. The production `APP_ORIGIN` is the
-  `https://` customer hostname (M9-06, #614).
+- **A policy change** in `apps/web/src/security-headers.ts` is copied into the
+  `(spa_security_headers)` snippet of `infrastructure/docker/edge/Caddyfile`
+  in the same pull request; the unit test fails until both match. Caddy is
+  the edge (no CloudFront, ADR-0010), so `Origin` and `X-CSRF-Token` reach
+  `/api/*` unchanged. The production `APP_ORIGIN` is the `https://` customer
+  hostname (M9-06, #614).

@@ -73,7 +73,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     // `vite preview` serves a production build under the production policy
-    // (the manual check of #24; M9-02 (#610) moves it into Caddy).
+    // (a manual check; the edge image serves the same headers, #610).
     preview: { headers: { ...PRODUCTION_HEADERS } },
     test: {
       projects: [

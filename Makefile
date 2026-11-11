@@ -1,4 +1,4 @@
-.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image
+.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -155,6 +155,34 @@ check-pdf-image:
 	docker build -f infrastructure/docker/api.Dockerfile -t classora-api:pdf-check .
 	docker run --rm classora-api:pdf-check python -m app.cli pdf-smoke
 
+# The images that run on AWS (ADR-0010, #610), named after their ECR repositories
+# (classora/<name>). PLATFORM is the target platform: linux/amd64 by default (the
+# local Intel machines), linux/arm64 in the CI `images` job (native arm64 runner).
+PLATFORM ?= linux/amd64
+IMAGE_TAG ?= local
+API_IMAGE = classora/api:$(IMAGE_TAG)
+WEB_IMAGE = classora/web:$(IMAGE_TAG)
+PGBOUNCER_IMAGE = classora/pgbouncer:$(IMAGE_TAG)
+
+## Build the three AWS images for PLATFORM (default linux/amd64): api (also the worker),
+## web (the edge: Caddy with the built SPA) and pgbouncer. Same Dockerfiles as make dev.
+build-images:
+	docker build --platform $(PLATFORM) -f infrastructure/docker/api.Dockerfile -t $(API_IMAGE) .
+	docker build --platform $(PLATFORM) -f infrastructure/docker/edge.Dockerfile -t $(WEB_IMAGE) .
+	docker build --platform $(PLATFORM) -t $(PGBOUNCER_IMAGE) infrastructure/docker/pgbouncer
+
+## Check the images of `make build-images`: architecture, API as uid 10001, no secret in
+## any image's Env, no .env file in the build context. Run `make build-images` first.
+check-images:
+	infrastructure/docker/check-images.sh $(lastword $(subst /, ,$(PLATFORM))) $(API_IMAGE) $(WEB_IMAGE) $(PGBOUNCER_IMAGE)
+
+## Build the edge image and smoke-test it in front of a stub API: SPA fallback, asset
+## caching, security headers (against PRODUCTION_HEADERS), /api proxy, X-Forwarded-For,
+## unbuffered SSE, /health/* 404 and HSTS over HTTPS. Needs Docker, curl, jq and Node 24.
+smoke-edge:
+	docker build --platform $(PLATFORM) -f infrastructure/docker/edge.Dockerfile -t $(WEB_IMAGE) .
+	infrastructure/docker/edge/smoke.sh $(WEB_IMAGE)
+
 ## Playwright E2E (smoke and axe) against an isolated, freshly migrated and seeded Compose
 ## stack (project classora-e2e, own ports and volume; always torn down, E2E_KEEP=1 keeps it).
 ## Needs Docker, uv and Node 24, not .env; runs while `make dev` is up (e2e/scripts/run.sh).
@@ -233,7 +261,7 @@ sast:
 
 ## Trivy vulnerability scan of a local or registry image: make scan-image IMAGE=<ref>.
 ## Prints HIGH and CRITICAL; fails on CRITICAL with a fixed version (not in .trivyignore).
-## Not run in PR CI yet; M9-02 (#610) runs it after the image build and M9-07 (#615) before push (ADR-0016).
+## The CI `images` job runs it on the three arm64 images; M9-07 (#615) runs it before push (ADR-0016).
 scan-image:
 	@test -n "$(IMAGE)" || { echo "usage: make scan-image IMAGE=<image reference>" >&2; exit 2; }
 	@infrastructure/scripts/check-scan-exceptions.sh trivy .trivyignore

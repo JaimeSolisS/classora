@@ -1,6 +1,7 @@
-# Local development image for the FastAPI service and the background worker
-# (the `worker` service runs this same image with another command). Build
-# context: repository root.
+# Image for the FastAPI service and the background worker (the `worker`
+# service runs this same image with another command): the same image locally
+# (`make dev`, `make e2e`), in CI and, built for linux/arm64, on AWS (ADR-0010).
+# Build context: repository root.
 # The Python 3.14 pin is set by _docs/adr/0001-runtime-version-pins.md (accepted).
 # Keep in sync with apps/api/.python-version and apps/api/pyproject.toml.
 FROM python:3.14-slim
@@ -15,6 +16,17 @@ FROM python:3.14-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libpq5 libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
+
+# The base image's pip is never used (uv installs everything) and vendors its
+# own certifi and msgpack, which the image scan flags (#610): removed.
+RUN python -m pip uninstall --yes --quiet pip
+
+# Runs as a non-root system user, uid/gid 10001 (#610 E2 (a)), everywhere.
+# HOME is a writable directory for fontconfig's cache (WeasyPrint). The
+# application files below stay root-owned, so the process cannot change them.
+RUN groupadd --system --gid 10001 app \
+    && useradd --system --uid 10001 --gid 10001 --no-log-init --create-home \
+       --home-dir /home/app --shell /usr/sbin/nologin app
 
 COPY --from=ghcr.io/astral-sh/uv:0.9.13 /uv /usr/local/bin/uv
 
@@ -33,7 +45,11 @@ COPY apps/api/app ./app
 COPY apps/api/alembic.ini ./
 COPY apps/api/migrations ./migrations
 
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH" \
+    HOME=/home/app
+
+# Numeric, so a runtime can check "not root" without reading /etc/passwd.
+USER 10001:10001
 
 EXPOSE 8000
 

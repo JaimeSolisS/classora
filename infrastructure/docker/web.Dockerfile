@@ -1,5 +1,5 @@
 # Local development image for the React SPA (Vite dev server). Build context:
-# repository root. Not a production image (that is M9-02, #610).
+# repository root. Not a production image (that is edge.Dockerfile, #610).
 # The Node 24 pin is set by _docs/adr/0001-runtime-version-pins.md (accepted).
 # Keep in sync with .nvmrc and engines.node in the root package.json.
 FROM node:24-slim
