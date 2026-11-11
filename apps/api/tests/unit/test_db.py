@@ -4,8 +4,8 @@ from pydantic import SecretStr
 
 from app.core.config import Settings
 from app.core.db import (
-    async_database_url,
     RUNTIME_ROLE,
+    async_database_url,
     async_direct_database_url,
     async_migration_database_url,
     create_direct_engine,
