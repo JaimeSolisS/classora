@@ -19,7 +19,7 @@ Resolves architecture §10 **ISSUE-S3** (rate limiting without Redis) in [`../ar
 - Spec [`../spec.md`](../spec.md) §10 (application stack) says rate limits use "Caddy/FastAPI enforcement, without Redis", and excludes Redis and Celery. It warns that Redis-free rate limiting across more than one API process needs a shared store or an enforced edge or proxy policy. Spec §14 repeats that sessions and jobs live in PostgreSQL. Spec §18 item 4 leaves the details of rate-limit enforcement open and asks for an explicit implementation decision. This ADR is that decision for M2, so the spec is not changed.
 - Standard Caddy has no rate-limit directive. It needs a third-party module and a custom build.
 - FastAPI in-memory limits are per process, so they are not correct across several API worker processes.
-- Behind CloudFront and Caddy, the TCP peer is not the client. The client IP must come from a forwarded header, trusted only from a known proxy.
+- Behind a reverse proxy (Caddy in AWS; see the 2026-11-11 amendment), the TCP peer is not the client. The client IP must come from a forwarded header, trusted only from a known proxy.
 - Authentication endpoints are the real brute-force target. The center has one location and a small user base, and parents may share the center's Wi-Fi (one IP).
 
 ## Decision
@@ -43,7 +43,7 @@ Behaviour:
 
 - The client IP is the TCP peer, unless the peer is in the configurable `TRUSTED_PROXIES` list, which is empty by default.
 - Only when the peer is trusted is the right-most untrusted `X-Forwarded-For` entry used. An `X-Forwarded-For` header from an untrusted peer is ignored.
-- In AWS the trusted peer is the Caddy container. Caddy sets the header from CloudFront's viewer address (M9-09).
+- In AWS the trusted peer is the Caddy container, the first hop ([ADR-0010](0010-hosting-edge-and-https.md)). Caddy ignores any client-sent `X-Forwarded-For` and sets it to the TCP peer it sees.
 
 ### General API (D16 (a))
 
@@ -59,7 +59,7 @@ Behaviour:
 - An attacker can slow a known user's logins for at most 15 minutes at a time, but cannot lock the account permanently.
 - Parents behind the center's shared Wi-Fi share the per-IP budget; 50 login attempts per 15 minutes leaves room for them.
 - Until #163 is done, endpoints outside authentication have no rate limit.
-- M9-09 configures Caddy and CloudFront so that the forwarded header carries the viewer address, and adds Caddy's address to `TRUSTED_PROXIES` in AWS.
+- M9-02 (#610) configures the edge Caddy to set the forwarded header from the TCP peer, and M9-06 (#614) adds Caddy's fixed address to `TRUSTED_PROXIES` in AWS.
 - Revisit if the API is scaled beyond one host (spec §10, §14).
 
 ## Alternatives considered
@@ -67,7 +67,7 @@ Behaviour:
 - **5 failed logins per username per 15 minutes** (D15 (b)). Rejected: an attacker could keep a known user locked out by sending wrong passwords.
 - **Counting per IP only** (D15 (c)). Rejected: a slow distributed guessing attack on one account would go unthrottled.
 - **Building the general in-process limit now as an extra M2 issue** (D16 (b)). Rejected: more M2 scope for a single center with a small user base, where authentication is the real brute-force target.
-- **Requiring a Caddy rate-limit module** (custom build, decided in ADR-0010 in M9-01; D16 (c)). Rejected: it pushes the decision to Phase 2/3, and the module does not exist locally.
+- **Requiring a Caddy rate-limit module** (custom build; D16 (c); ADR-0010, decided in M9-01 (#609), confirms there is none). Rejected: it pushes the decision to Phase 2/3, and the module does not exist locally.
 
 ## Amendments
 
@@ -87,6 +87,14 @@ Recorded with M4-14 (#59 E2 (a), the recommended option, accepted under the owne
 Recorded with M4-17 (#62 S4, the groomed choice under the owner's delegation for the M4 run). The 2026-10-20 amendment above is otherwise unchanged.
 
 - `change_request.user`: 10 per hour on `POST /api/v1/change-requests` (a write limit; cancellation and reschedule requests by guardians, students and tutors), keyed by the signed-in user, every request counted (`4xx` included), on the same `rate_limit_counters` table.
+
+### 2026-11-11: Caddy is the first hop (ADR-0010)
+
+Recorded with M9-01 (#609), after the owner's M9 re-plan of 2026-11-11 removed CloudFront ([ADR-0010](0010-hosting-edge-and-https.md)). D15 and D16 are otherwise unchanged.
+
+- There is no CloudFront in front of Caddy. Caddy on each host is the **first hop**: it discards any `X-Forwarded-For` the client sends and sets it to the TCP peer.
+- The app network has a fixed subnet and Caddy a fixed address, which is the only `TRUSTED_PROXIES` entry in AWS. The client-IP rule above is unchanged: a trusted peer's right-most untrusted `X-Forwarded-For` entry is the client.
+- The stock Caddy build is used, with no rate-limit module.
 
 ## References
 

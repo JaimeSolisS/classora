@@ -8,7 +8,7 @@
 
 Classora is a bilingual (Spanish/English), MXN-only management platform for **one** tutoring/test-preparation center. It handles role-scoped tutoring operations, courses, students and guardians, scheduling, assessments, files, billing, payroll, expenses and analytics.
 
-Approved stack: React/Vite/TypeScript + Tailwind/shadcn; FastAPI + async SQLAlchemy/asyncpg/Alembic; PostgreSQL + PgBouncer; **Procrastinate backed by PostgreSQL, with a separate worker container and periodic jobs**; Docker Compose; AWS EC2 + Terraform; ECR + GitHub Actions + SSM; Caddy + CloudFront; S3 and pgBackRest; OpenTelemetry + Grafana/Prometheus/Loki/Tempo. **No Redis, Celery, RDS, or automatic banking transfers.**
+Approved stack: React/Vite/TypeScript + Tailwind/shadcn; FastAPI + async SQLAlchemy/asyncpg/Alembic; PostgreSQL + PgBouncer; **Procrastinate backed by PostgreSQL, with a separate worker container and periodic jobs**; Docker Compose; AWS EC2 + Terraform; ECR + GitHub Actions + SSM; Caddy with automatic HTTPS (no CloudFront); S3 for nightly `pg_dump` backups and EBS snapshots (ADR-0010 to ADR-0014); OpenTelemetry + Grafana/Prometheus/Loki/Tempo. **No Redis, Celery, RDS, or automatic banking transfers.**
 
 ```text
 classora/
@@ -155,31 +155,28 @@ Exit criterion: every role can complete its main flows on the local Compose stac
 
 **Phase 2 — Monitoring running locally**
 
-1. M9-01 — decision gate (ADR-0010 to ADR-0014). It is documentation only and also fixes the telemetry and error-tracking choices.
-2. M9-13 (local part) — a local observability stack in Compose: OTel Collector, Prometheus, Loki, Tempo and Grafana, with the same configuration the monitoring host will use later.
-3. M9-14 — API, worker and PostgreSQL telemetry sent to the local collector.
-4. M9-15 — dashboards and alerts provisioned as code and checked in local Grafana. The backup panel and its alerts wait for M9-12 in Phase 3.
-5. M9-16 — error tracking as decided in M9-01.
+1. M9-01 (#609) — ADR-0010 to ADR-0014 and the spec/architecture re-baseline after the owner's 2026-11-11 re-plan. Documentation only; it also fixes the telemetry and error-tracking choices (no Sentry).
+2. M9-02 (#610) — arm64 production images (API, edge web with Caddy, PgBouncer) built and checked in CI. No AWS needed.
+3. M9-03 (#611) — the optional local observability profile (`make dev-observability`): OTel Collector, Prometheus, Loki, Tempo and Grafana, with the same configuration the monitoring host will use later.
+4. M9-04 (#612) — API and worker telemetry (no-op when off), dashboards and alert rules as code, checked in local Grafana.
 
-Exit criterion: `make dev` together with the observability stack shows logs, metrics, traces and errors for the local application in Grafana.
-
-Backlog change needed before Phase 2: M9-13 to M9-15 are currently groomed for the AWS monitoring host. M9-13 depends on M9-04, and M9-15 depends on M9-12. The PM must re-groom them, or split off local issues, before Phase 2 starts.
+Exit criterion: `make dev` together with the observability profile shows logs, metrics, traces and errors for the local application in Grafana.
 
 **Phase 3 — AWS DEV**
 
-1. M9-02 Terraform bootstrap and GitHub OIDC → M9-03 Terraform PR plans.
-2. M9-04 DEV network, compute and storage → M9-05 ECR → M9-06 image build and publish on `develop`.
-3. M9-07 secrets in Parameter Store → M9-08 host runtime → M9-09 edge Caddy → M9-10 CloudFront and DNS.
-4. M9-11 DEV deployment through SSM with readiness gate and rollback.
-5. M9-12 backups, WAL archiving and DEV restore drill.
-6. M9-13 (AWS part) — the monitoring EC2 host, reusing the Phase 2 configuration, with the DEV agents pointed at it. Then the backup panel and alerts from M9-15.
+1. M9-05 (#613) Terraform foundation: state, DNS zone, OIDC roles, ECR, SES, budget and archive bucket.
+2. #165 (M10-10) least-privilege database role, recommended before the DEV host.
+3. M9-06 (#614) DEV host: EC2, data volume, Caddy HTTPS, Compose under systemd.
+4. M9-07 (#615) automatic DEV deploy on merge: build, ECR, migrate, health check, rollback.
+5. M9-08 (#616) nightly `pg_dump`, EBS snapshots and a DEV restore drill.
+6. M9-09 (#617) the monitoring host (or monitoring on DEV), Grafana over HTTPS and e-mail alerts, reusing the Phase 2 configuration.
 
 Exit criterion: merges to `develop` deploy to DEV automatically, and DEV is monitored and backed up.
 
 **Phase 4 — AWS PROD and go-live**
 
-1. M9-17 PROD environment and promotion workflow → M9-18 operational runbooks.
-2. M10-02 security review, M10-04 load and sizing on the micro target, M10-05 PROD restore and PITR drill, M10-06 end-to-end coverage of W1–W8. All of them need M9-17.
+1. M9-10 (#618) PROD environment, approved promotion, teardown and runbooks.
+2. M10-02 security review, M10-04 load and sizing on the t4g hosts, M10-05 PROD backup restore drill, M10-06 end-to-end coverage of W1–W8. All of them need M9-10 (#618).
 3. M10-08 go-live checklist.
 
 Exit criterion: the go-live checklist is signed off by the owner.

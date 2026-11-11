@@ -1262,11 +1262,11 @@ instead of using another port when 6006 is taken. To build a static copy:
 ## Continuous integration
 
 ```mermaid
-flowchart LR
+flowchart TB
   local["💻 <b>Local development</b><br/>native stack or Docker Compose<br/>one git worktree per issue"]
   branch["🌿 Issue branch"]
   pr["🔀 Pull request<br/>to develop"]
-  ci{"⚙️ <b>GitHub Actions</b><br/>lint · unit · migrations<br/>integration ×5 · simulation<br/>web · Storybook · E2E<br/>security scans"}
+  ci["⚙️ <b>GitHub Actions</b><br/>lint · unit · migrations<br/>billing invariants<br/>simulation · integration ×5<br/>API client drift<br/>web · Storybook · E2E<br/>security scans"]
   develop["develop"]
   main["main"]
   devenv["☁️ DEV on AWS"]
@@ -1354,22 +1354,24 @@ flowchart TB
 
 ## Deployment (planned)
 
-There is no deployed environment yet. Milestone M9 plans this AWS setup.
+There is no deployed environment yet. Milestone M9 plans this AWS setup
+([ADR-0010 to ADR-0014](_docs/architecture.md#9-deployment-operations-and-observability-approved)).
 DEV and PROD are created and destroyed with Terraform:
 
 ```mermaid
 flowchart TB
   users["🌐 Browsers"]
   gha["⚙️ GitHub Actions<br/>OIDC, no stored keys"]
+  owner["👤 Owner<br/>email inbox"]
 
   subgraph aws["AWS · us-east-2"]
     dns["Route 53<br/>app · dev · grafana"]
-    ecr["ECR<br/>API and web images"]
-    ssm["Parameter Store<br/>secrets"]
+    ecr["ECR<br/>arm64 images by digest"]
+    ssm["Parameter Store<br/>generated secrets"]
+    deploy["SSM deploy command<br/>commit SHA only"]
 
-    subgraph prod["EC2 · DEV and PROD"]
-      caddy["Caddy<br/>HTTPS"]
-      web["web<br/>React SPA"]
+    subgraph app["EC2 · DEV and PROD"]
+      caddy["Caddy<br/>HTTPS · React SPA"]
       api["api<br/>FastAPI"]
       worker["worker<br/>background jobs"]
       pgb["PgBouncer"]
@@ -1377,45 +1379,55 @@ flowchart TB
       agent["OTel Collector<br/>agent"]
     end
 
-    subgraph mon["EC2 · monitoring"]
-      col["OTel Collector"]
+    subgraph mon["EC2 · monitoring (or on DEV)"]
+      col["OTel Collector<br/>gateway"]
       prom["Prometheus<br/>metrics"]
       loki["Loki<br/>logs"]
       tempo["Tempo<br/>traces"]
+      disk[("encrypted EBS volume<br/>telemetry, 7 to 15 days")]
       grafana["Grafana<br/>dashboards and alerts"]
     end
 
-    s3[("S3<br/>backups · archive<br/>logs and traces")]
+    backups[("S3 backups<br/>nightly dump, 14 days")]
+    snaps[("EBS snapshots<br/>daily, 7 kept")]
+    archive[("S3 archive<br/>final PROD dump, 365 days<br/>kept after teardown")]
     ses["SES<br/>alert email"]
+    budget["AWS Budget<br/>US$75 a month<br/>Classora costs only"]
   end
 
   users --> dns --> caddy
-  caddy --> web
   caddy --> api
   api --> pgb --> pg
   worker --> pg
   gha -->|push images| ecr
-  gha -->|deploy| prod
-  ecr --> prod
-  ssm --> prod
-  pg -->|nightly backup| s3
+  gha -->|deploy| deploy --> app
+  ecr --> app
+  ssm --> app
+  pg -->|nightly| backups
+  pg -->|daily| snaps
+  pg -.->|"before PROD<br/>is destroyed"| archive
   api -.-> agent
   worker -.-> agent
   agent --> col
   col --> prom
   col --> loki
   col --> tempo
-  loki --> s3
-  tempo --> s3
+  prom --> disk
+  loki --> disk
+  tempo --> disk
   grafana --> prom
   grafana --> loki
   grafana --> tempo
   grafana --> ses
+  ses --> owner
+  budget --> owner
 ```
 
 When M9 is built, DEV will deploy on every merge to `develop`, and PROD from a
-`main` release after the owner approves it. The same metrics, logs and traces
-stack will also run locally as an optional profile.
+`main` release after the owner approves it. Logs, metrics and traces stay on
+the monitoring host's own disk, which can also run on DEV; the same stack will
+also run locally as an optional profile. Alerts and the budget alarm reach the
+owner by email.
 
 ## Documentation
 
