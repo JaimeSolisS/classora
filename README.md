@@ -6,6 +6,31 @@ payments, tutor payroll and operational reporting for owners, administrators,
 coordinators, finance staff, tutors, students and guardians. It is built as a
 FastAPI modular monolith with a React single-page client, backed by PostgreSQL.
 
+## At a glance
+
+```mermaid
+flowchart LR
+  staff["🏢 <b>Staff</b><br/>Owner · Administrator<br/>Coordinator · Finance"]
+  tutors["👩‍🏫 <b>Tutors</b>"]
+  families["👪 <b>Families</b><br/>Students · Guardians"]
+
+  app(["📚 <b>Classora</b><br/>runs one tutoring center"])
+
+  classes["📅 <b>Classes</b><br/>individual · group · course"]
+  learning["📝 <b>Learning</b><br/>attendance · notes<br/>homework · progress"]
+  money["💳 <b>Money</b><br/>family billing and receipts<br/>tutor payroll · expenses"]
+  reports["📊 <b>Reports</b><br/>dashboards · KPIs · exports"]
+
+  staff -->|"schedule classes<br/>bill families · pay tutors"| app
+  tutors -->|"teach classes<br/>take attendance · write notes"| app
+  families -->|"see the schedule<br/>request classes · see progress"| app
+
+  app --> classes
+  app --> learning
+  app --> money
+  app --> reports
+```
+
 ## Status
 
 **Pre-alpha.** The features below run on a local development stack only;
@@ -1236,6 +1261,28 @@ instead of using another port when 6006 is taken. To build a static copy:
 
 ## Continuous integration
 
+```mermaid
+flowchart LR
+  local["💻 <b>Local development</b><br/>native stack or Docker Compose<br/>one git worktree per issue"]
+  branch["🌿 Issue branch"]
+  pr["🔀 Pull request<br/>to develop"]
+  ci{"⚙️ <b>GitHub Actions</b><br/>lint · unit · migrations<br/>integration ×5 · simulation<br/>web · Storybook · E2E<br/>security scans"}
+  develop["develop"]
+  main["main"]
+  devenv["☁️ DEV on AWS"]
+  prodenv["☁️ PROD on AWS"]
+
+  local --> branch --> pr --> ci
+  ci -->|"ci-required green<br/>and QA PASS"| develop
+  ci -->|red| local
+  develop -->|"release pull request<br/>(owner)"| main
+  develop -.->|"planned (M9):<br/>automatic deploy"| devenv
+  main -.->|"planned (M9):<br/>deploy after owner approval"| prodenv
+```
+
+Dashed arrows are not built yet: today merging to `develop` or `main` deploys
+nothing.
+
 GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on
 every pull request to `develop` or `main` and on pushes to both. Each check is
 one `make` target, so a failing check can be reproduced locally with the same
@@ -1279,6 +1326,96 @@ cause (upgrade the dependency, remove the secret, change the code). If that is
 not possible, add an exception with a reason and a review date as described in
 [ADR-0016](_docs/adr/0016-ci-security-tooling.md); it is reviewed in the pull
 request.
+
+## How the work is delivered
+
+Every change goes through one GitHub issue and a team of AI agents run from
+one main session, with the repository owner taking the product decisions
+([delivery process](_docs/process.md)):
+
+```mermaid
+flowchart TB
+  owner["👤 <b>Owner</b><br/>asks for features and fixes<br/>answers decisions"]
+  orch["🤖 <b>Orchestrator</b><br/>main session<br/>one issue in flight"]
+  pm["🗂️ <b>PM agent</b><br/>investigates the code<br/>writes acceptance criteria<br/>and escalations"]
+  eng["🛠️ <b>Engineer agent</b><br/>own git worktree<br/>code, tests, docs<br/>README gate"]
+  pr["🔀 <b>Pull request</b><br/>full CI suites"]
+  qa["🔍 <b>QA agent</b><br/>checks every criterion<br/>in its own clone and database<br/>cites the green CI run"]
+  merged["✅ <b>Merged to develop</b><br/>issue closed"]
+
+  owner -->|GitHub issue| orch
+  orch --> pm
+  pm -->|"decisions with a<br/>recommended option"| owner
+  pm -->|groomed issue| eng
+  eng --> pr --> qa
+  qa -->|"FAIL: defects"| eng
+  qa -->|"PASS + README verdict"| merged
+```
+
+## Deployment (planned)
+
+There is no deployed environment yet. Milestone M9 plans this AWS setup.
+DEV and PROD are created and destroyed with Terraform:
+
+```mermaid
+flowchart TB
+  users["🌐 Browsers"]
+  gha["⚙️ GitHub Actions<br/>OIDC, no stored keys"]
+
+  subgraph aws["AWS · us-east-2"]
+    dns["Route 53<br/>app · dev · grafana"]
+    ecr["ECR<br/>API and web images"]
+    ssm["Parameter Store<br/>secrets"]
+
+    subgraph prod["EC2 · DEV and PROD"]
+      caddy["Caddy<br/>HTTPS"]
+      web["web<br/>React SPA"]
+      api["api<br/>FastAPI"]
+      worker["worker<br/>background jobs"]
+      pgb["PgBouncer"]
+      pg[("PostgreSQL<br/>encrypted EBS volume")]
+      agent["OTel Collector<br/>agent"]
+    end
+
+    subgraph mon["EC2 · monitoring"]
+      col["OTel Collector"]
+      prom["Prometheus<br/>metrics"]
+      loki["Loki<br/>logs"]
+      tempo["Tempo<br/>traces"]
+      grafana["Grafana<br/>dashboards and alerts"]
+    end
+
+    s3[("S3<br/>backups · archive<br/>logs and traces")]
+    ses["SES<br/>alert email"]
+  end
+
+  users --> dns --> caddy
+  caddy --> web
+  caddy --> api
+  api --> pgb --> pg
+  worker --> pg
+  gha -->|push images| ecr
+  gha -->|deploy| prod
+  ecr --> prod
+  ssm --> prod
+  pg -->|nightly backup| s3
+  api -.-> agent
+  worker -.-> agent
+  agent --> col
+  col --> prom
+  col --> loki
+  col --> tempo
+  loki --> s3
+  tempo --> s3
+  grafana --> prom
+  grafana --> loki
+  grafana --> tempo
+  grafana --> ses
+```
+
+When M9 is built, DEV will deploy on every merge to `develop`, and PROD from a
+`main` release after the owner approves it. The same metrics, logs and traces
+stack will also run locally as an optional profile.
 
 ## Documentation
 
