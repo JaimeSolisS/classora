@@ -21,6 +21,8 @@ How the AWS infrastructure is planned, applied and destroyed ([ADR-0011](../adr/
 
 Each root has its own state, `<root>/terraform.tfstate` in the state bucket (`envs/<name>/terraform.tfstate` for environments), locked with S3 native lock files. Every resource carries `Project=classora`, `Environment=<root>` and `ManagedBy=terraform`.
 
+The deploy roles trust only this repository's **immutable** OIDC subjects: the repository has `use_immutable_subject: true` (`gh api repos/JaimeSolisS/classora/actions/oidc/customization/sub`), so a job in GitHub environment `dev` presents `sub = repo:JaimeSolisS@26722249/classora@1422814793:environment:dev` (`production` for PROD). The owner and repository IDs are the `github_owner_id` / `github_repository_id` variables (`gh api repos/JaimeSolisS/classora --jq '[.owner.id, .id]'`); if the repository is renamed or the subject setting changes, update them and re-apply `bootstrap`. Any job that names the environment can assume its role, so M9-07 must create the `dev` environment with deployment branches restricted to `develop`, and M9-10 the `production` environment restricted to `main` with the owner as required reviewer.
+
 The account-wide GitHub Actions OIDC provider (`token.actions.githubusercontent.com`) already exists in the account and belongs to another project. `bootstrap` only reads it. If it is ever removed, the deploy roles stop working until a provider for that URL exists again.
 
 ## Plan and apply
@@ -58,7 +60,7 @@ use_lockfile = true
 
 - **SES recipient:** click the "Amazon Web Services – Email Address Verification Request" e-mail sent to the alert address. Check with `aws sesv2 get-email-identity --email-identity <address> --region us-east-2` (`VerifiedForSendingStatus: true`).
 - **SES domain:** DKIM verification takes from minutes up to 72 hours: `aws sesv2 get-email-identity --email-identity classora.dev --region us-east-2` shows `VerificationStatus: SUCCESS` and `DkimAttributes.Status: SUCCESS`.
-- **Budget e-mails:** AWS Budgets sends no confirmation e-mail; notifications start when a threshold is crossed.
+- **Budget e-mails:** AWS Budgets registers the alert address as an AWS User Notifications e-mail contact and sends it an activation code. The contact stays `inactive`, and **no budget e-mail arrives**, until the owner enters that code (the e-mail's link, or Console → AWS User Notifications → Email contacts). Check with `aws notificationscontacts list-email-contacts --region us-east-1` (`status: active`).
 - **Cost allocation tag:** the budget counts only `Project=classora` costs, which requires the `Project` user-defined cost allocation tag to be active. It appears in Billing up to 24 hours after the first tagged resource. Activate it in Billing → Cost allocation tags, or:
 
   ```bash

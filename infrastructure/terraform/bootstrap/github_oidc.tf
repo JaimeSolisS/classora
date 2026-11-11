@@ -14,6 +14,15 @@ data "aws_iam_openid_connect_provider" "github" {
 }
 
 locals {
+  # Immutable subject prefix, e.g. repo:owner@123/name@456 (#613 QA D1).
+  github_sub_prefix = format(
+    "repo:%s@%s/%s@%s",
+    split("/", var.github_repository)[0],
+    var.github_owner_id,
+    split("/", var.github_repository)[1],
+    var.github_repository_id,
+  )
+
   deploy_roles = {
     dev = {
       github_environment = "dev"
@@ -46,7 +55,7 @@ data "aws_iam_policy_document" "gha_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:environment:${each.value.github_environment}"]
+      values   = ["${local.github_sub_prefix}:environment:${each.value.github_environment}"]
     }
   }
 }

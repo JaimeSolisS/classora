@@ -46,6 +46,33 @@ variable "github_repository" {
   default     = "JaimeSolisS/classora"
 }
 
+# The repository issues immutable OIDC subject claims
+# (`gh api repos/<owner>/<repo>/actions/oidc/customization/sub` shows
+# use_immutable_subject: true), so `sub` is
+# repo:<owner>@<owner id>/<repo>@<repository id>:environment:<name>.
+# Both IDs are public: `gh api repos/<owner>/<repo> --jq '[.owner.id, .id]'`.
+variable "github_owner_id" {
+  description = "Numeric GitHub ID of the repository owner (immutable OIDC subject)."
+  type        = string
+  default     = "26722249"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_owner_id))
+    error_message = "github_owner_id must be numeric."
+  }
+}
+
+variable "github_repository_id" {
+  description = "Numeric GitHub ID of the repository (immutable OIDC subject)."
+  type        = string
+  default     = "1422814793"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_id))
+    error_message = "github_repository_id must be numeric."
+  }
+}
+
 variable "state_admin_arn" {
   description = "The only principal allowed to use the state bucket. Defaults to the identity running Terraform."
   type        = string
