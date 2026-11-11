@@ -6,15 +6,16 @@
 # are listed; when that host doesn't resolve, every apt install fails.
 # On 2026-11-11 the runners could resolve no *.ubuntu.com host at all
 # (Azure mirror and archive.ubuntu.com alike), while other hosts resolved.
-# Use the kernel.org Ubuntu mirror, a full official mirror outside
-# ubuntu.com, then the main archive, and let apt retry transient failures.
+# Use only the kernel.org Ubuntu mirror, a full official mirror outside
+# ubuntu.com (an unreachable fallback costs 20 s per file and blew job
+# timeouts), and let apt retry transient failures.
 # A no-op for the mirror list where the file doesn't exist.
 set -euo pipefail
 
 mirrors=/etc/apt/apt-mirrors.txt
 if [ -f "$mirrors" ]; then
   echo "apt mirrors before:"; cat "$mirrors"
-  printf 'http://mirrors.edge.kernel.org/ubuntu/\nhttp://archive.ubuntu.com/ubuntu/\n' | sudo tee "$mirrors" >/dev/null
+  printf 'http://mirrors.edge.kernel.org/ubuntu/\n' | sudo tee "$mirrors" >/dev/null
   echo "apt mirrors now:"; cat "$mirrors"
 fi
 # The security pocket is a separate source pointing at security.ubuntu.com;
