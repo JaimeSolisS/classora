@@ -37,6 +37,7 @@ import asyncio
 import os
 import uuid
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -112,12 +113,13 @@ def database_url(postgres_container: PostgresContainer) -> str:
     return postgres_container.get_connection_url(driver=None)
 
 
-@pytest.fixture(scope="session")
-def pgbouncer_url(postgres_container: PostgresContainer) -> Iterator[str]:
-    """Plain ``postgresql://`` DSN of the container's default database, through
-    a Testcontainers PgBouncer built from the committed image and config."""
-    user = postgres_container.username
-    password = postgres_container.password
+@contextmanager
+def started_pgbouncer(
+    postgres_container: PostgresContainer, user: str, password: str, *, tag: str
+) -> Iterator[str]:
+    """A Testcontainers PgBouncer built from the committed image and config,
+    whose auth file holds only ``user``; yields the DSN of the container's
+    default database through it, as ``user``."""
     dbname = postgres_container.dbname
     # The committed config, with only the server pool size lowered.
     command = (
@@ -134,13 +136,13 @@ def pgbouncer_url(postgres_container: PostgresContainer) -> Iterator[str]:
         postgres_container.get_wrapped_container().id
     )
     with DockerImage(
-        path=PGBOUNCER_BUILD_CONTEXT, tag="classora-pgbouncer-test:latest"
+        path=PGBOUNCER_BUILD_CONTEXT, tag=tag
     ) as image:
         container = (
             DockerContainer(str(image))
             .with_kwargs(extra_hosts={"db": postgres_ip})
-            .with_env("POSTGRES_USER", user)
-            .with_env("POSTGRES_PASSWORD", password)
+            .with_env("PGBOUNCER_AUTH_USER", user)
+            .with_env("PGBOUNCER_AUTH_PASSWORD", password)
             .with_env("POSTGRES_DB", dbname)
             .with_command(["sh", "-c", command])
             .with_exposed_ports(6432)
@@ -150,6 +152,20 @@ def pgbouncer_url(postgres_container: PostgresContainer) -> Iterator[str]:
             host = container.get_container_host_ip()
             port = container.get_exposed_port(6432)
             yield f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
+
+
+@pytest.fixture(scope="session")
+def pgbouncer_url(postgres_container: PostgresContainer) -> Iterator[str]:
+    """Plain ``postgresql://`` DSN of the container's default database, through
+    a Testcontainers PgBouncer that authenticates the container's superuser
+    (the owner). The runtime-role PgBouncer is ``test_runtime_role.py``'s."""
+    with started_pgbouncer(
+        postgres_container,
+        postgres_container.username,
+        postgres_container.password,
+        tag="classora-pgbouncer-test:latest",
+    ) as url:
+        yield url
 
 
 def settings_for(

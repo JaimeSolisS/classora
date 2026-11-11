@@ -21,18 +21,21 @@ services:
       retries: 15
       start_period: 5s
 
-  # Transaction-mode pooler for API request traffic. It logs in to PostgreSQL as
-  # POSTGRES_USER; its auth file is generated from these values at container start.
+  # Transaction-mode pooler for API request traffic. It knows ONE user, the
+  # least-privilege runtime role classora_app (#165, ADR-0003 amendment), and
+  # logs in to PostgreSQL as it; its auth file is generated from these values
+  # at container start. It never receives the owner's credentials.
   pgbouncer:
     build:
       context: pgbouncer
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      PGBOUNCER_AUTH_USER: classora_app
+      PGBOUNCER_AUTH_PASSWORD: ${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD in .env (see .env.example)}
       POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
-    # Healthy only when a query through PgBouncer reaches PostgreSQL.
+    # Healthy only when a query through PgBouncer reaches PostgreSQL as the
+    # runtime role (so not before `make migrate` has created it).
     healthcheck:
-      test: ["CMD-SHELL", "PGPASSWORD=\"$${POSTGRES_PASSWORD}\" psql -h 127.0.0.1 -p 6432 -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\" -tAqc 'SELECT 1' >/dev/null"]
+      test: ["CMD-SHELL", "PGPASSWORD=\"$${PGBOUNCER_AUTH_PASSWORD}\" psql -h 127.0.0.1 -p 6432 -U \"$${PGBOUNCER_AUTH_USER}\" -d \"$${POSTGRES_DB}\" -tAqc 'SELECT 1' >/dev/null"]
       interval: 2s
       timeout: 3s
       retries: 15

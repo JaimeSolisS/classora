@@ -17,10 +17,13 @@ services:
       APP_ENV: ${APP_ENV:-}
       # The web app's origin: unsafe requests from any other Origin get 403.
       APP_ORIGIN: ${APP_ORIGIN:-}
+      # Both URLs carry the least-privilege runtime role classora_app (DML
+      # only, #165, ADR-0003 amendment); the owner credentials never reach
+      # this container. `make migrate` creates the role and sets its password.
       # Pooled: request traffic goes through PgBouncer (transaction mode).
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB}
-      # Direct: Alembic (and later LISTEN) bypass PgBouncer.
-      DATABASE_DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql://classora_app:${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD in .env (see .env.example)}@pgbouncer:6432/${POSTGRES_DB}
+      # Direct: the LISTEN connection bypasses PgBouncer.
+      DATABASE_DIRECT_URL: postgresql://classora_app:${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD in .env (see .env.example)}@db:5432/${POSTGRES_DB}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-}
       STORAGE_REGION: ${STORAGE_REGION:-}
@@ -57,9 +60,9 @@ services:
       APP_ENV: ${APP_ENV:-}
       APP_ORIGIN: ${APP_ORIGIN:-}
       # The worker never uses the pooled URL; it is passed so the same settings
-      # validate in both containers.
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB}
-      DATABASE_DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # validate in both containers. Both carry the runtime role classora_app.
+      DATABASE_URL: postgresql://classora_app:${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD in .env (see .env.example)}@pgbouncer:6432/${POSTGRES_DB}
+      DATABASE_DIRECT_URL: postgresql://classora_app:${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD in .env (see .env.example)}@db:5432/${POSTGRES_DB}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-}
       STORAGE_REGION: ${STORAGE_REGION:-}
@@ -72,10 +75,10 @@ services:
       # Empty: telemetry off (ADR-0014, #612). `make dev-observability` sets it.
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     # Healthy while the process runs and PostgreSQL answers on the direct URL,
-    # whether or not the Procrastinate schema exists yet. Before `make migrate`
-    # the worker waits (logging that it needs `make migrate`) instead of
-    # exiting, so `make dev` on a fresh clone still comes up healthy; it never
-    # applies the schema itself and starts working once Alembic has created it.
+    # whether or not the Procrastinate schema exists yet. It never applies the
+    # schema itself. On a fresh volume the role classora_app does not exist
+    # (or cannot log in) until `make migrate` has run, so run `make migrate`
+    # before `make dev` (#165); `make dev` prints that hint when it fails.
     healthcheck:
       test: ["CMD", "python", "-m", "app.worker", "--healthcheck"]
       interval: 5s
@@ -85,6 +88,38 @@ services:
     # Longer than the largest WORKER_SHUTDOWN_TIMEOUT_SECONDS (30), so Docker
     # never kills the worker before Procrastinate's own graceful timeout ends.
     stop_grace_period: 40s
+
+  # Tools (#165, ADR-0003 amendment): Alembic, `python -m app.cli
+  # sync-runtime-role`, the seeds and the operator CLI, as the database OWNER
+  # over DATABASE_MIGRATION_URL. The api image with another command; profile
+  # `tools`, so `up` never starts it: `make migrate`, `make seed`,
+  # `make bootstrap-owner` and the hosts' deploy run it with `run --rm`.
+  # Publishes no ports.
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/api.Dockerfile
+    image: ${COMPOSE_PROJECT_NAME}-api
+    profiles: [tools]
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      APP_ENV: ${APP_ENV:-}
+      APP_ORIGIN: ${APP_ORIGIN:-}
+      # The runtime URLs: sync-runtime-role reads classora_app's password from
+      # the direct one; the settings validate as in the api.
+      DATABASE_URL: postgresql://classora_app:${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD in .env (see .env.example)}@pgbouncer:6432/${POSTGRES_DB}
+      DATABASE_DIRECT_URL: postgresql://classora_app:${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD in .env (see .env.example)}@db:5432/${POSTGRES_DB}
+      # The owner, direct (never through PgBouncer): DDL, grants, seeds.
+      DATABASE_MIGRATION_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-}
+      STORAGE_REGION: ${STORAGE_REGION:-}
+      STORAGE_ENDPOINT_URL: ${STORAGE_ENDPOINT_URL:-}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-}
+      WORKER_SHUTDOWN_TIMEOUT_SECONDS: ${WORKER_SHUTDOWN_TIMEOUT_SECONDS:-}
+      SCHEDULING_HORIZON_WEEKS: ${SCHEDULING_HORIZON_WEEKS:-}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
 
   web:
     build:
