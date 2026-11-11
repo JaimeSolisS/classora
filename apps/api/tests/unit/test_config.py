@@ -741,8 +741,7 @@ def test_compose_gives_api_and_worker_only_the_runtime_role(service):
     environment = compose_service_environment(service)
 
     assert (
-        "DATABASE_URL: postgresql://classora_app:${POSTGRES_APP_PASSWORD"
-        in environment
+        "DATABASE_URL: postgresql://classora_app:${POSTGRES_APP_PASSWORD" in environment
     )
     assert (
         "DATABASE_DIRECT_URL: postgresql://classora_app:${POSTGRES_APP_PASSWORD"
