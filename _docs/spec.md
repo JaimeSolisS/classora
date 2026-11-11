@@ -181,7 +181,7 @@ Permissions use predefined roles plus record-level ownership checks. Tutors acce
 | Notifications | PostgreSQL persistence with SSE and LISTEN/NOTIFY where appropriate |
 | Reports | WeasyPrint PDFs; openpyxl XLSX; background generation via worker |
 | Files | S3-compatible API, production S3, presigned URLs, malware scanning — *deferred to a later version (§5)* |
-| Configuration | .env locally; GitHub Secrets delivered via SSM to EC2; pydantic-settings validation |
+| Configuration | .env locally; on EC2, Terraform-generated AWS Parameter Store values rendered to a root-only env file (no GitHub Secrets; [ADR-0012](adr/0012-secrets-and-configuration-delivery.md)); pydantic-settings validation |
 | Tooling | uv, Ruff, mypy; pnpm, ESLint, Prettier, TypeScript strict |
 | Local commands | Makefile + Docker Compose (`make dev/test/lint/migrate/seed`) |
 | Seed/test data | Idempotent reference seeds; Factory Boy and Faker demo/test factories |
@@ -189,24 +189,27 @@ Permissions use predefined roles plus record-level ownership checks. Tutors acce
 **Redis and Celery are explicitly excluded.** Earlier choices for Redis-backed sessions, caching, rate limiting and Celery workers are superseded. PostgreSQL-based solutions replace those functions. Be careful implementing Redis-free rate limiting across more than one API process: it will need an appropriate shared store or enforced edge/proxy policy if scaled horizontally.
 
 ### Deployment and infrastructure
-- **One AWS account; separate DEV, PROD and monitoring infrastructure.** Both DEV and PROD have a single independent EC2 instance, initially targeted at micro size, with configurable instance types. One extra EC2 instance hosts observability.
+Decided in [ADR-0010](adr/0010-hosting-edge-and-https.md) (hosting, edge, HTTPS), [ADR-0011](adr/0011-infrastructure-as-code-images-and-release.md) (Terraform, images, release), [ADR-0012](adr/0012-secrets-and-configuration-delivery.md) (secrets) and [ADR-0013](adr/0013-backups-restore-drills-and-shutdown-data.md) (backups), owner re-plan of 2026-11-11.
+- **One AWS account (us-east-2); separate DEV, PROD and monitoring infrastructure.** DEV and PROD each run on a single independent arm64 EC2 instance (t4g); a third instance hosts observability, or a Terraform switch places it on DEV or turns it off (ADR-0014). Starting size t4g.small for all three, t4g.medium for DEV when monitoring is colocated; instance types are Terraform variables, and M10-04 measures them. Environments are created for a window of about 20 days, then destroyed or reduced to DEV only.
 - **Docker Compose** locally and on EC2. Distinct Compose stacks for stateful PostgreSQL and application services. Docker `unless-stopped` restart policies plus systemd-managed startup and dependencies.
-- **Dedicated encrypted gp3 EBS data volume per environment** for PostgreSQL, provisioned and sized via Terraform; reattachable upon instance replacement. Database filesystem mount/configuration must not accidentally format existing volumes.
-- **Backups:** pgBackRest to S3, WAL archiving and PITR. Backups and recovery procedures must be exercised.
-- **Images:** Amazon ECR for Docker images, promoted by immutable digest DEV → PROD. Git SHA and version tag such as `v1.2.0-20261016`. ECR lifecycle cleanup retains deployed digests and rollback candidates (ensure retention safety explicitly in CI/policy).
-- **Network/HTTPS:** Public EC2 with Elastic IP and Route 53 origin hostname; security groups limit web origin traffic to CloudFront origin-facing ranges; no public SSH/PostgreSQL/PgBouncer endpoints. Route 53 customer hostnames → CloudFront → HTTPS Caddy origin on EC2 → web/API containers. TLS validated end-to-end; origin restriction to CloudFront IPs alone does not uniquely authorize this distribution.
-- **EC2 management:** AWS SSM Session Manager, no inbound SSH; SSM Run Command to trigger Compose deployments; Terraform + cloud-init + SSM provision and manage instances.
-- **IaC:** Terraform with separate environment state, encrypted/versioned S3 remote backend and native state locking. PR checks and plans; DEV applies on merge to `develop`; PROD requires GitHub approval; destructive plans require approval even in DEV; `prevent_destroy` on critical stateful resources.
-- **CI/CD:** GitHub Actions OIDC with least-privilege DEV/PROD roles; feature branches → `develop` (auto DEV); tested changes → `main` (manual PROD approval); run tests, security checks, migrations as controlled deployment step, use health-checked rollouts and restore prior image on failure.
+- **Dedicated encrypted gp3 EBS data volume per environment** for PostgreSQL and Caddy's certificates, provisioned and sized via Terraform; reattachable upon instance replacement. Database filesystem mount/configuration must not accidentally format existing volumes.
+- **Backups:** a nightly `pg_dump` to an encrypted S3 bucket (kept 14 days) plus daily EBS snapshots of the data volume (kept 7); RPO up to 24 hours. Before PROD is destroyed, a verified final dump goes to a long-lived archive bucket (Glacier after 30 days, deleted after 365). Backups and restores must be exercised. (This replaces the earlier pgBackRest/WAL/PITR plan; [ADR-0013](adr/0013-backups-restore-drills-and-shutdown-data.md).)
+- **Images:** arm64 images built on `develop` only, pushed to Amazon ECR tagged by Git SHA, and promoted by immutable digest DEV → PROD; release tag `vYYYY.MM.DD-<sha7>`. The ECR lifecycle policy keeps deployed digests and rollback candidates.
+- **Network/HTTPS:** Public EC2 with Elastic IP; Route 53 hostnames (`app`, `dev`, `grafana` under the project domain) point straight at it. **Caddy on each host terminates HTTPS** with automatic certificates and serves the SPA and the API; security groups allow only TCP 80 and 443; no public SSH/PostgreSQL/PgBouncer endpoints. (This replaces the earlier CloudFront-in-front design; [ADR-0010](adr/0010-hosting-edge-and-https.md).)
+- **EC2 management:** AWS SSM Session Manager, no inbound SSH; Terraform + cloud-init provision the hosts. A deploy is one on-host script (pull by digest, migrate, start, readiness check, roll back on failure), triggered by a custom SSM Run Command document that accepts only a commit SHA.
+- **IaC:** Terraform with separate state per root, an encrypted/versioned S3 remote backend and native state locking. Applies and destroys run from the owner's machine after a shown plan; the owner approves any apply that creates billable resources. CI runs `terraform fmt` and `validate` only (no plan pipeline, no apply from CI). `prevent_destroy` only on long-lived resources (state bucket, hosted zone, archive bucket). Every resource is tagged `Project=classora`.
+- **CI/CD:** GitHub Actions OIDC with least-privilege DEV/PROD roles and no stored application secrets; feature branches → `develop` (automatic DEV deploy); tested changes → `main` through a release pull request (PROD deploy after the owner's approval in a protected GitHub environment, of the digest DEV ran); run tests, security checks, migrations as controlled deployment step, use health-checked rollouts and restore prior image on failure. A destroyed DEV makes the deploy step skip with a notice, not fail.
 - **Migrations:** Alembic applied before new app version, with expand-and-contract/backward compatibility for image rollback; never automatically reverse DB migrations on app rollback.
 - **Scaling:** EC2 instance and EBS volume sizes independently adjustable via Terraform; resizing may require downtime.
 
 ### Observability
-- Full self-hosted stack on **dedicated monitoring EC2**: OpenTelemetry Collector, Grafana, Loki, Prometheus and Tempo.
-- DEV and PROD forward structured logs, metrics and traces to the monitoring host; Grafana served over authenticated HTTPS; ingestion endpoints accessible only to authorized instances.
-- Configurable retention by telemetry type and storage; Grafana dashboard alerts for CPU, RAM, disk and health; **no email or external incident notifications**.
+Decided in [ADR-0014](adr/0014-observability-error-tracking-and-alerting.md).
+- Full self-hosted stack: OpenTelemetry Collector, Grafana, Loki, Prometheus and Tempo, on a **dedicated monitoring EC2** by default, or colocated on DEV, or off (Terraform switch). Storage is the monitoring host's own encrypted disk; retention defaults are 15 days for metrics and 7 days for logs and traces.
+- DEV and PROD forward structured logs, metrics and traces through an OTel Collector agent on each host to the monitoring host; ingestion is reachable only from the app hosts, over private addresses. Grafana is served over HTTPS with a login and no anonymous access.
+- The same stack runs locally as an optional profile, off by default. API and worker instrumentation does nothing when no collector endpoint is configured. Telemetry carries no personal data.
+- Alerts for CPU, RAM, disk, readiness, failed or stalled jobs and backups are **e-mailed to the owner** through Amazon SES; an AWS budget alarm (US$75/month, counting only Classora-tagged costs) e-mails the owner too. These are operational e-mails to the owner only; the earlier "dashboard-only, no e-mail" rule is replaced.
 - Distinguish app liveness (`/health/live`) from readiness (`/health/ready`), including PostgreSQL readiness check.
-- Separate error tracking with Sentry was chosen early. Its hosting/integration arrangement remains to be finalized alongside the self-hosted observability setup.
+- **No separate error-tracking service:** exceptions are recorded as trace events and error logs, with a Grafana errors dashboard. (The earlier Sentry choice is replaced; [ADR-0014](adr/0014-observability-error-tracking-and-alerting.md).)
 
 ### Quality and security
 - pytest unit/integration tests, Vitest component tests and Playwright E2E tests; Testcontainers for isolated PostgreSQL-backed integration tests. CI runs E2E app with seeded fixtures.
@@ -297,16 +300,16 @@ The detailed schema is **not designed yet**. Candidate entities:
 
 ## 14. Reconciled decisions and remaining engineering validation
 
-- **DEV is deployed**: An earlier two-environment local+PROD choice was replaced by **local, deployed DEV, deployed PROD**, plus a monitoring host.
+- **DEV is deployed**: An earlier two-environment local+PROD choice was replaced by **local, deployed DEV, deployed PROD**, plus a monitoring host. Deployed environments are created for windows of about 20 days and then destroyed or reduced to DEV only ([ADR-0011](adr/0011-infrastructure-as-code-images-and-release.md)).
 - **No RDS or Fargate for the database**: PostgreSQL lives on each environment's EC2 with EBS. Fargate is not part of the selected deployment.
 - **No Redis/Celery**: Procrastinate with PostgreSQL provides background jobs; sessions live in PostgreSQL. Revisit how fast rate limiting, SSE fan-out and caching behave at higher scale.
-- **Micro is a target, not a guarantee**: Benchmark RAM and CPU usage, especially PostgreSQL, worker, PgBouncer, React serving and Docker overhead. Dedicated monitoring reduces but does not eliminate app-host pressure.
+- **Small instances, measured**: Hosts start at t4g.small (the earlier micro target was raised, [ADR-0010](adr/0010-hosting-edge-and-https.md)). Benchmark RAM and CPU usage, especially PostgreSQL, worker, PgBouncer, React serving and Docker overhead (M10-04). Dedicated monitoring reduces but does not eliminate app-host pressure.
 - **Health-checked rollout on a single EC2**: Automatic rollback and truly interruption-free deployment are different. Compose on a single small host may incur short downtime unless explicitly engineered to run overlapping versions within resource limits.
-- **Public origin security**: Restrict CloudFront-to-origin connectivity, ensure HTTPS certificate renewal works, and consider authenticating the specific distribution rather than only AWS CloudFront IP ranges.
-- **Secrets handling**: GitHub Secrets → SSM injection was selected; implementation must avoid printing secrets in CI/SSM logs or placing them in Docker images. Secrets stored on instances require restrictive permissions.
+- **Public origin security**: The EC2 host is the public origin (no CloudFront in front; [ADR-0010](adr/0010-hosting-edge-and-https.md)). Only ports 80 and 443 are open, Caddy's certificate renewal must keep working across instance replacements, and the authentication rate limits apply at the API.
+- **Secrets handling**: Terraform generates the secrets into AWS Parameter Store; GitHub holds none ([ADR-0012](adr/0012-secrets-and-configuration-delivery.md), replacing the earlier "GitHub Secrets via SSM" choice). Implementation must avoid printing secrets in CI/SSM logs or placing them in Docker images. Secrets stored on instances require restrictive permissions.
 - **Data retention vs financial immutability**: Retention/deletion processes must preserve records required by law and the audit/ledger model.
-- **User-visible email isn't in scope**: Password recovery/account activation will still need a secure delivery mechanism, which remains an integration detail to choose. Infrastructure alerts are dashboard-only by decision.
-- **Sentry hosting** and specifics of self-hosted telemetry ingestion/retention need integration validation.
+- **User-visible email isn't in scope**: Password recovery/account activation will still need a secure delivery mechanism, which remains an integration detail to choose. Infrastructure alerts and the budget alarm are operational e-mails to the owner only, through Amazon SES ([ADR-0014](adr/0014-observability-error-tracking-and-alerting.md)).
+- **Telemetry**: there is no separate error tracker (the earlier Sentry choice was replaced by [ADR-0014](adr/0014-observability-error-tracking-and-alerting.md)); self-hosted ingestion, retention and personal-data scrubbing need integration validation.
 - **Detailed database schema, exact API contracts, UX wireframes, and user stories** are the next deliverables; this is the accepted requirements/architecture baseline, not implementation-ready DDL.
 
 
@@ -373,10 +376,10 @@ The scenarios below translate the approved capabilities into checkable end-to-en
 ### W8. CI/CD and rollback
 
 1. Every pull request runs the required lint, types, tests, security scans and infrastructure checks relevant to changed files.
-2. Merge to `develop` deploys to **DEV** automatically after checks; production does not deploy from that event.
-3. A release promoted to **PROD** uses the same ECR **immutable digest** validated in DEV and requires the approved GitHub workflow.
+2. Merge to `develop` deploys to **DEV** automatically after checks (skipped with a notice while DEV is destroyed); production does not deploy from that event.
+3. Merging the `develop` → `main` release pull request promotes to **PROD** the same ECR **immutable digest** validated in DEV, after the owner approves the deployment in the protected GitHub environment. A digest never deployed to DEV is refused.
 4. A failing readiness check stops the rollout and reverts the application image when feasible; migrations are **not** automatically reversed.
-5. Database backup-and-restore tests and PITR drills must demonstrate recoverability before production reliance.
+5. Restore drills of the nightly dump and of a volume snapshot must demonstrate recoverability before production reliance (they replace the earlier PITR drills; [ADR-0013](adr/0013-backups-restore-drills-and-shutdown-data.md)).
 
 ## 16. Cross-cutting data and integrity requirements
 
@@ -412,12 +415,12 @@ These are **not permission to change the product scope**. They need explicit imp
 
 1. Exact PostgreSQL table names, relationship cardinalities, finance ledger conventions, monetary rounding approach and storage precision.
 2. Exact authentication account-recovery delivery mechanism without introducing general outbound email notifications.
-3. Whether/how Sentry is hosted or consolidated with the selected monitoring stack.
+3. ~~Whether/how Sentry is hosted or consolidated with the selected monitoring stack.~~ **Decided:** no Sentry; errors go to the self-hosted stack ([ADR-0014](adr/0014-observability-error-tracking-and-alerting.md)).
 4. Details of rate-limit enforcement without Redis, and operation of SSE/`LISTEN/NOTIFY` in the chosen container process topology.
 5. Concrete workflow for malware scanning, preview generation and safe presigned-download authorization. *(Deferred to a later version with the file features, §5.)*
 6. FullCalendar licensing implications if premium scheduler/resource features are required.
-7. Resource sizing and deploy interruption tolerance on a single small EC2 host; load testing and recovery time objectives.
-8. Distribution-specific CloudFront origin authentication and secret exposure controls during SSM-based deployments.
+7. Resource sizing and deploy interruption tolerance on a single small EC2 host; load testing and recovery time objectives. *(Starting sizes, short deploy downtime and RPO 24 h are set in [ADR-0010](adr/0010-hosting-edge-and-https.md) and [ADR-0013](adr/0013-backups-restore-drills-and-shutdown-data.md); measured sizing and final RTO stay with M10-04.)*
+8. ~~Distribution-specific CloudFront origin authentication and secret exposure controls during SSM-based deployments.~~ **Decided:** no CloudFront, so no origin authentication ([ADR-0010](adr/0010-hosting-edge-and-https.md)); the SSM deploy document carries only a commit SHA and secrets stay in Parameter Store ([ADR-0011](adr/0011-infrastructure-as-code-images-and-release.md), [ADR-0012](adr/0012-secrets-and-configuration-delivery.md)).
 9. Compliance/legal retention and guardian consent wording for the actual operating jurisdiction.
 
 ---

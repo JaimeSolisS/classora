@@ -18,8 +18,8 @@
 - **Modular monolith.** One FastAPI codebase (`apps/api`) organized by business domain. It ships as two runtime processes from the same image: the **API** and the **Procrastinate worker**.
 - **Single-page web client.** React + TypeScript + Vite (`apps/web`). It talks to the API only through the **generated typed client** (`packages/api-client`).
 - **PostgreSQL is the only stateful backend service.** It holds business data, server sessions, the job queue (Procrastinate), notifications and the LISTEN/NOTIFY fan-out. **No Redis and no Celery.**
-- **Object storage:** S3 (S3-compatible API locally) holds file contents. PostgreSQL holds the file metadata. *(Deferred to a later version, owner decision 2026-10-21: no uploads for now. Until then the app uses no object storage; the only S3 bucket is the backup bucket. See §7.3.)*
-- **Three deployed environments on AWS:** DEV, PROD and a monitoring host. Each one is a single EC2 instance running Docker Compose. There is also a local Compose environment.
+- **Object storage:** S3 (S3-compatible API locally) holds file contents. PostgreSQL holds the file metadata. *(Deferred to a later version, owner decision 2026-10-21: no uploads for now. Until then the app uses no object storage; the only S3 buckets are the Terraform state, backup and archive buckets. See §7.3.)*
+- **Three deployed environments on AWS (us-east-2):** DEV, PROD and a monitoring host. Each one is a single arm64 EC2 instance (t4g) running Docker Compose under systemd, created and destroyed with Terraform for windows of about 20 days; a Terraform switch can run the monitoring stack on DEV instead, or turn it off ([ADR-0010](adr/0010-hosting-edge-and-https.md), [ADR-0011](adr/0011-infrastructure-as-code-images-and-release.md), [ADR-0014](adr/0014-observability-error-tracking-and-alerting.md)). There is also a local Compose environment, with an optional local observability profile.
 
 ## 2. System context
 
@@ -30,38 +30,41 @@ flowchart LR
     T[Tutor]
     PS[Parent / Student]
   end
-  Users -->|HTTPS| R53[Route 53 customer hostname]
-  R53 --> CF[CloudFront]
-  CF -->|HTTPS, origin hostname| CADDY
+  Users -->|HTTPS| R53[Route 53: app, dev, grafana]
+  R53 -->|"HTTPS, ports 80/443 only"| CADDY
 
-  subgraph EC2_ENV["EC2 (DEV or PROD) — Docker Compose"]
-    CADDY[Caddy edge] --> WEB[web: static SPA]
-    CADDY --> API[api: FastAPI]
+  subgraph EC2_ENV["EC2 t4g, DEV or PROD (Compose)"]
+    CADDY[web: Caddy edge, HTTPS + SPA] --> API[api: FastAPI]
     API --> PGB[PgBouncer]
     PGB --> PG[(PostgreSQL on encrypted gp3 EBS)]
     WORKER[worker: Procrastinate] --> PG
     API -. LISTEN/NOTIFY .- PG
+    AGENT[OTel Collector agent]
+    API -.-> AGENT
+    WORKER -.-> AGENT
   end
 
   API -.->|presigned URLs, deferred| S3[("S3 uploads bucket (deferred)")]
-  WORKER -.-> S3
-  PG -->|pgBackRest WAL + backups| S3B[(S3 backup bucket)]
+  PG -->|nightly pg_dump| S3B[("S3 backup bucket (14 days)")]
+  PG -.->|"final dump before PROD is destroyed"| ARCH[("S3 archive bucket (365 days)")]
 
-  subgraph EC2_MON["EC2 monitoring"]
-    OTEL[OTel Collector] --> PROM[Prometheus]
-    OTEL --> LOKI[Loki]
-    OTEL --> TEMPO[Tempo]
+  subgraph EC2_MON["EC2 monitoring (or on DEV)"]
+    GW[OTel Collector gateway] --> PROM[Prometheus]
+    GW --> LOKI[Loki]
+    GW --> TEMPO[Tempo]
     GRAF[Grafana] --> PROM & LOKI & TEMPO
   end
-  EC2_ENV -->|logs, metrics, traces| OTEL
+  AGENT -->|"OTLP, private IP"| GW
+  GRAF -->|alert e-mail| SES[Amazon SES]
+  SES --> OWN[Owner]
 ```
 
 Notes:
 
 - The uploads bucket and its presigned URLs (dashed) are deferred to a later version (§7.3).
 - PgBouncer placement and which processes bypass it: → ISSUE-D1.
-- How the web container is built and served: → ISSUE-I4.
-- How CloudFront authenticates to the origin: → ISSUE-I2.
+- There is no CloudFront: Route 53 points at the host, and Caddy terminates HTTPS ([ADR-0010](adr/0010-hosting-edge-and-https.md)). The `web` image is the edge: Caddy with the built SPA.
+- The monitoring stack runs on its own host by default; a Terraform switch (`monitoring_mode`) colocates it on DEV or turns it off. Prometheus, Loki and Tempo store data on the monitoring host's own encrypted disk, not in S3 ([ADR-0014](adr/0014-observability-error-tracking-and-alerting.md)). Daily EBS snapshots of the data volume complement the nightly dump ([ADR-0013](adr/0013-backups-restore-drills-and-shutdown-data.md)).
 
 ## 3. Repository layout (approved)
 
@@ -125,7 +128,7 @@ modules/<domain>/
 
 ### 4.3 Request lifecycle
 
-1. Caddy receives the request from CloudFront and forwards `/api/*` to the API.
+1. Caddy (the edge, [ADR-0010](adr/0010-hosting-edge-and-https.md)) terminates HTTPS and forwards `/api/*` to the API.
 2. Middleware assigns or propagates a **request ID** and starts an OTel span.
 3. Session cookie → server session lookup in PostgreSQL → CSRF check on unsafe methods → rate-limit check ([ADR-0008](adr/0008-rate-limiting-without-redis.md); sessions and CSRF in [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md)) → idempotency key on decorated financial routes, claimed in the request's transaction ([ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md); `app/core/idempotency.py`).
 4. The route dependency resolves the current user and checks the **role permission**.
@@ -220,60 +223,69 @@ Typed API client: `openapi-typescript` + `openapi-fetch`, TanStack Query hooks w
 
 ## 9. Deployment, operations and observability (approved)
 
+Restates [ADR-0010](adr/0010-hosting-edge-and-https.md) (hosting, edge, HTTPS), [ADR-0011](adr/0011-infrastructure-as-code-images-and-release.md) (Terraform, images, release), [ADR-0012](adr/0012-secrets-and-configuration-delivery.md) (secrets), [ADR-0013](adr/0013-backups-restore-drills-and-shutdown-data.md) (backups) and [ADR-0014](adr/0014-observability-error-tracking-and-alerting.md) (observability), approved on 2026-11-11. The issues that build them are M9-02 (#610) to M9-10 (#618).
+
 ### 9.1 Per-environment host (DEV and PROD)
 
 | Compose stack | Services |
 |---|---|
-| **Data stack** (stateful) | PostgreSQL (+ pgBackRest), PgBouncer (→ ISSUE-D1) |
-| **App stack** | Caddy edge, `web`, `api`, `worker`, OTel agent (→ ISSUE-O2) |
+| **Data stack** (stateful) | PostgreSQL 18, PgBouncer (ADR-0003) |
+| **App stack** | `web` (Caddy edge: HTTPS, SPA, `/api` proxy), `api`, `worker`, OTel Collector agent (Compose profile `telemetry`, on when an OTLP endpoint is published) |
 
+- One arm64 EC2 instance (t4g.small to start; t4g.medium for DEV when monitoring is colocated) on Amazon Linux 2023. Instance type and volume sizes are Terraform variables; M10-04 (#152) measures them.
 - Docker restart policy is `unless-stopped`. systemd units start the data stack before the app stack.
-- The EBS data volume is attached and mounted by cloud-init/SSM **without ever formatting a volume that already has a filesystem**.
-- Management goes through SSM Session Manager and Run Command. There is no inbound SSH, and PostgreSQL/PgBouncer have no public ports.
+- PostgreSQL data and Caddy's certificates live on a separate encrypted gp3 data volume, mounted by cloud-init **without ever formatting a volume that already has a filesystem**.
+- Network: one VPC, one Availability Zone, no NAT. Security groups allow only TCP 80 and 443. There is no inbound SSH, and PostgreSQL/PgBouncer have no public ports. Operators use SSM Session Manager.
+- Caddy obtains certificates itself (Let's Encrypt, HTTP-01/TLS-ALPN-01), is the first hop for client IPs (`TRUSTED_PROXIES` holds only its fixed address; ADR-0008 amendment), sends the production security headers and answers `/health/*` with 404 from outside.
+- Secrets are generated by Terraform into Parameter Store `SecureString` under `/classora/<env>/`. The instance role reads only its own path; `render-env.sh` writes a root-only `0600` env file for Compose. GitHub holds no application secret.
 
 ### 9.2 Delivery pipeline
 
 ```mermaid
 flowchart LR
-  PR[Pull request] -->|lint, types, tests, security, tf plan| CHK{Checks}
-  CHK -->|merge to develop| BUILD[Build images, push to ECR by digest]
-  BUILD --> DEVD[Deploy DEV via SSM Run Command]
+  PR[Pull request] -->|"lint, types, tests, security, image and Terraform checks"| CHK{ci-required}
+  CHK -->|merge to develop| BUILD[Build arm64 images, scan, push to ECR by digest]
+  BUILD --> DEVD["SSM document classora-deploy (SHA only) runs deploy.sh on DEV"]
   DEVD --> MIG1[Run Alembic] --> UP1[Compose up] --> RDY1{/health/ready}
-  RDY1 -->|fail| RB1[Restore previous digest]
-  DEVD -.->|promote same digest| MAIN[main + GitHub approval]
-  MAIN --> PRODD[Deploy PROD: migrate → up → ready check → rollback on fail]
+  RDY1 -->|fail| RB1[Restore previous digests]
+  RDY1 -->|ok| TAG1[Tag dev-sha]
+  TAG1 -.->|release PR merged to main| APPR[Owner approves the production environment]
+  APPR --> PRODD["Deploy the same digest to PROD: migrate, up, ready check, rollback on fail"]
 ```
 
-- GitHub Actions authenticates with OIDC using least-privilege DEV and PROD roles.
-- Images are promoted by **immutable digest** (→ ISSUE-I6 for how the digest reaches `main`).
-- Migrations run before the new version starts and are **never** reversed automatically.
-- The ECR lifecycle policy must keep deployed digests and rollback candidates.
-- Terraform uses separate state per environment and an encrypted, versioned S3 backend with native locking. DEV applies on merge, PROD needs approval, destructive plans need approval everywhere, and critical stateful resources have `prevent_destroy`.
-
-Open points: → ISSUE-I1 through I8.
+- GitHub Actions authenticates with OIDC using least-privilege DEV and PROD roles. The deploy role may send only the `classora-deploy` document, whose one parameter is a 40-hex commit SHA, to its own environment's instance.
+- Images are built **only** on `develop`, arm64, tagged `sha-<commit>`, and promoted by **immutable digest**. PROD deploys the release pull request's head commit and refuses a digest without a `dev-<sha>` tag. Release tag `vYYYY.MM.DD-<sha7>`.
+- `deploy.sh` saves the current release, pulls by digest, migrates on the direct connection, runs the reference seeds, starts the app stack and polls readiness for up to 90 s; on failure it restores the previous digests. Migrations run before the new version starts and are **never** reversed automatically.
+- The ECR lifecycle policy keeps the newest 10 `prod-*`, 10 `dev-*` and 30 `sha-*` images.
+- While DEV is destroyed, the DEV deploy is skipped with a notice and `develop` stays green. Neither deploy workflow is part of `ci-required`.
+- Terraform: one state per root (`bootstrap`, `shared`, `envs/dev`, `envs/prod`, `envs/monitoring`) in an encrypted, versioned S3 backend with native locking. Applies and destroys run from the owner's machine after a shown plan; there is no plan pipeline and no apply from CI (CI runs `fmt` and `validate`). `prevent_destroy` only on the state bucket, the hosted zone and the archive bucket. Every resource is tagged `Project=classora`.
 
 ### 9.3 Observability
 
-- A dedicated monitoring EC2 runs the OTel Collector, Prometheus, Loki, Tempo and Grafana.
+- An OTel Collector gateway, Prometheus, Loki, Tempo and Grafana run on a dedicated monitoring EC2 (default), colocated on DEV, or not at all (`monitoring_mode`). Storage is the monitoring host's encrypted data volume, not S3: metrics 15 days, logs and traces 7 days.
+- Each app host's agent sends OTLP/HTTP to the gateway over private IPs; the gateway's port admits only the app hosts' security groups.
+- The API and worker export traces, metrics and logs only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set; otherwise no telemetry code runs. Telemetry carries no personal data (route templates, no bodies, headers, query strings or exception messages).
 - Logs are structured JSON with `request_id` and `trace_id`.
 - Health endpoints: `/health/live` (process is up) and `/health/ready` (includes PostgreSQL).
-- Alerts are dashboard-only: no email or external notifications.
-
-Open points: → ISSUE-O1 (Sentry), ISSUE-O2 (collection topology), ISSUE-O3 (Grafana access).
+- No Sentry: exceptions are span events and `ERROR` logs, with a Grafana errors dashboard.
+- Grafana at `https://grafana.<domain>` with a login (admin password in Parameter Store), anonymous access off.
+- Alerts (CPU, memory, disk, readiness, failed and stalled jobs, missing or failed backups) are e-mailed to the owner through Amazon SES. An AWS budget of US$75/month, counting only `Project=classora` costs, e-mails the owner at 80% forecast and 100% actual.
+- Locally, `make dev-observability` runs the same stack from the same configuration files; it is off by default.
 
 ### 9.4 Backups
 
-- pgBackRest writes full and differential backups plus continuous WAL archiving to S3, enabling PITR.
-- Restore drills are required before production reliance (W8.5).
-
-Open point: → ISSUE-I7.
+- A systemd timer runs a nightly `pg_dump --format=custom` inside the `db` container to the environment's S3 backup bucket (kept 14 days) and logs a JSON result line that the backup alerts read.
+- Amazon Data Lifecycle Manager snapshots the data volume daily and keeps 7.
+- RPO up to 24 hours; RTO about 30 minutes (final values in M10-04 (#152)).
+- Restore drills restore a dump, and a volume from a snapshot, into a scratch container on the same host and compare row counts (W8.5): on DEV in M9-08 (#616), on PROD in M10-05 (#153).
+- Before PROD is destroyed, a verified final dump goes to the long-lived archive bucket (Glacier after 30 days, deleted after 365). No PROD data reaches DEV, local machines or CI.
 
 ---
 
 ## 10. Issues: ambiguities, contradictions and missing details
 
 **Legend.** Type: **C** = contradiction, **A** = ambiguity, **M** = missing implementation detail.  
-Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Accepted so far: ISSUE-G1 (in part); ISSUE-D7 (ADR-0001); ISSUE-D1, ISSUE-J1 and ISSUE-J2 (ADR-0003); ISSUE-D2 and ISSUE-D3 (ADR-0004); ISSUE-X4 (issue #12); ISSUE-A1 and ISSUE-A2 (ADR-0002); ISSUE-A3 (issue #22); ISSUE-D6 names part (issue #33); ISSUE-G2, ISSUE-S1, ISSUE-S2, ISSUE-S4, ISSUE-S5, ISSUE-S6 and ISSUE-S7 (ADR-0007); ISSUE-S3 (ADR-0008); ISSUE-D4, ISSUE-D6 `btree_gist` part, ISSUE-SC1, ISSUE-SC2, ISSUE-SC3 and ISSUE-X2 (ADR-0005); ISSUE-F7 `teaching_hours.approve` part (issue #77), closeout review part (issue #78) and progress report review part (issue #83); ISSUE-F1, ISSUE-F2, ISSUE-F3, ISSUE-F4, ISSUE-F5, ISSUE-F6, ISSUE-F7 `payment.record` and `payroll.*` parts, and ISSUE-J4 (ADR-0006); ISSUE-X1 (ADR-0015); ISSUE-X3 (issue #127, orchestrator-recommended, pending owner review); ISSUE-J3 (issue #128, orchestrator-recommended, pending owner review).  
+Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Accepted so far: ISSUE-G1 (in part); ISSUE-D7 (ADR-0001); ISSUE-D1, ISSUE-J1 and ISSUE-J2 (ADR-0003); ISSUE-D2 and ISSUE-D3 (ADR-0004); ISSUE-X4 (issue #12); ISSUE-A1 and ISSUE-A2 (ADR-0002); ISSUE-A3 (issue #22); ISSUE-D6 names part (issue #33); ISSUE-G2, ISSUE-S1, ISSUE-S2, ISSUE-S4, ISSUE-S5, ISSUE-S6 and ISSUE-S7 (ADR-0007); ISSUE-S3 (ADR-0008); ISSUE-D4, ISSUE-D6 `btree_gist` part, ISSUE-SC1, ISSUE-SC2, ISSUE-SC3 and ISSUE-X2 (ADR-0005); ISSUE-F7 `teaching_hours.approve` part (issue #77), closeout review part (issue #78) and progress report review part (issue #83); ISSUE-F1, ISSUE-F2, ISSUE-F3, ISSUE-F4, ISSUE-F5, ISSUE-F6, ISSUE-F7 `payment.record` and `payroll.*` parts, and ISSUE-J4 (ADR-0006); ISSUE-X1 (ADR-0015); ISSUE-X3 (issue #127, orchestrator-recommended, pending owner review); ISSUE-J3 (issue #128, orchestrator-recommended, pending owner review); ISSUE-I1 to ISSUE-I10 and ISSUE-O1 to ISSUE-O3 (ADR-0010 to ADR-0014, owner re-plan of 2026-11-11; I2 and I10 superseded).  
 "Spec" references point to `_docs/spec.md` sections.
 
 ### 10.1 Governance and documentation
@@ -551,10 +563,10 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 - **Spec:** §10 says "Caddy/FastAPI enforcement". Standard Caddy has no rate-limit directive; it needs a third-party module and a custom build.
 - **Problem:**
   - FastAPI in-memory limits are per process.
-  - Behind CloudFront, the client IP must come from `CloudFront-Viewer-Address`/`X-Forwarded-For`, trusted only from CloudFront.
+  - Behind a proxy (Caddy in AWS), the client IP must come from `X-Forwarded-For`, trusted only from that proxy.
 - **Resolution — ACCEPTED** (ADR-0008, 2026-10-18): see [ADR-0008](adr/0008-rate-limiting-without-redis.md) for the thresholds and the client-IP rule.
   - **Authentication endpoints** (login, reauthentication, token redemption, registration): a PostgreSQL-backed fixed-window counter keyed by IP and account. It is correct across processes. Over the limit: `429` with `Retry-After`; no permanent lockout.
-  - **Client IP:** the TCP peer, unless it is in `TRUSTED_PROXIES` (empty by default; Caddy in AWS); only then the right-most untrusted `X-Forwarded-For` entry. Caddy derives that header from CloudFront's viewer address (M9-09).
+  - **Client IP:** the TCP peer, unless it is in `TRUSTED_PROXIES` (empty by default; Caddy in AWS); only then the right-most untrusted `X-Forwarded-For` entry. Caddy is the first hop and sets that header to the TCP peer ([ADR-0010](adr/0010-hosting-edge-and-https.md); M9-06 (#614) sets `TRUSTED_PROXIES` in AWS).
   - **General API:** none in M2. A coarse in-process limit per worker process follows in #163 (M10-09, Phase 1 local hardening).
   - A Caddy rate-limit module is not required.
 
@@ -584,14 +596,14 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 
 ### 10.8 Notifications
 
-#### ISSUE-N1 — SSE with LISTEN/NOTIFY across processes and CloudFront (M; spec §18.4 open)
+#### ISSUE-N1 — SSE with LISTEN/NOTIFY across processes and the edge proxy (M; spec §18.4 open)
 - **Resolution — PROPOSED:**
   - Each API worker process holds **one** direct `LISTEN` connection (see ISSUE-D1) and fans events out to its own in-memory SSE subscribers.
   - The `NOTIFY` payload carries only `{user_id, notification_id}`, well under the 8 KB limit. Clients refetch the notification through the regular API.
   - `NOTIFY` is transactional, so it is issued in the same transaction as the insert.
-  - The server sends a heartbeat comment every 15 s. Caddy disables response buffering for the SSE route. Set CloudFront's origin response timeout so an idle stream stays open between heartbeats.
+  - The server sends a heartbeat comment every 15 s. Caddy disables response buffering for the SSE route. (There is no CloudFront, so no edge timeout to set; [ADR-0010](adr/0010-hosting-edge-and-https.md).)
   - The client reconnects with `Last-Event-ID` and falls back to TanStack Query polling.
-  - **Implementation note (M3-06, #42):** the per-process listener and the in-memory SSE fan-out are implemented as proposed (`administration/live.py`; `GET /api/v1/notifications/stream`; details in [`api.md`](api.md) "Live notifications"). Also implemented: `resync` events after a listener reconnect or a buffer overflow, `Last-Event-ID` replay of up to 100 notifications, a 10-streams-per-user limit per process, and streams that never refresh the session. The Caddy (no buffering or compression on the stream route) and CloudFront (timeouts above the heartbeat) parts stay with M9-09 (#139) and M9-10 (#140). The resolution stays PROPOSED.
+  - **Implementation note (M3-06, #42):** the per-process listener and the in-memory SSE fan-out are implemented as proposed (`administration/live.py`; `GET /api/v1/notifications/stream`; details in [`api.md`](api.md) "Live notifications"). Also implemented: `resync` events after a listener reconnect or a buffer overflow, `Last-Event-ID` replay of up to 100 notifications, a 10-streams-per-user limit per process, and streams that never refresh the session. The Caddy part (no buffering or compression on the stream route) is M9-02 (#610); there is no CloudFront part (ADR-0010). The resolution stays PROPOSED.
 
 ### 10.9 Files
 
@@ -625,41 +637,45 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 
 ### 10.10 Infrastructure and delivery
 
-#### ISSUE-I1 — Secret delivery path (A; spec §18.8 open)
+#### ISSUE-I1 — Secret delivery path (A; spec §18.8, decided)
 - **Spec:** "GitHub Secrets delivered via SSM".
 - **Problem:** It is unclear whether this means SSM Parameter Store or passing values through Run Command. Run Command parameters appear in command history and logs.
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - GitHub Actions writes secrets to **SSM Parameter Store `SecureString`** under `/classora/<env>/...`.
   - The instance role reads only its own environment's path.
   - The deploy script renders an env file at mode `0600` owned by root and passes it to Compose with `env_file`.
   - Run Command receives only the image digest and the release tag.
   - Secrets are never baked into images.
+- **Resolved:** [ADR-0012](adr/0012-secrets-and-configuration-delivery.md). Terraform generates the secrets into Parameter Store; GitHub holds none (no CI write of secrets); Run Command carries only a commit SHA.
 
-#### ISSUE-I2 — CloudFront-specific origin authentication (M; spec §18.8 open)
-- **Resolution — PROPOSED:**
+#### ISSUE-I2 — CloudFront-specific origin authentication (M; spec §18.8, decided)
+- **Proposal (before the ADR):**
   - CloudFront adds a custom origin header, `X-Origin-Verify: <secret>`, sourced from Parameter Store.
   - Caddy rejects any request without the header (`403`). This applies alongside the security group's CloudFront-prefix-list restriction.
   - Rotate the secret by accepting two values during the switchover.
+- **Superseded:** [ADR-0010](adr/0010-hosting-edge-and-https.md). There is no CloudFront, so there is no origin header to verify.
 
 #### ISSUE-I3 — Origin TLS certificate issuance (C)
 - **Problem:**
   - Caddy's default ACME HTTP-01 and TLS-ALPN-01 challenges need Let's Encrypt to reach ports 80/443 directly.
   - The security group allows only CloudFront, so issuance and renewal would fail.
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - Use the **DNS-01** challenge through Route 53, with a Caddy build that includes the Route 53 DNS module (built in CI with `xcaddy` and pushed to ECR).
   - The instance role may change only the `_acme-challenge.<origin-host>` record.
   - Alternative: an origin certificate managed outside Caddy.
+- **Resolved:** [ADR-0010](adr/0010-hosting-edge-and-https.md). With no CloudFront, the security group allows 80/443 from anywhere, so stock Caddy uses HTTP-01/TLS-ALPN-01. No DNS-01, no custom Caddy build.
 
 #### ISSUE-I4 — How the SPA is served (A)
 - **Spec:** "Caddy origin on EC2 → web/API containers".
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - The `web` image is a small Caddy image serving the Vite build with an SPA fallback. The edge Caddy proxies `/` to `web` and `/api/*` to `api`.
   - CloudFront behaviors: caching disabled for `/api/*` (forward cookies and `Origin`); long TTL for hashed `/assets/*`; `index.html` sent with `no-cache`.
   - `/health/*` is not exposed through CloudFront. The deploy script checks it from inside the host.
   - Alternative (saves RAM): build the SPA into the edge Caddy image.
+- **Resolved:** [ADR-0010](adr/0010-hosting-edge-and-https.md). The alternative was chosen: the `web` image is the edge Caddy holding the built SPA (one Caddy per host, to save RAM). There are no CloudFront behaviors; Caddy sets the cache headers itself.
 
 #### ISSUE-I5 — Deployment sequence and downtime on one host (A; spec §14, §18.7)
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - Accept **short downtime** in the first release.
   - The SSM-triggered deploy script:
     1. records the current digests in `/opt/classora/release/previous`;
@@ -669,62 +685,71 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
     5. polls `/health/ready` for N seconds;
     6. on failure, restores the previous digests and runs `up` again, without touching the database.
   - The worker stops gracefully with a configured timeout; jobs are idempotent (ISSUE-J4).
+- **Resolved:** [ADR-0011](adr/0011-infrastructure-as-code-images-and-release.md). Short downtime is accepted; `deploy.sh` follows these steps, with readiness polled for up to 90 s, triggered by a custom SSM document that accepts only a commit SHA.
 
 #### ISSUE-I6 — Promoting the same digest from `develop` to `main` (C)
 - **Spec:** §10 "promoted by immutable digest DEV → PROD", "tested changes → main".
 - **Problem:** A merge commit on `main` has a new SHA. A build triggered on `main` would produce a different digest from the one tested in DEV.
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - Images are built **only** on `develop` and tagged with the commit SHA. ECR tag immutability is on.
   - `main` is updated by **fast-forward only** from a tested `develop` commit.
   - The PROD workflow resolves the digest by that SHA and refuses to deploy if the digest is missing or was never deployed to DEV.
   - The release tag `vX.Y.Z-YYYYMMDD` is added as an extra ECR tag and a Git tag.
+- **Resolved:** [ADR-0011](adr/0011-infrastructure-as-code-images-and-release.md). Images are built only on `develop`; PROD deploys the release pull request's head commit, so `main` needs no fast-forward-only rule. The release tag is `vYYYY.MM.DD-<sha7>`.
 
 #### ISSUE-I7 — pgBackRest packaging and retention (M)
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - Use a custom PostgreSQL image with pgBackRest installed. `archive_command` uses pgBackRest, and a dedicated repository bucket per environment has versioning, encryption and lifecycle rules.
   - PROD: weekly full backups, daily differentials, 14 days of PITR.
   - DEV: weekly full backups, 3 days of PITR.
   - A worker or host cron runs a monthly restore drill into a scratch container.
   - DEV never receives copies of PROD data; it uses synthetic seeds only.
+- **Superseded:** [ADR-0013](adr/0013-backups-restore-drills-and-shutdown-data.md). No pgBackRest or PITR: a nightly `pg_dump` to S3 (14 days), daily EBS snapshots (7), restore drills, and a final PROD dump to an archive bucket (365 days).
 
 #### ISSUE-I8 — Micro instance budget (A; spec §14, §18.7)
 - **Problem:** PostgreSQL, PgBouncer, API, worker (WeasyPrint), two Caddy containers and the OTel agent must all fit in about 1 GiB.
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - Set explicit Compose `mem_limit` per service.
   - Run 1–2 Uvicorn workers. Worker concurrency 1–2.
   - PostgreSQL `shared_buffers` around 128 MB.
   - Add a swap file on the root volume.
   - Run a benchmark gate in phase 6, with Terraform instance-type variables ready to step up to a `small` instance.
+- **Resolved (starting sizes):** [ADR-0010](adr/0010-hosting-edge-and-https.md). t4g.small (2 GiB) for DEV, PROD and monitoring, t4g.medium for DEV with monitoring colocated; the limits above still apply. M10-04 (#152) runs the benchmark.
 
 #### ISSUE-I9 — Network layout between DEV, PROD and monitoring (M)
 - **Problem:** The spec does not say whether the hosts share a VPC or how the monitoring ingest endpoints are reached privately.
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - Use one VPC with separate subnets and security groups per environment.
   - The monitoring host's OTLP ports accept traffic only from the DEV and PROD security groups, over private IPs.
   - DEV and PROD security groups do not allow traffic to each other.
+- **Resolved:** [ADR-0010](adr/0010-hosting-edge-and-https.md) and [ADR-0014](adr/0014-observability-error-tracking-and-alerting.md). One VPC, one Availability Zone, a public subnet per host, no NAT; the monitoring ingest port admits only the app hosts' security groups.
 
 #### ISSUE-I10 — Detecting destructive Terraform plans in DEV (M)
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - CI runs `terraform show -json` on the plan.
   - Any `delete` or `replace` action routes the apply to a GitHub environment that requires approval, even for DEV.
+- **Superseded:** [ADR-0011](adr/0011-infrastructure-as-code-images-and-release.md). There is no plan pipeline: applies and destroys run from the owner's machine after a shown plan, and `prevent_destroy` guards the long-lived resources.
 
 ### 10.11 Observability
 
-#### ISSUE-O1 — Sentry hosting (A; spec §18.3 open)
+#### ISSUE-O1 — Sentry hosting (A; spec §18.3, decided)
 - **Problem:** Self-hosted Sentry requires Redis, Kafka and ClickHouse. That contradicts "no Redis" and would overload the monitoring host.
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - Option A: Sentry SaaS. Set `send_default_pii=False`, scrub request bodies, and disable email alerts so it matches the dashboard-only alerting decision. Needs a privacy review because the data includes minors' records.
   - Option B: drop Sentry and record exceptions as OTel span events and logs in Tempo/Loki, with Grafana error dashboards.
   - Either option needs an ADR.
+- **Resolved:** [ADR-0014](adr/0014-observability-error-tracking-and-alerting.md). Option B: no Sentry; exceptions are span events and logs, with a Grafana errors dashboard.
 
 #### ISSUE-O2 — Host and database metrics without extra tools (M)
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - Run a local OTel Collector **agent** on each environment host, using the `hostmetrics`, `docker_stats` and `postgresql` receivers plus file log collection.
   - It forwards over OTLP to the monitoring collector.
   - This avoids adding node_exporter or postgres_exporter. Procrastinate queue depth is exported as a custom metric by the API.
+- **Resolved:** [ADR-0014](adr/0014-observability-error-tracking-and-alerting.md). As proposed, with a Collector gateway on the monitoring host. Procrastinate queue metrics come from the agent's `sqlquery` receiver, not from API code.
 
 #### ISSUE-O3 — Grafana access path (A)
-- **Resolution — PROPOSED:** Grafana sits behind Caddy on the monitoring host with a Let's Encrypt certificate (DNS-01, as in ISSUE-I3), Grafana login with no anonymous access, and an optional security-group allowlist of admin IPs.
+- **Proposal (before the ADR):** Grafana sits behind Caddy on the monitoring host with a Let's Encrypt certificate (DNS-01, as in ISSUE-I3), Grafana login with no anonymous access, and an optional security-group allowlist of admin IPs.
+- **Resolved:** [ADR-0014](adr/0014-observability-error-tracking-and-alerting.md). Grafana behind Caddy with an automatic HTTP-01 certificate, a login and no anonymous access; no IP allowlist.
 
 ### 10.12 Frontend and UX
 
@@ -779,7 +804,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 
 ## 11. Proposed ADR backlog
 
-These ADRs record the accepted resolutions. ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0015 and ADR-0016 are **Accepted**. [ADR-0017](adr/0017-payroll-and-expenses.md) is **Proposed**: orchestrator-recommended, pending owner review, and M7 builds on it meanwhile. All others are **PROPOSED**.
+These ADRs record the accepted resolutions. ADR-0001 to ADR-0008 and ADR-0010 to ADR-0016 are **Accepted**. [ADR-0017](adr/0017-payroll-and-expenses.md) is **Proposed**: orchestrator-recommended, pending owner review, and M7 builds on it meanwhile. All others are **PROPOSED**.
 
 | ADR | Topic | Issues |
 |---|---|---|
@@ -792,15 +817,15 @@ These ADRs record the accepted resolutions. ADR-0001, ADR-0002, ADR-0003, ADR-00
 | [0007](adr/0007-authentication-sessions-recovery-and-delegation.md) | Authentication, sessions, recovery and delegated permissions — **Accepted** | G2, S1, S2, S4–S7 |
 | [0008](adr/0008-rate-limiting-without-redis.md) | Rate limiting without Redis — **Accepted** | S3 |
 | 0009 | File scanning, release and previews — *deferred to a later version* | FL1–FL3 |
-| 0010 | Edge: CloudFront origin auth, TLS, SPA serving | I2–I4 |
-| 0011 | Release promotion and single-host deployment | I5, I6, I10 |
-| 0012 | Secrets delivery | I1 |
-| 0013 | Backups and restore drills | I7 |
-| 0014 | Error tracking (Sentry decision) and telemetry collection | O1–O3 |
+| [0010](adr/0010-hosting-edge-and-https.md) | Hosting, edge and HTTPS — **Accepted** | I2 (superseded), I3, I4, I8 (starting sizes), I9 |
+| [0011](adr/0011-infrastructure-as-code-images-and-release.md) | Infrastructure as code, images and release — **Accepted** | I5, I6, I10 (superseded) |
+| [0012](adr/0012-secrets-and-configuration-delivery.md) | Secrets and configuration delivery — **Accepted** | I1 |
+| [0013](adr/0013-backups-restore-drills-and-shutdown-data.md) | Backups, restore drills and data at shutdown — **Accepted** | I7 (superseded) |
+| [0014](adr/0014-observability-error-tracking-and-alerting.md) | Observability, error tracking and alerting — **Accepted** | O1–O3 |
 | [0015](adr/0015-server-side-i18n.md) | Server-side i18n — **Accepted** | X1 |
 | [0016](adr/0016-ci-security-tooling.md) | CI security tooling (dependency, secret, SAST and image scans) — **Accepted** | #11 (M1-11) |
 | [0017](adr/0017-payroll-and-expenses.md) | Payroll and expenses — **Proposed** (orchestrator-recommended, pending owner review) | #104 (M7-01), E1–E18 |
 
 ## 12. Decisions that need the product owner rather than engineering
 
-These items in §10 are product or business decisions, not technical ones: ISSUE-F1, F2, F6, F7 (F1, F2, F6 and F7 decided in #86 (ADR-0006)), SC1 (offer deadline; decided in #46 (ADR-0005)), SC2 (makeup after closures; decided in #46 (ADR-0005)), S1 (recovery delivery), S5, S6 (S1, S5 and S6 decided in #19, ADR-0007), X2 (premium calendar; decided in #46 (ADR-0005)), O1 (third-party data processing) and L2 (retention periods). The (product) items of #104 (payroll and expenses) are recommended by the orchestrator in [ADR-0017](adr/0017-payroll-and-expenses.md), flagged for owner review, and not yet decided by the owner.
+These items in §10 are product or business decisions, not technical ones: ISSUE-F1, F2, F6, F7 (F1, F2, F6 and F7 decided in #86 (ADR-0006)), SC1 (offer deadline; decided in #46 (ADR-0005)), SC2 (makeup after closures; decided in #46 (ADR-0005)), S1 (recovery delivery), S5, S6 (S1, S5 and S6 decided in #19, ADR-0007), X2 (premium calendar; decided in #46 (ADR-0005)), O1 (third-party data processing; decided by the owner on 2026-11-11, no Sentry, [ADR-0014](adr/0014-observability-error-tracking-and-alerting.md)) and L2 (retention periods). The (product) items of #104 (payroll and expenses) are recommended by the orchestrator in [ADR-0017](adr/0017-payroll-and-expenses.md), flagged for owner review, and not yet decided by the owner.

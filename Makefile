@@ -233,7 +233,7 @@ sast:
 
 ## Trivy vulnerability scan of a local or registry image: make scan-image IMAGE=<ref>.
 ## Prints HIGH and CRITICAL; fails on CRITICAL with a fixed version (not in .trivyignore).
-## Not run in PR CI; M9-06 runs it after docker build, before push (ADR-0016).
+## Not run in PR CI yet; M9-02 (#610) runs it after the image build and M9-07 (#615) before push (ADR-0016).
 scan-image:
 	@test -n "$(IMAGE)" || { echo "usage: make scan-image IMAGE=<image reference>" >&2; exit 2; }
 	@infrastructure/scripts/check-scan-exceptions.sh trivy .trivyignore

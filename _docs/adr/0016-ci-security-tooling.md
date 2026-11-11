@@ -59,7 +59,7 @@ No scanner needs credentials or sends telemetry.
 | Secrets | any finding, full history and PR commits | — |
 | Semgrep | findings of severity ERROR | WARNING, INFO (a separate, non-failing pass) |
 | Ruff `S` | every enabled rule | — |
-| Images (M9-06) | CRITICAL with a fixed version (`--ignore-unfixed`) | HIGH and CRITICAL (first, non-failing pass) |
+| Images (M9-02 #610, M9-07 #615) | CRITICAL with a fixed version (`--ignore-unfixed`) | HIGH and CRITICAL (first, non-failing pass) |
 
 Dev dependencies count because dev tools (Vite, Storybook, pytest plugins) run in CI with repository access.
 
@@ -80,9 +80,9 @@ At acceptance the lists are empty except for one gitleaks allowlist entry: the f
 
 A failing scan is fixed first (upgrade the dependency, remove the secret, change the code). If that is not possible, add a reasoned exception as above. A real secret that reached git history is rotated first; rewriting history is the owner's decision.
 
-### Image scanning and M9-06
+### Image scanning in M9-02 (#610) and M9-07 (#615)
 
-`make scan-image` is not run in pull-request CI, which builds no images. M9-06 attaches it to the production image build: same target, same thresholds, after `docker build` (with `--pull`, so base-image security fixes are included) and before the image is pushed. A failing scan stops the push.
+`make scan-image` is not run in pull-request CI today, which builds no images. M9-02 (#610) attaches it to the arm64 production image build in CI, and M9-07 (#615) runs it again before an image is pushed to ECR ([ADR-0011](0011-infrastructure-as-code-images-and-release.md)): same target, same thresholds, after `docker build` (with `--pull`, so base-image security fixes are included) and before the image is pushed. A failing scan stops the push.
 
 ### Dependabot (E5)
 
@@ -105,7 +105,7 @@ No runtime technology is added: no new app dependency, no Redis, Celery or RDS, 
 
 ## Alternatives considered
 
-- **OSV-Scanner for both lockfiles and images.** One tool and data source, but `uv.lock` and pnpm lockfile v9 support was unproven and it would replace Trivy for M9-06. Not chosen.
+- **OSV-Scanner for both lockfiles and images.** One tool and data source, but `uv.lock` and pnpm lockfile v9 support was unproven and it would replace Trivy for the image scan (M9-02, #610). Not chosen.
 - **GitHub-native (CodeQL, secret scanning, Dependabot alerts only).** Strong SAST, but free only for public repositories, not reproducible locally, and needs a new action and `security-events: write`. Can be added later if the repository goes public.
 - **Bandit as a separate tool.** Ruff's `S` rules implement the same checks inside the existing lint.
 - **Vendor GitHub Actions for the scanners.** More third-party code with repository access, gitleaks-action needs a paid licence for organizations, and no one-command local reproduction. Not chosen (E2).

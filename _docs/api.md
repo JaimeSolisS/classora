@@ -1168,8 +1168,8 @@ Implemented by M3-06 (#42; spec §10 SSE and `LISTEN`/`NOTIFY`, architecture
   uvicorn with a 5 s graceful timeout so open streams never hang a stop.
 - **Headers:** `Cache-Control: no-store` (as every API response),
   `X-Accel-Buffering: no`. A proxy in front of the API must not buffer or
-  compress this route (Caddy: M9-09 #139; CloudFront timeouts above the 15 s
-  heartbeat: M9-10 #140). The Vite dev proxy streams it unchanged.
+  compress this route (the edge Caddy: M9-02 #610; there is no CloudFront,
+  ADR-0010). The Vite dev proxy streams it unchanged.
 - **Web fallback:** the bell opens one `EventSource` per tab (signed in, the
   privacy notice accepted). While it is open the 30 s unread-count polling is
   off; while the browser reconnects by itself, or after the stream closed

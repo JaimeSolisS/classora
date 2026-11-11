@@ -14,7 +14,7 @@ this document together; the web unit tests check the invariants below.
 | ----- | ------- | ------ |
 | Vite dev server (`make dev`, `make e2e`) | `DEVELOPMENT_HEADERS`, enforced (not `-Report-Only`) through `server.headers` in `apps/web/vite.config.ts` | Now. The E2E spec `e2e/tests/security/headers.spec.ts` checks the headers, zero CSP violations during a sign-in round trip and that the app cannot be framed. |
 | `vite preview` of a production build | `PRODUCTION_HEADERS` through `preview.headers` | Now. Checked by hand (see below). |
-| Caddy in front of the built SPA | `PRODUCTION_HEADERS` | **M9-09** copies them into the Caddyfile and tests them automatically against the built SPA, together with HSTS, `Referrer-Policy` and `Permissions-Policy` (edge headers, out of scope here). |
+| Caddy in front of the built SPA | `PRODUCTION_HEADERS` | **M9-02 (#610)** copies them into the edge image's Caddyfile and tests them automatically against the built SPA, together with HSTS, `Referrer-Policy` and `Permissions-Policy` (edge headers, out of scope here). |
 | Storybook | none (Storybook keeps its own headers) | Not a deployed surface. |
 
 ## Production Content Security Policy
@@ -63,7 +63,7 @@ config does not apply the policy to them.
 
 ## Checking the production policy by hand
 
-Until M9-09 automates it in Caddy, check the production build once by hand
+Until M9-02 (#610) automates it in Caddy, check the production build once by hand
 (with `make dev` running, so `/api` answers):
 
 ```bash
@@ -107,7 +107,8 @@ In short (details in [`api.md`](api.md) "CSRF and `Origin`"):
 - **New UI libraries.** A library that injects inline `<script>` elements or
   needs `eval` violates the policy; the E2E headers spec catches it under the
   development policy. Prefer a library that does not.
-- **M9-09.** Copy `PRODUCTION_HEADERS` into the Caddyfile for the SPA, test
+- **M9-02 (#610).** Copy `PRODUCTION_HEADERS` into the Caddyfile for the SPA, test
   them there with zero CSP violations against the built SPA, and add the edge
-  headers. CloudFront must forward `Origin` and `X-CSRF-Token` for `/api/*`.
-  The production `APP_ORIGIN` is the `https://` customer hostname.
+  headers. Caddy is the edge (no CloudFront, ADR-0010), so `Origin` and
+  `X-CSRF-Token` reach `/api/*` unchanged. The production `APP_ORIGIN` is the
+  `https://` customer hostname (M9-06, #614).
