@@ -611,13 +611,19 @@ planned for a later version.
 
 ```bash
 cp .env.example .env
+make migrate
 make dev
 ```
 
-`make dev` builds the images and starts PostgreSQL, PgBouncer, the API, the
-background worker and the web app in the background, and returns once all of
-them are healthy. The API reaches PostgreSQL through PgBouncer (connection
-pooling). Then open:
+`make migrate` creates the database and applies the migrations (see
+[Database migrations](#database-migrations)); on a new checkout or volume run it
+**before** `make dev`. `make dev` builds the images and starts PostgreSQL,
+PgBouncer, the API, the background worker and the web app in the background,
+and returns once all of them are healthy. The API reaches PostgreSQL through
+PgBouncer (connection pooling). The API and the worker connect as a
+least-privilege database role (`classora_app`: data access only, no schema
+changes), while migrations, seeds and operator commands use the database owner.
+Then open:
 
 - Web app: <http://127.0.0.1:5173>. It opens the sign-in page; after signing in
   (see [Logging in locally](#logging-in-locally)) the home page shows
@@ -633,9 +639,7 @@ that, run `corepack pnpm --filter @classora/web dev` on the host, which proxies
 to `http://127.0.0.1:8000`.
 
 The background worker (`worker`, built from the same image as the API) runs
-queued and periodic jobs. It processes jobs only after `make migrate` (below)
-has created its tables; until then it waits and logs that it needs
-`make migrate`. Follow its logs with `docker compose logs -f worker`. In local
+queued and periodic jobs. Follow its logs with `docker compose logs -f worker`. In local
 and dev,
 `curl -X POST -H 'Origin: http://127.0.0.1:5173' http://127.0.0.1:8000/api/v1/dev/demo-jobs`
 queues a demo job to check that the worker runs it.
@@ -650,7 +654,15 @@ The services are split into two stack files, the way the servers run them:
 - Data stack, `infrastructure/docker/compose.data.yaml`: PostgreSQL (`db`) and
   PgBouncer (`pgbouncer`).
 - App stack, `infrastructure/docker/compose.app.yaml`: the API (`api`), the
-  background worker (`worker`) and the web app (`web`).
+  background worker (`worker`) and the web app (`web`), plus the `migrate`
+  tools service (Compose profile `tools`: never started by `make dev`;
+  `make migrate`, `make seed` and `make bootstrap-owner` run it once with
+  `docker compose run --rm`).
+
+Database roles: `api`, `worker` and `pgbouncer` get only the runtime role
+`classora_app` (password `POSTGRES_APP_PASSWORD`); `db` and `migrate` get the
+owner (`POSTGRES_USER`/`POSTGRES_PASSWORD`). PgBouncer knows only the runtime
+role.
 
 Locally, the root `compose.yaml` combines both into one Compose project, so
 plain `docker compose` commands (`ps`, `logs api`, `logs worker`, `exec db psql ...`,
@@ -701,11 +713,22 @@ make migrate
 ```
 
 `make migrate` applies the Alembic migrations to the local Compose database
-(it starts the database if it is not running). Migrations connect to PostgreSQL
-directly, not through PgBouncer. Neither `make dev` nor the API
-runs migrations, so run `make migrate` after `make dev` on a new checkout and
-again whenever you pull new migrations. Running it when the database is already
-up to date changes nothing.
+(it starts the database if it is not running), then gives the runtime role
+`classora_app` its login and the `POSTGRES_APP_PASSWORD` password
+(`python -m app.cli sync-runtime-role`). It runs in the `migrate` tools service
+as the database owner (`DATABASE_MIGRATION_URL`), directly, not through
+PgBouncer. Neither `make dev` nor the API runs migrations. On a new checkout or
+volume run `make migrate` **before** `make dev` (PgBouncer and the worker log
+in as `classora_app`, which exists only after it; `make dev` prints this hint
+when it fails), and again whenever you pull new migrations. Running it when the
+database is already up to date changes nothing.
+
+**Upgrading an existing `.env` (before the runtime role):** add
+`POSTGRES_APP_PASSWORD` and `DATABASE_MIGRATION_URL` from `.env.example`, set
+the user and password of `DATABASE_URL` and `DATABASE_DIRECT_URL` to
+`classora_app` and `POSTGRES_APP_PASSWORD` (as in `.env.example`), and keep each
+key once. Then run `make migrate` and `make dev`. The existing volume and its
+data are kept.
 
 ### Seed data
 
@@ -753,19 +776,19 @@ its own:
 ```bash
 # native stack
 make db-shared && make db-create NAME=classora_sim_es   # or classora_sim_en
-# set DATABASE_URL and DATABASE_DIRECT_URL in .env to the printed URL
+# set DATABASE_URL, DATABASE_DIRECT_URL and DATABASE_MIGRATION_URL in .env to the printed URLs
 make api-native          # migrates, then serves; keep it running
 make seed-data-spanish   # in another terminal
 
 # Compose
-docker compose down -v && make dev && make migrate && make seed-data-spanish
+docker compose down -v && make migrate && make dev && make seed-data-spanish
 ```
 
 Then open <http://127.0.0.1:5173> (native stack: start `make web-native`
 too) and sign in as the Owner (`direccion` in
 Spanish, `owner` in English, password `classora-sim-owner`); every other
 login is listed below. To keep both languages, point
-`DATABASE_URL` and `DATABASE_DIRECT_URL` in `.env` at the other language's
+the three database URLs in `.env` at the other language's
 database and restart `make api-native` to switch.
 
 The command prints the reference-seed lines and then one `<module>: <n>
@@ -1044,7 +1067,7 @@ simulated date, because the database sets those times.
 To start again, give the language a fresh database: native stack `make
 db-drop NAME=classora_sim_es && make db-create NAME=classora_sim_es`, then
 `make api-native` (migrates) and the target; Compose `docker compose down
--v`, `make dev`, `make migrate` and the target.
+-v`, `make migrate`, `make dev` and the target.
 
 ### First Owner account
 
@@ -1119,30 +1142,35 @@ container, with no image builds:
 
 ```bash
 make db-shared                    # start the shared PostgreSQL server (127.0.0.1:55432; idempotent)
-make db-create NAME=<name>        # create a database and role <name> ([a-z0-9_]+); prints its URLs
+make db-create NAME=<name>        # create a database and role <name> ([a-z0-9_]+); prints its three URLs
 make api-native                   # migrations, then the API with reload on API_PORT
 make worker-native                # the background worker
 make web-native                   # Vite with hot reload on WEB_PORT
 make seed-data-spanish            # simulated data into the same, freshly migrated database (or seed-data-english)
-make db-drop NAME=<name>          # drop the database and role
+make db-drop NAME=<name>          # drop the database and role (classora_app stays)
 make db-shared-down               # stop the server (V=1 also deletes its volume)
 ```
 
 Run `api-native`, `worker-native` and `web-native` in separate terminals (stop
 each with Ctrl-C before `make db-drop`). They read the same keys as Compose
 from the checkout's `.env` (`ENV_FILE=<path>` picks another file), and a
-variable set in the shell wins over the file. Set `DATABASE_URL` and
-`DATABASE_DIRECT_URL` both to the URL `make db-create` prints (there is no
-PgBouncer), and `API_PORT`, `WEB_PORT` and `APP_ORIGIN`
+variable set in the shell wins over the file. Set the three URLs
+`make db-create` prints: `DATABASE_URL` and `DATABASE_DIRECT_URL` both to the
+runtime role `classora_app` (both direct: there is no PgBouncer), and
+`DATABASE_MIGRATION_URL` to the database's own role, which owns it and runs
+the migrations and seeds. `make db-create` also creates `classora_app` on the
+shared server once. Set `API_PORT`, `WEB_PORT` and `APP_ORIGIN`
 (`http://127.0.0.1:<WEB_PORT>`) to ports no other stack uses. The web server
 proxies to `API_PROXY_TARGET`, by default `http://127.0.0.1:<API_PORT>`. For
 example, two worktrees, each with its own database:
 
 ```bash
 # worktree A (.env):  API_PORT=8101  WEB_PORT=5274  APP_ORIGIN=http://127.0.0.1:5274
-#   DATABASE_URL and DATABASE_DIRECT_URL: postgresql://wt_a:classora_local_only@127.0.0.1:55432/wt_a
+#   DATABASE_URL and DATABASE_DIRECT_URL: postgresql://classora_app:classora_app_local_only@127.0.0.1:55432/wt_a
+#   DATABASE_MIGRATION_URL:              postgresql://wt_a:classora_local_only@127.0.0.1:55432/wt_a
 # worktree B (.env):  API_PORT=8102  WEB_PORT=5275  APP_ORIGIN=http://127.0.0.1:5275
-#   DATABASE_URL and DATABASE_DIRECT_URL: postgresql://wt_b:classora_local_only@127.0.0.1:55432/wt_b
+#   DATABASE_URL and DATABASE_DIRECT_URL: postgresql://classora_app:classora_app_local_only@127.0.0.1:55432/wt_b
+#   DATABASE_MIGRATION_URL:              postgresql://wt_b:classora_local_only@127.0.0.1:55432/wt_b
 make db-shared && make db-create NAME=wt_a   # in A (B: NAME=wt_b)
 make api-native                              # then worker-native, web-native, seed-data-spanish
 ```
@@ -1176,12 +1204,18 @@ Every other environment uses the default, `true` (`__Host-classora_session`,
 `Secure`). An older `.env` still has `SESSION_COOKIE_SECURE=true`; refresh it
 from `.env.example`.
 
-The API uses two database URLs: `DATABASE_URL` is the pooled one (through
-PgBouncer) and `DATABASE_DIRECT_URL` the direct one to PostgreSQL (used by
-migrations, seeds and the worker). Inside Compose both are built from the `POSTGRES_*`
-values; the values in `.env` only matter when you run the API, Alembic or
-the simulated seeds (`make seed-data-spanish`, `make seed-data-english`) on
-the host.
+There are three database URLs
+([ADR-0003 amendment](_docs/adr/0003-database-connection-topology.md)):
+`DATABASE_URL` is the pooled one (through PgBouncer) and `DATABASE_DIRECT_URL`
+the direct one to PostgreSQL (the API's live-notification connection and the
+worker); both log in as the least-privilege runtime role `classora_app`.
+`DATABASE_MIGRATION_URL` (optional) is a direct URL as the database owner,
+read only by migrations, seeds, operator commands and the local data
+factories; unset, they use `DATABASE_DIRECT_URL`, and as `classora_app` a
+migration fails without changing anything. Inside Compose all three are built
+from the `POSTGRES_*` values; the values in `.env` only matter when you run
+the API, Alembic or the simulated seeds (`make seed-data-spanish`,
+`make seed-data-english`) on the host.
 
 If your `.env` was copied before a variable was added, refresh it from
 `.env.example` (for example, copy it again).
@@ -1222,7 +1256,8 @@ make e2e               # smoke, accessibility (axe, light and dark), session-coo
 
 `make e2e` builds and starts a separate Compose project, `classora-e2e`, on its
 own ports (web 15173, API 18000, PostgreSQL 15432, PgBouncer 16432) with an empty
-volume, applies the migrations, the reference seeds and its own test fixture
+volume, applies the migrations (before starting the app, which then runs as
+`classora_app`, as in `make dev`; the run checks it), the reference seeds and its own test fixture
 data (`demo.*` accounts, `--seed 1`; see
 [`_docs/testing-guidelines.md`](_docs/testing-guidelines.md)), runs the tests and always removes the stack again (`down -v`).
 It needs Docker, uv and Node 24 but no `.env` (it uses `.env.example`), and it
