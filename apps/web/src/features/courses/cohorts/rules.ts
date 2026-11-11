@@ -409,14 +409,28 @@ export function withTemplate(
   return { ...values, templateId: template?.id ?? '', subjectId };
 }
 
+/** The time fields whose text isn't a time (#600). */
+export interface CohortUnreadableTimes {
+  start: boolean;
+  respondByTime: boolean;
+}
+
+export const COHORT_READABLE_TIMES: CohortUnreadableTimes = {
+  start: false,
+  respondByTime: false,
+};
+
 /**
  * The client checks (C2): every required field, the numbers in bounds, a
  * complete "Respond by" (only with a tutor), and the weekly rule (a
- * weekday, the interval). Every other rule is the server's.
+ * weekday, the interval). Every other rule is the server's. A time field
+ * whose text isn't a time says how to write one (#600), the respond-by
+ * time even with no date (its text would otherwise be dropped).
  */
 export function validateCohortCreate(
   values: CohortCreateValues,
   recurrence: RecurrenceValues,
+  unreadable: CohortUnreadableTimes = COHORT_READABLE_TIMES,
 ): { errors: CreateErrors; recurrence: RecurrenceErrors } {
   const errors: CreateErrors = {};
   const name = checkName(values.name);
@@ -436,7 +450,9 @@ export function validateCohortCreate(
   if (values.tutorId) {
     const date = values.respondByDate.trim();
     const time = values.respondByTime.trim();
-    if ((date || time) && !(DATE.test(date) && TIME.test(time))) {
+    if (unreadable.respondByTime) {
+      errors.respondBy = 'scheduling.validation.timeFormat';
+    } else if ((date || time) && !(DATE.test(date) && TIME.test(time))) {
       errors.respondBy = 'scheduling.offer.validation.deadlineIncomplete';
     }
   }
@@ -444,7 +460,9 @@ export function validateCohortCreate(
     errors.startsOn = 'scheduling.validation.dateRequired';
   }
   if (!TIME.test(values.start)) {
-    errors.start = 'scheduling.validation.startRequired';
+    errors.start = unreadable.start
+      ? 'scheduling.validation.timeFormat'
+      : 'scheduling.validation.startRequired';
   }
   // The cohort has no "Ends" choice: only the weekdays and the interval.
   const rule = validateRecurrence(

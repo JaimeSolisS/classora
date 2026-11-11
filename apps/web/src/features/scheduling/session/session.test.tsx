@@ -9,7 +9,7 @@ import {
   type ApiStub,
   type Responder,
 } from '@/test/api-stub';
-import { click, setFieldValue } from '@/test/dom';
+import { click, leaveField, setFieldValue, typeKeys } from '@/test/dom';
 import {
   buttonNamed,
   jsonResponse,
@@ -206,6 +206,15 @@ describe('offer rules', () => {
     ).toEqual({});
   });
 
+  it('says how to write a time when the deadline time is unreadable (#600)', () => {
+    expect(
+      validateOffer(
+        { tutorId: 't', deadlineDate: '', deadlineTime: '' },
+        { deadlineUnreadable: true },
+      ),
+    ).toEqual({ deadline: 'scheduling.validation.timeFormat' });
+  });
+
   it('builds the series body with the series version and the from-date', () => {
     expect(
       seriesOfferBody(
@@ -330,6 +339,57 @@ describe('/schedule/sessions/:id', () => {
     setFieldValue(form.querySelector('select')!, TUTORS[1]!.id);
     expect(main().textContent).not.toContain('Choose a tutor.');
     expect(api.calls(OFFER)).toHaveLength(0);
+  });
+
+  describe('the respond-by time (#600)', () => {
+    async function openOffer() {
+      app = await renderApp(`/schedule/sessions/${ID}`);
+      const form = main().querySelector('form')!;
+      const byId = (suffix: string) =>
+        form.querySelector<HTMLInputElement>(`[id$="${suffix}"]`)!;
+      return { form, byId };
+    }
+
+    it('blocks unreadable text with no date, then 9:30 clears it live (AC5)', async () => {
+      const api = stub(ASSIGNER);
+      const { form, byId } = await openOffer();
+      const time = byId('-deadlineTime');
+      expect(time.getAttribute('role')).toBe('combobox');
+      expect(form.querySelector('input[type="time"]')).toBeNull();
+      setFieldValue(form.querySelector('select')!, TUTORS[1]!.id);
+      act(() => time.focus());
+      typeKeys(time, 'abc');
+      await leaveField(time);
+      await click(buttonByText(main(), 'Offer the session')!);
+      expect(api.calls(OFFER)).toHaveLength(0);
+      expect(main().textContent).toContain('Enter a time, for example 9:30.');
+      expect(byId('-deadlineTime').getAttribute('aria-invalid')).toBe('true');
+      act(() => byId('-deadlineTime').focus());
+      typeKeys(byId('-deadlineTime'), '^A\b9:30');
+      expect(main().textContent).not.toContain(
+        'Enter a time, for example 9:30.',
+      );
+    });
+
+    it.each([
+      ['930', '2031-01-05T15:30:00.000Z'],
+      ['9:30 pm', '2031-01-06T03:30:00.000Z'],
+      ['9 p.m.', '2031-01-06T03:00:00.000Z'],
+    ])('reads %s into respond_by (AC1)', async (keys, respondBy) => {
+      const api = stub(ASSIGNER, {
+        [OFFER]: () => jsonResponse(201, NEW_OFFER),
+      });
+      const { form, byId } = await openOffer();
+      setFieldValue(form.querySelector('select')!, TUTORS[1]!.id);
+      setFieldValue(byId('-deadline'), '2031-01-05');
+      act(() => byId('-deadlineTime').focus());
+      typeKeys(byId('-deadlineTime'), keys);
+      await leaveField(byId('-deadlineTime'));
+      await click(buttonByText(main(), 'Offer the session')!);
+      expect(api.calls(OFFER)[0]!.body).toMatchObject({
+        respond_by: respondBy,
+      });
+    });
   });
 
   it('a conflict shows the panel; the Owner overrides and resends', async () => {

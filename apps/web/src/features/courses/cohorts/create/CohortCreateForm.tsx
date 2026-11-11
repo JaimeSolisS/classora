@@ -5,6 +5,7 @@ import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { TimeField } from '@/components/ui/time-field';
 import { FieldError } from '@/features/auth/FieldError';
 import type { ClassroomCapacityOption } from '@/features/groups/api';
 import {
@@ -33,6 +34,7 @@ import type { CohortCreated, CohortOverride, TemplateOption } from '../api';
 import {
   cohortCreateOverride,
   cohortRule,
+  COHORT_READABLE_TIMES,
   createAccepts,
   createServerErrors,
   CREATE_FIELD_ORDER,
@@ -45,6 +47,7 @@ import {
   validateCohortCreate,
   withTemplate,
   type CohortCreateValues,
+  type CohortUnreadableTimes,
   type CreateErrors,
   type CreateField,
 } from '../rules';
@@ -114,6 +117,10 @@ export function CohortCreateForm({
   // values; the server's errors stay until their field changes.
   const [checked, setChecked] = useState(false);
   const [serverErrors, setServerErrors] = useState<CreateErrors>(initialErrors);
+  // #600: which time field holds text that isn't a time.
+  const [unreadable, setUnreadable] = useState<CohortUnreadableTimes>(
+    COHORT_READABLE_TIMES,
+  );
   const [recurrence, setRecurrence] =
     useState<RecurrenceValues>(initialRecurrence);
   const [serverRecurrenceErrors, setServerRecurrenceErrors] =
@@ -135,7 +142,8 @@ export function CohortCreateForm({
   const template = templates.find((item) => item.id === values.templateId);
   const subjects = templateSubjects(template);
 
-  const clientChecks = () => validateCohortCreate(values, recurrence);
+  const clientChecks = () =>
+    validateCohortCreate(values, recurrence, unreadable);
   const errors = shownErrors(
     checked,
     serverErrors,
@@ -164,6 +172,16 @@ export function CohortCreateForm({
         weekdays: weekdaysFor(value),
       }));
     }
+  }
+
+  /** A typed or picked time (#600); it has no end to move. */
+  function changeTime(
+    key: 'start' | 'respondByTime',
+    value: string,
+    isUnreadable: boolean,
+  ) {
+    change(key, value);
+    setUnreadable((current) => ({ ...current, [key]: isUnreadable }));
   }
 
   function changeRecurrence(next: RecurrenceValues) {
@@ -270,7 +288,11 @@ export function CohortCreateForm({
   ) {
     return (
       <div className="flex min-w-0 flex-col gap-2">
-        <label htmlFor={fieldId(name)} className="text-sm font-medium">
+        <label
+          id={`${fieldId(name)}-label`}
+          htmlFor={fieldId(name)}
+          className="text-sm font-medium"
+        >
           {label}
         </label>
         {control}
@@ -519,23 +541,23 @@ export function CohortCreateForm({
               </div>
               <div className="flex min-w-0 flex-col gap-2">
                 <label
+                  id={`${fieldId('respondBy')}-time-label`}
                   htmlFor={`${fieldId('respondBy')}-time`}
                   className="text-sm font-medium"
                 >
                   {t('scheduling.offer.deadlineTime')}
                 </label>
-                <Input
+                <TimeField
                   id={`${fieldId('respondBy')}-time`}
-                  type="time"
-                  step={60}
+                  labelId={`${fieldId('respondBy')}-time-label`}
                   value={values.respondByTime}
-                  aria-invalid={errors.respondBy ? true : undefined}
+                  invalid={errors.respondBy !== undefined}
                   aria-describedby={describedBy(
                     'respondBy',
                     `${id}-respond-help`,
                   )}
-                  onChange={(event) =>
-                    change('respondByTime', event.target.value)
+                  onChange={(value, isUnreadable) =>
+                    changeTime('respondByTime', value, isUnreadable)
                   }
                 />
               </div>
@@ -569,14 +591,15 @@ export function CohortCreateForm({
             {field(
               'start',
               t('scheduling.fields.start'),
-              <Input
+              <TimeField
                 id={fieldId('start')}
-                type="time"
-                step={60}
+                labelId={`${fieldId('start')}-label`}
                 value={values.start}
-                aria-invalid={errors.start ? true : undefined}
+                invalid={errors.start !== undefined}
                 aria-describedby={describedBy('start', zoneId)}
-                onChange={(event) => change('start', event.target.value)}
+                onChange={(value, isUnreadable) =>
+                  changeTime('start', value, isUnreadable)
+                }
               />,
             )}
           </div>

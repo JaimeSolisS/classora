@@ -59,6 +59,8 @@ export interface TimeFieldProps {
   /** Minutes between options; default 15 (the calendar's snap). */
   stepMinutes?: number;
   invalid?: boolean;
+  /** No typing and no list (a dialog that is sending, #600). */
+  disabled?: boolean | undefined;
   'aria-describedby'?: string | undefined;
   className?: string;
 }
@@ -75,6 +77,7 @@ export function TimeField({
   scrollTo,
   stepMinutes = 15,
   invalid,
+  disabled = false,
   'aria-describedby': describedBy,
   className,
 }: TimeFieldProps) {
@@ -111,7 +114,7 @@ export function TimeField({
   const anchorOption =
     rows.findLast((option) => (minutesOfDay(option) ?? 0) <= anchorMinutes) ??
     rows[0];
-  const shown = open && rows.length > 0;
+  const shown = open && rows.length > 0 && !disabled;
 
   // On open, the anchor is at the top of the list. The list is portalled
   // and mounts after the field's render, so the scroll happens when it
@@ -268,12 +271,17 @@ export function TimeField({
             }
             aria-invalid={invalid ? true : undefined}
             aria-describedby={describedBy}
+            disabled={disabled}
             autoComplete="off"
             spellCheck={false}
             maxLength={16}
             className={cn('pr-10', className)}
             value={shownText}
-            onClick={() => setOpen(true)}
+            onClick={() => {
+              if (!disabled) {
+                setOpen(true);
+              }
+            }}
             onChange={(event) => type(event.target.value)}
             onKeyDown={onKeyDown}
             onBlur={() => {
@@ -287,7 +295,8 @@ export function TimeField({
             aria-label={t('combobox.toggle')}
             aria-controls={shown ? listId : undefined}
             aria-expanded={shown}
-            className="absolute inset-y-0 right-0 flex w-9 items-center justify-center rounded-r-md text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
+            disabled={disabled}
+            className="absolute inset-y-0 right-0 flex w-9 items-center justify-center rounded-r-md text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
             // Keeps DOM focus in the field.
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => {

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn, within } from 'storybook/test';
+import { expect, fn, screen, userEvent, waitFor, within } from 'storybook/test';
 import { i18n } from '@/i18n';
 import { StoryQueryClient } from '@/test/StoryQueryClient';
 import {
@@ -149,5 +149,48 @@ export const StudentChipError: Story = {
     await expect(
       within(canvasElement).getByText(i18n.t('errors:student_inactive')),
     ).toBeVisible();
+  },
+};
+
+/**
+ * #600 AC2, AC5, AC11: typed key by key in a real browser (930 → 09:30-
+ * 10:30), an unreadable start after a submit, then the End list open (axe
+ * scans it with the error shown), scrolled to the chosen time.
+ */
+export const TimeErrorAndListOpen: Story = {
+  args: { initialValues: { ...FILLED, start: '', end: '' } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const start = canvas.getByRole('combobox', {
+      name: i18n.t('scheduling.fields.start'),
+    });
+    const end = canvas.getByRole('combobox', {
+      name: i18n.t('scheduling.fields.end'),
+    });
+    await userEvent.type(start, '930');
+    await userEvent.tab();
+    await expect(start).toHaveValue('09:30');
+    await expect(end).toHaveValue('10:30');
+
+    await userEvent.clear(start);
+    await userEvent.type(start, 'abc');
+    await userEvent.tab();
+    await userEvent.click(
+      canvas.getByRole('button', { name: i18n.t('groups.create.submit') }),
+    );
+    await expect(
+      canvas.getByText(i18n.t('scheduling.validation.timeFormat')),
+    ).toBeVisible();
+    await expect(start).toHaveAttribute('aria-invalid', 'true');
+
+    await userEvent.click(end);
+    const list = await screen.findByRole('listbox', {
+      name: i18n.t('scheduling.fields.end'),
+    });
+    const chosen = within(list).getByRole('option', { selected: true });
+    await expect(chosen).toHaveTextContent('10:30');
+    await waitFor(() =>
+      expect(list.scrollTop).toBeGreaterThanOrEqual(chosen.offsetTop - 1),
+    );
   },
 };

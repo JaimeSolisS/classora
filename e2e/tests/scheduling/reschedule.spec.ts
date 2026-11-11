@@ -257,12 +257,20 @@ test('an Owner reschedules by dragging, with an override and with the keyboard',
     name: common.scheduling.calendar.reschedule.title,
   });
   await expect(reschedule).toBeVisible();
-  await reschedule
-    .getByLabel(common.scheduling.fields.start, { exact: true })
-    .fill('16:00');
-  await reschedule
-    .getByLabel(common.scheduling.fields.end, { exact: true })
-    .fill('17:00');
+  // Typed key by key (#600 AC9): the end follows with B's 60 minutes.
+  const rescheduleStart = reschedule.getByLabel(
+    common.scheduling.fields.start,
+    {
+      exact: true,
+    },
+  );
+  await rescheduleStart.clear();
+  await rescheduleStart.pressSequentially('1600');
+  await rescheduleStart.press('Tab');
+  await expect(rescheduleStart).toHaveValue('16:00');
+  await expect(
+    reschedule.getByLabel(common.scheduling.fields.end, { exact: true }),
+  ).toHaveValue('17:00');
   await reschedule
     .getByRole('button', { name: common.scheduling.calendar.reschedule.submit })
     .press('Enter');

@@ -18,9 +18,11 @@ import {
 import {
   click,
   fieldByLabel,
+  leaveField,
   openDialog,
   pressEscape,
   typeInto,
+  typeKeys,
 } from '@/test/dom';
 import {
   buttonNamed,
@@ -304,6 +306,24 @@ describe('the create body (C4)', () => {
       max: 'courses.cohorts.validation.maxRange',
       respondBy: 'scheduling.offer.validation.deadlineIncomplete',
     });
+    // #600: unreadable text says how to write a time, the respond-by time
+    // even with no date (it would otherwise be dropped).
+    expect(
+      validateCohortCreate({ ...VALUES, start: '', tutorId: 't1' }, WEEKLY, {
+        start: true,
+        respondByTime: true,
+      }).errors,
+    ).toEqual({
+      start: 'scheduling.validation.timeFormat',
+      respondBy: 'scheduling.validation.timeFormat',
+    });
+    // Without a tutor the respond-by fields are hidden and not checked.
+    expect(
+      validateCohortCreate(VALUES, WEEKLY, {
+        start: false,
+        respondByTime: true,
+      }).errors,
+    ).toEqual({});
     // No "Ends": a stale until/count never blocks the cohort.
     expect(
       validateCohortCreate(VALUES, { ...WEEKLY, count: 'x', until: '' }),
@@ -682,6 +702,100 @@ describe('/courses/cohorts/new (C)', () => {
       fieldByLabel(main(), 'Start').getAttribute('aria-invalid'),
     ).toBeNull();
     expect(api.calls(CREATE)).toHaveLength(0);
+  });
+
+  describe('the time fields (#600)', () => {
+    const TUTOR = '01900000-0000-7000-8000-00000000e031';
+    const start = () => fieldByLabel(main(), 'Start');
+    const respondTime = () => fieldByLabel(main(), 'Time');
+
+    it.each([
+      ['930', '09:30'],
+      ['9:30 pm', '21:30'],
+      ['9 p.m.', '21:00'],
+    ])('reads %s typed into the start (AC1)', async (keys, startTime) => {
+      const api = stub(OWNER, {
+        [CREATE]: () => jsonResponse(201, CREATED_COHORT),
+      });
+      app = await open('/courses/cohorts/new');
+      await fill();
+      expect(start().getAttribute('role')).toBe('combobox');
+      expect(main().querySelector('input[type="time"]')).toBeNull();
+      act(() => start().focus());
+      typeKeys(start(), `^A\b${keys}`);
+      await leaveField(start());
+      await click(buttonNamed(main(), 'Create cohort'));
+      expect(api.calls(CREATE)[0]!.body).toMatchObject({
+        start_time: startTime,
+      });
+    });
+
+    it('says how to write a time for an unreadable start (AC5)', async () => {
+      const api = stub(OWNER);
+      app = await open('/courses/cohorts/new');
+      await fill();
+      act(() => start().focus());
+      typeKeys(start(), '^A\babc');
+      await leaveField(start());
+      await click(buttonNamed(main(), 'Create cohort'));
+      expect(api.calls(CREATE)).toHaveLength(0);
+      expect(main().textContent).toContain('Enter a time, for example 9:30.');
+      expect(main().textContent).not.toContain('Enter the start time.');
+      act(() => start().focus());
+      typeKeys(start(), '^A\b9:30');
+      expect(main().textContent).not.toContain(
+        'Enter a time, for example 9:30.',
+      );
+    });
+
+    it('blocks an unreadable respond-by time with no date, then clears it live (AC5)', async () => {
+      const api = stub(OWNER);
+      app = await open('/courses/cohorts/new');
+      await fill();
+      choose(main(), 'Tutor', TUTOR);
+      await settle();
+      expect(respondTime().getAttribute('role')).toBe('combobox');
+      act(() => respondTime().focus());
+      typeKeys(respondTime(), 'abc');
+      await leaveField(respondTime());
+      await click(buttonNamed(main(), 'Create cohort'));
+      expect(api.calls(CREATE)).toHaveLength(0);
+      expect(main().textContent).toContain('Enter a time, for example 9:30.');
+      expect(respondTime().getAttribute('aria-invalid')).toBe('true');
+      act(() => respondTime().focus());
+      typeKeys(respondTime(), '^A\b9:30');
+      expect(main().textContent).not.toContain(
+        'Enter a time, for example 9:30.',
+      );
+      // A time with no date is still incomplete, as before.
+      expect(main().textContent).toContain(
+        'Give both a date and a time, or leave both empty.',
+      );
+    });
+
+    it.each([
+      ['930', '09:30'],
+      ['9:30 pm', '21:30'],
+      ['9 p.m.', '21:00'],
+    ])('reads %s typed into the respond-by time (AC1)', async (keys, time) => {
+      const api = stub(OWNER, {
+        [CREATE]: () => jsonResponse(201, CREATED_COHORT),
+      });
+      app = await open('/courses/cohorts/new');
+      await fill();
+      choose(main(), 'Tutor', TUTOR);
+      await settle();
+      typeInto(fieldByLabel(main(), 'Date'), '2031-01-03');
+      act(() => respondTime().focus());
+      typeKeys(respondTime(), keys);
+      await leaveField(respondTime());
+      await click(buttonNamed(main(), 'Create cohort'));
+      const body = api.calls(CREATE)[0]!.body as { respond_by: string };
+      // Mexico City is UTC-6 in January.
+      const [hours, minutes] = time.split(':').map(Number) as [number, number];
+      const utc = new Date(Date.UTC(2031, 0, 3, hours + 6, minutes));
+      expect(body.respond_by).toBe(utc.toISOString());
+    });
   });
 
   it('keeps a server error until its own field changes (HF-13 E4)', async () => {

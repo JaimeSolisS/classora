@@ -5,6 +5,7 @@ import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { TimeField } from '@/components/ui/time-field';
 import { FieldError } from '@/features/auth/FieldError';
 import { SELECT_CLASS } from '@/features/students/styles';
 import { shownErrors, withoutErrors } from '@/lib/fieldErrors';
@@ -171,6 +172,8 @@ export function OfferPanel<T = AssignmentOfferCreated>({
   // values; the server's errors stay until their field changes.
   const [checked, setChecked] = useState(false);
   const [serverErrors, setServerErrors] = useState<OfferErrors>({});
+  // #600: the respond-by time's text isn't a time.
+  const [deadlineUnreadable, setDeadlineUnreadable] = useState(false);
   const [conflicts, setConflicts] = useState<SchedulingConflict[] | null>(
     initialConflicts ?? null,
   );
@@ -197,9 +200,9 @@ export function OfferPanel<T = AssignmentOfferCreated>({
   const counterId = `${id}-reason-counter`;
   const errorId = (field: OfferField) => `${id}-${field}-error`;
 
-  const errors = shownErrors(checked, serverErrors, () =>
-    validateOffer(values, { requireReason: substitute }),
-  );
+  const check = () =>
+    validateOffer(values, { requireReason: substitute, deadlineUnreadable });
+  const errors = shownErrors(checked, serverErrors, check);
 
   function update(change: Partial<OfferValues>) {
     setValues((current) => ({ ...current, ...change }));
@@ -304,7 +307,7 @@ export function OfferPanel<T = AssignmentOfferCreated>({
     setSeriesConflicts(null);
     setFailure(null);
     setAnnouncement('');
-    const found = validateOffer(values, { requireReason: substitute });
+    const found = check();
     setChecked(true);
     setServerErrors({});
     if (Object.keys(found).length > 0) {
@@ -622,21 +625,22 @@ export function OfferPanel<T = AssignmentOfferCreated>({
             </div>
             <div className="flex flex-col gap-2">
               <label
+                id={`${fieldId('deadlineTime')}-label`}
                 htmlFor={fieldId('deadlineTime')}
                 className="text-sm font-medium"
               >
                 {t('scheduling.offer.deadlineTime')}
               </label>
-              <Input
+              <TimeField
                 id={fieldId('deadlineTime')}
-                type="time"
-                step={60}
+                labelId={`${fieldId('deadlineTime')}-label`}
                 value={values.deadlineTime}
-                aria-invalid={errors.deadline ? true : undefined}
+                invalid={errors.deadline !== undefined}
                 aria-describedby={describedBy('deadline', zoneId)}
-                onChange={(event) =>
-                  update({ deadlineTime: event.target.value })
-                }
+                onChange={(value, unreadable) => {
+                  update({ deadlineTime: value });
+                  setDeadlineUnreadable(unreadable);
+                }}
               />
             </div>
           </div>
