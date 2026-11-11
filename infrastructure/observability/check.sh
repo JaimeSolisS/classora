@@ -94,12 +94,17 @@ run "tempo -config.verify tempo/tempo.yaml" \
 # 5. Grafana provisioning and alert rules, drift, pins and limits.
 promql_dir=$(mktemp -d)
 trap 'rm -rf "$promql_dir"' EXIT
+# mktemp makes the directory 0700. The pinned images run as non-root users
+# (Prometheus: nobody), and on Linux a bind mount keeps host permissions, so
+# both the directory and the file must be readable by others.
+chmod 755 "$promql_dir"
 run "check_config.py" \
   uv run --no-project --isolated --quiet --with pyyaml==6.0.3 python -I "$obs/check_config.py" \
   --promql-out "$promql_dir/promql.yaml" "$obs"
 
 # 6. Every dashboard and alert PromQL expression parses.
 if [ -s "$promql_dir/promql.yaml" ]; then
+  chmod 644 "$promql_dir/promql.yaml"
   run "promtool check rules (dashboard and alert PromQL)" \
     docker run --rm -v "$promql_dir:/promql:ro" --entrypoint promtool "$prometheus" \
     check rules /promql/promql.yaml
