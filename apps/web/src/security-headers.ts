@@ -2,8 +2,9 @@
 // Directive by directive, with the reasons: _docs/security-headers.md.
 //
 // - PRODUCTION_HEADERS: the built SPA. `vite preview` serves them today
-//   (vite.config.ts `preview.headers`); M9-02 (#610) copies them into the Caddyfile
-//   and tests them there.
+//   (vite.config.ts `preview.headers`), and the edge image's Caddyfile
+//   (infrastructure/docker/edge/Caddyfile, #610) copies them value for value:
+//   security-headers.caddy.test.ts fails when they differ.
 // - DEVELOPMENT_HEADERS: the Vite dev server (`make dev`, `make e2e`;
 //   vite.config.ts `server.headers`). The same policy plus only what the dev
 //   server demonstrably needs.
@@ -78,7 +79,7 @@ function headersFor(csp: CspDirectives): SecurityHeaders {
   };
 }
 
-/** Headers of every SPA response in production (M9-02, #610: the Caddyfile). */
+/** Headers of every SPA response in production (the edge Caddyfile, #610). */
 export const PRODUCTION_HEADERS = headersFor(PRODUCTION_CSP);
 
 /** Headers of every response of the Vite dev server. */

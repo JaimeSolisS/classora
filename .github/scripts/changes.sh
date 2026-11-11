@@ -2,7 +2,7 @@
 # Decide which CI job groups a pull request needs (used by the `changes` job in
 # .github/workflows/ci.yml). Compares <head> with its merge base on <base>
 # (`git diff base...head`) and prints `api=true|false`, `web=true|false`,
-# `client=true|false` and `e2e=true|false`.
+# `client=true|false`, `e2e=true|false` and `images=true|false`.
 #
 # Run it locally against any two refs:
 #   bash .github/scripts/changes.sh <base-ref> <head-ref>
@@ -15,7 +15,15 @@
 #        infrastructure/docker/**, package.json, pnpm-lock.yaml,
 #        pnpm-workspace.yaml, .npmrc, .nvmrc, .env.example (everything the
 #        E2E Compose stack and the Playwright tests are built from)
-#   all (api, web and e2e): .github/workflows/**, .github/scripts/**, Makefile
+#   images (the arm64 AWS images, #610 E1 (a)): infrastructure/docker/**,
+#        apps/api/pyproject.toml, apps/api/uv.lock, package.json,
+#        pnpm-lock.yaml, apps/web/package.json, .nvmrc, .dockerignore,
+#        apps/web/src/security-headers.ts and
+#        apps/web/scripts/print-production-headers.js (the edge's headers).
+#        Application code alone doesn't run it: the e2e job's amd64
+#        check-pdf-image covers that.
+#   all (api, web, e2e and images): .github/workflows/**, .github/scripts/**,
+#        Makefile
 #   client (the OpenAPI drift check): true when api or web is true. An API
 #        change can change the document; a packages/** or lockfile change
 #        (generator version) can change the generated client.
@@ -32,12 +40,14 @@ files=$(git diff --name-only "$1...$2")
 api=false
 web=false
 e2e=false
+images=false
 while IFS= read -r file; do
   case "$file" in
     .github/workflows/* | .github/scripts/* | Makefile)
       api=true
       web=true
       e2e=true
+      images=true
       ;;
     apps/api/* | infrastructure/docker/pgbouncer/*)
       api=true
@@ -52,6 +62,13 @@ while IFS= read -r file; do
       e2e=true
       ;;
   esac
+  case "$file" in
+    infrastructure/docker/* | apps/api/pyproject.toml | apps/api/uv.lock | package.json | pnpm-lock.yaml | \
+      apps/web/package.json | .nvmrc | .dockerignore | apps/web/src/security-headers.ts | \
+      apps/web/scripts/print-production-headers.js)
+      images=true
+      ;;
+  esac
 done <<<"$files"
 
 client=false
@@ -63,3 +80,4 @@ echo "api=$api"
 echo "web=$web"
 echo "client=$client"
 echo "e2e=$e2e"
+echo "images=$images"

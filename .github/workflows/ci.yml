@@ -35,6 +35,7 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       client: ${{ steps.filter.outputs.client }}
       e2e: ${{ steps.filter.outputs.e2e }}
+      images: ${{ steps.filter.outputs.images }}
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -54,7 +55,7 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ]; then
             bash .github/scripts/changes.sh "$BASE_SHA" "$HEAD_SHA" | tee -a "$GITHUB_OUTPUT"
           else
-            printf 'api=true\nweb=true\nclient=true\ne2e=true\n' | tee -a "$GITHUB_OUTPUT"
+            printf 'api=true\nweb=true\nclient=true\ne2e=true\nimages=true\n' | tee -a "$GITHUB_OUTPUT"
           fi
 
   api-lint:
@@ -479,6 +480,56 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  # The images that run on AWS (ADR-0010, #610), built natively for linux/arm64
+  # on GitHub's arm64 runner (no QEMU) and checked before anything is pushed
+  # (publishing is M9-07, #615): architecture, non-root API, no secrets in Env
+  # or the build context, PDFs in es and en inside the arm64 API image, the
+  # edge's behaviour and headers, and the Trivy scan of each image. Runs when
+  # the image inputs change (changes.sh `images`), not for app-code-only PRs.
+  images:
+    name: images
+    needs: changes
+    if: needs.changes.outputs.images == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    env:
+      PLATFORM: linux/arm64
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # smoke-edge reads PRODUCTION_HEADERS with Node (no install needed).
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: make build-images (linux/arm64)
+        run: make build-images
+
+      - name: make check-images
+        run: make check-images
+
+      # Same Dockerfile, built natively on this runner: the arm64 API image.
+      - name: make check-pdf-image (arm64)
+        run: make check-pdf-image
+
+      - name: make smoke-edge
+        run: make smoke-edge
+
+      - name: make scan-image (api, web, pgbouncer)
+        run: |
+          fail=0
+          for image in classora/api:local classora/web:local classora/pgbouncer:local; do
+            echo "::group::scan-image $image"
+            make scan-image IMAGE="$image" || fail=1
+            echo "::endgroup::"
+          done
+          exit "$fail"
+
   # Security scans (ADR-0016). Not path-filtered: a new advisory or a secret in
   # any file (documentation included) must turn every pull request red. The
   # scanner versions are pinned in the Makefile only.
@@ -547,12 +598,13 @@ jobs:
 
   # The one required status check (repository ruleset on develop and main).
   # Path-filtered jobs may be skipped when their paths did not change; the
-  # security jobs always run, so a skipped security job is a failure. `e2e` is
-  # path-filtered like the others (skipped only when changes set e2e=false).
+  # security jobs always run, so a skipped security job is a failure. `e2e` and
+  # `images` are path-filtered like the others (skipped only when changes set
+  # them to false).
   ci-required:
     name: ci-required
     if: always()
-    needs: [changes, api-lint, api-unit, api-migrations, api-billing-invariants, api-simulation, api-integration, web, web-storybook, api-client, e2e, security-deps, security-secrets, security-sast]
+    needs: [changes, api-lint, api-unit, api-migrations, api-billing-invariants, api-simulation, api-integration, web, web-storybook, api-client, e2e, images, security-deps, security-secrets, security-sast]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -563,6 +615,7 @@ jobs:
           RUN_WEB: ${{ needs.changes.outputs.web }}
           RUN_CLIENT: ${{ needs.changes.outputs.client }}
           RUN_E2E: ${{ needs.changes.outputs.e2e }}
+          RUN_IMAGES: ${{ needs.changes.outputs.images }}
           API_LINT: ${{ needs.api-lint.result }}
           API_UNIT: ${{ needs.api-unit.result }}
           API_MIGRATIONS: ${{ needs.api-migrations.result }}
@@ -574,12 +627,13 @@ jobs:
           WEB_STORYBOOK: ${{ needs.web-storybook.result }}
           API_CLIENT: ${{ needs.api-client.result }}
           E2E: ${{ needs.e2e.result }}
+          IMAGES: ${{ needs.images.result }}
           SECURITY_DEPS: ${{ needs.security-deps.result }}
           # Index syntax, so a grep for repository-secret references stays empty.
           SECURITY_SECRETS: ${{ needs['security-secrets'].result }}
           SECURITY_SAST: ${{ needs.security-sast.result }}
         run: |
-          echo "changes: $CHANGES (api=$RUN_API, web=$RUN_WEB, client=$RUN_CLIENT, e2e=$RUN_E2E)"
+          echo "changes: $CHANGES (api=$RUN_API, web=$RUN_WEB, client=$RUN_CLIENT, e2e=$RUN_E2E, images=$RUN_IMAGES)"
           if [ "$CHANGES" != "success" ]; then
             echo "::error::changes finished with result '$CHANGES'"
             exit 1
@@ -615,6 +669,7 @@ jobs:
           check web-storybook "$WEB_STORYBOOK" "$RUN_WEB"
           check api-client "$API_CLIENT" "$RUN_CLIENT"
           check e2e "$E2E" "$RUN_E2E"
+          check images "$IMAGES" "$RUN_IMAGES"
           # Always-on jobs: "skipped" is a failure.
           check security-deps "$SECURITY_DEPS" always
           check security-secrets "$SECURITY_SECRETS" always

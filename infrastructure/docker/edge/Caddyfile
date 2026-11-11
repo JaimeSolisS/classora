@@ -1,0 +1,93 @@
+# The edge: Caddy in front of the built SPA and the API (ADR-0010; #610).
+# One site, set by environment variables when the container starts:
+#   SITE_ADDRESS  required (unset, the config fails to load): a hostname for automatic HTTPS (dev.classora.dev),
+#                 or http://:8080 for plain-HTTP tests (edge/smoke.sh)
+#   ACME_CA       production (default, also when empty: Let's Encrypt with
+#                 Caddy's ZeroSSL fallback) or staging (Let's Encrypt staging, automated tests
+#                 only: browsers reject staging certificates on .dev)
+#   API_UPSTREAM  the API, host:port (default api:8000)
+# Behaviour, checked by edge/smoke.sh (`make smoke-edge`, CI `images` job):
+#   /assets/*                        file, cached for a year (hashed names)
+#   any other path                   the file, else index.html (SPA), no-cache
+#   /api/v1/notifications/stream     proxied unbuffered and unencoded (SSE)
+#   /api/*                           proxied; the API's own headers only
+#   /health/*                        404, empty: health is checked on the host
+# X-Forwarded-For: no trusted_proxies, so Caddy replaces any client-sent value
+# with the TCP peer (ADR-0008 as amended by ADR-0010).
+
+# ACME_CA unset, empty or "production": Caddy's default issuers.
+(acme-) {
+}
+
+(acme-production) {
+}
+
+(acme-staging) {
+	acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+# The SPA's headers. The first three are PRODUCTION_HEADERS from
+# apps/web/src/security-headers.ts, value for value:
+# apps/web/src/security-headers.caddy.test.ts fails when they differ, and
+# edge/smoke.sh compares the served headers with the module. The other two
+# are edge-only (_docs/security-headers.md "Edge headers").
+(spa_security_headers) {
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+	}
+}
+
+{
+	import acme-{$ACME_CA:production}
+}
+
+{$SITE_ADDRESS} {
+	# Access logs: JSON on stdout (Caddy redacts Cookie and Authorization).
+	log {
+		output stdout
+		format json
+	}
+
+	# HTTPS sites only; a plain-HTTP site never sends it.
+	@https protocol https
+	header @https Strict-Transport-Security "max-age=31536000"
+
+	handle /health/* {
+		respond 404
+	}
+
+	handle /api/v1/notifications/stream {
+		reverse_proxy {$API_UPSTREAM:api:8000} {
+			flush_interval -1
+		}
+	}
+
+	handle /api/* {
+		encode zstd gzip
+		reverse_proxy {$API_UPSTREAM:api:8000}
+	}
+
+	handle {
+		import spa_security_headers
+		root * /srv
+		encode zstd gzip
+
+		handle /assets/* {
+			@found file
+			header @found Cache-Control "public, max-age=31536000, immutable"
+			file_server
+		}
+
+		handle {
+			header Cache-Control "no-cache"
+			try_files {path} /index.html
+			file_server
+		}
+	}
+}
+
+import /etc/caddy/sites.d/*.caddy
