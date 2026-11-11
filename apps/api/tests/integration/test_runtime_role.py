@@ -39,8 +39,13 @@ from app.core.runtime_role import sync_runtime_role
 from app.core.uow import UnitOfWork
 from app.main import create_app
 from app.modules.administration import retention
+from app.modules.administration import service as administration
 from app.modules.administration.live import NotificationListener
 from app.modules.administration.notifications import NOTIFICATION_CHANNEL
+from app.modules.administration.notifications_dev import (
+    DEV_DEMO_TYPE,
+    register_dev_notification_type,
+)
 from app.modules.identity.permissions import OWNER
 from tests.authz.csrf import ORIGIN_HEADER, origin_for
 from tests.integration.auth_support import create_user, login
@@ -405,3 +410,114 @@ def test_the_api_signs_in_through_pgbouncer_and_audits_as_the_runtime_role(
         "SELECT 1 FROM auth_sessions WHERE user_id = :actor",
         {"actor": owner.id},
     )
+
+
+# Short polling so the worker notices the job and returns quickly.
+FAST_WORKER = {
+    "install_signal_handlers": False,
+    "fetch_job_polling_interval": 0.2,
+    "abort_job_polling_interval": 0.2,
+}
+
+
+@pytest.mark.anyio
+async def test_a_job_deferred_through_pgbouncer_runs_in_a_runtime_worker(
+    runtime_pgbouncer_url, runtime_url, module_seeded_url
+):
+    api_settings = settings_for(runtime_pgbouncer_url, direct_dsn=runtime_url)
+    worker_settings = settings_for(runtime_url)
+    api_app = jobs.create_job_app(jobs.api_connector(api_settings), app_env="local")
+    worker_app = jobs.create_job_app(
+        jobs.worker_connector(worker_settings), app_env="local"
+    )
+    worker_app.periodic_registry.periodic_tasks.clear()
+
+    async with api_app.open_async():
+        job_id = await api_app.configure_task(
+            "demo:succeed", allow_unknown=False
+        ).defer_async(demo_id=str(uuid.uuid7()))
+    async with worker_app.open_async():
+        await worker_app.run_worker_async(wait=False, **FAST_WORKER)
+
+    [row] = await run_sql_async(
+        module_seeded_url,
+        "SELECT status::text AS status, attempts FROM procrastinate_jobs"
+        " WHERE id = :id",
+        {"id": job_id},
+    )
+    assert (row.status, row.attempts) == ("succeeded", 1)
+
+
+@pytest.mark.anyio
+async def test_a_retention_run_deletes_and_audits_as_the_runtime_role(
+    runtime_url, module_seeded_url
+):
+    old = await run_sql_async(
+        module_seeded_url,
+        "INSERT INTO procrastinate_jobs (queue_name, task_name, status)"
+        " VALUES ('default', 'demo:succeed', 'succeeded') RETURNING id",
+    )
+    job_id = int(old[0].id)
+    await run_sql_async(
+        module_seeded_url,
+        "UPDATE procrastinate_events SET at = now() - interval '40 days'"
+        " WHERE job_id = :id",
+        {"id": job_id},
+    )
+    await run_sql_async(
+        module_seeded_url,
+        "INSERT INTO procrastinate_events (job_id, type, at)"
+        " VALUES (:id, 'started', now() - interval '40 days')",
+        {"id": job_id},
+    )
+
+    result = await retention.run_retention(settings_for(runtime_url))
+
+    assert result.failed == ()
+    assert result.total >= 1
+    assert not await run_sql_async(
+        module_seeded_url, "SELECT 1 FROM procrastinate_jobs WHERE id = :id", {"id": job_id}
+    )
+    assert await run_sql_async(
+        module_seeded_url,
+        "SELECT 1 FROM audit_events WHERE action = 'administration.retention_run'",
+    )
+
+
+@pytest.mark.anyio
+async def test_listen_receives_a_notification_written_by_the_runtime_role(
+    runtime_url, module_seeded_url
+):
+    register_dev_notification_type()
+    recipient = await asyncio.to_thread(
+        create_user, module_seeded_url, roles=(OWNER,)
+    )
+    listen_engine = short_lived_engine(runtime_url)
+    work_engine = short_lived_engine(runtime_url)
+    payloads: asyncio.Queue[str] = asyncio.Queue()
+    try:
+        async with listen_engine.connect() as connection:
+            assert await connection.scalar(text("SELECT current_user")) == RUNTIME_ROLE
+            # A backend inside a transaction holds its notifications back.
+            await connection.commit()
+            raw = (await connection.get_raw_connection()).driver_connection
+            assert raw is not None
+            await raw.add_listener(
+                NOTIFICATION_CHANNEL, lambda *args: payloads.put_nowait(args[3])
+            )
+            async with UnitOfWork(create_sessionmaker(work_engine)) as uow:
+                created = await administration.create_notification(
+                    uow.session,
+                    recipient_user_id=recipient.id,
+                    notification_type=DEV_DEMO_TYPE,
+                    params={"label": "Runtime"},
+                )
+            payload = await asyncio.wait_for(payloads.get(), 5)
+    finally:
+        await listen_engine.dispose()
+        await work_engine.dispose()
+
+    assert json.loads(payload) == {
+        "user_id": str(recipient.id),
+        "notification_id": str(created),
+    }
