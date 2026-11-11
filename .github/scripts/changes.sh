@@ -2,7 +2,7 @@
 # Decide which CI job groups a pull request needs (used by the `changes` job in
 # .github/workflows/ci.yml). Compares <head> with its merge base on <base>
 # (`git diff base...head`) and prints `api=true|false`, `web=true|false`,
-# `client=true|false`, `e2e=true|false` and `images=true|false`.
+# `client=true|false`, `e2e=true|false`, `images=true|false` and `infra=true|false`.
 #
 # Run it locally against any two refs:
 #   bash .github/scripts/changes.sh <base-ref> <head-ref>
@@ -22,8 +22,12 @@
 #        apps/web/scripts/print-production-headers.js (the edge's headers).
 #        Application code alone doesn't run it: the e2e job's amd64
 #        check-pdf-image covers that.
-#   all (api, web, e2e and images): .github/workflows/**, .github/scripts/**,
-#        Makefile
+#   infra (configuration checks, #611): infrastructure/observability/**,
+#        infrastructure/terraform/**, infrastructure/scripts/**,
+#        infrastructure/host/**, compose.yaml (the profile wiring
+#        `make check-observability` checks)
+#   all (api, web, e2e, images and infra): .github/workflows/**,
+#        .github/scripts/**, Makefile
 #   client (the OpenAPI drift check): true when api or web is true. An API
 #        change can change the document; a packages/** or lockfile change
 #        (generator version) can change the generated client.
@@ -41,6 +45,7 @@ api=false
 web=false
 e2e=false
 images=false
+infra=false
 while IFS= read -r file; do
   case "$file" in
     .github/workflows/* | .github/scripts/* | Makefile)
@@ -48,6 +53,7 @@ while IFS= read -r file; do
       web=true
       e2e=true
       images=true
+      infra=true
       ;;
     apps/api/* | infrastructure/docker/pgbouncer/*)
       api=true
@@ -69,6 +75,12 @@ while IFS= read -r file; do
       images=true
       ;;
   esac
+  case "$file" in
+    infrastructure/observability/* | infrastructure/terraform/* | infrastructure/scripts/* | \
+      infrastructure/host/* | compose.yaml)
+      infra=true
+      ;;
+  esac
 done <<<"$files"
 
 client=false
@@ -81,3 +93,4 @@ echo "web=$web"
 echo "client=$client"
 echo "e2e=$e2e"
 echo "images=$images"
+echo "infra=$infra"

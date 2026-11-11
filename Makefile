@@ -1,4 +1,4 @@
-.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge
+.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -32,6 +32,34 @@ SEMGREP = docker run --rm $(REPO_MOUNT) $(SEMGREP_IMAGE) \
 # The worker (same image as api) waits for its tables until `make migrate` has run.
 dev:
 	docker compose up -d --build --wait
+
+# Optional local observability (ADR-0014, #611): OTel Collector, Prometheus, Loki,
+# Tempo and Grafana, Compose profile `observability` (root compose.yaml). Off by
+# default: `make dev` never starts it. Image pins: compose.observability.yaml.
+OBS_SERVICES := otel-collector prometheus loki tempo grafana
+OBS_VOLUMES := prometheus-data loki-data tempo-data grafana-data
+
+## Start the app stack plus the observability profile (about 700 MB more RAM; a heavy
+## command). Grafana on http://127.0.0.1:GRAFANA_PORT (default 3000), login admin and
+## GRAFANA_ADMIN_PASSWORD from .env. Stop only the profile with `make dev-observability-down`.
+dev-observability:
+	@if docker compose --profile observability config | grep -qE '^ +GF_SECURITY_ADMIN_PASSWORD: ("")?$$'; then \
+	  echo "dev-observability: set GRAFANA_ADMIN_PASSWORD in .env (see .env.example)" >&2; exit 2; fi
+	docker compose --profile observability up -d --build --wait
+
+## Stop and remove only the observability containers (the app stack keeps running).
+## Their data volumes are kept unless V=1.
+dev-observability-down:
+	docker compose --profile observability rm --stop --force $(OBS_SERVICES)
+	@if [ "$(V)" = 1 ]; then \
+	  project=$$(docker compose config | sed -n 's/^name: //p' | head -n 1); \
+	  for volume in $(OBS_VOLUMES); do docker volume rm --force "$${project}_$$volume"; done; fi
+
+## Validate every observability config with the pinned images, without starting the stack:
+## profile off by default, otelcol validate, promtool, loki/tempo verify, Grafana provisioning.
+## Needs Docker and uv (CI job `infra`).
+check-observability:
+	infrastructure/observability/check.sh
 
 ## Apply Alembic migrations to the local Compose database (starts db if needed; make dev never migrates).
 # --build: uses the migrations in the working tree. Alembic connects directly to PostgreSQL (ADR-0003).

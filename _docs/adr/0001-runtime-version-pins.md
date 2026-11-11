@@ -12,6 +12,8 @@ Accepted
 
 Owner: JaimeSolisS. Approved as proposed on 2026-10-17 (GitHub issue #6, orchestrator decision record).
 
+Amended 2026-11-11: observability images (issue #611, M9-03, escalation E1 option (a), owner-delegated recommended decision; see [Amendments](#amendments)).
+
 ## Context
 
 Resolves architecture §10 **ISSUE-D7** (version pins) in [`../architecture.md`](../architecture.md) §10.3. The spec ([`../spec.md`](../spec.md) §10, stack table) names the technologies but pins no major versions.
@@ -46,6 +48,23 @@ The runtime and frontend pins are:
 - Library versions are exact in the lockfiles (`apps/api/uv.lock`, `pnpm-lock.yaml`). This ADR governs only their majors.
 - Changing any pin in the table above at the major level (minor level for Python) requires a new or superseding ADR.
 - Patch and minor bumps within a pinned major are ordinary lockfile changes.
+
+## Amendments
+
+### A1. Observability images (2026-11-11, #611)
+
+The monitoring stack ([ADR-0014](0014-observability-error-tracking-and-alerting.md)) runs these images, locally (`make dev-observability`) and on AWS. Each is pinned by an **exact tag and its multi-arch index digest**, as the Makefile pins the scanners ([ADR-0016](0016-ci-security-tooling.md)). Each index has `linux/amd64` and `linux/arm64`. Each version was released at least two weeks before the pin.
+
+| Image | Tag | Index digest | Released |
+|---|---|---|---|
+| `otel/opentelemetry-collector-contrib` | `0.164.0` | `sha256:340c9ca6a36617084c6661bdc4f0fe92b7cda5a805d61673ec8db375fddc522b` | 2026-10-27 |
+| `prom/prometheus` (3.x, native OTLP receiver) | `v3.15.1` | `sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2` | 2026-10-21 |
+| `grafana/loki` (3.x) | `3.7.9` | `sha256:0db216b630ae1f348a1584c67f3cead8b4c1fc839169a39501db664744158e28` | 2026-10-20 |
+| `grafana/tempo` (2.x) | `2.10.10` | `sha256:12b0820f13ffa10ce956b6e9acc3b03f3cffded99109be6cc09d106fe56e5d38` | 2026-10-21 |
+| `grafana/grafana` (12.x) | `12.4.14` | `sha256:ae509d9ae8c1021ca32ec370a9ca975d40165eda9fccd1e1102d317ff8787cd7` | 2026-10-27 |
+
+- The pins live in one file, `infrastructure/observability/compose.observability.yaml`. `make check-observability` validates each configuration with the image pinned there, and fails if an image isn't pinned by tag and digest.
+- The majors (Prometheus 3, Loki 3, Tempo 2, Grafana 12) are governed like the pins in the table above: changing one needs an amendment. Patch and minor bumps within a major, and Collector releases, are ordinary changes that update the tag, the digest and this table together.
 
 ## Consequences
 

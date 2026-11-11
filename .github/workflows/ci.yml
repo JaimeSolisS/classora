@@ -36,6 +36,7 @@ jobs:
       client: ${{ steps.filter.outputs.client }}
       e2e: ${{ steps.filter.outputs.e2e }}
       images: ${{ steps.filter.outputs.images }}
+      infra: ${{ steps.filter.outputs.infra }}
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -55,7 +56,7 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ]; then
             bash .github/scripts/changes.sh "$BASE_SHA" "$HEAD_SHA" | tee -a "$GITHUB_OUTPUT"
           else
-            printf 'api=true\nweb=true\nclient=true\ne2e=true\nimages=true\n' | tee -a "$GITHUB_OUTPUT"
+            printf 'api=true\nweb=true\nclient=true\ne2e=true\nimages=true\ninfra=true\n' | tee -a "$GITHUB_OUTPUT"
           fi
 
   api-lint:
@@ -530,6 +531,30 @@ jobs:
           done
           exit "$fail"
 
+  # Infrastructure configuration checks (changes.sh `infra`). Validates every
+  # observability config with its pinned image and starts nothing (#611,
+  # ADR-0014). M9-05 (#613) adds Terraform fmt and validate here.
+  infra:
+    name: infra
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # check_config.py runs with uv (PyYAML only, no project).
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: false
+
+      - name: make check-observability
+        run: make check-observability
+
   # Security scans (ADR-0016). Not path-filtered: a new advisory or a secret in
   # any file (documentation included) must turn every pull request red. The
   # scanner versions are pinned in the Makefile only.
@@ -598,13 +623,13 @@ jobs:
 
   # The one required status check (repository ruleset on develop and main).
   # Path-filtered jobs may be skipped when their paths did not change; the
-  # security jobs always run, so a skipped security job is a failure. `e2e` and
-  # `images` are path-filtered like the others (skipped only when changes set
-  # them to false).
+  # security jobs always run, so a skipped security job is a failure. `e2e`,
+  # `images` and `infra` are path-filtered like the others (skipped only when
+  # changes set them to false).
   ci-required:
     name: ci-required
     if: always()
-    needs: [changes, api-lint, api-unit, api-migrations, api-billing-invariants, api-simulation, api-integration, web, web-storybook, api-client, e2e, images, security-deps, security-secrets, security-sast]
+    needs: [changes, api-lint, api-unit, api-migrations, api-billing-invariants, api-simulation, api-integration, web, web-storybook, api-client, e2e, images, infra, security-deps, security-secrets, security-sast]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -616,6 +641,7 @@ jobs:
           RUN_CLIENT: ${{ needs.changes.outputs.client }}
           RUN_E2E: ${{ needs.changes.outputs.e2e }}
           RUN_IMAGES: ${{ needs.changes.outputs.images }}
+          RUN_INFRA: ${{ needs.changes.outputs.infra }}
           API_LINT: ${{ needs.api-lint.result }}
           API_UNIT: ${{ needs.api-unit.result }}
           API_MIGRATIONS: ${{ needs.api-migrations.result }}
@@ -628,12 +654,13 @@ jobs:
           API_CLIENT: ${{ needs.api-client.result }}
           E2E: ${{ needs.e2e.result }}
           IMAGES: ${{ needs.images.result }}
+          INFRA: ${{ needs.infra.result }}
           SECURITY_DEPS: ${{ needs.security-deps.result }}
           # Index syntax, so a grep for repository-secret references stays empty.
           SECURITY_SECRETS: ${{ needs['security-secrets'].result }}
           SECURITY_SAST: ${{ needs.security-sast.result }}
         run: |
-          echo "changes: $CHANGES (api=$RUN_API, web=$RUN_WEB, client=$RUN_CLIENT, e2e=$RUN_E2E, images=$RUN_IMAGES)"
+          echo "changes: $CHANGES (api=$RUN_API, web=$RUN_WEB, client=$RUN_CLIENT, e2e=$RUN_E2E, images=$RUN_IMAGES, infra=$RUN_INFRA)"
           if [ "$CHANGES" != "success" ]; then
             echo "::error::changes finished with result '$CHANGES'"
             exit 1
@@ -670,6 +697,7 @@ jobs:
           check api-client "$API_CLIENT" "$RUN_CLIENT"
           check e2e "$E2E" "$RUN_E2E"
           check images "$IMAGES" "$RUN_IMAGES"
+          check infra "$INFRA" "$RUN_INFRA"
           # Always-on jobs: "skipped" is a failure.
           check security-deps "$SECURITY_DEPS" always
           check security-secrets "$SECURITY_SECRETS" always

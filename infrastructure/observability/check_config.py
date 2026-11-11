@@ -1,0 +1,215 @@
+"""Static checks of the observability configuration (`make check-observability`).
+
+Run by infrastructure/observability/check.sh with PyYAML only (no project):
+    uv run --no-project --isolated --with pyyaml==6.0.3 python -I check_config.py <dir>
+
+It never starts anything. It checks what the services' own validators don't:
+- Grafana: data sources, the dashboard provider and every dashboard parse; uids
+  are unique; every data-source reference (links between data sources and
+  every panel's data source) points at a provisioned uid; grafana.ini keeps
+  anonymous access and sign-up off.
+- Collector drift: collector/local.yaml's receivers are agent.yaml's minus
+  file_log and host_metrics, and its exporters are gateway.yaml's.
+- compose.observability.yaml: every image is pinned by tag and digest, every
+  service has a mem_limit (local defaults under 700 MB in total), and only
+  Grafana publishes a port, on 127.0.0.1.
+"""
+
+import configparser
+import json
+import re
+import sys
+from pathlib import Path
+
+import yaml
+
+LOCAL_ONLY_RECEIVERS = {"file_log", "host_metrics"}
+MEM_BUDGET_BYTES = 700 * 1024 * 1024
+UNITS = {"k": 1024, "m": 1024**2, "g": 1024**3}
+
+errors: list[str] = []
+
+
+def fail(message: str) -> None:
+    errors.append(message)
+
+
+def load_yaml(path: Path) -> object:
+    try:
+        return yaml.safe_load(path.read_text())
+    except yaml.YAMLError as exc:
+        fail(f"{path}: invalid YAML: {exc}")
+        return None
+
+
+def walk(node: object, key: str) -> list[object]:
+    """Every value stored under `key`, at any depth."""
+    found: list[object] = []
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if k == key:
+                found.append(v)
+            found.extend(walk(v, key))
+    elif isinstance(node, list):
+        for item in node:
+            found.extend(walk(item, key))
+    return found
+
+
+def check_grafana(root: Path) -> None:
+    grafana = root / "grafana"
+    datasources: dict[str, str] = {}
+    ds_files = sorted((grafana / "provisioning" / "datasources").glob("*.yaml"))
+    if not ds_files:
+        fail("grafana/provisioning/datasources: no data source file")
+    for path in ds_files:
+        doc = load_yaml(path)
+        if not isinstance(doc, dict) or doc.get("apiVersion") != 1:
+            fail(f"{path}: expected a mapping with apiVersion: 1")
+            continue
+        for ds in doc.get("datasources") or []:
+            uid, name = ds.get("uid"), ds.get("name")
+            if not uid or not name or not ds.get("type") or not ds.get("url"):
+                fail(f"{path}: data source {name!r} needs name, uid, type and url")
+                continue
+            if uid in datasources:
+                fail(f"{path}: duplicate data source uid {uid!r}")
+            datasources[uid] = ds["type"]
+        for ref in walk(doc, "datasourceUid"):
+            if ref not in datasources:
+                fail(f"{path}: datasourceUid {ref!r} is not a provisioned data source")
+
+    dashboard_dirs: list[str] = []
+    for path in sorted((grafana / "provisioning" / "dashboards").glob("*.yaml")):
+        doc = load_yaml(path)
+        if not isinstance(doc, dict) or doc.get("apiVersion") != 1:
+            fail(f"{path}: expected a mapping with apiVersion: 1")
+            continue
+        for provider in doc.get("providers") or []:
+            dashboard_dirs.append((provider.get("options") or {}).get("path", ""))
+    if dashboard_dirs != ["/etc/grafana/dashboards"]:
+        fail(f"dashboard providers: expected /etc/grafana/dashboards: {dashboard_dirs}")
+
+    dashboard_files = sorted((grafana / "dashboards").glob("*.json"))
+    if not dashboard_files:
+        fail("grafana/dashboards: no dashboard")
+    uids: set[str] = set()
+    for path in dashboard_files:
+        try:
+            dashboard = json.loads(path.read_text())
+        except json.JSONDecodeError as exc:
+            fail(f"{path}: invalid JSON: {exc}")
+            continue
+        uid = dashboard.get("uid")
+        if not uid or not dashboard.get("title"):
+            fail(f"{path}: needs uid and title")
+        elif uid in uids:
+            fail(f"{path}: duplicate dashboard uid {uid!r}")
+        else:
+            uids.add(uid)
+        if dashboard.get("id") is not None:
+            fail(f"{path}: id must be null (Grafana assigns it)")
+        if not dashboard.get("panels"):
+            fail(f"{path}: no panels")
+        for ref in walk(dashboard, "datasource"):
+            if not isinstance(ref, dict):
+                fail(f"{path}: data source {ref!r} must be {{type, uid}}")
+                continue
+            ds_uid, ds_type = ref.get("uid"), ref.get("type")
+            if ds_uid not in datasources:
+                fail(f"{path}: panel data source {ds_uid!r} is not provisioned")
+            elif ds_type != datasources[ds_uid]:
+                fail(f"{path}: data source {ds_uid!r} has type {ds_type!r}")
+
+    ini = configparser.ConfigParser()
+    ini.read_string((grafana / "grafana.ini").read_text())
+    if ini.get("auth.anonymous", "enabled", fallback="") != "false":
+        fail("grafana.ini: [auth.anonymous] enabled must be false")
+    if ini.get("users", "allow_sign_up", fallback="") != "false":
+        fail("grafana.ini: [users] allow_sign_up must be false")
+    if (
+        ini.get("security", "disable_brute_force_login_protection", fallback="")
+        != "false"
+    ):
+        fail("grafana.ini: brute-force login protection must stay on")
+    home = ini.get("dashboards", "default_home_dashboard_path", fallback="")
+    if home and Path(home).name not in {p.name for p in dashboard_files}:
+        fail(f"grafana.ini: home dashboard {home} is not in grafana/dashboards")
+
+
+def check_collector_drift(root: Path) -> None:
+    collector = root / "collector"
+    agent = load_yaml(collector / "agent.yaml")
+    gateway = load_yaml(collector / "gateway.yaml")
+    local = load_yaml(collector / "local.yaml")
+    if not all(isinstance(doc, dict) for doc in (agent, gateway, local)):
+        fail("collector: agent.yaml, gateway.yaml and local.yaml must be mappings")
+        return
+    expected = {
+        k: v for k, v in agent["receivers"].items() if k not in LOCAL_ONLY_RECEIVERS
+    }
+    if local.get("receivers") != expected:
+        fail("collector/local.yaml: receivers differ from agent.yaml's")
+    if local.get("exporters") != gateway.get("exporters"):
+        fail("collector/local.yaml: exporters differ from gateway.yaml's")
+
+
+def mem_bytes(value: str) -> int:
+    match = re.fullmatch(r"(\d+)([kmg]?)b?", value.strip().lower())
+    if not match:
+        raise ValueError(value)
+    return int(match.group(1)) * UNITS.get(match.group(2), 1)
+
+
+def default_of(value: object) -> str:
+    """The default in a `${VAR:-default}` value, or the value itself."""
+    text = str(value)
+    match = re.fullmatch(r"\$\{[A-Z0-9_]+:-([^}]*)\}", text)
+    return match.group(1) if match else text
+
+
+def check_compose(root: Path) -> None:
+    path = root / "compose.observability.yaml"
+    doc = load_yaml(path)
+    if not isinstance(doc, dict):
+        fail(f"{path}: not a mapping")
+        return
+    total = 0
+    for name, service in (doc.get("services") or {}).items():
+        image = str(service.get("image", ""))
+        if not re.fullmatch(r"[a-z0-9./-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}", image):
+            fail(f"{path}: {name}: pin as name:tag@sha256:<digest>: {image!r}")
+        if "mem_limit" not in service:
+            fail(f"{path}: {name}: no mem_limit")
+        else:
+            try:
+                total += mem_bytes(default_of(service["mem_limit"]))
+            except ValueError:
+                fail(f"{path}: {name}: unreadable mem_limit {service['mem_limit']!r}")
+        ports = service.get("ports") or []
+        if name != "grafana" and ports:
+            fail(f"{path}: {name}: publishes ports; only grafana may")
+        for port in ports:
+            if not str(port).startswith("127.0.0.1:"):
+                fail(f"{path}: {name}: port {port!r} must be bound to 127.0.0.1")
+    mib = total // 1024**2
+    if total >= MEM_BUDGET_BYTES:
+        fail(f"{path}: default mem_limits add up to {mib} MiB (budget 700)")
+    else:
+        print(f"compose.observability.yaml: default mem_limits add up to {mib} MiB")
+
+
+def main() -> int:
+    root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent
+    check_grafana(root)
+    check_collector_drift(root)
+    check_compose(root)
+    for message in errors:
+        print(f"FAIL {message}", file=sys.stderr)
+    if not errors:
+        print("grafana provisioning, collector drift and compose limits: OK")
+    return 1 if errors else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
