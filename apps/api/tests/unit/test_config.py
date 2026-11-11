@@ -552,6 +552,7 @@ def test_settings_reads_exactly_the_documented_variables():
         "WORKER_SHUTDOWN_TIMEOUT_SECONDS",
         "SCHEDULING_HORIZON_WEEKS",
         "TRUSTED_PROXIES",
+        "OTEL_EXPORTER_OTLP_ENDPOINT",
     }
 
 
@@ -612,6 +613,79 @@ def test_trusted_proxies_rejects_invalid_entries(monkeypatch, value, reason):
     assert line_for(message, "TRUSTED_PROXIES").strip() == f"TRUSTED_PROXIES: {reason}"
     if value not in reason:  # the submitted value is never echoed
         assert value not in message
+
+
+# --- OTEL_EXPORTER_OTLP_ENDPOINT (#612 AC9) -----------------------------------------
+
+
+def test_otlp_endpoint_defaults_to_off(monkeypatch):
+    set_env(monkeypatch, {**MINIMAL_ENV, "OTEL_EXPORTER_OTLP_ENDPOINT": ""})
+
+    assert load_settings().otel_exporter_otlp_endpoint is None
+
+
+def test_otlp_endpoint_accepts_an_http_url(monkeypatch):
+    set_env(
+        monkeypatch,
+        {**MINIMAL_ENV, "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4318"},
+    )
+
+    endpoint = load_settings().otel_exporter_otlp_endpoint
+
+    assert str(endpoint) == "http://otel-collector:4318/"
+
+
+@pytest.mark.parametrize(
+    ("value", "reason"),
+    [
+        ("not-a-url", "URL"),
+        ("ftp://collector:4318", "URL scheme"),
+        ("http://otel-user:Otel-S3cret@collector:4318", "must not contain credentials"),
+        ("http://collector:4318/?token=Otel-S3cret", "must not contain a query"),
+    ],
+)
+def test_otlp_endpoint_rejects_invalid_values_without_echoing_them(
+    monkeypatch, value, reason
+):
+    message = config_error(
+        monkeypatch, {**MINIMAL_ENV, "OTEL_EXPORTER_OTLP_ENDPOINT": value}
+    )
+
+    line = line_for(message, "OTEL_EXPORTER_OTLP_ENDPOINT")
+    assert reason in line
+    assert value not in message
+    assert "Otel-S3cret" not in message
+    assert "input_value" not in message
+
+
+def test_startup_fails_on_an_invalid_otlp_endpoint_without_echoing_it():
+    result = run_api(
+        {
+            "APP_ENV": "local",
+            "APP_ORIGIN": "http://127.0.0.1:5173",
+            "DATABASE_URL": VALID_DSN,
+            "DATABASE_DIRECT_URL": DIRECT_DSN,
+            "OTEL_EXPORTER_OTLP_ENDPOINT": "not-a-url",
+        }
+    )
+
+    output = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "Configuration error" in output
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT:" in output
+    for forbidden in ("not-a-url", "Traceback", *SECRETS):
+        assert forbidden not in output
+
+
+def test_compose_passes_the_otlp_endpoint_to_api_and_worker():
+    compose = (
+        API_ROOT.parents[1] / "infrastructure/docker/compose.app.yaml"
+    ).read_text()
+
+    assert (
+        compose.count("OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}")
+        == 2
+    )
 
 
 def test_compose_passes_trusted_proxies_to_api_and_worker():

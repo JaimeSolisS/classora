@@ -4,6 +4,10 @@ Run with ``uvicorn --factory app.main:create_app``. Settings are validated when
 the app is created, so a missing or invalid value stops the process before it
 serves any request.
 
+Telemetry (ADR-0014, #612) is configured here and is off unless
+``OTEL_EXPORTER_OTLP_ENDPOINT`` is set (``app.core.telemetry``); the lifespan
+flushes it last at shutdown.
+
 The lifespan creates the process's one database engine and opens the job app
 used to defer background jobs (neither connects yet, so the API starts while
 the database is down), and starts the live-notification listener (#42: one
@@ -43,6 +47,12 @@ from app.core.health import router as health_router
 from app.core.jobs import DEMO_ENVIRONMENTS, create_api_job_app
 from app.core.logging import configure_logging
 from app.core.shutdown import on_shutdown_signal
+from app.core.telemetry import (
+    API_SERVICE,
+    configure_telemetry,
+    instrument_app,
+    shutdown_telemetry,
+)
 from app.modules.administration.approvals_router import router as approvals_router
 from app.modules.administration.imports.router import router as imports_router
 from app.modules.administration.jobs_router import router as jobs_router
@@ -276,6 +286,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await listener.stop()
         await job_app.close_async()
         await engine.dispose()
+        # Last: flushes what the shutdown itself traced and logged (bounded).
+        shutdown_telemetry()
 
 
 # OpenAPI ``info``: fixed in code (never from git or the date), so the exported
@@ -308,6 +320,16 @@ def build_app(
         debug=False,
         lifespan=lifespan,
         dependencies=[Depends(require_trusted_origin)],
+        # FastAPI's own OpenTelemetry bridge stays off, so the global providers
+        # and FASTAPI_OTEL_AUTO_CONFIGURE never export anything: telemetry is
+        # app.core.telemetry's (instrument_app), with its personal-data rules
+        # (ADR-0014, #612).
+        telemetry={
+            "tracing": False,
+            "metrics": False,
+            "logs": False,
+            "auto_configure": False,
+        },
     )
     install_conventions(app)
     register_principal_resolver(app, resolve_session_principal)
@@ -424,7 +446,11 @@ def create_app() -> FastAPI:
         raise SystemExit(1) from None
 
     configure_logging()
-    return build_app(
+    # Off (no SDK object, no middleware) unless OTEL_EXPORTER_OTLP_ENDPOINT is set.
+    configure_telemetry(settings, API_SERVICE)
+    app = build_app(
         lifespan=lifespan,
         include_dev_routes=settings.app_env in DEMO_ENVIRONMENTS,
     )
+    instrument_app(app)
+    return app

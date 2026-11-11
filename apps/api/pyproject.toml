@@ -20,6 +20,14 @@ dependencies = [
     "jinja2>=3.1.6,<4",
     # XLSX exports (#124 E3; ADR-0015 amendment), written in the worker.
     "openpyxl>=3.1.5,<4",
+    # OpenTelemetry (ADR-0014, #612 E1 (a)): one release train, pinned exactly
+    # (the instrumentations are tied to the SDK version). Used only when
+    # OTEL_EXPORTER_OTLP_ENDPOINT is set (app/core/telemetry.py).
+    "opentelemetry-api==1.45.1",
+    "opentelemetry-sdk==1.45.1",
+    "opentelemetry-exporter-otlp-proto-http==1.45.1",
+    "opentelemetry-instrumentation-fastapi==0.66b1",
+    "opentelemetry-instrumentation-sqlalchemy==0.66b1",
 ]
 
 [dependency-groups]

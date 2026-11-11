@@ -19,6 +19,10 @@ Settings keep plain ``postgresql://`` DSNs; this module derives the
 ``postgresql+asyncpg`` driver URLs. ``asyncpg`` is used only as the SQLAlchemy
 driver and is never imported by application code.
 
+Both factories pass the engine to ``app.core.telemetry.instrument_engine``
+(a no-op while telemetry is off; when on, SQL spans carry the statement text
+with placeholders, never parameter values).
+
 SQL echo is off and SQL statements and parameters are never logged by default;
 ``hide_parameters`` also keeps parameter values out of error messages.
 The isolation level is PostgreSQL's default (``READ COMMITTED``).
@@ -41,6 +45,7 @@ from sqlalchemy.ext.asyncio import (
 # before any session from this module is used.
 import app.core.model_registry  # noqa: F401
 from app.core.config import Settings
+from app.core.telemetry import instrument_engine
 
 ASYNC_DRIVER = "postgresql+asyncpg"
 
@@ -101,7 +106,9 @@ def engine_options(*, pgbouncer: bool = True) -> dict[str, Any]:
 
 def create_engine(settings: Settings) -> AsyncEngine:
     """Create the process's request engine (pooled URL). Does not connect."""
-    return create_async_engine(async_database_url(settings), **engine_options())
+    engine = create_async_engine(async_database_url(settings), **engine_options())
+    instrument_engine(engine)
+    return engine
 
 
 def create_direct_engine(url: URL | str, **kwargs: Any) -> AsyncEngine:
@@ -113,7 +120,9 @@ def create_direct_engine(url: URL | str, **kwargs: Any) -> AsyncEngine:
     :func:`create_engine`. ``kwargs`` are extra :func:`create_async_engine`
     arguments (for example ``poolclass``).
     """
-    return create_async_engine(url, **engine_options(pgbouncer=False), **kwargs)
+    engine = create_async_engine(url, **engine_options(pgbouncer=False), **kwargs)
+    instrument_engine(engine)
+    return engine
 
 
 def create_sessionmaker(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:

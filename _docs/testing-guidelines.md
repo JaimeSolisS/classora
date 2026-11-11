@@ -792,6 +792,10 @@ en labels or an explicit classification. Run `make api-client` and
 
 E2E axe exceptions: none.
 
+## Telemetry tests
+
+Telemetry is off in every test run unless a test turns it on (#612): `tests/unit/test_telemetry.py` proves the off path creates nothing (in a fresh interpreter) and checks scrubbing, job spans and an unreachable collector; `tests/integration/test_telemetry_export.py` plants `ZZ-PII-MARKER-7f3a` in a query string, header, body and unique-violation message and asserts it reaches no exported span, log, metric or stdout line. Both use in-memory exporters (`app.core.telemetry_sdk.TestExporters`) and shut telemetry down after each test.
+
 ## Quality practice
 
 ### New issue checklist

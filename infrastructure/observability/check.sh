@@ -9,8 +9,10 @@
 #  2. `otelcol-contrib validate` for collector/{gateway,agent,local}.yaml;
 #  3. `promtool check config` for prometheus/prometheus.yml;
 #  4. `loki -verify-config` and `tempo -config.verify` (with env expansion);
-#  5. check_config.py: Grafana provisioning and dashboards, collector drift,
-#     image pins, mem_limits and published ports.
+#  5. check_config.py: Grafana provisioning, dashboards and alert rules,
+#     collector drift, image pins, mem_limits and published ports;
+#  6. `promtool check rules` on every PromQL expression of the dashboards and
+#     alert rules (written by check_config.py, Grafana variables replaced).
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
@@ -89,9 +91,22 @@ run "loki -verify-config loki/loki.yaml" \
 run "tempo -config.verify tempo/tempo.yaml" \
   docker run --rm "${mount[@]}" "$tempo" -config.file=/obs/tempo/tempo.yaml -config.expand-env=true -config.verify=true
 
-# 5. Grafana provisioning, drift, pins and limits.
+# 5. Grafana provisioning and alert rules, drift, pins and limits.
+promql_dir=$(mktemp -d)
+trap 'rm -rf "$promql_dir"' EXIT
 run "check_config.py" \
-  uv run --no-project --isolated --quiet --with pyyaml==6.0.3 python -I "$obs/check_config.py" "$obs"
+  uv run --no-project --isolated --quiet --with pyyaml==6.0.3 python -I "$obs/check_config.py" \
+  --promql-out "$promql_dir/promql.yaml" "$obs"
+
+# 6. Every dashboard and alert PromQL expression parses.
+if [ -s "$promql_dir/promql.yaml" ]; then
+  run "promtool check rules (dashboard and alert PromQL)" \
+    docker run --rm -v "$promql_dir:/promql:ro" --entrypoint promtool "$prometheus" \
+    check rules /promql/promql.yaml
+else
+  echo "FAIL no PromQL expressions were collected" >&2
+  fail=1
+fi
 
 if [ "$fail" -ne 0 ]; then
   echo "check-observability: FAILED" >&2

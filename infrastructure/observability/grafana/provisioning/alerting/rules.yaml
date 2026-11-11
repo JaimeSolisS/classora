@@ -1,0 +1,218 @@
+# Grafana-managed alert rules (ADR-0014 "Alerts", #612), provisioned from this
+# file and not editable in the UI. Thresholds are ADR-0014's. Each rule is one
+# Prometheus query (A), reduced to its last value (B) and compared (C); every
+# rule is multi-dimensional (one alert per environment, host or mount).
+#
+# Locally they evaluate and show in Grafana (Alerting > Alert rules) with no
+# contact point. M9-09 (#617) adds the SES e-mail contact point and the
+# backup rules (no successful backup in 26 hours, failed backup).
+#
+# The host rules need the AWS agent's host_metrics (empty locally: no data is
+# "Normal"). Readiness, failed and stalled jobs come from the collector's
+# http_check and sql_query receivers. `make check-observability` checks this
+# file (check_config.py) and every PromQL expression (promtool).
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: classora
+    folder: Classora
+    interval: 30s
+    rules:
+      - uid: classora-host-cpu-high
+        title: Host CPU above 90%
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host {{ $labels.host_name }} CPU busy above 90% for 10 minutes ({{ $values.B }})."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                1 - avg by (deployment_environment_name, host_name)
+                (system_cpu_utilization_ratio{state="idle"})
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0.9]}
+
+      - uid: classora-host-memory-low
+        title: Available memory below 10%
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host {{ $labels.host_name }} has under 10% memory available for 10 minutes ({{ $values.B }})."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                1 - sum by (deployment_environment_name, host_name)
+                (system_memory_utilization_ratio{state="used"})
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: lt, params: [0.1]}
+
+      - uid: classora-disk-high
+        title: Disk above 85%
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host {{ $labels.host_name }} disk {{ $labels.mountpoint }} is above 85% used ({{ $values.B }})."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              # Root and the data volume (and any other mounted filesystem).
+              expr: >-
+                max by (deployment_environment_name, host_name, mountpoint)
+                (system_filesystem_utilization_ratio)
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0.85]}
+
+      - uid: classora-readiness-failing
+        title: API readiness failing
+        condition: C
+        for: 2m
+        # The probe's series stopping is a failure too (agent or API gone).
+        noDataState: Alerting
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "GET /health/ready has not answered 2xx for 2 minutes ({{ $labels.deployment_environment_name }})."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              # http_check writes a new series per status code (0 when the
+              # request fails), so only the last minute counts: an old 200
+              # series must not keep the probe "up" for Prometheus' 5-minute
+              # lookback.
+              expr: >-
+                max by (deployment_environment_name, http_url)
+                (last_over_time(httpcheck_status{http_status_class="2xx"}[1m]))
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+
+      - uid: classora-job-failed
+        title: Background job failed in the last hour
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $values.B }} job(s) failed in the last hour ({{ $labels.deployment_environment_name }}). See Administration > Failed jobs and the Jobs dashboard."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                sum by (deployment_environment_name)
+                (last_over_time(classora_procrastinate_jobs_ended_last_hour{outcome="failed"}[3m]))
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+
+      - uid: classora-job-stalled
+        title: Background job doing for over 30 minutes
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $values.B }} job(s) have been doing for over 30 minutes ({{ $labels.deployment_environment_name }})."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                sum by (deployment_environment_name)
+                (last_over_time(classora_procrastinate_jobs_stalled[3m]))
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0]}
