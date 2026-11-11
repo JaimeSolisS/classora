@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn, screen, within } from 'storybook/test';
+import { expect, fn, screen, userEvent, within } from 'storybook/test';
 import { TUTORS } from '@/features/scheduling/create/fixtures';
 import { i18n } from '@/i18n';
 import { StoryQueryClient } from '@/test/StoryQueryClient';
@@ -144,5 +144,41 @@ export const OverrideDialog: Story = {
       })
       .click();
     await expect(await screen.findByRole('dialog')).toBeVisible();
+  },
+};
+
+/**
+ * #600 AC5, AC11: an unreadable respond-by time with no date blocks the
+ * submit; then the Start list is open (axe scans it with the error shown).
+ */
+export const TimeErrorAndListOpen: Story = {
+  args: {
+    initialValues: { ...FILLED, respondByDate: '', respondByTime: '' },
+    initialRecurrence: WEEKLY,
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const respondTime = canvas.getByRole('combobox', {
+      name: i18n.t('scheduling.offer.deadlineTime'),
+    });
+    await userEvent.type(respondTime, 'abc');
+    await userEvent.tab();
+    await userEvent.click(
+      canvas.getByRole('button', {
+        name: i18n.t('courses.cohorts.create.submit'),
+      }),
+    );
+    await expect(
+      canvas.getByText(i18n.t('scheduling.validation.timeFormat')),
+    ).toBeVisible();
+    await expect(args.onSubmit).not.toHaveBeenCalled();
+
+    const start = canvas.getByRole('combobox', {
+      name: i18n.t('scheduling.fields.start'),
+    });
+    await userEvent.click(start);
+    await screen.findByRole('listbox', {
+      name: i18n.t('scheduling.fields.start'),
+    });
   },
 };

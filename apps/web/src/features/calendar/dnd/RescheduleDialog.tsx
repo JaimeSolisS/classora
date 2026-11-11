@@ -18,9 +18,13 @@ import {
 import { ConflictPanel } from '@/features/scheduling/create/ConflictPanel';
 import { OverrideDialog } from '@/features/scheduling/create/OverrideDialog';
 import {
+  DEFAULT_DURATION_MINUTES,
+  lengthMinutes,
   overrideAction,
   overrideReasonError,
+  withTimeFormat,
 } from '@/features/scheduling/create/rules';
+import { useEndFollowsStart } from '@/features/scheduling/create/useEndFollowsStart';
 import { SlotInput } from '@/features/scheduling/series/dialogParts';
 import { useFieldMessage } from '@/features/scheduling/series/hooks';
 import { changedFields, shownErrors, withoutErrors } from '@/lib/fieldErrors';
@@ -144,15 +148,24 @@ function RescheduleForm({
   const [values, setValues] = useState<RescheduleValues>(() =>
     rescheduleValues(item, timeZone),
   );
+  // #600: the end follows the start per edit; an empty end (or one not
+  // after the old start) gets the length the dialog opened with (E2 a).
+  const [openedLength] = useState(
+    () => lengthMinutes(values.start, values.end) ?? DEFAULT_DURATION_MINUTES,
+  );
+  const times = useEndFollowsStart(openedLength);
   // HF-13 (#598 E4): after the first submit the client checks follow the
   // values; the server's errors stay until their field changes.
   const [checked, setChecked] = useState(false);
   const [serverErrors, setServerErrors] = useState<SlotErrors>(
     initialErrors ?? {},
   );
-  const errors = shownErrors(checked, serverErrors, () =>
-    validateOccurrence({ ...values, classroomId: '' }),
-  );
+  const check = () =>
+    withTimeFormat(
+      validateOccurrence({ ...values, classroomId: '' }),
+      times.unreadable,
+    );
+  const errors = shownErrors(checked, serverErrors, check);
   const [formError, setFormError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<SchedulingConflict[] | null>(
     initialConflicts ?? null,
@@ -174,6 +187,13 @@ function RescheduleForm({
   function set<K extends keyof RescheduleValues>(key: K, value: string) {
     setValues((current) => ({ ...current, [key]: value }));
     setServerErrors((current) => withoutErrors(current, changedFields(key)));
+  }
+
+  /** A typed or picked start or end (#600): a new start moves the end. */
+  function setTime(field: 'start' | 'end', value: string, unreadable: boolean) {
+    const pair = times.change(values, field, value, unreadable);
+    setValues((current) => ({ ...current, ...pair }));
+    setServerErrors((current) => withoutErrors(current, changedFields(field)));
   }
 
   function focusFirst(found: SlotErrors) {
@@ -202,7 +222,7 @@ function RescheduleForm({
   async function submit() {
     setConflicts(null);
     setFormError(null);
-    const found = validateOccurrence({ ...values, classroomId: '' });
+    const found = check();
     setChecked(true);
     setServerErrors({});
     if (Object.keys(found).length > 0) {
@@ -347,7 +367,7 @@ function RescheduleForm({
           <SlotInput
             id={fieldId('date')}
             label={t('scheduling.fields.date')}
-            type="date"
+            kind="date"
             value={values.date}
             error={message(errors.date)}
             disabled={submitting}
@@ -356,22 +376,26 @@ function RescheduleForm({
           <SlotInput
             id={fieldId('start')}
             label={t('scheduling.fields.start')}
-            type="time"
+            kind="time"
             value={values.start}
             error={message(errors.start)}
             describedBy={zoneId}
             disabled={submitting}
-            onChange={(value) => set('start', value)}
+            onChange={(value, unreadable) =>
+              setTime('start', value, unreadable)
+            }
+            onEditEnd={times.endEdit}
           />
           <SlotInput
             id={fieldId('end')}
             label={t('scheduling.fields.end')}
-            type="time"
+            kind="time"
             value={values.end}
             error={message(errors.end)}
             describedBy={zoneId}
             disabled={submitting}
-            onChange={(value) => set('end', value)}
+            scrollTo={times.endScrollTo(values.start)}
+            onChange={(value, unreadable) => setTime('end', value, unreadable)}
           />
         </div>
         <dl className="grid gap-1 text-sm sm:grid-cols-[8rem_1fr] sm:gap-3">

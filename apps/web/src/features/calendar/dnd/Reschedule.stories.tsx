@@ -58,6 +58,11 @@ const meta = {
           styles: { width: '320px', height: '640px' },
           type: 'mobile',
         },
+        small640: {
+          name: 'Small (640 px)',
+          styles: { width: '640px', height: '800px' },
+          type: 'tablet',
+        },
       },
     },
   },
@@ -482,5 +487,130 @@ export const RescheduleConflictNarrow: Story = {
     await expect(
       view.getByText(i18n.t('scheduling.override.fixHardFirst')),
     ).toBeVisible();
+  },
+};
+
+// --- The time fields (#600) ------------------------------------------------------------
+
+/** MOVABLE as a 90-minute session (10:00-11:30 in the center zone). */
+const LONG_ITEM = { ...MOVABLE, ends_at: '2026-11-09T17:30:00Z' };
+const cancelReschedule = fn();
+
+/** Start and End of the open dialog. */
+function timeFields() {
+  const view = within(screen.getByRole('dialog'));
+  return {
+    start: view.getByRole('combobox', {
+      name: i18n.t('scheduling.fields.start'),
+    }),
+    end: view.getByRole('combobox', { name: i18n.t('scheduling.fields.end') }),
+  };
+}
+
+/** The open time list (portalled outside the dialog). */
+function timeList(name: string) {
+  return screen.findByRole('listbox', { name });
+}
+
+/**
+ * #600 AC2, AC3, AC6 in a real browser: typed key by key, the end keeps
+ * the 90 minutes; Escape with the list open closes only the list; a click
+ * on an option keeps the dialog; Escape with the list closed cancels.
+ */
+export const RescheduleTypedStart: Story = {
+  render: () => <Reschedule item={LONG_ITEM} onCancel={cancelReschedule} />,
+  play: async () => {
+    cancelReschedule.mockClear();
+    await dialog();
+    const { start, end } = timeFields();
+    await userEvent.clear(start);
+    await userEvent.type(start, '1400');
+    await userEvent.tab();
+    await expect(start).toHaveValue('14:00');
+    await expect(end).toHaveValue('15:30');
+
+    // One edit: cleared, then 9 (the list opens while typing).
+    await userEvent.clear(start);
+    await userEvent.type(start, '9');
+    await timeList(i18n.t('scheduling.fields.start'));
+    await expect(end).toHaveValue('10:30');
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument(),
+    );
+    await expect(screen.getByRole('dialog')).toBeVisible();
+    await expect(cancelReschedule).not.toHaveBeenCalled();
+    await expect(start).toHaveValue('14:00');
+    await expect(end).toHaveValue('15:30');
+    await expect(start).toHaveFocus();
+
+    await userEvent.click(end);
+    const list = await timeList(i18n.t('scheduling.fields.end'));
+    await userEvent.click(within(list).getByRole('option', { name: '16:00' }));
+    await expect(end).toHaveValue('16:00');
+    await expect(screen.getByRole('dialog')).toBeVisible();
+    await expect(cancelReschedule).not.toHaveBeenCalled();
+
+    await userEvent.keyboard('{Escape}');
+    await expect(cancelReschedule).toHaveBeenCalled();
+  },
+};
+
+/** #600 AC4, AC11: the End list open inside the dialog (axe scans it),
+ * scrolled to the chosen time. */
+export const RescheduleEndListOpen: Story = {
+  render: () => <Reschedule item={LONG_ITEM} />,
+  play: async () => {
+    await dialog();
+    const { end } = timeFields();
+    await userEvent.click(end);
+    const list = await timeList(i18n.t('scheduling.fields.end'));
+    const chosen = within(list).getByRole('option', { selected: true });
+    await expect(chosen).toHaveTextContent('11:30');
+    await waitFor(() =>
+      expect(list.scrollTop).toBeGreaterThanOrEqual(chosen.offsetTop - 1),
+    );
+    await expect(end).toHaveFocus();
+  },
+};
+
+/** #600 AC11: "9:30 PM" and the clock button fit a 640 px column. */
+export const RescheduleEnglish640: Story = {
+  render: () => <Reschedule item={LONG_ITEM} />,
+  globals: { locale: 'en', viewport: { value: 'small640' } },
+  play: async () => {
+    await dialog();
+    const { start, end } = timeFields();
+    await userEvent.clear(start);
+    await userEvent.type(start, '9:30 pm');
+    await userEvent.tab();
+    await expect(start).toHaveValue('9:30 PM');
+    await expect(end).toHaveValue('11:00 PM');
+    for (const field of [start, end]) {
+      await expect(field.scrollWidth).toBeLessThanOrEqual(field.clientWidth);
+    }
+  },
+};
+
+/** #600 AC11: no sideways scroll at 320 px with an error shown. */
+export const RescheduleErrorNarrow: Story = {
+  render: () => <Reschedule item={LONG_ITEM} />,
+  globals: { viewport: { value: 'narrow320' } },
+  play: async () => {
+    const view = await dialog();
+    const { start } = timeFields();
+    await userEvent.clear(start);
+    await userEvent.type(start, 'abc');
+    await userEvent.click(
+      view.getByRole('button', {
+        name: i18n.t('scheduling.calendar.reschedule.submit'),
+      }),
+    );
+    await expect(
+      view.getByText(i18n.t('scheduling.validation.timeFormat')),
+    ).toBeVisible();
+    const content = screen.getByRole('dialog');
+    await expect(content.scrollWidth).toBeLessThanOrEqual(content.clientWidth);
+    await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(320);
   },
 };

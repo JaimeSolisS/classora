@@ -7,6 +7,7 @@ import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
 import { Combobox, type OptionsPage } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
+import { TimeField } from '@/components/ui/time-field';
 import { FieldError } from '@/features/auth/FieldError';
 import {
   conflictsOf,
@@ -14,7 +15,11 @@ import {
   type SchedulingConflict,
   type SubjectOption,
 } from '@/features/scheduling/create/api';
-import { subjectsByLevel } from '@/features/scheduling/create/rules';
+import {
+  subjectsByLevel,
+  withTimeFormat,
+} from '@/features/scheduling/create/rules';
+import { useEndFollowsStart } from '@/features/scheduling/create/useEndFollowsStart';
 import { useFieldMessage } from '@/features/scheduling/series/hooks';
 import {
   clearRecurrenceServerErrors,
@@ -117,6 +122,8 @@ export function GroupCreateForm({
   // values; the server's errors stay until their field changes.
   const [checked, setChecked] = useState(false);
   const [serverErrors, setServerErrors] = useState<CreateErrors>({});
+  // #600: the end follows the start per edit (60 min with no end, E2 a).
+  const times = useEndFollowsStart();
   const [studentErrors, setStudentErrors] =
     useState<Record<number, GroupMessage>>(initialStudentErrors);
   const [recurrence, setRecurrence] =
@@ -136,7 +143,13 @@ export function GroupCreateForm({
   const zoneId = `${id}-zone`;
   const recurrencePrefix = `${id}-recurrence`;
 
-  const clientChecks = () => validateGroupCreate(values, recurrence);
+  const clientChecks = () => {
+    const found = validateGroupCreate(values, recurrence);
+    return {
+      ...found,
+      errors: withTimeFormat(found.errors, times.unreadable),
+    };
+  };
   const errors = shownErrors(
     checked,
     serverErrors,
@@ -162,6 +175,17 @@ export function GroupCreateForm({
         weekdays: weekdaysFor(value as string),
       }));
     }
+  }
+
+  /** A typed or picked start or end (#600): a new start moves the end. */
+  function changeTime(
+    name: 'start' | 'end',
+    value: string,
+    unreadable: boolean,
+  ) {
+    const pair = times.change(values, name, value, unreadable);
+    setValues((current) => ({ ...current, ...pair }));
+    setServerErrors((current) => withoutErrors(current, changedFields(name)));
   }
 
   function changeRecurrence(next: RecurrenceValues) {
@@ -306,8 +330,12 @@ export function GroupCreateForm({
     help?: ReactNode,
   ) {
     return (
-      <div className="flex flex-col gap-2">
-        <label htmlFor={fieldId(name)} className="text-sm font-medium">
+      <div className="flex min-w-0 flex-col gap-2">
+        <label
+          id={`${fieldId(name)}-label`}
+          htmlFor={fieldId(name)}
+          className="text-sm font-medium"
+        >
           {label}
         </label>
         {control}
@@ -338,19 +366,29 @@ export function GroupCreateForm({
   }
 
   function timeInput(name: 'startsOn' | 'start' | 'end') {
-    const key = name;
+    if (name === 'startsOn') {
+      return (
+        <Input
+          id={fieldId(name)}
+          type="date"
+          value={values.startsOn}
+          aria-invalid={errors.startsOn ? true : undefined}
+          aria-describedby={describedBy(name)}
+          onChange={(event) => change('startsOn', event.target.value)}
+        />
+      );
+    }
+    // Type or pick (#600, as #598); the end's list opens at start + 1 h.
     return (
-      <Input
+      <TimeField
         id={fieldId(name)}
-        type={name === 'startsOn' ? 'date' : 'time'}
-        step={name === 'startsOn' ? undefined : 60}
-        value={values[key]}
-        aria-invalid={errors[name] ? true : undefined}
-        aria-describedby={describedBy(
-          name,
-          name === 'startsOn' ? undefined : zoneId,
-        )}
-        onChange={(event) => change(key, event.target.value)}
+        labelId={`${fieldId(name)}-label`}
+        value={values[name]}
+        invalid={errors[name] !== undefined}
+        aria-describedby={describedBy(name, zoneId)}
+        scrollTo={name === 'end' ? times.endScrollTo(values.start) : undefined}
+        onChange={(value, unreadable) => changeTime(name, value, unreadable)}
+        onEditEnd={name === 'start' ? times.endEdit : undefined}
       />
     );
   }

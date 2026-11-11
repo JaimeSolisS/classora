@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { TimeField } from '@/components/ui/time-field';
 import { FieldError } from '@/features/auth/FieldError';
 import { SELECT_CLASS } from '@/features/students/styles';
 import type { Option } from '../create/api';
@@ -160,45 +161,69 @@ export function ClassroomSelect({
   );
 }
 
-/** A labelled date or time input with its error. */
+/**
+ * A labelled date or time input with its error. A time is the type-or-pick
+ * `TimeField` (#600, as "Schedule a session" in #598): `onChange` also says
+ * whether its text isn't a time, `onEditEnd` ends an edit of the start and
+ * `scrollTo` is where its list opens with no time.
+ */
 export function SlotInput({
   id,
   label,
-  type,
+  kind,
   value,
   error,
   describedBy,
   disabled,
   onChange,
+  onEditEnd,
+  scrollTo,
 }: {
   id: string;
   label: string;
-  type: 'date' | 'time';
+  /** A native date input, or the type-or-pick time field. */
+  kind: 'date' | 'time';
   value: string;
-  error?: string;
+  error?: string | undefined;
   describedBy?: string;
   disabled?: boolean;
-  onChange: (value: string) => void;
+  onChange: (value: string, unreadable: boolean) => void;
+  onEditEnd?: (() => void) | undefined;
+  scrollTo?: string | undefined;
 }) {
   const ids =
     [describedBy, error ? `${id}-error` : undefined]
       .filter(Boolean)
       .join(' ') || undefined;
+  const labelId = `${id}-label`;
   return (
-    <div className="flex flex-col gap-2">
-      <label htmlFor={id} className="text-sm font-medium">
+    <div className="flex min-w-0 flex-col gap-2">
+      <label id={labelId} htmlFor={id} className="text-sm font-medium">
         {label}
       </label>
-      <Input
-        id={id}
-        type={type}
-        step={type === 'time' ? 60 : undefined}
-        value={value}
-        disabled={disabled}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={ids}
-        onChange={(event) => onChange(event.target.value)}
-      />
+      {kind === 'time' ? (
+        <TimeField
+          id={id}
+          labelId={labelId}
+          value={value}
+          invalid={Boolean(error)}
+          disabled={disabled}
+          aria-describedby={ids}
+          scrollTo={scrollTo}
+          onChange={onChange}
+          onEditEnd={onEditEnd}
+        />
+      ) : (
+        <Input
+          id={id}
+          type="date"
+          value={value}
+          disabled={disabled}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={ids}
+          onChange={(event) => onChange(event.target.value, false)}
+        />
+      )}
       <FieldError id={`${id}-error`} message={error} />
     </div>
   );

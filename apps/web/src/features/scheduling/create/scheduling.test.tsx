@@ -57,6 +57,8 @@ import {
   clearServerError,
   EMPTY_SCHEDULE,
   endAfterStartChange,
+  endForStart,
+  lengthMinutes,
   freeTimesBody,
   isChosenTutorUnsuggested,
   overrideAction,
@@ -77,6 +79,7 @@ import {
   weeklyAvailabilityText,
   withTimeFormat,
 } from './rules';
+import type { SlotErrors } from '../series/rules';
 
 // #48 F1-F4: the route behind schedule.manage and its nav entry, the client
 // rules, the instant conversion in the center zone, the 409 conflict panel
@@ -1792,6 +1795,44 @@ describe('HF-13 rules (#598 E3, E4, AC3, AC4, AC6)', () => {
     // No old start: an end after the new start is kept (typed first).
     expect(endAfterStartChange('', '10:00', '11:30')).toBe('11:30');
     expect(endAfterStartChange('', '12:00', '11:30')).toBe('13:00');
+  });
+
+  it("falls back to a dialog's own length (#600 E2 a)", () => {
+    // Empty end, or one not after the old start: start + the fallback.
+    expect(endAfterStartChange('10:00', '15:00', '', 90)).toBe('16:30');
+    expect(endAfterStartChange('10:00', '12:00', '09:00', 90)).toBe('13:30');
+    expect(endAfterStartChange('', '10:00', '', 45)).toBe('10:45');
+    // An end after the old start keeps its own duration, not the fallback.
+    expect(endAfterStartChange('10:00', '14:00', '11:00', 90)).toBe('15:00');
+    // Past 23:59: left as it was.
+    expect(endAfterStartChange('10:00', '23:00', '', 90)).toBe('');
+    // Measured from the edit's baseline (#598 QA D1).
+    expect(endForStart({ start: '10:00', end: '' }, '15:00', 90)).toBe('16:30');
+    expect(endForStart({ start: '10:00', end: '' }, '10:00', 90)).toBe('');
+    expect(endForStart({ start: '10:00', end: '11:30' }, '', 90)).toBe('11:30');
+    // The default stays one hour.
+    expect(endForStart({ start: '10:00', end: '' }, '15:00')).toBe('16:00');
+  });
+
+  it("measures a dialog's length on opening (#600 E2 a)", () => {
+    expect(lengthMinutes('10:00', '11:30')).toBe(90);
+    expect(lengthMinutes('10:10', '11:10')).toBe(60);
+    expect(lengthMinutes('10:00', '10:00')).toBeNull();
+    expect(lengthMinutes('11:00', '10:00')).toBeNull();
+    expect(lengthMinutes('', '10:00')).toBeNull();
+  });
+
+  it('says how to write a time on any form with a start and end (#600)', () => {
+    const slot: SlotErrors = {
+      date: 'scheduling.validation.dateRequired',
+      start: 'scheduling.validation.startRequired',
+      end: 'scheduling.validation.endRequired',
+    };
+    expect(withTimeFormat(slot, { start: true, end: true })).toEqual({
+      date: 'scheduling.validation.dateRequired',
+      start: 'scheduling.validation.timeFormat',
+      end: 'scheduling.validation.timeFormat',
+    });
   });
 
   it('says how to write a time when the text is unreadable (AC4)', () => {

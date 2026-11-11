@@ -1,4 +1,5 @@
 import { act } from 'react';
+import { vi } from 'vitest';
 import { settle, settleUntil } from './render-app';
 
 // DOM helpers for component tests in jsdom (no Testing Library, #28).
@@ -129,4 +130,79 @@ export async function pickOption(
   typeInto(field, query);
   await settleUntil(() => comboboxOption(name));
   await click(comboboxOption(name)!);
+}
+
+/**
+ * Types into a field the way a browser does, one input event per key
+ * (#598 QA D1, #600 AC2): `\b` is Backspace and `^A\b` selects all and
+ * deletes. Each event carries the text as it is after that key.
+ */
+export function typeKeys(field: HTMLInputElement, keys: string): void {
+  let text = field.value;
+  for (let i = 0; i < keys.length; i += 1) {
+    if (keys.startsWith('^A\b', i)) {
+      text = '';
+      i += 2;
+    } else if (keys[i] === '\b') {
+      text = text.slice(0, -1);
+    } else {
+      text += keys[i];
+    }
+    typeInto(field, text);
+  }
+}
+
+/** Presses `key` on `field` (a keydown its handlers see), then settles. */
+export async function pressKey(
+  field: HTMLElement,
+  key: string,
+): Promise<KeyboardEvent> {
+  const event = new KeyboardEvent('keydown', {
+    key,
+    bubbles: true,
+    cancelable: true,
+  });
+  act(() => {
+    field.dispatchEvent(event);
+  });
+  await settle();
+  return event;
+}
+
+/** Focuses then blurs `field` (an edit ends, as on Tab), then settles. */
+export async function leaveField(field: HTMLElement): Promise<void> {
+  act(() => field.focus());
+  act(() => field.blur());
+  await settle();
+}
+
+/**
+ * jsdom has no layout: a time list's option sits at 10 px per quarter hour
+ * (its `data-time`), and the returned list records every `scrollTop` set
+ * (#598 QA D2, #600 AC4). Restore with `vi.restoreAllMocks()`.
+ */
+export function stubTimeListLayout(): number[] {
+  const scrolledTo: number[] = [];
+  vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(
+    function (this: HTMLElement) {
+      const time = this.dataset.time;
+      if (!time) {
+        return 0;
+      }
+      const [hours, minutes] = time.split(':').map(Number) as [number, number];
+      return ((hours * 60 + minutes) / 15) * 10;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, 'scrollTop', 'set').mockImplementation(
+    (top: number) => {
+      scrolledTo.push(top);
+    },
+  );
+  return scrolledTo;
+}
+
+/** The px offset `stubTimeListLayout` gives the option at `time`. */
+export function stubbedOffset(time: string): number {
+  const [hours, minutes] = time.split(':').map(Number) as [number, number];
+  return ((hours * 60 + minutes) / 15) * 10;
 }

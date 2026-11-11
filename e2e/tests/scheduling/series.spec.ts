@@ -176,10 +176,11 @@ test('an Owner schedules, edits and cancels a weekly series', async ({
     exact: true,
   });
   await expect(start).toHaveValue('10:00');
-  await start.fill('12:00');
-  await occurrenceDialog
-    .getByLabel(common.scheduling.fields.end, { exact: true })
-    .fill('13:00');
+  await fillTime(start, '12:00');
+  await fillTime(
+    occurrenceDialog.getByLabel(common.scheduling.fields.end, { exact: true }),
+    '13:00',
+  );
   await occurrenceDialog
     .getByRole('button', { name: series.occurrence.submit, exact: true })
     .click();
@@ -199,12 +200,14 @@ test('an Owner schedules, edits and cancels a weekly series', async ({
   await editDialog
     .getByLabel(series.scope.fromDate, { exact: true })
     .fill(plusDays(monday, 7));
-  await editDialog
-    .getByLabel(common.scheduling.fields.start, { exact: true })
-    .fill('11:00');
-  await editDialog
-    .getByLabel(common.scheduling.fields.end, { exact: true })
-    .fill('12:00');
+  await fillTime(
+    editDialog.getByLabel(common.scheduling.fields.start, { exact: true }),
+    '11:00',
+  );
+  await fillTime(
+    editDialog.getByLabel(common.scheduling.fields.end, { exact: true }),
+    '12:00',
+  );
   await expect(
     editDialog.getByLabel(series.untilDate, { exact: true }),
   ).toHaveValue(plusDays(monday, 16));

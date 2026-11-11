@@ -15,7 +15,18 @@ import {
 } from 'vitest';
 import { applyLanguage, i18n } from '@/i18n';
 import { localDateTimeToInstant } from '@/lib/time';
-import { alerts, click, fieldByLabel, openDialog, typeInto } from '@/test/dom';
+import {
+  alerts,
+  click,
+  fieldByLabel,
+  leaveField,
+  openDialog,
+  pressKey,
+  stubbedOffset,
+  stubTimeListLayout,
+  typeInto,
+  typeKeys,
+} from '@/test/dom';
 import { settle } from '@/test/render-app';
 import type {
   CalendarItem,
@@ -900,8 +911,8 @@ describe('the Reschedule dialog (E)', () => {
 
     expect(dialog.textContent).toContain('Reschedule session');
     expect(fieldByLabel(dialog, 'Date').value).toBe('2026-11-09');
-    expect(fieldByLabel(dialog, 'Start').value).toBe('10:00');
-    expect(fieldByLabel(dialog, 'End').value).toBe('11:00');
+    expect(fieldByLabel(dialog, 'Start').value).toBe('10:00 AM');
+    expect(fieldByLabel(dialog, 'End').value).toBe('11:00 AM');
     expect(dialog.textContent).toContain('Aula 2, unchanged');
     expect(dialog.textContent).toContain('America/Mexico_City');
     expect(document.activeElement).toBe(fieldByLabel(dialog, 'Date'));
@@ -1010,6 +1021,229 @@ describe('the Reschedule dialog (E)', () => {
     expect(alerts(dialog).join(' ')).toContain(
       'The new date, times and classroom are the same as now.',
     );
+  });
+});
+
+describe('the Reschedule time fields (#600)', () => {
+  /** MOVABLE as a 90-minute session, 10:00-11:30 in the center zone. */
+  const LONG: CalendarItem = { ...MOVABLE, ends_at: '2026-11-09T17:30:00Z' };
+
+  async function openLong(
+    update: CalendarLoaders['updateSession'] = vi.fn(),
+  ): Promise<HTMLElement> {
+    render({ items: [LONG, OCCURRENCE, FIXED], update });
+    await loaded();
+    const event = rendered!.container.querySelector<HTMLElement>(
+      `[data-session-id="${LONG.id}"]`,
+    )!;
+    event.focus();
+    await click(event);
+    await click(
+      button(openDialog()!, i18n.t('scheduling.calendar.reschedule.action'))!,
+    );
+    return openDialog()!;
+  }
+  const start = (dialog: HTMLElement) => fieldByLabel(dialog, 'Start');
+  const end = (dialog: HTMLElement) => fieldByLabel(dialog, 'End');
+
+  it('are type-or-pick comboboxes, prefilled without changing anything (AC1, AC8)', async () => {
+    const update = vi.fn((_id: string, body: ClassSessionUpdate) =>
+      Promise.resolve(updated(LONG, body)),
+    );
+    const dialog = await openLong(update);
+    for (const field of [start(dialog), end(dialog)]) {
+      expect(field.type).toBe('text');
+      expect(field.getAttribute('role')).toBe('combobox');
+      expect(field.getAttribute('aria-expanded')).toBe('false');
+    }
+    expect(dialog.querySelector('input[type="time"]')).toBeNull();
+    expect(start(dialog).value).toBe('10:00 AM');
+    expect(end(dialog).value).toBe('11:30 AM');
+    expect(document.activeElement).toBe(fieldByLabel(dialog, 'Date'));
+
+    await click(button(dialog, 'Save')!);
+    await settle();
+    expect(update).toHaveBeenCalledWith(LONG.id, {
+      version: 3,
+      starts_at: LONG.starts_at.replace('Z', '.000Z'),
+      ends_at: LONG.ends_at.replace('Z', '.000Z'),
+    });
+  });
+
+  it('shows the times 24-hour in Spanish', async () => {
+    applyLanguage('es');
+    const dialog = await openLong();
+    expect(fieldByLabel(dialog, 'Inicio').value).toBe('10:00');
+    expect(fieldByLabel(dialog, 'Fin').value).toBe('11:30');
+  });
+
+  it.each([
+    ['930', '2026-11-09T15:30:00.000Z'],
+    ['9:30 pm', '2026-11-10T03:30:00.000Z'],
+    ['9 p.m.', '2026-11-10T03:00:00.000Z'],
+  ])('reads %s typed into the start (AC1)', async (keys, startsAt) => {
+    const update = vi.fn((_id: string, body: ClassSessionUpdate) =>
+      Promise.resolve(updated(LONG, body)),
+    );
+    const dialog = await openLong(update);
+    act(() => start(dialog).focus());
+    typeKeys(start(dialog), `^A\b${keys}`);
+    await leaveField(start(dialog));
+    await click(button(dialog, 'Save')!);
+    await settle();
+    expect(update.mock.calls[0]![1].starts_at).toBe(startsAt);
+  });
+
+  describe.each([
+    ['en', 'Start', 'End', '2:00 PM', '3:30 PM'],
+    ['es', 'Inicio', 'Fin', '14:00', '15:30'],
+  ])(
+    'typed key by key (%s, AC2, AC3)',
+    (language, startLabel, endLabel, shownStart, shownEnd) => {
+      beforeEach(() => applyLanguage(language as 'en' | 'es'));
+
+      it('keeps the 90 minutes after select all, Backspace, 14:00, Tab', async () => {
+        const dialog = await openLong();
+        const field = fieldByLabel(dialog, startLabel);
+        act(() => field.focus());
+        typeKeys(field, '^A\b14:00');
+        await pressKey(field, 'Tab');
+        await leaveField(field);
+        expect(fieldByLabel(dialog, startLabel).value).toBe(shownStart);
+        expect(fieldByLabel(dialog, endLabel).value).toBe(shownEnd);
+      });
+    },
+  );
+
+  it("falls back to the dialog's own length once the end is cleared (E2 a)", async () => {
+    const dialog = await openLong();
+    act(() => end(dialog).focus());
+    typeKeys(end(dialog), '^A\b');
+    await leaveField(end(dialog));
+    expect(end(dialog).value).toBe('');
+    act(() => start(dialog).focus());
+    typeKeys(start(dialog), '^A\b15:00');
+    await leaveField(start(dialog));
+    expect(start(dialog).value).toBe('3:00 PM');
+    expect(end(dialog).value).toBe('4:30 PM');
+  });
+
+  it('restores both start and end on Escape, and the dialog stays open', async () => {
+    const dialog = await openLong();
+    act(() => start(dialog).focus());
+    typeKeys(start(dialog), '^A\b1145');
+    expect(end(dialog).value).toBe('1:15 PM');
+    expect(start(dialog).getAttribute('aria-expanded')).toBe('true');
+    await pressKey(start(dialog), 'Escape');
+    expect(start(dialog).value).toBe('10:00 AM');
+    expect(end(dialog).value).toBe('11:30 AM');
+    expect(openDialog()).toBe(dialog);
+  });
+
+  it('changes no end for unreadable text', async () => {
+    const dialog = await openLong();
+    act(() => start(dialog).focus());
+    typeKeys(start(dialog), '^A\b25:00');
+    await leaveField(start(dialog));
+    expect(start(dialog).value).toBe('25:00');
+    expect(end(dialog).value).toBe('11:30 AM');
+  });
+
+  it("measures a second edit from the first one's result", async () => {
+    const dialog = await openLong();
+    act(() => start(dialog).focus());
+    typeKeys(start(dialog), '^A\b12');
+    await leaveField(start(dialog));
+    expect(end(dialog).value).toBe('1:30 PM');
+    act(() => start(dialog).focus());
+    typeKeys(start(dialog), '^A\b9');
+    await leaveField(start(dialog));
+    expect(end(dialog).value).toBe('10:30 AM');
+  });
+
+  it('never moves the start when the end changes', async () => {
+    const dialog = await openLong();
+    act(() => end(dialog).focus());
+    typeKeys(end(dialog), '^A\b13:00');
+    await leaveField(end(dialog));
+    expect(start(dialog).value).toBe('10:00 AM');
+    expect(end(dialog).value).toBe('1:00 PM');
+  });
+
+  it('says how to write a time for unreadable text, and sends nothing (AC5)', async () => {
+    const update = vi.fn();
+    const dialog = await openLong(update);
+    act(() => start(dialog).focus());
+    typeKeys(start(dialog), '^A\babc');
+    await leaveField(start(dialog));
+    await click(button(dialog, 'Save')!);
+    expect(update).not.toHaveBeenCalled();
+    expect(dialog.textContent).toContain('Enter a time, for example 9:30.');
+    expect(dialog.textContent).not.toContain('Enter the start time.');
+    expect(start(dialog).getAttribute('aria-invalid')).toBe('true');
+
+    act(() => start(dialog).focus());
+    typeKeys(start(dialog), '^A\b9:30');
+    expect(dialog.textContent).not.toContain('Enter a time, for example 9:30.');
+    expect(start(dialog).getAttribute('aria-invalid')).toBeNull();
+  });
+
+  it('disables the time fields while saving; a click opens no list (AC7)', async () => {
+    let resolve: (value: ClassSessionUpdated) => void = () => {};
+    const update = vi.fn(
+      () =>
+        new Promise<ClassSessionUpdated>((done) => {
+          resolve = done;
+        }),
+    );
+    const dialog = await openLong(update);
+    await click(button(dialog, 'Save')!);
+    expect(start(dialog).disabled).toBe(true);
+    expect(end(dialog).disabled).toBe(true);
+    await click(end(dialog));
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
+    expect(end(dialog).getAttribute('aria-expanded')).toBe('false');
+    resolve(
+      updated(LONG, {
+        starts_at: LONG.starts_at,
+        ends_at: LONG.ends_at,
+      }),
+    );
+    await settle();
+  });
+
+  describe('the list opens scrolled (AC4)', () => {
+    let scrolledTo: number[];
+    beforeEach(() => {
+      scrolledTo = stubTimeListLayout();
+    });
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('at the chosen time on a click, and from the clock button', async () => {
+      const dialog = await openLong();
+      act(() => start(dialog).focus());
+      await click(start(dialog));
+      expect(document.querySelector('[role="listbox"]')).not.toBeNull();
+      expect(scrolledTo.at(-1)).toBe(stubbedOffset('10:00'));
+      await pressKey(start(dialog), 'Escape');
+
+      const toggle = end(dialog).parentElement!.querySelector('button')!;
+      await click(toggle);
+      expect(document.querySelector('[role="listbox"]')).not.toBeNull();
+      expect(scrolledTo.at(-1)).toBe(stubbedOffset('11:30'));
+    });
+
+    it("at start + the dialog's length for an empty end", async () => {
+      const dialog = await openLong();
+      act(() => end(dialog).focus());
+      typeKeys(end(dialog), '^A\b');
+      await leaveField(end(dialog));
+      act(() => end(dialog).focus());
+      await click(end(dialog));
+      expect(scrolledTo.at(-1)).toBe(stubbedOffset('11:30'));
+    });
   });
 });
 

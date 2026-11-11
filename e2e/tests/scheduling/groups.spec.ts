@@ -7,6 +7,7 @@ import {
   comboboxOptions,
   pickOption,
 } from '../support/combobox';
+import { fillTime } from '../support/scheduling';
 import { createStudentViaApi } from '../support/students';
 import { createSubjectViaApi } from '../support/tutors';
 
@@ -121,12 +122,14 @@ test('an Owner creates a group, enrolls over the maximum and withdraws', async (
   await main
     .getByLabel(series.startsOn, { exact: true })
     .fill(firstTuesdayAhead());
-  await main
-    .getByLabel(common.scheduling.fields.start, { exact: true })
-    .fill('10:00');
-  await main
-    .getByLabel(common.scheduling.fields.end, { exact: true })
-    .fill('11:00');
+  await fillTime(
+    main.getByLabel(common.scheduling.fields.start, { exact: true }),
+    '10:00',
+  );
+  await fillTime(
+    main.getByLabel(common.scheduling.fields.end, { exact: true }),
+    '11:00',
+  );
   await expect(
     main.getByRole('checkbox', { name: common.weeklyWindows.weekdays['2'] }),
   ).toBeChecked();

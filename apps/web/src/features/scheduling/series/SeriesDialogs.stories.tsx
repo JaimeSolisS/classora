@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn, screen, userEvent, within } from 'storybook/test';
+import { expect, fn, screen, userEvent, waitFor, within } from 'storybook/test';
 import { ApiError } from '@/app/api';
 import { i18n } from '@/i18n';
 import { CLASSROOMS } from '../create/fixtures';
@@ -109,6 +109,51 @@ export const OccurrenceConflict: Story = {
   },
 };
 
+/**
+ * #600 AC4, AC6, AC8, AC11: an occurrence at 10:10-11:10 shows 10:10; the
+ * End list opens at 11:00 inside the dialog (axe scans it open); Escape
+ * closes only the list.
+ */
+export const OccurrenceOffGridListOpen: Story = {
+  render: () =>
+    occurrence({
+      session: {
+        ...OCCURRENCE_SESSION,
+        starts_at: '2031-01-06T16:10:00Z',
+        ends_at: '2031-01-06T17:10:00Z',
+      },
+    }),
+  play: async () => {
+    const view = await dialog();
+    const start = view.getByRole('combobox', {
+      name: i18n.t('scheduling.fields.start'),
+    });
+    const end = view.getByRole('combobox', {
+      name: i18n.t('scheduling.fields.end'),
+    });
+    await expect(start).toHaveValue('10:10');
+    await expect(end).toHaveValue('11:10');
+    await userEvent.click(start);
+    await screen.findByRole('listbox', {
+      name: i18n.t('scheduling.fields.start'),
+    });
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument(),
+    );
+    await expect(screen.getByRole('dialog')).toBeVisible();
+
+    await userEvent.click(end);
+    const list = await screen.findByRole('listbox', {
+      name: i18n.t('scheduling.fields.end'),
+    });
+    const anchor = within(list).getByRole('option', { name: '11:00' });
+    await waitFor(() =>
+      expect(list.scrollTop).toBeGreaterThanOrEqual(anchor.offsetTop - 1),
+    );
+  },
+};
+
 function editSeries(extra: Partial<Parameters<typeof EditSeriesDialog>[0]>) {
   return (
     <EditSeriesDialog
@@ -133,6 +178,24 @@ export const SeriesEditEmpty: Story = {
     await expect(
       view.getByLabelText(i18n.t('scheduling.series.untilDate')),
     ).toHaveValue('2031-01-22');
+  },
+};
+
+/** #600 AC2, AC3: typed key by key, the series end keeps its hour. */
+export const SeriesEditTypedStart: Story = {
+  render: () => editSeries({}),
+  play: async () => {
+    const view = await dialog();
+    const start = view.getByRole('combobox', {
+      name: i18n.t('scheduling.fields.start'),
+    });
+    await userEvent.clear(start);
+    await userEvent.type(start, '1600');
+    await userEvent.tab();
+    await expect(start).toHaveValue('16:00');
+    await expect(
+      view.getByRole('combobox', { name: i18n.t('scheduling.fields.end') }),
+    ).toHaveValue('17:00');
   },
 };
 

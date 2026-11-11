@@ -352,3 +352,32 @@ describe('TimeField: one edit per focus (#598 QA D1)', () => {
     expect(ended).toHaveBeenCalledTimes(4);
   });
 });
+
+describe('TimeField: disabled (#600 AC7)', () => {
+  it('disables the field and the clock button, and opens no list', async () => {
+    render({ initial: '10:00', disabled: true });
+    expect(field().disabled).toBe(true);
+    const toggle = container.querySelector<HTMLButtonElement>(
+      'button[type="button"]',
+    )!;
+    expect(toggle.disabled).toBe(true);
+    act(() => field().click());
+    await settle();
+    act(() => toggle.click());
+    await settle();
+    expect(listbox()).toBeNull();
+    expect(field().getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('opens no list it had open before it was disabled', async () => {
+    render({ initial: '10:00' });
+    await focus();
+    act(() => field().click());
+    await settle();
+    expect(listbox()).not.toBeNull();
+    render({ initial: '10:00', disabled: true });
+    await settle();
+    expect(listbox()).toBeNull();
+    expect(field().getAttribute('aria-expanded')).toBe('false');
+  });
+});

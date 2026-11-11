@@ -176,6 +176,7 @@ export type SlotMessage =
   | 'scheduling.validation.startRequired'
   | 'scheduling.validation.endRequired'
   | 'scheduling.validation.endAfterStart'
+  | 'scheduling.validation.timeFormat'
   | `errors:${ErrorMessageKey}`;
 
 export type SlotErrors = Partial<Record<SlotField, SlotMessage>>;
