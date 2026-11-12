@@ -1,6 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { switchColorScheme } from '../support/a11y';
+import { expectNoAxeViolations, switchColorScheme } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common, fill } from '../support/catalog';
 import { pickOption } from '../support/combobox';
@@ -32,7 +31,6 @@ import { createSubjectViaApi } from '../support/tutors';
 // no registration (API creates with the shared Owner session). It never
 // changes the zone, the scheduling policy or the business settings.
 
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const TEST_TIMEOUT_MS = 120_000;
 const scheduling = common.scheduling;
 const owner = scheduling.create.owner;
@@ -50,15 +48,6 @@ async function fillWhen(page: Page, date: string, start: string, end: string) {
     start,
   );
   await fillTime(main.getByLabel(scheduling.fields.end, { exact: true }), end);
-}
-
-async function expectNoAxeViolations(page: Page) {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  expect(
-    results.violations.map(
-      (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-    ),
-  ).toEqual([]);
 }
 
 test('an Owner schedules one-off group and course sessions', async ({

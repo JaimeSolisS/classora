@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
 import {
@@ -34,7 +34,6 @@ const EXPECTED_RESOURCE_ERROR =
 // never changes the zone, the scheduling policy or the closures.
 
 const ZONE = 'America/Mexico_City';
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const TEST_TIMEOUT_MS = 120_000;
 const groups = common.groups;
 const series = common.scheduling.series;
@@ -186,12 +185,7 @@ test('an Owner creates a group, enrolls over the maximum and withdraws', async (
   await expect(
     panel.getByRole('heading', { name: groups.conflicts.wholeGroup }),
   ).toBeVisible();
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  expect(
-    results.violations.map(
-      (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-    ),
-  ).toEqual([]);
+  await expectNoAxeViolations(page);
   await enrollDialog
     .getByRole('button', { name: groups.enroll.overrideAction, exact: true })
     .click();

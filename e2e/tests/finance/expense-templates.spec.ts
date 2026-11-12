@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
 
@@ -12,15 +12,7 @@ import { common } from '../support/catalog';
 
 const finance = common.finance;
 const labels = finance.templates;
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-async function axeViolations(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-  );
-}
 
 /** The text before an interpolation, e.g. "…empieza el {{date}}." */
 const prefix = (text: string) => text.split('{{')[0]!;
@@ -65,7 +57,7 @@ test('the Owner sets up a monthly recurring expense, pauses and resumes it', asy
   await create
     .getByLabel(labels.dialog.startsOn, { exact: true })
     .fill(startsOn);
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   await create
     .getByRole('button', { name: labels.dialog.submitCreate, exact: true })
     .click();
@@ -74,7 +66,7 @@ test('the Owner sets up a monthly recurring expense, pauses and resumes it', asy
   await expect(main.getByRole('heading', { level: 1, name })).toBeVisible();
   await expect(status).toHaveText(labels.detail.created);
   await expect(statusField).toHaveText(labels.statuses.active);
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
 
   // 2. Pause it.
   await main
@@ -108,6 +100,6 @@ test('the Owner sets up a monthly recurring expense, pauses and resumes it', asy
   await expect(row).toHaveCount(1);
   await expect(row).toContainText(labels.statuses.active);
   await expect(row.locator('td').nth(5)).not.toHaveText('—');
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   expect(await cspViolations(page)).toEqual([]);
 });

@@ -1,6 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { switchColorScheme } from '../support/a11y';
+import { expectNoAxeViolations, switchColorScheme } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
 import {
@@ -30,7 +29,6 @@ import { createSubjectViaApi } from '../support/tutors';
 // changes from then on (#47), which no spec makes.
 
 const ZONE = 'America/Mexico_City';
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const TEST_TIMEOUT_MS = 90_000;
 
 // Chromium logs every 4xx resource as a console error: the expected 409.
@@ -250,14 +248,7 @@ test('an Owner schedules a session and meets a student overlap', async ({
   // transitions to settle before axe runs (#241, support/a11y.ts).
   for (const colorScheme of ['light', 'dark'] as const) {
     await switchColorScheme(page, colorScheme);
-    const results = await new AxeBuilder({ page })
-      .withTags(WCAG_TAGS)
-      .analyze();
-    expect(
-      results.violations.map(
-        (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-      ),
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
   }
 
   await page.emulateMedia({ colorScheme: 'light' });

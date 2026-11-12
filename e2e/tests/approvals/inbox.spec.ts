@@ -1,12 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
-import {
-  expect,
-  test,
-  type APIRequest,
-  type Locator,
-  type Page,
-} from '@playwright/test';
-import { switchColorScheme } from '../support/a11y';
+import { expect, test, type APIRequest, type Locator } from '@playwright/test';
+import { expectNoAxeViolations, switchColorScheme } from '../support/a11y';
 import { api } from '../support/api';
 import {
   cspViolations,
@@ -31,7 +24,6 @@ import { common, fill } from '../support/catalog';
 // requests (`registration.ip`; REGISTRATIONS_PER_RUN). The usernames are
 // unique per run (every `make e2e` starts from an empty database).
 
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const TEST_TIMEOUT_MS = 90_000;
 
 const OLDER = { username: 'e2e.inbox.older', displayName: 'E2E Inbox Older' };
@@ -79,15 +71,6 @@ async function press(control: Locator, key = 'Enter'): Promise<void> {
   await control.focus();
   await expect(control).toBeFocused();
   await control.page().keyboard.press(key);
-}
-
-async function expectNoAxeViolations(page: Page) {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  expect(
-    results.violations.map(
-      (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-    ),
-  ).toEqual([]);
 }
 
 test('the Owner filters, sorts, assigns and decides in the detail panel with the keyboard', async ({

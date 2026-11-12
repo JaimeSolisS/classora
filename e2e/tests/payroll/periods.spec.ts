@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { api } from '../support/api';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
@@ -18,15 +18,7 @@ import { common } from '../support/catalog';
 // hands-on run on a live stack.
 
 const payroll = common.payroll;
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const MISSING_PERIOD = '00000000-0000-4000-8000-00000000e2e0';
-
-async function axeViolations(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-  );
-}
 
 test('the Owner opens the payroll periods', async ({ page }) => {
   await recordCspViolations(page);
@@ -59,7 +51,7 @@ test('the Owner opens the payroll periods', async ({ page }) => {
       main.getByRole('link', { name: payroll.periods.payrollOffLink }),
     ).toHaveAttribute('href', '/payroll/settings');
   }
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
 
   // 3. A filter goes to the URL.
   await main
@@ -69,13 +61,13 @@ test('the Owner opens the payroll periods', async ({ page }) => {
   if (off) {
     await expect(main.getByText(payroll.periods.emptyFiltered)).toBeVisible();
   }
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
 
   // 4. A period that doesn't exist is not found.
   await page.goto(`/payroll/periods/${MISSING_PERIOD}`);
   await expect(
     main.getByRole('heading', { level: 1, name: common.notFound.title }),
   ).toBeVisible();
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   expect(await cspViolations(page)).toEqual([]);
 });

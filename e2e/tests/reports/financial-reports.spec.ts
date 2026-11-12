@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
 
@@ -11,15 +11,7 @@ import { common } from '../support/catalog';
 
 const labels = common.reports;
 const profitability = labels.profitability;
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-async function axeViolations(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-  );
-}
 
 test('the Owner reads the profitability and the balances, by basis and range', async ({
   page,
@@ -62,7 +54,7 @@ test('the Owner reads the profitability and the balances, by basis and range', a
       main.getByRole('heading', { level: 3, name: card, exact: true }),
     ).toBeVisible();
   }
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
 
   // 2. Cash: center totals only, no class rows.
   await main
@@ -101,6 +93,6 @@ test('the Owner reads the profitability and the balances, by basis and range', a
   await expect(
     main.getByRole('button', { name: profitability.basis.cash, exact: true }),
   ).toHaveAttribute('aria-pressed', 'true');
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   expect(await cspViolations(page)).toEqual([]);
 });

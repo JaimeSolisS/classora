@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common, fill } from '../support/catalog';
 import { comboboxField, comboboxOptions } from '../support/combobox';
@@ -36,7 +36,6 @@ import { FIRST_RENDER_TIMEOUT_MS } from '../support/timeouts';
 // the shared inbox. It never changes the zone, the policies or the
 // closures.
 
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const TEST_TIMEOUT_MS = 120_000;
 const SUBJECT = 'E2E Overdue';
 const TUTOR_NAME = 'Demo Tutor';
@@ -48,13 +47,6 @@ const onBehalf = common.closeout.onBehalf;
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const textBefore = (template: string) => template.split('{{')[0]!;
-
-async function axeViolations(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-  );
-}
 
 test('overdue closeouts: close out on the tutor’s behalf and approve (#301b)', async ({
   page,
@@ -83,7 +75,7 @@ test('overdue closeouts: close out on the tutor’s behalf and approve (#301b)',
   ).toBeVisible();
   const row = main.getByRole('row').filter({ hasText: SUBJECT });
   await expect(row).toHaveCount(1);
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
 
   // 1b. The tutor filter (#548): a click on the empty field lists tutors
   // before any typing; "demo tutor" finds Demo Tutor (local or server
@@ -113,7 +105,7 @@ test('overdue closeouts: close out on the tutor’s behalf and approve (#301b)',
   );
   await expect(tutorField).toHaveValue(TUTOR_NAME);
   await expect(row).toHaveCount(1);
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
 
   // 2. On a phone the table scrolls in its region; the page never does.
   const desktop = page.viewportSize();
@@ -126,7 +118,7 @@ test('overdue closeouts: close out on the tutor’s behalf and approve (#301b)',
         document.documentElement.clientWidth,
     ),
   ).toBe(true);
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   if (desktop) {
     await page.setViewportSize(desktop);
   }
@@ -224,7 +216,7 @@ test('overdue closeouts: close out on the tutor’s behalf and approve (#301b)',
       exact: true,
     }),
   ).toHaveCount(0);
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
 
   // 7. The inbox row says "On behalf" and links back to the session.
   const sessionUrl = page.url().replace(/#.*$/, '');
