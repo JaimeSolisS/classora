@@ -78,7 +78,8 @@ unless a bullet says otherwise.
 - Parents, guardians and students can request an account from the sign-in
   page; it works only after staff confirm their identity and approve it.
 - Login, password confirmation, one-time links and account requests are
-  rate-limited.
+  rate-limited, and every client is limited to a number of API requests per
+  minute.
 - Every user must accept the versioned privacy notice before using the app,
   and again whenever a new version is published.
 

@@ -48,7 +48,7 @@ Behaviour:
 ### General API (D16 (a))
 
 - M2 has **no general API rate limit**.
-- Follow-up issue #163 (M10-09) adds a coarse in-process limit per API worker process and client IP (for example 600 requests per minute) during the Phase 1 local hardening step. It reuses the client-IP resolution above.
+- Follow-up issue #163 (M10-09) adds a coarse in-process limit per API worker process and client IP (for example 600 requests per minute) during the Phase 1 local hardening step. It reuses the client-IP resolution above. Done; see the 2026-11-12 amendment.
 - That limit is per process on purpose. Spec §10 notes that in-process limits are not shared across processes. For a coarse safety limit on one small host this is acceptable, while the authentication limits, which must be correct across processes, use the shared PostgreSQL counters.
 - A Caddy rate-limit module is **not** required.
 
@@ -58,7 +58,7 @@ Behaviour:
 - Each limited request costs a small PostgreSQL write. This stays on the existing database, with no Redis.
 - An attacker can slow a known user's logins for at most 15 minutes at a time, but cannot lock the account permanently.
 - Parents behind the center's shared Wi-Fi share the per-IP budget; 50 login attempts per 15 minutes leaves room for them.
-- Until #163 is done, endpoints outside authentication have no rate limit.
+- Every other endpoint has the general in-process limit of D16, implemented in #163 (see the 2026-11-12 amendment).
 - M9-02 (#610) configures the edge Caddy to set the forwarded header from the TCP peer, and M9-06 (#614) adds Caddy's fixed address to `TRUSTED_PROXIES` in AWS.
 - Revisit if the API is scaled beyond one host (spec §10, §14).
 
@@ -95,6 +95,18 @@ Recorded with M9-01 (#609), after the owner's M9 re-plan of 2026-11-11 removed C
 - There is no CloudFront in front of Caddy. Caddy on each host is the **first hop**: it discards any `X-Forwarded-For` the client sends and sets it to the TCP peer.
 - The app network has a fixed subnet and Caddy a fixed address, which is the only `TRUSTED_PROXIES` entry in AWS. The client-IP rule above is unchanged: a trusted peer's right-most untrusted `X-Forwarded-For` entry is the client.
 - The stock Caddy build is used, with no rate-limit module.
+
+### 2026-11-12: the general in-process limit (#163, owner-delegated)
+
+Recorded with M10-09 (#163 E1–E6, each the recommended option (a), accepted under the owner's delegation for the M10 run; orchestrator-recommended, pending owner review). It implements D16 (a). D15 and its amendments are unchanged.
+
+- **Value (E1).** A setting, `API_RATE_LIMIT_PER_MINUTE`: requests per minute per API process and client IP, default **600**, range 0–100000, `0` turns it off. DEV and PROD use the default (no infrastructure change). The E2E stack sets 60000, because the parallel Playwright run reaches the API from one IP.
+- **Algorithm (E2).** Fixed 60-second windows aligned to the epoch minute (UTC, from the application clock), as in D15. Only the current window's counters are kept in memory and the map is replaced when the window changes. A burst of up to twice the limit across a boundary is accepted. At most 10,000 clients are tracked per window: a new client beyond that is let through uncounted (fail open), with one warning per window.
+- **What counts (E3).** Every HTTP request, counted before routing, authentication, the `Origin` check and the database, except `GET /health/live` and `GET /health/ready` (health checks, the deploy readiness gate and monitoring). A refused request never reaches the D15 or domain counters. An SSE connect counts once.
+- **Key (E4).** The client IP from the rule above (`TRUSTED_PROXIES`, IPv6 by `/64`; no resolvable peer shares one `unknown` key).
+- **Answer and logs.** `429 rate_limited` with the same detail as the authentication limits and `Retry-After` (seconds to the window's end, at least 1). The answer keeps `X-Request-ID`, the API security headers and the access line. One `WARNING` `api_rate_limit.exceeded` on `app.security` per client per window, with the method and the policy code `api.ip`, never the IP or the raw path.
+- **Wiring (E5).** `app.core.api_rate_limit`, a pure ASGI middleware inside the request-context and security-header middleware. Only `create_app()` installs it; `build_app()` installs it only when given a limit, so tests and the OpenAPI export are unchanged.
+- **Per process.** Each AWS host runs one uvicorn process (`infrastructure/docker/api.Dockerfile`, no `--workers`), so the limit is per host there. Staff and families behind the center's one public IP share 600 requests per minute. A busy center that hits it needs a new value, which on AWS is a `render-env.sh` change and a deploy.
 
 ## References
 
