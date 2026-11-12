@@ -106,15 +106,19 @@ services:
     restart: unless-stopped
 
   # Collector agent (ADR-0014, collector/agent.yaml from #611): host metrics,
-  # container logs and stats, PostgreSQL as classora_monitor, the API's
-  # readiness; the API and worker export to it. Joins the Docker socket's group
-  # instead of running as root.
+  # container logs and stats, the host's /var/log/classora logs, PostgreSQL as
+  # classora_monitor, the API's readiness; the API and worker export to it.
+  # Docker's json logs are root-only (0640 in a 0710 directory), so the agent
+  # runs as root with every capability dropped except DAC_READ_SEARCH (read
+  # any file, write nothing it doesn't own); the Docker socket (root-owned)
+  # and the read-only mounts need nothing more (#617).
   collector:
     image: otel/opentelemetry-collector-contrib:0.164.0@sha256:340c9ca6a36617084c6661bdc4f0fe92b7cda5a805d61673ec8db375fddc522b
     profiles: [telemetry]
     command: ["--config=/etc/otelcol/agent.yaml"]
-    group_add:
-      - "${DOCKER_GID:?set by render-env.sh}"
+    user: "0:0"
+    cap_drop: [ALL]
+    cap_add: [DAC_READ_SEARCH]
     environment:
       OTLP_GATEWAY_ENDPOINT: ${OTLP_GATEWAY_ENDPOINT:-}
       DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:?set by render-env.sh}
