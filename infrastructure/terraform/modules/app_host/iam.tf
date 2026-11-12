@@ -1,6 +1,7 @@
 # Instance role (ADR-0012): Session Manager, its own Parameter Store path and
 # /classora/shared/, decryption only through SSM, ECR pulls of classora/*,
-# release bundles from its own ops bucket and backups into it.
+# release bundles from its own ops bucket, backups into and out of it, and its
+# own prefix of the archive bucket (ADR-0013).
 
 data "aws_iam_policy_document" "host_trust" {
   statement {
@@ -70,10 +71,33 @@ data "aws_iam_policy_document" "host" {
     resources = ["${aws_s3_bucket.ops.arn}/releases/*"]
   }
 
+  # Nightly dumps (backup.sh) and the restore drill (restore.sh latest). No
+  # delete: a failed dump never completes its upload, and the lifecycle rule
+  # expires old dumps.
   statement {
-    sid       = "WriteBackups"
-    actions   = ["s3:PutObject"]
+    sid       = "WriteAndReadBackups"
+    actions   = ["s3:PutObject", "s3:GetObject"]
     resources = ["${aws_s3_bucket.ops.arn}/backups/*"]
+  }
+
+  statement {
+    sid       = "ListBackups"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.ops.arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["backups/", "backups/*"]
+    }
+  }
+
+  # The final dump at shutdown (final-dump.sh, ADR-0013): only this
+  # environment's prefix of the archive bucket; no list, no delete.
+  statement {
+    sid       = "WriteAndReadOwnArchivePrefix"
+    actions   = ["s3:PutObject", "s3:GetObject"]
+    resources = ["arn:${local.partition}:s3:::${var.archive_bucket}/${local.archive_prefix}/*"]
   }
 }
 

@@ -28,6 +28,8 @@ locals {
   partition  = data.aws_partition.current.partition
   az         = data.aws_subnet.host.availability_zone
   host_dir   = "${path.module}/../../../host"
+
+  archive_prefix = coalesce(var.archive_prefix, var.env)
 }
 
 resource "aws_security_group" "host" {
@@ -135,6 +137,14 @@ resource "aws_instance" "this" {
     # only at first boot, and deploy.sh refreshes the host scripts from each
     # release bundle. Replacement is `terraform apply -replace` (runbook).
     ignore_changes = [ami, user_data_base64]
+
+    # EC2 rejects more than 16 KiB of user data (before base64), and only at
+    # launch, long after a plan: fail the plan instead. 21848 base64
+    # characters are 16384 bytes.
+    precondition {
+      condition     = length(base64gzip(local.cloud_init)) <= 21848
+      error_message = "The gzipped cloud-init is over EC2's 16 KiB user data limit; ship more host scripts only in the release bundle (cloud_init.tf)."
+    }
   }
 
   # The EIP is attached to the interface, so it must exist before boot.

@@ -1,0 +1,15 @@
+# Nightly logical backup of the database to the ops bucket (ADR-0013, #616),
+# started by classora-backup.timer. backup.sh logs one JSON result line to the
+# journal and to /var/log/classora/backup.log; a failure fails the unit.
+[Unit]
+Description=Classora nightly database backup (pg_dump to S3)
+Requires=docker.service
+After=docker.service classora-data.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/classora/bin/backup.sh
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=3600

@@ -1,6 +1,6 @@
 # Ops bucket (ADR-0011): release bundles under releases/ (written by the
-# deploy workflow, read by the host) and backups under backups/ (M9-08 sets
-# their lifecycle). Destroyed with the environment.
+# deploy workflow, read by the host) and the nightly backups under backups/
+# (backup.sh, kept 14 days). Destroyed with the environment.
 
 resource "random_id" "ops_suffix" {
   byte_length = 4
@@ -62,6 +62,25 @@ resource "aws_s3_bucket_lifecycle_configuration" "ops" {
 
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
+    }
+  }
+
+  # Nightly dumps (ADR-0013): 14 days. The bucket isn't versioned; the
+  # noncurrent rule only matters if versioning is ever turned on.
+  rule {
+    id     = "backups-14d"
+    status = "Enabled"
+
+    filter {
+      prefix = "backups/"
+    }
+
+    expiration {
+      days = 14
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 1
     }
   }
 }

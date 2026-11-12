@@ -21,7 +21,8 @@ Every command below uses the owner's profile: `export AWS_PROFILE=jsolisdev AWS_
 | Path | What |
 |---|---|
 | `/etc/classora/host.env` | Environment, region, ops bucket and data volume ID, from user data. No secrets. |
-| `/opt/classora/bin/` | Host scripts: `deploy.sh`, `manage.sh`, `compose.sh`, `render-env.sh`, `db-roles.sh`, `ecr-login.sh`, `mount-data-volume.sh`, `host-setup.sh`. Each deploy refreshes them from the release. |
+| `/opt/classora/bin/` | Host scripts: `deploy.sh`, `manage.sh`, `compose.sh`, `render-env.sh`, `db-roles.sh`, `ecr-login.sh`, `mount-data-volume.sh`, `host-setup.sh`, `install-units.sh`, and the backup scripts `backup.sh`, `restore.sh`, `final-dump.sh` ([`restore.md`](restore.md)). Each deploy refreshes them from the release. |
+| `/var/log/classora/backup.log` | One JSON line per backup, restore drill and final dump (logrotate weekly). |
 | `/opt/classora/env/app.env` | Env file rendered from Parameter Store. Mode `0600`, owner root. Never print it. |
 | `/srv/classora-data/` | The data volume (XFS, label `classora`): `postgres/`, `caddy/` (certificates), `collector/`, `releases/<sha>/` with the `current` and `previous` links. |
 
@@ -31,6 +32,7 @@ Every command below uses the owner's profile: `export AWS_PROFILE=jsolisdev AWS_
   - `classora-data.service`: `db`, then `pgbouncer`.
   - `classora-app.service`: `api`, `worker`, `edge` and, with telemetry on, `collector`. It requires the data unit and starts after it.
   - Both are oneshot units that run `compose.sh up -d` and `compose.sh stop`.
+  - `classora-backup.timer` runs `classora-backup.service` (the nightly dump) at 08:30 UTC. Backups, snapshots and restore drills: [`restore.md`](restore.md).
   - Check them with `systemctl status classora-data classora-app`.
 - Compose: run `/opt/classora/bin/compose.sh <args>` for the current release, for example `compose.sh ps` or `compose.sh logs --tail 100 api`.
 - Docker rotates logs (`json-file`, 10 MB × 3 per container). Each line carries the Compose service name.
@@ -75,7 +77,7 @@ Containers were stopped by the units at shutdown, so the restart policy doesn't 
 3. launches a new one on the same network interface and Elastic IP;
 4. reattaches the volume.
 
-Cloud-init then mounts the volume **without formatting it** (it has a filesystem), finds `releases/current` and starts it. The data and the certificate are unchanged. The AMI is read at creation, so a replacement also picks up the latest AL2023.
+Cloud-init then mounts the volume **without formatting it** (it has a filesystem), finds `releases/current`, installs that release's host scripts and units (the user data carries only what a first boot needs; the backup scripts come with releases) and starts it. The data and the certificate are unchanged. The AMI is read at creation, so a replacement also picks up the latest AL2023.
 
 ## Resize the data volume
 
@@ -99,6 +101,10 @@ You can't shrink a volume.
 - the Elastic IP and the network interface;
 - the security group and the role;
 - the ops bucket, with its releases and backups;
+- the snapshot policy and its role;
 - the parameters and the A record.
+
+The data volume's snapshots aren't Terraform resources and stay (a few cents a month). Delete them after the destroy unless you want them:
+`aws ec2 describe-snapshots --owner-ids self --filters Name=tag:Name,Values=classora-dev-data --query 'Snapshots[].SnapshotId' --output text`, then `aws ec2 delete-snapshot --snapshot-id <id>` for each.
 
 Nothing in `shared` or `bootstrap` changes. A later re-create gets new secrets and a new certificate, which counts toward the Let's Encrypt limit above.

@@ -22,3 +22,8 @@ output "deploy_document" {
   description = "DEV deploy SSM document (deploy-dev.yml)."
   value       = module.app_host.deploy_document
 }
+
+output "snapshot_policy_id" {
+  description = "DEV data volume snapshot policy (Data Lifecycle Manager)."
+  value       = module.app_host.snapshot_policy_id
+}

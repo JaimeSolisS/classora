@@ -113,7 +113,7 @@ if [ ! -f "$new/images.env" ]; then
 fi
 
 log "installing host scripts and units from the release"
-install -d -m 0755 /opt/classora/systemd
+install -d -m 0755 /opt/classora/systemd /opt/classora/logrotate
 for file in "$new"/infrastructure/host/bin/*.sh; do
   # Copy, then rename: a running script (this one) keeps its old inode.
   install -m 0755 "$file" "$BIN/.$(basename "$file").new"
@@ -122,10 +122,11 @@ done
 for file in "$new"/infrastructure/host/systemd/*; do
   install -m 0644 "$file" /opt/classora/systemd/
 done
-install -m 0644 /opt/classora/systemd/classora-data.service /opt/classora/systemd/classora-app.service /etc/systemd/system/
-install -D -m 0644 /opt/classora/systemd/docker-classora.conf /etc/systemd/system/docker.service.d/classora.conf
-systemctl daemon-reload
-systemctl enable classora-data.service classora-app.service >/dev/null 2>&1
+for file in "$new"/infrastructure/host/logrotate/*; do
+  install -m 0644 "$file" /opt/classora/logrotate/
+done
+# The stacks' units, the nightly backup timer (#616) and logrotate.
+"$BIN/install-units.sh"
 
 # 2. Env file.
 "$BIN/render-env.sh"
