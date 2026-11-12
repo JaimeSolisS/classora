@@ -25,8 +25,12 @@ with a charge whose open amount is above zero, whose stage today is not
    and no row yet for it; none → ``nothing_due``;
 4. the recipients (``families.service.family_billing_recipients``: the
    logins of the active guardian profiles in the **account's** family,
-   N3); none → ``no_recipient``, nothing written (the charge is
-   reconsidered on the next run while it is still in a window);
+   N3), keeping only users who are ``active`` now
+   (``identity.service.active_user_ids``, #640 E4: a pending, suspended or
+   archived login can't sign in to read it); none → ``no_recipient``,
+   nothing written (the charge is reconsidered on the next run while it is
+   still in a window, so a guardian reactivated or redeeming their
+   invitation inside it still gets the stage);
 5. ``INSERT … ON CONFLICT (charge_id, stage) DO NOTHING RETURNING``
    (``charge_reminders`` is not audited);
 6. per stage of the rows inserted **now** and per recipient, one
@@ -81,6 +85,7 @@ from app.core.uow import UnitOfWork
 from app.modules.administration import service as administration
 from app.modules.billing import service as billing
 from app.modules.families import service as families
+from app.modules.identity import service as identity
 from app.workflows.charge_pricing import local_date
 
 logger = logging.getLogger(__name__)
@@ -147,9 +152,11 @@ async def remind_account(
     due = await billing.charges_to_remind(session, account_id, today=today)
     if not due:
         return AccountRun("nothing_due")
-    recipients = (await families.family_billing_recipients(session, [family_id])).get(
+    logins = (await families.family_billing_recipients(session, [family_id])).get(
         family_id, []
     )
+    active = await identity.active_user_ids(session, logins)
+    recipients = [user_id for user_id in logins if user_id in active]
     if not recipients:
         return AccountRun("no_recipient")
     inserted = await billing.record_reminders(session, due, sent_at=clock.now())

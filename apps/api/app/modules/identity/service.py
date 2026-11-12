@@ -199,6 +199,7 @@ __all__ = [
     "RoleMember",
     "UsernameInvalidError",
     "accept_privacy_notice",
+    "active_user_ids",
     "active_user_ids_with_permission",
     "add_user_role",
     "change_user_state",
@@ -329,6 +330,21 @@ async def load_principal(session: AsyncSession, user_id: uuid.UUID) -> Principal
         permissions=await effective_permissions(session, user_id),
         privacy_notice_accepted=bool(row[1]),
     )
+
+
+async def active_user_ids(
+    session: AsyncSession, user_ids: Iterable[uuid.UUID]
+) -> set[uuid.UUID]:
+    """The ids among ``user_ids`` whose user is ``active`` now (#640 E4:
+    pending, suspended, archived and unknown ids are left out). One
+    statement (none for an empty collection)."""
+    wanted = set(user_ids)
+    if not wanted:
+        return set()
+    rows = await session.scalars(
+        select(User.id).where(User.id.in_(wanted), User.state == ACTIVE)
+    )
+    return set(rows)
 
 
 async def active_user_ids_with_permission(

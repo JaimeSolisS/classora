@@ -153,7 +153,8 @@ async def family_billing_recipients(
     **active** guardian profiles (``family_guardians``), the #364 record
     policy's readers. Each user once, sorted; families without one are left
     out. Students' own logins are not included. One statement (none for no
-    ids); no access check."""
+    ids); no access check and no user-state filter: the reminders job keeps
+    only ``active`` users (``app.workflows.charge_reminders``, #640 E4)."""
     wanted = set(family_ids)
     if not wanted:
         return {}
