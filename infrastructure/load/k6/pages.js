@@ -61,14 +61,18 @@ function batch(session, calls) {
       return ['GET', `${TARGET}${url}`, null, p];
     }),
   );
+  // k6 responses are host objects (no new properties): remember the expected ones.
   responses.forEach((r, i) => {
-    if (allowed[i][2] && allowed[i][2].includes(r.status)) r.expected = true;
+    if (allowed[i][2] && allowed[i][2].includes(r.status)) expectedResponses.add(r);
   });
   return responses;
 }
 
+const expectedResponses = new Set();
+
 function failures(responses) {
-  const bad = responses.filter((r) => r && (r.status < 200 || r.status >= 400) && !r.expected);
+  const bad = responses.filter((r) => r && (r.status < 200 || r.status >= 400) && !expectedResponses.has(r));
+  responses.forEach((r) => expectedResponses.delete(r));
   if (__ENV.DEBUG) bad.forEach((r) => console.warn(`${r.status} ${r.request.method} ${r.url} ${String(r.body).slice(0, 160)}`));
   return bad.length;
 }
