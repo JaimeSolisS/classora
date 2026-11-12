@@ -15,12 +15,18 @@ re-running it on a ``committed`` job changes nothing.
    it creates are audited with that actor), through
    :func:`~app.modules.administration.imports.service.commit_next_batch`.
    An exception escaping a batch rolls that batch back; the job becomes
-   ``failed`` in a new Unit of Work (the committed batches stay).
+   ``failed`` in a new Unit of Work (the committed batches stay). Before
+   each batch the committer is re-checked (#640 E3): one who is no longer
+   ``active`` or may no longer import the kind fails the job the same way,
+   with one ``WARNING`` ``imports.commit.permission_lost`` (job id and kind
+   code) instead of the error line; a user who may import the kind resumes
+   it with ``POST /api/v1/imports/{id}/commit``.
 2. Expire ``staged`` and ``failed`` jobs whose last change is over 7 days
    old (their rows are deleted).
 
-The kinds must be registered in the process (``app.worker`` calls
-``app.wiring.register_approval_wiring``); a job of an unregistered kind fails.
+The kinds and the committer's principal loader must be registered in the
+process (``app.worker`` calls ``app.wiring.register_approval_wiring``); a
+job of an unregistered kind, or any job without a loader, fails.
 Log lines carry job ids, counts and error class names only, never a value.
 
 **Run by hand** (:func:`run_imports` builds its own direct engine and
@@ -90,6 +96,16 @@ async def run_imports_with(
                     if settings is not None:
                         uow.session.info[RUN_SETTINGS_KEY] = settings
                     done = await service.commit_next_batch(uow.session, job.id)
+            except service.ImportCommitterLostError as exc:
+                failed += 1
+                # Not a system fault: a WARNING, ids and the kind code only.
+                logger.warning(
+                    "imports.commit.permission_lost",
+                    extra={"import_job_id": str(job.id), "kind": exc.kind_code},
+                )
+                async with UnitOfWork(sessionmaker) as uow:
+                    await service.mark_job_failed(uow.session, job.id)
+                break
             except Exception as exc:  # noqa: BLE001 - one job never blocks the rest
                 failed += 1
                 logger.error(

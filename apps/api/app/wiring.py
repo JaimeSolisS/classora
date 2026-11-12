@@ -2,6 +2,8 @@
 
 ``administration`` imports no other module (it is the lower layer that
 ``identity`` and later modules call), so the approval types' handlers, the
+import commit's principal loader (#640 E3: ``identity.service.
+load_principal``), the
 notification types of the modules (#41; #52's offer types and its
 ``scheduling.offer_reassignment`` handler; #232's
 ``scheduling.occurrence_skipped_closure``; #54's three edit types; #55's
@@ -58,6 +60,7 @@ from app.modules.identity.service import (
     AccountReference,
     active_user_ids_with_permission,
     get_account_references,
+    load_principal,
 )
 from app.modules.reporting.exports.service import register_export_wiring
 from app.modules.scheduling import service as scheduling_service
@@ -120,7 +123,8 @@ def register_retention_wiring() -> None:
 
 def register_approval_wiring() -> None:
     """Every approval type's handler, the modules' notification types, the
-    account-reference resolver, the import kinds, the time-zone dependency
+    account-reference resolver, the import kinds and the import committer's
+    principal loader, the time-zone dependency
     checks and the availability impact source.
     Registering again changes nothing."""
     administration_service.register_approval_handler(REGISTRATION_APPROVAL_HANDLER)
@@ -179,6 +183,7 @@ def register_approval_wiring() -> None:
     administration_service.register_import_kind(
         billing_service.OPENING_BALANCES_IMPORT_KIND
     )
+    administration_service.register_import_principal_loader(load_principal)
     register_export_wiring()
     register_retention_wiring()
     administration_service.register_time_zone_dependency(

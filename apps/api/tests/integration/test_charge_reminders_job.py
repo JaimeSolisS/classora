@@ -182,7 +182,7 @@ def test_no_recipient_writes_nothing_and_a_new_guardian_gets_it(module_seeded_ur
     assert [u for u, _ in dd.notifications(url, [user])] == [user]
 
 
-# --- Only logins that can sign in (#640 E4) --------------------------------------------
+# --- Only logins that can sign in (#640 E4) ---------------------------------------
 
 
 def set_user_state(url: str, user: uuid.UUID, state: str) -> None:
