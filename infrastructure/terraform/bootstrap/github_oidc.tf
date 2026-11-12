@@ -157,3 +157,65 @@ resource "aws_iam_role_policy" "gha" {
   role   = aws_iam_role.gha[each.key].id
   policy = data.aws_iam_policy_document.gha[each.key].json
 }
+
+# Release check (M9-10, #618): release-prod.yml's `verify` job runs BEFORE the
+# owner's approval, so it can't use classora-gha-prod (that role trusts only
+# jobs in the protected `production` environment, which wait for approval).
+# This read-only role trusts jobs on `main` without an environment and can
+# only see whether DEV tested the release (ECR tags) and whether PROD exists:
+# a release is refused before anyone is asked to approve it.
+data "aws_iam_policy_document" "gha_release_check_trust" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [data.aws_iam_openid_connect_provider.github.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["${local.github_sub_prefix}:ref:refs/heads/main"]
+    }
+  }
+}
+
+resource "aws_iam_role" "gha_release_check" {
+  name                 = "classora-gha-release-check"
+  description          = "GitHub Actions on main (no environment): read-only checks before a PROD release."
+  assume_role_policy   = data.aws_iam_policy_document.gha_release_check_trust.json
+  max_session_duration = 3600
+}
+
+data "aws_iam_policy_document" "gha_release_check" {
+  statement {
+    sid       = "DescribeClassoraImages"
+    actions   = ["ecr:DescribeImages"]
+    resources = ["arn:${local.partition}:ecr:${local.region}:${local.account_id}:repository/classora/*"]
+  }
+
+  statement {
+    sid       = "ReadProdInstanceId"
+    actions   = ["ssm:GetParameter"]
+    resources = ["arn:${local.partition}:ssm:${local.region}:${local.account_id}:parameter/classora/prod/instance_id"]
+  }
+
+  statement {
+    sid       = "DescribeInstances"
+    actions   = ["ec2:DescribeInstances"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "gha_release_check" {
+  name   = "classora-gha-release-check"
+  role   = aws_iam_role.gha_release_check.id
+  policy = data.aws_iam_policy_document.gha_release_check.json
+}
