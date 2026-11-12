@@ -320,10 +320,12 @@ def test_what_a_student_may_not_record(
     [("U1", "S1", "student_login"), ("USA", "SA", "guardian_academic_access")],
 )
 def test_another_partys_guardian_id_is_answered_like_a_missing_one(
-    module_seeded_url, client, world, user, student, scope
+    module_seeded_url, client, staff, world, user, student, scope
 ):
-    # #149 AC5b: G4 belongs to nobody the caller knows; naming it in the body
-    # tells the caller nothing a missing id wouldn't, and records nothing.
+    # #149 AC5b: G4 is another family's guardian (linked to S2 only, not to
+    # the caller's student); naming it in the body tells the caller nothing a
+    # missing id wouldn't, and records nothing.
+    linked(client, staff, sid(world, "S2"), gid(world, "G4"))
     cookie = sign_in(client, world.u[user].username)
     before = consent_count(module_seeded_url)
 
