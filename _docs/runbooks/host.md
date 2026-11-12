@@ -24,6 +24,7 @@ Every command below uses the owner's profile: `export AWS_PROFILE=jsolisdev AWS_
 | `/opt/classora/bin/` | Host scripts: `deploy.sh`, `manage.sh`, `compose.sh`, `render-env.sh`, `db-roles.sh`, `ecr-login.sh`, `mount-data-volume.sh`, `host-setup.sh`, `install-units.sh`, and the backup scripts `backup.sh`, `restore.sh`, `final-dump.sh` ([`restore.md`](restore.md)). Each deploy refreshes them from the release. |
 | `/var/log/classora/backup.log` | One JSON line per backup, restore drill and final dump (logrotate weekly). |
 | `/opt/classora/env/app.env` | Env file rendered from Parameter Store. Mode `0600`, owner root. Never print it. |
+| `/opt/classora/caddy-sites/` | Extra edge sites: `grafana.caddy` only while monitoring is colocated on this host ([`monitoring.md`](monitoring.md)). |
 | `/srv/classora-data/` | The data volume (XFS, label `classora`): `postgres/`, `caddy/` (certificates), `collector/`, `releases/<sha>/` with the `current` and `previous` links. |
 
 ## Services and logs

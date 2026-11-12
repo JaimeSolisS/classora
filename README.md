@@ -36,7 +36,8 @@ flowchart LR
 **Pre-alpha.** The features below run on a local development stack. A DEV
 environment runs on AWS (one EC2 host with Caddy HTTPS and the Compose stacks
 under systemd, created with Terraform), every merge to `develop` deploys
-to it automatically, and its database is backed up nightly. There is no production
+to it automatically, its database is backed up nightly, and it is monitored,
+with e-mail alerts. There is no production
 environment yet. The stack is a FastAPI API with
 liveness and readiness health checks, a PostgreSQL database reached through
 PgBouncer (schema managed with Alembic migrations), a background worker for
@@ -684,7 +685,7 @@ proxies the stream like any other API call.
 
 An optional monitoring stack runs next to the app: an OpenTelemetry Collector,
 Prometheus, Loki, Tempo and Grafana, from the same configuration files the AWS
-monitoring host will use (`infrastructure/observability/`,
+monitoring host uses (`infrastructure/observability/`,
 [ADR-0014](_docs/adr/0014-observability-error-tracking-and-alerting.md)). It is
 **off by default**: `make dev` never starts it, and CI only validates its
 configuration (`make check-observability`).
@@ -1445,8 +1446,11 @@ automatically ([deploy runbook](_docs/runbooks/deploy.md)), and is operated
 over SSM Session Manager ([host runbook](_docs/runbooks/host.md)). Its
 database is dumped to S3 every night and its data volume snapshotted daily,
 with tested restore drills ([restore runbook](_docs/runbooks/restore.md)).
-PROD and the monitoring host are still planned. DEV and PROD are created and
-destroyed with Terraform:
+DEV is monitored: its collector agent ships metrics, logs and traces to a
+separate monitoring host (Grafana behind Caddy HTTPS with a login), whose
+alerts, missed or failed backups included, e-mail the owner through Amazon SES
+([monitoring runbook](_docs/runbooks/monitoring.md)). PROD is still planned.
+DEV, PROD and the monitoring host are created and destroyed with Terraform:
 
 ```mermaid
 flowchart TB
