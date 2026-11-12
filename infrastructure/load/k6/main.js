@@ -262,19 +262,16 @@ function discover(session, role) {
   }
   if (role === 'staff' && session.roles.includes('finance_staff') && !ctx.forbidden.includes('/api/v1/payroll/periods')) {
     ctx.payslips = [];
-    const periods = getJson(session, '/api/v1/payroll/periods?limit=20').items || [];
-    const tutors = getJson(session, '/api/v1/payroll/tutors').items || [];
-    for (const period of periods.slice(0, 3)) {
-      for (const tutor of tutors.slice(0, 6)) {
-        const tutorId = tutor.user_id || tutor.id;
-        const res = http.get(`${TARGET}/api/v1/payroll/tutors/${tutorId}/earnings/${period.id}`, {
-          headers: headers(session, false),
-          cookies: { [session.cookieName]: { value: session.cookie, replace: true } },
-          tags: { kind: 'setup' },
-        });
-        if (res.status === 200 && res.json().payslip) {
-          ctx.payslips.push({ tutorId, payslipId: res.json().payslip.id });
-        }
+    // Payroll periods are per tutor; finalized ones carry a payslip.
+    const periods = (getJson(session, '/api/v1/payroll/periods?status=finalized&limit=100').items || []).slice(0, 8);
+    for (const period of periods) {
+      const res = http.get(`${TARGET}/api/v1/payroll/tutors/${period.tutor_user_id}/earnings/${period.id}`, {
+        headers: headers(session, false),
+        cookies: { [session.cookieName]: { value: session.cookie, replace: true } },
+        tags: { kind: 'setup' },
+      });
+      if (res.status === 200 && res.json().payslip) {
+        ctx.payslips.push({ tutorId: period.tutor_user_id, payslipId: res.json().payslip.id });
       }
     }
   }

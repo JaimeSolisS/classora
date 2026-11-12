@@ -185,7 +185,7 @@ def main() -> int:
                 print(f"| {key} | {peak[key]} |")
         print(f"| all backends, peak | {max(totals)} |")
         dstats = [
-            s for s in window if s[0] == "D" and len(s) == 9 and s[2] == "classora_load"
+            s for s in window if s[0] == "D" and len(s) == 8 and s[2] == "classora_load"
         ]
         if len(dstats) >= 2:
             a, b = dstats[0], dstats[-1]
