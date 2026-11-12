@@ -93,7 +93,7 @@ tf-apply:
 	$(TF) apply $(ENV)
 
 ## Destroy a root after typing its name: make tf-destroy ENV=<root>. Refuses bootstrap,
-## and prod until M9-10 adds the final-dump guard.
+## and prod without a verified final dump newer than its last deploy (prod-destroy-guard.sh).
 tf-destroy:
 	$(TF_ROOT_CHECK)
 	$(TF) destroy $(ENV)

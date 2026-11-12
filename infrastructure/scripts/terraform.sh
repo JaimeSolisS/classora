@@ -6,7 +6,8 @@
 #                                   extra plan options, e.g. -replace=<address> (#614)
 #   terraform.sh apply <root>       show the saved plan, ask for the root name, apply it
 #   terraform.sh destroy <root>     plan a destroy, ask for the root name, apply it
-#                                   (refuses bootstrap; refuses prod until M9-10's guard)
+#                                   (refuses bootstrap; prod only after a verified final
+#                                   dump newer than its last deploy: prod-destroy-guard.sh)
 #   terraform.sh migrate-bootstrap  after the first bootstrap apply: write backend.hcl
 #                                   and move the local bootstrap state into the bucket
 #   terraform.sh check              fmt -check and validate every root (pinned
@@ -104,7 +105,8 @@ cmd_destroy() {
   local root=$1 dir
   case "$root" in
     bootstrap) die "bootstrap is never destroyed (state bucket, zone and archive are long-lived; ADR-0011)" ;;
-    prod) die "prod can't be destroyed until M9-10 (#618) adds the verified final-dump guard (ADR-0013)" ;;
+    # A verified final dump newer than PROD's last deploy first (ADR-0013).
+    prod) infrastructure/scripts/prod-destroy-guard.sh || die "prod is not destroyed (prod-destroy-guard.sh)" ;;
   esac
   dir=$(root_dir "$root")
   tf_init "$root" "$dir"
