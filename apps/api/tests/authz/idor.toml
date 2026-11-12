@@ -37,3 +37,103 @@
 #       A leak too big to fix in the issue that found it, with its open bug.
 #
 #   Optional: note = "<which ids the tests cover, when it isn't obvious>".
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/compensation"
+tests = ["tests/integration/test_payroll_compensation_access.py::test_a_tutor_gets_the_same_404_for_anyone_else"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/earnings"
+tests = ["tests/integration/test_payroll_earnings_access.py::test_c5_tutor_a_cant_reach_anything_of_b"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/earnings/{period_id}"
+tests = [
+    "tests/integration/test_payroll_earnings_access.py::test_c5_tutor_a_cant_reach_anything_of_b",
+    "tests/integration/test_payroll_earnings_access.py::test_c5_a_tutors_own_open_and_prepared_periods_are_404",
+]
+note = "Covers another tutor's id and another tutor's period under the own tutor id."
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/payslips/{payslip_id}/pdf"
+tests = [
+    "tests/integration/test_payroll_earnings_access.py::test_c5_tutor_a_cant_reach_anything_of_b",
+    "tests/integration/test_payroll_earnings_access.py::test_c5_everyone_else_gets_the_same_404_on_all_three",
+]
+note = "Generated file. Covers another tutor's id and another tutor's payslip under the own tutor id."
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}"
+tests = ["tests/integration/test_tutor_profiles.py::test_idor_another_tutor_is_indistinguishable_from_a_missing_one"]
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/tutors/{user_id}"
+tests = ["tests/integration/test_tutor_profiles.py::test_idor_another_tutor_is_indistinguishable_from_a_missing_one"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}/availability"
+tests = ["tests/integration/test_tutor_availability.py::test_a_tutor_cannot_see_or_change_another_tutor"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/availability/change-requests/{change_request_id}/cancel"
+tests = ["tests/integration/test_availability_change_requests.py::test_the_tutor_withdraws_a_pending_request"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}/availability/check"
+tests = ["tests/integration/test_tutor_availability.py::test_a_tutor_cannot_see_or_change_another_tutor"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/availability/exceptions"
+tests = ["tests/integration/test_tutor_availability.py::test_a_tutor_cannot_see_or_change_another_tutor"]
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/tutors/{user_id}/availability/exceptions/{exception_id}"
+tests = [
+    "tests/integration/test_tutor_availability.py::test_a_tutor_cannot_see_or_change_another_tutor",
+    "tests/integration/test_tutor_availability.py::test_another_tutors_exception_id_is_404",
+]
+note = "Covers another tutor's id and another tutor's exception under the own tutor id."
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/tutors/{user_id}/availability/settings"
+tests = ["tests/integration/test_tutor_availability_settings.py::test_another_tutor_gets_404_like_a_missing_one"]
+note = "preferred_classroom_ids are catalog ids (classrooms)."
+
+[[route]]
+method = "PUT"
+path = "/api/v1/tutors/{user_id}/availability/weekly"
+tests = ["tests/integration/test_tutor_availability.py::test_a_tutor_cannot_see_or_change_another_tutor"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}/qualifications"
+tests = ["tests/integration/test_tutor_qualifications.py::test_list_visibility"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/qualifications"
+tests = ["tests/integration/test_tutor_qualifications.py::test_only_the_tutor_requests_for_themselves"]
+note = "subject_id is a catalog id."
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/qualifications/{qualification_id}/cancel"
+tests = ["tests/integration/test_tutor_qualifications.py::test_a_decided_or_unknown_qualification_cannot_be_cancelled"]
+note = "Another tutor's qualification id under that tutor's own id is 404 and the row is unchanged."
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}/schedule"
+tests = ["tests/integration/test_tutor_schedule.py::test_another_tutor_and_a_non_tutor_are_the_same_404_as_an_unknown_id"]
