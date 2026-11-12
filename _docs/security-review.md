@@ -209,7 +209,7 @@ this PR's edge change is deployed):
 | `/`, `/some/deep/link` (SPA, `200`) | CSP exactly as `_docs/security-headers.md` (with the accepted `style-src 'unsafe-inline'`), `x-frame-options: DENY`, `x-content-type-options: nosniff`, `referrer-policy: strict-origin-when-cross-origin`, `permissions-policy` denying camera, microphone, geolocation, payment, usb, HSTS `max-age=31536000`, `cache-control: no-cache`, `server: Caddy` |
 | `/assets/index-*.js` | the same SPA headers, `cache-control: public, max-age=31536000, immutable` |
 | `/api/v1/auth/me` (`401`), `/api/v1/does-not-exist` (`404`) | `cache-control: no-store`, `nosniff`, `content-type: application/problem+json`, HSTS, `x-request-id`, `server: uvicorn`, `via: 1.1 Caddy` |
-| `429` from the general limit (area 4b) | `retry-after`, the same API headers |
+| `429` from the general limit (area 4b) | `Retry-After: 54` (the 4b script recorded only this header; the middleware sits inside the security-headers middleware, `tests/unit/test_api_rate_limit.py::test_the_429_is_the_rate_limited_problem_with_every_api_header`) |
 
 Everything matches `_docs/security-headers.md` except the product headers
 (SR-03, fixed). After this PR deploys, `server` and `via` are gone; the edge
