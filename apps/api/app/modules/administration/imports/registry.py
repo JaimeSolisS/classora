@@ -31,7 +31,7 @@ Codes in :class:`RowIssue` are stable strings and never carry a value.
 
 import re
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Final, Literal, Protocol
 
@@ -296,6 +296,48 @@ def import_kind(code: str) -> ImportKind | None:
 def importable_kinds(principal: Principal) -> list[str]:
     """The registered kinds ``principal`` may import, sorted."""
     return sorted(code for code, kind in _kinds.items() if kind.may_import(principal))
+
+
+# --- The committer's principal (#640 E3) -----------------------------------------
+
+
+type ImportPrincipalLoader = Callable[
+    [AsyncSession, uuid.UUID], Awaitable[Principal | None]
+]
+"""Loads a user's current :class:`Principal`, or ``None`` when the user is
+unknown or not ``active``."""
+
+
+class ImportPrincipalLoaderMissingError(RuntimeError):
+    """No principal loader is registered: a commit batch fails closed (the
+    job becomes ``failed``) instead of writing as an unchecked committer."""
+
+
+_principal_loader: ImportPrincipalLoader | None = None
+
+
+def register_import_principal_loader(loader: ImportPrincipalLoader | None) -> None:
+    """Register the loader the commit run re-checks the committer with
+    (``None`` unregisters it; tests only). ``administration`` imports no
+    other module, so the composition roots register
+    ``identity.service.load_principal`` (``app.wiring``)."""
+    global _principal_loader
+    _principal_loader = loader
+
+
+def registered_import_principal_loader() -> ImportPrincipalLoader | None:
+    """The registered loader, or ``None``."""
+    return _principal_loader
+
+
+async def load_committer(session: AsyncSession, user_id: uuid.UUID) -> Principal | None:
+    """The committer's current principal through the registered loader."""
+    loader = _principal_loader
+    if loader is None:
+        raise ImportPrincipalLoaderMissingError(
+            "No import principal loader is registered."
+        )
+    return await loader(session, user_id)
 
 
 def run_settings(session: AsyncSession) -> Settings:

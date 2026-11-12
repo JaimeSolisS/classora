@@ -297,6 +297,13 @@ describes the route declarations and the 401/403/404 rule.
   `tests/unit/test_idor_inventory.py` (`missing IDOR entry`) until it has an
   entry; a cited test that no longer exists fails it too. The file header
   says how to add one.
+- **Job inventory** (#640): `apps/api/tests/authz/jobs.toml` lists every
+  registered Procrastinate task. A new task gets an entry: its `kind`
+  (`reader_checked` or `actor_rechecked` with a one-sentence `check` and the
+  integration `tests` that show the check stopping a reader or actor who lost
+  access, or `no_reader_output` with a `reason`) and the notification types
+  it creates. `tests/unit/test_job_inventory.py` fails with `missing job
+  inventory entry` until it has one. The file header says how to add one.
 - **Visibility tests** (#67): a read that shows rows by state (the
   role-scoped schedules) is tested for every state × the fact it depends on
   (`first_confirmed_at` set or `NULL`), through the real route, against the
@@ -361,8 +368,8 @@ describes the route declarations and the 401/403/404 rule.
   unit-tested per role.
 - Background jobs, generated files and presigned links are checked as well,
   not only endpoints; they use `ensure_permission`. Routes and generated
-  files are in the IDOR inventory (#149); background jobs' reader checks are
-  #640 (M10-01b).
+  files are in the IDOR inventory (#149); background jobs are in the job
+  inventory (`tests/authz/jobs.toml`, #640).
 
 ## Audit
 

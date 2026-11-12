@@ -28,6 +28,14 @@ in one Unit of Work per batch, acting as the committer:
    other exception escapes: the batch rolls back and the task marks the job
    ``failed`` (:func:`mark_job_failed`) in a new transaction.
 
+Before step 2 the committer is re-checked (#640 E3): their current
+principal through the loader the composition roots register
+(:func:`~.registry.register_import_principal_loader`) and the kind's
+``may_import``. Lost (not ``active``, or no longer allowed) →
+:class:`ImportCommitterLostError`: nothing of the batch is written, and the
+task marks the job ``failed``; a user who may import the kind resumes it
+with the commit route, as the new committer.
+
 When no ``ready`` row is left, the job is ``committed`` and every row's
 ``values`` is cleared in the same transaction (D3, E9).
 
@@ -89,6 +97,7 @@ from app.modules.administration.imports.registry import (
     declared_row_code,
     import_kind,
     importable_kinds,
+    load_committer,
 )
 from app.modules.administration.imports.schemas import (
     ImportCounts,
@@ -417,6 +426,17 @@ async def discard_job(
 # --- The task's units (D2, D3, E2) ----------------------------------------------------
 
 
+class ImportCommitterLostError(RuntimeError):
+    """The committer may no longer import the job's kind (#640 E3): unknown
+    or not ``active`` now, or ``kind.may_import`` is false. The batch is not
+    committed; the run marks the job ``failed``."""
+
+    def __init__(self, job_id: uuid.UUID, kind_code: str) -> None:
+        super().__init__(f"import job {job_id}: the committer lost access")
+        self.job_id = job_id
+        self.kind_code = kind_code
+
+
 @dataclass(frozen=True)
 class CommittingJob:
     id: uuid.UUID
@@ -490,7 +510,9 @@ async def _commit_one(
 
 async def commit_next_batch(session: AsyncSession, job_id: uuid.UUID) -> bool:
     """Commit the job's next batch of ``ready`` rows; ``True`` when the job is
-    done (``committed`` now, or no longer ``committing``)."""
+    done (``committed`` now, or no longer ``committing``). Raises
+    :class:`ImportCommitterLostError`, before writing anything, when the
+    committer may no longer import the kind (#640 E3)."""
     job = await session.scalar(
         select(ImportJob)
         .where(ImportJob.id == job_id)
@@ -503,6 +525,11 @@ async def commit_next_batch(session: AsyncSession, job_id: uuid.UUID) -> bool:
     kind = import_kind(job.kind)
     if kind is None or actor is None:
         raise RuntimeError(f"import job {job.id} can't be committed")
+    # #640 E3: the committer's current principal and the kind's full check,
+    # before every batch (the privacy notice is not re-checked).
+    committer = await load_committer(session, actor)
+    if committer is None or not kind.may_import(committer):
+        raise ImportCommitterLostError(job.id, kind.code)
     await session.execute(
         select(
             func.pg_advisory_xact_lock(func.hashtextextended(f"import:{kind.code}", 0))

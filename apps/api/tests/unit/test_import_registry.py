@@ -4,6 +4,7 @@ The pipeline itself (staging, commit, expiry) runs against PostgreSQL in
 ``tests/integration/test_imports_pipeline.py``.
 """
 
+import asyncio
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -227,8 +228,23 @@ def test_the_cli_and_the_worker_register_the_import_kinds():
     ):
         for code in KINDS:
             unregister_import_kind(code)
+        registry.register_import_principal_loader(None)
         run()
         assert set(KINDS) <= registered_import_kinds()
+        # #640 E3: the commit run re-checks the committer through it.
+        assert (
+            registry.registered_import_principal_loader()
+            is identity_service.load_principal
+        )
+
+
+def test_without_a_principal_loader_a_commit_batch_fails_closed():
+    registry.register_import_principal_loader(None)
+    try:
+        with pytest.raises(registry.ImportPrincipalLoaderMissingError):
+            asyncio.run(registry.load_committer(None, uuid.uuid4()))  # type: ignore[arg-type]
+    finally:
+        registry.register_import_principal_loader(identity_service.load_principal)
 
 
 # --- Students (B5) -----------------------------------------------------------------

@@ -61,6 +61,7 @@ from tests.integration.import_support import (
     unique,
 )
 from tests.integration.invitation_support import sign_in
+from tests.integration.lifecycle_support import in_uow
 
 SENTINEL = "Zyxwsentinelvq"
 TASK_LOGGER = "app.modules.administration.imports.tasks"
@@ -573,6 +574,120 @@ def test_d3_a_failing_batch_rolls_back_and_a_retry_resumes(
     created = students_named(module_seeded_url, family)
     assert len(created) == 200
     assert len({row.given_names for row in created}) == 200
+
+
+# --- #640 E3: the committer is re-checked before every batch --------------------------
+
+
+LOST = "imports.commit.permission_lost"
+
+
+@pytest.fixture
+def small() -> Iterator[FlakyStudents]:
+    """The students kind, two rows per batch."""
+    kind = FlakyStudents(code="small_students", batch_size=2, fail_on=[])
+    register_import_kind(kind)
+    yield kind
+    unregister_import_kind(kind.code)
+
+
+@dataclass(frozen=True)
+class HalfCommitted:
+    job_id: str
+    family: str
+    committer: CreatedUser
+
+
+def commit_one_batch(client, url: str, small, lose) -> HalfCommitted:  # type: ignore[no-untyped-def]
+    """Five rows staged and committed by a fresh committer, one batch (two
+    rows) run, then ``lose(url, committer)``."""
+    committer = create_user(url, roles=(ADMINISTRATOR,))
+    cookie = sign_in(client, committer.username)
+    family = unique()
+    rows = [student(family, f"N{i}") for i in range(5)]
+    staged = post_import(client, cookie, small.code, students_csv(rows))
+    assert staged.status_code == 201, staged.text
+    job_id = staged.json()["id"]
+    assert action(client, cookie, job_id, "commit").status_code == 202
+    done = in_uow(
+        url,
+        lambda s: service.commit_next_batch(s, uuid.UUID(job_id)),
+        actor_id=committer.id,
+    )
+    assert done is False
+    assert len(students_named(url, family)) == 2
+    lose(url, committer)
+    return HalfCommitted(job_id, family, committer)
+
+
+def suspend(url: str, user: CreatedUser) -> None:
+    run_sql(url, "UPDATE users SET state = 'suspended' WHERE id = :u", {"u": user.id})
+
+
+def drop_roles(url: str, user: CreatedUser) -> None:
+    # Still active; no role grants student.manage any more.
+    run_sql(url, "DELETE FROM user_roles WHERE user_id = :u", {"u": user.id})
+
+
+def assert_failed_after_two(url: str, half: HalfCommitted, result, caplog) -> None:  # type: ignore[no-untyped-def]
+    job = job_row(url, half.job_id)
+    assert result.failed == 1
+    assert job.status == "failed"
+    assert len(students_named(url, half.family)) == 2
+    assert [row.status for row in stored_rows(url, half.job_id)] == [
+        "created",
+        "created",
+        "ready",
+        "ready",
+        "ready",
+    ]
+    assert (job.created_rows, job.ready_rows) == (2, 3)
+    [warning] = [r for r in caplog.records if r.message == LOST]
+    assert warning.levelno == logging.WARNING
+    assert warning.import_job_id == half.job_id
+    assert warning.kind == "small_students"
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+@pytest.mark.parametrize("lose", [suspend, drop_roles], ids=["suspended", "no_role"])
+def test_640_a_committer_who_lost_access_fails_the_job_before_the_next_batch(
+    client, module_seeded_url, small, caplog, lose
+):
+    half = commit_one_batch(client, module_seeded_url, small, lose)
+
+    with caplog.at_level(logging.INFO, logger=TASK_LOGGER):
+        result = run_job(module_seeded_url)
+
+    assert_failed_after_two(module_seeded_url, half, result, caplog)
+
+
+def test_640_another_permitted_user_resumes_as_the_new_committer(
+    client, owner, module_seeded_url, small, caplog
+):
+    half = commit_one_batch(client, module_seeded_url, small, suspend)
+    with caplog.at_level(logging.INFO, logger=TASK_LOGGER):
+        assert_failed_after_two(
+            module_seeded_url, half, run_job(module_seeded_url), caplog
+        )
+
+    resumed = action(client, owner.cookie, half.job_id, "commit")
+    result = run_job(module_seeded_url)
+
+    assert resumed.status_code == 202, resumed.text
+    assert result.failed == 0
+    job = job_row(module_seeded_url, half.job_id)
+    assert job.status == "committed"
+    assert job.committed_by_user_id == owner.user.id
+    created = students_named(module_seeded_url, half.family)
+    actors = run_sql(
+        module_seeded_url,
+        "SELECT record_id, actor_user_id FROM audit_events"
+        " WHERE record_type = 'students' AND action = 'create'"
+        " AND record_id = ANY(:ids)",
+        {"ids": [row.id for row in created]},
+    )
+    by_actor = sorted(str(row.actor_user_id) for row in actors)
+    assert by_actor == sorted([str(half.committer.id)] * 2 + [str(owner.user.id)] * 3)
 
 
 def test_d2_a_committing_job_with_nothing_queued_is_committed_by_the_tick(

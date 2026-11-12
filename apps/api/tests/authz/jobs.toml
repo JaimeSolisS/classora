@@ -1,0 +1,172 @@
+# Job inventory (M10-01b, #640): every background task and how it checks the
+# user it writes for, or acts as (spec §16: record-level checks in background
+# jobs).
+#
+# Read by tests/authz/jobs.py. tests/unit/test_job_inventory.py checks it
+# against the registered Procrastinate tasks (app.core.jobs.create_job_app,
+# app_env "local", so the demo tasks count) and the registered notification
+# types. Notifications created inside a request are out of scope: their
+# recipients are computed in the actor's request, and idor.toml and the
+# permission matrix cover the routes.
+#
+# Adding an entry: one [[task]] table per registered task name, sorted by
+# name (a test enforces it). Fields:
+#
+#   name = "<module>:<task>"
+#   kind, exactly one of:
+#     "reader_checked"   the job writes output for a reader (a notification,
+#                        a file, a draft) and checks that reader's
+#                        authorization when it writes;
+#     "actor_rechecked"  the job writes records as a user and re-checks that
+#                        user's permission while it runs;
+#     "no_reader_output" the job writes nothing addressed to a reader; rows
+#                        it creates are read later only through routes that
+#                        check access.
+#   check = "<one sentence: the function and the rule>"
+#       reader_checked and actor_rechecked only.
+#   tests = ["tests/integration/<file>.py::<test_name>", ...]
+#       reader_checked and actor_rechecked only. Node ids relative to
+#       apps/api, resolved like idor.toml's (a parametrized test without its
+#       [...]); they show the check stopping the output for a reader or actor
+#       who lost access.
+#   reason = "<why nothing is addressed to a reader>"
+#       no_reader_output only.
+#   notifications = ["<type>", ...]
+#       Optional: the notification types the job creates (registered types
+#       only).
+
+[[task]]
+name = "academics:create_progress_report_placeholders"
+kind = "reader_checked"
+check = "place_one re-checks under the schedule lock, through ineligible_reason, that the student is active and the author is an active tutor who currently teaches them (and the subject is active and taught); otherwise no draft and no notification"
+tests = [
+  "tests/integration/test_progress_report_placeholders.py::test_an_ineligible_schedule_is_skipped",
+  "tests/integration/test_progress_report_placeholders.py::test_a_weekly_placeholder_for_the_week_that_ended",
+]
+notifications = ["academics.progress_report_due"]
+
+[[task]]
+name = "administration:run_imports"
+kind = "actor_rechecked"
+check = "commit_next_batch reloads the committer's principal (the registered loader, identity.service.load_principal) and re-checks kind.may_import before every batch; lost -> nothing of the batch written, the job failed, WARNING imports.commit.permission_lost"
+tests = [
+  "tests/integration/test_imports_pipeline.py::test_640_a_committer_who_lost_access_fails_the_job_before_the_next_batch",
+  "tests/integration/test_imports_pipeline.py::test_640_another_permitted_user_resumes_as_the_new_committer",
+]
+
+[[task]]
+name = "administration:run_retention"
+kind = "no_reader_output"
+reason = "deletes expired records (deleted academic records, finished job rows) and writes one system audit event with counts only"
+
+[[task]]
+name = "billing:expire_packages"
+kind = "no_reader_output"
+reason = "consumes expired package credit on ledger tables as the system; families and staff read it only through the billing routes"
+
+[[task]]
+name = "billing:post_enrollment_charges"
+kind = "no_reader_output"
+reason = "posts enrollment charges on ledger tables as the system; read only through the billing routes"
+
+[[task]]
+name = "billing:post_session_charges"
+kind = "no_reader_output"
+reason = "posts session charges on ledger tables as the system; read only through the billing routes"
+
+[[task]]
+name = "billing:post_tuition_charges"
+kind = "no_reader_output"
+reason = "posts tuition charges on ledger tables as the system; read only through the billing routes"
+
+[[task]]
+name = "billing:reconcile_session_charges"
+kind = "no_reader_output"
+reason = "voids or reposts session charges after schedule changes as the system; read only through the billing routes"
+
+[[task]]
+name = "billing:send_charge_reminders"
+kind = "reader_checked"
+check = "remind_account sends to the logins of the account family's active guardian profiles (families.service.family_billing_recipients) that are active users now (identity.service.active_user_ids); none -> no_recipient, nothing written"
+tests = [
+  "tests/integration/test_charge_reminders_job.py::test_every_active_guardian_with_a_login_is_notified",
+  "tests/integration/test_charge_reminders_job.py::test_a_suspended_guardian_login_is_skipped",
+  "tests/integration/test_charge_reminders_job.py::test_only_a_suspended_login_is_no_recipient_until_reactivated",
+  "tests/integration/test_charge_reminders_job.py::test_a_pending_or_archived_guardian_login_is_skipped",
+]
+notifications = ["billing.payment_reminder"]
+
+[[task]]
+name = "demo:fail"
+kind = "no_reader_output"
+reason = "local and dev only; raises a fixed error and writes nothing"
+
+[[task]]
+name = "demo:periodic"
+kind = "no_reader_output"
+reason = "local and dev only; logs one line and writes nothing"
+
+[[task]]
+name = "demo:succeed"
+kind = "no_reader_output"
+reason = "local and dev only; logs one line and writes nothing"
+
+[[task]]
+name = "finance:generate_recurring_expenses"
+kind = "no_reader_output"
+reason = "creates the month's expenses from recurring templates as the system; read only through the finance routes"
+
+[[task]]
+name = "idempotency:purge_keys"
+kind = "no_reader_output"
+reason = "deletes expired idempotency keys"
+
+[[task]]
+name = "identity:purge_auth_sessions"
+kind = "no_reader_output"
+reason = "deletes expired and revoked auth sessions"
+
+[[task]]
+name = "payroll:open_periods"
+kind = "no_reader_output"
+reason = "opens the next payroll periods as the system; read only through the payroll routes"
+
+[[task]]
+name = "payroll:post_adjustments"
+kind = "no_reader_output"
+reason = "posts late payroll adjustments as the system; read only through the payroll routes"
+
+[[task]]
+name = "ratelimit:purge_counters"
+kind = "no_reader_output"
+reason = "deletes expired rate-limit counter rows"
+
+[[task]]
+name = "reporting:run_exports"
+kind = "reader_checked"
+check = "run_job builds as the requester: it reloads the requester's principal (identity.load_principal) and re-checks may_export before reading rows; lost -> failed / permission_lost, no file (the download re-checks may_export too)"
+tests = [
+  "tests/integration/test_exports_worker.py::test_a_requester_who_lost_access_gets_permission_lost",
+  "tests/integration/test_exports_worker.py::test_a_run_builds_the_file_and_notifies_the_requester",
+]
+notifications = ["reporting.export_failed", "reporting.export_ready"]
+
+[[task]]
+name = "scheduling:expire_offers"
+kind = "reader_checked"
+check = "expire_offer re-checks under the lock that the offer is still pending and overdue; offer_records.notify_offer_closed tells only the active users who hold schedule.assign now (identity.active_user_ids_with_permission)"
+tests = [
+  "tests/integration/test_assignment_offer_expiry.py::test_an_overdue_offer_expires_and_the_session_is_reassigned",
+  "tests/integration/test_assignment_offers.py::test_decline_returns_the_session_and_asks_staff_to_reassign_it",
+]
+notifications = ["scheduling.offer_expired"]
+
+[[task]]
+name = "scheduling:materialize_series"
+kind = "reader_checked"
+check = "closure_changes._notify_skipped computes the recipients at write time from the row's current tutor and the participants' current links (families.service.student_notification_recipients), by skip_audience: families only for a confirmed row; params are ids and the start time only"
+tests = [
+  "tests/integration/test_class_series_closure_changes.py::test_an_offered_row_tells_only_its_tutor",
+  "tests/integration/test_class_series_closure_changes.py::test_a_confirmed_row_tells_the_tutor_the_student_and_the_guardians",
+]
+notifications = ["scheduling.occurrence_skipped_closure"]

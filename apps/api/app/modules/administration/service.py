@@ -195,6 +195,9 @@ from app.modules.administration.imports.registry import (
     register_import_kind as register_import_kind,
 )
 from app.modules.administration.imports.registry import (
+    register_import_principal_loader as register_import_principal_loader,
+)
+from app.modules.administration.imports.registry import (
     registered_import_kinds as registered_import_kinds,
 )
 from app.modules.administration.imports.registry import (

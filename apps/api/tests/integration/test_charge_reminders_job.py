@@ -182,6 +182,63 @@ def test_no_recipient_writes_nothing_and_a_new_guardian_gets_it(module_seeded_ur
     assert [u for u, _ in dd.notifications(url, [user])] == [user]
 
 
+# --- Only logins that can sign in (#640 E4) ---------------------------------------
+
+
+def set_user_state(url: str, user: uuid.UUID, state: str) -> None:
+    run_sql(url, "UPDATE users SET state = :s WHERE id = :u", {"s": state, "u": user})
+
+
+def test_a_suspended_guardian_login_is_skipped(module_seeded_url):
+    url = module_seeded_url
+    w = dd.world(url, guardians=2)
+    active, suspended = w.guardians
+    set_user_state(url, suspended, "suspended")
+    dd.charge(url, w.student)
+
+    result = dd.run(url)
+
+    assert [u for u, _ in dd.notifications(url, w.guardians)] == [active]
+    assert result.sent_charges == 1 and result.no_recipient == 0
+
+
+def test_only_a_suspended_login_is_no_recipient_until_reactivated(module_seeded_url):
+    url = module_seeded_url
+    w = dd.world(url, guardians=1)
+    [user] = w.guardians
+    set_user_state(url, user, "suspended")
+    charge = dd.charge(url, w.student, due=TODAY + dd.days(2))
+
+    result = dd.run(url)
+
+    assert result.no_recipient == 1 and result.sent_charges == 0
+    assert dd.reminders(url, charge) == []
+    assert dd.notifications(url, [user]) == []
+
+    set_user_state(url, user, "active")
+    again = dd.run(url, TODAY + dd.days(1))
+
+    assert again.sent_charges == 1
+    assert [(u, p["kind"]) for u, p in dd.notifications(url, [user])] == [
+        (user, "due_soon")
+    ]
+
+
+@pytest.mark.parametrize("state", ["pending", "archived"])
+def test_a_pending_or_archived_guardian_login_is_skipped(module_seeded_url, state):
+    url = module_seeded_url
+    w = dd.world(url, guardians=1)
+    [user] = w.guardians
+    set_user_state(url, user, state)
+    charge = dd.charge(url, w.student)
+
+    result = dd.run(url)
+
+    assert result.no_recipient == 1
+    assert dd.reminders(url, charge) == []
+    assert dd.notifications(url, [user]) == []
+
+
 # --- Preferences (#119 D3, E6) --------------------------------------------------------
 
 
