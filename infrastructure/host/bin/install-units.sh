@@ -19,6 +19,8 @@ install -m 0644 \
 install -D -m 0644 "$SRC/systemd/docker-classora.conf" /etc/systemd/system/docker.service.d/classora.conf
 install -D -m 0644 "$SRC/logrotate/classora" /etc/logrotate.d/classora
 install -d -m 0755 /var/log/classora
+# The edge's extra sites (grafana.caddy when monitoring is colocated, #617).
+install -d -m 0755 /opt/classora/caddy-sites
 
 systemctl daemon-reload
 systemctl enable classora-data.service classora-app.service >/dev/null 2>&1

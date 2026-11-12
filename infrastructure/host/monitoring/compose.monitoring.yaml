@@ -1,0 +1,94 @@
+# AWS overlay for the monitoring stack (ADR-0014; M9-09, #617), on top of the
+# shared infrastructure/observability/compose.observability.yaml (unchanged,
+# the same file as the local profile), through
+# /opt/classora/bin/monitoring-compose.sh (project `monitoring`, project
+# directory infrastructure/observability). Interpolation values come from
+# /opt/classora/env/monitoring.env (render-monitoring-env.sh, Parameter Store).
+#
+# Differences from local, all here or in the env file:
+#   - the gateway publishes 4318 on the host's private IP only (the security
+#     group admits it only from the app hosts' groups);
+#   - Grafana publishes nothing: Caddy serves it over HTTPS at GRAFANA_HOST;
+#     SMTP through Amazon SES (alerts@<domain>), secure cookies, the
+#     owner-email contact point (notifications.yaml, copied in by
+#     monitoring-up.sh);
+#   - every store on the encrypted data volume, /srv/classora-data/monitoring;
+#   - retention and memory limits from the env file; restart unless-stopped;
+#   - Caddy (profile edge, dedicated host only): pinned caddy image, its
+#     certificates in /srv/classora-data/caddy, sites from
+#     /opt/classora/caddy-sites (grafana.caddy, written by monitoring-up.sh).
+
+services:
+  otel-collector:
+    # Dedicated: the private IP (render-monitoring-env.sh requires it there).
+    # Colocated: compose.colocated.yaml removes the port.
+    ports:
+      - "${MONITORING_INGEST_ADDRESS:-127.0.0.1}:4318:4318"
+    restart: unless-stopped
+
+  prometheus:
+    restart: unless-stopped
+
+  loki:
+    restart: unless-stopped
+
+  tempo:
+    restart: unless-stopped
+
+  grafana:
+    ports: !reset []
+    environment:
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SMTP_ENABLED: "true"
+      GF_SMTP_HOST: ${SMTP_HOST:?set by render-monitoring-env.sh}
+      GF_SMTP_USER: ${SMTP_USERNAME:?set by render-monitoring-env.sh}
+      GF_SMTP_PASSWORD: ${SMTP_PASSWORD:?set by render-monitoring-env.sh}
+      GF_SMTP_FROM_ADDRESS: ${SMTP_FROM:?set by render-monitoring-env.sh}
+      GF_SMTP_FROM_NAME: Classora alerts
+      GF_SMTP_STARTTLS_POLICY: MandatoryStartTLS
+      # The contact point's recipient (notifications.yaml).
+      ALERT_EMAIL: ${ALERT_EMAIL:?set by render-monitoring-env.sh}
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.11.4@sha256:0c994536bddb66445885237f1a5dcc1916bccea922661c76b4e9fc24061f9b52
+    profiles: [edge]
+    user: "10002:10002"
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ../host/monitoring/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /opt/classora/caddy-sites:/etc/caddy/sites.d:ro
+      - /srv/classora-data/caddy:/data
+    tmpfs:
+      - /config:uid=10002,gid=10002,mode=0700
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    depends_on:
+      grafana:
+        condition: service_healthy
+    mem_limit: 64m
+    restart: unless-stopped
+
+# The named volumes of compose.observability.yaml, bound to the data volume.
+volumes:
+  prometheus-data:
+    driver: local
+    driver_opts: {type: none, o: bind, device: /srv/classora-data/monitoring/prometheus}
+  loki-data:
+    driver: local
+    driver_opts: {type: none, o: bind, device: /srv/classora-data/monitoring/loki}
+  tempo-data:
+    driver: local
+    driver_opts: {type: none, o: bind, device: /srv/classora-data/monitoring/tempo}
+  grafana-data:
+    driver: local
+    driver_opts: {type: none, o: bind, device: /srv/classora-data/monitoring/grafana}

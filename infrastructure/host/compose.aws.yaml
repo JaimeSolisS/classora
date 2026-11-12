@@ -87,6 +87,9 @@ services:
       - "443:443/udp"
     volumes:
       - /srv/classora-data/caddy:/data
+      # Extra sites: grafana.caddy when monitoring is colocated (#617);
+      # empty otherwise.
+      - /opt/classora/caddy-sites:/etc/caddy/sites.d:ro
     tmpfs:
       - /config:uid=10002,gid=10002,mode=0700
     networks:

@@ -1,0 +1,13 @@
+# Grafana over HTTPS (ADR-0014 "Grafana access"; M9-09, #617). monitoring-up.sh
+# replaces @GRAFANA_HOST@ and writes the result to
+# /opt/classora/caddy-sites/grafana.caddy, imported by the monitoring host's
+# Caddy (dedicated) or by the app edge (colocated). Grafana does the login,
+# with its brute-force lockout; anonymous access and sign-up are off.
+@GRAFANA_HOST@ {
+	log {
+		output stdout
+		format json
+	}
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy grafana:3000
+}

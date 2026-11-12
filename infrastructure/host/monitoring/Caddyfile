@@ -1,0 +1,6 @@
+# Caddy on the dedicated monitoring host (ADR-0010, ADR-0014; M9-09, #617):
+# only the Grafana site, written by monitoring-up.sh from grafana.caddy (the
+# same site file the app edge imports when monitoring is colocated).
+# Automatic HTTPS (Let's Encrypt); certificates in /data on the data volume.
+
+import /etc/caddy/sites.d/*.caddy
