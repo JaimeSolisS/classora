@@ -79,10 +79,16 @@ jobs:
             # The merged pull request whose merge (or squash) commit is this
             # push: base main, head develop. Its head SHA is the develop
             # commit that DEV deployed.
-            gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" >pulls.json
-            sha=$(jq -r --arg merge "$GITHUB_SHA" '
-              [ .[] | select(.base.ref == "main" and .head.ref == "develop" and .merged_at != null) ]
-              | (map(select(.merge_commit_sha == $merge)) + .) | .[0].head.sha // empty' pulls.json)
+            # The association can lag the push by a few seconds: retry.
+            sha=""
+            for attempt in 1 2 3 4; do
+              gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" >pulls.json
+              sha=$(jq -r --arg merge "$GITHUB_SHA" '
+                [ .[] | select(.base.ref == "main" and .head.ref == "develop" and .merged_at != null) ]
+                | (map(select(.merge_commit_sha == $merge)) + .) | .[0].head.sha // empty' pulls.json)
+              [ -z "$sha" ] && [ "$attempt" -lt 4 ] && sleep 15 && continue
+              break
+            done
             [ -n "$sha" ] || refuse "$GITHUB_SHA is not the merge of a develop -> main release pull request; nothing to release"
             pr=$(jq -r --arg head "$sha" '[ .[] | select(.head.sha == $head) ][0].number' pulls.json)
             echo "Release PR #$pr: develop head $sha"
