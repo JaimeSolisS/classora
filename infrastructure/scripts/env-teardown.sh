@@ -172,6 +172,7 @@ else
 fi
 
 step "What remains (Project=classora)"
+# shellcheck disable=SC2016 # JMESPath backticks, not shell
 aws resourcegroupstaggingapi get-resources --tag-filters Key=Project,Values=classora \
   --query 'ResourceTagMappingList[].[Tags[?Key==`Environment`]|[0].Value, ResourceARN]' --output text |
   sed -E 's/[0-9]{12}/<acct>/' | sort

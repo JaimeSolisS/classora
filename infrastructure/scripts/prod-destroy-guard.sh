@@ -40,6 +40,7 @@ volumes=$(awsr ec2 describe-volumes --filters Name=tag:Name,Values=classora-prod
 commands=$(awsr ssm list-commands --filters key=DocumentName,value=classora-deploy-prod \
   --query 'Commands[].RequestedDateTime') || fail "could not list the PROD deploy commands"
 
+# shellcheck disable=SC2016 # JMESPath backticks, not shell
 buckets=$(awsr s3api list-buckets --query 'Buckets[?starts_with(Name, `classora-archive-`)].Name') ||
   fail "could not list the buckets"
 bucket=$(BUCKETS=$buckets python3 -c '
