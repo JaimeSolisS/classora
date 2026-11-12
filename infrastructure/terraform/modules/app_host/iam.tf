@@ -37,6 +37,25 @@ data "aws_iam_policy_document" "host" {
     ]
   }
 
+  # AmazonSSMManagedInstanceCore allows ssm:GetParameter(s) on every
+  # parameter, so without this a DEV host could read PROD's secrets (database
+  # passwords, /classora/prod/owner_initial_password) and the other way round
+  # (#618). An explicit deny wins over that allow.
+  statement {
+    sid    = "DenyOtherEnvironmentsParameters"
+    effect = "Deny"
+    actions = [
+      "ssm:GetParameter",
+      "ssm:GetParameters",
+      "ssm:GetParametersByPath",
+      "ssm:GetParameterHistory",
+    ]
+    resources = flatten([for other in setsubtract(["dev", "prod", "monitoring"], [var.env]) : [
+      "arn:${local.partition}:ssm:${local.region}:${local.account_id}:parameter/classora/${other}",
+      "arn:${local.partition}:ssm:${local.region}:${local.account_id}:parameter/classora/${other}/*",
+    ]])
+  }
+
   statement {
     sid       = "DecryptThroughSsmOnly"
     actions   = ["kms:Decrypt"]
