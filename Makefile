@@ -101,7 +101,7 @@ load-test:
 	  -e ACCOUNTS=/load/accounts.local.json \
 	  $(K6_IMAGE) run --quiet $(K6_ARGS) \
 	  --summary-export "/out/$(or $(SUMMARY),$(PROFILE)-latest.json)" /load/k6/main.js; status=$$?; \
-	  python3 -c 'import json, sys; p = sys.argv[1]; d = json.load(open(p)); d.pop("setup_data", None); json.dump(d, open(p, "w"))' \
+	  python3 infrastructure/load/strip_summary.py \
 	    "infrastructure/load/out/$(or $(SUMMARY),$(PROFILE)-latest.json)" || true; exit $$status
 
 ## Plan a Terraform root (AWS_PROFILE defaults to jsolisdev): make tf-plan ENV=<root>

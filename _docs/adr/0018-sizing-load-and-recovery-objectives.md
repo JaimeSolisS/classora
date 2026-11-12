@@ -71,7 +71,7 @@ No container restarted or was OOM-killed. Throughput levels off at about 26–27
 
 ### CPU credits
 
-t4g instances stay in **`unlimited`** credit mode. The baseline is 20 % per vCPU (0.4 vCPU in all on a t4g.small). Before tuning, DEV used about 33 % with no load, so it was always above the baseline: the surplus balance grew about 34 credits an hour and, once capped, would cost roughly $8–16 a month per host. With the tuned healthchecks, idle use should fall to about 10 % (estimated: the 5 s worker check alone was about 0.45 vCPU, the 30 s one is about 0.08), under the baseline, so a center's afternoon bursts are paid from earned credits. After the deploy, `CPUSurplusCreditBalance` on DEV should stop growing; that confirms it. The surplus charge (`CPUSurplusCreditsCharged`) is the metric to watch.
+t4g instances stay in **`unlimited`** credit mode. The baseline is 20 % per vCPU (0.4 vCPU in all on a t4g.small). Before tuning, DEV used about 33 % with no load, so it was always above the baseline: the surplus balance grew about 18 credits an hour (272 to 346 between 16:00 and 20:00 UTC) and, once capped, would cost roughly $9 a month per host ($0.04 per vCPU-hour). With the tuned healthchecks, idle use should fall to about 10 % (estimated: the 5 s worker check alone was about 0.45 vCPU, the 30 s one is about 0.08), under the baseline, so a center's afternoon bursts are paid from earned credits. After the deploy, `CPUSurplusCreditBalance` on DEV should stop growing; that confirms it. The surplus charge (`CPUSurplusCreditsCharged`) is the metric to watch.
 
 ### Deploy downtime tolerance
 

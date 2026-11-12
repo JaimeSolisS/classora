@@ -159,11 +159,11 @@ No queue lag: one job at a time (`WORKER_CONCURRENCY = 1`) cleared every export 
 | Metric (DEV) | Value |
 |---|---|
 | `CPUCreditBalance` | 0 all day (unlimited mode spends surplus credits first) |
-| `CPUSurplusCreditBalance` | 272 at 16:00, 346 at 20:00 UTC: about 17 credits per 30 minutes idle, above the baseline |
+| `CPUSurplusCreditBalance` | 272 at 16:00, 346 at 20:00 UTC: about 18 credits an hour while idle, above the baseline |
 | `CPUSurplusCreditsCharged` | 0 so far (charges start when the surplus balance reaches the 24-hour earn cap, 576) |
-| `CPUUtilization` average | 33 % idle (16:00–19:00); 38–40 % during the runs |
+| `CPUUtilization` average | 33 % idle (16:00–19:00); 39–44 % during the runs (30-minute averages, 19:30–21:00) |
 
-At the idle rate, the surplus reaches the cap in about a day and then costs roughly $8–16 a month per host ($0.04 per vCPU-hour). C1 should bring idle use to about 10 % (estimated from the healthcheck's share; not measured idle here), under the baseline.
+At the idle rate (about 18 credits, or 0.3 vCPU-hours, an hour), the surplus reaches the cap in about half a day and then costs roughly $9 a month per host ($0.04 per vCPU-hour). C1 should bring idle use to about 10 % (estimated from the healthcheck's share; not measured idle here), under the baseline.
 
 ### P3 breakpoint
 
