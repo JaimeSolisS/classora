@@ -38,7 +38,7 @@ Releases never overlap (`concurrency: release-prod`, never cancelled). PROD is n
 
 ## Verify
 
-- `curl -sI https://app.classora.dev/` returns `HTTP/2 200` with the M9-02 security headers and HSTS; `curl -s https://app.classora.dev/health/ready` returns 200.
+- `curl -sI https://app.classora.dev/` returns `HTTP/2 200` with the M9-02 security headers and HSTS; `https://app.classora.dev/health` returns 200 and `/api/v1/auth/me` 401 (the edge doesn't expose `/health/*`; `deploy.sh` checked `/health/ready` inside the `api` container).
 - The digests PROD runs are the ones DEV tested. For each of `api`, `web`, `pgbouncer`:
   - `aws ecr describe-images --repository-name classora/api --image-ids imageTag=prod-<sha> --query 'imageDetails[0].[imageDigest,imageTags]'` lists `sha-<sha>`, `dev-<sha>` and `prod-<sha>` on one digest;
   - on PROD (Session Manager, `sudo -i`): `cat /srv/classora-data/releases/current/images.env` and `docker inspect --format '{{.Config.Image}}' classora-api-1 classora-edge-1 classora-pgbouncer-1` show the same digests; the same commands on DEV show what DEV ran.
