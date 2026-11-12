@@ -135,7 +135,7 @@ if [ -L "$RELEASES/current" ]; then
   previous=$(readlink -f "$RELEASES/current")
   [ "$previous" != "$new" ] || previous=$(readlink -f "$RELEASES/previous" 2>/dev/null || true)
 fi
-log "previous release: ${previous:+$(basename "$previous")}${previous:-none}"
+log "previous release: $(basename "${previous:-none}")"
 
 # 4. Images.
 "$BIN/ecr-login.sh"
