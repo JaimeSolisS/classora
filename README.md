@@ -33,8 +33,11 @@ flowchart LR
 
 ## Status
 
-**Pre-alpha.** The features below run on a local development stack only;
-there is no deployed environment yet. The stack is a FastAPI API with
+**Pre-alpha.** The features below run on a local development stack. A DEV
+environment runs on AWS (one EC2 host with Caddy HTTPS and the Compose stacks
+under systemd, created with Terraform); releases reach it through a manual
+build workflow until automatic deploys land. There is no production
+environment yet. The stack is a FastAPI API with
 liveness and readiness health checks, a PostgreSQL database reached through
 PgBouncer (schema managed with Alembic migrations), a background worker for
 queued and periodic jobs (Procrastinate), server-rendered PDF documents
@@ -587,7 +590,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** the rest of billing, PDF exports, and deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
+**Not built yet:** the rest of billing, PDF exports, automatic deploys, and production deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 
 **Not in this version:** file uploads and documents (attachments, the shared
@@ -1427,11 +1430,14 @@ flowchart TB
   qa -->|"PASS + README verdict"| merged
 ```
 
-## Deployment (planned)
+## Deployment
 
-There is no deployed environment yet. Milestone M9 plans this AWS setup
+Milestone M9 builds this AWS setup
 ([ADR-0010 to ADR-0014](_docs/architecture.md#9-deployment-operations-and-observability-approved)).
-DEV and PROD are created and destroyed with Terraform:
+DEV is deployed: its host runs Caddy with a Let's Encrypt certificate and the
+data and app stacks under systemd, and is operated over SSM Session Manager
+([host runbook](_docs/runbooks/host.md)). PROD, the monitoring host and
+backups are still planned. DEV and PROD are created and destroyed with Terraform:
 
 ```mermaid
 flowchart TB
@@ -1498,7 +1504,8 @@ flowchart TB
   budget --> owner
 ```
 
-When M9 is built, DEV will deploy on every merge to `develop`, and PROD from a
+Today a DEV release is built by the manual `deploy-dev` workflow and deployed
+with `deploy.sh` over Session Manager. When M9 is built, DEV will deploy on every merge to `develop`, and PROD from a
 `main` release after the owner approves it. Logs, metrics and traces stay on
 the monitoring host's own disk, which can also run on DEV; the same stack
 already runs locally as an optional profile

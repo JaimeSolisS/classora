@@ -79,11 +79,11 @@ TF_ROOT_CHECK = @test -n "$(ENV)" || { echo "usage: make $@ ENV=<bootstrap|share
 check-infra:
 	TERRAFORM_IMAGE=$(TERRAFORM_IMAGE) SHELLCHECK_IMAGE=$(SHELLCHECK_IMAGE) $(TF) check
 
-## Plan a Terraform root (AWS_PROFILE defaults to jsolisdev): make tf-plan ENV=<root>.
-## Saves <root>/tfplan; the first bootstrap plan runs on local state.
+## Plan a Terraform root (AWS_PROFILE defaults to jsolisdev): make tf-plan ENV=<root>
+## [ARGS='-replace=<address>']. Saves <root>/tfplan; the first bootstrap plan runs on local state.
 tf-plan:
 	$(TF_ROOT_CHECK)
-	$(TF) plan $(ENV)
+	$(TF) plan $(ENV) $(ARGS)
 
 ## Apply the saved plan after typing the root's name (no auto-approve): make tf-apply ENV=<root>.
 tf-apply:

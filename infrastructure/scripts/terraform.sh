@@ -2,7 +2,8 @@
 # Terraform wrapper behind `make tf-plan`, `make tf-apply`, `make tf-destroy` and
 # `make check-infra` (ADR-0011, #613). Runbook: _docs/runbooks/terraform.md.
 #
-#   terraform.sh plan <root>        init (S3 backend) and save a plan to <root>/tfplan
+#   terraform.sh plan <root> [opts] init (S3 backend) and save a plan to <root>/tfplan;
+#                                   extra plan options, e.g. -replace=<address> (#614)
 #   terraform.sh apply <root>       show the saved plan, ask for the root name, apply it
 #   terraform.sh destroy <root>     plan a destroy, ask for the root name, apply it
 #                                   (refuses bootstrap; refuses prod until M9-10's guard)
@@ -55,6 +56,10 @@ tf_init() {
   fi
   [ -f "$backend_file" ] || die "missing $tf_dir/backend.hcl: apply bootstrap and run migrate-bootstrap first"
   [ ! -f "$dir/$local_override" ] || die "bootstrap still uses local state: run 'terraform.sh migrate-bootstrap'"
+  # envs/* read the bootstrap and shared outputs from the same bucket (#614).
+  TF_VAR_state_bucket=$(sed -n 's/^bucket *= *"\(.*\)"$/\1/p' "$backend_file")
+  [ -n "$TF_VAR_state_bucket" ] || die "no bucket in $tf_dir/backend.hcl"
+  export TF_VAR_state_bucket
   terraform -chdir="$dir" init -input=false \
     -backend-config="$backend_file" -backend-config="key=$(state_key "$root")"
 }
@@ -74,9 +79,10 @@ confirm() {
 
 cmd_plan() {
   local root=$1 dir
+  shift
   dir=$(root_dir "$root")
   tf_init "$root" "$dir"
-  terraform -chdir="$dir" plan -input=false -out=tfplan
+  terraform -chdir="$dir" plan -input=false -out=tfplan "$@"
   echo "Saved plan: $dir/tfplan. Apply it with: make tf-apply ENV=$root"
 }
 
@@ -184,7 +190,12 @@ cmd_check() {
 
 [ $# -ge 1 ] || die "usage: terraform.sh plan|apply|destroy <root> | migrate-bootstrap | check"
 case "$1" in
-  plan | apply | destroy)
+  plan)
+    [ $# -ge 2 ] || die "usage: terraform.sh plan <root> [plan options]"
+    shift
+    cmd_plan "$@"
+    ;;
+  apply | destroy)
     [ $# -eq 2 ] || die "usage: terraform.sh $1 <root>"
     "cmd_$1" "$2"
     ;;

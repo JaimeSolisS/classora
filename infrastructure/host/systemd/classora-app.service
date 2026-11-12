@@ -1,0 +1,21 @@
+# Classora app stack: api, worker, edge (Caddy) and, when telemetry is on,
+# the collector agent (ADR-0010, ADR-0014, #614). Starts after the data stack
+# and stops before it.
+[Unit]
+Description=Classora app stack (api, worker, edge)
+Requires=classora-data.service
+After=classora-data.service
+ConditionPathExists=/srv/classora-data/releases/current/images.env
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/classora/bin/compose.sh up -d --wait --wait-timeout 300
+ExecStop=/opt/classora/bin/compose.sh stop edge api worker
+# Only defined when telemetry is on.
+ExecStop=-/opt/classora/bin/compose.sh stop collector
+TimeoutStartSec=900
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target
