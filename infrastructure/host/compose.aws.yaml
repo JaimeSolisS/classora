@@ -116,6 +116,9 @@ services:
     image: otel/opentelemetry-collector-contrib:0.164.0@sha256:340c9ca6a36617084c6661bdc4f0fe92b7cda5a805d61673ec8db375fddc522b
     profiles: [telemetry]
     command: ["--config=/etc/otelcol/agent.yaml"]
+    # host.name (resource_detection reads the container's hostname): stable
+    # per host, so a recreated agent continues the same series and alerts.
+    hostname: classora-${DEPLOYMENT_ENVIRONMENT:?set by render-env.sh}-host
     user: "0:0"
     cap_drop: [ALL]
     cap_add: [DAC_READ_SEARCH]
