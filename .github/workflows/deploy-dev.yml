@@ -239,7 +239,8 @@ jobs:
           done
 
       # The host's release bundle: its Compose files, scripts and units, the
-      # collector agent config and the image digests (no secrets). The ops
+      # observability configs (the collector agent's, and the whole monitoring
+      # stack's when it is colocated, #617) and the image digests (no secrets). The ops
       # bucket belongs to envs/dev, so there is none while DEV is destroyed.
       - name: Upload the release bundle
         if: needs.probe.outputs.dev == 'true'
@@ -251,7 +252,7 @@ jobs:
             infrastructure/host \
             infrastructure/docker/compose.data.yaml \
             infrastructure/docker/compose.app.yaml \
-            infrastructure/observability/collector/agent.yaml
+            infrastructure/observability
           aws s3 cp --only-show-errors release.tgz "s3://$OPS_BUCKET/releases/$SHA.tgz"
 
   deploy:

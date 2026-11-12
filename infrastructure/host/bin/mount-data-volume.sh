@@ -75,6 +75,10 @@ else
   log "mounted $device ($uuid) at $mount_point"
 fi
 
+# A volume enlarged by Terraform (e.g. DEV's data volume when monitoring is
+# colocated, #617): grow the filesystem to the device. A no-op otherwise.
+xfs_growfs -d "$mount_point" >/dev/null || log "WARNING: xfs_growfs failed on $mount_point"
+
 for dir in postgres caddy collector releases; do
   [ -d "$mount_point/$dir" ] || install -d -m 0755 "$mount_point/$dir"
 done

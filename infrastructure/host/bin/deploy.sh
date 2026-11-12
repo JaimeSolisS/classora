@@ -20,7 +20,8 @@
 #   9. on failure, switch back to `previous`, bring it up and check it again.
 #      Migrations are never reversed (expand and contract).
 # After a healthy start it marks the systemd units active (so the next
-# shutdown stops the containers and the next boot starts them in order), keeps
+# shutdown stops the containers and the next boot starts them in order),
+# starts the monitoring stack when it is colocated on this host (#617), keeps
 # the newest releases and removes ECR images that are neither the current nor
 # the previous release's.
 #
@@ -206,6 +207,17 @@ mark_units_active() {
     log "WARNING: the systemd units did not start; check journalctl -u classora-data -u classora-app"
 }
 
+# The monitoring stack on this host only when envs/<env> has
+# monitoring_mode = "colocated" (#617); otherwise make sure it isn't running.
+# A failure here never fails the deploy.
+monitoring() {
+  if grep -qx 'MONITORING_MODE=colocated' /opt/classora/env/app.env; then
+    "$BIN/monitoring-up.sh"
+  else
+    "$BIN/monitoring-up.sh" --down
+  fi
+}
+
 # Release directories: keep current, previous and the newest few. Images: keep
 # only the current and previous releases' ECR digests (and anything in use).
 prune() {
@@ -234,6 +246,7 @@ if start_current && healthy; then
     mv -T "$RELEASES/.previous.new" "$RELEASES/previous"
   fi
   mark_units_active
+  monitoring || log "WARNING: the monitoring stack did not start; see monitoring-up.sh"
   prune || log "WARNING: pruning failed"
   log "release $sha is live"
   finish 0 deployed

@@ -22,3 +22,21 @@ variable "acme_ca" {
   type        = string
   default     = "production"
 }
+
+variable "monitoring_mode" {
+  description = "Where the monitoring stack runs (ADR-0014; #617): dedicated (envs/monitoring, the default), colocated (on this host: t4g.medium, 30 GB data) or off."
+  type        = string
+  default     = "dedicated"
+
+  validation {
+    condition     = contains(["dedicated", "colocated", "off"], var.monitoring_mode)
+    error_message = "monitoring_mode must be dedicated, colocated or off."
+  }
+}
+
+variable "alert_email" {
+  description = "Colocated mode only: the alert recipient (TF_VAR_alert_email; never committed)."
+  type        = string
+  default     = null
+  sensitive   = true
+}

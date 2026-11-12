@@ -85,6 +85,9 @@ values = {
     "PG_MONITOR_PASSWORD": own["monitor_db_password"],
     "PG_MONITOR_DATABASE": "classora",
     "DOCKER_GID": os.environ.get("DOCKER_GID", ""),
+    # Where the monitoring stack runs (envs/<env> monitoring_mode, #617):
+    # deploy.sh starts it on this host only when colocated.
+    "MONITORING_MODE": own.get("monitoring_mode", "dedicated"),
 }
 safe = re.compile(r"^[A-Za-z0-9_.:/,@ +=-]*$")
 with open(os.environ["OUT"], "w", encoding="utf-8") as out:

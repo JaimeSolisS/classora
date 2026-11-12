@@ -12,7 +12,9 @@
 #  5. check_config.py: Grafana provisioning, dashboards and alert rules,
 #     collector drift, image pins, mem_limits and published ports;
 #  6. `promtool check rules` on every PromQL expression of the dashboards and
-#     alert rules (written by check_config.py, Grafana variables replaced).
+#     alert rules (written by check_config.py, Grafana variables replaced);
+#  7. the agent's logs pipeline over a fixture: edge lines lose URIs, headers
+#     and IPs (check_edge_redaction.py).
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
@@ -112,6 +114,43 @@ else
   echo "FAIL no PromQL expressions were collected" >&2
   fail=1
 fi
+
+# 7. The agent's logs pipeline strips the edge's URIs, headers and IPs
+# (#617 QA D1): agent.yaml plus an overlay that reads a fixture and writes to
+# a file, run for a few seconds.
+check_edge_redaction() {
+  local work name status=0 i
+  work=$(mktemp -d)
+  name="classora-obs-check-edge-$$"
+  uv run --no-project --isolated --quiet python -I "$obs/check_edge_redaction.py" fixture "$work/containers"
+  mkdir "$work/out"
+  chmod 755 "$work" "$work/containers"
+  chmod 777 "$work/out"
+  docker run -d --name "$name" "${mount[@]}" --mount type=tmpfs,destination=/hostfs \
+    -v "$work/containers:/var/lib/docker/containers:ro" -v "$work/out:/out" \
+    -e OTLP_GATEWAY_ENDPOINT=http://gateway.invalid:4318 -e DEPLOYMENT_ENVIRONMENT=check \
+    -e PG_MONITOR_USER=check -e PG_MONITOR_PASSWORD=check -e PG_MONITOR_DATABASE=check \
+    "$otelcol" --config=/obs/collector/agent.yaml --config=/obs/collector/check/edge-redaction.yaml >/dev/null
+  for i in $(seq 1 30); do
+    if [ -s "$work/out/logs.json" ]; then
+      sleep 2
+      break
+    fi
+    sleep 1
+  done
+  docker stop -t 5 "$name" >/dev/null
+  if [ -s "$work/out/logs.json" ]; then
+    uv run --no-project --isolated --quiet python -I "$obs/check_edge_redaction.py" verify "$work/out/logs.json" || status=1
+  else
+    echo "no output from the collector (after ${i}s):" >&2
+    docker logs "$name" 2>&1 | tail -20 >&2
+    status=1
+  fi
+  docker rm -f "$name" >/dev/null 2>&1 || true
+  rm -rf "$work"
+  return "$status"
+}
+run "agent logs pipeline redacts edge request lines" check_edge_redaction
 
 if [ "$fail" -ne 0 ]; then
   echo "check-observability: FAILED" >&2

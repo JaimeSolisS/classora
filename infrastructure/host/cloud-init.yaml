@@ -1,6 +1,7 @@
 #cloud-config
 # Cloud-init for a Classora app host (ADR-0010, #614), rendered by Terraform
-# (modules/app_host/cloud_init.tf). It holds no secret (ADR-0012): only the
+# (modules/app_host/cloud_init.tf); also for the monitoring host
+# (modules/monitoring_host/cloud_init.tf, its own scripts and host-setup.sh). It holds no secret (ADR-0012): only the
 # host settings (environment, region, ops bucket, data volume ID), the host
 # scripts needed before the first release and the systemd units, each as a
 # JSON string (a YAML double-quoted scalar: plain text, so the gzipped user

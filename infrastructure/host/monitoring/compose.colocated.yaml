@@ -1,0 +1,14 @@
+# Colocated mode (ADR-0014 `monitoring_mode = "colocated"`; M9-09, #617): the
+# monitoring stack on an app host, after compose.monitoring.yaml. It joins the
+# app stack's network, so the app's collector agent exports to
+# otel-collector:4318 and the app's edge serves Grafana (grafana.caddy in
+# /opt/classora/caddy-sites). Nothing is published on the host.
+
+services:
+  otel-collector:
+    ports: !reset []
+
+networks:
+  default:
+    name: classora_default
+    external: true

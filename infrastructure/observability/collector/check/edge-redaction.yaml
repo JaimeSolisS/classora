@@ -1,0 +1,20 @@
+# Overlay for `make check-observability` step 7 (check.sh; #617 QA D1): runs
+# agent.yaml's real logs pipeline (file_log operators and transform/edge) over
+# the fixture written by check_edge_redaction.py, and writes the result to a
+# file instead of the gateway. Never used on a host.
+receivers:
+  file_log:
+    start_at: beginning
+exporters:
+  file/check:
+    path: /out/logs.json
+    flush_interval: 1s
+service:
+  pipelines:
+    logs:
+      receivers: [file_log]
+      exporters: [file/check]
+    metrics:
+      receivers: [otlp]
+    traces:
+      receivers: [otlp]

@@ -281,8 +281,9 @@ def traced_client(
 def test_on_a_request_yields_one_server_span_named_by_its_route(
     exported, traced_client, capsys
 ):
-    # Path values are ids in this API; the access line keeps the path (not
-    # the query string), as on stdout. The query string reaches nothing.
+    # The access line carries the route template, never the raw path (a path
+    # can carry an e-mail; #617 QA D1), as on stdout. Neither the path's
+    # values nor the query string reach anything exported.
     response = traced_client.get(f"/probe/items/42?q={MARKER}")
 
     assert response.status_code == 200
@@ -308,8 +309,9 @@ def test_on_a_request_yields_one_server_span_named_by_its_route(
         for log in exported.logs.get_finished_logs()
     ]
     assert (app_line, span.context.trace_id) in exported_lines
-    assert access["path"] == "/probe/items/42"
+    assert access["path"] == "/probe/items/{item_id}"
     assert MARKER not in exported.everything()
+    assert "/probe/items/42" not in exported.everything()
     assert "/probe/items/42" not in "".join(
         span.to_json() for span in exported.span_list()
     )
