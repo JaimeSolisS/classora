@@ -40,6 +40,91 @@
 
 [[route]]
 method = "GET"
+path = "/api/v1/families/{family_id}"
+tests = ["tests/integration/test_families_visibility.py::test_ub_sees_only_family_b"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account"
+tests = ["tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/charges"
+tests = [
+    "tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404",
+    "tests/integration/test_billing_family_leak.py::test_another_familys_student_id_filters_the_own_family_to_nothing",
+]
+note = "student_id of another family's student under the own family: an empty page."
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/charges/{charge_id}"
+tests = [
+    "tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404",
+    "tests/integration/test_billing_family_leak.py::test_foreign_sub_ids_under_the_own_family_are_404",
+]
+note = "Covers another family's id and another family's charge_id under the own family."
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/ledger"
+tests = [
+    "tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404",
+    "tests/integration/test_billing_family_leak.py::test_another_familys_student_id_filters_the_own_family_to_nothing",
+]
+note = "student_id of another family's student under the own family: an empty page."
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/packages"
+tests = [
+    "tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404",
+    "tests/integration/test_billing_family_leak.py::test_another_familys_student_id_filters_the_own_family_to_nothing",
+]
+note = "student_id of another family's student under the own family: an empty page."
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/packages/{package_id}"
+tests = [
+    "tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404",
+    "tests/integration/test_billing_family_leak.py::test_foreign_sub_ids_under_the_own_family_are_404",
+]
+note = "Covers another family's id and another family's package_id under the own family."
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/payments"
+tests = ["tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/payments/{payment_id}"
+tests = [
+    "tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404",
+    "tests/integration/test_billing_family_leak.py::test_foreign_sub_ids_under_the_own_family_are_404",
+]
+note = "Covers another family's id and another family's payment_id under the own family."
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/receipts/{receipt_id}/pdf"
+tests = [
+    "tests/integration/test_billing_receipts_routes.py::test_everyone_else_gets_the_same_404",
+    "tests/integration/test_billing_receipts_routes.py::test_a_guardian_cant_reach_another_familys_receipt",
+    "tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404",
+    "tests/integration/test_billing_family_leak.py::test_foreign_sub_ids_under_the_own_family_are_404",
+]
+note = "Generated file. Covers another family's id and another family's receipt under the own family."
+
+[[route]]
+method = "GET"
+path = "/api/v1/guardians/{guardian_id}"
+tests = ["tests/integration/test_guardians_visibility.py::test_u1_sees_only_their_own_guardian_profile"]
+
+[[route]]
+method = "GET"
 path = "/api/v1/payroll/tutors/{tutor_user_id}/compensation"
 tests = ["tests/integration/test_payroll_compensation_access.py::test_a_tutor_gets_the_same_404_for_anyone_else"]
 
@@ -65,6 +150,33 @@ tests = [
     "tests/integration/test_payroll_earnings_access.py::test_c5_everyone_else_gets_the_same_404_on_all_three",
 ]
 note = "Generated file. Covers another tutor's id and another tutor's payslip under the own tutor id."
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/consents"
+tests = [
+    "tests/integration/test_consents.py::test_a_student_reaches_only_their_own_student",
+    "tests/integration/test_consents.py::test_a_guardian_sees_only_themselves_and_their_own_records",
+]
+
+[[route]]
+method = "POST"
+path = "/api/v1/students/{student_id}/consents"
+tests = [
+    "tests/integration/test_consents.py::test_a_student_reaches_only_their_own_student",
+    "tests/integration/test_consents.py::test_what_a_guardian_may_not_record",
+    "tests/integration/test_consents.py::test_another_partys_guardian_id_is_answered_like_a_missing_one",
+]
+note = "guardian_id of a guardian the caller does not know gets the same answer as a missing id, and nothing is recorded."
+
+[[route]]
+method = "POST"
+path = "/api/v1/students/{student_id}/consents/{consent_id}/revoke"
+tests = [
+    "tests/integration/test_consents.py::test_who_may_revoke_what",
+    "tests/integration/test_consents.py::test_a_record_of_another_student_is_404",
+]
+note = "Covers another student's id and another guardian's record under the own student."
 
 [[route]]
 method = "GET"

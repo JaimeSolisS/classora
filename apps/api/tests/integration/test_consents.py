@@ -315,6 +315,35 @@ def test_what_a_student_may_not_record(
     assert consent_count(module_seeded_url) == before
 
 
+@pytest.mark.parametrize(
+    ("user", "student", "scope"),
+    [("U1", "S1", "student_login"), ("USA", "SA", "guardian_academic_access")],
+)
+def test_another_partys_guardian_id_is_answered_like_a_missing_one(
+    module_seeded_url, client, world, user, student, scope
+):
+    # #149 AC5b: G4 belongs to nobody the caller knows; naming it in the body
+    # tells the caller nothing a missing id wouldn't, and records nothing.
+    cookie = sign_in(client, world.u[user].username)
+    before = consent_count(module_seeded_url)
+
+    def attempt(guardian_id: str) -> Any:
+        return give(
+            client, cookie, sid(world, student), guardian_id, scope=scope, method="in_app"
+        )
+
+    foreign, missing = attempt(gid(world, "G4")), attempt(MISSING)
+
+    assert code_of(foreign) == code_of(missing)
+    assert foreign.status_code >= 400
+    assert without_request_id(foreign) == without_request_id(missing)
+    assert consent_count(module_seeded_url) == before
+
+
+def without_request_id(response: Any) -> dict[str, Any]:
+    return {k: v for k, v in response.json().items() if k != "request_id"}
+
+
 def test_a_student_reaches_only_their_own_student(client, world):
     cookie = sign_in(client, world.u["USA"].username)
 

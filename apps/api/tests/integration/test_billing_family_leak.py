@@ -583,6 +583,29 @@ def test_foreign_sub_ids_under_the_own_family_are_404(client, world, cookies):
                 assert not _contains(response, world.only[other])
 
 
+def test_another_familys_student_id_filters_the_own_family_to_nothing(
+    module_seeded_url, client, world, cookies
+):
+    """#149 AC5a: guardian A on family A's lists with ``?student_id=`` of
+    family B's student sees an empty page, never B's rows."""
+    [b_row] = run_sql(
+        module_seeded_url,
+        "SELECT student_id FROM charges WHERE id = :id",
+        {"id": world.b.charges[0]},
+    )
+    cookie = cookies["guardian_a"]
+    for suffix in ("/charges", "/ledger", "/packages"):
+        response = get(
+            client,
+            cookie,
+            ps.account_path(world.a.family, suffix),
+            student_id=str(b_row.student_id),
+        )
+        assert response.status_code == 200, (suffix, response.text)
+        assert response.json()["items"] == [], suffix
+        assert not _contains(response, world.only["b"]), suffix
+
+
 def test_guardian_b_sees_only_family_b(client, world, cookies):
     for name in ("guardian_b", "guardian_x"):
         cookie = cookies[name]
