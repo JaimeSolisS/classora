@@ -2,8 +2,10 @@
 # Cloud-init for a Classora app host (ADR-0010, #614), rendered by Terraform
 # (modules/app_host/cloud_init.tf). It holds no secret (ADR-0012): only the
 # host settings (environment, region, ops bucket, data volume ID), the host
-# scripts and the systemd units. host-setup.sh does the rest: swap file,
-# Docker and the pinned Compose plugin, the data volume, the units.
+# scripts needed before the first release and the systemd units, each as a
+# JSON string (a YAML double-quoted scalar: plain text, so the gzipped user
+# data stays well under EC2's 16 KiB limit). host-setup.sh does the rest:
+# swap file, Docker and the pinned Compose plugin, the data volume, the units.
 # Runs once per instance; a replaced instance runs it again.
 write_files:
   - path: /etc/classora/host.env
@@ -13,8 +15,7 @@ write_files:
 %{ for path, file in files ~}
   - path: ${path}
     permissions: "${file.permissions}"
-    encoding: b64
-    content: ${file.content}
+    content: ${jsonencode(file.content)}
 %{ endfor ~}
 
 runcmd:
