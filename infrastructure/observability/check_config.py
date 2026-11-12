@@ -29,8 +29,8 @@ from pathlib import Path
 
 import yaml
 
-LOCAL_ONLY_RECEIVERS = {"file_log", "host_metrics"}
-# The ADR-0014 rules this issue provisions (#612); M9-09 adds the backup ones.
+LOCAL_ONLY_RECEIVERS = {"file_log", "file_log/host", "host_metrics"}
+# The ADR-0014 rules (#612, and the backup rules of M9-09, #617).
 REQUIRED_ALERT_RULES = {
     "classora-host-cpu-high",
     "classora-host-memory-low",
@@ -38,6 +38,8 @@ REQUIRED_ALERT_RULES = {
     "classora-readiness-failing",
     "classora-job-failed",
     "classora-job-stalled",
+    "classora-backup-failed",
+    "classora-backup-missing",
 }
 # The dashboards ADR-0014 and #612 list.
 REQUIRED_DASHBOARDS = {
@@ -284,6 +286,28 @@ def check_collector_drift(root: Path) -> None:
         fail("collector/local.yaml: exporters differ from gateway.yaml's")
 
 
+def check_notifications(path: Path) -> None:
+    """The AWS-only contact point and notification policy (M9-09, #617)."""
+    doc = load_yaml(path)
+    if not isinstance(doc, dict) or doc.get("apiVersion") != 1:
+        fail(f"{path}: expected a mapping with apiVersion: 1")
+        return
+    names = {cp.get("name") for cp in doc.get("contactPoints") or []}
+    receivers = [
+        r for cp in doc.get("contactPoints") or [] for r in cp.get("receivers") or []
+    ]
+    if names != {"owner-email"} or [r.get("type") for r in receivers] != ["email"]:
+        fail(f"{path}: expected one e-mail contact point named owner-email")
+    for receiver in receivers:
+        if (receiver.get("settings") or {}).get("addresses") != "${ALERT_EMAIL}":
+            fail(f"{path}: the address must come from ${{ALERT_EMAIL}}, never the file")
+    policies = doc.get("policies") or []
+    if len(policies) != 1 or policies[0].get("receiver") != "owner-email":
+        fail(f"{path}: expected one policy routing to owner-email")
+    elif not DURATION.fullmatch(str(policies[0].get("repeat_interval", ""))):
+        fail(f"{path}: the policy needs a repeat_interval")
+
+
 def mem_bytes(value: str) -> int:
     match = re.fullmatch(r"(\d+)([kmg]?)b?", value.strip().lower())
     if not match:
@@ -341,6 +365,7 @@ def main() -> int:
     check_alerting(root, datasources)
     check_collector_drift(root)
     check_compose(root)
+    check_notifications(root.parent / "host" / "monitoring" / "notifications.yaml")
     if promql_out is not None:
         write_promql_rules(promql_out)
     for message in errors:

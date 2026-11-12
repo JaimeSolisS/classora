@@ -19,6 +19,33 @@
   "templating": {
     "list": [
       {
+        "type": "query",
+        "name": "env",
+        "label": "Environment",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(deployment_environment_name)",
+          "refId": "env"
+        },
+        "definition": "label_values(deployment_environment_name)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "refresh": 2,
+        "sort": 1
+      },
+      {
         "type": "custom",
         "name": "service",
         "label": "Service",
@@ -117,7 +144,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (service_name, level) (count_over_time({service_name=~\"$service\"} |= \"$search\" | json | level=~\"$level\" [$__auto]))",
+          "expr": "sum by (service_name, level) (count_over_time({service_name=~\"$service\", deployment_environment_name=~\"$env\"} |= \"$search\" | json | level=~\"$level\" [$__auto]))",
           "legendFormat": "{{service_name}} {{level}}",
           "queryType": "range"
         }
@@ -179,7 +206,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=~\"$service\"} |= \"$search\" | json | level=~\"$level\"",
+          "expr": "{service_name=~\"$service\", deployment_environment_name=~\"$env\"} |= \"$search\" | json | level=~\"$level\"",
           "queryType": "range"
         }
       ],

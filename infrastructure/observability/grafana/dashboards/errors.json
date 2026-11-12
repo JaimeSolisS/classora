@@ -97,7 +97,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (service_name) (count_over_time({service_name=~\"classora-api|classora-worker\"} | json | level=~\"ERROR|CRITICAL\" [$__auto]))",
+          "expr": "sum by (service_name) (count_over_time({service_name=~\"classora-api|classora-worker\", deployment_environment_name=~\"$env\"} | json | level=~\"ERROR|CRITICAL\" [$__auto]))",
           "legendFormat": "{{service_name}}",
           "queryType": "range"
         }
@@ -229,7 +229,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=~\"classora-api|classora-worker\"} | json | level=~\"ERROR|CRITICAL\"",
+          "expr": "{service_name=~\"classora-api|classora-worker\", deployment_environment_name=~\"$env\"} | json | level=~\"ERROR|CRITICAL\"",
           "queryType": "range"
         }
       ],
