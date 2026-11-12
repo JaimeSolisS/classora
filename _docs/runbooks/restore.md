@@ -16,7 +16,7 @@ Every command from your own machine uses the owner's profile: `export AWS_PROFIL
 - Each run logs one JSON line to the journal and to `/var/log/classora/backup.log` (rotated weekly, 8 kept), for example `{"event": "backup", "env": "dev", "status": "ok", "bytes": 725056, "duration_s": 3, "bucket": "…", "key": "backups/2026-11-12/classora.dump", "tables": 139}`. A failure has `"status": "failed"` and an `error`, and the unit fails. Alerts on these lines arrive with M9-09.
 - No password appears on a command line, in the logs or in S3 metadata: `psql` and `pg_dump` use the container's local socket.
 - The snapshot policy targets the data volume by its `Name` tag (`classora-<env>-data`): Data Lifecycle Manager selects a volume that has **any** of the target tags, so `Project`/`Environment`/`Role` would also select other volumes.
-- RPO up to 24 hours; RTO about 30 minutes for a small database (final values: M10-04, #152).
+- RPO up to 24 hours; RTO at most 1 hour ([ADR-0018](../adr/0018-sizing-load-and-recovery-objectives.md), M10-04): a dump restore on the existing host takes about 30 minutes, almost all of it the runbook's checks (the `pg_restore` of a term-sized center, 45 MB, takes about 3 seconds); replacing a lost instance first (Terraform apply, about 2 minutes of cloud-init, a deploy) fits in the remaining half hour.
 
 Check them:
 

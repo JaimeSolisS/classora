@@ -173,7 +173,7 @@ cmd_check() {
   fi
 
   local dirs=()
-  for dir in infrastructure/scripts infrastructure/host; do
+  for dir in infrastructure/scripts infrastructure/host infrastructure/load; do
     if [ -d "$dir" ]; then dirs+=("$dir"); fi
   done
   scripts=$(find "${dirs[@]}" -type f |

@@ -27,7 +27,7 @@ Resolves architecture §10 **ISSUE-I2** (superseded), **ISSUE-I3**, **ISSUE-I4**
 ### Hosts
 
 - **One EC2 instance per environment:** DEV, PROD and monitoring (ADR-0014 for monitoring placement). Every host runs Amazon Linux 2023 for **arm64** on **t4g** instances. Starting sizes: **t4g.small** (2 GiB) for all three, and **t4g.medium** (4 GiB) for DEV when monitoring is colocated on it (plan E2 (a)). Instance type, root size and data-volume size are Terraform variables.
-- Each app host runs the existing data stack (`db`, `pgbouncer`) and app stack (`api`, `worker`, `web`) through Compose under systemd (data before app), with `unless-stopped`. Compose `mem_limit` per service, a 1 GiB swap file, one Uvicorn worker, PostgreSQL `shared_buffers=128MB`. M10-04 (#152) measures and revisits these.
+- Each app host runs the existing data stack (`db`, `pgbouncer`) and app stack (`api`, `worker`, `web`) through Compose under systemd (data before app), with `unless-stopped`. Compose `mem_limit` per service, a 1 GiB swap file, one Uvicorn worker, PostgreSQL `shared_buffers=128MB`. M10-04 (#152) measured and tuned these: [ADR-0018](0018-sizing-load-and-recovery-objectives.md).
 - PostgreSQL data, Caddy's `/data` (certificates) and the collector's buffers live on a **separate encrypted gp3 data volume**. The mount script formats it only when it has no filesystem.
 - **Network:** one VPC, one public subnet per host, all in one Availability Zone (no cross-AZ transfer), an internet gateway and **no NAT gateway**. Each host has an Elastic IP. Security groups allow **only TCP 80 and 443** from anywhere. There is no SSH, PostgreSQL or PgBouncer port. Operators use SSM Session Manager. DEV and PROD security groups don't allow traffic to each other. The monitoring host's ingest port follows ADR-0014.
 
@@ -67,7 +67,7 @@ M9-02 (#610) builds the edge image and its header check; M9-06 (#614) runs it li
 - **ALB + ACM.** About $16/month per environment, and no benefit with one target.
 - **A separate `web` container behind an edge Caddy** (ISSUE-I4 proposal). Two Caddy processes on a 2 GiB host; rejected for RAM.
 - **x86 (t3) instances.** About 20% more expensive. They would avoid arm64 builds, but native arm runners remove that cost.
-- **t4g.micro (1 GiB) for DEV and PROD** (plan E2 (c)), the spec's original target. About $12/month less in all, but very likely out of memory with PostgreSQL, WeasyPrint and the agent. Left to M10-04 (#152) as an experiment.
+- **t4g.micro (1 GiB) for DEV and PROD** (plan E2 (c)), the spec's original target. About $12/month less in all, but very likely out of memory with PostgreSQL, WeasyPrint and the agent. Left to M10-04 (#152) as an experiment; rejected on the measurements in [ADR-0018](0018-sizing-load-and-recovery-objectives.md).
 - **t4g.medium for monitoring** (plan E2 (b)). More headroom for Loki and Tempo, but about $68/month in all, which trips the budget's 80% forecast e-mail.
 - **Multi-arch images.** Doubles build time, and nothing runs the amd64 variant from ECR.
 - **Ubuntu hosts.** Workable, but AL2023 ships the SSM agent and AWS CLI and gets AWS-maintained updates.

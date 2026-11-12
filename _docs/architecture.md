@@ -727,6 +727,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - Add a swap file on the root volume.
   - Run a benchmark gate in phase 6, with Terraform instance-type variables ready to step up to a `small` instance.
 - **Resolved (starting sizes):** [ADR-0010](adr/0010-hosting-edge-and-https.md). t4g.small (2 GiB) for DEV, PROD and monitoring, t4g.medium for DEV with monitoring colocated; the limits above still apply. M10-04 (#152) runs the benchmark.
+- **Resolved (measured):** [ADR-0018](adr/0018-sizing-load-and-recovery-objectives.md) (M10-04, #152). t4g.small kept for DEV and PROD, t4g.micro rejected; PgBouncer pool, host healthchecks and `mem_limit`s tuned from the DEV load test ([`load-test-report.md`](load-test-report.md)).
 
 #### ISSUE-I9 — Network layout between DEV, PROD and monitoring (M)
 - **Problem:** The spec does not say whether the hosts share a VPC or how the monitoring ingest endpoints are reached privately.
@@ -837,6 +838,7 @@ These ADRs record the accepted resolutions. ADR-0001 to ADR-0008 and ADR-0010 to
 | [0015](adr/0015-server-side-i18n.md) | Server-side i18n — **Accepted** | X1 |
 | [0016](adr/0016-ci-security-tooling.md) | CI security tooling (dependency, secret, SAST and image scans) — **Accepted** | #11 (M1-11) |
 | [0017](adr/0017-payroll-and-expenses.md) | Payroll and expenses — **Proposed** (orchestrator-recommended, pending owner review) | #104 (M7-01), E1–E18 |
+| [0018](adr/0018-sizing-load-and-recovery-objectives.md) | Sizing, load profile and recovery objectives — **Accepted** (owner-delegated, pending owner review) | I8 (measured), #152 (M10-04), E1–E7 |
 
 ## 12. Decisions that need the product owner rather than engineering
 
