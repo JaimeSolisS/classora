@@ -22,3 +22,8 @@ output "security_group_id" {
   description = "The host's security group."
   value       = aws_security_group.host.id
 }
+
+output "deploy_document" {
+  description = "The SSM document the deploy workflow sends (only parameter: sha)."
+  value       = aws_ssm_document.deploy.name
+}
