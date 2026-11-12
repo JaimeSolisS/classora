@@ -11,7 +11,8 @@
 # password (#165).
 #
 # Differences from local:
-#   - images by digest from ECR, no build, no pull_policy: never;
+#   - images by digest from ECR, no build, no pull_policy: never; postgres by
+#     tag and digest from Docker Hub (ADR-0001 A2);
 #   - no host ports except the edge's 80/443; the Vite dev server `web` is off;
 #   - `edge` is the web image (Caddy + SPA) on a fixed address, the only
 #     TRUSTED_PROXIES entry (172.30.0.10/32, set by render-env.sh);
@@ -24,7 +25,11 @@
 # are Docker daemon settings (host-setup.sh).
 
 services:
+  # PostgreSQL by exact minor and multi-arch index digest on the hosts
+  # (ADR-0001 amendment A2, #632): a replaced instance gets the same image.
+  # The major stays 18; local and CI keep the major tag postgres:18.
   db:
+    image: postgres:18.6@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
     command: ["postgres", "-c", "shared_buffers=128MB"]
     volumes: !override
       - /srv/classora-data/postgres:/var/lib/postgresql

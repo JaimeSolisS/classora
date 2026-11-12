@@ -17,6 +17,10 @@ log() { echo "host-setup: $*"; }
 
 "$BIN/install-docker.sh"
 
+# No SSH (ADR-0010; Session Manager only, #632); monitoring-up.sh repeats it.
+systemctl disable --now sshd.service sshd.socket >/dev/null 2>&1 || true
+systemctl mask sshd.service sshd.socket >/dev/null 2>&1 || echo "WARNING: could not mask sshd" >&2
+
 "$BIN/mount-data-volume.sh"
 install -d -m 0700 -o "$CADDY_UID" -g "$CADDY_UID" "$DATA/caddy"
 install -d -m 0755 "$DATA/monitoring" "$DATA/monitoring/releases"

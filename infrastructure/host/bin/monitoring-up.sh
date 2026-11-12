@@ -50,6 +50,11 @@ if [ "${1:-}" = --down ]; then
   exit 0
 fi
 
+# No SSH (ADR-0010; Session Manager only, #632). On an app host install-units.sh
+# does the same; here it reaches the monitoring host on every sync and boot.
+systemctl disable --now sshd.service sshd.socket >/dev/null 2>&1 || true
+systemctl mask sshd.service sshd.socket >/dev/null 2>&1 || echo "WARNING: could not mask sshd" >&2
+
 mountpoint -q /srv/classora-data || {
   echo "monitoring-up: /srv/classora-data is not mounted" >&2
   exit 1

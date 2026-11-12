@@ -107,10 +107,15 @@ resource "aws_instance" "this" {
     network_interface_id = aws_network_interface.host.id
   }
 
+  # Hop limit 1: only the host itself reaches IMDS (the AWS CLI in the host
+  # scripts, the SSM agent, dockerd's ECR pulls through ecr-login.sh). A
+  # container is one hop further and gets no token, so code running in api or
+  # worker can't use the instance role (Parameter Store secrets, the ops
+  # bucket). No container needs instance credentials (#632).
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required"
-    http_put_response_hop_limit = 2
+    http_put_response_hop_limit = 1
   }
 
   root_block_device {

@@ -14,6 +14,8 @@ Owner: JaimeSolisS. Approved as proposed on 2026-10-17 (GitHub issue #6, orchest
 
 Amended 2026-11-11: observability images (issue #611, M9-03, escalation E1 option (a), owner-delegated recommended decision; see [Amendments](#amendments)).
 
+Amended 2026-11-12: PostgreSQL image digest on the AWS hosts (issue #632, from QA #614 O4, owner-delegated recommended decision; see [Amendments](#amendments)).
+
 ## Context
 
 Resolves architecture §10 **ISSUE-D7** (version pins) in [`../architecture.md`](../architecture.md) §10.3. The spec ([`../spec.md`](../spec.md) §10, stack table) names the technologies but pins no major versions.
@@ -65,6 +67,19 @@ The monitoring stack ([ADR-0014](0014-observability-error-tracking-and-alerting.
 
 - The pins live in one file, `infrastructure/observability/compose.observability.yaml`. `make check-observability` validates each configuration with the image pinned there, and fails if an image isn't pinned by tag and digest.
 - The majors (Prometheus 3, Loki 3, Tempo 2, Grafana 12) are governed like the pins in the table above: changing one needs an amendment. Patch and minor bumps within a major, and Collector releases, are ordinary changes that update the tag, the digest and this table together.
+
+### A2. PostgreSQL on the AWS hosts (2026-11-12, #632)
+
+On the AWS app hosts (DEV, PROD), `db` runs PostgreSQL pinned by **exact minor tag and multi-arch index digest**, so a replaced instance or a later deploy gets the same image as the one tested, not whatever `postgres:18` points to that day.
+
+| Image | Tag | Index digest | Released |
+|---|---|---|---|
+| `postgres` | `18.6` | `sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42` | 18.6: 2026-08-13; this build: 2026-11-06 |
+
+- The index has `linux/arm64` (the hosts) and `linux/amd64`. It is the digest DEV was already running, so the pin did not change DEV's database image.
+- The pin lives in one file, `infrastructure/host/compose.aws.yaml` (service `db`). `restore.sh` uses the live `db` image, or this pin when no `db` container exists.
+- The governed level is unchanged: PostgreSQL stays pinned at the **major** (18) in the table above. Local Compose, the shared native database and Testcontainers keep `postgres:18`.
+- Minor and rebuild bumps within 18 are ordinary changes that update the tag, the digest and this table together. They take effect on the next deploy (`deploy.sh` pulls and recreates `db`). A new major needs a superseding ADR and a data migration (`pg_upgrade` or dump/restore).
 
 ## Consequences
 

@@ -146,9 +146,11 @@ install -d -m 0700 "$SCRATCH_DIR" "$SCRATCH_DIR/in"
 install -d -m 0755 "$SCRATCH_DIR/pg"
 [ "$(realpath "$SCRATCH_DIR/pg")" != "$(realpath "$LIVE_PGDATA")" ] || fail "scratch directory is the live data directory"
 
-# The image of the live db (postgres:18, ADR-0001); never pulled here.
+# The image of the live db; with no db container, the release's pinned
+# postgres reference (compose.aws.yaml, ADR-0001 A2). Never pulled here.
 image=$(docker inspect --format '{{.Image}}' "$("$BIN/compose.sh" ps --all --quiet db 2>/dev/null | head -n1)" 2>/dev/null || true)
-[ -n "$image" ] || image=postgres:18
+[ -n "$image" ] || image=$("$BIN/compose.sh" config --images 2>/dev/null | grep -m1 '^postgres:' || true)
+[ -n "$image" ] || fail "no PostgreSQL image: deploy a release first"
 
 # s3_get <bucket> <key> <file>
 s3_get() {
