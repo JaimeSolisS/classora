@@ -149,8 +149,9 @@ check "GET / has no Server header" "$(header Server "$TMP/root.headers")" ""
 check "/api has no Server header (the upstream's is dropped)" "$(header Server "$TMP/api.headers")" ""
 check "/api has no Via header" "$(header Via "$TMP/api.headers")" ""
 
-# 2c. Request bodies are capped at 4 MB before they reach the API (#150 SR-02):
-# an import-sized body (3 MB) passes whole; a 5 MB one is 413 at the edge.
+# 2c. Request bodies are capped at 4 MB (#150 SR-02): Caddy streams a body
+# upstream and cuts it off at 4 MB, so the API gets at most 4 MB and its answer
+# is discarded. An import-sized body (3 MB) passes whole; a 5 MB one is 413.
 head -c 3000000 /dev/zero >"$TMP/body-3mb"
 head -c 5000000 /dev/zero >"$TMP/body-5mb"
 check "POST /api 3 MB body status" "$(get post3 "$HTTP/api/echo" -X POST -H 'Expect:' \
@@ -159,6 +160,10 @@ check "POST /api 3 MB body reaches the upstream whole" "$(jq -r '.received' "$TM
 check "POST /api 5 MB body status" "$(get post5 "$HTTP/api/echo" -X POST -H 'Expect:' \
   -H 'Content-Type: application/octet-stream' --data-binary "@$TMP/body-5mb" 2>/dev/null || true)" 413
 check "POST /api 5 MB body gets no upstream answer" "$(header X-Smoke-Upstream "$TMP/post5.headers")" ""
+check "the 413 (Caddy's error path) has no Server header" "$(header Server "$TMP/post5.headers")" ""
+check "POST / status (no POST on the SPA)" "$(get post405 "$HTTP/" -X POST -d x)" 405
+check "the 405 (Caddy's error path) has no Server header" "$(header Server "$TMP/post405.headers")" ""
+check "a missing asset (error path) has no Server header" "$(header Server "$TMP/missing.headers")" ""
 
 # 3. A client-sent X-Forwarded-For is replaced by the TCP peer, the address
 # Caddy logs as remote_ip in its JSON access log on stdout.

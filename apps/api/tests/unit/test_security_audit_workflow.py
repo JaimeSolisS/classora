@@ -45,6 +45,11 @@ def test_the_audit_runs_make_audit_deps_with_read_only_permissions():
 
     assert "permissions:" in lines
     assert lines[lines.index("permissions:") + 1] == "  contents: read"
+    # Only the workflow-level block: no job widens it, and nothing asks to write.
+    assert [line for line in lines if line.strip() == "permissions:"] == [
+        "permissions:"
+    ]
+    assert not any(re.search(r":\s*write\b|write-all", line) for line in lines)
     assert "        run: make audit-deps" in lines
     assert not any("secrets." in line for line in lines)
 

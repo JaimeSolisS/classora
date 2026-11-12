@@ -12,8 +12,8 @@
 #   /api/v1/notifications/stream     proxied unbuffered and unencoded (SSE)
 #   /api/*                           proxied; the API's own headers only
 #   /health/*                        404, empty: health is checked on the host
-#   request bodies (any path)        at most 4 MB, else 413 before the API reads them (#150 SR-02)
-#   Server and Via headers           removed, Caddy's and the API's (#150 SR-03)
+#   request bodies (any path)        at most 4 MB: Caddy cuts the stream at 4 MB and answers 413 (#150 SR-02)
+#   Server and Via headers           removed, Caddy's (errors included) and the API's (#150 SR-03)
 # X-Forwarded-For: no trusted_proxies, so Caddy replaces any client-sent value
 # with the TCP peer (ADR-0008 as amended by ADR-0010).
 
@@ -72,6 +72,13 @@
 	# 413 import_too_large); a larger body is cut off here and answered 413.
 	request_body {
 		max_size 4MB
+	}
+
+	# Caddy's own error responses (405, the 413 above, …) are written on the
+	# error path, where the deferred deletions above do not run (#150 QA D3).
+	handle_errors {
+		header -Server
+		respond "" {err.status_code}
 	}
 
 	handle /health/* {
