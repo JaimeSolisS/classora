@@ -50,9 +50,7 @@ def test_the_audit_runs_make_audit_deps_with_read_only_permissions():
 
 
 def test_the_audit_uses_only_approved_actions_pinned_by_sha():
-    uses = [
-        line.split("uses:", 1)[1].strip() for line in _lines() if "uses:" in line
-    ]
+    uses = [line.split("uses:", 1)[1].strip() for line in _lines() if "uses:" in line]
 
     assert uses
     for reference in uses:
