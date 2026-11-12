@@ -647,7 +647,11 @@ def test_other_roles_see_nothing_and_get_404(
             )
             == NOT_FOUND
         )
+        # #149: assigning and the assignee options are hidden the same way.
+        assert code_of(assign(client, cookie, approval_id, member.id, 1)) == NOT_FOUND
+        assert code_of(assignee_options(client, cookie, approval_id)) == NOT_FOUND
         assert approval(module_seeded_url, approval_id).status == "pending"
+        assert assignee_of(module_seeded_url, approval_id) is None
     assert sample_type.calls == []
 
 

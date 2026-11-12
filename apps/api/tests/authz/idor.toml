@@ -1,0 +1,867 @@
+# IDOR inventory (M10-01, #149): every scoped route and the test that proves
+# another party's record is hidden.
+#
+# Read by tests/authz/idor.py. tests/unit/test_idor_inventory.py checks it
+# against tests/authz/matrix.toml and the OpenAPI document of
+# build_app(include_dev_routes=True).
+#
+# In scope: every matrix entry reachable by tutor, student or guardian
+# (access = "authenticated" minus its `deny`, or access = "permission" with one
+# of them in `allow`) whose route takes a record id: a path parameter, or a
+# query parameter or top-level JSON body property named *_id / *_ids.
+# Staff-only routes (deny = [..., "tutor", "student", "guardian"]) are out;
+# the permission matrix covers them.
+#
+# Adding an entry: one [[route]] table per in-scope method and path template,
+# written as in matrix.toml. Keep the entries sorted by path, then method (a
+# test enforces it). Each entry has exactly one of:
+#
+#   tests = ["tests/integration/<file>.py::<test_name>", ...]
+#       Node ids relative to apps/api; a parametrized test without its [...],
+#       a class method as file.py::Class::test_name. The cited tests send
+#       this method and path (or call a helper that does) with another
+#       party's id (guardian A vs family B, student A vs student B, tutor A vs
+#       tutor B or vs a student or session the tutor does not teach):
+#       - detail and unsafe routes: the hidden record gets the same status and
+#         Problem code as a missing one (new tests use
+#         tests/authz/assertions.assert_same_not_found); unsafe routes also
+#         show the record unchanged;
+#       - list, aggregate and stream routes: the other party's records never
+#         appear.
+#   exempt = "<reason>"
+#       Only when every id the route takes is a shared catalog id (subjects,
+#       levels, classrooms, templates, periods, closures), or the route answers
+#       a scoped role 403 before any record lookup. A list with only
+#       catalog-id filters cites the test proving the list is scoped in `note`.
+#   pending = "#<issue>"
+#       A leak too big to fix in the issue that found it, with its open bug.
+#
+#   Optional: note = "<which ids the tests cover, when it isn't obvious>".
+
+[[route]]
+method = "GET"
+path = "/api/v1/academic-periods/{period_id}"
+exempt = "Shared catalog id (academic periods): one center-wide record readable by every signed-in user, no per-party data."
+
+[[route]]
+method = "GET"
+path = "/api/v1/approval-requests/{request_id}"
+tests = ["tests/integration/test_approval_requests.py::test_other_roles_see_nothing_and_get_404"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/approval-requests/{request_id}/approve"
+tests = [
+    "tests/integration/test_approval_requests.py::test_other_roles_see_nothing_and_get_404",
+    "tests/integration/test_closeout_review.py::test_the_generic_routes_hide_closeouts_from_non_reviewers",
+]
+
+[[route]]
+method = "POST"
+path = "/api/v1/approval-requests/{request_id}/assign"
+tests = [
+    "tests/integration/test_approval_requests.py::test_other_roles_see_nothing_and_get_404",
+    "tests/integration/test_approval_requests.py::test_the_assignment_order",
+]
+note = "assignee_user_id only names a staff holder of the review permission; any other id (a tutor, unknown, archived) is the same assignee_ineligible."
+
+[[route]]
+method = "GET"
+path = "/api/v1/approval-requests/{request_id}/assignee-options"
+tests = [
+    "tests/integration/test_approval_requests.py::test_other_roles_see_nothing_and_get_404",
+    "tests/integration/test_approval_requests.py::test_the_assignee_options",
+]
+
+[[route]]
+method = "POST"
+path = "/api/v1/approval-requests/{request_id}/reject"
+tests = [
+    "tests/integration/test_approval_requests.py::test_other_roles_see_nothing_and_get_404",
+    "tests/integration/test_closeout_review.py::test_the_generic_routes_hide_closeouts_from_non_reviewers",
+]
+
+[[route]]
+method = "POST"
+path = "/api/v1/approval-requests/{request_id}/request-changes"
+tests = [
+    "tests/integration/test_approval_requests.py::test_other_roles_see_nothing_and_get_404",
+    "tests/integration/test_closeout_review.py::test_the_generic_routes_hide_closeouts_from_non_reviewers",
+]
+
+[[route]]
+method = "POST"
+path = "/api/v1/assignment-offers/{offer_id}/accept"
+tests = ["tests/integration/test_assignment_offers.py::test_only_the_offered_tutor_can_answer"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/assignment-offers/{offer_id}/decline"
+tests = ["tests/integration/test_assignment_offers.py::test_only_the_offered_tutor_can_answer"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/assignments"
+tests = ["tests/integration/test_assignments.py::test_the_working_list"]
+note = "Another tutor sees none of a tutor's homework, also filtered by that tutor's student_id or class_session_id. Families get 403 before any lookup. subject_id is a catalog id."
+
+[[route]]
+method = "POST"
+path = "/api/v1/assignments"
+tests = ["tests/integration/test_assignments.py::test_the_create_order"]
+note = "student_ids the tutor doesn't teach get the same recipient_invalid as unknown ids; another tutor's class_session_id gets the same class_session_invalid as an unknown one. subject_id is a catalog id."
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/assignments/{assignment_id}"
+tests = ["tests/integration/test_assignments.py::test_the_hidden_assignments_get_the_same_404"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/assignments/{assignment_id}"
+tests = ["tests/integration/test_assignments.py::test_the_hidden_assignments_get_the_same_404"]
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/assignments/{assignment_id}"
+tests = [
+    "tests/integration/test_assignments.py::test_the_hidden_assignments_get_the_same_404",
+    "tests/integration/test_assignments.py::test_the_patch_rules",
+]
+note = "add_student_ids with a student the tutor doesn't teach is recipient_invalid (test_the_patch_rules); remove_student_ids only acts on the assignment's own recipients."
+
+[[route]]
+method = "PUT"
+path = "/api/v1/assignments/{assignment_id}/students/{student_id}/grade"
+tests = ["tests/integration/test_assignments.py::test_the_hidden_assignments_get_the_same_404"]
+
+[[route]]
+method = "PUT"
+path = "/api/v1/assignments/{assignment_id}/students/{student_id}/submission"
+tests = ["tests/integration/test_assignments.py::test_the_hidden_assignments_get_the_same_404"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/available-slots"
+tests = [
+    "tests/integration/test_session_requests_security.py::test_another_familys_child_is_the_same_404_as_an_unknown_id",
+    "tests/integration/test_session_requests_security.py::test_a_student_cannot_act_for_another_student",
+    "tests/integration/test_session_requests_security.py::test_staff_and_tutors_get_404_and_an_empty_list",
+]
+note = "subject_id is a catalog id."
+
+[[route]]
+method = "GET"
+path = "/api/v1/change-requests"
+tests = [
+    "tests/integration/test_change_requests.py::test_reads_follow_the_family_and_tutor_rules",
+    "tests/integration/test_change_requests.py::test_the_list_is_an_offset_page_with_filters",
+]
+note = "Another family's student_id and a session filter by a stranger or by the session's tutor show none of the family's requests."
+
+[[route]]
+method = "POST"
+path = "/api/v1/change-requests"
+tests = ["tests/integration/test_change_requests.py::test_hidden_sessions_are_the_same_404"]
+note = "class_session_id of another family's or another tutor's session is the unknown-session 404."
+
+[[route]]
+method = "GET"
+path = "/api/v1/change-requests/{change_request_id}"
+tests = ["tests/integration/test_change_requests.py::test_reads_follow_the_family_and_tutor_rules"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/change-requests/{change_request_id}/withdraw"
+tests = ["tests/integration/test_change_requests.py::test_the_requester_withdraws"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/attendance"
+tests = [
+    "tests/integration/test_attendance.py::test_another_tutor_gets_the_404_of_an_unknown_id",
+    "tests/integration/test_attendance.py::test_families_get_the_404_of_an_unknown_id",
+]
+
+[[route]]
+method = "PUT"
+path = "/api/v1/class-sessions/{class_session_id}/attendance"
+tests = [
+    "tests/integration/test_attendance.py::test_another_tutor_gets_the_404_of_an_unknown_id",
+    "tests/integration/test_attendance.py::test_families_get_the_404_of_an_unknown_id",
+]
+
+[[route]]
+method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/closeout"
+tests = [
+    "tests/integration/test_session_closeout.py::test_another_tutor_gets_the_404_of_an_unknown_id",
+    "tests/integration/test_session_closeout.py::test_families_get_the_404_of_an_unknown_id",
+]
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/closeout"
+tests = [
+    "tests/integration/test_session_closeout.py::test_another_tutor_gets_the_404_of_an_unknown_id",
+    "tests/integration/test_session_closeout.py::test_families_get_the_404_of_an_unknown_id",
+]
+
+[[route]]
+method = "PUT"
+path = "/api/v1/class-sessions/{class_session_id}/closeout"
+tests = ["tests/integration/test_closeout_review.py::test_the_put_hides_the_closeout_from_everyone_else"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/evaluation-context"
+tests = ["tests/integration/test_evaluations.py::test_the_evaluation_context"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/notes"
+tests = ["tests/integration/test_session_notes.py::test_the_session_list"]
+note = "student_id of a student outside the session filters to an empty list."
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/notes"
+tests = ["tests/integration/test_session_notes.py::test_the_create_order"]
+note = "student_id outside the session gets the same student_not_participant as an unknown id."
+
+[[route]]
+method = "GET"
+path = "/api/v1/classrooms/{classroom_id}"
+exempt = "Shared catalog id (classrooms): readable by every signed-in user, no per-party data."
+
+[[route]]
+method = "GET"
+path = "/api/v1/closures/{closure_id}"
+exempt = "Shared catalog id (center closures): readable by every signed-in user, no per-party data."
+
+[[route]]
+method = "GET"
+path = "/api/v1/cohorts"
+exempt = "Only catalog-id filters (template_id, subject_id); the list itself is scoped by caller."
+note = "Scoping: test_group_cohort_family_tutor_reads.py::test_a_guardian_never_sees_another_familys_group_or_cohort and ::test_a_tutor_never_sees_another_tutors_group_or_cohort (the other party's cohort is absent from the list)."
+
+[[route]]
+method = "GET"
+path = "/api/v1/cohorts/{cohort_id}"
+tests = [
+    "tests/integration/test_group_cohort_family_tutor_reads.py::test_a_guardian_never_sees_another_familys_group_or_cohort",
+    "tests/integration/test_group_cohort_family_tutor_reads.py::test_a_tutor_never_sees_another_tutors_group_or_cohort",
+]
+
+[[route]]
+method = "GET"
+path = "/api/v1/cohorts/{cohort_id}/completion"
+tests = [
+    "tests/integration/test_course_completion.py::test_a_tutor_of_another_cohort_gets_the_unknown_id_404",
+    "tests/integration/test_course_completion.py::test_everyone_else_gets_the_unknown_id_404",
+    "tests/integration/test_course_completion.py::test_families_read_only_their_own_rows",
+]
+
+[[route]]
+method = "GET"
+path = "/api/v1/cohorts/{cohort_id}/sessions"
+tests = [
+    "tests/integration/test_group_cohort_family_tutor_reads.py::test_a_guardian_never_sees_another_familys_group_or_cohort",
+    "tests/integration/test_group_cohort_family_tutor_reads.py::test_a_tutor_never_sees_another_tutors_group_or_cohort",
+]
+
+[[route]]
+method = "POST"
+path = "/api/v1/deleted-records/{kind}/{record_id}/restore"
+tests = [
+    "tests/integration/test_deleted_records.py::test_the_restore_order",
+    "tests/integration/test_deleted_records.py::test_only_the_deleter_sees_their_records_inside_the_window",
+]
+note = "kind is an enum, not a record id."
+
+[[route]]
+method = "GET"
+path = "/api/v1/education-levels/{level_id}"
+exempt = "Shared catalog id (education levels): readable by every signed-in user, no per-party data."
+
+[[route]]
+method = "GET"
+path = "/api/v1/evaluation-templates"
+exempt = "Only a catalog-id filter (subject_id) on the shared template catalog; no per-party records."
+note = "Families never see a template body with student data: test_session_notes_leak.py walks this route for every family actor."
+
+[[route]]
+method = "GET"
+path = "/api/v1/evaluation-templates/{template_id}"
+exempt = "Shared catalog id (evaluation templates): the shared template catalog, no per-party data."
+
+[[route]]
+method = "POST"
+path = "/api/v1/evaluations"
+tests = [
+    "tests/integration/test_evaluations.py::test_the_create_order",
+    "tests/integration/test_evaluations.py::test_the_session_link",
+]
+note = "student_id the tutor doesn't teach is the unknown-student 404; another tutor's class_session_id gets the same class_session_invalid as an unknown one. template_id, subject_id and course_assessment_id are catalog ids."
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/evaluations/{evaluation_id}"
+tests = ["tests/integration/test_evaluations.py::test_the_hidden_evaluations_get_the_same_404"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/evaluations/{evaluation_id}"
+tests = [
+    "tests/integration/test_evaluations.py::test_the_hidden_evaluations_get_the_same_404",
+    "tests/integration/test_session_notes_leak.py::test_no_family_response_carries_a_hidden_note",
+]
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/evaluations/{evaluation_id}"
+tests = ["tests/integration/test_evaluations.py::test_the_hidden_evaluations_get_the_same_404"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/evaluations/{evaluation_id}/finalize"
+tests = ["tests/integration/test_evaluations.py::test_the_hidden_evaluations_get_the_same_404"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/evaluations/{evaluation_id}/void"
+tests = ["tests/integration/test_evaluations.py::test_the_hidden_evaluations_get_the_same_404"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}"
+tests = ["tests/integration/test_families_visibility.py::test_ub_sees_only_family_b"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account"
+tests = ["tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/charges"
+tests = [
+    "tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404",
+    "tests/integration/test_billing_family_leak.py::test_another_familys_student_id_filters_the_own_family_to_nothing",
+]
+note = "student_id of another family's student under the own family: an empty page."
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/charges/{charge_id}"
+tests = [
+    "tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404",
+    "tests/integration/test_billing_family_leak.py::test_foreign_sub_ids_under_the_own_family_are_404",
+]
+note = "Covers another family's id and another family's charge_id under the own family."
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/ledger"
+tests = [
+    "tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404",
+    "tests/integration/test_billing_family_leak.py::test_another_familys_student_id_filters_the_own_family_to_nothing",
+]
+note = "student_id of another family's student under the own family: an empty page."
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/packages"
+tests = [
+    "tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404",
+    "tests/integration/test_billing_family_leak.py::test_another_familys_student_id_filters_the_own_family_to_nothing",
+]
+note = "student_id of another family's student under the own family: an empty page."
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/packages/{package_id}"
+tests = [
+    "tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404",
+    "tests/integration/test_billing_family_leak.py::test_foreign_sub_ids_under_the_own_family_are_404",
+]
+note = "Covers another family's id and another family's package_id under the own family."
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/payments"
+tests = ["tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/payments/{payment_id}"
+tests = [
+    "tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404",
+    "tests/integration/test_billing_family_leak.py::test_foreign_sub_ids_under_the_own_family_are_404",
+]
+note = "Covers another family's id and another family's payment_id under the own family."
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/receipts/{receipt_id}/pdf"
+tests = [
+    "tests/integration/test_billing_receipts_routes.py::test_everyone_else_gets_the_same_404",
+    "tests/integration/test_billing_receipts_routes.py::test_a_guardian_cant_reach_another_familys_receipt",
+    "tests/integration/test_billing_family_leak.py::test_another_family_is_the_unknown_family_404",
+    "tests/integration/test_billing_family_leak.py::test_foreign_sub_ids_under_the_own_family_are_404",
+]
+note = "Generated file. Covers another family's id and another family's receipt under the own family."
+
+[[route]]
+method = "GET"
+path = "/api/v1/groups"
+exempt = "Only a catalog-id filter (subject_id); the list itself is scoped by caller."
+note = "Scoping: test_group_cohort_family_tutor_reads.py::test_a_guardian_never_sees_another_familys_group_or_cohort and ::test_a_tutor_never_sees_another_tutors_group_or_cohort (the other party's group is absent from the list)."
+
+[[route]]
+method = "GET"
+path = "/api/v1/groups/{group_id}"
+tests = [
+    "tests/integration/test_group_cohort_family_tutor_reads.py::test_a_guardian_never_sees_another_familys_group_or_cohort",
+    "tests/integration/test_group_cohort_family_tutor_reads.py::test_a_tutor_never_sees_another_tutors_group_or_cohort",
+]
+
+[[route]]
+method = "GET"
+path = "/api/v1/groups/{group_id}/sessions"
+tests = [
+    "tests/integration/test_group_cohort_family_tutor_reads.py::test_a_guardian_never_sees_another_familys_group_or_cohort",
+    "tests/integration/test_group_cohort_family_tutor_reads.py::test_a_tutor_never_sees_another_tutors_group_or_cohort",
+]
+
+[[route]]
+method = "GET"
+path = "/api/v1/guardians/{guardian_id}"
+tests = ["tests/integration/test_guardians_visibility.py::test_u1_sees_only_their_own_guardian_profile"]
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/learning-plan-milestones/{milestone_id}"
+tests = ["tests/integration/test_learning_plans.py::test_the_hidden_plans_get_the_same_404"]
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/learning-plans/{plan_id}"
+tests = ["tests/integration/test_learning_plans.py::test_the_hidden_plans_get_the_same_404"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/learning-plans/{plan_id}"
+tests = [
+    "tests/integration/test_learning_plans.py::test_the_hidden_plans_get_the_same_404",
+    "tests/integration/test_session_notes_leak.py::test_no_family_response_carries_a_hidden_note",
+]
+
+[[route]]
+method = "PUT"
+path = "/api/v1/learning-plans/{plan_id}"
+tests = ["tests/integration/test_learning_plans.py::test_the_hidden_plans_get_the_same_404"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/learning-plans/{plan_id}/transition"
+tests = ["tests/integration/test_learning_plans.py::test_the_hidden_plans_get_the_same_404"]
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/notes/{note_id}"
+tests = ["tests/integration/test_session_notes.py::test_outsiders_get_the_same_404_on_every_note_write"]
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/notes/{note_id}"
+tests = [
+    "tests/integration/test_session_notes.py::test_outsiders_get_the_same_404_on_every_note_write",
+    "tests/integration/test_session_notes.py::test_a_tutor_who_lost_the_role_gets_404_everywhere",
+]
+
+[[route]]
+method = "POST"
+path = "/api/v1/notes/{note_id}/publish"
+tests = [
+    "tests/integration/test_session_notes.py::test_outsiders_get_the_same_404_on_every_note_write",
+    "tests/integration/test_session_notes.py::test_the_write_order",
+]
+
+[[route]]
+method = "POST"
+path = "/api/v1/notes/{note_id}/unpublish"
+tests = ["tests/integration/test_session_notes.py::test_outsiders_get_the_same_404_on_every_note_write"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/notifications/{notification_id}/read"
+tests = ["tests/integration/test_notifications.py::test_a_user_never_sees_counts_reads_or_bulk_reads_another_users_notifications"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/compensation"
+tests = ["tests/integration/test_payroll_compensation_access.py::test_a_tutor_gets_the_same_404_for_anyone_else"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/earnings"
+tests = ["tests/integration/test_payroll_earnings_access.py::test_c5_tutor_a_cant_reach_anything_of_b"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/earnings/{period_id}"
+tests = [
+    "tests/integration/test_payroll_earnings_access.py::test_c5_tutor_a_cant_reach_anything_of_b",
+    "tests/integration/test_payroll_earnings_access.py::test_c5_a_tutors_own_open_and_prepared_periods_are_404",
+]
+note = "Covers another tutor's id and another tutor's period under the own tutor id."
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/payslips/{payslip_id}/pdf"
+tests = [
+    "tests/integration/test_payroll_earnings_access.py::test_c5_tutor_a_cant_reach_anything_of_b",
+    "tests/integration/test_payroll_earnings_access.py::test_c5_everyone_else_gets_the_same_404_on_all_three",
+]
+note = "Generated file. Covers another tutor's id and another tutor's payslip under the own tutor id."
+
+[[route]]
+method = "GET"
+path = "/api/v1/progress-reports"
+tests = [
+    "tests/integration/test_progress_reports.py::test_the_working_list",
+    "tests/integration/test_progress_reports.py::test_the_hidden_reports_get_the_same_404",
+    "tests/integration/test_progress_reports.py::test_the_family_reads",
+]
+note = "Another tutor filtering by a tutor's student_id sees nothing; families get the unknown-id 404."
+
+[[route]]
+method = "POST"
+path = "/api/v1/progress-reports"
+tests = ["tests/integration/test_progress_reports.py::test_the_create_order"]
+note = "student_id the tutor doesn't teach is the unknown-student 404. subject_id is a catalog id."
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/progress-reports/{report_id}"
+tests = ["tests/integration/test_progress_reports.py::test_the_hidden_reports_get_the_same_404"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/progress-reports/{report_id}"
+tests = [
+    "tests/integration/test_progress_reports.py::test_the_hidden_reports_get_the_same_404",
+    "tests/integration/test_progress_reports.py::test_the_family_reads",
+]
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/progress-reports/{report_id}"
+tests = ["tests/integration/test_progress_reports.py::test_the_hidden_reports_get_the_same_404"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/progress-reports/{report_id}/approve"
+tests = [
+    "tests/integration/test_progress_reports.py::test_the_decision_order",
+    "tests/integration/test_progress_reports.py::test_an_adult_needs_the_consent_and_a_revocation_applies_at_once",
+]
+
+[[route]]
+method = "POST"
+path = "/api/v1/progress-reports/{report_id}/request-changes"
+tests = ["tests/integration/test_progress_reports.py::test_the_decision_order"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/progress-reports/{report_id}/retract"
+tests = [
+    "tests/integration/test_progress_reports.py::test_the_decision_order",
+    "tests/integration/test_progress_reports.py::test_an_adult_needs_the_consent_and_a_revocation_applies_at_once",
+]
+
+[[route]]
+method = "POST"
+path = "/api/v1/progress-reports/{report_id}/submit"
+tests = ["tests/integration/test_progress_reports.py::test_an_adult_needs_the_consent_and_a_revocation_applies_at_once"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/session-requests"
+tests = [
+    "tests/integration/test_session_requests_security.py::test_another_familys_child_is_the_same_404_as_an_unknown_id",
+    "tests/integration/test_session_requests_security.py::test_a_student_cannot_act_for_another_student",
+]
+note = "Another family's student_id lists nothing."
+
+[[route]]
+method = "POST"
+path = "/api/v1/session-requests"
+tests = [
+    "tests/integration/test_session_requests_security.py::test_another_familys_child_is_the_same_404_as_an_unknown_id",
+    "tests/integration/test_session_requests_security.py::test_a_student_cannot_act_for_another_student",
+    "tests/integration/test_session_requests_security.py::test_staff_and_tutors_get_404_and_an_empty_list",
+]
+note = "student_id of another family's child is the unknown-student 404. subject_id is a catalog id."
+
+[[route]]
+method = "GET"
+path = "/api/v1/session-requests/{request_id}"
+tests = [
+    "tests/integration/test_session_requests_security.py::test_another_familys_child_is_the_same_404_as_an_unknown_id",
+    "tests/integration/test_session_requests_security.py::test_a_student_cannot_act_for_another_student",
+]
+
+[[route]]
+method = "POST"
+path = "/api/v1/session-requests/{request_id}/withdraw"
+tests = [
+    "tests/integration/test_session_requests_security.py::test_another_familys_child_is_the_same_404_as_an_unknown_id",
+    "tests/integration/test_session_requests_security.py::test_a_student_cannot_act_for_another_student",
+]
+
+[[route]]
+method = "GET"
+path = "/api/v1/students"
+exempt = "Only a catalog-id filter (education_level_id); the list itself is scoped by caller."
+note = "Scoping: test_students_visibility.py::test_an_assigned_tutor_sees_only_that_student_and_limited and ::test_unlinked_guardians_and_student_users_see_nothing."
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}"
+tests = [
+    "tests/integration/test_students_visibility.py::test_an_assignment_only_counts_for_its_tutor",
+    "tests/integration/test_students_visibility.py::test_unlinked_guardians_and_student_users_see_nothing",
+    "tests/integration/test_student_login_visibility.py::test_a_student_sees_only_their_own_record",
+    "tests/integration/test_families_visibility.py::test_a_guardian_of_family_a_requesting_a_student_of_family_b_gets_404",
+]
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/academic-history"
+tests = [
+    "tests/integration/test_evaluations.py::test_the_history_access",
+    "tests/integration/test_session_notes_leak.py::test_no_family_response_carries_a_hidden_note",
+]
+note = "subject_id is a catalog id."
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/assignments"
+tests = [
+    "tests/integration/test_assignments.py::test_the_hidden_assignments_get_the_same_404",
+    "tests/integration/test_session_notes_leak.py::test_no_family_response_carries_a_hidden_note",
+]
+note = "subject_id is a catalog id."
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/assignments/{assignment_id}"
+tests = [
+    "tests/integration/test_assignments.py::test_the_hidden_assignments_get_the_same_404",
+    "tests/integration/test_session_notes_leak.py::test_no_family_response_carries_a_hidden_note",
+]
+note = "Includes another student's assignment under the own student's path."
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/consents"
+tests = [
+    "tests/integration/test_consents.py::test_a_student_reaches_only_their_own_student",
+    "tests/integration/test_consents.py::test_a_guardian_sees_only_themselves_and_their_own_records",
+]
+
+[[route]]
+method = "POST"
+path = "/api/v1/students/{student_id}/consents"
+tests = [
+    "tests/integration/test_consents.py::test_a_student_reaches_only_their_own_student",
+    "tests/integration/test_consents.py::test_what_a_guardian_may_not_record",
+    "tests/integration/test_consents.py::test_another_partys_guardian_id_is_answered_like_a_missing_one",
+]
+note = "guardian_id of a guardian the caller does not know gets the same answer as a missing id, and nothing is recorded."
+
+[[route]]
+method = "POST"
+path = "/api/v1/students/{student_id}/consents/{consent_id}/revoke"
+tests = [
+    "tests/integration/test_consents.py::test_who_may_revoke_what",
+    "tests/integration/test_consents.py::test_a_record_of_another_student_is_404",
+]
+note = "Covers another student's id and another guardian's record under the own student."
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/evaluations"
+tests = [
+    "tests/integration/test_evaluations.py::test_the_hidden_evaluations_get_the_same_404",
+    "tests/integration/test_session_notes_leak.py::test_no_family_response_carries_a_hidden_note",
+]
+note = "subject_id is a catalog id; class_session_id only filters the student's own evaluations."
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/learning-notes"
+tests = [
+    "tests/integration/test_session_notes.py::test_the_family_route_access",
+    "tests/integration/test_session_notes.py::test_a_group_note_reaches_only_its_students_family",
+    "tests/integration/test_session_notes_leak.py::test_no_family_response_carries_a_hidden_note",
+]
+note = "class_session_id of a session with another family's note shows none of it."
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/learning-plans"
+tests = [
+    "tests/integration/test_learning_plans.py::test_the_hidden_plans_get_the_same_404",
+    "tests/integration/test_session_notes_leak.py::test_no_family_response_carries_a_hidden_note",
+]
+note = "subject_id is a catalog id."
+
+[[route]]
+method = "POST"
+path = "/api/v1/students/{student_id}/learning-plans"
+tests = [
+    "tests/integration/test_learning_plans.py::test_the_hidden_plans_get_the_same_404",
+    "tests/integration/test_learning_plans.py::test_the_create_order",
+]
+note = "subject_id is a catalog id."
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/notes"
+tests = [
+    "tests/integration/test_session_notes.py::test_the_student_history",
+    "tests/integration/test_session_notes_leak.py::test_no_family_response_carries_a_hidden_note",
+]
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/progress"
+tests = [
+    "tests/integration/test_progress_dashboard.py::test_finance_and_other_tutors_get_the_404",
+    "tests/integration/test_progress_dashboard.py::test_the_family",
+    "tests/integration/test_session_notes_leak.py::test_no_family_response_carries_a_hidden_note",
+]
+note = "subject_id is a catalog id."
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/progress-reports"
+tests = [
+    "tests/integration/test_progress_reports.py::test_the_family_reads",
+    "tests/integration/test_session_notes_leak.py::test_no_family_response_carries_a_hidden_note",
+]
+note = "subject_id is a catalog id."
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/progress-reports/{report_id}"
+tests = [
+    "tests/integration/test_progress_reports.py::test_the_family_reads",
+    "tests/integration/test_session_notes_leak.py::test_no_family_response_carries_a_hidden_note",
+]
+note = "Includes another student's report under the own student's path."
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/schedule"
+tests = [
+    "tests/integration/test_family_schedule.py::test_another_familys_child_is_the_same_404_as_an_unknown_id",
+    "tests/integration/test_family_schedule.py::test_a_student_sees_their_own_schedule_but_not_another_students",
+    "tests/integration/test_family_schedule.py::test_a_tutor_of_the_student_gets_404_on_the_family_route",
+    "tests/integration/test_session_notes_leak.py::test_no_family_response_carries_a_hidden_note",
+]
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/session-log"
+tests = [
+    "tests/integration/test_progress_dashboard.py::test_finance_and_other_tutors_get_the_404",
+    "tests/integration/test_progress_dashboard.py::test_the_family",
+    "tests/integration/test_session_notes_leak.py::test_no_family_response_carries_a_hidden_note",
+]
+note = "subject_id is a catalog id."
+
+[[route]]
+method = "GET"
+path = "/api/v1/subjects"
+exempt = "Only a catalog-id filter (education_level_id) on the subject catalog, the same for every signed-in user; no per-party records."
+
+[[route]]
+method = "GET"
+path = "/api/v1/subjects/{subject_id}"
+exempt = "Shared catalog id (subjects): readable by every signed-in user, no per-party data."
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}"
+tests = ["tests/integration/test_tutor_profiles.py::test_idor_another_tutor_is_indistinguishable_from_a_missing_one"]
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/tutors/{user_id}"
+tests = ["tests/integration/test_tutor_profiles.py::test_idor_another_tutor_is_indistinguishable_from_a_missing_one"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}/availability"
+tests = ["tests/integration/test_tutor_availability.py::test_a_tutor_cannot_see_or_change_another_tutor"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/availability/change-requests/{change_request_id}/cancel"
+tests = ["tests/integration/test_availability_change_requests.py::test_the_tutor_withdraws_a_pending_request"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}/availability/check"
+tests = ["tests/integration/test_tutor_availability.py::test_a_tutor_cannot_see_or_change_another_tutor"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/availability/exceptions"
+tests = ["tests/integration/test_tutor_availability.py::test_a_tutor_cannot_see_or_change_another_tutor"]
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/tutors/{user_id}/availability/exceptions/{exception_id}"
+tests = [
+    "tests/integration/test_tutor_availability.py::test_a_tutor_cannot_see_or_change_another_tutor",
+    "tests/integration/test_tutor_availability.py::test_another_tutors_exception_id_is_404",
+]
+note = "Covers another tutor's id and another tutor's exception under the own tutor id."
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/tutors/{user_id}/availability/settings"
+tests = ["tests/integration/test_tutor_availability_settings.py::test_another_tutor_gets_404_like_a_missing_one"]
+note = "preferred_classroom_ids are catalog ids (classrooms)."
+
+[[route]]
+method = "PUT"
+path = "/api/v1/tutors/{user_id}/availability/weekly"
+tests = ["tests/integration/test_tutor_availability.py::test_a_tutor_cannot_see_or_change_another_tutor"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}/qualifications"
+tests = ["tests/integration/test_tutor_qualifications.py::test_list_visibility"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/qualifications"
+tests = ["tests/integration/test_tutor_qualifications.py::test_only_the_tutor_requests_for_themselves"]
+note = "subject_id is a catalog id."
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/qualifications/{qualification_id}/cancel"
+tests = ["tests/integration/test_tutor_qualifications.py::test_a_decided_or_unknown_qualification_cannot_be_cancelled"]
+note = "Another tutor's qualification id under that tutor's own id is 404 and the row is unchanged."
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}/schedule"
+tests = ["tests/integration/test_tutor_schedule.py::test_another_tutor_and_a_non_tutor_are_the_same_404_as_an_unknown_id"]

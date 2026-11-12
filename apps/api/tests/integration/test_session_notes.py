@@ -979,6 +979,45 @@ def test_a_tutor_who_lost_the_role_gets_404_everywhere(module_seeded_url, client
     )
 
 
+def test_outsiders_get_the_same_404_on_every_note_write(module_seeded_url, client):
+    """#149: another tutor, the student's own guardian and the student
+    themself can't edit, publish, unpublish or delete an internal note."""
+    url = module_seeded_url
+    family = guardian_with_child(url)
+    session_id, _, cookie, note = written(client, url, family=family, body="Interna")
+    me, mine = student_account(url)
+    _, _, _, elsewhere = written(client, url, body="De otro alumno")
+    del session_id, cookie
+    unknown = uuid.uuid4()
+    outsiders = [
+        sign_in(client, a_tutor(url, "Tutor Ajeno Notas").username),
+        sign_in(client, family.user.username),
+        sign_in(client, me.username),
+    ]
+
+    for caller in outsiders:
+        for target in (note["id"], elsewhere["id"]):
+            for hidden, missing in (
+                (
+                    edit(client, caller, target, 1, "x"),
+                    edit(client, caller, unknown, 1, "x"),
+                ),
+                (
+                    publish(client, caller, target, 1),
+                    publish(client, caller, unknown, 1),
+                ),
+                (
+                    unpublish(client, caller, target, 1, "x"),
+                    unpublish(client, caller, unknown, 1, "x"),
+                ),
+                (delete(client, caller, target, 1), delete(client, caller, unknown, 1)),
+            ):
+                assert_same_not_found(hidden, missing)
+    row = note_row(url, note["id"])
+    assert (row.body, row.version, row.deleted_at) == ("Interna", 1, None)
+    assert mine
+
+
 def test_finance_gets_404_everywhere(module_seeded_url, client):
     url = module_seeded_url
     session_id, _, cookie, note = written(client, url)
