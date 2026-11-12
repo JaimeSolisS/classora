@@ -440,6 +440,11 @@ def test_reads_follow_the_family_and_tutor_rules(scene):
     for user in (stranger, scene.ctx.owner):
         assert code_of(read(scene, user, family_request["id"])) == NOT_FOUND
         assert ok(listing(scene, user))["items"] == []
+    # #149 AC5d: filtering by the family's session shows a stranger nothing,
+    # and the tutor none of the family's requests on their own session.
+    session_id = scene.session["id"]
+    for user in (stranger, scene.ctx.tutor):
+        assert ok(listing(scene, user, class_session_id=session_id))["items"] == []
     assert code_of(read(scene, scene.guardian, uuid.uuid4())) == NOT_FOUND
 
 
