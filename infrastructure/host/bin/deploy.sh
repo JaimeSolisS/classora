@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Deploy release <sha> on this host (ADR-0011, #614), as root:
+# Deploy release <sha> on this host (ADR-0011, #614, #615), as root:
 #   deploy.sh <40-hex commit SHA>
-# Steps (ADR-0011 "Deploy"):
+# Run by the SSM document classora-deploy-<env> (deploy-dev.yml), or by hand
+# over Session Manager. Steps (ADR-0011 "Deploy"):
 #   1. download releases/<sha>.tgz from the ops bucket (Compose files, host
 #      scripts and units, images.env with the three image digests) and install
 #      the host scripts and units from it;
@@ -13,13 +14,26 @@
 #      the direct connection: alembic upgrade head, sync-runtime-role, the
 #      reference seeds; then db-roles.sh (classora_monitor);
 #   7. switch `current` to the new release and `up -d` every service;
-#   8. poll /health/ready (inside the api container) and the edge's / for up to 90 s;
-#   9. on failure, switch back to `previous`, bring it up, check it again and
-#      exit 1 ("rolled back"). Migrations are never reversed (expand and contract).
-# A failure in steps 1-6 exits before anything switches: the running release
-# keeps serving. Releases live on the data volume, so a replaced instance
-# starts the same one (host-setup.sh). No value from the env file is printed.
-# M9-07 (#615) calls this through the SSM document and adds image tagging.
+#   8. readiness gate, up to 90 s: /health/ready inside the api container, the
+#      worker's --healthcheck, and the edge's / (200 with a CSP header) through
+#      Caddy on this host;
+#   9. on failure, switch back to `previous`, bring it up and check it again.
+#      Migrations are never reversed (expand and contract).
+# After a healthy start it marks the systemd units active (so the next
+# shutdown stops the containers and the next boot starts them in order), keeps
+# the newest releases and removes ECR images that are neither the current nor
+# the previous release's.
+#
+# Exit codes (deploy-dev.yml reports them):
+#    0  deployed;
+#   10  migration step failed: nothing switched, the old version still serves;
+#   20  readiness failed, rolled back to the previous release, which is healthy;
+#   21  readiness failed and the rollback failed (or there was nothing to roll
+#       back to): the site is down;
+#   30  bundle, env, lock, pull or database start failed: nothing changed.
+# The last line on stdout is one JSON object:
+#   {"result": "...", "sha": "...", "previous": "...", "duration_s": N}
+# No value from the env file is printed, and there is no `set -x`.
 set -euo pipefail
 
 BIN=/opt/classora/bin
@@ -28,23 +42,55 @@ RELEASES=$DATA/releases
 HEALTH_SECONDS=90
 KEEP_RELEASES=3
 
+sha=""
+previous=""
+tmp=""
+phase=prepare
+reported=0
+
 log() { echo "deploy: $(date -u +%H:%M:%S) $*"; }
-die() {
-  echo "deploy: $*" >&2
-  exit 1
+
+# finish <exit code> <result> [message on stderr]
+finish() {
+  [ -z "${3:-}" ] || echo "deploy: $3" >&2
+  reported=1
+  printf '{"result": "%s", "sha": "%s", "previous": "%s", "duration_s": %d}\n' \
+    "$2" "$sha" "$(basename "${previous:-}")" "$SECONDS"
+  exit "$1"
 }
 
-[ "$(id -u)" -eq 0 ] || die "run as root"
-[ $# -eq 1 ] && [[ "$1" =~ ^[0-9a-f]{40}$ ]] || die "usage: deploy.sh <40-hex commit SHA>"
+# Any failure not handled below (set -e) maps to its phase's exit code.
+# shellcheck disable=SC2329 # invoked by the EXIT trap
+on_exit() {
+  local code=$?
+  [ -z "$tmp" ] || rm -rf "$tmp"
+  if [ "$reported" -eq 0 ]; then
+    reported=1
+    case $phase in
+      prepare) code=30 result=not-changed ;;
+      migrate) code=10 result=migration-failed ;;
+      *) code=21 result=failed ;;
+    esac
+    echo "deploy: failed during $phase" >&2
+    printf '{"result": "%s", "sha": "%s", "previous": "%s", "duration_s": %d}\n' \
+      "$result" "$sha" "$(basename "${previous:-}")" "$SECONDS"
+  fi
+  exit "$code"
+}
+trap on_exit EXIT
+
+[ "$(id -u)" -eq 0 ] || finish 30 not-changed "run as root"
+[ $# -eq 1 ] && [[ "$1" =~ ^[0-9a-f]{40}$ ]] || finish 30 not-changed "usage: deploy.sh <40-hex commit SHA>"
 sha=$1
 
 # shellcheck source=/dev/null
 . /etc/classora/host.env
 : "${OPS_BUCKET:?}" "${AWS_REGION:?}"
 
+# Deploys never overlap; one started by hand waits up to 2 minutes.
 exec 9>/run/classora-deploy.lock
-flock -n 9 || die "another deploy is running"
-mountpoint -q "$DATA" || die "$DATA is not mounted"
+flock -w 120 9 || finish 30 not-changed "another deploy is running"
+mountpoint -q "$DATA" || finish 30 not-changed "$DATA is not mounted"
 
 new=$RELEASES/$sha
 
@@ -52,18 +98,18 @@ new=$RELEASES/$sha
 if [ ! -f "$new/images.env" ]; then
   log "downloading release $sha"
   tmp=$(mktemp -d "$RELEASES/.download.XXXXXX")
-  trap 'rm -rf "$tmp"' EXIT
   aws s3 cp --only-show-errors --region "$AWS_REGION" \
     "s3://$OPS_BUCKET/releases/$sha.tgz" "$tmp/bundle.tgz"
   mkdir "$tmp/release"
   tar -xzf "$tmp/bundle.tgz" -C "$tmp/release" --no-same-owner
-  [ -f "$tmp/release/images.env" ] || die "bundle has no images.env"
-  grep -Evq '^(#.*|$|(API|WEB|PGBOUNCER)_IMAGE=[a-z0-9./-]+@sha256:[0-9a-f]{64})$' "$tmp/release/images.env" &&
-    die "images.env has unexpected lines"
+  [ -f "$tmp/release/images.env" ] || finish 30 not-changed "bundle has no images.env"
+  if grep -Evq '^(#.*|$|(API|WEB|PGBOUNCER)_IMAGE=[a-z0-9./-]+@sha256:[0-9a-f]{64})$' "$tmp/release/images.env"; then
+    finish 30 not-changed "images.env has unexpected lines"
+  fi
   rm -rf "$new"
   mv "$tmp/release" "$new"
   rm -rf "$tmp"
-  trap - EXIT
+  tmp=""
 fi
 
 log "installing host scripts and units from the release"
@@ -85,7 +131,6 @@ systemctl enable classora-data.service classora-app.service >/dev/null 2>&1
 "$BIN/render-env.sh"
 
 # 3. Previous release.
-previous=""
 if [ -L "$RELEASES/current" ]; then
   previous=$(readlink -f "$RELEASES/current")
   [ "$previous" != "$new" ] || previous=$(readlink -f "$RELEASES/previous" 2>/dev/null || true)
@@ -102,33 +147,80 @@ log "starting db"
 CLASSORA_RELEASE=$new "$BIN/compose.sh" up -d --wait --wait-timeout 120 db
 
 # 6. Migrations, runtime role, reference seeds, monitor role.
+phase=migrate
 log "migrating (alembic upgrade head, sync-runtime-role, seeds)"
 CLASSORA_RELEASE=$new "$BIN/compose.sh" --profile tools run --rm -T migrate \
   sh -c 'alembic upgrade head && python -m app.cli sync-runtime-role && python -m app.seeds'
 CLASSORA_RELEASE=$new "$BIN/db-roles.sh"
+phase=start
 
 switch_to() {
   ln -sfn "$1" "$RELEASES/.current.new"
   mv -T "$RELEASES/.current.new" "$RELEASES/current"
 }
 
+api_ready() {
+  "$BIN/compose.sh" exec -T api python -c \
+    "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)" \
+    >/dev/null 2>&1
+}
+
+worker_ready() {
+  "$BIN/compose.sh" exec -T worker python -m app.worker --healthcheck >/dev/null 2>&1
+}
+
+# The SPA through Caddy on this host: 200 and the M9-02 CSP header.
+edge_ready() {
+  local headers
+  headers=$(curl -fsk -o /dev/null -D - --max-time 5 --resolve "$1:443:127.0.0.1" "https://$1/" 2>/dev/null) &&
+    grep -qi '^content-security-policy:' <<<"$headers"
+}
+
 healthy() {
-  local deadline=$((SECONDS + HEALTH_SECONDS)) host
+  local deadline=$((SECONDS + HEALTH_SECONDS)) host failing=""
   host=$(sed -n 's/^SITE_ADDRESS=//p' /opt/classora/env/app.env | cut -d, -f1 | tr -d ' ')
   while [ "$SECONDS" -lt "$deadline" ]; do
-    if "$BIN/compose.sh" exec -T api python -c \
-      "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)" \
-      >/dev/null 2>&1 &&
-      curl -fsk -o /dev/null --max-time 5 --resolve "$host:443:127.0.0.1" "https://$host/"; then
+    failing=""
+    api_ready || failing="$failing api"
+    worker_ready || failing="$failing worker"
+    edge_ready "$host" || failing="$failing edge"
+    if [ -z "$failing" ]; then
       return 0
     fi
     sleep 3
   done
+  log "not ready after ${HEALTH_SECONDS}s:$failing"
   return 1
 }
 
 start_current() {
   "$BIN/compose.sh" up -d --wait --wait-timeout 180 --remove-orphans
+}
+
+# The units are oneshot with RemainAfterExit: starting them while the stack is
+# up only marks them active, so the next shutdown runs their ExecStop and the
+# next boot starts data, then app (QA #614 O1). A failure is only a warning.
+mark_units_active() {
+  systemctl start classora-data.service classora-app.service ||
+    log "WARNING: the systemd units did not start; check journalctl -u classora-data -u classora-app"
+}
+
+# Release directories: keep current, previous and the newest few. Images: keep
+# only the current and previous releases' ECR digests (and anything in use).
+prune() {
+  local keep refs
+  keep=$(printf '%s\n%s\n' "$new" "$previous")
+  find "$RELEASES" -mindepth 1 -maxdepth 1 -type d -regextype posix-extended -regex '.*/[0-9a-f]{40}' \
+    -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2 | tail -n +$((KEEP_RELEASES + 1)) |
+    while IFS= read -r dir; do
+      grep -qxF "$dir" <<<"$keep" || rm -rf "$dir"
+    done
+  refs=$(cat "$new/images.env" "${previous:-/dev/null}/images.env" 2>/dev/null | sed -n 's/^[A-Z]*_IMAGE=//p')
+  docker image ls --digests --format '{{.Repository}}@{{.Digest}}' | grep '\.dkr\.ecr\.' |
+    while IFS= read -r ref; do
+      grep -qxF "$ref" <<<"$refs" || docker image rm "$ref" >/dev/null 2>&1 || true
+    done
+  docker image prune -f >/dev/null || true
 }
 
 # 7. Switch and start.
@@ -140,27 +232,22 @@ if start_current && healthy; then
     ln -sfn "$previous" "$RELEASES/.previous.new"
     mv -T "$RELEASES/.previous.new" "$RELEASES/previous"
   fi
-  # Keep current, previous and the newest few.
-  keep=$(printf '%s\n%s\n' "$new" "$previous")
-  find "$RELEASES" -mindepth 1 -maxdepth 1 -type d -regextype posix-extended -regex '.*/[0-9a-f]{40}' \
-    -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2 | tail -n +$((KEEP_RELEASES + 1)) |
-    while IFS= read -r dir; do
-      grep -qxF "$dir" <<<"$keep" || rm -rf "$dir"
-    done
-  docker image prune -f >/dev/null
+  mark_units_active
+  prune || log "WARNING: pruning failed"
   log "release $sha is live"
-  exit 0
+  finish 0 deployed
 fi
 
 # 9. Roll back.
 log "release $sha is NOT healthy"
 "$BIN/compose.sh" ps --all || true
 if [ -z "$previous" ] || [ "$previous" = "$new" ]; then
-  die "no previous release to roll back to; $sha stays in place (unhealthy)"
+  finish 21 failed-no-previous "no previous release to roll back to; $sha stays in place (unhealthy)"
 fi
 log "rolling back to $(basename "$previous")"
 switch_to "$previous"
 if start_current && healthy; then
-  die "rolled back to $(basename "$previous")"
+  mark_units_active
+  finish 20 rolled-back "rolled back to $(basename "$previous")"
 fi
-die "rollback to $(basename "$previous") is not healthy either"
+finish 21 rollback-failed "rollback to $(basename "$previous") is not healthy either"
