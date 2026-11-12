@@ -1462,6 +1462,10 @@ design, with its own data, backups and telemetry, and receives only approved
 releases ([release runbook](_docs/runbooks/release.md)). At the end of the
 environments' window, PROD's database is archived as a verified final dump
 before it is destroyed ([teardown runbook](_docs/runbooks/teardown.md)).
+The hosts' t4g.small size was measured under a realistic center's load and
+3× growth with `make load-test` on DEV, and the sizing and recovery objectives
+are recorded ([load-test runbook](_docs/runbooks/load-test.md),
+[ADR-0018](_docs/adr/0018-sizing-load-and-recovery-objectives.md)).
 DEV, PROD and the monitoring host are created and destroyed with Terraform:
 
 ```mermaid
