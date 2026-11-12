@@ -45,7 +45,7 @@ start=$(date +%s)
 log "k6 $profile from $(date -u +%T) for about ${seconds}s"
 status=0
 make -C "$ROOT" --no-print-directory load-test PROFILE="$profile" DURATION="$duration" \
-  SUMMARY="/out/$profile-$stamp/k6-summary.json" >"$out/k6.txt" 2>&1 || status=$?
+  SUMMARY="$profile-$stamp/k6-summary.json" >"$out/k6.txt" 2>&1 || status=$?
 end=$(date +%s)
 log "k6 ended (exit $status) after $((end - start))s"
 

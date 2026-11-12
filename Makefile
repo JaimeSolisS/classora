@@ -84,7 +84,8 @@ check-infra:
 ## Load test (#152, ADR-0018; runbook _docs/runbooks/load-test.md): k6 from K6_IMAGE against
 ## TARGET (default DEV) with the scrubbed accounts of infrastructure/load/prepare-dataset.sh.
 ## make load-test PROFILE=p1|p2|p3|staff-600 [TARGET=<url>] [VUS=<n>] [DURATION=<k6 duration>]
-## [K6_ARGS=--no-thresholds]. Results: infrastructure/load/out/<profile>-<UTC time>.json (gitignored).
+## [K6_ARGS=--no-thresholds]. Summary: infrastructure/load/out/<profile>-latest.json (gitignored), with
+## k6's setup_data (the shared sessions) removed.
 ## DEV runs need load mode first (infrastructure/load/dev-up.sh). No repo secret is used.
 # k6 by multi-arch index digest (ADR-0016 style; the tag is informational).
 K6_IMAGE := grafana/k6:2.3.0@sha256:2dd4756ec6e14e62778916e1eb850108e4b499304c02df56760fa0bdb0fba0b8
@@ -99,7 +100,9 @@ load-test:
 	  -e TARGET="$(LOAD_TARGET)" -e PROFILE="$(PROFILE)" -e VUS="$(VUS)" -e DURATION="$(DURATION)" -e THINK_MIN="$(THINK_MIN)" -e THINK_MAX="$(THINK_MAX)" -e DEBUG="$(DEBUG)" \
 	  -e ACCOUNTS=/load/accounts.local.json \
 	  $(K6_IMAGE) run --quiet $(K6_ARGS) \
-	  --summary-export "$(or $(SUMMARY),/out/$(PROFILE)-$$(date -u +%Y%m%dT%H%M%SZ).json)" /load/k6/main.js
+	  --summary-export "/out/$(or $(SUMMARY),$(PROFILE)-latest.json)" /load/k6/main.js; status=$$?; \
+	  python3 -c 'import json, sys; p = sys.argv[1]; d = json.load(open(p)); d.pop("setup_data", None); json.dump(d, open(p, "w"))' \
+	    "infrastructure/load/out/$(or $(SUMMARY),$(PROFILE)-latest.json)" || true; exit $$status
 
 ## Plan a Terraform root (AWS_PROFILE defaults to jsolisdev): make tf-plan ENV=<root>
 ## [ARGS='-replace=<address>']. Saves <root>/tfplan; the first bootstrap plan runs on local state.
