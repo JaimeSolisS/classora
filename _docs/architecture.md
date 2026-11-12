@@ -175,6 +175,7 @@ Open points: → ISSUE-J1 (driver and transactional enqueue), ISSUE-J2 (periodic
 - Predefined roles plus record-level ownership checks, enforced on the server in endpoints, jobs, generated files and presigned links (presigned links are deferred with §7.3).
 - A CI-checked IDOR inventory (`apps/api/tests/authz/idor.toml`, #149) names, for every route a tutor, student or guardian can call with a record id (receipt and payslip PDFs included), the test that proves another party's record is hidden.
 - User states: `pending`, `active`, `suspended`, `archived`.
+- Pre-go-live security review (M10-02, #150): findings, severities and the verification log in [`security-review.md`](security-review.md).
 
 Accepted details (ISSUE-G2, S1, S2, S4, S5, S6, S7): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md). Rate limits (ISSUE-S3): see [ADR-0008](adr/0008-rate-limiting-without-redis.md).
 

@@ -1383,7 +1383,7 @@ command:
 | `e2e` | `make lint-e2e`, `make e2e`, `make check-pdf-image` (builds the API image and renders a sample PDF in es and en inside it) (on failure, uploads traces, the HTML report and the Compose logs as the `e2e-report` artifact) |
 | `images` | `make build-images`, `make check-images`, `make check-pdf-image`, `make smoke-edge`, `make scan-image IMAGE=<ref>` for each image (CI builds the `api`, `web` (Caddy edge with the built SPA) and `pgbouncer` images natively for `linux/arm64` with `PLATFORM=linux/arm64`; locally the default is `linux/amd64`) |
 | `infra` | `make check-observability` (validates the observability configuration with the pinned images: Collector, Prometheus, Loki, Tempo, Grafana provisioning; starts nothing), `make check-infra` (`terraform fmt -check` and `terraform validate` for every Terraform root, shellcheck on `infrastructure/scripts/` and `infrastructure/host/`, and actionlint on the workflows, in pinned containers; no AWS credentials) |
-| `security-deps` | `make audit-deps` (pip-audit and `pnpm audit` over both lockfiles) |
+| `security-deps` | `make audit-deps` (pip-audit and `pnpm audit` over both lockfiles; also every Monday on `develop` by [`security-audit.yml`](.github/workflows/security-audit.yml)) |
 | `security-secrets` | `make scan-secrets` (gitleaks, full history); on pull requests also `make scan-secrets-diff BASE=<sha> HEAD=<sha>` |
 | `security-sast` | `make sast` (Semgrep); Ruff's security (`S`) rules run in `make lint-api` |
 
@@ -1411,6 +1411,8 @@ make security                # audit-deps, scan-secrets and sast, as in CI (need
 make scan-image IMAGE=<ref>  # Trivy scan of a built image; fails on fixable CRITICAL findings
 ```
 
+The dependency audit also runs weekly on `develop` (`security-audit.yml`), so a
+new advisory against unchanged lockfiles shows up between pull requests.
 Scanner versions are pinned in the `Makefile`. When a scan fails, fix the
 cause (upgrade the dependency, remove the secret, change the code). If that is
 not possible, add an exception with a reason and a review date as described in

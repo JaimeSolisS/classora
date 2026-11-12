@@ -79,6 +79,13 @@ API responses (`/api/*`) keep the API's own headers: the edge adds no CSP,
 other responses may be gzip- or zstd-encoded. `/health/*` answers `404` from
 outside.
 
+The edge removes the `Server` and `Via` headers from every response, its own
+(error responses included, through `handle_errors`) and the API's (uvicorn
+also runs with `--no-server-header`). It caps request bodies at 4 MB: Caddy
+streams a body to the API and cuts it off at 4 MB, so the API receives at most
+4 MB, and the client gets `413` (#150 SR-02, SR-03;
+[`security-review.md`](security-review.md)).
+
 ## Checking the production policy by hand
 
 `make smoke-edge` checks the edge image automatically. To look at the

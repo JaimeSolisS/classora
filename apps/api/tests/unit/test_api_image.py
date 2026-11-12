@@ -30,6 +30,14 @@ def test_the_api_command_disables_uvicorn_proxy_headers():
     )
 
 
+def test_the_api_command_sends_no_server_header():
+    # #150 SR-03: no "server: uvicorn" product name in API responses.
+    command = image_command()
+
+    assert "--no-server-header" in command
+    assert "--server-header" not in command
+
+
 def test_the_api_command_bounds_the_graceful_shutdown():
     command = image_command()
 

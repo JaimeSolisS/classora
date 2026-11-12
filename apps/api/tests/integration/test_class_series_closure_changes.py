@@ -265,6 +265,31 @@ def test_a_confirmed_row_tells_the_tutor_the_student_and_the_guardians(
     assert len(skip_notes(url, row.id)) == 3
 
 
+def test_a_guardian_with_a_deactivated_profile_is_not_told(module_seeded_url, client):
+    # #150 SR-05: a deactivated guardian profile has lost access to the
+    # student (families.facts), so it gets no notification about them either.
+    url = module_seeded_url
+    tl = timeline()
+    student = new_student(url)
+    student_user, guardian_user = with_family(url, student)
+    run_sql(
+        url,
+        "UPDATE guardians SET is_active = false WHERE user_id = :user",
+        {"user": guardian_user},
+    )
+    series_id, refs = new_series(url, client, tl, student=student)
+    wednesday = tl.week(3, 3)
+    set_row(url, row_on(url, series_id, tl, wednesday).id, state="confirmed")
+    add_closure(url, wednesday)
+
+    run(url, tl.now)
+
+    row = row_on(url, series_id, tl, wednesday)
+    assert row.state == "skipped_closure"
+    recipients = {note.recipient_user_id for note in skip_notes(url, row.id)}
+    assert recipients == {refs["tutor"], student_user}
+
+
 def test_a_session_offer_of_a_skipped_row_is_withdrawn(module_seeded_url, client):
     url = module_seeded_url
     tl = timeline()

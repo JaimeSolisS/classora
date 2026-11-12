@@ -9,6 +9,11 @@ Standard library only; runs in a plain python image on port 8000.
   blocked it.
 - Any other GET: 200 JSON echoing the X-Forwarded-For the edge sent, with
   the API's own headers (Cache-Control: no-store, X-Content-Type-Options).
+- Any POST: reads the whole body (Content-Length) and answers 200 JSON with
+  the number of bytes received, so the edge's body cap (#150 SR-02) shows.
+
+Every response carries Python's own ``Server`` header, which the edge must
+drop (#150 SR-03).
 """
 
 import json
@@ -42,6 +47,24 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Smoke-Upstream", "1")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self) -> None:
+        remaining = int(self.headers.get("Content-Length") or 0)
+        received = 0
+        while remaining > 0:
+            chunk = self.rfile.read(min(remaining, 65536))
+            if not chunk:
+                break
+            received += len(chunk)
+            remaining -= len(chunk)
+        body = json.dumps({"received": received}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.send_header("X-Smoke-Upstream", "1")
         self.end_headers()
         self.wfile.write(body)
