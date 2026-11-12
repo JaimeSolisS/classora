@@ -26,6 +26,16 @@ if grep -q '^OTLP_GATEWAY_ENDPOINT=.' "$env_file"; then
   profiles=(--profile telemetry)
 fi
 
+# The agent's config is bind-mounted through `current`, a path that never
+# changes; its hash (a label on the collector, compose.aws.yaml) makes `up`
+# recreate the agent when agent.yaml changes.
+agent_config=$release/infrastructure/observability/collector/agent.yaml
+AGENT_CONFIG_SHA256=none
+if [ -f "$agent_config" ]; then
+  AGENT_CONFIG_SHA256=$(sha256sum "$agent_config" | cut -d' ' -f1)
+fi
+export AGENT_CONFIG_SHA256
+
 exec docker compose --project-name classora \
   --project-directory "$release/infrastructure/docker" \
   -f "$release/infrastructure/docker/compose.data.yaml" \

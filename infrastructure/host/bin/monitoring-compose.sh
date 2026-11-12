@@ -41,5 +41,12 @@ else
   files+=(-f "$host/compose.colocated.yaml")
 fi
 
+# Every config is bind-mounted through `current`, a path that never changes:
+# a hash of the release's monitoring files (a label on each service,
+# compose.monitoring.yaml) makes `up` recreate the stack when they change.
+MONITORING_CONFIG_SHA256=$(cd "$release" && find infrastructure/observability infrastructure/host/monitoring \
+  -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+export MONITORING_CONFIG_SHA256
+
 exec docker compose --project-name monitoring --project-directory "$obs" \
   "${files[@]}" --env-file "$env_file" "$@"

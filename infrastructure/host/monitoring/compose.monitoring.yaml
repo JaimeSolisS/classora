@@ -18,8 +18,13 @@
 #     certificates in /srv/classora-data/caddy, sites from
 #     /opt/classora/caddy-sites (grafana.caddy, written by monitoring-up.sh).
 
+# Each service carries the hash of the release's monitoring files
+# (monitoring-compose.sh): configs are bind-mounted through `current`, whose
+# path never changes, so the label is what makes `up` recreate them.
 services:
   otel-collector:
+    labels:
+      classora.config-sha256: ${MONITORING_CONFIG_SHA256:-none}
     # Dedicated: the private IP (render-monitoring-env.sh requires it there).
     # Colocated: compose.colocated.yaml removes the port.
     ports:
@@ -27,15 +32,23 @@ services:
     restart: unless-stopped
 
   prometheus:
+    labels:
+      classora.config-sha256: ${MONITORING_CONFIG_SHA256:-none}
     restart: unless-stopped
 
   loki:
+    labels:
+      classora.config-sha256: ${MONITORING_CONFIG_SHA256:-none}
     restart: unless-stopped
 
   tempo:
+    labels:
+      classora.config-sha256: ${MONITORING_CONFIG_SHA256:-none}
     restart: unless-stopped
 
   grafana:
+    labels:
+      classora.config-sha256: ${MONITORING_CONFIG_SHA256:-none}
     ports: !reset []
     environment:
       GF_SECURITY_COOKIE_SECURE: "true"
@@ -52,6 +65,8 @@ services:
 
   caddy:
     image: caddy:2.11.4@sha256:0c994536bddb66445885237f1a5dcc1916bccea922661c76b4e9fc24061f9b52
+    labels:
+      classora.config-sha256: ${MONITORING_CONFIG_SHA256:-none}
     profiles: [edge]
     user: "10002:10002"
     cap_drop: [ALL]
