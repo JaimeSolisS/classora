@@ -9,8 +9,9 @@
 #  2. `otelcol-contrib validate` for collector/{gateway,agent,local}.yaml;
 #  3. `promtool check config` for prometheus/prometheus.yml;
 #  4. `loki -verify-config` and `tempo -config.verify` (with env expansion);
-#  5. check_config.py: Grafana provisioning, dashboards and alert rules,
-#     collector drift, image pins, mem_limits and published ports;
+#  5. check_config.py: Grafana provisioning, dashboards (every query filters
+#     on $env) and alert rules, collector drift, image pins, mem_limits and
+#     published ports;
 #  6. `promtool check rules` on every PromQL expression of the dashboards and
 #     alert rules (written by check_config.py, Grafana variables replaced);
 #  7. the agent's logs pipeline over a fixture: edge lines lose URIs, headers

@@ -18,6 +18,8 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from procrastinate import App
+from procrastinate.testing import InMemoryConnector
 
 from app.core.logging import REDACTED, SENSITIVE_KEY_FRAGMENTS, is_sensitive_key
 from tests.authz.csrf import TEST_APP_ORIGIN
@@ -167,6 +169,62 @@ def test_sensitive_key_rule():
         assert is_sensitive_key(key), key
     for key in ("user_id", "path", "status", "request_id"):
         assert not is_sensitive_key(key), key
+
+
+# --- Job arguments (#624) -------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_job_arguments_and_results_never_reach_the_log(test_app, capsys):
+    # Procrastinate's own deferral, start and outcome lines name the job with
+    # its arguments and its result; the formatter keeps only task and id.
+    job_app = App(connector=InMemoryConnector())
+
+    @job_app.task(name="probe:args")
+    async def succeeds(note: str) -> str:
+        return f"done {note}"
+
+    @job_app.task(name="probe:args-fails")
+    async def fails(note: str) -> None:
+        raise RuntimeError("failed")
+
+    async with job_app.open_async():
+        ok_id = await succeeds.defer_async(note=LEAK_MARKER)
+        failed_id = await fails.defer_async(note=LEAK_MARKER)
+        await job_app.run_worker_async(wait=False, install_signal_handlers=False)
+
+    out = capsys.readouterr().out
+    assert LEAK_MARKER not in out
+    lines = [json.loads(line) for line in out.splitlines() if line.strip()]
+    messages = {line["message"] for line in lines}
+    assert f"Starting job probe:args[{ok_id}]([REDACTED])" in messages
+    assert f"Starting job probe:args-fails[{failed_id}]([REDACTED])" in messages
+    [ended] = [line for line in lines if line.get("action") == "job_success"]
+    assert ended["message"].startswith(
+        f"Job probe:args[{ok_id}]([REDACTED]) ended with status: Success, lasted"
+    )
+    assert "Result" not in ended["message"]
+    assert ended["result"] == REDACTED
+    assert ended["job"]["task_kwargs"] == REDACTED
+    assert ended["job"]["call_string"] == f"probe:args[{ok_id}]([REDACTED])"
+    [deferred, _] = [line for line in lines if line.get("action") == "jobs_deferred"]
+    assert deferred["jobs"][0]["task_kwargs"] == REDACTED
+
+
+def test_a_job_line_without_a_job_context_drops_the_arguments(test_app, capsys):
+    # The worker's shutdown line has the call string but no job extra.
+    logging.getLogger("procrastinate.worker").info(
+        f"Waiting for job to finish: worker: probe:args[3](note='{LEAK_MARKER}', "
+        "n=(1, 2)) (started 1.000 s ago)"
+    )
+    logging.getLogger("tests.any").info(f"probe:args[3](note='{LEAK_MARKER}')")
+
+    job_line, other = read_log_lines(capsys)
+    assert job_line["message"] == (
+        "Waiting for job to finish: worker: probe:args[3]([REDACTED])"
+    )
+    # Only Procrastinate's loggers are rewritten.
+    assert LEAK_MARKER in other["message"]
 
 
 # --- B6 access log ------------------------------------------------------------

@@ -113,7 +113,7 @@ print(json.dumps({
 """
 
 
-def run_off_probe(**extra_env: str) -> dict[str, Any]:
+def run_off_probe(script: str = OFF_PROBE, **extra_env: str) -> dict[str, Any]:
     env = {
         key: value
         for key, value in os.environ.items()
@@ -127,7 +127,7 @@ def run_off_probe(**extra_env: str) -> dict[str, Any]:
         **extra_env,
     )
     result = subprocess.run(  # noqa: S603 - fixed interpreter and script
-        [sys.executable, "-c", OFF_PROBE],
+        [sys.executable, "-c", script],
         cwd=API_ROOT,
         env=env,
         capture_output=True,
@@ -145,7 +145,7 @@ def run_off_probe(**extra_env: str) -> dict[str, Any]:
         {},
         # Compose passes an empty value when .env leaves it unset.
         {"OTEL_EXPORTER_OTLP_ENDPOINT": ""},
-        # FastAPI's own bridge would configure itself from these; it is off.
+        # FastAPI's own bridge reads this at lifespan startup; see the lifespan test.
         {"FASTAPI_OTEL_AUTO_CONFIGURE": "true"},
     ],
     ids=["unset", "empty", "fastapi-auto-configure"],
@@ -188,6 +188,69 @@ def test_off_adds_no_middleware_compared_with_develop():
         "ExceptionMiddleware",
         "AsyncExitStackMiddleware",
     ]
+
+
+# FastAPI's own bridge configures itself at lifespan startup (#624, QA #612 N1),
+# so this probe runs create_app()'s real lifespan. It needs no database: the
+# engine and the job app's pool open lazily, and the notification listener
+# only retries in the background until shutdown.
+LIFESPAN_PROBE = """
+import json, threading
+from fastapi.testclient import TestClient
+from opentelemetry import _logs, metrics, trace
+from app.main import create_app
+
+app = create_app()
+with TestClient(app) as client:
+    status = client.get("/health/live").status_code
+    providers = [
+        type(trace.get_tracer_provider()).__name__,
+        type(metrics.get_meter_provider()).__name__,
+        type(_logs.get_logger_provider()).__name__,
+    ]
+print(json.dumps({
+    "status": status,
+    "providers": providers,
+    "threads": sorted(t.name for t in threading.enumerate()),
+}))
+"""
+
+# Where FastAPI's auto-configure would export; a closed port, nothing listens.
+BRIDGE_ENDPOINT = "http://127.0.0.1:1"
+
+
+@pytest.mark.parametrize(
+    "extra_env",
+    [
+        # Telemetry off: only the per-signal variables, which app.core.config
+        # doesn't read but FastAPI's auto-configure does.
+        {
+            f"OTEL_EXPORTER_OTLP_{signal}_ENDPOINT": f"{BRIDGE_ENDPOINT}/v1/{path}"
+            for signal, path in [
+                ("TRACES", "traces"),
+                ("METRICS", "metrics"),
+                ("LOGS", "logs"),
+            ]
+        },
+        # Telemetry on: app.core.telemetry keeps its providers off the globals.
+        {"OTEL_EXPORTER_OTLP_ENDPOINT": BRIDGE_ENDPOINT},
+    ],
+    ids=["off", "on"],
+)
+def test_the_lifespan_never_starts_fastapis_own_bridge(extra_env):
+    probe = run_off_probe(
+        script=LIFESPAN_PROBE, FASTAPI_OTEL_AUTO_CONFIGURE="true", **extra_env
+    )
+
+    assert probe["status"] == 200
+    # Auto-configure would have installed global SDK providers with OTLP
+    # exporters (and their batch threads) that bypass the personal-data rules.
+    assert probe["providers"] == [
+        "ProxyTracerProvider",
+        "_ProxyMeterProvider",
+        "ProxyLoggerProvider",
+    ]
+    assert not any(name.startswith("OtelBatch") for name in probe["threads"])
 
 
 def test_configure_without_an_endpoint_returns_false_and_keeps_every_hook_inert():
@@ -583,6 +646,34 @@ async def test_on_each_job_run_yields_a_job_span_without_its_arguments(exported)
     data = exported.metrics.get_metrics_data().to_json()
     assert "classora.job.duration" in data
     assert MARKER not in data
+
+
+@pytest.mark.anyio
+async def test_on_job_arguments_never_reach_an_exported_log(exported, capsys):
+    # Procrastinate's start and outcome lines would carry them (#624).
+    job_app = App(connector=InMemoryConnector())
+
+    @job_app.task(name="probe:args")
+    async def echo(note: str) -> str:
+        return note
+
+    async with job_app.open_async():
+        job_id = await echo.defer_async(note=MARKER)
+        await job_app.run_worker_async(
+            wait=False,
+            install_signal_handlers=False,
+            worker_middleware=telemetry.worker_middleware(),
+        )
+
+    bodies = [
+        json.loads(str(log.log_record.body))
+        for log in exported.logs.get_finished_logs()
+    ]
+    assert f"Starting job probe:args[{job_id}]([REDACTED])" in {
+        body["message"] for body in bodies
+    }
+    assert MARKER not in exported.everything()
+    assert MARKER not in capsys.readouterr().out
 
 
 def test_worker_options_put_the_job_span_outermost(exported):
