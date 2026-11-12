@@ -12,11 +12,11 @@
 #       the comparison, which must then fail.
 #   restore.sh --from-device <block device>
 #       snapshot drill (runbook _docs/runbooks/restore.md): mounts a volume
-#       created from a data volume snapshot read-only, copies its PostgreSQL
-#       directory, starts the scratch container on the copy (crash recovery)
-#       and reports the row counts next to the latest dump's. Differences
-#       are writes made between the dump and the snapshot, so they are
-#       reported, not failed.
+#       created from a data volume snapshot read-only (never the live
+#       volume), copies its PostgreSQL directory, starts the scratch
+#       container on the copy (crash recovery) and reports the row counts
+#       next to the latest dump's. Differences are writes made between the
+#       dump and the snapshot, so they are reported, not failed.
 # Prints a table, then one JSON verdict line (also in /var/log/classora/backup.log):
 #   {"event": "restore", "env": ..., "status": "ok|mismatch|failed", "source": ...,
 #    "tables": N, "mismatched": N, "self_test": true|false, "duration_s": N}
@@ -38,10 +38,12 @@ LIVE_PGDATA=/srv/classora-data/postgres
 RESTORE_DB=classora_restore
 
 usage() {
+  reported=1
   echo "usage: restore.sh [--self-test] <latest | backups/<date>/classora.dump | s3://<bucket>/<key>> | --from-device <device>" >&2
   exit 2
 }
 
+reported=0
 self_test=false
 device=""
 source_ref=""
@@ -70,7 +72,6 @@ fi
 event_source=${device:-$source_ref}
 tables=0
 mismatched=0
-reported=0
 mounted=""
 started=0
 
@@ -205,12 +206,14 @@ if [ -n "$device" ]; then
   ! findmnt -rno SOURCE | grep -qxF "$dev" || fail "$device is mounted"
   mounted=$SCRATCH_DIR/mnt
   install -d -m 0700 "$mounted"
-  # Read-only, without log replay, and with a duplicate XFS UUID allowed: the
-  # snapshot is a crash-consistent copy of the mounted live volume.
-  mount -o ro,norecovery,nouuid "$dev" "$mounted" || fail "could not mount $device read-only"
+  # Read-only, with a duplicate XFS UUID allowed (the snapshot is a copy of
+  # the live volume). The snapshot is crash-consistent: XFS replays its log
+  # onto the drill volume (a throwaway copy) while mounting; with
+  # norecovery some files would be missing.
+  mount -o ro,nouuid "$dev" "$mounted" || fail "could not mount $device read-only"
   [ -d "$mounted/postgres" ] || fail "no postgres directory on $device"
   log "copying the PostgreSQL directory from the snapshot volume"
-  cp -a "$mounted/postgres/." "$SCRATCH_DIR/pg/"
+  cp -a "$mounted/postgres/." "$SCRATCH_DIR/pg/" || fail "could not copy the PostgreSQL directory"
   umount "$mounted"
   mounted=""
   find "$SCRATCH_DIR/pg" -maxdepth 3 -name postmaster.pid -delete

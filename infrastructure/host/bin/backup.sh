@@ -14,6 +14,7 @@
 # /var/log/classora/backup.log:
 #   {"event": "backup", "env": ..., "status": "ok|failed", "bytes": N,
 #    "duration_s": N, "bucket": ..., "key": ..., "tables": N[, "error": ...]}
+# (event "archive-dump" with --archive)
 # Exit 0 only when both objects are written. No password is on any command
 # line: psql and pg_dump use the container's local socket.
 set -euo pipefail
@@ -28,7 +29,7 @@ BIN=/opt/classora/bin
 event=backup
 case "${1:-}" in
   "") ;;
-  --archive) event=final-dump ;;
+  --archive) event=archive-dump ;;
   *)
     echo "usage: backup.sh [--archive]" >&2
     exit 2
