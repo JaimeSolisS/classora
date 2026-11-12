@@ -71,7 +71,9 @@ t4g instances stay in **`unlimited`** credit mode. The baseline is 20 % per vCPU
 
 ### Deploy downtime tolerance
 
-<!-- ADR-DOWNTIME -->
+- **Tolerance: up to 2 minutes of API unavailability per release.** Measured on DEV: recreating api and worker (the switch `deploy.sh` makes after pulling and migrating) left the API answering 502 for **8 s**, and the SPA served throughout. The 90 s readiness gate and its rollback stay as they are.
+- **PROD releases** happen at a time the owner picks, outside center hours (the release workflow already waits for the owner's approval).
+- **No zero-downtime engineering** (a second api container, blue/green): it would cost memory the host does not have spare, for seconds of downtime.
 
 ### Recovery objectives
 

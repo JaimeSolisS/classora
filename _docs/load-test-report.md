@@ -179,7 +179,17 @@ The run stopped itself at 21:10:39 (client p95 over 2 s). **Throughput levels of
 
 Only the 12 staff VUs (3×), with the default per-IP limit of 600 requests per minute on: about 110 requests per minute including the streams, **no 429**, GET p95 250 ms. A center whose staff share one IP stays far below the limit.
 
-<!-- DOWNTIME -->
+### Deploy downtime (AC7)
+
+`infrastructure/load/downtime-probe.sh dev` probed `/api/v1/auth/me` (401 = up) and `/` (200 = up) once a second from the operator's machine while the host ran `compose.sh up -d --force-recreate api worker`, the switch `deploy.sh` makes (2026-11-12 22:04 UTC, tuned settings).
+
+| Probe | Answers during 66 s | Longest gap |
+|---|---|---|
+| API | 59 × 401, 7 × 502 (Caddy while the api restarted) | **8 s** |
+| SPA (`/`) | 66 × 200 | **0 s** |
+
+The recreate itself took 3.4 s; the rest of the gap is the API's start-up. A real deploy also pulls images and migrates before the switch, while the old containers keep serving, so the API's unavailability per release is this switch: well under the 2-minute tolerance in ADR-0018.
+
 
 ### Pass / fail
 
