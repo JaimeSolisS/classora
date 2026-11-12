@@ -193,6 +193,7 @@ module "config" {
   grafana_host           = var.grafana_host
   alert_email            = var.alert_email
   otlp_endpoint          = "http://${aws_network_interface.host.private_ip}:4318"
+  dedicated              = true
   ingest_address         = aws_network_interface.host.private_ip
   retention_metrics_days = var.retention_metrics_days
   retention_logs_days    = var.retention_logs_days

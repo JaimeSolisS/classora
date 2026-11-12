@@ -85,7 +85,7 @@ chmod 0644 "$SITE.new"
 mv -f "$SITE.new" "$SITE"
 
 log "starting the monitoring stack from $(basename "$release")"
-"$BIN/monitoring-compose.sh" up -d --wait --wait-timeout 300 --remove-orphans
+"$BIN/monitoring-compose.sh" up -d --quiet-pull --wait --wait-timeout 300 --remove-orphans
 reload_caddy || log "WARNING: Caddy did not reload the Grafana site"
 
 # Started again at boot, after the app stack when colocated.

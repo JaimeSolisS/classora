@@ -36,8 +36,14 @@ variable "otlp_endpoint" {
   type        = string
 }
 
+variable "dedicated" {
+  description = "True on the dedicated monitoring host (then ingest_address is required), false when colocated."
+  type        = bool
+  default     = false
+}
+
 variable "ingest_address" {
-  description = "Dedicated host only: the private IP the gateway publishes 4318 on. Null when colocated."
+  description = "Dedicated host only: the private IP the gateway publishes 4318 on."
   type        = string
   default     = null
 }
