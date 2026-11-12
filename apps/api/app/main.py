@@ -32,6 +32,7 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 from fastapi import Depends, FastAPI
 
+from app.core.api_rate_limit import ApiRateLimitMiddleware
 from app.core.authz import register_principal_resolver
 from app.core.config import ConfigurationError, Settings, get_settings
 from app.core.conventions import install_conventions
@@ -300,6 +301,7 @@ def build_app(
     *,
     lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] | None = None,
     include_dev_routes: bool = False,
+    api_rate_limit_per_minute: int = 0,
 ) -> FastAPI:
     """The app without settings validation: metadata, conventions, routers.
 
@@ -313,6 +315,9 @@ def build_app(
     ``include_dev_routes`` mounts the local/DEV demo job and demo notification
     routes (and registers the ``dev.demo`` notification type); the exported
     contract (``app.core.openapi``) never includes them.
+    ``api_rate_limit_per_minute`` above 0 installs the general in-process
+    limit (#163, ``app.core.api_rate_limit``); 0, the default, installs none,
+    so tests and the OpenAPI export that build the app are unaffected.
     """
     app = FastAPI(
         title=API_TITLE,
@@ -331,6 +336,13 @@ def build_app(
             "auto_configure": False,
         },
     )
+    if api_rate_limit_per_minute > 0:
+        # Added before install_conventions, so it sits inside
+        # SecurityHeadersMiddleware and RequestContextMiddleware (the last
+        # added is the outermost): a 429 gets their headers and access line.
+        app.add_middleware(
+            ApiRateLimitMiddleware, limit_per_minute=api_rate_limit_per_minute
+        )
     install_conventions(app)
     register_principal_resolver(app, resolve_session_principal)
     # The families consent check for every student activation (#35 B1).
@@ -451,6 +463,7 @@ def create_app() -> FastAPI:
     app = build_app(
         lifespan=lifespan,
         include_dev_routes=settings.app_env in DEMO_ENVIRONMENTS,
+        api_rate_limit_per_minute=settings.api_rate_limit_per_minute,
     )
     instrument_app(app)
     return app

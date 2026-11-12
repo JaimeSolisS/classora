@@ -33,6 +33,8 @@ services:
       WORKER_SHUTDOWN_TIMEOUT_SECONDS: ${WORKER_SHUTDOWN_TIMEOUT_SECONDS:-}
       SCHEDULING_HORIZON_WEEKS: ${SCHEDULING_HORIZON_WEEKS:-}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      # Empty: the default, 600 requests per minute per client IP (#163).
+      API_RATE_LIMIT_PER_MINUTE: ${API_RATE_LIMIT_PER_MINUTE:-}
       # Empty: telemetry off (ADR-0014, #612). `make dev-observability` sets it.
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     # Host port API_PORT (default 8000), on 127.0.0.1 only.
