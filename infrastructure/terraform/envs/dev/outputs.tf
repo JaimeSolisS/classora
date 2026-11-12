@@ -27,3 +27,8 @@ output "snapshot_policy_id" {
   description = "DEV data volume snapshot policy (Data Lifecycle Manager)."
   value       = module.app_host.snapshot_policy_id
 }
+
+output "monitoring_mode" {
+  description = "Where the monitoring stack runs (dedicated, colocated or off)."
+  value       = var.monitoring_mode
+}

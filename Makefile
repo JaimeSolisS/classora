@@ -1,4 +1,4 @@
-.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability check-infra tf-plan tf-apply tf-destroy
+.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability check-infra tf-plan tf-apply tf-destroy monitoring-sync
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -97,6 +97,11 @@ tf-apply:
 tf-destroy:
 	$(TF_ROOT_CHECK)
 	$(TF) destroy $(ENV)
+
+## Sync the dedicated monitoring host with HEAD (bundle infrastructure/observability and
+## infrastructure/host, upload, SSM classora-monitoring-sync; #617): make monitoring-sync.
+monitoring-sync:
+	infrastructure/scripts/monitoring-sync.sh
 
 ## Apply Alembic migrations to the local Compose database, then give the runtime role
 ## classora_app its login and password (starts db if needed; make dev never migrates).
