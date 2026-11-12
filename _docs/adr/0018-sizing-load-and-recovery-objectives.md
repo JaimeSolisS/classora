@@ -39,9 +39,12 @@ DEV, t4g.small, 2026-11-12; full tables in [`../load-test-report.md`](../load-te
 |---|---|---|---|---|---|---|---|
 | P1, starting values | 441 ms | 142 ms | 500 ms | 0 | 14.9 % | 0.49 MiB/s | fails memory (marginally) |
 | P2, starting values | 699 ms | 414 ms | 973 ms | 0 | 13 % | 0.89 MiB/s | fails GET p95 and memory |
-| P2, tuned | 444 ms | 260 ms | 646 ms | 0 | 19 % | 0.02 MiB/s | **passes** |
-<!-- ADR-P1-TUNED -->
+| **P2, tuned (C1)** | 444 ms | 260 ms | 646 ms | 0 | 19 % | 0.02 MiB/s | **passes** |
+| P1, C1 (pool + healthchecks) | 244 ms | 74 ms | 675 ms | 0 | 14 % | 1.08 MiB/s | fails memory: db at its 512m limit |
+| **P1, tuned (C2)** | 244 ms | 102 ms | 480 ms | 0 | 20 % | 0.15 MiB/s | **passes** |
 | P3 ramp, tuned | 2.1 s (whole ramp) | 1.9 s | 2.3 s | 0 | 12 % | 0.81 MiB/s | breakpoint about 6–7× |
+
+P2 was measured with C1 (db still at 512m, freshly restarted); C2 only raises the db's ceiling, so P2 can only do as well or better. The C2 P1 started from a freshly restarted db; the db's working set is bounded (shared buffers plus five backends' caches, about 450–500 MiB at most), so it stays under 640m over longer runs. The orchestrator's post-merge 10-minute P1 confirms the committed values.
 
 No container restarted or was OOM-killed. Throughput levels off at about 26–27 requests/s, with the one Uvicorn process near a full vCPU; from about 4× the GET p95 is above 500 ms. The system slows down under overload but returns no errors.
 
@@ -49,10 +52,11 @@ No container restarted or was OOM-killed. Throughput levels off at about 26–27
 
 - **PgBouncer `default_pool_size` 10 → 5** (`infrastructure/docker/pgbouncer/pgbouncer.ini`). Each PostgreSQL backend that PgBouncer keeps open holds about 40 MiB of catalog and plan caches. Ten of them drove the host into swap at 3×. With five, P2's MemAvailable went from 13 % to 19 % and swap-in from 264 MiB to 5 MiB, and the API's SQL p95 fell from 46 to 25 ms (requests wait briefly in PgBouncer instead of the host swapping).
 - **Host healthchecks: api every 10 s (was 2 s), worker every 30 s (was 5 s)**, with `start_interval: 2s` during a 30 s `start_period`, so start-up and deploys still see a healthy container within seconds (`infrastructure/host/compose.aws.yaml`; local Compose is unchanged). Each worker check starts Python and imports the whole app, about 2.5 CPU-seconds on t4g. Every 5 s, that was half a vCPU around the clock: DEV sat at about 33 % CPU with no load, above the t4g.small credit baseline. At 3×, the worker's CPU fell from 49 % to 16 % of a vCPU.
+- **`mem_limit`: db 512m → 640m, worker 448m → 384m, pgbouncer 64m → 32m** (`compose.aws.yaml`). In the P1 run with only C1, the db container sat at its 512m limit for the whole half hour (its backends' caches had built up over the earlier runs) and, with no `memswap_limit`, swapped its own pages: 383 MiB of swap-in and MemAvailable at 14 %, although the API was fast. With 640m (candidate C2) a 30-minute P1 kept the db at 373 MiB, MemAvailable at 20 % and swap-in at 0.15 MiB/s at worst. The worker peaked at about 306 MiB in every run (384m leaves 25 %); PgBouncer at 14 MiB. The limits add up to 1,824 MiB, leaving 224 MiB of the nominal 2 GiB to the system (the kernel shows 1,841 MiB). Limits are ceilings, not reservations: the measured peaks add up to about 1.2 GiB, and the 1 GiB swap covers the theoretical case where every container reaches its limit at once.
 
 ### Kept, with the reason
 
-- **`mem_limit`s** (db 512m, pgbouncer 64m, api 512m, worker 448m, edge 96m, collector 160m; 1,792 MiB in all). Every container peaked below its limit. Limits are ceilings, not reservations: the measured peaks add up to about 1.2 GiB, and the host kept ≥ 19 % available at 3× once tuned. The db's figure includes page cache charged to its cgroup, which the kernel reclaims at the limit; the api keeps 512m for concurrent PDF rendering (peak 307 MiB); the edge reached 89 of 96 MiB only at about 7.5× (240 open streams). On the nominal 2 GiB the limits leave 256 MiB for the system. The kernel shows 1,841 MiB, so the limits could in theory all be reached together; the 1 GiB swap covers that case, and it never happened.
+- **api 512m, edge 96m, collector 160m.** The api peaked at 307 MiB and keeps room for concurrent PDF rendering; the edge reached 89 of 96 MiB only at about 7.5× (240 open streams) and 62 MiB at 3×; the collector stays near 100 MiB under its `GOMEMLIMIT` of 128 MiB.
 - **PostgreSQL `shared_buffers` 128 MB, `work_mem` 4 MB, `max_connections` 100.** The 45 MB term-sized database is a 100 % buffer hit, no query spilled to a temp file, and at most 29 backends were open.
 - **The API's SQLAlchemy pool** (5 plus 10 overflow) and the worker's direct connections. Up to 15 connections checked out at 3×, with no client error.
 - **`WORKER_CONCURRENCY = 1`.** Exports finished within a second (p95 under 0.5 s) and no job queued behind another.

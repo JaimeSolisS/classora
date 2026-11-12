@@ -17,9 +17,9 @@ from pathlib import Path
 
 MEM_LIMITS_MIB = {
     "api-1": 512,
-    "worker-1": 448,
-    "db-1": 512,
-    "pgbouncer-1": 64,
+    "worker-1": 384,
+    "db-1": 640,
+    "pgbouncer-1": 32,
     "edge-1": 96,
     "collector-1": 160,
 }

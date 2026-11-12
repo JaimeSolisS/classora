@@ -34,13 +34,17 @@ services:
     command: ["postgres", "-c", "shared_buffers=128MB"]
     volumes: !override
       - /srv/classora-data/postgres:/var/lib/postgresql
-    mem_limit: 512m
+    # 640m (ADR-0018): shared_buffers, PgBouncer's 5 backends (about 40 MB of
+    # caches each) and page cache; at 512m the db sat at its limit after a
+    # few hours under load and swapped its own pages.
+    mem_limit: 640m
     restart: unless-stopped
 
   pgbouncer:
     build: !reset null
     image: ${PGBOUNCER_IMAGE:?set by the release's images.env}
-    mem_limit: 64m
+    # Peak 14 MiB under 7x load (ADR-0018).
+    mem_limit: 32m
     restart: unless-stopped
 
   api:
@@ -74,7 +78,8 @@ services:
       interval: 30s
       start_period: 30s
       start_interval: 2s
-    mem_limit: 448m
+    # Peak about 306 MiB (exports, startup) at every load step (ADR-0018).
+    mem_limit: 384m
     restart: unless-stopped
 
   migrate:

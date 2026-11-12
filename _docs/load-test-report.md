@@ -4,7 +4,7 @@ The measurements behind [ADR-0018](adr/0018-sizing-load-and-recovery-objectives.
 
 ## Run facts
 
-- **Date:** 2026-11-12, 19:41–22:15 UTC (DEV in load mode; times per run below).
+- **Date:** 2026-11-12. DEV in load mode 19:41:11–22:02:14 and 22:02:42–22:49:30 UTC (times per run below); back to normal after each, verified.
 - **Code:** DEV ran release `112c32b` (develop, M10-02) the whole time; the harness is on branch `m10-04-load-sizing`. Tuning candidates were applied with the load-mode override, then committed (ADR-0018).
 - **Host:** DEV `classora-dev`, t4g.small (2 vCPU, 2 GiB; the kernel shows 1,841 MiB), 1 GiB swap, CPU credits `unlimited`.
 - **Dataset:** the simulation (FULL, `es`), scrubbed: 45 MB restored (`pg_dump -Fc` 2.7 MB). Largest tables: `audit_events` 19,277, `notifications` 2,359, `class_session_participants` 1,562, `class_session_attendance` 1,172, `class_sessions` 1,115, `approval_requests` 1,105, `charges` 1,040, `session_closeouts` 820, `payroll_lines` 713. 52 sign-in accounts.
@@ -71,7 +71,7 @@ P1 for 30 minutes **and** P2 for 15 minutes, both within:
 
 ## Results
 
-Runs, in order (UTC, 2026-11-12). "Starting values" are the M9 settings; **C1** is the tuning candidate that was then committed: PgBouncer `default_pool_size` 10 → 5, and the hosts' healthchecks every 10 s (api, was 2 s) and 30 s (worker, was 5 s).
+Runs, in order (UTC, 2026-11-12). "Starting values" are the M9 settings. **C1**: PgBouncer `default_pool_size` 10 → 5, and the hosts' healthchecks every 10 s (api, was 2 s) and 30 s (worker, was 5 s). **C2** = C1 plus `mem_limit` db 512m → 640m, worker 448m → 384m, pgbouncer 64m → 32m. C2 is what was committed (ADR-0018).
 
 | Run | Window | Settings | VUs (browsing + SSE) |
 |---|---|---|---|
@@ -80,7 +80,9 @@ Runs, in order (UTC, 2026-11-12). "Starting values" are the M9 settings; **C1** 
 | P2 tuned | 20:41:36–20:57:30 | C1 | 96 + 96 |
 | P3 ramp | 20:59:21–21:10:40 (stopped by its threshold) | C1 | up to about 7.5× |
 | staff-600 | 21:15–21:21 | C1, per-IP limit 600/min | 12 + 12 |
-<!-- P1-TUNED-ROW -->
+| P1 tuned | 21:23:09–21:54:03 | C1 | 32 + 32 |
+| Deploy downtime probe | 22:04 | C2 | — |
+| P1 tuned (C2 = C1 + db 640m, worker 384m, pgbouncer 32m) | 22:14:10–22:45:03 | C2 | 32 + 32 |
 
 ### API (server side)
 
@@ -91,7 +93,8 @@ Runs, in order (UTC, 2026-11-12). "Starting values" are the M9 settings; **C1** 
 | P2 tuned | 10,592 (11.1/s) | 137 / **444** / 649 ms | 43 / 260 / 497 ms | 646 ms | 0 | 466 ms |
 | P3 ramp | 13,008 (19.2/s) | 306 / 2,100 / 3,717 ms | 165 / 1,855 / 2,474 ms | 2,258 ms | 0 | 2,040 ms |
 | staff-600 | 530 (1.5/s) | 87 / 250 / 734 ms | 40 / 159 / 232 ms | (none) | 0 | 308 ms |
-<!-- P1-TUNED-API -->
+| P1 tuned (C1) | 7,147 (3.9/s) | 93 / **244** / 558 ms | 34 / 74 / 228 ms | 675 ms | 0 | 311 ms |
+| **P1 tuned (C2)** | 7,191 (3.9/s) | 92 / **244** / 468 ms | 32 / 102 / 220 ms | 480 ms (payslips 480, receipts 419) | 0 | 327 ms |
 
 "Unsafe" leaves out the sign-in (Argon2 by design). The P1 baseline's client error rate (3.8 %) was 403 and 404 answers to pages a role may not open; the harness then learned to skip them, as the web app does. Every other run had 0 % client errors, and no run had a 5xx or a network error.
 
@@ -108,6 +111,10 @@ RSS average / peak in MiB (share of `mem_limit`), CPU average / peak in % of one
 | edge (96m) | 35 / 40 (42 %), CPU 1 / 28 | 56 / 60 (63 %), CPU 2 / 5 | 58 / 62 (65 %), CPU 1 / 7 | 69 / 89 (92 %), CPU 4 / 75 |
 | collector (160m) | 97 / 100 (63 %), CPU 2 / 12 | 99 / 105 (65 %), CPU 2 / 8 | 100 / 103 (64 %), CPU 2 / 6 | 97 / 102 (63 %), CPU 3 / 6 |
 
+In the P1 tuned (C1) run the db container sat at its limit the whole time (488–508 MiB): its backends' caches had built up during P2 and P3, and a container whose `mem_limit` has no `memswap_limit` swaps its own pages at the limit. That is where that run's swap-in came from (383 MiB), with the API itself fast (GET p95 244 ms). Hence candidate C2 below.
+
+With C2 (db limit 640m), P1 for 30 minutes: api 260 / 286, worker 184 / 302 (of 384m: 79 %), db 285 / 373 (of 640m: 58 %), pgbouncer 8 / 14 (of 32m), edge 38 / 40, collector 98 / 101.
+
 The db container's figure includes the page cache its cgroup is charged for, so it sits near its limit by design; it was never OOM-killed. No container restarted or was OOM-killed in any run (`RestartCount` 0, `OOMKilled` false).
 
 ### Host
@@ -118,6 +125,8 @@ The db container's figure includes the page cache its cgroup is charged for, so 
 | P2 baseline | 242 MiB (**13 %**) | 264 / 472 MiB | 0.89 MiB/s | 2.02 / 3.64 | 1.0 % |
 | P2 tuned | 355 MiB (19 %) | 5 / 27 MiB | 0.02 MiB/s | 1.36 / 2.64 | 0.2 % |
 | P3 ramp | 230 MiB (12 %) | 120 / 340 MiB | 0.81 MiB/s | 1.97 / 3.34 | 0.7 % |
+| P1 tuned (C1) | 260 MiB (**14 %**) | 383 / 452 MiB | **1.08 MiB/s** | 0.60 / 1.78 | 1.4 % |
+| **P1 tuned (C2)** | 363 MiB (20 %) | 12 / 30 MiB | 0.15 MiB/s | 0.68 / 1.42 | 0.2 % |
 
 ### PostgreSQL, PgBouncer and the pools
 
@@ -193,9 +202,21 @@ The recreate itself took 3.4 s; the rest of the gap is the API's start-up. A rea
 
 ### Pass / fail
 
-<!-- PASSFAIL -->
+| Threshold | P1 (30 min) | P2 (15 min) |
+|---|---|---|
+| GET p95 ≤ 500 ms (server) | starting 441 ms ✓; **tuned 244 ms ✓** | starting 699 ms ✗; **tuned 444 ms ✓** |
+| Unsafe p95 ≤ 1,000 ms | 142 ✓; **102 ✓** | 414 ✓; **260 ✓** |
+| PDF p95 ≤ 3 s | 500 ms ✓; **480 ms ✓** | 973 ms ✓; **646 ms ✓** |
+| 5xx + network errors < 0.5 % | 0 ✓; **0 ✓** | 0 ✓; **0 ✓** |
+| No OOM-kill or restart | ✓; **✓** | ✓; **✓** |
+| MemAvailable ≥ 15 % | 14.9 % ✗; (C1 14 % ✗); **C2 20 % ✓** | 13 % ✗; **19 % ✓** |
+| Swap-in ≤ 1 MB/s over 1 min | 0.49 ✓; (C1 1.08 ✗); **C2 0.15 ✓** | 0.89 ✓; **0.02 ✓** |
+
+**With the committed values, DEV carries the load: P1 for 30 minutes (C2) and P2 for 15 minutes (C1, which C2 only adds db headroom to) are within every threshold.** With the starting values it did not (memory at 1×, latency and memory at 3×).
 
 ### Anomalies
+
+- **Harness defect, fixed after the runs:** from P2 baseline on, a page whose batch got an *expected* 403 or 404 (a family without a billing account, a student without history, a student whose consent hides them from a tutor) raised a k6 script error after its requests were sent, so that VU skipped its think time once. It hit 0.7–1 % of iterations (staff-600: 7 %), so those runs carried slightly *more* load than the profile, never less. `pages.js` now keeps expected responses in a set.
 
 - **`GET /api/v1/billing/overdue-accounts` is the slowest route:** p95 1.6 s (P1), 4.2 s (P2 baseline), 2.1 s (P2 tuned). It is one aggregate statement over every charge with window totals (`app/modules/billing/overdue.py`, `overdue_accounts`), and the staff home calls it with `limit=1` only for the "overdue" count. It does not break a threshold (those are over all GETs), but it is the first thing to look at if staff pages feel slow. Proposed as a follow-up.
 - Other slow routes at 3× (p95 0.6–1 s): `reports/finance/balances`, `closeouts/overdue`, `kpis/revenue-trend`, `kpis/tutor-performance`, the week's `class-sessions`.
