@@ -2062,6 +2062,9 @@ def test_the_working_list(module_seeded_url, client, staff, at_now):
     every = ok(get(client, staff, REPORTS, student_id=str(student)))
     assert draft["id"] not in {item["id"] for item in every["items"]}
     assert ok(get(client, staff, REPORTS, mine="true"))["items"] == []
+    # #149 AC5d: another tutor filtering by this tutor's student sees nothing.
+    other = sign_in(client, a_tutor(url, "Ajena Lista").username)
+    assert ok(get(client, other, REPORTS, student_id=str(student)))["items"] == []
     # The cursor.
     page = ok(
         get(

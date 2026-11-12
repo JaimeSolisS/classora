@@ -1402,6 +1402,12 @@ def test_the_working_list(module_seeded_url, client, staff):
     # Another tutor sees none of them; reviewers see them; a student filter.
     other = sign_in(client, a_tutor(url).username)
     assert ok(get(client, other, ASSIGNMENTS))["items"] == []
+    # #149 AC5d: filtering by the first tutor's student or session shows
+    # the other tutor nothing either.
+    assert ok(get(client, other, ASSIGNMENTS, student_id=str(a)))["items"] == []
+    assert (
+        ok(get(client, other, ASSIGNMENTS, class_session_id=session_id))["items"] == []
+    )
     reviewed = ok(get(client, staff, ASSIGNMENTS, student_id=str(a), limit=50))
     assert {first["id"], second["id"]} <= {i["id"] for i in reviewed["items"]}
     for user in (
@@ -1707,6 +1713,13 @@ def test_the_hidden_assignments_get_the_same_404(module_seeded_url, client):
     working_hidden(co_cookie)
     rows_hidden(co_cookie, mine)
     assert ok(get(client, co_cookie, student_path(co_student, assignment_id)))
+    # #149 AC5e: another student's homework under the own student's path.
+    theirs = ok(create(client, cookie, body(subject, [family.student_id])), CREATED)
+    me_cookie = sign_in(client, me.username)
+    assert_same_not_found(
+        get(client, me_cookie, student_path(mine, theirs["id"])),
+        get(client, me_cookie, student_path(mine, unknown)),
+    )
     # The non-creator tutor of the student: R3-R5 404, R6/R7 403, R8/R9 200.
     working_hidden(colleague_cookie)
     assert (
