@@ -325,7 +325,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"classora-worker\" && span.job.status = \"failed\" } | select(span.job.task, span.job.id, event.exception.type)",
+          "query": "{ resource.deployment.environment.name =~ \"${env:regex}\" && resource.service.name = \"classora-worker\" && span.job.status = \"failed\" } | select(span.job.task, span.job.id, event.exception.type)",
           "limit": 20,
           "tableType": "spans"
         }

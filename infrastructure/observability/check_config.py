@@ -6,8 +6,9 @@ Run by infrastructure/observability/check.sh with PyYAML only (no project):
 It never starts anything. It checks what the services' own validators don't:
 - Grafana: data sources, the dashboard provider and every dashboard parse; uids
   are unique; every data-source reference (links between data sources and
-  every panel's data source) points at a provisioned uid; grafana.ini keeps
-  anonymous access and sign-up off.
+  every panel's data source) points at a provisioned uid; every panel query
+  filters on the $env variable (#624); grafana.ini keeps anonymous access and
+  sign-up off.
 - Grafana alert rules (provisioning/alerting): structure, unique uids, every
   condition and expression reference resolves, every query's data source is
   provisioned, and the ADR-0014 rules are all there (#612).
@@ -151,6 +152,14 @@ def check_grafana(root: Path) -> dict[str, str]:
         for panel in dashboard.get("panels") or []:
             for target in panel.get("targets") or []:
                 ds = target.get("datasource") or panel.get("datasource") or {}
+                # One monitoring host serves DEV and PROD: every query filters
+                # on the dashboard's env variable (#624, QA #617 N1).
+                query = target.get("expr") or target.get("query") or ""
+                if not re.search(r"\$(?:env\b|\{env[}:])", query):
+                    fail(
+                        f"{path.name}: {panel.get('title')!r} "
+                        f"{target.get('refId')}: query doesn't filter on $env"
+                    )
                 if ds.get("type") == "prometheus" and target.get("expr"):
                     where = f"{path.name}: {panel.get('title')!r} {target.get('refId')}"
                     promql.append((where, target["expr"]))

@@ -197,7 +197,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ event:name = \"exception\" } | select(resource.service.name, span.http.route, span.job.task, event.exception.type)",
+          "query": "{ resource.deployment.environment.name =~ \"${env:regex}\" && event:name = \"exception\" } | select(resource.service.name, span.http.route, span.job.task, event.exception.type)",
           "limit": 50,
           "tableType": "spans"
         }

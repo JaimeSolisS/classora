@@ -382,7 +382,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ span.db.system.name = \"postgresql\" && duration > 100ms } | select(span.db.operation.name, span.db.query.text)",
+          "query": "{ resource.deployment.environment.name =~ \"${env:regex}\" && span.db.system.name = \"postgresql\" && duration > 100ms } | select(span.db.operation.name, span.db.query.text)",
           "limit": 20,
           "tableType": "spans"
         }
