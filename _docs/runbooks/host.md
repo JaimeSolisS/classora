@@ -37,24 +37,11 @@ Every command below uses the owner's profile: `export AWS_PROFILE=jsolisdev AWS_
 - Unit and deploy output: `journalctl -u classora-data -u classora-app`.
 - Health isn't public: `https://<host>/health/*` returns 404. From the host, run `compose.sh exec api python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health/ready').read())"`.
 
-## First release (until M9-07 automates it)
+## Releases
 
-1. Set the GitHub `dev` environment variables (no secrets):
-   - `gh variable set AWS_ROLE_ARN --env dev --body <bootstrap output gha_role_arns.dev>`;
-   - `gh variable set OPS_BUCKET --env dev --body <envs/dev output ops_bucket>`.
-2. Run the `deploy-dev` workflow on the commit to release: `gh workflow run deploy-dev.yml --ref <branch>`. GitHub can only dispatch a workflow that exists on the default branch. It:
-   - builds and checks the arm64 images;
-   - pushes them as `sha-<commit>`;
-   - uploads `releases/<commit>.tgz`.
-3. On the host, run `sudo /opt/classora/bin/deploy.sh <40-hex commit>`. It:
-   - downloads the bundle and installs its host scripts and units;
-   - renders the env file;
-   - pulls the images by digest;
-   - starts `db`;
-   - runs `alembic upgrade head`, `sync-runtime-role` and the reference seeds as the owner, then `db-roles.sh`;
-   - switches `current`, starts everything and checks `/health/ready` and the edge for 90 s.
+Every merge to `develop` deploys DEV through the `deploy-dev` workflow and the SSM document `classora-deploy-dev`; see [`deploy.md`](deploy.md) for the flow, failed runs, manual redeploys and rollbacks. The first release on a new host is a manual run: `gh workflow run deploy-dev.yml --ref develop` (after updating the `OPS_BUCKET` variable, see [`deploy.md`](deploy.md#github-environment-dev)).
 
-   If the new release isn't healthy, it rolls back to `previous` and exits 1. Migrations are never reversed.
+On the host, `sudo /opt/classora/bin/deploy.sh <40-hex commit>` deploys any release whose bundle is in the ops bucket. It prints its steps and a final JSON line, and exits 0 (deployed), 10 (migration step failed), 20 (rolled back), 21 (site down) or 30 (nothing changed). Migrations are never reversed.
 
 ## Owner account
 
@@ -78,7 +65,7 @@ DEV gets the reference seeds and an Owner only. It never gets demo or simulated 
 2. `classora-data` renders the env file, logs in to ECR and starts `db` and `pgbouncer`.
 3. `classora-app` starts the rest and waits for health.
 
-Containers were stopped by the units at shutdown, so the restart policy doesn't race the units.
+Containers were stopped by the units at shutdown, so the restart policy doesn't race the units. This needs the units to be active: `deploy.sh` starts them after every healthy deploy or rollback (QA #614 O1).
 
 ## Replace the instance
 

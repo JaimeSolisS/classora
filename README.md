@@ -35,8 +35,8 @@ flowchart LR
 
 **Pre-alpha.** The features below run on a local development stack. A DEV
 environment runs on AWS (one EC2 host with Caddy HTTPS and the Compose stacks
-under systemd, created with Terraform); releases reach it through a manual
-build workflow until automatic deploys land. There is no production
+under systemd, created with Terraform), and every merge to `develop` deploys
+to it automatically. There is no production
 environment yet. The stack is a FastAPI API with
 liveness and readiness health checks, a PostgreSQL database reached through
 PgBouncer (schema managed with Alembic migrations), a background worker for
@@ -590,7 +590,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** the rest of billing, PDF exports, automatic deploys, and production deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
+**Not built yet:** the rest of billing, PDF exports, and production deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 
 **Not in this version:** file uploads and documents (attachments, the shared
@@ -1345,12 +1345,17 @@ flowchart TB
   ci -->|"ci-required green<br/>and QA PASS"| develop
   ci -->|red| local
   develop -->|"release pull request<br/>(owner)"| main
-  develop -.->|"planned (M9):<br/>automatic deploy"| devenv
+  develop -->|"automatic deploy<br/>(deploy-dev workflow)"| devenv
   main -.->|"planned (M9):<br/>deploy after owner approval"| prodenv
 ```
 
-Dashed arrows are not built yet: today merging to `develop` or `main` deploys
-nothing.
+Dashed arrows are not built yet: today merging to `main` deploys nothing.
+Every push to `develop` runs the `deploy-dev` workflow
+([`.github/workflows/deploy-dev.yml`](.github/workflows/deploy-dev.yml)): it builds
+and checks the arm64 images, pushes them to ECR, deploys them to DEV, checks
+readiness and rolls back on failure. It is not part of `ci-required`, and it
+skips with a notice while DEV is destroyed
+([deploy runbook](_docs/runbooks/deploy.md)).
 
 GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on
 every pull request to `develop` or `main` and on pushes to both. Each check is
@@ -1370,7 +1375,7 @@ command:
 | `api-client` | `make check-api-client` |
 | `e2e` | `make lint-e2e`, `make e2e`, `make check-pdf-image` (builds the API image and renders a sample PDF in es and en inside it) (on failure, uploads traces, the HTML report and the Compose logs as the `e2e-report` artifact) |
 | `images` | `make build-images`, `make check-images`, `make check-pdf-image`, `make smoke-edge`, `make scan-image IMAGE=<ref>` for each image (CI builds the `api`, `web` (Caddy edge with the built SPA) and `pgbouncer` images natively for `linux/arm64` with `PLATFORM=linux/arm64`; locally the default is `linux/amd64`) |
-| `infra` | `make check-observability` (validates the observability configuration with the pinned images: Collector, Prometheus, Loki, Tempo, Grafana provisioning; starts nothing), `make check-infra` (`terraform fmt -check` and `terraform validate` for every Terraform root, and shellcheck on `infrastructure/scripts/` and `infrastructure/host/`, in pinned containers; no AWS credentials) |
+| `infra` | `make check-observability` (validates the observability configuration with the pinned images: Collector, Prometheus, Loki, Tempo, Grafana provisioning; starts nothing), `make check-infra` (`terraform fmt -check` and `terraform validate` for every Terraform root, shellcheck on `infrastructure/scripts/` and `infrastructure/host/`, and actionlint on the workflows, in pinned containers; no AWS credentials) |
 | `security-deps` | `make audit-deps` (pip-audit and `pnpm audit` over both lockfiles) |
 | `security-secrets` | `make scan-secrets` (gitleaks, full history); on pull requests also `make scan-secrets-diff BASE=<sha> HEAD=<sha>` |
 | `security-sast` | `make sast` (Semgrep); Ruff's security (`S`) rules run in `make lint-api` |
@@ -1435,8 +1440,9 @@ flowchart TB
 Milestone M9 builds this AWS setup
 ([ADR-0010 to ADR-0014](_docs/architecture.md#9-deployment-operations-and-observability-approved)).
 DEV is deployed: its host runs Caddy with a Let's Encrypt certificate and the
-data and app stacks under systemd, and is operated over SSM Session Manager
-([host runbook](_docs/runbooks/host.md)). PROD, the monitoring host and
+data and app stacks under systemd, receives every `develop` merge
+automatically ([deploy runbook](_docs/runbooks/deploy.md)), and is operated
+over SSM Session Manager ([host runbook](_docs/runbooks/host.md)). PROD, the monitoring host and
 backups are still planned. DEV and PROD are created and destroyed with Terraform:
 
 ```mermaid
@@ -1504,9 +1510,9 @@ flowchart TB
   budget --> owner
 ```
 
-Today a DEV release is built by the manual `deploy-dev` workflow and deployed
-with `deploy.sh` over Session Manager. When M9 is built, DEV will deploy on every merge to `develop`, and PROD from a
-`main` release after the owner approves it. Logs, metrics and traces stay on
+DEV deploys on every merge to `develop`: the `deploy-dev` workflow sends the
+commit SHA to the host through the SSM deploy command. When M9 is built, PROD
+will deploy from a `main` release after the owner approves it. Logs, metrics and traces stay on
 the monitoring host's own disk, which can also run on DEV; the same stack
 already runs locally as an optional profile
 ([Observability (optional)](#observability-optional)). Alerts and the budget alarm reach the

@@ -67,17 +67,19 @@ check-observability:
 	infrastructure/observability/check.sh
 
 # --- Terraform (ADR-0011, #613; _docs/runbooks/terraform.md) -----------------
-# check-infra runs Terraform and shellcheck from these images (by multi-arch index
-# digest; the tag is informational), so neither needs a local install.
+# check-infra runs Terraform, shellcheck and actionlint from these images (by
+# multi-arch index digest; the tag is informational), so none needs a local install.
 TERRAFORM_IMAGE := hashicorp/terraform:1.13.4@sha256:eebc943e69008b6d6d986800087164274d8c92d83db8d53fb9baa4ccff309884
 SHELLCHECK_IMAGE := koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
+ACTIONLINT_IMAGE := rhysd/actionlint:1.7.8@sha256:96d4a8c87dbbfb3bdd324f8fdc285fc3df5261e2decc619a4dd7e8ee52bbfd46
 TF := infrastructure/scripts/terraform.sh
 TF_ROOT_CHECK = @test -n "$(ENV)" || { echo "usage: make $@ ENV=<bootstrap|shared|dev|prod|monitoring>" >&2; exit 2; }
 
 ## Static infrastructure checks, no AWS credentials (CI job `infra`): terraform fmt -check
-## and validate for every root, and shellcheck on infrastructure/scripts and infrastructure/host.
+## and validate for every root, shellcheck on infrastructure/scripts and infrastructure/host,
+## and actionlint on .github/workflows.
 check-infra:
-	TERRAFORM_IMAGE=$(TERRAFORM_IMAGE) SHELLCHECK_IMAGE=$(SHELLCHECK_IMAGE) $(TF) check
+	TERRAFORM_IMAGE=$(TERRAFORM_IMAGE) SHELLCHECK_IMAGE=$(SHELLCHECK_IMAGE) ACTIONLINT_IMAGE=$(ACTIONLINT_IMAGE) $(TF) check
 
 ## Plan a Terraform root (AWS_PROFILE defaults to jsolisdev): make tf-plan ENV=<root>
 ## [ARGS='-replace=<address>']. Saves <root>/tfplan; the first bootstrap plan runs on local state.

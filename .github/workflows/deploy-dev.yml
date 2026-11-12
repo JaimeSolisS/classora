@@ -1,29 +1,154 @@
-# DEV release build (ADR-0011; #614 E1 (a)). Manual only for now: builds the
-# three arm64 images with the M9-02 Dockerfiles, runs the M9-02 checks, pushes
-# them to ECR as sha-<commit>, and uploads the release bundle to the DEV ops
-# bucket as releases/<commit>.tgz. Then, over Session Manager:
-#   sudo /opt/classora/bin/deploy.sh <commit>
-# M9-07 (#615) adds the push-to-develop trigger, the SSM deploy document, the
-# skip-when-absent logic and the dev-<sha> tag to this workflow.
+# DEV build and deploy (ADR-0011; #614, #615). Runs on every push to develop
+# (every merge, docs-only included: #615 E2 (a)) and by hand with an optional
+# SHA (redeploy, or roll back to an earlier develop commit):
+#   probe   assume classora-gha-dev; is ECR there, is DEV there? (#615 E1 (a))
+#   build   (ECR present) build the three arm64 images with the M9-02
+#           Dockerfiles and checks, push sha-<commit> (skipped when all three
+#           already exist), upload releases/<commit>.tgz to the DEV ops bucket
+#   deploy  (DEV present) send the SSM document classora-deploy-dev (only
+#           parameter: the SHA) to the DEV instance, wait for deploy.sh and
+#           report its exit code: 0 deployed, 10 migration failed, 20 rolled
+#           back, 21 site down, 30 nothing changed
+#   tag     (deployed) add dev-<commit> to the three images
+# DEV or ECR destroyed: green run with a ::notice::. Role assumption failing
+# (bootstrap broken) is red. Not part of ci-required. Runbook:
+# _docs/runbooks/deploy.md.
 #
-# GitHub environment `dev` variables (no secrets; OIDC, ADR-0012):
+# GitHub environment `dev` (deployment branch: develop) variables, no secrets
+# (OIDC, ADR-0012):
 #   AWS_ROLE_ARN   the classora-gha-dev role (bootstrap output gha_role_arns.dev)
-#   OPS_BUCKET     the DEV ops bucket (envs/dev output ops_bucket)
+#   OPS_BUCKET     the DEV ops bucket (envs/dev output ops_bucket; changes when
+#                  DEV is re-created)
 name: deploy-dev
 
 on:
+  push:
+    branches: [develop]
   workflow_dispatch:
+    inputs:
+      sha:
+        description: 40-hex commit to deploy (default the branch head); it must be on the dispatched branch
+        required: false
+        default: ""
 
 permissions:
   contents: read
 
+# Deploys queue (never cancelled mid-run); a newer run waiting replaces an
+# older waiting one, so DEV ends on the newest commit.
 concurrency:
   group: deploy-dev
   cancel-in-progress: false
 
+env:
+  AWS_REGION: us-east-2
+  DEPLOY_DOCUMENT: classora-deploy-dev
+
 jobs:
+  probe:
+    name: probe
+    runs-on: ubuntu-24.04
+    environment: dev
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+      ecr: ${{ steps.ecr.outputs.ecr }}
+      images: ${{ steps.ecr.outputs.images }}
+      dev: ${{ steps.dev.outputs.dev }}
+      instance: ${{ steps.dev.outputs.instance }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # Only a commit on the dispatched branch (develop once the environment
+      # is restricted) can be deployed.
+      - name: Resolve the commit
+        id: sha
+        env:
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          sha=${INPUT_SHA:-$GITHUB_SHA}
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::sha must be a 40-hex commit"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$sha" "$GITHUB_SHA"; then
+            echo "::error::$sha is not on $GITHUB_REF_NAME"
+            exit 1
+          fi
+          echo "sha=$sha" >>"$GITHUB_OUTPUT"
+          echo "Release: $sha"
+
+      - name: Configure AWS credentials (OIDC, classora-gha-dev)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-2
+          mask-aws-account-id: true
+
+      - name: Is ECR there?
+        id: ecr
+        env:
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          if ! out=$(aws ecr describe-repositories --repository-names classora/api classora/web classora/pgbouncer 2>&1 >/dev/null); then
+            if grep -q RepositoryNotFoundException <<<"$out"; then
+              echo "::notice::ECR is not there (shared destroyed); build, push and deploy skipped"
+              echo "ecr=false" >>"$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "$out" >&2
+            exit 1
+          fi
+          echo "ecr=true" >>"$GITHUB_OUTPUT"
+          found=0
+          for name in api web pgbouncer; do
+            if aws ecr describe-images --repository-name "classora/$name" --image-ids "imageTag=sha-$SHA" >/dev/null 2>&1; then
+              found=$((found + 1))
+            fi
+          done
+          if [ "$found" -eq 3 ]; then
+            echo "::notice::sha-$SHA is already in ECR; build skipped"
+            echo "images=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "images=false" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Is DEV there?
+        id: dev
+        run: |
+          set -euo pipefail
+          if ! instance=$(aws ssm get-parameter --name /classora/dev/instance_id --query Parameter.Value --output text 2>/tmp/err); then
+            if grep -q ParameterNotFound /tmp/err; then
+              echo "::notice::DEV is not running (destroyed); deploy skipped"
+              echo "dev=false" >>"$GITHUB_OUTPUT"
+              exit 0
+            fi
+            cat /tmp/err >&2
+            exit 1
+          fi
+          state=$(aws ec2 describe-instances --instance-ids "$instance" \
+            --query 'Reservations[0].Instances[0].State.Name' --output text 2>/dev/null || echo missing)
+          if [ "$state" != running ]; then
+            echo "::notice::DEV is not running ($state); deploy skipped"
+            echo "dev=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "dev=true" >>"$GITHUB_OUTPUT"
+          echo "instance=$instance" >>"$GITHUB_OUTPUT"
+
   build:
     name: build
+    needs: probe
+    if: needs.probe.outputs.ecr == 'true'
     runs-on: ubuntu-24.04-arm
     environment: dev
     timeout-minutes: 45
@@ -32,16 +157,18 @@ jobs:
       id-token: write
     env:
       PLATFORM: linux/arm64
-      AWS_REGION: us-east-2
-      SHA: ${{ github.sha }}
+      SHA: ${{ needs.probe.outputs.sha }}
+      BUILD: ${{ needs.probe.outputs.images != 'true' }}
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ needs.probe.outputs.sha }}
 
       # smoke-edge reads PRODUCTION_HEADERS with Node (no install needed).
       - name: Set up Node
+        if: env.BUILD == 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
@@ -49,18 +176,23 @@ jobs:
 
       # The same checks as the CI `images` job (#610), before anything is pushed.
       - name: make build-images (linux/arm64)
+        if: env.BUILD == 'true'
         run: make build-images
 
       - name: make check-images
+        if: env.BUILD == 'true'
         run: make check-images
 
       - name: make check-pdf-image (arm64)
+        if: env.BUILD == 'true'
         run: make check-pdf-image
 
       - name: make smoke-edge
+        if: env.BUILD == 'true'
         run: make smoke-edge
 
       - name: make scan-image (api, web, pgbouncer)
+        if: env.BUILD == 'true'
         run: |
           fail=0
           for image in classora/api:local classora/web:local classora/pgbouncer:local; do
@@ -82,14 +214,23 @@ jobs:
         run: |
           set -euo pipefail
           registry="$(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com"
-          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
           : >images.env
           for name in api web pgbouncer; do
             repo="classora/$name"
             tag="sha-$SHA"
             if ! aws ecr describe-images --repository-name "$repo" --image-ids "imageTag=$tag" >/dev/null 2>&1; then
+              if [ "$BUILD" != true ]; then
+                echo "::error::$repo:$tag is missing but the build was skipped"
+                exit 1
+              fi
+              if [ ! -f .docker-login ]; then
+                aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
+                touch .docker-login
+              fi
               docker tag "classora/$name:local" "$registry/$repo:$tag"
               docker push --quiet "$registry/$repo:$tag"
+            else
+              echo "$repo:$tag already exists; not pushed"
             fi
             digest=$(aws ecr describe-images --repository-name "$repo" --image-ids "imageTag=$tag" \
               --query 'imageDetails[0].imageDigest' --output text)
@@ -98,8 +239,10 @@ jobs:
           done
 
       # The host's release bundle: its Compose files, scripts and units, the
-      # collector agent config and the image digests (no secrets).
+      # collector agent config and the image digests (no secrets). The ops
+      # bucket belongs to envs/dev, so there is none while DEV is destroyed.
       - name: Upload the release bundle
+        if: needs.probe.outputs.dev == 'true'
         env:
           OPS_BUCKET: ${{ vars.OPS_BUCKET }}
         run: |
@@ -110,7 +253,112 @@ jobs:
             infrastructure/docker/compose.app.yaml \
             infrastructure/observability/collector/agent.yaml
           aws s3 cp --only-show-errors release.tgz "s3://$OPS_BUCKET/releases/$SHA.tgz"
+
+  deploy:
+    name: deploy
+    needs: [probe, build]
+    if: needs.probe.outputs.dev == 'true'
+    runs-on: ubuntu-24.04
+    environment: dev
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SHA: ${{ needs.probe.outputs.sha }}
+      INSTANCE: ${{ needs.probe.outputs.instance }}
+    steps:
+      - name: Configure AWS credentials (OIDC, classora-gha-dev)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-2
+          mask-aws-account-id: true
+
+      # deploy.sh prints step lines and one JSON summary, never a secret.
+      - name: Run deploy.sh through the SSM document
+        run: |
+          set -euo pipefail
+          command_id=$(aws ssm send-command --document-name "$DEPLOY_DOCUMENT" \
+            --instance-ids "$INSTANCE" --parameters "sha=$SHA" \
+            --comment "deploy-dev run $GITHUB_RUN_ID" --timeout-seconds 120 \
+            --query Command.CommandId --output text)
+          echo "SSM command $command_id: deploy.sh $SHA"
+          status=Pending
+          for _ in $(seq 1 90); do
+            sleep 10
+            status=$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE" \
+              --query Status --output text 2>/dev/null || echo Pending)
+            case $status in
+              Pending | InProgress | Delayed) ;;
+              *) break ;;
+            esac
+          done
+          aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE" >invocation.json
+          echo "::group::deploy.sh output"
+          jq -r .StandardOutputContent invocation.json
+          echo "::endgroup::"
+          echo "::group::deploy.sh errors"
+          jq -r .StandardErrorContent invocation.json
+          echo "::endgroup::"
+          code=$(jq -r .ResponseCode invocation.json)
+          summary=$(jq -r .StandardOutputContent invocation.json | grep '^{"result"' | tail -n 1 || true)
           {
-            echo "### DEV release $SHA"
-            echo "Deploy over Session Manager: \`sudo /opt/classora/bin/deploy.sh $SHA\`"
+            echo "### DEV deploy of \`$SHA\`"
+            echo "SSM status \`$status\`, exit code \`$code\`"
+            echo '```json'
+            echo "${summary:-no summary}"
+            echo '```'
           } >>"$GITHUB_STEP_SUMMARY"
+          case "$status/$code" in
+            Success/0) echo "Deployed $SHA" ;;
+            */10) echo "::error::Migration failed: nothing switched, the previous release still serves"; exit 1 ;;
+            */20) echo "::error::$SHA failed readiness: rolled back, the previous release serves"; exit 1 ;;
+            */21) echo "::error::$SHA failed readiness and the rollback failed: DEV is down"; exit 1 ;;
+            */30) echo "::error::Bundle, pull or database start failed: nothing changed"; exit 1 ;;
+            *) echo "::error::Deploy ended with SSM status $status, exit code $code"; exit 1 ;;
+          esac
+
+  tag:
+    name: tag dev-<commit>
+    needs: [probe, deploy]
+    runs-on: ubuntu-24.04
+    environment: dev
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SHA: ${{ needs.probe.outputs.sha }}
+    steps:
+      - name: Configure AWS credentials (OIDC, classora-gha-dev)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-2
+          mask-aws-account-id: true
+
+      # Immutable tags: an existing dev-<commit> (a rerun) is fine.
+      - name: Add dev-<commit> in ECR
+        run: |
+          set -euo pipefail
+          for name in api web pgbouncer; do
+            repo="classora/$name"
+            aws ecr batch-get-image --repository-name "$repo" --image-ids "imageTag=sha-$SHA" \
+              --accepted-media-types application/vnd.oci.image.index.v1+json \
+              application/vnd.docker.distribution.manifest.list.v2+json \
+              application/vnd.oci.image.manifest.v1+json \
+              application/vnd.docker.distribution.manifest.v2+json \
+              --query 'images[0]' >image.json
+            jq -j .imageManifest image.json >manifest.json
+            media_type=$(jq -r .imageManifestMediaType image.json)
+            if out=$(aws ecr put-image --repository-name "$repo" --image-tag "dev-$SHA" \
+              --image-manifest file://manifest.json --image-manifest-media-type "$media_type" 2>&1 >/dev/null); then
+              echo "$repo: dev-$SHA added"
+            elif grep -q ImageAlreadyExistsException <<<"$out"; then
+              echo "$repo: dev-$SHA already there"
+            else
+              echo "$out" >&2
+              exit 1
+            fi
+          done

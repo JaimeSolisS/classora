@@ -17,3 +17,8 @@ output "hostnames" {
   description = "DEV hostnames."
   value       = module.app_host.hostnames
 }
+
+output "deploy_document" {
+  description = "DEV deploy SSM document (deploy-dev.yml)."
+  value       = module.app_host.deploy_document
+}

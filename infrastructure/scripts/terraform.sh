@@ -10,7 +10,8 @@
 #   terraform.sh migrate-bootstrap  after the first bootstrap apply: write backend.hcl
 #                                   and move the local bootstrap state into the bucket
 #   terraform.sh check              fmt -check and validate every root (pinned
-#                                   TERRAFORM_IMAGE) and shellcheck (SHELLCHECK_IMAGE)
+#                                   TERRAFORM_IMAGE), shellcheck (SHELLCHECK_IMAGE)
+#                                   and actionlint on the workflows (ACTIONLINT_IMAGE)
 #
 # Roots: bootstrap, shared, dev, prod, monitoring (envs/<name>). Plans and applies
 # use the local terraform binary with AWS_PROFILE (default jsolisdev); `check`
@@ -143,7 +144,7 @@ EOF
 }
 
 cmd_check() {
-  : "${TERRAFORM_IMAGE:?set by the Makefile}" "${SHELLCHECK_IMAGE:?set by the Makefile}"
+  : "${TERRAFORM_IMAGE:?set by the Makefile}" "${SHELLCHECK_IMAGE:?set by the Makefile}" "${ACTIONLINT_IMAGE:?set by the Makefile}"
   local fail=0 roots scripts
   roots=$(find "$tf_dir" -name versions.tf -not -path '*/.terraform/*' -not -path '*/modules/*' \
     -exec dirname {} \; | sort)
@@ -180,6 +181,15 @@ cmd_check() {
   echo "--- shellcheck: $(echo "$scripts" | tr '\n' ' ')"
   # shellcheck disable=SC2086 # one path per word, no spaces in these paths
   if docker run --rm -v "$PWD:/mnt:ro" -w /mnt "$SHELLCHECK_IMAGE" $scripts; then
+    echo OK
+  else
+    echo FAIL >&2
+    fail=1
+  fi
+
+  # The image bundles shellcheck, so run: steps are checked too (#615).
+  echo "--- actionlint: .github/workflows"
+  if docker run --rm -v "$PWD:/repo:ro" -w /repo "$ACTIONLINT_IMAGE" -no-color; then
     echo OK
   else
     echo FAIL >&2
