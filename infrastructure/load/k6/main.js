@@ -167,6 +167,8 @@ export function request(session, method, path, body, extraTags) {
     tags: Object.assign({ kind: 'api', name: path.template, write: unsafe ? 'yes' : 'no' }, extraTags || {}),
     timeout: '30s',
   };
+  // 409 (stale version, a state that moved on) is an expected answer to a write.
+  if (unsafe) params.responseCallback = http.expectedStatuses({ min: 200, max: 399 }, 409);
   return http.request(method, `${TARGET}${path.url}`, body === undefined ? null : JSON.stringify(body), params);
 }
 

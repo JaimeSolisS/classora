@@ -11,6 +11,7 @@ Operating Classora's AWS environments (M9). The decisions are in [ADR-0010](../a
 | [`restore.md`](restore.md) | Nightly dumps and snapshots, restore drills, a real restore, the final dump. |
 | [`monitoring.md`](monitoring.md) | The monitoring host, Grafana login, alerts, dedicated / colocated / off. |
 | [`secrets.md`](secrets.md) | Where each secret lives and how to rotate it (including the PostgreSQL owner password). |
+| [`load-test.md`](load-test.md) | Measure DEV under the load profile: the scrubbed dataset, load mode, the runs, and back to normal (ADR-0018). |
 | [`teardown.md`](teardown.md) | The end of the environments' window: final dump, `make env-teardown MODE=dev-only\|all`, what survives, restoring the archive later. |
 
 ## Rehearsals (evidence)

@@ -55,7 +55,7 @@ On the host, `sudo /opt/classora/bin/deploy.sh <40-hex commit>` deploys any rele
 - Locked-out Owner: `sudo /opt/classora/bin/manage.sh reset-owner-password <username>`. It prints a one-time link that expires in 24 hours.
 - Migrate only: `sudo /opt/classora/bin/manage.sh migrate`.
 
-DEV gets the reference seeds and an Owner only. It never gets demo or simulated data.
+DEV gets the reference seeds and an Owner only. It never gets demo or simulated data. The one exception is a load test ([`load-test.md`](load-test.md), ADR-0018): a scrubbed simulated center in a side database, `classora_load`, for under 24 hours, dropped afterwards. The `classora` database is never touched.
 
 ## Certificates
 
