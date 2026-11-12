@@ -18,3 +18,4 @@ mem_max|max by (container_name) (max_over_time(container_memory_usage_total_byte
 cpu_avg|avg by (container_name) (avg_over_time(container_cpu_utilization_ratio{deployment_environment_name="dev"}[$RANGE]))
 cpu_max|max by (container_name) (max_over_time(container_cpu_utilization_ratio{deployment_environment_name="dev"}[$RANGE]))
 cache_hit|sum(increase(postgresql_blocks_read_total{deployment_environment_name="dev",source=~".*_hit"}[$RANGE])) / sum(increase(postgresql_blocks_read_total{deployment_environment_name="dev"}[$RANGE]))
+client_errors|sum by (http_route, http_response_status_code) (increase(http_server_request_duration_seconds_count{job="classora-api",deployment_environment_name="dev",http_response_status_code=~"4.."}[$RANGE]))

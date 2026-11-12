@@ -159,7 +159,7 @@ function headers(session, unsafe) {
   return h;
 }
 
-export function request(session, method, path, body, extraTags) {
+export function request(session, method, path, body, extraTags, alsoExpected) {
   const unsafe = method !== 'GET';
   const params = {
     headers: headers(session, unsafe),
@@ -168,7 +168,7 @@ export function request(session, method, path, body, extraTags) {
     timeout: '30s',
   };
   // 409 (stale version, a state that moved on) is an expected answer to a write.
-  if (unsafe) params.responseCallback = http.expectedStatuses({ min: 200, max: 399 }, 409);
+  if (unsafe) params.responseCallback = http.expectedStatuses({ min: 200, max: 399 }, 409, ...(alsoExpected || []));
   return http.request(method, `${TARGET}${path.url}`, body === undefined ? null : JSON.stringify(body), params);
 }
 
@@ -210,9 +210,46 @@ function login(account) {
 // Ids each role's pages need, read once per account (setup only).
 function discover(session, role) {
   const ctx = {};
+  const status = (url) =>
+    http.get(`${TARGET}${url}`, {
+      headers: headers(session, false),
+      cookies: { [session.cookieName]: { value: session.cookie, replace: true } },
+      tags: { kind: 'setup' },
+    }).status;
   if (role === 'guardian' || role === 'student') {
+    // Only the students whose pages this account may open (the web app shows
+    // a "consent required" state instead of calling them for the others).
     const students = getJson(session, '/api/v1/schedule/family-students').items || [];
-    ctx.studentIds = students.map((s) => s.id || s.student_id).filter(Boolean);
+    const today = new Date().toISOString().slice(0, 10);
+    ctx.studentIds = students
+      .map((s) => s.id || s.student_id)
+      .filter(Boolean)
+      .filter(
+        (id) =>
+          status(`/api/v1/students/${id}/schedule?from=${today}T00:00:00Z&to=${today}T23:00:00Z`) === 200 &&
+          status(`/api/v1/students/${id}/assignments?limit=1`) === 200 &&
+          status(`/api/v1/students/${id}/academic-history`) === 200,
+      );
+  }
+  if (role === 'staff') {
+    // Pages the web app hides from this staff role (no permission): skipped.
+    const probes = {
+      '/api/v1/billing/overdue-accounts': '/api/v1/billing/overdue-accounts?limit=1',
+      '/api/v1/approval-requests': '/api/v1/approval-requests?status=open&limit=1',
+      '/api/v1/tutors': '/api/v1/tutors?limit=1',
+      '/api/v1/users': '/api/v1/users?limit=1',
+      '/api/v1/reports/kpis/tutor-performance': `/api/v1/reports/kpis/tutor-performance?from=2026-09-01&to=2026-09-30`,
+      '/api/v1/reports/kpis/revenue-trend': `/api/v1/reports/kpis/revenue-trend?basis=accrual&from=2026-09-01&to=2026-09-30`,
+      '/api/v1/reports/finance/balances': '/api/v1/reports/finance/balances',
+      '/api/v1/closeouts/overdue': '/api/v1/closeouts/overdue?limit=1',
+      '/api/v1/finance/expenses': '/api/v1/finance/expenses?limit=1',
+      '/api/v1/payroll/periods': '/api/v1/payroll/periods?limit=1',
+      '/api/v1/families': '/api/v1/families?limit=1',
+      '/api/v1/students': '/api/v1/students?limit=1',
+      '/api/v1/class-sessions': '/api/v1/class-sessions?from=2026-11-02T00:00:00Z&to=2026-11-03T00:00:00Z',
+      '/api/v1/exports': '/api/v1/exports?limit=1',
+    };
+    ctx.forbidden = Object.keys(probes).filter((template) => status(probes[template]) === 403);
   }
   if (role === 'guardian') {
     const own = getJson(session, '/api/v1/families/own');
@@ -223,7 +260,7 @@ function discover(session, role) {
       ctx.receiptIds = (payments.items || []).filter((p) => p.receipt).map((p) => p.receipt.id);
     }
   }
-  if (role === 'staff' && session.roles.includes('finance_staff')) {
+  if (role === 'staff' && session.roles.includes('finance_staff') && !ctx.forbidden.includes('/api/v1/payroll/periods')) {
     ctx.payslips = [];
     const periods = getJson(session, '/api/v1/payroll/periods?limit=20').items || [];
     const tutors = getJson(session, '/api/v1/payroll/tutors').items || [];
@@ -281,6 +318,9 @@ function think() {
 export function browse(data) {
   const role = __ENV.ROLE;
   const session = sessionFor(data, role);
+  // People arrive spread out: a VU's first page view waits 0 to THINK_MAX s
+  // (all VUs starting in the same second is a burst no center produces).
+  if (exec.vu.iterationInScenario === 0) sleep(Math.random() * THINK_MAX);
   const rolePages = pages[role];
   // Weighted pick of the next page view.
   const total = rolePages.reduce((sum, p) => sum + p.weight, 0);
@@ -301,6 +341,7 @@ export function browse(data) {
 export function stream(data) {
   const role = __ENV.ROLE;
   const session = sessionFor(data, role);
+  if (exec.vu.iterationInScenario === 0) sleep(Math.random() * THINK_MAX);
   // Held open up to 5 minutes, like a tab; the browser reconnects after 5 s.
   const res = http.get(`${TARGET}/api/v1/notifications/stream`, {
     headers: { Accept: 'text/event-stream' },

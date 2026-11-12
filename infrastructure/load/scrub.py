@@ -53,7 +53,10 @@ async def scrub(url: str, accounts_path: Path) -> int:
     target = urlparse(url)
     database = target.path.lstrip("/")
     if database == "classora" or target.port in (5432, 6432):
-        print(f"scrub: refusing {target.hostname}:{target.port}/{database}", file=sys.stderr)
+        print(
+            f"scrub: refusing {target.hostname}:{target.port}/{database}",
+            file=sys.stderr,
+        )
         return 1
     print(f"scrub: target {target.hostname}:{target.port}/{database}")
     conn = await asyncpg.connect(url)
@@ -112,12 +115,17 @@ async def scrub(url: str, accounts_path: Path) -> int:
                 "SELECT password_hash FROM users WHERE password_hash IS NOT NULL"
             )
         ]
-        leftovers = {t: await conn.fetchval(f"SELECT count(*) FROM {t}") for t in EMPTIED}  # noqa: S608
+        leftovers = {
+            t: await conn.fetchval(f"SELECT count(*) FROM {t}") for t in EMPTIED
+        }  # noqa: S608
     finally:
         await conn.close()
 
     readme_hits = sum(
-        1 for h in hashes for password in README_PASSWORDS if verify_password(h, password)
+        1
+        for h in hashes
+        for password in README_PASSWORDS
+        if verify_password(h, password)
     )
     accounts_path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(accounts_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -129,7 +137,9 @@ async def scrub(url: str, accounts_path: Path) -> int:
         for role in account["roles"]:
             by_role[role] = by_role.get(role, 0) + 1
     print(f"scrub: {len(accounts)} sign-in accounts re-passworded, by role {by_role}")
-    print(f"scrub: non-active users cleared: {cleared}; privacy acceptances added: {accepted}")
+    print(
+        f"scrub: non-active users cleared: {cleared}; privacy acceptances added: {accepted}"
+    )
     print(f"scrub: rows left in {leftovers}")
     print(f"scrub: README passwords matching any hash: {readme_hits} (must be 0)")
     print(f"scrub: accounts written to {accounts_path} (mode 0600, gitignored)")

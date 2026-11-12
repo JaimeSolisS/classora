@@ -51,17 +51,35 @@ def one(lines: list[str], name: str) -> float | None:
 
 
 def fmt_ms(seconds: float | None) -> str:
-    return "n/a" if seconds is None or seconds != seconds else f"{seconds * 1000:.0f} ms"
+    return (
+        "n/a" if seconds is None or seconds != seconds else f"{seconds * 1000:.0f} ms"
+    )
 
 
 def main() -> int:
     run = Path(sys.argv[1])
     start, end = int(sys.argv[2]), int(sys.argv[3])
-    summary = json.loads((run / "k6-summary.json").read_text()) if (run / "k6-summary.json").exists() else {}
-    prom_lines = (run / "prometheus.txt").read_text().splitlines() if (run / "prometheus.txt").exists() else []
-    samples = (run / "samples.log").read_text().splitlines() if (run / "samples.log").exists() else []
+    summary = (
+        json.loads((run / "k6-summary.json").read_text())
+        if (run / "k6-summary.json").exists()
+        else {}
+    )
+    prom_lines = (
+        (run / "prometheus.txt").read_text().splitlines()
+        if (run / "prometheus.txt").exists()
+        else []
+    )
+    samples = (
+        (run / "samples.log").read_text().splitlines()
+        if (run / "samples.log").exists()
+        else []
+    )
     samples = [s.split() for s in samples if s.strip()]
-    window = [s for s in samples if len(s) > 2 and s[1].isdigit() and start <= int(s[1]) <= end]
+    window = [
+        s
+        for s in samples
+        if len(s) > 2 and s[1].isdigit() and start <= int(s[1]) <= end
+    ]
 
     print(f"### {run.name} ({end - start} s)\n")
 
@@ -77,15 +95,25 @@ def main() -> int:
     client_get95 = k6_metric(summary, "http_req_duration{kind:api,method:GET}", "p(95)")
     client_pdf95 = k6_metric(summary, "pdf_duration", "p(95)")
     print("| Measure | Value |\n|---|---|")
-    print(f"| API requests (server, excl. SSE) | {requests:.0f} ({requests / max(end - start, 1):.1f}/s) |")
+    print(
+        f"| API requests (server, excl. SSE) | {requests:.0f} ({requests / max(end - start, 1):.1f}/s) |"
+    )
     codes = ", ".join(f"{k.split('=')[-1]}: {v:.0f}" for k, v in sorted(status.items()))
     print(f"| Status codes (server) | {codes} |")
-    print(f"| GET p50 / p95 / p99 (server) | {fmt_ms(one(prom_lines, 'get_p50'))} / {fmt_ms(get95)} / {fmt_ms(one(prom_lines, 'get_p99'))} |")
-    print(f"| Unsafe p50 / p95 / p99 (server, excl. login) | {fmt_ms(one(prom_lines, 'unsafe_p50'))} / {fmt_ms(uns95)} / {fmt_ms(one(prom_lines, 'unsafe_p99'))} |")
+    print(
+        f"| GET p50 / p95 / p99 (server) | {fmt_ms(one(prom_lines, 'get_p50'))} / {fmt_ms(get95)} / {fmt_ms(one(prom_lines, 'get_p99'))} |"
+    )
+    print(
+        f"| Unsafe p50 / p95 / p99 (server, excl. login) | {fmt_ms(one(prom_lines, 'unsafe_p50'))} / {fmt_ms(uns95)} / {fmt_ms(one(prom_lines, 'unsafe_p99'))} |"
+    )
     print(f"| PDF p95 (server, worst route) | {fmt_ms(pdf95)} |")
-    print(f"| Client GET p95 / PDF p95 (k6, incl. round trip) | {client_get95 or 0:.0f} ms / {client_pdf95 or 0:.0f} ms |")
+    print(
+        f"| Client GET p95 / PDF p95 (k6, incl. round trip) | {client_get95 or 0:.0f} ms / {client_pdf95 or 0:.0f} ms |"
+    )
     print(f"| Client error rate (k6, kind:api) | {100 * (k6_failed or 0):.2f} % |")
-    print(f"| VUs max (k6, browsing + SSE) | {k6_metric(summary, 'vus_max', 'max') or k6_metric(summary, 'vus_max', 'value')} |")
+    print(
+        f"| VUs max (k6, browsing + SSE) | {k6_metric(summary, 'vus_max', 'max') or k6_metric(summary, 'vus_max', 'value')} |"
+    )
     print()
 
     # ---- containers (sampler)
@@ -96,7 +124,9 @@ def main() -> int:
             mem[s[2]].append(int(s[3]) / 1048576)
             cpu[s[2]].append(float(s[4]))
     if mem:
-        print("| Container | RSS avg / peak (MiB) | mem_limit | Peak % of limit | CPU avg / peak (% of one vCPU) |")
+        print(
+            "| Container | RSS avg / peak (MiB) | mem_limit | Peak % of limit | CPU avg / peak (% of one vCPU) |"
+        )
         print("|---|---|---|---|---|")
         for name in sorted(mem):
             limit = MEM_LIMITS_MIB.get(name, 0)
@@ -122,12 +152,18 @@ def main() -> int:
             if dt > 0:
                 max_rate = max(max_rate, (int(b[4]) - int(a[4])) * 4 / dt)
         load = [float(s[6]) for s in host]
-        iowait = (int(host[-1][7]) - int(host[0][7])) / max(int(host[-1][8]) - int(host[0][8]), 1)
+        iowait = (int(host[-1][7]) - int(host[0][7])) / max(
+            int(host[-1][8]) - int(host[0][8]), 1
+        )
         print("| Host | Value |\n|---|---|")
-        print(f"| MemAvailable min / avg (MiB of {total:.0f}) | {min(avail):.0f} ({100 * min(avail) / total:.0f} %) / {sum(avail) / len(avail):.0f} |")
+        print(
+            f"| MemAvailable min / avg (MiB of {total:.0f}) | {min(avail):.0f} ({100 * min(avail) / total:.0f} %) / {sum(avail) / len(avail):.0f} |"
+        )
         print(f"| Swap in / out over the run (MiB) | {swin:.1f} / {swout:.1f} |")
         print(f"| Swap-in, worst 1-minute average | {max_rate:.1f} KiB/s |")
-        print(f"| Load (1 min) avg / max | {sum(load) / len(load):.2f} / {max(load):.2f} |")
+        print(
+            f"| Load (1 min) avg / max | {sum(load) / len(load):.2f} / {max(load):.2f} |"
+        )
         print(f"| CPU iowait share | {100 * iowait:.1f} % |")
         print(f"| Samples | {len(host)} over {secs} s |")
         print()
@@ -148,17 +184,27 @@ def main() -> int:
             if key.split("/")[0] in ("classora", "classora_load"):
                 print(f"| {key} | {peak[key]} |")
         print(f"| all backends, peak | {max(totals)} |")
-        dstats = [s for s in window if s[0] == "D" and len(s) == 9 and s[2] == "classora_load"]
+        dstats = [
+            s for s in window if s[0] == "D" and len(s) == 9 and s[2] == "classora_load"
+        ]
         if len(dstats) >= 2:
             a, b = dstats[0], dstats[-1]
             hit, read = int(b[3]) - int(a[3]), int(b[4]) - int(a[4])
-            print(f"| classora_load cache hit ratio | {100 * hit / max(hit + read, 1):.2f} % |")
-            print(f"| deadlocks / temp files during the run | {int(b[5]) - int(a[5])} / {int(b[6]) - int(a[6])} |")
-            print(f"| commits/s | {(int(b[7]) - int(a[7])) / max(int(b[1]) - int(a[1]), 1):.1f} |")
+            print(
+                f"| classora_load cache hit ratio | {100 * hit / max(hit + read, 1):.2f} % |"
+            )
+            print(
+                f"| deadlocks / temp files during the run | {int(b[5]) - int(a[5])} / {int(b[6]) - int(a[6])} |"
+            )
+            print(
+                f"| commits/s | {(int(b[7]) - int(a[7])) / max(int(b[1]) - int(a[1]), 1):.1f} |"
+            )
         print()
 
     # ---- slowest routes, DB and jobs
-    routes = sorted(((v, k) for k, v in prom(prom_lines, "route_p95") if v == v), reverse=True)[:8]
+    routes = sorted(
+        ((v, k) for k, v in prom(prom_lines, "route_p95") if v == v), reverse=True
+    )[:8]
     if routes:
         print("| Slowest routes (server p95) | p95 |\n|---|---|")
         for v, k in routes:
@@ -175,7 +221,9 @@ def main() -> int:
         print(f"| SQLAlchemy pool max {k} | {v:.0f} |")
     for k, v in jobs:
         task = k.split("job_task=")[-1]
-        print(f"| job runs {k} | {v:.0f} (p95 {fmt_ms(jobs95.get('job_task=' + task))}) |")
+        print(
+            f"| job runs {k} | {v:.0f} (p95 {fmt_ms(jobs95.get('job_task=' + task))}) |"
+        )
     print()
     return 0
 

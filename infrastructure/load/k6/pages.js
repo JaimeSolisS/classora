@@ -49,13 +49,26 @@ function params(session, template, extra) {
   );
 }
 
-// GETs in parallel: [[template, url], ...] -> responses.
+// GETs in parallel: [[template, url, [also expected statuses]], ...] -> responses.
 function batch(session, calls) {
-  return http.batch(calls.map(([template, url]) => ['GET', `${TARGET}${url}`, null, params(session, template)]));
+  const forbidden = (session.ctx && session.ctx.forbidden) || [];
+  const allowed = calls.filter(([template]) => !forbidden.includes(template));
+  if (!allowed.length) return [];
+  const responses = http.batch(
+    allowed.map(([template, url, expected]) => {
+      const p = params(session, template);
+      if (expected) p.responseCallback = http.expectedStatuses({ min: 200, max: 399 }, ...expected);
+      return ['GET', `${TARGET}${url}`, null, p];
+    }),
+  );
+  responses.forEach((r, i) => {
+    if (allowed[i][2] && allowed[i][2].includes(r.status)) r.expected = true;
+  });
+  return responses;
 }
 
 function failures(responses) {
-  const bad = responses.filter((r) => r.status < 200 || r.status >= 400);
+  const bad = responses.filter((r) => r && (r.status < 200 || r.status >= 400) && !r.expected);
   if (__ENV.DEBUG) bad.forEach((r) => console.warn(`${r.status} ${r.request.method} ${r.url} ${String(r.body).slice(0, 160)}`));
   return bad.length;
 }
@@ -124,13 +137,13 @@ const staffPages = [
       const w = week();
       const [unread, list] = batch(s, shell([['/api/v1/students', '/api/v1/students?limit=50']]));
       let bad = failures([unread, list]);
-      const student = list.status === 200 ? pick(list.json().items) : null;
+      const student = list && list.status === 200 ? pick(list.json().items) : null;
       if (student) {
         bad += failures(
           batch(s, [
             ['/api/v1/students/{student_id}', `/api/v1/students/${student.id}`],
             ['/api/v1/students/{student_id}/schedule', `/api/v1/students/${student.id}/schedule?from=${w.fromAt}&to=${w.toAt}`],
-            ['/api/v1/students/{student_id}/academic-history', `/api/v1/students/${student.id}/academic-history`],
+            ['/api/v1/students/{student_id}/academic-history', `/api/v1/students/${student.id}/academic-history`, [404]],
           ]),
         );
       }
@@ -143,15 +156,15 @@ const staffPages = [
     run(s) {
       const [unread, list] = batch(s, shell([['/api/v1/families', '/api/v1/families?limit=50']]));
       let bad = failures([unread, list]);
-      const family = list.status === 200 ? pick(list.json().items) : null;
+      const family = list && list.status === 200 ? pick(list.json().items) : null;
       if (family) {
         const base = `/api/v1/families/${family.id}`;
         bad += failures(
           batch(s, [
             ['/api/v1/families/{family_id}', base],
-            ['/api/v1/families/{family_id}/billing-account', `${base}/billing-account`],
-            ['/api/v1/families/{family_id}/billing-account/charges', `${base}/billing-account/charges?limit=50`],
-            ['/api/v1/families/{family_id}/billing-account/payments', `${base}/billing-account/payments?limit=50`],
+            ['/api/v1/families/{family_id}/billing-account', `${base}/billing-account`, [404]],
+            ['/api/v1/families/{family_id}/billing-account/charges', `${base}/billing-account/charges?limit=50`, [404]],
+            ['/api/v1/families/{family_id}/billing-account/payments', `${base}/billing-account/payments?limit=50`, [404]],
           ]),
         );
       }
@@ -218,7 +231,8 @@ const staffPages = [
     weight: 1,
     run(s, h) {
       const body = { dataset: 'students', format: 'xlsx' };
-      let res = h.request(s, 'POST', { template: '/api/v1/exports', url: '/api/v1/exports' }, body, {});
+      // 403 reauth_required is the expected first answer once the last reauthentication is old.
+      let res = h.request(s, 'POST', { template: '/api/v1/exports', url: '/api/v1/exports' }, body, {}, [403]);
       if (res.status === 403 && String(res.body).includes('reauth_required')) {
         // The web app asks for the password again (recent reauthentication, #30).
         const reauth = h.request(
@@ -295,8 +309,8 @@ const tutorPages = [
       // The tutor's session page (features/tutor-portal): attendance, notes, closeout.
       const [attendance, notes, closeout] = batch(s, [
         ['/api/v1/class-sessions/{class_session_id}/attendance', `${base}/attendance`],
-        ['/api/v1/class-sessions/{class_session_id}/notes', `${base}/notes`],
-        ['/api/v1/class-sessions/{class_session_id}/closeout', `${base}/closeout`],
+        ['/api/v1/class-sessions/{class_session_id}/notes', `${base}/notes`, [404]],
+        ['/api/v1/class-sessions/{class_session_id}/closeout', `${base}/closeout`, [404]],
       ]);
       bad += failures([attendance]);
       // A session without notes or a closeout yet answers 404 there.
@@ -332,9 +346,10 @@ const tutorPages = [
       if (studentId) {
         bad += failures(
           batch(s, [
-            ['/api/v1/students/{student_id}/academic-history', `/api/v1/students/${studentId}/academic-history`],
-            ['/api/v1/students/{student_id}/assignments', `/api/v1/students/${studentId}/assignments?limit=20`],
-          ]),
+            // A student without consent for this tutor answers 403 (the page says so).
+            ['/api/v1/students/{student_id}/academic-history', `/api/v1/students/${studentId}/academic-history`, [403]],
+            ['/api/v1/students/{student_id}/assignments', `/api/v1/students/${studentId}/assignments?limit=20`, [403]],
+          ]).filter((r) => r.status !== 403),
         );
       }
       return bad;
