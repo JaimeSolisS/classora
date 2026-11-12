@@ -48,7 +48,7 @@ No scanner needs credentials or sends telemetry.
 
 ### Where and when (E3)
 
-`.github/workflows/ci.yml` has three jobs, `security-deps` (`make audit-deps`), `security-secrets` (`make scan-secrets`, plus `make scan-secrets-diff` with the PR base and head SHAs on `pull_request`) and `security-sast` (`make sast`). They are **not** path-filtered and run on every pull request, push and manual run, so a new advisory or a secret in any file (documentation included) turns the pull request red. `ci-required` needs them and treats a skipped security job as a failure, so it stays the one required check. There is no scheduled run: new advisories against unchanged lockfiles are caught by the next pull request and by Dependabot alerts.
+`.github/workflows/ci.yml` has three jobs, `security-deps` (`make audit-deps`), `security-secrets` (`make scan-secrets`, plus `make scan-secrets-diff` with the PR base and head SHAs on `pull_request`) and `security-sast` (`make sast`). They are **not** path-filtered and run on every pull request, push and manual run, so a new advisory or a secret in any file (documentation included) turns the pull request red. `ci-required` needs them and treats a skipped security job as a failure, so it stays the one required check. New advisories against unchanged lockfiles are caught by the next pull request and by the weekly scheduled audit (see the 2026-11-12 amendment).
 
 ### Thresholds (E4)
 
@@ -109,8 +109,18 @@ No runtime technology is added: no new app dependency, no Redis, Celery or RDS, 
 - **GitHub-native (CodeQL, secret scanning, Dependabot alerts only).** Strong SAST, but free only for public repositories, not reproducible locally, and needs a new action and `security-events: write`. Can be added later if the repository goes public.
 - **Bandit as a separate tool.** Ruff's `S` rules implement the same checks inside the existing lint.
 - **Vendor GitHub Actions for the scanners.** More third-party code with repository access, gitleaks-action needs a paid licence for organizations, and no one-command local reproduction. Not chosen (E2).
-- **A separate `security.yml` with its own required check and a weekly schedule.** A second required check and failure emails for little gain over Dependabot alerts (E3).
+- **A separate `security.yml` with its own required check and a weekly schedule.** A second required check and failure emails for little gain over Dependabot alerts (E3). Superseded in part by the 2026-11-12 amendment: a weekly scheduled audit that is **not** a required check.
 - **Stricter (npm moderate, Semgrep WARNING) or looser (production dependencies only) thresholds.** More noise from build-time dev tools, or blind spots in tools that run in CI (E4).
+
+## Amendments
+
+### 2026-11-12: weekly scheduled dependency audit (#150 SR-01, owner-delegated)
+
+Recorded with M10-02 (#150 E4 (a), the recommended option, accepted under the owner's delegation for the M10 run, pending owner review). The security review found that **Dependabot alerts are disabled** on the repository (`gh api repos/<owner>/classora/dependabot/alerts` returns 403 "disabled"), and the security jobs ran only on pull requests and pushes. Between pull requests, for example during a quiet release window, nothing noticed a new advisory against unchanged lockfiles.
+
+- `.github/workflows/security-audit.yml` runs `make audit-deps` every Monday at 06:17 UTC on the default branch (`develop`), and on demand (`workflow_dispatch`). It uses only the approved actions pinned by SHA, `permissions: contents: read`, and no secret. It is **not** a required check: a failure is a red run and a GitHub notification, triaged like any failing scan (fix first, else a reasoned exception).
+- `apps/api/tests/unit/test_security_audit_workflow.py` pins the schedule, the command, the permissions and the actions; actionlint (`make check-infra`) validates the file.
+- **Owner action:** turn on Dependabot alerts (Settings → Code security), as "Owner-only GitHub settings" below already asks. The scheduled audit does not replace them: alerts also cover advisories that appear between two Mondays.
 
 ## References
 
