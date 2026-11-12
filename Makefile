@@ -1,4 +1,4 @@
-.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability check-infra tf-plan tf-apply tf-destroy monitoring-sync
+.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability check-infra tf-plan tf-apply tf-destroy env-teardown monitoring-sync
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -97,6 +97,13 @@ tf-apply:
 tf-destroy:
 	$(TF_ROOT_CHECK)
 	$(TF) destroy $(ENV)
+
+## End of the environments' window (runbook _docs/runbooks/teardown.md): final PROD
+## dump, then destroy, each step confirmed. make env-teardown MODE=dev-only|all
+## (dev-only keeps DEV with monitoring off; MONITORING=colocated keeps it on DEV).
+env-teardown:
+	@test -n "$(MODE)" || { echo "usage: make env-teardown MODE=dev-only|all" >&2; exit 2; }
+	MONITORING=$(or $(MONITORING),off) infrastructure/scripts/env-teardown.sh $(MODE)
 
 ## Sync the dedicated monitoring host with HEAD (bundle infrastructure/observability and
 ## infrastructure/host, upload, SSM classora-monitoring-sync; #617): make monitoring-sync.
