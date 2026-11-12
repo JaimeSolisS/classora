@@ -79,8 +79,8 @@ center's today and :func:`guardian_has_academic_access`, re-exported from
 
 **Notification recipients** (#232 C2): :func:`student_notification_recipients`
 gives other modules, per student, the login user of the student and those
-of its linked guardians (no access check; the caller decides what the
-family may be told).
+of its linked guardians with an active profile (no other access check; the
+caller decides what the family may be told).
 
 **Academic notification recipients** (#79 B3):
 :func:`academic_notification_recipients` gives the users a family
@@ -417,9 +417,11 @@ async def student_notification_recipients(
 ) -> dict[uuid.UUID, list[uuid.UUID]]:
     """Per student id, the users a family notification about the student
     goes to: the student's own login (``students.user_id``) and the
-    accounts of the guardians linked to the student (#34), each once, by
-    id. Students without any are left out. Two statements (none for an
-    empty collection), whatever the number of students."""
+    accounts of the guardians linked to the student (#34) whose profile is
+    active (a deactivated profile has lost access to the student, so it is
+    told nothing either; #150 SR-05), each once, by id. Students without
+    any are left out. Two statements (none for an empty collection),
+    whatever the number of students."""
     wanted = set(student_ids)
     if not wanted:
         return {}
@@ -435,7 +437,11 @@ async def student_notification_recipients(
     guardians = await session.execute(
         select(StudentGuardian.student_id, Guardian.user_id)
         .join(Guardian, Guardian.id == StudentGuardian.guardian_id)
-        .where(StudentGuardian.student_id.in_(wanted), Guardian.user_id.is_not(None))
+        .where(
+            StudentGuardian.student_id.in_(wanted),
+            Guardian.user_id.is_not(None),
+            Guardian.is_active.is_(True),
+        )
     )
     for student_id, user_id in guardians:
         if user_id is not None:
