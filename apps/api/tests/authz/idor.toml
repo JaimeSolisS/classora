@@ -1,0 +1,39 @@
+# IDOR inventory (M10-01, #149): every scoped route and the test that proves
+# another party's record is hidden.
+#
+# Read by tests/authz/idor.py. tests/unit/test_idor_inventory.py checks it
+# against tests/authz/matrix.toml and the OpenAPI document of
+# build_app(include_dev_routes=True).
+#
+# In scope: every matrix entry reachable by tutor, student or guardian
+# (access = "authenticated" minus its `deny`, or access = "permission" with one
+# of them in `allow`) whose route takes a record id: a path parameter, or a
+# query parameter or top-level JSON body property named *_id / *_ids.
+# Staff-only routes (deny = [..., "tutor", "student", "guardian"]) are out;
+# the permission matrix covers them.
+#
+# Adding an entry: one [[route]] table per in-scope method and path template,
+# written as in matrix.toml. Keep the entries sorted by path, then method (a
+# test enforces it). Each entry has exactly one of:
+#
+#   tests = ["tests/integration/<file>.py::<test_name>", ...]
+#       Node ids relative to apps/api; a parametrized test without its [...],
+#       a class method as file.py::Class::test_name. The cited tests send
+#       this method and path (or call a helper that does) with another
+#       party's id (guardian A vs family B, student A vs student B, tutor A vs
+#       tutor B or vs a student or session the tutor does not teach):
+#       - detail and unsafe routes: the hidden record gets the same status and
+#         Problem code as a missing one (new tests use
+#         tests/authz/assertions.assert_same_not_found); unsafe routes also
+#         show the record unchanged;
+#       - list, aggregate and stream routes: the other party's records never
+#         appear.
+#   exempt = "<reason>"
+#       Only when every id the route takes is a shared catalog id (subjects,
+#       levels, classrooms, templates, periods, closures), or the route answers
+#       a scoped role 403 before any record lookup. A list with only
+#       catalog-id filters cites the test proving the list is scoped in `note`.
+#   pending = "#<issue>"
+#       A leak too big to fix in the issue that found it, with its open bug.
+#
+#   Optional: note = "<which ids the tests cover, when it isn't obvious>".
