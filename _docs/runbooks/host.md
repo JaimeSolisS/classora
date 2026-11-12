@@ -15,6 +15,7 @@ Every command below uses the owner's profile: `export AWS_PROFILE=jsolisdev AWS_
 - Install the plugin once: `brew install --cask session-manager-plugin`.
 - `aws ssm start-session --target "$(aws ssm get-parameter --name /classora/dev/instance_id --query Parameter.Value --output text)"`.
 - The session starts as `ssm-user`. Use `sudo -i` for the commands below; all of them need root.
+- There is no SSH: the security group has no port 22, the instance has no key pair, and sshd is stopped, disabled and masked (`install-units.sh` on every deploy; `monitoring-up.sh` on the monitoring host). Containers can't reach the instance metadata service (IMDSv2, hop limit 1), so only the host's own scripts use the instance role (#632).
 
 ## Layout
 

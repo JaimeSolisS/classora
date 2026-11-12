@@ -34,7 +34,7 @@ On the host:
 /opt/classora/bin/restore.sh --self-test latest          # must FAIL: proves the comparison works
 ```
 
-- It downloads the dump and its `counts.json`, starts a scratch `postgres:18` container `classora-restore` (its own internal network, no published port, 384 MB, a scratch directory on the data volume), creates the `classora_app`/`classora_monitor` roles without login, runs `pg_restore --no-owner --exit-on-error`, counts every table and prints `source / restored / match` per table, then one JSON verdict (`"event": "restore"`, also in `backup.log`).
+- It downloads the dump and its `counts.json`, starts a scratch container `classora-restore` from the live `db` image (the host's pinned `postgres:18.x`, ADR-0001 A2) (its own internal network, no published port, 384 MB, a scratch directory on the data volume), creates the `classora_app`/`classora_monitor` roles without login, runs `pg_restore --no-owner --exit-on-error`, counts every table and prints `source / restored / match` per table, then one JSON verdict (`"event": "restore"`, also in `backup.log`).
 - Exit 0: every table matches. 1: a mismatch. 2: usage. 3: the restore failed.
 - `--self-test` deletes one row in the scratch copy before comparing, so it must exit 1.
 - The scratch container, network and directory are always removed. It never connects to the live `db` and refuses a container named `classora-restore` that isn't its own.

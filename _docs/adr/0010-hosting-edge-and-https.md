@@ -46,7 +46,7 @@ Resolves architecture §10 **ISSUE-I2** (superseded), **ISSUE-I3**, **ISSUE-I4**
 ### Images
 
 - Images for AWS are **arm64 only**, built on native arm64 runners. There is no multi-arch manifest. Local and CI stacks keep building amd64 from the same Dockerfiles. The API image runs as a non-root user.
-- `postgres:18` (ADR-0001) is pulled from Docker Hub on the host. `api` (also used by the worker), `web` (edge) and `pgbouncer` come from ECR (ADR-0011).
+- `postgres:18` (ADR-0001; on the hosts by exact minor and digest, amendment A2, #632) is pulled from Docker Hub on the host. `api` (also used by the worker), `web` (edge) and `pgbouncer` come from ECR (ADR-0011).
 
 ### Delivery
 
