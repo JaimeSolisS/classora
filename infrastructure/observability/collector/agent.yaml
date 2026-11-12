@@ -192,6 +192,25 @@ processors:
         value: ${env:DEPLOYMENT_ENVIRONMENT}
         action: upsert
   batch: {}
+  # The edge (Caddy) logs every request as JSON with the full URI (query
+  # strings: search terms, e-mails), all request headers and the client's IP.
+  # None of that may leave the host (ADR-0014; #617 QA D1). Allowlist: keep
+  # level, time, logger, message, status, sizes, duration and the request's
+  # method, host and protocol; drop the URI entirely (a path can carry an
+  # e-mail too; the API's own access line has the route template), the
+  # headers, the IPs and the response headers. Every JSON line of the edge
+  # gets this allowlist; a non-JSON line that looks like a request is replaced.
+  transform/edge:
+    error_mode: ignore
+    log_statements:
+      - conditions:
+          - resource.attributes["container.name"] == "edge"
+        statements:
+          - set(log.cache, ParseJSON(log.body)) where IsString(log.body) and IsMatch(log.body, "^\\s*\\{")
+          - keep_keys(log.cache, ["level", "ts", "logger", "msg", "request", "status", "size", "bytes_read", "duration"]) where log.cache["logger"] != nil
+          - keep_keys(log.cache["request"], ["method", "host", "proto"]) where log.cache["request"] != nil
+          - set(log.body, log.cache) where log.cache["logger"] != nil
+          - set(log.body, "edge request line dropped (not parseable)") where IsString(log.body) and IsMatch(log.body, "(?i)request|uri|remote_ip|client_ip|headers")
 
 exporters:
   otlp_http:
@@ -209,7 +228,7 @@ service:
       exporters: [otlp_http]
     logs:
       receivers: [otlp, file_log, file_log/host]
-      processors: [memory_limiter, resource_detection, resource, batch]
+      processors: [memory_limiter, transform/edge, resource_detection, resource, batch]
       exporters: [otlp_http]
     traces:
       receivers: [otlp]

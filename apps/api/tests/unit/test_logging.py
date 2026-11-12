@@ -201,6 +201,39 @@ def test_one_access_line_per_request_without_query_or_headers(
 
 
 @pytest.mark.parametrize(
+    ("url", "status", "logged_path"),
+    [
+        # The route template, never the values in the path (#617 QA D1).
+        ("/path/48151623", 200, "/path/{number}"),
+        # No route: a placeholder, not the raw path an e-mail can be typed into.
+        ("/users/zz-probe@example.com/marker", 404, "<unmatched>"),
+        # A search term in the query string never reaches the line.
+        ("/query?limit=5&q=zz-probe@example.com", 200, "/query"),
+    ],
+)
+def test_access_line_logs_the_route_template_not_the_raw_path(
+    client: TestClient, capsys, url: str, status: int, logged_path: str
+):
+    response = client.get(url)
+
+    assert response.status_code == status
+    lines = [ln for ln in read_log_lines(capsys) if ln["logger"] != "httpx"]
+    [access] = access_lines(lines)
+    assert access["path"] == logged_path
+    out = "\n".join(json.dumps(ln) for ln in lines)
+    for forbidden in ("48151623", "zz-probe", "example.com", "marker"):
+        assert forbidden not in out
+
+
+def test_method_not_allowed_logs_the_route_template(client: TestClient, capsys):
+    client.delete("/path/48151623")
+
+    [access] = access_lines(read_log_lines(capsys))
+    assert access["status"] == 405
+    assert access["path"] == "/path/{number}"
+
+
+@pytest.mark.parametrize(
     ("path", "logged"),
     [
         ("/health/live", False),
@@ -298,5 +331,5 @@ def test_uvicorn_process_writes_only_json_lines():
     assert len(access) == 1
     assert access[0]["logger"] == "app.access"
     assert access[0]["request_id"] == "qa-proc"
-    assert access[0]["path"] == "/nope"
+    assert access[0]["path"] == "<unmatched>"  # no route: never the raw path
     assert access[0]["status"] == 404
