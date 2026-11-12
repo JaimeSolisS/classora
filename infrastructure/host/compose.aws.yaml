@@ -17,8 +17,9 @@
 #   - `edge` is the web image (Caddy + SPA) on a fixed address, the only
 #     TRUSTED_PROXIES entry (172.30.0.10/32, set by render-env.sh);
 #   - PostgreSQL data and Caddy's /data on the data volume (bind mounts);
-#   - mem_limit per service (starting points, M10-04 tunes them), restart
-#     unless-stopped, PostgreSQL shared_buffers=128MB, one Uvicorn worker;
+#   - mem_limit per service, restart unless-stopped, PostgreSQL
+#     shared_buffers=128MB, one Uvicorn worker, slower api and worker
+#     healthchecks (measured by M10-04, ADR-0018);
 #   - the collector agent in profile `telemetry` (compose.sh enables it only
 #     when /classora/shared/otlp_endpoint exists, ADR-0014).
 # Log rotation (json-file 10m x 3) and the Compose service label on log lines
@@ -49,6 +50,12 @@ services:
     depends_on:
       pgbouncer:
         condition: service_healthy
+    # Every 10 s on the hosts (2 s locally): each check is a Python start
+    # (ADR-0018). start_interval keeps the start-up checks fast.
+    healthcheck:
+      interval: 10s
+      start_period: 30s
+      start_interval: 2s
     mem_limit: 512m
     restart: unless-stopped
 
@@ -58,6 +65,15 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # Every 30 s on the hosts (5 s locally): each check imports the whole app
+    # in a new Python process (about 2.5 CPU-seconds on t4g). Every 5 s it
+    # used half a vCPU around the clock and kept DEV above the t4g.small CPU
+    # credit baseline while idle (ADR-0018). deploy.sh's readiness gate runs
+    # its own checks and is not slowed by this.
+    healthcheck:
+      interval: 30s
+      start_period: 30s
+      start_interval: 2s
     mem_limit: 448m
     restart: unless-stopped
 
