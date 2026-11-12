@@ -33,7 +33,7 @@
 #   30  bundle, env, lock, pull or database start failed: nothing changed.
 # The last line on stdout is one JSON object:
 #   {"result": "...", "sha": "...", "previous": "...", "duration_s": N}
-# No value from the env file is printed, and there is no `set -x`.
+# No value from the env file is printed, and command tracing (xtrace) is never on.
 set -euo pipefail
 
 BIN=/opt/classora/bin
