@@ -257,7 +257,8 @@ check-images:
 
 ## Build the edge image and smoke-test it in front of a stub API: SPA fallback, asset
 ## caching, security headers (against PRODUCTION_HEADERS), /api proxy, X-Forwarded-For,
-## unbuffered SSE, /health/* 404 and HSTS over HTTPS. Needs Docker, curl, jq and Node 24.
+## unbuffered SSE, /health/* 404, no Server/Via header, the 4 MB body cap and HSTS over HTTPS.
+## Needs Docker, curl, jq and Node 24.
 smoke-edge:
 	docker build --platform $(PLATFORM) -f infrastructure/docker/edge.Dockerfile -t $(WEB_IMAGE) .
 	infrastructure/docker/edge/smoke.sh $(WEB_IMAGE)

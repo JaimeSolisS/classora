@@ -143,6 +143,23 @@ check "/api gets no SPA Content-Security-Policy" "$(header Content-Security-Poli
 check "/api gets no X-Frame-Options" "$(header X-Frame-Options "$TMP/api.headers")" ""
 check "/api gets no Referrer-Policy" "$(header Referrer-Policy "$TMP/api.headers")" ""
 
+# 2b. No Server header on the edge's own responses or on proxied ones: the
+# stub sends Python's (#150 SR-03).
+check "GET / has no Server header" "$(header Server "$TMP/root.headers")" ""
+check "/api has no Server header (the upstream's is dropped)" "$(header Server "$TMP/api.headers")" ""
+check "/api has no Via header" "$(header Via "$TMP/api.headers")" ""
+
+# 2c. Request bodies are capped at 4 MB before they reach the API (#150 SR-02):
+# an import-sized body (3 MB) passes whole; a 5 MB one is 413 at the edge.
+head -c 3000000 /dev/zero >"$TMP/body-3mb"
+head -c 5000000 /dev/zero >"$TMP/body-5mb"
+check "POST /api 3 MB body status" "$(get post3 "$HTTP/api/echo" -X POST -H 'Expect:' \
+  -H 'Content-Type: application/octet-stream' --data-binary "@$TMP/body-3mb" || true)" 200
+check "POST /api 3 MB body reaches the upstream whole" "$(jq -r '.received' "$TMP/post3.body")" 3000000
+check "POST /api 5 MB body status" "$(get post5 "$HTTP/api/echo" -X POST -H 'Expect:' \
+  -H 'Content-Type: application/octet-stream' --data-binary "@$TMP/body-5mb" 2>/dev/null || true)" 413
+check "POST /api 5 MB body gets no upstream answer" "$(header X-Smoke-Upstream "$TMP/post5.headers")" ""
+
 # 3. A client-sent X-Forwarded-For is replaced by the TCP peer, the address
 # Caddy logs as remote_ip in its JSON access log on stdout.
 get xff "$HTTP/api/echo?xff-check" -H 'X-Forwarded-For: 1.2.3.4' >/dev/null

@@ -60,4 +60,6 @@ EXPOSE 8000
 # --timeout-graceful-shutdown 5: open live-notification streams (#42) never
 # finish on their own, so on stop uvicorn cancels them after 5 s and then runs
 # the lifespan shutdown, well within Docker's 10 s stop timeout.
-CMD ["uvicorn", "--factory", "app.main:create_app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--no-proxy-headers", "--timeout-graceful-shutdown", "5"]
+# --no-server-header: no "server: uvicorn" product name (#150 SR-03; the edge
+# also drops any Server header).
+CMD ["uvicorn", "--factory", "app.main:create_app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--no-proxy-headers", "--no-server-header", "--timeout-graceful-shutdown", "5"]
