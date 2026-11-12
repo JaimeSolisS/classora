@@ -31,4 +31,7 @@ module "app_host" {
   hosted_zone_id = data.terraform_remote_state.bootstrap.outputs.hosted_zone_id
   hostnames      = ["dev.classora.dev"]
   acme_ca        = var.acme_ca
+  archive_bucket = data.terraform_remote_state.bootstrap.outputs.archive_bucket
+  # DEV never archives real data: its final-dump drill writes here (#616).
+  archive_prefix = "dev-drill"
 }

@@ -67,3 +67,19 @@ variable "extra_sg_ids" {
   type        = list(string)
   default     = []
 }
+
+variable "archive_bucket" {
+  description = "The long-lived archive bucket (bootstrap root) for the final dump at shutdown (ADR-0013)."
+  type        = string
+}
+
+variable "archive_prefix" {
+  description = "This environment's prefix in the archive bucket: the env name (prod), or a drill-only prefix (dev-drill). Defaults to the env name."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.archive_prefix == null || can(regex("^[a-z0-9-]+$", var.archive_prefix))
+    error_message = "archive_prefix is lowercase letters, digits and dashes."
+  }
+}

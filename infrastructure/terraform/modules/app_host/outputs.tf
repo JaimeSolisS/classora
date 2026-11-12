@@ -27,3 +27,8 @@ output "deploy_document" {
   description = "The SSM document the deploy workflow sends (only parameter: sha)."
   value       = aws_ssm_document.deploy.name
 }
+
+output "snapshot_policy_id" {
+  description = "The Data Lifecycle Manager policy that snapshots the data volume."
+  value       = aws_dlm_lifecycle_policy.data.id
+}

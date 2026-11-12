@@ -25,6 +25,9 @@ locals {
     site_addresses = join(", ", var.hostnames)
     acme_ca        = var.acme_ca
     instance_id    = aws_instance.this.id
+    # Where final-dump.sh writes (ADR-0013, #616).
+    archive_bucket = var.archive_bucket
+    archive_prefix = local.archive_prefix
   }
 }
 
