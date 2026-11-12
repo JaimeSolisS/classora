@@ -137,7 +137,7 @@ No gap; no test added.
   timeout. `app/core/config.py` refuses `SESSION_COOKIE_SECURE=false` and an
   `http://` `APP_ORIGIN` unless `APP_ENV=local`. `render-env.sh` sets
   `SESSION_COOKIE_SECURE=true`. Clearing uses the same attributes:
-  `test_auth_login.py::test_logout_clears_the_cookie_with_the_same_attributes`.
+  `tests/integration/test_auth_login.py::test_logout_clears_the_cookie_with_the_same_attributes`.
 - **Token storage.** 32 random bytes; only the SHA-256 digest is stored
   (`hash_token`); the cookie value must be the canonical base64url of 32 bytes
   (`decode_token`).
@@ -301,3 +301,141 @@ repeats the port and `Host` checks on PROD after go-live.
 
 No path reaches the API, PostgreSQL, PgBouncer or Caddy's admin endpoint
 except through Caddy's site on 443 (and 80's redirect). AC2 holds.
+
+### Area 6: secrets
+
+- `make scan-secrets` (gitleaks v8.30.1, full history, all refs, redacted):
+  840 commits scanned, **no leaks found**.
+- Image secrets: the CI `images` job's `check-images.sh` reports "no secret
+  in Env" for all three images, and `make check-images` refuses a `.env` in
+  the build context. A separate Trivy `--scanners secret` run of the ECR
+  images was **not** run: it needs an ECR login and a pull of three arm64
+  images onto the 8 GB machine, and the ECR pull path is the one the BRIEF
+  warns about; gitleaks over the full history plus the `Env` check cover the
+  same sources (the images are built from the repository and receive no
+  secret at build time, ADR-0012). Recorded as a gap in method, not a finding.
+- DEV host, one read-only SSM shell command (`AWS-RunShellScript`, printing
+  names only): `/opt/classora/env/app.env` is mode `600 root:root`; the
+  `api` and `worker` containers carry neither `POSTGRES_PASSWORD` nor
+  `DATABASE_MIGRATION_URL` (the owner credential stays out, #165); their
+  variable names match `compose.app.yaml` (the empty `STORAGE_*` names are
+  the deferred file system's).
+- Deploy document: `modules/app_host/deploy.tf` `allowedPattern =
+  "^[0-9a-f]{40}$"` for `sha`.
+- GitHub: `gh secret list` (repository) is empty; the `dev` and `production`
+  environments hold no secret, only the variables `AWS_ROLE_ARN` and
+  `OPS_BUCKET`; the repository variable `AWS_ROLE_RELEASE_CHECK_ARN`. Matches
+  ADR-0012 (OIDC only).
+- OIDC trust (`infrastructure/terraform/bootstrap/github_oidc.tf`):
+  `aud = sts.amazonaws.com`; the deploy roles trust only
+  `repo:<owner>@<id>/<name>@<id>:environment:<dev|production>` (immutable
+  ids), the release-check role only `…:ref:refs/heads/main`. The environments'
+  deployment branch policies allow only `develop` (`dev`) and `main`
+  (`production`, with a required reviewer).
+- Parameter Store (`aws ssm describe-parameters`, names only):
+  `/classora/dev/owner_initial_password` still exists (SR-04).
+- **PROD was not touched.** One AWS read, `aws ec2 describe-instances`
+  without an instance filter, listed every running instance of the account,
+  the PROD instance's id and public IP included. No request, SSM command or
+  further read was sent to PROD; every later AWS call named the DEV or
+  monitoring resources explicitly.
+
+### Area 7: dependency posture
+
+- `make security` (2026-11-12, exit 0):
+  - `audit-api`: pip-audit 2.10.1 over 94 pinned packages of
+    `apps/api/uv.lock`: **no known vulnerabilities**;
+  - `audit-web`: `pnpm audit --audit-level high`: 2 moderate, 0 high, 0
+    critical (SR-07);
+  - `scan-secrets`: no leaks (area 6);
+  - `sast`: Semgrep 1.179.0, 1,863 files, INFO/WARNING pass 0 findings,
+    ERROR pass 0 findings.
+- Images (Trivy 0.75.0, HIGH and CRITICAL): CI `images` job on `7327b4c9` and
+  the `deploy-dev` pre-push scan on `4e962322`: api (debian 13.7) 109 HIGH,
+  web (Caddy binary) 27 HIGH, pgbouncer (debian 13.7) 117 HIGH, **0
+  CRITICAL**; most HIGH rows have no fixed version yet; 7 rows do (SR-06).
+- Exception files: `apps/api/pip-audit-ignore.txt` and `.trivyignore` have
+  no entries; `pnpm-workspace.yaml` has no `ignoreGhsas`; `.gitleaks.toml`
+  has four narrow allowlists (one rule, one path, an exact match), each still
+  needed for the files or the history it names.
+- Dependabot: alerts **disabled** (SR-01); version updates for GitHub
+  Actions only (`.github/dependabot.yml`, ADR-0016 E5). Code scanning: not
+  used (Semgrep in CI instead).
+- Runtimes (ADR-0001): Python 3.14, Node 24 (LTS), PostgreSQL 18.6,
+  `python:3.14-slim` and `caddy:2.11.4` by digest: all supported upstream.
+
+### Area 8: authorization
+
+Evidence only, no re-sweep.
+
+- `apps/api/tests/authz/idor.toml` (#149, checked by
+  `tests/unit/test_idor_inventory.py` in CI): 119 routes reachable by a
+  tutor, student or guardian with an id; 108 name their
+  hidden-equals-missing tests, 11 are `exempt` (shared catalog ids:
+  academic periods, classrooms, closures, education levels, evaluation
+  templates, subjects; and catalog-id filters on lists scoped by caller:
+  cohorts, groups, students, subjects, evaluation templates). **None is
+  `pending`.** Each exemption reason was read and holds.
+- `apps/api/tests/authz/jobs.toml` (#640, `tests/unit/test_job_inventory.py`):
+  21 Procrastinate tasks: 5 `reader_checked`, 1 `actor_rechecked` (import
+  commit), 15 `no_reader_output`.
+- **Nested body ids by hand.** A script walked the OpenAPI request bodies of
+  every in-scope route for `*_id`/`*_ids` below the top level and for UUID
+  fields of any other name:
+
+  | Route | Field | Scoped by | Test |
+  |---|---|---|---|
+  | `PUT /api/v1/class-sessions/{class_session_id}/attendance` | `marks[].student_id` | must be a participant of that session, else the same `422 student_not_participant` for unknown and foreign | `tests/integration/test_attendance.py::test_a_non_participant_is_the_same_422_for_unknown_and_foreign` |
+  | `PUT /api/v1/learning-plans/{plan_id}` | `objectives[].id`, `objectives[].milestones[].id` | `workflows/learning_plans.py::_id_issues`: each id must be this plan's (and the milestone's own objective's), else `422 objective_unknown` / `milestone_unknown` | `tests/integration/test_learning_plans.py::test_the_put_id_semantics` (unknown, foreign, repeated and moved ids) |
+  | `POST /api/v1/notifications/read-all` | `up_to` | must be one of the caller's notifications, else `404`; the update is filtered by recipient | `tests/integration/test_notifications.py::test_a_user_never_sees_counts_reads_or_bulk_reads_another_users_notifications` |
+
+- #640's side notes: notifications are not re-filtered at read time, and
+  skip notices are written for suspended users (SR-11, accepted); recipients
+  did not exclude deactivated guardian profiles (SR-05, fixed). "Delegation
+  revocation lacks its own test" is covered at request time by
+  `tests/integration/test_class_session_overrides.py::test_a_delegated_administrator_overrides_until_revoked`
+  and `tests/integration/test_payroll_workflow_access.py::test_n6_a_replay_after_the_delegation_is_revoked_is_403`;
+  jobs re-check the actor's permissions, not the delegation
+  row, so no job-side gap.
+
+### Area 9: availability notes
+
+Recorded only; #152 measures.
+
+- Receipt and payslip PDFs render in the API process
+  (`app/core/pdf.py`, `anyio.to_thread.run_sync`), not the worker (SR-12).
+- Bounds today: authentication and record policy on every PDF route; #163's
+  general limit, 600 requests per minute per client IP per API process; the
+  SSE cap of 10 streams per user per process; and, from this PR, a 4 MB
+  request-body cap at the edge (SR-02). The API container has a 512 MiB
+  memory limit (`compose.aws.yaml`).
+
+## Accepted risks
+
+- SR-07 (dev-tool moderate advisories), SR-08 (empty `200` for an unmatched
+  `Host`), SR-09 (no `includeSubDomains`/`preload`), SR-10 (full headers in
+  the host's edge log), SR-11 (no read-time notification re-filter), SR-12
+  (PDFs in the API process), SR-13 (Grafana's anonymous health endpoint),
+  SR-14 (HTTP/3 published, never admitted), SR-15 (FastAPI docs enabled but
+  unreachable): reasons in the findings table.
+- Already owner-accepted, not re-opened: `style-src 'unsafe-inline'` (#24
+  E2); the per-IP login limit shared behind one NAT (ADR-0008 D15).
+- No high finding, so no accepted-risk ADR.
+
+## Owner actions
+
+- **O1.** Turn on Dependabot alerts (Settings → Code security) (SR-01;
+  ADR-0016 "Owner-only GitHub settings").
+- **O2.** Delete `/classora/dev/owner_initial_password` from Parameter Store
+  now that the DEV Owner has signed in (SR-04).
+- **O3 (#156 go-live checklist).** Confirm `/classora/prod/owner_initial_password`
+  is deleted after the PROD bootstrap; re-run area 5's port, SNI and `Host`
+  checks against PROD; confirm the `server`/`via` headers are gone on PROD
+  after the release that carries this PR.
+
+## Follow-ups
+
+- **SR-06 (low):** refresh the image bases so the fixed HIGH advisories land
+  (`zlib1g` in the api and pgbouncer images, `apt` in pgbouncer, `go-jose/v4`
+  via a Caddy patch release), and decide whether fixable HIGH rows should
+  get a review date. Filed by the orchestrator from the engineer report.
