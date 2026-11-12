@@ -6,6 +6,12 @@ Description=Classora nightly database backup (pg_dump to S3)
 Requires=docker.service
 After=docker.service classora-data.service network-online.target
 Wants=network-online.target
+# A new host (PROD's first boot) has the timer from its user data but neither
+# backup.sh (release-only) nor a database until the first release: skip, don't
+# fail (QA #616 O4). A skipped run is not a success: the "no successful backup
+# in 26 hours" alert still covers a host with a running app (#617).
+ConditionPathExists=/opt/classora/bin/backup.sh
+ConditionPathExists=/srv/classora-data/releases/current/images.env
 
 [Service]
 Type=oneshot
