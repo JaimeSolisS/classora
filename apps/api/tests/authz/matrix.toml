@@ -7,6 +7,8 @@
 # - tests/integration/test_permission_matrix.py sends one request per entry and
 #   role (plus anonymous, plus a delegated Administrator for delegable
 #   permissions) and checks the outcome.
+# - Record-level (IDOR) tests of the routes a tutor, student or guardian can
+#   call with a record id are listed in tests/authz/idor.toml (#149).
 #
 # Adding an entry: one [[route]] table per method and path template (as FastAPI
 # writes it, for example "/api/v1/users/{user_id}"). Keep the entries sorted by

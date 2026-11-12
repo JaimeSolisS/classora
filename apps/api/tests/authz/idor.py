@@ -103,7 +103,8 @@ def _resolve(document: Mapping[str, Any], schema: Any) -> Any:
 
 
 def _top_level_properties(document: Mapping[str, Any], schema: Any) -> set[str]:
-    """Property names of a body schema, through ``$ref``/``anyOf``/``oneOf``/``allOf``."""
+    """Property names of a body schema, through ``$ref`` and the
+    ``anyOf``/``oneOf``/``allOf`` combinators."""
     names: set[str] = set()
     pending = [schema]
     visited = 0

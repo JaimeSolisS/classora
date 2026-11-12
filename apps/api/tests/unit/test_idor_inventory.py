@@ -231,8 +231,8 @@ def test_every_planted_problem_is_reported(tmp_path: Path):
             "GET /things/{thing_id}: unknown field 'extra'",
             "GET /things/{thing_id}: test 'tests/integration/test_things.py::helper':"
             " no such test function",
-            "GET /things/{thing_id}: test 'tests/integration/test_nope.py::test_hidden':"
-            " no such file",
+            "GET /things/{thing_id}: test"
+            " 'tests/integration/test_nope.py::test_hidden': no such file",
             "GET /things/{thing_id}: test"
             " 'tests/integration/test_things.py::test_hidden[a]':"
             " name a parametrized test without its [...]",

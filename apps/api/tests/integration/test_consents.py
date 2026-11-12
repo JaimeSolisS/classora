@@ -329,7 +329,12 @@ def test_another_partys_guardian_id_is_answered_like_a_missing_one(
 
     def attempt(guardian_id: str) -> Any:
         return give(
-            client, cookie, sid(world, student), guardian_id, scope=scope, method="in_app"
+            client,
+            cookie,
+            sid(world, student),
+            guardian_id,
+            scope=scope,
+            method="in_app",
         )
 
     foreign, missing = attempt(gid(world, "G4")), attempt(MISSING)

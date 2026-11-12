@@ -283,6 +283,20 @@ describes the route declarations and the 401/403/404 rule.
   `assert_same_not_found(hidden_response, missing_response)` from
   `tests/authz/assertions.py`: both are `404 not_found` with identical bodies
   apart from `request_id` and the same headers.
+- **IDOR inventory** (#149): `apps/api/tests/authz/idor.toml` lists every
+  route a tutor, student or guardian can reach (from the matrix) that takes a
+  record id: a path parameter, or a query parameter or top-level JSON body
+  property named `*_id`/`*_ids` (from the OpenAPI). Each entry names the
+  integration test(s) proving another party's record is hidden: the same
+  status and Problem code as a missing id for detail and unsafe routes (unsafe
+  ones also show the record unchanged; new tests use
+  `assert_same_not_found`), or the other party's rows absent for lists. A
+  route whose ids are all shared catalog ids is `exempt` with a reason; a
+  leak too big for its issue is `pending = "#<bug>"`. A new scoped route, or
+  a new `*_id` query or body field on one, fails
+  `tests/unit/test_idor_inventory.py` (`missing IDOR entry`) until it has an
+  entry; a cited test that no longer exists fails it too. The file header
+  says how to add one.
 - **Visibility tests** (#67): a read that shows rows by state (the
   role-scoped schedules) is tested for every state × the fact it depends on
   (`first_confirmed_at` set or `NULL`), through the real route, against the
@@ -346,7 +360,9 @@ describes the route declarations and the 401/403/404 rule.
   that does not exist. Record policies (`can_<action>_<resource>`) are
   unit-tested per role.
 - Background jobs, generated files and presigned links are checked as well,
-  not only endpoints (M10-01 sweeps them all); they use `ensure_permission`.
+  not only endpoints; they use `ensure_permission`. Routes and generated
+  files are in the IDOR inventory (#149); background jobs' reader checks are
+  #640 (M10-01b).
 
 ## Audit
 

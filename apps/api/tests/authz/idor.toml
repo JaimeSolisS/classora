@@ -532,8 +532,9 @@ path = "/api/v1/progress-reports"
 tests = [
     "tests/integration/test_progress_reports.py::test_the_working_list",
     "tests/integration/test_progress_reports.py::test_the_hidden_reports_get_the_same_404",
+    "tests/integration/test_progress_reports.py::test_the_family_reads",
 ]
-note = "Another tutor filtering by a tutor's student_id sees nothing; families get the unknown-id 404 (test_the_family_reads)."
+note = "Another tutor filtering by a tutor's student_id sees nothing; families get the unknown-id 404."
 
 [[route]]
 method = "POST"
@@ -730,7 +731,10 @@ note = "subject_id is a catalog id."
 [[route]]
 method = "GET"
 path = "/api/v1/students/{student_id}/notes"
-tests = ["tests/integration/test_session_notes.py::test_the_student_history"]
+tests = [
+    "tests/integration/test_session_notes.py::test_the_student_history",
+    "tests/integration/test_session_notes_leak.py::test_no_family_response_carries_a_hidden_note",
+]
 
 [[route]]
 method = "GET"
