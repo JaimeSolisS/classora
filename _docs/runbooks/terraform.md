@@ -21,7 +21,7 @@ How the AWS infrastructure is planned, applied and destroyed ([ADR-0011](../adr/
 
 Each root has its own state, `<root>/terraform.tfstate` in the state bucket (`envs/<name>/terraform.tfstate` for environments), locked with S3 native lock files. Every resource carries `Project=classora`, `Environment=<root>` and `ManagedBy=terraform`.
 
-The deploy roles trust only this repository's **immutable** OIDC subjects: the repository has `use_immutable_subject: true` (`gh api repos/JaimeSolisS/classora/actions/oidc/customization/sub`), so a job in GitHub environment `dev` presents `sub = repo:JaimeSolisS@26722249/classora@1422814793:environment:dev` (`production` for PROD). The owner and repository IDs are the `github_owner_id` / `github_repository_id` variables (`gh api repos/JaimeSolisS/classora --jq '[.owner.id, .id]'`); if the repository is renamed or the subject setting changes, update them and re-apply `bootstrap`. Any job that names the environment can assume its role, so the `dev` environment's deployment branches are restricted to `develop` (M9-07, [`deploy.md`](deploy.md#github-environment-dev)), and M9-10 must create the `production` environment restricted to `main` with the owner as required reviewer.
+The deploy roles trust only this repository's **immutable** OIDC subjects: the repository has `use_immutable_subject: true` (`gh api repos/JaimeSolisS/classora/actions/oidc/customization/sub`), so a job in GitHub environment `dev` presents `sub = repo:JaimeSolisS@26722249/classora@1422814793:environment:dev` (`production` for PROD). The owner and repository IDs are the `github_owner_id` / `github_repository_id` variables (`gh api repos/JaimeSolisS/classora --jq '[.owner.id, .id]'`); if the repository is renamed or the subject setting changes, update them and re-apply `bootstrap`. Any job that names the environment can assume its role, so the `dev` environment's deployment branches are restricted to `develop` (M9-07, [`deploy.md`](deploy.md#github-environment-dev)), and the `production` environment is restricted to `main` with the owner as required reviewer (M9-10, [`release.md`](release.md#github-environment-production-and-variables)). `release-prod`'s pre-approval `verify` job uses a third, read-only role, `classora-gha-release-check`, which trusts `…:ref:refs/heads/main` (jobs on `main` without an environment).
 
 The account-wide GitHub Actions OIDC provider (`token.actions.githubusercontent.com`) already exists in the account and belongs to another project. `bootstrap` only reads it. If it is ever removed, the deploy roles stop working until a provider for that URL exists again.
 
@@ -78,7 +78,7 @@ make tf-destroy ENV=<root>   # plans the destroy, shows it, asks "Type the root 
 ```
 
 - `bootstrap` is refused: the state bucket, the zone and the archive bucket carry `prevent_destroy`, and the zone holds the registrar's NS records.
-- `prod` is refused until M9-10 (#618) adds the verified final-dump guard (ADR-0013).
+- `prod` is refused unless the archive holds a verified final dump newer than PROD's launch, data volume and last deploy (`infrastructure/scripts/prod-destroy-guard.sh`, ADR-0013). The whole end-of-window sequence is `make env-teardown` ([`teardown.md`](teardown.md)).
 - `shared` removes the VPC and the ECR repositories **including their images** (`force_delete`). Destroy the `envs/*` roots first.
 - To preview without the prompt: `terraform -chdir=infrastructure/terraform/<root> plan -destroy`.
 

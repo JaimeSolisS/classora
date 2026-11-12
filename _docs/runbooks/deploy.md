@@ -1,6 +1,6 @@
 # Runbook: DEV deploys
 
-How a merge reaches DEV, how to read a failed deploy, and how to redeploy or roll back by hand. The decisions behind it are in [ADR-0011](../adr/0011-infrastructure-as-code-images-and-release.md) and [ADR-0012](../adr/0012-secrets-and-configuration-delivery.md). The host itself (layout, units, Session Manager) is in [`host.md`](host.md). PROD and promotion come with M9-10.
+How a merge reaches DEV, how to read a failed deploy, and how to redeploy or roll back by hand. The decisions behind it are in [ADR-0011](../adr/0011-infrastructure-as-code-images-and-release.md) and [ADR-0012](../adr/0012-secrets-and-configuration-delivery.md). The host itself (layout, units, Session Manager) is in [`host.md`](host.md). PROD releases promote DEV's tested images: [`release.md`](release.md).
 
 Every AWS command below uses the owner's profile: `export AWS_PROFILE=jsolisdev AWS_REGION=us-east-2`.
 

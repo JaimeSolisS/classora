@@ -79,6 +79,12 @@ Resolves architecture §10 **ISSUE-I5**, **ISSUE-I6** and **ISSUE-I10** (superse
 
 M9-02 (#610) adds the arm64 image checks to CI; M9-05 (#613) creates the Terraform foundation (`bootstrap`, `shared`); M9-06 (#614) the DEV host; M9-07 (#615) the DEV publish and deploy workflow; M9-10 (#618) PROD, the release workflow and teardown.
 
+## Amendments
+
+### A1. A read-only role for the pre-approval check (2026-11-12, #618)
+
+`classora-gha-prod` trusts only jobs in the `production` environment, and every such job waits for the owner's approval. The refusals above must happen **before** an approval is requested, so `release-prod.yml`'s `verify` job uses a third role, `classora-gha-release-check` (`bootstrap`). It trusts only this repository's jobs on `main` without an environment (immutable subject `…:ref:refs/heads/main`) and may only describe `classora/*` images, read `/classora/prod/instance_id` and describe instances. It can't push, tag, deploy or read a secret. Because the deploy and the `prod-<sha>` tag both need `classora-gha-prod`, they run in the one approved `deploy` job; the Git tag is a separate job with `contents: write` and no AWS access.
+
 ## Consequences
 
 - ISSUE-I6 is solved without fast-forward-only `main`: PROD deploys the release PR's head commit, so the release-merge method doesn't matter.

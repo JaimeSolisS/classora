@@ -100,10 +100,10 @@ Before an environment that holds real data (PROD) is destroyed, on its host:
 /opt/classora/bin/final-dump.sh
 ```
 
-1. `backup.sh --archive` writes `classora.dump` and `counts.json` to `s3://classora-archive-<suffix>/<prefix>/<UTC timestamp>/`. The bucket and prefix are the parameters `/classora/<env>/archive_bucket` and `archive_prefix`: `prod` for PROD (M9-10), the drill-only `dev-drill` for DEV. The host may only put and get objects under its own prefix.
+1. `backup.sh --archive` writes `classora.dump` and `counts.json` to `s3://classora-archive-<suffix>/<prefix>/<UTC timestamp>/`. The bucket and prefix are the parameters `/classora/<env>/archive_bucket` and `archive_prefix`: `prod` for PROD, the drill-only `dev-drill` for DEV. The host may only put and get objects under its own prefix.
 2. `restore.sh` restores that archive object into the scratch container and compares the counts.
 3. Only if every table matches, it writes `verified.json` (dump, time, tables) next to them, and logs `{"event": "final-dump", "status": "verified", …}`.
 
-The archive is versioned, encrypted and kept 365 days (Glacier after 30). `make tf-destroy ENV=prod` refuses without a verified final dump (M9-10, #618). DEV is destroyed without one; its `dev-drill/` objects come only from drills and are deleted afterwards (noncurrent versions expire after 30 days).
+The archive is versioned, encrypted and kept 365 days (Glacier after 30). `make tf-destroy ENV=prod` refuses without a verified final dump newer than PROD's last deploy ([`teardown.md`](teardown.md)). DEV is destroyed without one; its `dev-drill/` objects come only from drills and are deleted afterwards (noncurrent versions expire after 30 days).
 
 No dump or archive object is copied to DEV, a local machine or CI: restores happen on the environment's own host.

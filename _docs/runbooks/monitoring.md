@@ -6,7 +6,7 @@ Every command uses the owner's profile: `export AWS_PROFILE=jsolisdev AWS_REGION
 
 ## What runs where
 
-- **App hosts (DEV, later PROD):** the collector agent (`collector`, Compose profile `telemetry`) runs only while `/classora/shared/otlp_endpoint` exists. It ships host metrics, container stats and logs, `/var/log/classora/*.log` (the backup results), PostgreSQL and job metrics, readiness checks, and the API's and worker's OTLP. Without the parameter the agent doesn't start and the app exports nothing.
+- **App hosts (DEV and PROD):** the collector agent (`collector`, Compose profile `telemetry`) runs only while `/classora/shared/otlp_endpoint` exists. It ships host metrics, container stats and logs, `/var/log/classora/*.log` (the backup results), PostgreSQL and job metrics, readiness checks, and the API's and worker's OTLP. Without the parameter the agent doesn't start and the app exports nothing.
 - **The stack:** the gateway collector, Prometheus, Loki, Tempo and Grafana (Compose project `monitoring`), from the same files as the local profile (`infrastructure/observability/`), plus `infrastructure/host/monitoring/compose.monitoring.yaml`. Stores on the encrypted data volume under `/srv/classora-data/monitoring/`. Retention: metrics 15 days, logs and traces 7 days.
 - **Grafana:** `https://grafana.classora.dev`, through Caddy. Login is required; anonymous access and sign-up are off, and Grafana locks a user for 5 minutes after 5 failed logins.
 - **Alerts:** Grafana-managed rules (`grafana/provisioning/alerting/rules.yaml`) e-mail the owner through Amazon SES, from `alerts@classora.dev` (contact point `owner-email`, `infrastructure/host/monitoring/notifications.yaml`; repeat every 4 hours while firing, then a "resolved" e-mail).
