@@ -115,3 +115,189 @@ this PR; the rest are owner actions, one follow-up, or accepted.
 
 Fix size check (E3): every fix took well under an hour, with no migration, no
 OpenAPI change and no new dependency.
+
+## Verification log
+
+Commands run from the reviewer's Mac on 2026-11-12 (UTC times where they
+matter). Test node ids are relative to `apps/api`. No secret, cookie, token or
+parameter value is recorded.
+
+### Area 1: sessions
+
+No gap; no test added.
+
+- **Fixation.** Every login creates a new session and revokes the one on the
+  request cookie: `tests/integration/test_auth_login.py::test_every_login_creates_a_new_session`,
+  `::test_login_revokes_the_session_on_the_request_cookie`,
+  `::test_login_as_another_user_revokes_the_previous_users_session`,
+  `tests/integration/test_csrf.py::test_login_with_a_stale_cookie_and_no_token_rotates`.
+- **Cookie.** `app/modules/identity/sessions.py` `set_session_cookie`:
+  `__Host-` name when `SESSION_COOKIE_SECURE` (the default), `Secure`,
+  `HttpOnly`, `SameSite=Lax`, `Path=/`, no `Domain`, `Max-Age` = the absolute
+  timeout. `app/core/config.py` refuses `SESSION_COOKIE_SECURE=false` and an
+  `http://` `APP_ORIGIN` unless `APP_ENV=local`. `render-env.sh` sets
+  `SESSION_COOKIE_SECURE=true`. Clearing uses the same attributes:
+  `test_auth_login.py::test_logout_clears_the_cookie_with_the_same_attributes`.
+- **Token storage.** 32 random bytes; only the SHA-256 digest is stored
+  (`hash_token`); the cookie value must be the canonical base64url of 32 bytes
+  (`decode_token`).
+- **Timeouts.** Staff 30 min idle / 12 h absolute; tutor, student, guardian
+  7 days / 30 days; the strictest class wins: `tests/unit/test_session_limits.py`
+  (`test_idle_limit`, `test_absolute_limit_even_with_recent_activity`,
+  `test_an_expired_session_is_401_session_expired_before_the_csrf_check`).
+- **Revocation.** Suspend/archive: `tests/integration/test_user_states.py::test_suspending_or_archiving_revokes_the_users_sessions`;
+  role change: `tests/integration/test_session_revocation.py::test_adding_a_role_revokes_and_the_next_login_gets_the_new_class`,
+  `::test_removing_a_role_revokes_and_the_next_login_gets_the_new_class`;
+  password reset: `tests/integration/test_password_reset_redeem.py::test_issue_lookup_redeem_revokes_every_session`;
+  password change rotates the current session and ends every other:
+  `tests/integration/test_password_change.py::test_a_change_rotates_the_session_and_ends_every_other`.
+- **Logout** revokes server-side; the old cookie is then `401`:
+  `tests/integration/test_auth_session.py::test_login_me_logout_me`,
+  `::test_logout_twice_is_401_the_second_time`.
+- **Reauthentication** (ADR-0007 D10): `tests/integration/test_reauthenticate.py::test_reauthenticating_opens_a_five_minute_window`,
+  `::test_a_later_reauthentication_restarts_the_window`, plus the per-action
+  `reauth_required` tests (time-zone change, reversals, payroll confirms,
+  personal exports).
+- **Logs.** `tests/integration/test_auth_audit.py::test_no_password_token_or_hash_in_logs`,
+  `::test_no_password_token_or_hash_in_any_audit_row`,
+  `tests/integration/test_password_reset_redeem.py::test_no_password_or_token_reaches_a_log`,
+  `tests/unit/test_passwords.py::test_password_never_appears_in_errors_logs_or_output`.
+  One-time links carry their token in the URL fragment (`#token=`), which never
+  reaches a server or a log.
+
+### Area 2: CSRF
+
+- `app/core/csrf.py`: `require_trusted_origin` is an app-level dependency
+  (`app/main.py` `build_app`), so it runs on every route before
+  authentication: exactly one `Origin`, equal to `APP_ORIGIN`, on `POST`,
+  `PUT`, `PATCH`, `DELETE`. Signed-in routes also need `X-CSRF-Token` =
+  HMAC-SHA256 of the session token (`app/core/authz.py`), compared in constant
+  time. Tests: `tests/integration/test_origin.py`, `tests/integration/test_csrf.py`.
+- **No CORS.** No `CORSMiddleware` anywhere in `app/`. Live: a preflight
+  `OPTIONS` from `https://evil.example` → `405` with no `access-control-*`
+  header; `GET /api/v1/auth/me` with that `Origin` → `401`, no
+  `access-control-*` header.
+- **State-changing `GET`.** `build_app(include_dev_routes=True)` has 166 `GET`
+  routes. A script walked each handler and the app functions it calls (depth
+  4) for `session.add/delete/merge/flush`, `insert/update/delete(`, job
+  `defer`, audit writes and `last_seen`. Hits: `list.insert(0, …)` and
+  `dict.update(…)` in four list helpers (false positives). The download routes
+  (receipt and payslip PDFs, export files) write nothing. Verdicts:
+
+  | `GET` route(s) | What it writes | Verdict |
+  |---|---|---|
+  | Every signed-in route (session resolver `identity.service.resolve_session_principal`) | `auth_sessions.last_seen_at`, at most once a minute (`sessions.touch_session`) | Accepted: session bookkeeping, ADR-0007 D8; no business state |
+  | `GET /api/v1/notifications/stream` | Nothing (holds a subscription in memory) | No write |
+  | All others | Nothing | No write |
+
+  Marking notifications read is `POST` only (`/read-all`, `/{id}/read`).
+- **Live** (`POST https://dev.classora.dev/api/v1/auth/login`, a dummy body):
+
+  | `Origin` | Result |
+  |---|---|
+  | none | `403 csrf_failed` |
+  | `https://evil.example` | `403 csrf_failed` |
+  | `null` | `403 csrf_failed` |
+
+### Area 3: headers and CSP
+
+Live, `curl -sS -o /dev/null -D - https://dev.classora.dev<path>` (before
+this PR's edge change is deployed):
+
+| Response | Headers seen |
+|---|---|
+| `/`, `/some/deep/link` (SPA, `200`) | CSP exactly as `_docs/security-headers.md` (with the accepted `style-src 'unsafe-inline'`), `x-frame-options: DENY`, `x-content-type-options: nosniff`, `referrer-policy: strict-origin-when-cross-origin`, `permissions-policy` denying camera, microphone, geolocation, payment, usb, HSTS `max-age=31536000`, `cache-control: no-cache`, `server: Caddy` |
+| `/assets/index-*.js` | the same SPA headers, `cache-control: public, max-age=31536000, immutable` |
+| `/api/v1/auth/me` (`401`), `/api/v1/does-not-exist` (`404`) | `cache-control: no-store`, `nosniff`, `content-type: application/problem+json`, HSTS, `x-request-id`, `server: uvicorn`, `via: 1.1 Caddy` |
+| `429` from the general limit (area 4b) | `retry-after`, the same API headers |
+
+Everything matches `_docs/security-headers.md` except the product headers
+(SR-03, fixed). After this PR deploys, `server` and `via` are gone; the edge
+smoke test checks it on every image build.
+
+### Area 4: rate limits and client-IP spoofing
+
+Code and tests:
+
+- `app/core/client_ip.py`: `X-Forwarded-For` is read only when the TCP peer
+  is in `TRUSTED_PROXIES`, from the right; IPv6 keys by `/64`; a non-IP peer
+  is `unknown`. Tests: `tests/integration/test_rate_limits.py::test_a_spoofed_forwarded_for_is_ignored_without_trusted_proxies`,
+  `::test_a_trusted_proxy_gives_each_forwarded_client_its_own_counter`,
+  `tests/unit/test_client_ip.py`, `tests/unit/test_api_rate_limit.py::test_forwarded_for_from_an_untrusted_peer_is_ignored`.
+- Uvicorn runs with `--no-proxy-headers` (`tests/unit/test_api_image.py::test_the_api_command_disables_uvicorn_proxy_headers`).
+  `render-env.sh` sets `TRUSTED_PROXIES=172.30.0.10/32`, the edge's fixed
+  address. The Caddyfile has no `trusted_proxies`, so Caddy replaces any
+  client `X-Forwarded-For` with the TCP peer (`smoke.sh` "spoofed
+  X-Forwarded-For is replaced by the peer").
+- Limits (`app/core/ratelimit.py`): `login.ip` 50 requests / 15 min,
+  `login.username` 10 failures / 15 min (existing or not), `reauth.user` 5,
+  `token_redemption.ip` 20, `registration.ip` 10 / h, and the per-user
+  domain limits; #163's general limit 600 / min / IP per API process
+  (`app/core/api_rate_limit.py`); SSE `MAX_STREAMS_PER_USER = 10`
+  (`tests/integration/test_live_notifications.py::test_the_eleventh_stream_gets_429_and_a_closed_one_frees_a_place`).
+- Enumeration: one Argon2id verification against a dummy hash when the user
+  or hash is missing (`identity/auth.py`), and the same body:
+  `tests/integration/test_auth_login.py::test_no_account_enumeration`.
+- Neither DEV nor the monitoring host has an IPv6 address (no `AAAA`
+  record, `Ipv6Address: null`), so every client arrives over IPv4 with its
+  own address; the IPv6 rules in the security groups are inert today.
+
+Live:
+
+- **b. General limit.** 2026-11-12 17:34:01 UTC, 610 `GET /api/v1/auth/me`,
+  8 in parallel, each with a different `X-Forwarded-For`, `X-Real-IP`,
+  `Forwarded`, `True-Client-IP` and `CF-Connecting-IP`, all inside one minute
+  window (5.3 s): **600 × `401`, then 10 × `429`** with `Retry-After: 54`.
+  The spoofed headers never split the budget. (The 600 includes nothing
+  else: the window had just started.)
+- **a. Login limit** (run last). 2026-11-12 17:35:05 UTC, 51 failed logins
+  with distinct non-existent usernames (`sr150-nobody-01` …`-51`), the right
+  `Origin`, and the same five spoofed headers rotated per request: **50 ×
+  `401 invalid_credentials`, the 51st `429 rate_limited`** with
+  `Retry-After: 589` (the window ends 17:45). A first attempt at 17:34:32 was
+  void: it started inside 4b's blocked minute, so all 51 got the general
+  limit's `429` before reaching the login route (no login counter moved); it
+  was rerun once after the window. That rerun is why the probes total about
+  750 requests instead of the planned 700.
+
+### Area 5: edge bypass (reworded AC2)
+
+Live against DEV (Elastic IP `3.136.144.244`) and the monitoring host
+(`18.116.106.237`):
+
+| Check | Result |
+|---|---|
+| `curl -D - http://<DEV EIP>/` | `308` to `https://<EIP>/` (Caddy's HTTP→HTTPS redirect, nothing else) |
+| `https://<DEV EIP>/` with no SNI; `openssl s_client -noservername` | TLS alert 80 (internal error), no certificate: handshake fails |
+| `https://evil.example/api/v1/auth/me` resolved to the EIP (foreign SNI) | TLS handshake fails |
+| `https://dev.classora.dev/api/v1/auth/me` with `Host: evil.example` | `200`, 0 bytes, `server: Caddy`, no `x-request-id`: never reached the API (SR-08) |
+| `http://dev.classora.dev/api/v1/auth/me` | `308` to HTTPS |
+| `nc -z -G 5` to the DEV EIP on 22, 2019, 3000, 4317, 4318, 5432, 6432, 8000, 8080, 8443, 9090 | all closed or filtered |
+| `/health/live`, `/health/ready` | `404`, empty |
+| `/docs`, `/openapi.json` | the SPA's `index.html` (`/api/docs`, `/api/openapi.json` → API `404`) |
+| Monitoring EIP: 22, 2019, 3000, 3100, 3200, 4317, 4318, 9090, 9093, 8888 | all closed or filtered; only 80 and 443 open |
+| `https://grafana.classora.dev/` | `302 /login`; `/api/dashboards/home`, `/api/datasources` → `401` (no anonymous access) |
+
+Read-only AWS (`aws ec2 describe-security-groups`, profile `jsolisdev`):
+
+- `classora-dev-host`: TCP 80 and 443 from `0.0.0.0/0` and `::/0`, nothing else.
+- `classora-monitoring-host`: TCP 80 and 443 from anywhere; TCP 4318 only
+  from the `classora-dev-host` and `classora-prod-host` groups.
+
+Code: `infrastructure/host/compose.aws.yaml` publishes host ports only on
+`edge` (80, 443, 443/udp); `api` has `ports: !reset []`; `db`, `pgbouncer`,
+`worker` and `collector` publish nothing (confirmed on the DEV host with
+`docker ps`: only `classora-edge-1` has host bindings; `2019/tcp` is exposed
+inside the network, not published). Caddy's admin endpoint stays on
+`127.0.0.1:2019` inside the container (the healthcheck uses it from there).
+
+**PROD equivalence (code only, no request).** `infrastructure/terraform/envs/prod`
+uses the same `modules/app_host` (the same 80/443-only security group),
+deploys the same release bundle (`infrastructure/host/compose.aws.yaml`,
+`render-env.sh` with `TRUSTED_PROXIES`, `SESSION_COOKIE_SECURE=true`) and the
+same `web` image, built from `infrastructure/docker/edge/Caddyfile`. The live
+DEV results therefore stand for PROD's configuration; the #156 checklist
+repeats the port and `Host` checks on PROD after go-live.
+
+No path reaches the API, PostgreSQL, PgBouncer or Caddy's admin endpoint
+except through Caddy's site on 443 (and 80's redirect). AC2 holds.
