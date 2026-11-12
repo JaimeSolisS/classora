@@ -34,6 +34,24 @@ data "aws_iam_policy_document" "host" {
     ]
   }
 
+  # AmazonSSMManagedInstanceCore allows ssm:GetParameter(s) on every
+  # parameter: deny the app environments' paths (their database passwords and
+  # PROD's initial Owner password, #618). An explicit deny wins.
+  statement {
+    sid    = "DenyAppEnvironmentsParameters"
+    effect = "Deny"
+    actions = [
+      "ssm:GetParameter",
+      "ssm:GetParameters",
+      "ssm:GetParametersByPath",
+      "ssm:GetParameterHistory",
+    ]
+    resources = flatten([for env in ["dev", "prod"] : [
+      "arn:${local.partition}:ssm:${local.region}:${local.account_id}:parameter/classora/${env}",
+      "arn:${local.partition}:ssm:${local.region}:${local.account_id}:parameter/classora/${env}/*",
+    ]])
+  }
+
   statement {
     sid       = "DecryptThroughSsmOnly"
     actions   = ["kms:Decrypt"]

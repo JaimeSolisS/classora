@@ -37,8 +37,9 @@ flowchart LR
 environment runs on AWS (one EC2 host with Caddy HTTPS and the Compose stacks
 under systemd, created with Terraform), every merge to `develop` deploys
 to it automatically, its database is backed up nightly, and it is monitored,
-with e-mail alerts. There is no production
-environment yet. The stack is a FastAPI API with
+with e-mail alerts. A PROD environment exists on the same design; it deploys
+only from a release approved by the owner, which promotes the images DEV
+tested. The stack is a FastAPI API with
 liveness and readiness health checks, a PostgreSQL database reached through
 PgBouncer (schema managed with Alembic migrations), a background worker for
 queued and periodic jobs (Procrastinate), server-rendered PDF documents
@@ -591,7 +592,7 @@ unless a bullet says otherwise.
 - Pages and components are checked automatically for accessibility (axe) in
   light and dark themes.
 
-**Not built yet:** the rest of billing, PDF exports, and production deployment. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
+**Not built yet:** the rest of billing and PDF exports. See the [milestones](https://github.com/JaimeSolisS/classora/milestones) and
 [`_docs/tasks.md`](_docs/tasks.md).
 
 **Not in this version:** file uploads and documents (attachments, the shared
@@ -1347,16 +1348,20 @@ flowchart TB
   ci -->|red| local
   develop -->|"release pull request<br/>(owner)"| main
   develop -->|"automatic deploy<br/>(deploy-dev workflow)"| devenv
-  main -.->|"planned (M9):<br/>deploy after owner approval"| prodenv
+  main -->|"deploy after owner approval<br/>(release-prod workflow)"| prodenv
 ```
 
-Dashed arrows are not built yet: today merging to `main` deploys nothing.
 Every push to `develop` runs the `deploy-dev` workflow
 ([`.github/workflows/deploy-dev.yml`](.github/workflows/deploy-dev.yml)): it builds
 and checks the arm64 images, pushes them to ECR, deploys them to DEV, checks
 readiness and rolls back on failure. It is not part of `ci-required`, and it
 skips with a notice while DEV is destroyed
-([deploy runbook](_docs/runbooks/deploy.md)).
+([deploy runbook](_docs/runbooks/deploy.md)). Merging the `develop` → `main`
+release pull request runs the `release-prod` workflow
+([`.github/workflows/release-prod.yml`](.github/workflows/release-prod.yml)): it
+refuses a commit DEV never deployed, waits for the owner's approval in the
+protected `production` environment, deploys the same image digests to PROD
+and tags the release ([release runbook](_docs/runbooks/release.md)).
 
 GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on
 every pull request to `develop` or `main` and on pushes to both. Each check is
@@ -1449,7 +1454,11 @@ with tested restore drills ([restore runbook](_docs/runbooks/restore.md)).
 DEV is monitored: its collector agent ships metrics, logs and traces to a
 separate monitoring host (Grafana behind Caddy HTTPS with a login), whose
 alerts, missed or failed backups included, e-mail the owner through Amazon SES
-([monitoring runbook](_docs/runbooks/monitoring.md)). PROD is still planned.
+([monitoring runbook](_docs/runbooks/monitoring.md)). PROD runs the same host
+design, with its own data, backups and telemetry, and receives only approved
+releases ([release runbook](_docs/runbooks/release.md)). At the end of the
+environments' window, PROD's database is archived as a verified final dump
+before it is destroyed ([teardown runbook](_docs/runbooks/teardown.md)).
 DEV, PROD and the monitoring host are created and destroyed with Terraform:
 
 ```mermaid
@@ -1518,8 +1527,8 @@ flowchart TB
 ```
 
 DEV deploys on every merge to `develop`: the `deploy-dev` workflow sends the
-commit SHA to the host through the SSM deploy command. When M9 is built, PROD
-will deploy from a `main` release after the owner approves it. Logs, metrics and traces stay on
+commit SHA to the host through the SSM deploy command. PROD deploys from a
+`main` release after the owner approves it, with the same command. Logs, metrics and traces stay on
 the monitoring host's own disk, which can also run on DEV; the same stack
 already runs locally as an optional profile
 ([Observability (optional)](#observability-optional)). Alerts and the budget alarm reach the
@@ -1535,3 +1544,4 @@ owner by email.
 - [Testing guidelines](_docs/testing-guidelines.md) (test layers, fixtures, permission matrix, financial invariants, E2E, accessibility)
 - [Agent instructions](AGENTS.md)
 - [Delivery process](_docs/process.md) (agent workflow and contribution guidance)
+- [Runbooks](_docs/runbooks/index.md) (AWS environments: Terraform, hosts, deploys, releases, backups, monitoring, secrets, teardown)

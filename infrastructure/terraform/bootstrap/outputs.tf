@@ -22,3 +22,8 @@ output "gha_role_arns" {
   description = "Deploy role ARNs, set as GitHub repository variables by M9-07 / M9-10."
   value       = { for key, role in aws_iam_role.gha : key => role.arn }
 }
+
+output "gha_release_check_role_arn" {
+  description = "Read-only role of release-prod.yml's verify job (repository variable AWS_ROLE_RELEASE_CHECK_ARN, #618)."
+  value       = aws_iam_role.gha_release_check.arn
+}

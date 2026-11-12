@@ -1,8 +1,10 @@
-# Runbook: app hosts (DEV, later PROD)
+# Runbook: app hosts (DEV and PROD)
 
 How to reach, operate, replace and destroy a Classora app host. The decisions behind it are in [ADR-0010](../adr/0010-hosting-edge-and-https.md), [ADR-0011](../adr/0011-infrastructure-as-code-images-and-release.md) and [ADR-0012](../adr/0012-secrets-and-configuration-delivery.md). Terraform basics (backend, `make tf-*`) are in [`terraform.md`](terraform.md).
 
 Every command below uses the owner's profile: `export AWS_PROFILE=jsolisdev AWS_REGION=us-east-2`.
+
+PROD (`envs/prod`, #618) is the same module as DEV with `env = "prod"`: `app.classora.dev`, `/classora/prod/*`, `classora-prod-*` names, the deploy document `classora-deploy-prod`. The commands below name DEV; use `prod` for PROD. PROD releases come only through [`release.md`](release.md), and PROD is destroyed only after a verified final dump ([`teardown.md`](teardown.md)).
 
 ## Create
 
@@ -60,7 +62,7 @@ DEV gets the reference seeds and an Owner only. It never gets demo or simulated 
 - Caddy keeps its ACME account and certificates in `/srv/classora-data/caddy`, so reboots, redeploys and instance replacements keep the same certificate.
 - Let's Encrypt allows about 5 duplicate certificates per hostname per week. Only a destroyed data volume forces a new one.
 - `acme_ca` is a Terraform variable. Use `staging` only for automated tests: browsers reject staging certificates on `.dev`.
-- Before the first release you can obtain the certificate with the edge's base image, as on 2026-11-11 (#614). Run `caddy:2.11.4` pinned by digest as uid 10002, with `CAP_NET_BIND_SERVICE`, `/srv/classora-data/caddy:/data` and a two-line Caddyfile (`dev.classora.dev { file_server }`). Remove it before the first deploy, because the edge needs ports 80 and 443.
+- Before the first release you can obtain the certificate with the edge's base image, as on 2026-11-11 for DEV (#614) and 2026-11-12 for PROD (#618). Run `caddy:2.11.4` pinned by digest as uid 10002, with `CAP_NET_BIND_SERVICE`, `/srv/classora-data/caddy:/data` and a two-line Caddyfile (`dev.classora.dev { file_server }`). Remove it before the first deploy, because the edge needs ports 80 and 443.
 
 ## Reboot
 
