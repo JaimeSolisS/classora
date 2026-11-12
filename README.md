@@ -35,8 +35,8 @@ flowchart LR
 
 **Pre-alpha.** The features below run on a local development stack. A DEV
 environment runs on AWS (one EC2 host with Caddy HTTPS and the Compose stacks
-under systemd, created with Terraform), and every merge to `develop` deploys
-to it automatically. There is no production
+under systemd, created with Terraform), every merge to `develop` deploys
+to it automatically, and its database is backed up nightly. There is no production
 environment yet. The stack is a FastAPI API with
 liveness and readiness health checks, a PostgreSQL database reached through
 PgBouncer (schema managed with Alembic migrations), a background worker for
@@ -1442,8 +1442,11 @@ Milestone M9 builds this AWS setup
 DEV is deployed: its host runs Caddy with a Let's Encrypt certificate and the
 data and app stacks under systemd, receives every `develop` merge
 automatically ([deploy runbook](_docs/runbooks/deploy.md)), and is operated
-over SSM Session Manager ([host runbook](_docs/runbooks/host.md)). PROD, the monitoring host and
-backups are still planned. DEV and PROD are created and destroyed with Terraform:
+over SSM Session Manager ([host runbook](_docs/runbooks/host.md)). Its
+database is dumped to S3 every night and its data volume snapshotted daily,
+with tested restore drills ([restore runbook](_docs/runbooks/restore.md)).
+PROD and the monitoring host are still planned. DEV and PROD are created and
+destroyed with Terraform:
 
 ```mermaid
 flowchart TB
