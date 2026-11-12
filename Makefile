@@ -1,4 +1,4 @@
-.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability check-infra tf-plan tf-apply tf-destroy env-teardown monitoring-sync
+.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability check-infra tf-plan tf-apply tf-destroy env-teardown monitoring-sync load-test
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -76,10 +76,30 @@ TF := infrastructure/scripts/terraform.sh
 TF_ROOT_CHECK = @test -n "$(ENV)" || { echo "usage: make $@ ENV=<bootstrap|shared|dev|prod|monitoring>" >&2; exit 2; }
 
 ## Static infrastructure checks, no AWS credentials (CI job `infra`): terraform fmt -check
-## and validate for every root, shellcheck on infrastructure/scripts and infrastructure/host,
+## and validate for every root, shellcheck on infrastructure/scripts, infrastructure/host and infrastructure/load,
 ## and actionlint on .github/workflows.
 check-infra:
 	TERRAFORM_IMAGE=$(TERRAFORM_IMAGE) SHELLCHECK_IMAGE=$(SHELLCHECK_IMAGE) ACTIONLINT_IMAGE=$(ACTIONLINT_IMAGE) $(TF) check
+
+## Load test (#152, ADR-0018; runbook _docs/runbooks/load-test.md): k6 from K6_IMAGE against
+## TARGET (default DEV) with the scrubbed accounts of infrastructure/load/prepare-dataset.sh.
+## make load-test PROFILE=p1|p2|p3|staff-600 [TARGET=<url>] [VUS=<n>] [DURATION=<k6 duration>]
+## [K6_ARGS=--no-thresholds]. Results: infrastructure/load/out/<profile>-<UTC time>.json (gitignored).
+## DEV runs need load mode first (infrastructure/load/dev-up.sh). No repo secret is used.
+# k6 by multi-arch index digest (ADR-0016 style; the tag is informational).
+K6_IMAGE := grafana/k6:2.3.0@sha256:2dd4756ec6e14e62778916e1eb850108e4b499304c02df56760fa0bdb0fba0b8
+LOAD_TARGET = $(or $(TARGET),https://dev.classora.dev)
+load-test:
+	@case "$(PROFILE)" in p1|p2|p3|staff-600) ;; *) echo "usage: make load-test PROFILE=p1|p2|p3|staff-600 [TARGET=…] [VUS=…] [DURATION=…]" >&2; exit 2;; esac
+	@case "$(LOAD_TARGET)" in *app.classora.dev*) echo "load-test: PROD is never a target" >&2; exit 2;; esac
+	@test -f infrastructure/load/accounts.local.json || { echo "load-test: run infrastructure/load/prepare-dataset.sh first" >&2; exit 2; }
+	@mkdir -p infrastructure/load/out
+	docker run --rm -i -v "$(CURDIR)/infrastructure/load:/load:ro" \
+	  -v "$(CURDIR)/infrastructure/load/out:/out" \
+	  -e TARGET="$(LOAD_TARGET)" -e PROFILE="$(PROFILE)" -e VUS="$(VUS)" -e DURATION="$(DURATION)" -e THINK_MIN="$(THINK_MIN)" -e THINK_MAX="$(THINK_MAX)" -e DEBUG="$(DEBUG)" \
+	  -e ACCOUNTS=/load/accounts.local.json \
+	  $(K6_IMAGE) run --quiet $(K6_ARGS) \
+	  --summary-export "/out/$(PROFILE)-$$(date -u +%Y%m%dT%H%M%SZ).json" /load/k6/main.js
 
 ## Plan a Terraform root (AWS_PROFILE defaults to jsolisdev): make tf-plan ENV=<root>
 ## [ARGS='-replace=<address>']. Saves <root>/tfplan; the first bootstrap plan runs on local state.

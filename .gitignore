@@ -77,3 +77,8 @@ Thumbs.db
 *.swp
 *.swo
 *.log
+
+# --- Load test (#152, infrastructure/load) ------------------------------------
+# Scrubbed accounts (passwords) and dumps/results: never committed.
+infrastructure/load/accounts.local.json
+infrastructure/load/out/
