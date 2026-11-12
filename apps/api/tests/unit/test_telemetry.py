@@ -173,18 +173,21 @@ def test_off_creates_no_sdk_object_thread_or_middleware(extra_env):
 
 
 def test_off_adds_no_middleware_compared_with_develop():
-    # The stack create_app() builds on develop 9df7060, before #612.
+    # The stack create_app() builds on develop 9df7060, before #612, plus
+    # #163's general rate limit (on by default, inside the two conventions).
     probe = run_off_probe()
 
     assert probe["user_middleware"] == [
         "SecurityHeadersMiddleware",
         "RequestContextMiddleware",
+        "ApiRateLimitMiddleware",
     ]
-    assert probe["chain"][:6] == [
+    assert probe["chain"][:7] == [
         "ServerErrorMiddleware",
         "ExceptionTelemetryMiddleware",
         "SecurityHeadersMiddleware",
         "RequestContextMiddleware",
+        "ApiRateLimitMiddleware",
         "ExceptionMiddleware",
         "AsyncExitStackMiddleware",
     ]

@@ -91,6 +91,10 @@ class Settings(BaseSettings):
     # comma-separated IP addresses or CIDR networks. Empty: no proxy is
     # trusted and the client is always the TCP peer (app.core.client_ip).
     trusted_proxies: Annotated[tuple[TrustedProxy, ...], NoDecode] = ()
+    # The general API limit (ADR-0008 D16, #163; app.core.api_rate_limit):
+    # requests per minute per API process and client IP, health probes
+    # excepted. 0 turns it off.
+    api_rate_limit_per_minute: int = Field(default=600, ge=0, le=100_000)
     # Telemetry (ADR-0014, #612): the OTLP/HTTP base URL the API and worker
     # export traces, metrics and logs to (``/v1/traces`` etc. are appended).
     # Empty: telemetry is off and no OpenTelemetry SDK object is created

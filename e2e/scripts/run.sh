@@ -49,6 +49,9 @@ export API_PORT=$E2E_API_PORT
 export WEB_PORT=$E2E_WEB_PORT
 # The API accepts unsafe requests only from the web origin of this stack.
 export APP_ORIGIN=http://127.0.0.1:$E2E_WEB_PORT
+# The general API limit stays installed but out of reach: the parallel
+# Playwright run reaches the API from one client IP (#163).
+export API_RATE_LIMIT_PER_MINUTE=60000
 # The host demo steps reach the E2E database on its published ports: they
 # write as the owner (DATABASE_MIGRATION_URL); the runtime URLs only validate.
 export DATABASE_URL="postgresql://classora_app:$POSTGRES_APP_PASSWORD@127.0.0.1:$E2E_PGBOUNCER_PORT/$POSTGRES_DB"

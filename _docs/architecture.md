@@ -130,7 +130,7 @@ modules/<domain>/
 
 1. Caddy (the edge, [ADR-0010](adr/0010-hosting-edge-and-https.md)) terminates HTTPS and forwards `/api/*` to the API.
 2. Middleware assigns or propagates a **request ID** and starts an OTel span.
-3. Session cookie → server session lookup in PostgreSQL → CSRF check on unsafe methods → rate-limit check ([ADR-0008](adr/0008-rate-limiting-without-redis.md); sessions and CSRF in [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md)) → idempotency key on decorated financial routes, claimed in the request's transaction ([ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md); `app/core/idempotency.py`).
+3. General in-process rate limit per client IP, before routing and the session lookup (health probes exempt; `app/core/api_rate_limit.py`, #163) → session cookie → server session lookup in PostgreSQL → CSRF check on unsafe methods → authentication and domain rate-limit check ([ADR-0008](adr/0008-rate-limiting-without-redis.md); sessions and CSRF in [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md)) → idempotency key on decorated financial routes, claimed in the request's transaction ([ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md); `app/core/idempotency.py`).
 4. The route dependency resolves the current user and checks the **role permission**.
 5. The service loads the target record(s) and runs the **record-level policy** (ownership, guardian link, tutor assignment).
 6. The Unit of Work commits. Audit events, notifications and optimistic-version increments are written in the same transaction.
@@ -578,7 +578,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 - **Resolution — ACCEPTED** (ADR-0008, 2026-10-18): see [ADR-0008](adr/0008-rate-limiting-without-redis.md) for the thresholds and the client-IP rule.
   - **Authentication endpoints** (login, reauthentication, token redemption, registration): a PostgreSQL-backed fixed-window counter keyed by IP and account. It is correct across processes. Over the limit: `429` with `Retry-After`; no permanent lockout.
   - **Client IP:** the TCP peer, unless it is in `TRUSTED_PROXIES` (empty by default; Caddy in AWS); only then the right-most untrusted `X-Forwarded-For` entry. Caddy is the first hop and sets that header to the TCP peer ([ADR-0010](adr/0010-hosting-edge-and-https.md); M9-06 (#614) sets `TRUSTED_PROXIES` in AWS).
-  - **General API:** none in M2. A coarse in-process limit per worker process follows in #163 (M10-09, Phase 1 local hardening).
+  - **General API:** none in M2. Implemented in #163 (M10-09): a coarse in-process limit per API process and client IP, `API_RATE_LIMIT_PER_MINUTE` (default 600, `0` = off), health probes exempt (ADR-0008 amendment 2026-11-12).
   - A Caddy rate-limit module is not required.
 
 #### ISSUE-S4 — Session and CSRF parameters (M)

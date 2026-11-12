@@ -275,6 +275,51 @@ def test_the_scheduling_horizon_rejects_beyond_its_bounds(monkeypatch, value):
     assert "SCHEDULING_HORIZON_WEEKS" in message
 
 
+def test_the_general_api_limit_defaults_to_600_per_minute(monkeypatch):
+    set_env(monkeypatch, MINIMAL_ENV)
+
+    assert load_settings().api_rate_limit_per_minute == 600
+
+
+def test_an_empty_general_api_limit_means_the_default(monkeypatch):
+    set_env(monkeypatch, {**MINIMAL_ENV, "API_RATE_LIMIT_PER_MINUTE": ""})
+
+    assert load_settings().api_rate_limit_per_minute == 600
+
+
+@pytest.mark.parametrize("value", ["0", "1", "100000"])
+def test_the_general_api_limit_accepts_its_bounds(monkeypatch, value):
+    set_env(monkeypatch, {**MINIMAL_ENV, "API_RATE_LIMIT_PER_MINUTE": value})
+
+    assert load_settings().api_rate_limit_per_minute == int(value)
+
+
+@pytest.mark.parametrize("value", ["-1", "100001", "many"])
+def test_the_general_api_limit_rejects_beyond_its_bounds(monkeypatch, value):
+    message = config_error(
+        monkeypatch, {**MINIMAL_ENV, "API_RATE_LIMIT_PER_MINUTE": value}
+    )
+
+    assert "API_RATE_LIMIT_PER_MINUTE" in message
+    assert "Traceback" not in message
+
+
+def test_startup_exits_non_zero_on_an_invalid_general_api_limit():
+    result = run_api({**MINIMAL_ENV, "API_RATE_LIMIT_PER_MINUTE": "-1"})
+
+    output = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "API_RATE_LIMIT_PER_MINUTE" in output
+    assert "Traceback" not in output
+
+
+def test_compose_passes_the_general_api_limit_to_the_api_only():
+    line = "API_RATE_LIMIT_PER_MINUTE: ${API_RATE_LIMIT_PER_MINUTE:-}"
+
+    assert compose_service_environment("api").count(line) == 1
+    assert line not in compose_service_environment("worker")
+
+
 @pytest.mark.parametrize("app_env", ["dev", "prod"])
 def test_insecure_cookie_rejected_outside_local(monkeypatch, app_env):
     message = config_error(
@@ -575,6 +620,7 @@ def test_settings_reads_exactly_the_documented_variables():
         "WORKER_SHUTDOWN_TIMEOUT_SECONDS",
         "SCHEDULING_HORIZON_WEEKS",
         "TRUSTED_PROXIES",
+        "API_RATE_LIMIT_PER_MINUTE",
         "OTEL_EXPORTER_OTLP_ENDPOINT",
     }
 
