@@ -67,7 +67,8 @@ Resolves architecture §10 **ISSUE-O1**, **ISSUE-O2** and **ISSUE-O3** in [`../a
 - Spans keep `http.route` (the template), method and status. They drop the query string, `url.full`, request and response headers and bodies, and client address.
 - SQL spans carry the statement text with placeholders and never bind values.
 - Exception events keep the type and the stack frames. They drop the exception **message**, including the last traceback line, because driver messages such as asyncpg's `DETAIL: Key (username)=(…)` contain values.
-- Logs exported over OTLP pass through the same `redact()` as stdout. No user, student or guardian identifiers are added as span or metric attributes.
+- Logs exported over OTLP pass through the same `redact()` as stdout.
+- Procrastinate's own job lines keep the task name and job ID only. Job arguments and results are dropped from the message and the extras, on stdout and over OTLP (#624). No user, student or guardian identifiers are added as span or metric attributes.
 - A test plants distinctive personal data and asserts that none of it reaches any exported span, event, log or metric.
 
 ### Grafana access (O3)

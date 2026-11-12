@@ -16,6 +16,10 @@ because driver and validation messages quote submitted values (for example
 asyncpg's ``Key (username)=(...)``). The ``request_id``/``trace_id`` leads to
 the request instead.
 
+Procrastinate's own lines never carry job arguments or results
+(:func:`redact_job_arguments`, #624): ``task[id](...)`` keeps the task name and
+job ID only.
+
 Rule: **never interpolate secrets, tokens, credentials or personal data into the
 log message**. Only ``extra`` keys are redacted; the free-text ``message`` is
 written as is. Pass data as ``extra`` fields with descriptive key names.
@@ -178,6 +182,59 @@ def redact(value: Any) -> Any:
     return value
 
 
+# --- Job arguments (#624) ------------------------------------------------------
+# Procrastinate's own lines name a job by its "call string",
+# ``task[id](key=value, ...)``: in the message, and in the ``job``/``jobs``
+# extras next to ``task_kwargs``. The outcome line adds the task's return value
+# (``result``, and " - Result: ..." in the message). Arguments can identify a
+# record, so they are never logged: on stdout nor, through the same formatter,
+# over OTLP.
+JOB_LOGGER_PREFIX = "procrastinate"
+_JOB_ARGUMENTS = re.compile(r"\[(\w*)\]\(.*\)", re.DOTALL)
+_JOB_RESULT_SUFFIX = " - Result: "
+
+
+def _redacted_call_string(job: Mapping[str, Any]) -> str:
+    return f"{job.get('task_name')}[{job.get('id')}]({REDACTED})"
+
+
+def _job_contexts(record: logging.LogRecord) -> list[Mapping[str, Any]]:
+    contexts = [getattr(record, "job", None), *(getattr(record, "jobs", None) or [])]
+    return [job for job in contexts if isinstance(job, Mapping)]
+
+
+def _redact_job_context(job: Any) -> Any:
+    if not isinstance(job, Mapping):
+        return job
+    redacted = dict(job)
+    if "task_kwargs" in redacted:
+        redacted["task_kwargs"] = REDACTED
+    if "call_string" in redacted:
+        redacted["call_string"] = _redacted_call_string(job)
+    return redacted
+
+
+def redact_job_arguments(payload: dict[str, Any], record: logging.LogRecord) -> None:
+    """Drops job arguments and results from a Procrastinate line's ``payload``."""
+    message = str(payload["message"]).split(_JOB_RESULT_SUFFIX, 1)[0]
+    replaced = False
+    for job in _job_contexts(record):
+        call_string = job.get("call_string")
+        if isinstance(call_string, str) and call_string in message:
+            message = message.replace(call_string, _redacted_call_string(job))
+            replaced = True
+    if not replaced:
+        # A line without a job context (e.g. "Waiting for job to finish").
+        message = _JOB_ARGUMENTS.sub(rf"[\1]({REDACTED})", message)
+    payload["message"] = message
+    if "job" in payload:
+        payload["job"] = _redact_job_context(payload["job"])
+    if isinstance(payload.get("jobs"), list):
+        payload["jobs"] = [_redact_job_context(job) for job in payload["jobs"]]
+    if "result" in payload:
+        payload["result"] = REDACTED
+
+
 class JsonFormatter(logging.Formatter):
     """Formats a record as one JSON object on one line."""
 
@@ -196,6 +253,8 @@ class JsonFormatter(logging.Formatter):
             if key in _RECORD_ATTRIBUTES or key in _IGNORED_EXTRA or key in payload:
                 continue
             payload[key] = REDACTED if is_sensitive_key(key) else redact(value)
+        if record.name.startswith(JOB_LOGGER_PREFIX):
+            redact_job_arguments(payload, record)
         if record.exc_info:
             payload["exception"] = format_exception_without_message(*record.exc_info)
         if record.stack_info:

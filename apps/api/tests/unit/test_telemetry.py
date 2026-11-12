@@ -648,6 +648,34 @@ async def test_on_each_job_run_yields_a_job_span_without_its_arguments(exported)
     assert MARKER not in data
 
 
+@pytest.mark.anyio
+async def test_on_job_arguments_never_reach_an_exported_log(exported, capsys):
+    # Procrastinate's start and outcome lines would carry them (#624).
+    job_app = App(connector=InMemoryConnector())
+
+    @job_app.task(name="probe:args")
+    async def echo(note: str) -> str:
+        return note
+
+    async with job_app.open_async():
+        job_id = await echo.defer_async(note=MARKER)
+        await job_app.run_worker_async(
+            wait=False,
+            install_signal_handlers=False,
+            worker_middleware=telemetry.worker_middleware(),
+        )
+
+    bodies = [
+        json.loads(str(log.log_record.body))
+        for log in exported.logs.get_finished_logs()
+    ]
+    assert f"Starting job probe:args[{job_id}]([REDACTED])" in {
+        body["message"] for body in bodies
+    }
+    assert MARKER not in exported.everything()
+    assert MARKER not in capsys.readouterr().out
+
+
 def test_worker_options_put_the_job_span_outermost(exported):
     from app.core.jobs import record_job_failure
     from app.worker import worker_options
