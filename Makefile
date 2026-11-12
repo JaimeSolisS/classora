@@ -99,7 +99,7 @@ load-test:
 	  -e TARGET="$(LOAD_TARGET)" -e PROFILE="$(PROFILE)" -e VUS="$(VUS)" -e DURATION="$(DURATION)" -e THINK_MIN="$(THINK_MIN)" -e THINK_MAX="$(THINK_MAX)" -e DEBUG="$(DEBUG)" \
 	  -e ACCOUNTS=/load/accounts.local.json \
 	  $(K6_IMAGE) run --quiet $(K6_ARGS) \
-	  --summary-export "/out/$(PROFILE)-$$(date -u +%Y%m%dT%H%M%SZ).json" /load/k6/main.js
+	  --summary-export "$(or $(SUMMARY),/out/$(PROFILE)-$$(date -u +%Y%m%dT%H%M%SZ).json)" /load/k6/main.js
 
 ## Plan a Terraform root (AWS_PROFILE defaults to jsolisdev): make tf-plan ENV=<root>
 ## [ARGS='-replace=<address>']. Saves <root>/tfplan; the first bootstrap plan runs on local state.
