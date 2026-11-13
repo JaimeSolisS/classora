@@ -115,6 +115,36 @@ export const ChildSelected: Story = {
   },
 };
 
+// #418: a reversed payment keeps its badge and shows no credit amount.
+export const ReversedPayment: Story = {
+  args: {
+    payments: {
+      status: 'ready',
+      page: {
+        ...PAYMENTS,
+        items: [
+          familyPayment({
+            ...PAYMENTS_PAGE.items[0]!,
+            is_reversed: true,
+            reversed_at: '2026-10-15T17:00:00Z',
+            unallocated_amount: '500.00',
+          }),
+          ...PAYMENTS.items.slice(1),
+        ],
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getAllByText(i18n.t('billing.accounts.payments.reversed')).length,
+    ).toBeGreaterThan(0);
+    await expect(
+      canvas.getByText(i18n.t('familyBilling.payments.creditNotApplicable')),
+    ).toBeVisible();
+  },
+};
+
 export const OneChild: Story = {
   args: { summary: SUMMARY_ONE_CHILD },
   play: async ({ canvasElement }) => {
