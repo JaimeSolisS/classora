@@ -293,7 +293,6 @@ jobs:
           --health-interval 2s --health-timeout 3s --health-retries 30
     env:
       SHA: ${{ needs.probe.outputs.sha }}
-      PG_CONTAINER: ${{ job.services.postgres.id }}
       UV_LOCKED: "1"
       # Throwaway server on the runner, trust auth: no secret.
       APP_ENV: dev
@@ -320,6 +319,8 @@ jobs:
 
       - name: The service is the host's PostgreSQL pin
         if: env.BUILD_DEV_DATA == 'true'
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
         run: |
           set -euo pipefail
           host_pin=$(sed -n 's/^    image: \(postgres:[^ ]*\)$/\1/p' infrastructure/host/compose.aws.yaml)
@@ -357,6 +358,8 @@ jobs:
 
       - name: Dump and count
         if: env.BUILD_DEV_DATA == 'true'
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
         run: |
           set -euo pipefail
           docker exec "$PG_CONTAINER" pg_dump -U classora -d classora -Fc --no-owner --no-acl >dev-data.dump
