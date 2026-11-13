@@ -238,11 +238,19 @@ describe('the form (F3, H2)', () => {
     fill();
 
     act(() => buttonNamed(main(), 'Send request').click());
-    act(() => main().querySelector<HTMLButtonElement>('form button')!.click());
-    await click(main().querySelector<HTMLButtonElement>('form button')!);
+    act(() =>
+      main()
+        .querySelector<HTMLButtonElement>('form button[type="submit"]')!
+        .click(),
+    );
+    await click(
+      main().querySelector<HTMLButtonElement>('form button[type="submit"]')!,
+    );
 
     expect(api.calls(SUBMIT)).toHaveLength(1);
-    const button = main().querySelector<HTMLButtonElement>('form button')!;
+    const button = main().querySelector<HTMLButtonElement>(
+      'form button[type="submit"]',
+    )!;
     expect(button.disabled).toBe(true);
     expect(button.textContent).toContain('Sending…');
     await act(async () => {

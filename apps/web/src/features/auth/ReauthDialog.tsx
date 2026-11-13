@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { z } from '@/lib/forms';
 import { FieldError } from './FieldError';
 import { PASSWORD_MAX_LENGTH } from './LoginForm';
@@ -152,9 +152,8 @@ function ReauthDialogContent({
           <label htmlFor={passwordId} className="text-sm font-medium">
             {t('auth.reauth.password')}
           </label>
-          <Input
+          <PasswordInput
             id={passwordId}
-            type="password"
             autoComplete="current-password"
             aria-invalid={fieldError ? true : undefined}
             aria-describedby={fieldError ? errorId : undefined}

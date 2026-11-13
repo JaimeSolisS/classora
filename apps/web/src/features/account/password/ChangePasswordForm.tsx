@@ -7,6 +7,7 @@ import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { FieldError } from '@/features/auth/FieldError';
 import {
   PASSWORD_MAX_LENGTH,
@@ -201,9 +202,8 @@ export function ChangePasswordForm({
           <label htmlFor={ids.current} className="text-sm font-medium">
             {t('account.password.current')}
           </label>
-          <Input
+          <PasswordInput
             id={ids.current}
-            type="password"
             autoComplete="current-password"
             aria-invalid={currentMessage ? true : undefined}
             aria-describedby={currentMessage ? errorId(ids.current) : undefined}
@@ -217,9 +217,8 @@ export function ChangePasswordForm({
           <label htmlFor={ids.newPassword} className="text-sm font-medium">
             {t('account.password.new')}
           </label>
-          <Input
+          <PasswordInput
             id={ids.newPassword}
-            type="password"
             autoComplete="new-password"
             aria-invalid={newMessage ? true : undefined}
             aria-describedby={
@@ -238,9 +237,8 @@ export function ChangePasswordForm({
           <label htmlFor={ids.confirm} className="text-sm font-medium">
             {t('account.password.confirm')}
           </label>
-          <Input
+          <PasswordInput
             id={ids.confirm}
-            type="password"
             autoComplete="new-password"
             aria-invalid={confirmMessage ? true : undefined}
             aria-describedby={confirmMessage ? errorId(ids.confirm) : undefined}

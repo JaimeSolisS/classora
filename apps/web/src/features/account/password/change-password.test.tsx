@@ -160,6 +160,33 @@ describe('the form (K2)', () => {
     expect(app.location()).toBe('/account/password');
   });
 
+  it('each field has its own show/hide toggle; a submit hides them all (#664)', async () => {
+    stub(() => problem(422, 'password_too_short'));
+    app = await renderApp('/account/password');
+    const labels = ['Current password', 'New password', 'Confirm new password'];
+    const toggle = (label: string) =>
+      main().querySelector<HTMLButtonElement>(
+        `button[aria-controls="${field(label).id}"]`,
+      )!;
+    for (const label of labels) {
+      expect(field(label).type).toBe('password');
+      expect(toggle(label).getAttribute('aria-label')).toBe('Show password');
+    }
+
+    await click(toggle('New password'));
+    expect(field('New password').type).toBe('text');
+    expect(field('Current password').type).toBe('password');
+    expect(field('Confirm new password').type).toBe('password');
+
+    await click(toggle('Current password'));
+    await click(toggle('Confirm new password'));
+    await fillAndSubmit();
+
+    for (const label of labels) {
+      expect(field(label).type).toBe('password');
+    }
+  });
+
   it.each(['password_too_short', 'password_equals_username'])(
     '%s attaches to the new-password field',
     async (code) => {
