@@ -114,6 +114,7 @@ if [ "$run_api" = 1 ]; then
   shard=1
   while [ "$shard" -le "$SHARDS" ]; do
     # The docker socket path is the daemon's (on Docker Desktop, its VM's).
+    # shellcheck disable=SC2016 # expanded by the container's shell
     start "api-$shard" \
       -v /var/run/docker.sock:/var/run/docker.sock \
       --add-host=host.docker.internal:host-gateway \
@@ -127,6 +128,7 @@ fi
 if [ "$run_web" = 1 ]; then
   # Both suites always run; the part fails if either fails. Two Vitest workers:
   # the API shards share the CPU, and a starved full-app render times out.
+  # shellcheck disable=SC2016 # expanded by the container's shell
   start web "$WEB_IMAGE" sh -c 'corepack pnpm --filter @classora/web test --maxWorkers=2; web=$?;
     corepack pnpm --filter @classora/api-client test; client=$?;
     [ "$web" -eq 0 ] && [ "$client" -eq 0 ]'
