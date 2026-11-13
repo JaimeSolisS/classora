@@ -100,7 +100,7 @@ NOT_EMPTY_MESSAGE: Final = (
 )
 OTHER_LANGUAGE_MESSAGE: Final = (
     "The database holds the {other} simulation; use a separate database"
-    ' (README "Simulated operations data")'
+    ' (_docs/Full_README.md "Simulated operations data")'
 )
 LANGUAGE_NAMES: Final[dict[Language, str]] = {"es": "Spanish", "en": "English"}
 

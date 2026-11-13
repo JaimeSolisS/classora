@@ -10,7 +10,7 @@
 # 3. scrubs it (scrub.py): new random passwords for every sign-in account,
 #    written only to infrastructure/load/accounts.local.json (gitignored,
 #    0600); sessions, account tokens, idempotency keys and rate-limit counters
-#    emptied; the current privacy notice accepted; the README's
+#    emptied; the current privacy notice accepted; the full README's
 #    classora-sim-* passwords proven to fail;
 # 4. pg_dump -Fc --no-owner --no-acl to infrastructure/load/out/classora.dump
 #    (gitignored) and prints the main tables' row counts;

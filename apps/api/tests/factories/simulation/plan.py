@@ -94,7 +94,7 @@ SUBJECT_LEVELS: Final[dict[str, str]] = {
 # --- Passwords and fixed usernames (E6; ADR-0007 amendment) -------------------
 
 # Local development placeholders, never real credentials: the simulation runs
-# only with APP_ENV=local (E5). Documented in the README ("Simulated
+# only with APP_ENV=local (E5). Documented in _docs/Full_README.md ("Simulated
 # operations data").
 OWNER_PASSWORD: Final = "classora-sim-owner"
 ADMIN_PASSWORD: Final = "classora-sim-admin"

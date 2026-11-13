@@ -10,7 +10,7 @@
 #   admin password, root URL and SMTP).
 #
 # Only Grafana publishes a port, on 127.0.0.1. Every service has a hard
-# mem_limit (the local defaults add up to under 700 MB; README "Observability
+# mem_limit (the local defaults add up to under 700 MB; _docs/Full_README.md "Observability
 # (optional)"). Images are pinned by tag and multi-arch index digest
 # (ADR-0001 "Observability images"); every one has linux/amd64 and linux/arm64.
 

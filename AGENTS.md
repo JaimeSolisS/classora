@@ -8,8 +8,8 @@
   or introduce Redis/Celery/RDS without a new approved ADR.
 - Use tests, migrations and authorization checks suited to the change.
 - Document findings and exact test commands/results in the issue.
-- AFTER EVERY ISSUE OR FOLLOW-UP CODING PROMPT: review root `README.md`.
-  Update only if public onboarding, implemented capabilities, tech stack,
+- AFTER EVERY ISSUE OR FOLLOW-UP CODING PROMPT: review root `README.md`
+  (short overview) and `_docs/Full_README.md` (full reference). Update only if public onboarding, implemented capabilities, tech stack,
   verified commands, deployment status or links changed. Never put task logs
   or internal notes in the README. Report one of:
   `README updated: ...` / `README reviewed: no update necessary`.

@@ -1,4 +1,4 @@
-.PHONY: dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability check-infra tf-plan tf-apply tf-destroy env-teardown monitoring-sync load-test
+.PHONY: start dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability check-infra tf-plan tf-apply tf-destroy env-teardown monitoring-sync load-test
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -27,6 +27,14 @@ SEMGREP_CONFIGS := --config p/python --config p/javascript --config p/typescript
 SEMGREP_TARGETS := apps/api/app apps/api/migrations apps/web/src packages
 SEMGREP = docker run --rm $(REPO_MOUNT) $(SEMGREP_IMAGE) \
 	semgrep scan --metrics=off --disable-version-check --no-git-ignore $(SEMGREP_CONFIGS) $(SEMGREP_TARGETS)
+
+## One command for a first (or any) local start: create .env from .env.example if it is
+## missing, apply the migrations, then start the stack (`make dev`). Safe to repeat.
+start:
+	@test -f .env || { cp .env.example .env && echo "Created .env from .env.example"; }
+	$(MAKE) migrate
+	$(MAKE) dev
+	@echo "Classora is up: http://127.0.0.1:$${WEB_PORT:-5173} (sign-in: see README 'Try it locally')"
 
 ## Build the images and start db, pgbouncer, api, worker and web in the background (idempotent).
 ## On a new checkout or volume run `make migrate` first: it creates the database role
@@ -160,7 +168,7 @@ reset-owner-password:
 	docker compose run --rm --build migrate python -m app.cli reset-owner-password --username "$(USERNAME)"
 
 ## Generate the simulated operations data in Spanish on the host (APP_ENV=local only; needs a freshly migrated database and .env).
-# A deterministic center from 1 Sep to 5 Dec 2026 (history to 18 Nov), through the services; README "Simulated operations data".
+# A deterministic center from 1 Sep to 5 Dec 2026 (history to 18 Nov), through the services; _docs/Full_README.md "Simulated operations data".
 seed-data-spanish:
 	cd apps/api && uv run --env-file ../../.env python -m tests.factories.simulation --language es
 

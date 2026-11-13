@@ -1,6 +1,6 @@
 # Runbook: monitoring (Grafana, alerts, telemetry)
 
-How the monitoring stack runs on AWS, how to log in, switch where it runs, change alerts and destroy it. The decisions are in [ADR-0014](../adr/0014-observability-error-tracking-and-alerting.md) and [ADR-0012](../adr/0012-secrets-and-configuration-delivery.md). The app hosts are in [`host.md`](host.md); Terraform basics in [`terraform.md`](terraform.md). The local profile (`make dev-observability`) is in the README.
+How the monitoring stack runs on AWS, how to log in, switch where it runs, change alerts and destroy it. The decisions are in [ADR-0014](../adr/0014-observability-error-tracking-and-alerting.md) and [ADR-0012](../adr/0012-secrets-and-configuration-delivery.md). The app hosts are in [`host.md`](host.md); Terraform basics in [`terraform.md`](terraform.md). The local profile (`make dev-observability`) is in the [full README](../Full_README.md).
 
 Every command uses the owner's profile: `export AWS_PROFILE=jsolisdev AWS_REGION=us-east-2`.
 

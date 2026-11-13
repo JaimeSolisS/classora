@@ -20,7 +20,7 @@ from tests.factories.simulation.plan import (
 )
 from tests.factories.simulation.texts import Language
 
-README = Path(__file__).resolve().parents[4] / "README.md"
+README = Path(__file__).resolve().parents[4] / "_docs" / "Full_README.md"
 
 SEED = 1
 """The ``--seed`` default the ``make seed-data-*`` targets run with."""

@@ -26,7 +26,7 @@ It builds the simulated center (`make seed-data-spanish`, FULL profile: 40 stude
 - every sign-in account gets a new random password, written only to the accounts file;
 - sessions, account tokens, idempotency keys and rate-limit counters are emptied;
 - the current privacy notice is accepted for every account;
-- the README's `classora-sim-*` passwords are checked against every stored hash and must all fail.
+- the full README's `classora-sim-*` passwords are checked against every stored hash and must all fail.
 
 It dumps the database (`pg_dump -Fc --no-owner --no-acl`) and uploads it to `s3://classora-dev-ops-…/backups/load-<YYYYMMDD>/classora.dump`. The nightly `restore.sh latest` only matches `backups/<YYYY-MM-DD>/`, so it never picks this object, and the bucket's 14-day lifecycle removes it if `dev-down.sh` does not.
 
