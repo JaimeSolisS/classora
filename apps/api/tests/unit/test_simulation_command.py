@@ -1,5 +1,6 @@
 """The simulated operations command without a database (#543 A1-A3): the
-make targets, the local-only guard, the arguments and the help."""
+make targets, the local-and-dev guard (widened to DEV by #674 AC1), the
+arguments and the help; the DEV visitor step's guard (#674 AC2)."""
 
 import os
 import subprocess
@@ -14,6 +15,7 @@ from tests.authz.csrf import origin_for
 from tests.factories.simulation import __main__ as command
 from tests.factories.simulation import plan as simulation_plan
 from tests.factories.simulation import timeline
+from tests.factories.simulation import visitor as visitor_command
 
 API_ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = API_ROOT.parents[1]
@@ -71,7 +73,7 @@ def test_make_targets_run_the_command_per_language(language):
         "\tdocker compose run --rm --build devtools python -m"
         f" tests.factories.simulation --language {language}"
     )
-    assert "APP_ENV=local only" in above
+    assert "APP_ENV=local and dev only" in above
 
     # #672 D5: the host recipe is unchanged, under its -native name.
     recipe, above = _target(lines, f"seed-data-{name}-native")
@@ -79,7 +81,7 @@ def test_make_targets_run_the_command_per_language(language):
         "\tcd apps/api && uv run --env-file ../../.env python -m"
         f" tests.factories.simulation --language {language}"
     )
-    assert "APP_ENV=local only" in above
+    assert "APP_ENV=local and dev only" in above
 
 
 def test_the_devtools_service_runs_the_api_test_stage_as_the_owner():
@@ -97,9 +99,9 @@ def test_the_devtools_service_runs_the_api_test_stage_as_the_owner():
 
 
 @pytest.mark.parametrize(
-    "app_env", ["dev", "test", "staging", "production", "prod", "LOCAL", "anything"]
+    "app_env", ["prod", "test", "staging", "production", "DEV", "LOCAL", "anything"]
 )
-def test_every_app_env_but_local_is_refused_before_any_engine(
+def test_every_app_env_but_local_and_dev_is_refused_before_any_engine(
     env, no_faker, capsys, app_env
 ):
     env(app_env)
@@ -109,23 +111,26 @@ def test_every_app_env_but_local_is_refused_before_any_engine(
     assert code == 2
     captured = capsys.readouterr()
     assert captured.err.strip() == (
-        f"Refusing to generate simulated data: APP_ENV={app_env} (local only)"
+        f"Refusing to generate simulated data: APP_ENV={app_env} (local and dev only)"
     )
     assert captured.out == ""
 
 
-def test_local_passes_the_guard(env, no_faker):
-    env("local")
+@pytest.mark.parametrize("app_env", ["local", "dev"])
+def test_local_and_dev_pass_the_guard(env, no_faker, app_env):
+    env(app_env)
 
     # The command goes on to create its engine, which this factory refuses.
     with pytest.raises(EngineRequested):
         command.main(["--language", "en"], engine_factory=failing_engine_factory)
 
 
-def test_refusal_is_local_only():
+def test_refusal_allows_local_and_dev_only():
+    assert command.ALLOWED_APP_ENV == {"local", "dev"}
     assert command.refusal("local") is None
-    assert command.refusal("dev") == (
-        "Refusing to generate simulated data: APP_ENV=dev (local only)"
+    assert command.refusal("dev") is None
+    assert command.refusal("prod") == (
+        "Refusing to generate simulated data: APP_ENV=prod (local and dev only)"
     )
 
 
@@ -144,7 +149,7 @@ def test_a_missing_or_invalid_language_is_an_argparse_error(
     assert "--language" in capsys.readouterr().err
 
 
-def test_help_names_the_languages_local_only_and_a_fresh_database(capsys):
+def test_help_names_the_languages_local_and_dev_and_a_fresh_database(capsys):
     with pytest.raises(SystemExit) as exit_info:
         command.main(["--help"])
 
@@ -152,7 +157,7 @@ def test_help_names_the_languages_local_only_and_a_fresh_database(capsys):
     out = " ".join(capsys.readouterr().out.split())
     assert "{es,en}" in out
     assert "Spanish (es)" in out and "English (en)" in out
-    assert "Local only (APP_ENV=local)" in out
+    assert "Local and DEV only (APP_ENV=local or dev; never prod)" in out
     assert "freshly migrated database" in out
 
 
@@ -167,15 +172,15 @@ def test_configuration_error_exits_1(no_faker, monkeypatch, capsys):
     assert "Traceback" not in err
 
 
-def test_dev_refusal_as_a_process_returns_immediately():
+def test_prod_refusal_as_a_process_returns_immediately():
     environment = {
         key: value
         for key, value in os.environ.items()
         if key.upper() not in {"APP_ENV", "DATABASE_URL", "DATABASE_DIRECT_URL"}
     }
     environment |= {
-        "APP_ENV": "dev",
-        "APP_ORIGIN": origin_for("dev"),
+        "APP_ENV": "prod",
+        "APP_ORIGIN": origin_for("prod"),
         "DATABASE_URL": CLOSED_PORT_DSN,
         "DATABASE_DIRECT_URL": CLOSED_PORT_DSN,
     }
@@ -191,7 +196,7 @@ def test_dev_refusal_as_a_process_returns_immediately():
 
     assert completed.returncode == 2
     assert completed.stderr.strip() == (
-        "Refusing to generate simulated data: APP_ENV=dev (local only)"
+        "Refusing to generate simulated data: APP_ENV=prod (local and dev only)"
     )
     assert time.monotonic() - started < 15
 
@@ -219,3 +224,41 @@ def test_only_the_owner_bootstrap_inserts_a_domain_row_directly():
     bootstrap = people[people.index("async def _bootstrap_owner") :]
     bootstrap = bootstrap[: bootstrap.index("\nasync def ", 1)]
     assert bootstrap.count("session.add(") == 2
+
+
+# --- #674 AC2: the DEV visitor step's guard ----------------------------------------
+
+
+@pytest.mark.parametrize("app_env", ["prod", "production", "staging", "DEV", "x"])
+def test_visitor_step_refuses_every_app_env_but_local_and_dev_before_connecting(
+    env, capsys, app_env
+):
+    env(app_env)
+
+    code = visitor_command.main([], engine_factory=failing_engine_factory)
+
+    assert code == 2
+    captured = capsys.readouterr()
+    assert captured.err.strip() == (
+        f"Refusing to create the visitor: APP_ENV={app_env} (local and dev only)"
+    )
+    assert captured.out == ""
+
+
+@pytest.mark.parametrize("app_env", ["local", "dev"])
+def test_visitor_step_accepts_local_and_dev(env, app_env):
+    env(app_env)
+
+    # It goes on to create its engine, which this factory refuses.
+    with pytest.raises(EngineRequested):
+        visitor_command.main([], engine_factory=failing_engine_factory)
+
+
+def test_visitor_account_is_the_published_one():
+    assert visitor_command.ALLOWED_APP_ENV == {"local", "dev"}
+    assert visitor_command.VISITOR_USERNAME == "visitor"
+    assert visitor_command.VISITOR_PASSWORD == "visitor-classora"
+    assert visitor_command.VISITOR_DISPLAY_NAME == "Demo visitor"
+    assert visitor_command.INVITER_USERNAME == "owner"
+    readme = (REPO_ROOT / "README.md").read_text()
+    assert "`visitor` / `visitor-classora`" in readme

@@ -13,7 +13,7 @@ Accepted (owner-delegated, orchestrator-recommended, **pending owner review**)
 No owner sign-off yet. The owner delegated the decisions of #152 (M10-04) on 2026-11-12 ("make recommended decisions"). Escalations E1–E7 of #152 were taken as option (a) and recorded as owner-delegated. Two must be shown to the owner:
 
 - **E1, the load profile.** The issue says "agreed with the Owner". The PM proposed it, and the owner has not reviewed it.
-- **E2, simulated data on DEV.** This is an exception to `_docs/runbooks/host.md` ("DEV never gets demo or simulated data").
+- **E2, simulated data on DEV.** This is an exception to `_docs/runbooks/host.md` ("DEV never gets demo or simulated data"). Superseded for DEV's `classora` database by the amendment "DEV data (#671)" below.
 
 ## Context
 
@@ -107,3 +107,17 @@ DEV is measured with a scrubbed copy of the simulated center in a **side databas
 - **Locust or a custom script** (E4 (b), (c)). A new Python dependency, or re-implementing percentiles and ramps. k6 runs from a pinned image.
 - **Measuring t4g.micro on real hardware.** That needs a DEV resize, which this issue may not do.
 - **Zero-downtime deploys** (a second api container behind Caddy, blue/green). More memory and moving parts than a center with a release window needs.
+
+## Amendment: DEV data (#671)
+
+Recorded 2026-11-13. Owner decisions of #671 (2026-11-13), the rest owner-delegated. No new ADR.
+
+DEV's `classora` database holds the **English simulated center** (`--seed 1`) plus a public Owner login, **`visitor` / `visitor-classora`**, until DEV is shut down a few days after grading. This supersedes E2's "load-test only" wording above and the rule in [`../runbooks/host.md`](../runbooks/host.md) that DEV never gets simulated data. PROD is unchanged: it never gets simulated data or the visitor.
+
+- **The guard.** The simulation command (#543 E5) and the visitor step run only with `APP_ENV=local` or `dev`; `prod` and any other value exit 2 before any connection (tested).
+- **Built in CI.** The `dev-data` job of `deploy-dev` builds the dump on a throwaway PostgreSQL for every DEV deploy and uploads `releases/<sha>.dev-data.dump` and its row counts to the DEV ops bucket; `deploy` needs it. No dev dependency reaches the host, and no Terraform resource changes.
+- **Reset nightly.** A systemd timer on DEV only (04:00 UTC) wipes `classora` and restores the current release's dump, behind the locks of the backup and the deploy. `manage.sh reset-dev-data` starts the same unit. The timer wipes only once an `ENABLED` marker exists, created after a verified pre-wipe backup copied to the archive under `dev-drill/pre-671-<date>/`.
+- **No restrictions, no scrubbing, no alert** (owner): the visitor may do everything an Owner can, the other simulated accounts keep their published passwords, and a failed reset is visible only in the journal and Loki. The app sends no product e-mail (ADR-0007 D11).
+- **The load test** (E2) still uses its own scrubbed copy in `classora_load`.
+
+Procedure: [`../runbooks/dev-data.md`](../runbooks/dev-data.md).
