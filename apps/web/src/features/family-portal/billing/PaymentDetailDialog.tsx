@@ -71,7 +71,9 @@ export function PaymentDetailDialog({
               ],
               [
                 t('familyBilling.payments.credit'),
-                labels.money(payment.unallocated_amount),
+                payment.is_reversed
+                  ? t('familyBilling.payments.creditNotApplicable')
+                  : labels.money(payment.unallocated_amount),
               ],
               [
                 t('billing.accounts.payments.columns.reference'),

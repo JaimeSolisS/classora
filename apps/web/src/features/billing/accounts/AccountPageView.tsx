@@ -424,12 +424,21 @@ export function AccountPageView({
                 <TableCell>
                   <span className="inline-flex flex-wrap items-center gap-2">
                     {labels.money(payment.amount)}
-                    {payment.reversed_at !== null ? <ReversedBadge /> : null}
+                    {payment.is_reversed ? <ReversedBadge /> : null}
                   </span>
                 </TableCell>
                 <TableCell>{labels.money(payment.allocated_amount)}</TableCell>
                 <TableCell>
-                  {labels.money(payment.unallocated_amount)}
+                  {payment.is_reversed ? (
+                    <>
+                      <span aria-hidden="true">—</span>
+                      <span className="sr-only">
+                        {t('billing.accounts.payments.notApplicableReversed')}
+                      </span>
+                    </>
+                  ) : (
+                    labels.money(payment.unallocated_amount)
+                  )}
                 </TableCell>
                 <TableCell className="max-w-40 whitespace-normal break-words">
                   {payment.reference ?? '—'}

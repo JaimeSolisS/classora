@@ -6643,6 +6643,8 @@
         "recordedAt": "Recorded on",
         "reversed": "Reversed",
         "released": "Released",
+        "notApplicableReversed": "Not applicable: payment reversed",
+        "unallocatedNotApplicable": "Not applicable (payment reversed)",
         "columns": {
           "receivedOn": "Received",
           "method": "Method",
@@ -8796,6 +8798,7 @@
       "pagination": "Payment pages",
       "applied": "Applied",
       "credit": "Not applied (credit)",
+      "creditNotApplicable": "Not applicable (payment reversed)",
       "view": "Details",
       "viewFor": "Details of the payment of {{amount}} received {{date}}"
     },

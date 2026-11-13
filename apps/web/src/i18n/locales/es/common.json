@@ -6782,6 +6782,8 @@
         "recordedAt": "Registrado el",
         "reversed": "Revertido",
         "released": "Liberado",
+        "notApplicableReversed": "No aplica: pago revertido",
+        "unallocatedNotApplicable": "No aplica (pago revertido)",
         "columns": {
           "receivedOn": "Recibido",
           "method": "Método",
@@ -8953,6 +8955,7 @@
       "pagination": "Páginas de pagos",
       "applied": "Aplicado",
       "credit": "Sin aplicar (saldo a favor)",
+      "creditNotApplicable": "No aplica (pago revertido)",
       "view": "Detalles",
       "viewFor": "Detalles del pago de {{amount}} recibido el {{date}}"
     },

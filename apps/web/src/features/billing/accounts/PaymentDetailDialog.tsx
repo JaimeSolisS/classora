@@ -100,7 +100,9 @@ export function PaymentDetailDialog({
       ],
       [
         t('billing.accounts.payments.columns.unallocated'),
-        labels.money(payment.unallocated_amount),
+        payment.is_reversed
+          ? t('billing.accounts.payments.unallocatedNotApplicable')
+          : labels.money(payment.unallocated_amount),
       ],
       [
         t('billing.accounts.payments.columns.reference'),

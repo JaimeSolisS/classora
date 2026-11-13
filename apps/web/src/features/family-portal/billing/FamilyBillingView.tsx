@@ -289,9 +289,7 @@ export function FamilyBillingView({
             <li key={payment.id} className={CARD} data-payment-id={payment.id}>
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-medium">{labels.money(payment.amount)}</p>
-                {payment.is_reversed || payment.reversed_at !== null ? (
-                  <ReversedBadge />
-                ) : null}
+                {payment.is_reversed ? <ReversedBadge /> : null}
               </div>
               <Terms
                 items={[
@@ -309,7 +307,9 @@ export function FamilyBillingView({
                   ],
                   [
                     t('familyBilling.payments.credit'),
-                    labels.money(payment.unallocated_amount),
+                    payment.is_reversed
+                      ? t('familyBilling.payments.creditNotApplicable')
+                      : labels.money(payment.unallocated_amount),
                   ],
                   [
                     t('billing.accounts.payments.columns.reference'),

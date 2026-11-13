@@ -34,6 +34,7 @@ import {
   PAYMENT_DETAIL,
   PAYMENT_ID,
   PAYMENT_METHODS,
+  PAYMENT_OLD_ID,
   PAYMENT_REFUNDED_DETAIL,
   PAYMENT_REVERSED_DETAIL,
   PAYMENTS_PAGE,
@@ -688,6 +689,11 @@ describe('the payment detail (B1)', () => {
     );
     expect(buttonTexts(dialog)).not.toContain('Reverse payment');
     expect(buttonTexts(dialog)).not.toContain('Refund');
+    // #418: a reversed payment's unapplied amount is not account credit.
+    expect(dialog.textContent).toContain(
+      'Not appliedNot applicable (payment reversed)',
+    );
+    expect(dialog.textContent).not.toContain('Not applied$1,500.00');
   });
 
   it('lists the refunds and says why a refunded payment cannot be reversed', async () => {
@@ -700,6 +706,7 @@ describe('the payment detail (B1)', () => {
     expect(refund.textContent).toContain('Cash');
     expect(refund.textContent).toContain('Caja 2');
     expect(refund.textContent).toContain('Pago de más');
+    expect(dialog.textContent).toContain('Not applied$200.00');
     expect(buttonTexts(dialog)).not.toContain('Reverse payment');
     expect(dialog.textContent).toContain(
       "A payment with refunds can't be reversed.",
@@ -721,17 +728,32 @@ describe('the payment detail (B1)', () => {
         jsonResponse(200, {
           ...PAYMENTS_PAGE,
           items: [
-            { ...PAYMENTS_PAGE.items[0]!, reversed_at: '2026-10-15T17:00:00Z' },
+            {
+              ...PAYMENTS_PAGE.items[0]!,
+              is_reversed: true,
+              reversed_at: '2026-10-15T17:00:00Z',
+            },
+            PAYMENTS_PAGE.items[1]!,
           ],
         }),
     });
     await renderAccount();
     await settleUntil(() => main().querySelector('[data-payment-id]'));
+    const row = main().querySelector(`[data-payment-id="${PAYMENT_ID}"]`)!;
     expect(
-      main()
-        .querySelector(`[data-payment-id="${PAYMENT_ID}"]`)!
-        .querySelector('[data-slot="payment-reversed-badge"]'),
+      row.querySelector('[data-slot="payment-reversed-badge"]'),
     ).not.toBeNull();
+    // #418: "Not applied" is a hidden-labelled dash, never the $300.00.
+    const unapplied = row.querySelectorAll('td')[4]!;
+    expect(unapplied.textContent).toBe('—Not applicable: payment reversed');
+    expect(unapplied.querySelector('[aria-hidden="true"]')?.textContent).toBe(
+      '—',
+    );
+    expect(unapplied.querySelector('.sr-only')?.textContent).toBe(
+      'Not applicable: payment reversed',
+    );
+    const old = main().querySelector(`[data-payment-id="${PAYMENT_OLD_ID}"]`)!;
+    expect(old.querySelectorAll('td')[4]!.textContent).toBe('$0.00');
   });
 });
 
