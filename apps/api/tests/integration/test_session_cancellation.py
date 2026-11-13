@@ -12,15 +12,21 @@ from typing import Any
 
 import pytest
 from httpx import Response
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.families.models import Guardian, Student
 from app.modules.identity.permissions import ACADEMIC_COORDINATOR, ADMINISTRATOR
 from app.modules.scheduling import cancellation
+from app.modules.scheduling.models import ClassSessionParticipant
 from app.workflows.session_cancellation import on_session_cancelled
 from tests.conftest import frozen_clock
+from tests.factories.base import persist
+from tests.factories.families import GuardianFactory, link_guardian
 from tests.integration.auth_support import auth_client, create_user
 from tests.integration.catalog_support import get, post
 from tests.integration.conftest import run_sql
-from tests.integration.lifecycle_support import code_of, events
+from tests.integration.lifecycle_support import code_of, events, in_uow
 from tests.integration.series_edit_support import (
     CREATED,
     NOT_FOUND,
@@ -160,6 +166,37 @@ def cancelled_notes(ctx: Ctx, session_id: Any) -> list[Any]:
     return notes(ctx.url, CANCELLED, "class_session_id", session_id)
 
 
+def also_guardian(url: str, user_id: uuid.UUID, student_id: uuid.UUID) -> None:
+    """Link the student to the user's guardian profile (a new one when the
+    user has none)."""
+
+    async def _link(session: AsyncSession) -> None:
+        guardian = await session.scalar(
+            select(Guardian).where(Guardian.user_id == user_id)
+        )
+        if guardian is None:
+            guardian = await persist(session, GuardianFactory, user_id=user_id)
+        student = await session.get(Student, student_id)
+        assert student is not None
+        await link_guardian(session, student, guardian)
+
+    in_uow(url, _link)
+
+
+def add_participant_row(url: str, session_id: Any, student_id: uuid.UUID) -> None:
+    """A second participant on the session (a group-like session, #349 E2)."""
+
+    async def _add(session: AsyncSession) -> None:
+        session.add(
+            ClassSessionParticipant(
+                class_session_id=uuid.UUID(str(session_id)), student_id=student_id
+            )
+        )
+        await session.flush()
+
+    in_uow(url, _add)
+
+
 # --- C1: each cancellable state ------------------------------------------------------
 
 
@@ -200,6 +237,7 @@ def test_an_offered_session_withdraws_its_offer_and_tells_the_tutor(ctx):
     assert told[0].params == {
         "class_session_id": session["id"],
         "starts_at": session["starts_at"],
+        "student_id": None,
     }
     # The family never saw an offered session.
     assert not {student_user, guardian_user} & {n.recipient_user_id for n in told}
@@ -238,8 +276,60 @@ def test_a_confirmed_session_with_a_pending_substitution(ctx):
     told = {n.recipient_user_id for n in cancelled_notes(ctx, session["id"])}
     assert told == {ctx.tutor.id, replacement.id, student_user, guardian_user}
     assert ctx.owner.id not in told and stranger not in told
+    # #349 A2: the family recipients get the participant, the tutors null.
+    linked = {
+        n.recipient_user_id: n.params["student_id"]
+        for n in cancelled_notes(ctx, session["id"])
+    }
+    assert linked == {
+        ctx.tutor.id: None,
+        replacement.id: None,
+        student_user: str(ctx.student),
+        guardian_user: str(ctx.student),
+    }
     for note in cancelled_notes(ctx, session["id"]):
-        assert set(note.params) == {"class_session_id", "starts_at"}
+        assert set(note.params) == {"class_session_id", "starts_at", "student_id"}
+
+
+def test_a_guardian_of_two_children_gets_the_child_in_the_session(ctx):
+    # #349: the reported case, the guardian's other child is in the session.
+    _, guardian_user = with_family(ctx.url, ctx.student)
+    sibling = new_student(ctx.url)
+    also_guardian(ctx.url, guardian_user, sibling)
+    session = one_off(ctx, accept=True, student=sibling)
+
+    response = cancel(ctx, session["id"], session["version"])
+
+    assert code_of(response) == OK, response.text
+    linked = {
+        n.recipient_user_id: n.params["student_id"]
+        for n in cancelled_notes(ctx, session["id"])
+    }
+    assert linked == {ctx.tutor.id: None, guardian_user: str(sibling)}
+
+
+def test_two_children_in_one_session_give_the_smallest_id(ctx):
+    # #349 E2 (smallest id, string order) and A6 (a tutor who is also a
+    # linked guardian gets the child).
+    student_user, guardian_user = with_family(ctx.url, ctx.student)
+    sibling = new_student(ctx.url)
+    also_guardian(ctx.url, guardian_user, sibling)
+    also_guardian(ctx.url, ctx.tutor.id, sibling)
+    session = one_off(ctx, accept=True)
+    add_participant_row(ctx.url, session["id"], sibling)
+
+    response = cancel(ctx, session["id"], session["version"])
+
+    assert code_of(response) == OK, response.text
+    linked = {
+        n.recipient_user_id: n.params["student_id"]
+        for n in cancelled_notes(ctx, session["id"])
+    }
+    assert linked == {
+        ctx.tutor.id: str(sibling),
+        student_user: str(ctx.student),
+        guardian_user: min(str(ctx.student), str(sibling)),
+    }
 
 
 def test_the_actor_is_never_told(ctx, module_seeded_url):

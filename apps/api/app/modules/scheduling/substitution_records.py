@@ -8,8 +8,10 @@ Every function runs in the caller's Unit of Work and never commits.
 
 **Notifications (F2-F4)**, registered by ``app.wiring`` with
 :func:`register_substitution_notifications`. Their params are
-``{class_session_id, starts_at}`` only: never the reason, never a tutor's
-name (#67 decides what families see):
+``{class_session_id, starts_at, student_id}`` only: never the reason, never
+a tutor's name (#67 decides what families see). ``student_id`` (#349) is the
+participant a family recipient is linked to (the smallest id when several),
+so the web opens that child's schedule; ``null`` for everyone else:
 
 - ``scheduling.tutor_substituted``: to the original tutor, when the
   substitute accepted;
@@ -23,7 +25,7 @@ The actor is never notified.
 """
 
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Final
 
@@ -50,10 +52,12 @@ SESSION_CANCELLED: Final = "scheduling.session_cancelled"
 
 
 class SessionNotificationParams(BaseModel):
-    """The params of the three #55 types: the session and its start."""
+    """The params of the three #55 types: the session, its start and, for a
+    family recipient, the linked participant (#349)."""
 
     class_session_id: str
     starts_at: str
+    student_id: str | None = None
 
 
 def register_substitution_notifications() -> None:
@@ -70,9 +74,10 @@ def register_substitution_notifications() -> None:
 
 async def family_recipients(
     session: AsyncSession, class_session_id: uuid.UUID
-) -> set[uuid.UUID]:
+) -> dict[uuid.UUID, uuid.UUID]:
     """The student logins and linked guardians of every participant of the
-    session (two statements)."""
+    session, each with the participant they are linked to (the smallest id,
+    in string order, when several; #349 E2). Two statements."""
     student_ids = set(
         await session.scalars(
             select(ClassSessionParticipant.student_id).where(
@@ -81,7 +86,11 @@ async def family_recipients(
         )
     )
     found = await families.student_notification_recipients(session, student_ids)
-    return {user_id for users in found.values() for user_id in users}
+    linked: dict[uuid.UUID, uuid.UUID] = {}
+    for student_id in sorted(found, key=str):
+        for user_id in found[student_id]:
+            linked.setdefault(user_id, student_id)
+    return linked
 
 
 async def notify_session(
@@ -92,18 +101,24 @@ async def notify_session(
     class_session_id: uuid.UUID,
     starts_at: datetime,
     actor_id: uuid.UUID | None,
+    student_of: Mapping[uuid.UUID, uuid.UUID] | None = None,
 ) -> None:
     """One notification of ``notification_type`` per recipient (sorted,
-    de-duplicated), never to the actor."""
-    params = SessionNotificationParams(
-        class_session_id=str(class_session_id), starts_at=rfc3339(starts_at)
-    )
+    de-duplicated), never to the actor. ``student_of`` (from
+    :func:`family_recipients`) gives a recipient's ``student_id``; anyone
+    else gets ``null`` (#349)."""
+    linked = student_of or {}
     for user_id in sorted(set(user_ids) - {actor_id}):
+        student_id = linked.get(user_id)
         await administration.create_notification(
             session,
             recipient_user_id=user_id,
             notification_type=notification_type,
-            params=params,
+            params=SessionNotificationParams(
+                class_session_id=str(class_session_id),
+                starts_at=rfc3339(starts_at),
+                student_id=None if student_id is None else str(student_id),
+            ),
         )
 
 

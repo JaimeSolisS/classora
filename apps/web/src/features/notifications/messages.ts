@@ -297,9 +297,10 @@ function myScheduleSearch(
   return search;
 }
 
-/** My schedule for a shared note (#79 H4, #325): `mySchedule`'s link with
- * the note's student selected (`for=<student_id>`, #67 E2); without a
- * student id, `mySchedule`'s link. */
+/** My schedule for a shared note (#79 H4, #325) or a family's session
+ * notice (#349): `mySchedule`'s link with the params' student selected
+ * (`for=<student_id>`, #67 E2); without a student id (a tutor, or a row
+ * from before #349), `mySchedule`'s link. */
 function noteSchedule(
   params: NotificationItem['params'],
   recipient: NotificationRecipient,
@@ -442,7 +443,8 @@ function voidedEvaluation(params: NotificationItem['params']): string {
  * `scheduling.series_cancelled`: their tutor, student and guardian
  * recipients have no session or series page yet, #54b; #55's
  * `scheduling.tutor_substituted`, `scheduling.session_tutor_changed` and
- * `scheduling.session_cancelled` open My schedule since #67 F3).
+ * `scheduling.session_cancelled` open My schedule since #67 F3, with the
+ * family recipient's child selected since #349).
  */
 export const NOTIFICATION_LINKS: Readonly<
   Record<
@@ -507,9 +509,10 @@ export const NOTIFICATION_LINKS: Readonly<
   'staff.availability_change_rejected': ownAvailability,
   'scheduling.reassignment_needed': reassignmentCalendar,
   // #67 F3: the #55 cancellation and tutor changes open My schedule (List)
-  // on the session's local date.
-  'scheduling.session_cancelled': mySchedule,
-  'scheduling.session_tutor_changed': mySchedule,
+  // on the session's local date; #349: a family recipient's with their
+  // child (`student_id`) selected.
+  'scheduling.session_cancelled': noteSchedule,
+  'scheduling.session_tutor_changed': noteSchedule,
   'scheduling.tutor_substituted': mySchedule,
   // #388 H1: the family billing portal, filtered by the reminder's stage.
   'billing.payment_reminder': paymentReminder,

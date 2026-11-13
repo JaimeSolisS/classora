@@ -575,12 +575,17 @@ def test_accept_hands_the_session_over(
     assert told.params == {
         "class_session_id": session["id"],
         "starts_at": "2031-01-06T16:00:00Z",
+        "student_id": None,
     }
+    # #349 A3: each family recipient gets the participant.
     family = {
-        n.recipient_user_id
+        n.recipient_user_id: n.params["student_id"]
         for n in session_notes(url, "scheduling.session_tutor_changed", session["id"])
     }
-    assert family == {student_user, guardian_user}
+    assert family == {
+        student_user: str(setup.student),
+        guardian_user: str(setup.student),
+    }
     assert stranger not in family
     # Audit: the substitute changed the session and the offer.
     for record_type, record_id in (
