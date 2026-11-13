@@ -142,9 +142,10 @@ export const TutorList: Story = {
         name: new RegExp(escape(i18n.t('mySchedule.states.offered'))),
       }),
     ).toBeVisible();
+    // A tutor's single "My teaching" entry shows no "whose" line (#352).
     await expect(
-      within(canvasElement).getByText(i18n.t('mySchedule.whose.teaching')),
-    ).toBeVisible();
+      within(canvasElement).queryByText(i18n.t('mySchedule.whose.teaching')),
+    ).toBeNull();
   },
 };
 

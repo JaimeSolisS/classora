@@ -15,11 +15,12 @@ import { ApprovedCard, CardList } from './ReportCards';
 // /my-progress-reports[?student=] (#315 F4, F6), students and guardians
 // (MY_PROGRESS_REPORTS_ACCESS): the h1 "Tutor reports" and #308's student
 // picker ("Whose reports": "My reports" for the student themselves,
-// otherwise the child's name), kept as ?student=. An adult child who hasn't
-// shared their academic records (or a 403 student_consent_required) shows
-// the consent message; a 404 shows "These reports aren't available."
-// inline, so the picker stays usable. The approved reports as cards
-// linking to /my-progress-reports/:id?student=, with "Load more". Only
+// otherwise the child's name), kept as ?student=; one guardian's child
+// alone shows as text, the student alone shows no line (#352). An adult
+// child who hasn't shared their academic records (or a 403
+// student_consent_required) shows the consent message; a 404 shows "These
+// reports aren't available." inline, so the picker stays usable. The
+// approved reports as cards linking to /my-progress-reports/:id?student=, with "Load more". Only
 // approved reports exist here: no status, no reason, no action.
 
 function FamilyReports({ student }: { student: FamilyStudent }) {
@@ -104,7 +105,7 @@ export function MyReportsPage() {
               ))}
             </select>
           </div>
-        ) : (
+        ) : selected.relation === 'self' ? null : (
           <p className="text-sm">
             <span className="font-medium">
               {t('progressReports.family.whose')}

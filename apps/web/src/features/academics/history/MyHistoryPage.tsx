@@ -20,10 +20,12 @@ import { uuidParam } from './urlState';
 // h1 "Academic history" and, from GET /schedule/family-students, the
 // student picker of My schedule without "My teaching" ("Whose history":
 // "My history" for the student themselves, otherwise the child's name),
-// kept as ?student=. An unknown or foreign value falls back to the first
-// student, with no request for it. An adult child who hasn't shared their
-// academic records shows the consent message and nothing is requested. No
-// tabs, no "Details", no "New evaluation". Code-split by the router.
+// kept as ?student=; one guardian's child alone shows as text, the
+// student alone shows no line (#352). An unknown or foreign value falls
+// back to the first student, with no request for it. An adult child who
+// hasn't shared their academic records shows the consent message and
+// nothing is requested. No tabs, no "Details", no "New evaluation".
+// Code-split by the router.
 
 function pickerLabel(student: FamilyStudent, t: TFunction<'common'>): string {
   const name =
@@ -94,7 +96,7 @@ export function MyHistoryPage() {
               ))}
             </select>
           </div>
-        ) : (
+        ) : selected.relation === 'self' ? null : (
           <p className="text-sm">
             <span className="font-medium">{t('academics.history.whose')}</span>{' '}
             {pickerLabel(selected, t)}

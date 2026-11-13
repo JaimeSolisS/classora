@@ -14,8 +14,9 @@ import { StudentAssignmentsList } from './StudentAssignmentsList';
 // guardians (MY_HOMEWORK_ACCESS): the h1 "Homework" and, from GET
 // /schedule/family-students, the picker of #308 ("Whose homework": "My
 // homework" for the student themselves, otherwise the child's name), kept
-// as ?student=; with only one entry, plain text instead. An unknown or
-// foreign value falls back to the first student, with no request for it.
+// as ?student=; with only one entry, plain text instead, or no line when
+// it is the student themselves (#352). An unknown or foreign value falls
+// back to the first student, with no request for it.
 // An adult child who hasn't shared their academic records (or a 403
 // student_consent_required) shows the consent message; a 404 shows "This
 // homework list isn't available." inline, so the picker stays usable. The
@@ -70,7 +71,7 @@ export function MyHomeworkPage() {
               ))}
             </select>
           </div>
-        ) : (
+        ) : selected.relation === 'self' ? null : (
           <p className="text-sm">
             <span className="font-medium">{t('assignments.family.whose')}</span>{' '}
             {familyLabel(selected, t)}

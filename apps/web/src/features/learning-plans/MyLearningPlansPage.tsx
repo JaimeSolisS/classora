@@ -22,11 +22,13 @@ import { PlanList, type PlanListState } from './PlanList';
 // (MY_LEARNING_PLANS_ACCESS): the h1 "Learning plans" and, from GET
 // /schedule/family-students, the picker of My schedule without "My
 // teaching" ("Whose plans": "My plans" for the student themselves,
-// otherwise the child's name), kept as ?student=. An unknown or foreign
-// value falls back to the first student, with no request for it. An adult
-// child who hasn't shared their academic records (or a 403
-// student_consent_required) shows the consent message; a 404 shows "These
-// learning plans aren't available." inline, so the picker stays usable.
+// otherwise the child's name), kept as ?student=; one guardian's child
+// alone shows as text, the student alone shows no line (#352). An
+// unknown or foreign value falls back to the first student, with no
+// request for it. An adult child who hasn't shared their academic records
+// (or a 403 student_consent_required) shows the consent message; a 404
+// shows "These learning plans aren't available." inline, so the picker
+// stays usable.
 // The rows link to /my-learning-plans/:id; no "New plan", no actions.
 
 function pickerLabel(student: FamilyStudent, t: TFunction<'common'>): string {
@@ -141,7 +143,7 @@ export function MyLearningPlansPage() {
               ))}
             </select>
           </div>
-        ) : (
+        ) : selected.relation === 'self' ? null : (
           <p className="text-sm">
             <span className="font-medium">
               {t('learningPlans.family.whose')}

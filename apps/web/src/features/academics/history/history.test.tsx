@@ -550,7 +550,7 @@ describe('the family page (E8)', () => {
     );
   });
 
-  it('a student sees "My history"', async () => {
+  it('a student alone: no "whose" line or picker (#352)', async () => {
     stub(
       {
         [FAMILY]: () => jsonResponse(200, SELF_ONLY),
@@ -558,7 +558,9 @@ describe('the family page (E8)', () => {
       STUDENT,
     );
     await open('/my-history', () => main().querySelector('article'));
-    expect(text()).toContain('Whose history My history');
+    expect(text()).not.toContain('Whose history');
+    expect(text()).not.toContain('My history');
+    expect(main().querySelector('h1')?.textContent).toBe('Academic history');
   });
 
   it('with no students: the message', async () => {

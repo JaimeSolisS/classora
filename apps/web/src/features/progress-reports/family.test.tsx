@@ -131,7 +131,7 @@ describe('the family list (F4)', () => {
     expect(api.calls(listOf(ADULT_ID))).toHaveLength(0);
   });
 
-  it('one entry: plain text "My reports"; none: the message', async () => {
+  it('one own entry: no "whose" line (#352); none: the message', async () => {
     await open(
       '/my-progress-reports',
       {
@@ -141,8 +141,14 @@ describe('the family list (F4)', () => {
       },
       STUDENT,
     );
-    await settleUntil(() => text().includes('My reports'));
+    await settleUntil(
+      () =>
+        main().querySelectorAll('a[href^="/my-progress-reports/"]').length > 0,
+    );
     expect(main().querySelector('select')).toBeNull();
+    expect(text()).not.toContain('Whose reports');
+    expect(text()).not.toContain('My reports');
+    expect(heading()!.textContent).toBe('Tutor reports');
     app!.unmount();
     await open('/my-progress-reports', {
       [FAMILY]: () => jsonResponse(200, { items: [] }),
