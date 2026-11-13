@@ -25,7 +25,9 @@ INSTALL_UNITS = HOST_BIN / "install-units.sh"
 SHA = "a" * 40
 OLD_SHA = "b" * 40
 
-pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+BASH = shutil.which("bash")
+
+pytestmark = pytest.mark.skipif(BASH is None, reason="needs bash")
 
 
 def _executable(path: Path, body: str) -> None:
@@ -50,7 +52,7 @@ class Host:
         _executable(bin_dir / "db-roles.sh", record)
         for name in ("aws", "flock", "install", "journalctl"):
             _executable(self.fakes / name, record)
-        _executable(self.fakes / "id", 'echo 0\n')
+        _executable(self.fakes / "id", "echo 0\n")
         _executable(
             self.fakes / "systemctl",
             record + 'exit "${FAKE_SYSTEMCTL_EXIT:-0}"\n',
@@ -63,7 +65,9 @@ class Host:
         lines = ["AWS_REGION=us-east-2", "OPS_BUCKET=classora-dev-ops-x"]
         if env_name is not None:
             lines.insert(0, f"CLASSORA_ENV={env_name}")
-        (self.root / "etc" / "classora" / "host.env").write_text("\n".join(lines) + "\n")
+        (self.root / "etc" / "classora" / "host.env").write_text(
+            "\n".join(lines) + "\n"
+        )
 
     def release(self, sha: str = SHA) -> None:
         releases = self.data / "releases"
@@ -85,12 +89,12 @@ class Host:
     def run(self, script: Path, *args: str, **env: str) -> subprocess.CompletedProcess:
         environment = {
             "PATH": f"{self.fakes}:{os.environ['PATH']}",
-            "HOME": os.environ.get("HOME", "/tmp"),
+            "HOME": str(self.root),
             "CLASSORA_TEST_ROOT": str(self.root),
             **env,
         }
         return subprocess.run(  # noqa: S603 - a fixed script, no shell
-            ["bash", str(script), *args],
+            [str(BASH), str(script), *args],
             env=environment,
             capture_output=True,
             text=True,
@@ -200,7 +204,8 @@ def test_check_plans_the_download_when_nothing_is_cached(host):
     assert result.returncode == 0, result.stderr
     assert "MISSING (the unit is skipped" in result.stdout
     assert (
-        f"download s3://classora-dev-ops-x/releases/{SHA}.dev-data.dump" in result.stdout
+        f"download s3://classora-dev-ops-x/releases/{SHA}.dev-data.dump"
+        in result.stdout
     )
     assert host.called() == [
         "aws s3api head-object --region us-east-2 --bucket classora-dev-ops-x"
@@ -234,7 +239,7 @@ def test_check_without_any_dump_exits_1(host):
     assert "dump:     NONE" in result.stdout
 
 
-# --- manage.sh reset-dev-data ----------------------------------------------------------
+# --- manage.sh reset-dev-data ---------------------------------------------------------
 
 
 @pytest.mark.parametrize("env_name", ["prod", "monitoring", None])
@@ -296,7 +301,7 @@ def test_manage_reset_dev_data_takes_no_argument(host):
     assert host.called() == []
 
 
-# --- install-units.sh: the reset units on DEV only -------------------------------------
+# --- install-units.sh: the reset units on DEV only ------------------------------------
 
 
 def _reset_unit_calls(calls: list[str]) -> list[str]:
@@ -340,7 +345,7 @@ def test_install_units_on_dev_before_the_first_release_skips_the_reset(host):
     assert _reset_unit_calls(host.called()) == []
 
 
-# --- the units, the workflows and the grants --------------------------------------------
+# --- the units, the workflows and the grants ------------------------------------------
 
 
 def test_the_units_run_the_script_at_04_utc_behind_the_marker():

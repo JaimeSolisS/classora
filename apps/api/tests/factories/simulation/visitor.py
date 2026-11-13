@@ -114,7 +114,9 @@ async def ensure_visitor(session: AsyncSession) -> bool:
         return False
 
     owner = await _user(session, INVITER_USERNAME)
-    inviter = None if owner is None else await identity.load_principal(session, owner.id)
+    inviter = (
+        None if owner is None else await identity.load_principal(session, owner.id)
+    )
     if inviter is None or OWNER not in inviter.roles:
         raise VisitorRefusedError(
             f"no active simulated Owner '{INVITER_USERNAME}': run"
