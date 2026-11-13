@@ -56,6 +56,19 @@ KPI charts, and dnd-kit for reordering dashboard widgets. Every role's home
 page shows today's agenda and the pending items they can act on; staff also
 get the KPI dashboard below.
 
+Environments: DEV at https://dev.classora.dev, PROD at https://app.classora.dev
+(serves only after the first approved release) and monitoring at
+https://grafana.classora.dev (login required).
+
+Hardening before go-live (milestone M10) is under way. Every route a tutor,
+student or guardian can call with a record id has a cross-party (IDOR) test
+named in a CI-enforced inventory, and every background job is classified by
+how it checks its eventual reader. A security review found no critical or high
+findings ([security review](_docs/security-review.md)), and the hosts' size was
+load-tested on DEV ([load-test report](_docs/load-test-report.md)). Still to do
+before go-live: the PROD restore drill, the accessibility audit, the legal
+review of retention and privacy texts, and the go-live checklist.
+
 No email is sent: invitations and password resets produce a one-time link
 that staff hand over in person or by phone. The privacy notice text is a
 draft pending legal review.
