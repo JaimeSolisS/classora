@@ -247,6 +247,16 @@ dialog (#28, `apps/web/src/features/auth/`):
   fields.
 - Passwords stay in the form's own state: never in a store, browser storage,
   a log or the TanStack cache (direct calls, not mutations).
+- Password fields use `PasswordInput` (`components/ui/password-input.tsx`,
+  #664), never a plain `Input type="password"`. Its eye toggle is a
+  `<button type="button">` (it never submits) whose name follows the state,
+  "Show password" / "Hide password" (`common.showPassword` /
+  `common.hidePassword`), with `aria-controls` set to the input and no
+  `aria-pressed`. The field starts hidden on every mount and is hidden again
+  when its form submits, valid or not. The `autocomplete` token stays the
+  same in both states, and visibility is local state only. A disabled or
+  read-only field disables its toggle. Test locators for a password field stay
+  exact: "Show password" contains the label word "Password".
 
 ## Feedback
 

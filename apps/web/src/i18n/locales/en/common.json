@@ -219,7 +219,9 @@
     }
   },
   "common": {
-    "usernameHint": "3 to 64 characters: letters, digits, dot, hyphen or underscore."
+    "usernameHint": "3 to 64 characters: letters, digits, dot, hyphen or underscore.",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
   },
   "roles": {
     "owner": "Owner",

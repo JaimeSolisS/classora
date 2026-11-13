@@ -14,6 +14,7 @@ import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { z } from '@/lib/forms';
 import { FieldError } from './FieldError';
 
@@ -177,9 +178,8 @@ export function LoginForm({
           <label htmlFor={passwordId} className="text-sm font-medium">
             {t('auth.login.password')}
           </label>
-          <Input
+          <PasswordInput
             id={passwordId}
-            type="password"
             autoComplete="current-password"
             aria-invalid={passwordError ? true : undefined}
             aria-describedby={passwordError ? passwordErrorId : undefined}
