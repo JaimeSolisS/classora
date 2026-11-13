@@ -153,7 +153,9 @@ export function PaymentDetailDialog({
           </h3>
           {payment.allocations.length === 0 ? (
             <p className="text-sm">
-              {t('familyBilling.paymentDetail.noAllocations')}
+              {payment.is_reversed
+                ? t('familyBilling.paymentDetail.noAllocationsReversed')
+                : t('familyBilling.paymentDetail.noAllocations')}
             </p>
           ) : (
             <ul className="flex flex-col gap-2">

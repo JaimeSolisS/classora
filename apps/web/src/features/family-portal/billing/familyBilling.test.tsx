@@ -556,7 +556,11 @@ describe('payments (E1-E4)', () => {
           items: [reversed, PAYMENT_OLD],
         }),
       [PAYMENT_ROUTE]: () =>
-        jsonResponse(200, { ...STAFF_PAYMENT_DETAIL, ...reversed }),
+        jsonResponse(200, {
+          ...STAFF_PAYMENT_DETAIL,
+          ...reversed,
+          allocations: [],
+        }),
     });
     app = await open();
     const row = main().querySelector(`[data-payment-id="${PAYMENT.id}"]`)!;
@@ -582,6 +586,37 @@ describe('payments (E1-E4)', () => {
       'Not applied (credit)Not applicable (payment reversed)',
     );
     expect(dialog.textContent).not.toContain('$500.00');
+    // Round 2: no allocations is not "account credit" once reversed.
+    expect(dialog.textContent).toContain(
+      'Not applied to any charge: the payment was reversed.',
+    );
+    expect(dialog.textContent).not.toContain('it is account credit');
+  });
+
+  it('a payment applied to nothing is account credit while not reversed (#418)', async () => {
+    stub({
+      [PAYMENT_ROUTE]: () =>
+        jsonResponse(200, {
+          ...STAFF_PAYMENT_DETAIL,
+          ...PAYMENT,
+          allocations: [],
+        }),
+    });
+    app = await open();
+    await click(
+      button(
+        main(),
+        'Details of the payment of $1,500.00 received Oct 12, 2026',
+      ),
+    );
+    await settleUntil(() =>
+      openDialog()?.querySelector('[data-payment-detail]'),
+    );
+    const dialog = openDialog()!;
+    expect(dialog.textContent).toContain(
+      'Not applied to any charge: it is account credit.',
+    );
+    expect(dialog.textContent).not.toContain('the payment was reversed');
   });
 
   it('never renders staff-only fields, even unredacted (E4)', async () => {

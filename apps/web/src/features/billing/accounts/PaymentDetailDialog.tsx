@@ -240,7 +240,9 @@ export function PaymentDetailDialog({
         </h3>
         {payment.allocations.length === 0 ? (
           <p className="text-sm">
-            {t('billing.accounts.payments.noAllocations')}
+            {payment.is_reversed
+              ? t('billing.accounts.payments.noAllocationsReversed')
+              : t('billing.accounts.payments.noAllocations')}
           </p>
         ) : (
           <Table aria-label={t('billing.accounts.payments.allocations')}>

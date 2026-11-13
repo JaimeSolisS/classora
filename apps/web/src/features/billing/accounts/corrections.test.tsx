@@ -714,6 +714,34 @@ describe('the payment detail (B1)', () => {
     expect(buttonTexts(dialog)).toContain('Refund');
   });
 
+  it('says a reversed payment applied to nothing was reversed, not credit (#418)', async () => {
+    stub({
+      [PAYMENT]: () =>
+        jsonResponse(200, { ...PAYMENT_REVERSED_DETAIL, allocations: [] }),
+    });
+    await renderAccount();
+    await openPayment();
+    const dialog = titled('Payment');
+    expect(dialog.textContent).toContain(
+      'Not applied to any charge: the payment was reversed.',
+    );
+    expect(dialog.textContent).not.toContain('it is account credit');
+  });
+
+  it('says a payment applied to nothing is account credit (#418)', async () => {
+    stub({
+      [PAYMENT]: () =>
+        jsonResponse(200, { ...PAYMENT_DETAIL, allocations: [] }),
+    });
+    await renderAccount();
+    await openPayment();
+    const dialog = titled('Payment');
+    expect(dialog.textContent).toContain(
+      'Not applied to any charge: it is account credit.',
+    );
+    expect(dialog.textContent).not.toContain('the payment was reversed');
+  });
+
   it('offers no refund when everything is applied', async () => {
     stub({ [PAYMENT]: () => jsonResponse(200, PAYMENT_APPLIED_DETAIL) });
     await renderAccount();
