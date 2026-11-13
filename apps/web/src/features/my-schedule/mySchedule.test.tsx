@@ -347,7 +347,12 @@ describe('the My schedule page', () => {
     expect(api.calls(FAMILY_STUDENTS)).toHaveLength(0);
     const [request] = api.calls(TUTOR_SCHEDULE);
     expect(request).toBeDefined();
-    expect(text()).toContain('Whose schedule My teaching');
+    // A single own entry shows no "whose" line; the h1 says it (#352).
+    expect(text()).not.toContain('Whose schedule');
+    expect(text()).not.toContain('My teaching');
+    expect(app.container.querySelector('main h1')?.textContent).toBe(
+      'My schedule',
+    );
     expect(text()).toContain('Awaiting your answer');
     expect(text()).toContain('3 classes in this period.');
   });
@@ -564,7 +569,9 @@ describe('the My schedule page', () => {
 
     expect(api.calls(scheduleOf(foreign))).toHaveLength(0);
     expect(api.calls(scheduleOf(SELF.student_id)).length).toBeGreaterThan(0);
-    expect(text()).toContain('Whose schedule My classes');
+    expect(text()).not.toContain('Whose schedule');
+    expect(text()).not.toContain('My classes');
+    expect(app.container.querySelector('select')).toBeNull();
     expect(text()).toContain('No classes in this period.');
   });
 

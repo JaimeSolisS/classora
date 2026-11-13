@@ -4,7 +4,9 @@ import { SELECT_CLASS } from '@/features/students/styles';
 import { entryLabel, type WhoseEntry } from './whose';
 
 // "Whose schedule" (#67 E2): a labelled select above the calendar when
-// there is more than one entry, plain text for a single one.
+// there is more than one entry, plain text for a single guardian's child,
+// nothing for a single entry that is the caller's own ("My classes" or
+// "My teaching": the h1 says it, #352).
 
 export function WhoseSchedule({
   entries,
@@ -18,6 +20,9 @@ export function WhoseSchedule({
   const { t } = useTranslation();
   const id = useId();
   if (entries.length === 1) {
+    if (selected.kind === 'teaching' || selected.student.relation === 'self') {
+      return null;
+    }
     return (
       <p className="text-sm">
         <span className="font-medium">{t('mySchedule.whose.label')}</span>{' '}

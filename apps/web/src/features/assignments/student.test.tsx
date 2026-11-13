@@ -202,10 +202,12 @@ describe('the picker (E1)', () => {
     expect(api.requests.some((r) => r.path.includes(ADULT_ID))).toBe(false);
   });
 
-  it('a student with their own login: plain text, no select', async () => {
+  it('a student with their own login: no "whose" line, no select (#352)', async () => {
     await open('/my-homework', {}, STUDENT);
     expect(main().querySelector('select')).toBeNull();
-    expect(text()).toContain('Whose homework My homework');
+    expect(text()).not.toContain('Whose homework');
+    expect(text()).not.toContain('My homework');
+    expect(heading()!.textContent).toBe('Homework');
   });
 
   it('no family students: the message', async () => {

@@ -145,7 +145,7 @@ describe('the list (E1, E2, E4)', () => {
     ]);
   });
 
-  it('a student: "My plans", no picker', async () => {
+  it('a student: no "whose" line, no picker (#352)', async () => {
     await open(
       '/my-learning-plans',
       { [FAMILY]: () => jsonResponse(200, SELF_ONLY) },
@@ -153,7 +153,9 @@ describe('the list (E1, E2, E4)', () => {
     );
     await settleUntil(() => main().querySelectorAll('li').length === 2);
     expect(main().querySelector('select')).toBeNull();
-    expect(text()).toContain('Whose plans My plans');
+    expect(text()).not.toContain('Whose plans');
+    expect(text()).not.toContain('My plans');
+    expect(heading()!.textContent).toBe('Learning plans');
   });
 
   it('no linked student: the message', async () => {
