@@ -18,7 +18,8 @@
 #      /srv/classora-data/dev-data/, else downloaded; if neither works, the
 #      newest cached dump (step 6's migrations bring it to the current head);
 #      none: fails before anything is stopped;
-#   4. stops api and worker;
+#   4. stops api, worker and pgbouncer (no pooled connection survives into
+#      the new database);
 #   5. drops and re-creates `classora` and restores the dump (pg_restore
 #      --no-owner --exit-on-error), then counts every table and compares with
 #      the dump's counts (before anything else writes);
@@ -137,15 +138,17 @@ current_release() {
 
 # The newest cached dump that has its counts, as "<sha>".
 newest_cached() {
-  local f sha
-  # shellcheck disable=SC2012 # names are <40-hex>.dev-data.dump
-  for f in $(ls -1t "$CACHE"/*.dev-data.dump 2>/dev/null); do
+  local f sha list
+  # shellcheck disable=SC2012 # names are <40-hex>.dev-data.dump (no spaces)
+  list=$(ls -1t "$CACHE"/*.dev-data.dump 2>/dev/null || true)
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
     sha=$(basename "$f" .dev-data.dump)
     if [[ "$sha" =~ ^[0-9a-f]{40}$ ]] && [ -s "$CACHE/$sha.dev-data.counts.json" ]; then
       echo "$sha"
       return 0
     fi
-  done
+  done <<<"$list"
   return 1
 }
 
@@ -172,7 +175,7 @@ if [ "$check" = true ]; then
     source_line="fallback: the newest cached dump $CACHE/$cached.dev-data.dump, then migrations"
   fi
   echo "dump:     ${source_line:-NONE (a reset would fail before stopping anything)}"
-  echo "plan:     wait for the backup and deploy locks (up to ${LOCK_SECONDS} s each); stop api and worker;"
+  echo "plan:     wait for the backup and deploy locks (up to ${LOCK_SECONDS} s each); stop api, worker, pgbouncer;"
   echo "          drop and re-create the database; pg_restore; compare row counts; 0096 grants;"
   echo "          migrate, sync-runtime-role, seeds, db-roles.sh; start; ${HEALTH_SECONDS} s readiness gate"
   echo "log:      $LOG and the journal (classora-dev-data-reset.service)"
@@ -241,10 +244,10 @@ psql_db() {
 database=$("$BIN/compose.sh" exec -T db sh -c 'echo "$POSTGRES_DB"' | tr -d '\r')
 [[ "$database" =~ ^[a-z_][a-z0-9_]*$ ]] || fail "unexpected database name"
 
-# 4. Stop the database's users.
-log "stopping api and worker"
+# 4. Stop the database's users (pgbouncer too: no stale pooled connection).
+log "stopping api, worker and pgbouncer"
 stopped=1
-"$BIN/compose.sh" stop api worker >/dev/null || fail "could not stop api and worker"
+"$BIN/compose.sh" stop api worker pgbouncer >/dev/null || fail "could not stop api, worker and pgbouncer"
 
 # 5. Re-create and restore.
 log "re-creating $database and restoring the dump of $dump_release"

@@ -31,13 +31,13 @@ The simulation command and the visitor step refuse any `APP_ENV` but `local` and
 1. Refuses (exit 2) unless `/etc/classora/host.env` says `CLASSORA_ENV=dev`, and unless `/srv/classora-data/dev-data/ENABLED` exists.
 2. Waits up to 15 minutes for the backup lock, then the deploy lock, so it never overlaps a backup or a deploy.
 3. Picks the dump of the current release (`readlink /srv/classora-data/releases/current`): cached in `/srv/classora-data/dev-data/`, else downloaded from the ops bucket. If neither works, the newest cached dump, which step 6's migrations bring to the current head (`"fallback": true`). With none it fails before stopping anything.
-4. Stops `api` and `worker`.
+4. Stops `api`, `worker` and `pgbouncer`.
 5. Drops and re-creates `classora`, runs `pg_restore --no-owner --exit-on-error`, then counts every table and compares with the dump's counts.
 6. Gives the runtime role the grants migration 0096 gives (the dump has no ACL), then runs the deploy's database step in a one-off `migrate` container: `alembic upgrade head`, `sync-runtime-role`, the reference seeds. Then `db-roles.sh`.
 7. Starts every service and runs the deploy's 90 s readiness gate (`api`, `worker`, the site's `/` through Caddy).
 8. Keeps the three newest cached dumps.
 
-If anything fails after step 4, `api` and `worker` are started again anyway. The units are installed and enabled only on DEV (`install-units.sh`, run by every deploy); on any other host they're removed if present.
+If anything fails after step 4, every service is started again anyway. The units are installed and enabled only on DEV (`install-units.sh`, run by every deploy); on any other host they're removed if present.
 
 The reset takes a few minutes. During it, the site loads but its API calls fail.
 

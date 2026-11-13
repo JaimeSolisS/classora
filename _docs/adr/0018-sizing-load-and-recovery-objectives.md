@@ -108,7 +108,7 @@ DEV is measured with a scrubbed copy of the simulated center in a **side databas
 - **Measuring t4g.micro on real hardware.** That needs a DEV resize, which this issue may not do.
 - **Zero-downtime deploys** (a second api container behind Caddy, blue/green). More memory and moving parts than a center with a release window needs.
 
-## Amendment (#671, #674): DEV data
+## Amendment: DEV data (#671)
 
 Recorded 2026-11-13. Owner decisions of #671 (2026-11-13), the rest owner-delegated. No new ADR.
 
