@@ -25,11 +25,11 @@ role allows:
 
 | Who | What they do in Classora |
 |---|---|
-| **Owner and administrators** | Set up subjects, classrooms, prices and opening hours. Invite people. Approve requests. See the KPI dashboard and reports. |
-| **Coordinators** | Schedule individual, group and course classes without clashes. Offer classes to tutors. Follow attendance and progress. |
-| **Finance staff** | Charge families, record payments and refunds, issue receipts. Run tutor payroll. Track expenses. |
+| **Owner and administrators** | Set up subjects, classrooms, prices and opening hours. Schedule individual, group and course classes. Invite people. Approve requests and refunds. See the KPI dashboard and reports. |
+| **Coordinators** | Offer classes to tutors and arrange substitutes. Manage course templates. Correct attendance, review class notes and approve progress reports. |
+| **Finance staff** | Charge families and record payments (each gets a receipt). Prepare tutor payroll and record tutor payments. Track expenses. |
 | **Tutors** | See their agenda, take attendance, write session notes and homework, and see their earnings. |
-| **Guardians and students** | See the schedule, request classes or changes, follow progress, and see the account balance and receipts. |
+| **Guardians and students** | See the schedule, request classes or changes, and follow progress. Guardians also see the family's balance and receipts. |
 
 ```mermaid
 flowchart LR
@@ -55,17 +55,19 @@ flowchart LR
 ```
 
 **What you can expect it to do:**
-- **Scheduling:** a class can't be booked over another class, outside
-  opening hours or in a classroom that is already taken.
+- **Scheduling:** a class can't double-book a tutor, a student or a
+  classroom, or overfill a room. Booking outside opening hours, on a closure
+  day or when the tutor is unavailable needs an explicit override with a
+  reason, which is audited.
 - **Approvals:** changes requested by families or tutors wait for staff
   approval.
 - **Money:** every amount a family owes or a tutor earns comes from recorded
-  classes, charges and payments. Corrections are new entries, never silent
+  classes, charges, payments and pay terms. Corrections are new entries, never silent
   edits.
 - **Privacy:** people see only their own data. A guardian sees only their
   own children; a tutor sees only their own students.
-- **Bilingual:** the interface and the PDF and Excel exports are in Spanish
-  and English.
+- **Bilingual:** the interface, the PDF receipts and payslips, and the CSV
+  and Excel exports are in Spanish and English.
 
 The full feature list is in the
 [full README](_docs/Full_README.md#features), and the product rules are in the
@@ -76,7 +78,7 @@ The full feature list is in the
 | Where | Link |
 |---|---|
 | DEV: every merge to `develop` deploys here | <https://dev.classora.dev> |
-| PROD: the owner releases here after approval | <https://app.classora.dev> |
+| PROD: the owner releases here after approval (serves after the first release) | <https://app.classora.dev> |
 | Monitoring (Grafana, login required) | <https://grafana.classora.dev> |
 
 ### Run it on your machine
@@ -142,6 +144,10 @@ make e2e    # end-to-end tests in a real browser, with accessibility checks
   permissions between roles and financial invariants (money always adds up).
 - **End-to-end tests** (Playwright) click through the app on its own Docker
   stack.
+
+The API tests need Docker running and Pango installed on the host, which the
+PDF tests use (see [prerequisites](_docs/Full_README.md#prerequisites)).
+The end-to-end tests need nothing beyond Docker, uv and Node.
 
 How to write tests is in the
 [testing guidelines](_docs/testing-guidelines.md).
@@ -216,7 +222,7 @@ agents does the work, and the repository owner takes the product decisions:
 | Agent | Responsibility |
 |---|---|
 | **Orchestrator** (main session) | Picks the next issue, launches the other agents, opens and merges pull requests. Keeps one issue in flight. |
-| **Product manager** ([role](_docs/team/pm.md)) | Reads the code, writes the acceptance criteria and edge cases, and asks the owner for decisions, always with a recommended option. |
+| **Product manager** ([role](_docs/team/pm.md)) | Grooms the issue against the spec and architecture: checkable acceptance criteria, roles, edge cases, tests and what is out of scope. Escalates conflicts to the owner instead of guessing. |
 | **Software engineer** ([role](_docs/team/software-engineer.md)) | Implements the groomed issue in its own git worktree, with tests and docs. |
 | **QA engineer** ([role](_docs/team/qa-engineer.md)) | Checks every criterion independently on its own database, and posts PASS or FAIL with evidence. |
 

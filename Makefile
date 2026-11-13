@@ -34,7 +34,7 @@ start:
 	@test -f .env || { cp .env.example .env && echo "Created .env from .env.example"; }
 	$(MAKE) migrate
 	$(MAKE) dev
-	@echo "Classora is up: http://127.0.0.1:$${WEB_PORT:-5173} (sign-in: see README 'Try it locally')"
+	@echo "Classora is up: http://127.0.0.1:$${WEB_PORT:-5173} (sign-in: see README 'Run it on your machine')"
 
 ## Build the images and start db, pgbouncer, api, worker and web in the background (idempotent).
 ## On a new checkout or volume run `make migrate` first: it creates the database role

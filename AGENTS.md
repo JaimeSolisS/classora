@@ -9,9 +9,15 @@
 - Use tests, migrations and authorization checks suited to the change.
 - Document findings and exact test commands/results in the issue.
 - AFTER EVERY ISSUE OR FOLLOW-UP CODING PROMPT: review root `README.md`
-  (short overview) and `_docs/Full_README.md` (full reference). Update only if public onboarding, implemented capabilities, tech stack,
-  verified commands, deployment status or links changed. Never put task logs
+  (short overview) and `_docs/Full_README.md` (full reference). Update only
+  if public onboarding, implemented capabilities, tech stack, verified
+  commands, deployment status or links changed. Never put task logs
   or internal notes in the README. Report one of:
   `README updated: ...` / `README reviewed: no update necessary`.
+- Modular docs: roles in `_docs/team/` (`pm.md`, `software-engineer.md`,
+  `qa-engineer.md`); tests in `_docs/testing-guidelines.md`; API conventions
+  in `_docs/api.md`; UI rules in `_docs/design-system.md`; decisions in
+  `_docs/adr/`; AWS operations in `_docs/runbooks/index.md`; every command
+  and setting in `_docs/Full_README.md`.
 - QA must verify the README gate before PASS. The orchestrator must not close
   an issue without a QA PASS and README verdict.
