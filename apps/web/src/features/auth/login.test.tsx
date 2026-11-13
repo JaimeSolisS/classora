@@ -217,6 +217,27 @@ describe('errors (B4)', () => {
     expect(username().value).toBe('demo.owner');
   });
 
+  it('invalid_credentials after showing the password: cleared, focused and hidden (#664)', async () => {
+    stubLogin(() => problem(401, 'invalid_credentials'));
+    app = await renderApp('/login');
+    const toggle = () =>
+      main().querySelector<HTMLButtonElement>(
+        `button[aria-controls="${password().id}"]`,
+      )!;
+    typeInto(username(), 'demo.owner');
+    typeInto(password(), 'wrong-password');
+    await click(toggle());
+    expect(password().type).toBe('text');
+
+    await click(submitButton());
+
+    expect(alerts(main())).toHaveLength(1);
+    expect(password().value).toBe('');
+    expect(document.activeElement).toBe(password());
+    expect(password().type).toBe('password');
+    expect(toggle().getAttribute('aria-label')).toBe('Show password');
+  });
+
   it('rate_limited: the message, no automatic retry', async () => {
     const stub = stubLogin(() => problem(429, 'rate_limited'));
     app = await renderApp('/login');

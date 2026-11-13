@@ -230,7 +230,9 @@
     }
   },
   "common": {
-    "usernameHint": "De 3 a 64 caracteres: letras, números, punto, guion o guion bajo."
+    "usernameHint": "De 3 a 64 caracteres: letras, números, punto, guion o guion bajo.",
+    "showPassword": "Mostrar contraseña",
+    "hidePassword": "Ocultar contraseña"
   },
   "roles": {
     "owner": "Propietario",

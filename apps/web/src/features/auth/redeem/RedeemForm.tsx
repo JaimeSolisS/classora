@@ -7,6 +7,7 @@ import { ErrorAlert } from '@/components/feedback/ErrorAlert';
 import { Spinner } from '@/components/feedback/Spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { z } from '@/lib/forms';
 import { FieldError } from '../FieldError';
 
@@ -148,9 +149,8 @@ export function RedeemForm({ username, intro, onSubmit }: RedeemFormProps) {
           <label htmlFor={ids.newPassword} className="text-sm font-medium">
             {t('invite.newPassword')}
           </label>
-          <Input
+          <PasswordInput
             id={ids.newPassword}
-            type="password"
             autoComplete="new-password"
             aria-invalid={newPasswordMessage ? true : undefined}
             aria-describedby={
@@ -174,9 +174,8 @@ export function RedeemForm({ username, intro, onSubmit }: RedeemFormProps) {
           <label htmlFor={ids.confirmPassword} className="text-sm font-medium">
             {t('invite.confirmPassword')}
           </label>
-          <Input
+          <PasswordInput
             id={ids.confirmPassword}
-            type="password"
             autoComplete="new-password"
             aria-invalid={confirmMessage ? true : undefined}
             aria-describedby={

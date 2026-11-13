@@ -221,7 +221,9 @@ describe('the dialog (D1–D3)', () => {
     await confirm();
 
     const buttons = [
-      ...openDialog()!.querySelectorAll<HTMLButtonElement>('form button'),
+      ...openDialog()!.querySelectorAll<HTMLButtonElement>(
+        'form button:not([aria-controls])',
+      ),
     ];
     expect(buttons.map((b) => b.disabled)).toEqual([true, true]);
     expect(openDialog()!.textContent).toContain('Confirming…');
