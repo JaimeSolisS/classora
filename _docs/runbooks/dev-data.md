@@ -62,7 +62,7 @@ Prints the environment, the marker, the current release, which dump a reset woul
 Each run writes one JSON line to the journal and to `/var/log/classora/dev-data-reset.log`:
 
 ```json
-{"event": "dev-data-reset", "env": "dev", "status": "ok", "release": "<sha>", "dump": "<sha>", "fallback": false, "tables": 120, "mismatched": 0, "duration_s": 75}
+{"event": "dev-data-reset", "env": "dev", "status": "ok", "release": "<sha>", "dump": "<sha>", "fallback": false, "tables": 139, "mismatched": 0, "duration_s": 75}
 ```
 
 - `status`: `ok`; `mismatch` (restored, started and healthy, but `mismatched` tables differ from the dump's counts); `failed` (with an `error`).

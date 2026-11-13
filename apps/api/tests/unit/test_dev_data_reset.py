@@ -328,6 +328,11 @@ def test_install_units_installs_and_enables_the_reset_timer_on_dev(host):
 @pytest.mark.parametrize("env_name", ["prod", "monitoring", None])
 def test_install_units_never_installs_the_reset_units_elsewhere(host, env_name):
     host.host_env(env_name)
+    # The release copies exist, so only the environment check keeps them out.
+    systemd = host.root / "opt" / "classora" / "systemd"
+    systemd.mkdir(parents=True)
+    for name in ("classora-dev-data-reset.service", "classora-dev-data-reset.timer"):
+        (systemd / name).write_text("")
 
     result = host.run(INSTALL_UNITS)
 
