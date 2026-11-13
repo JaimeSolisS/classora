@@ -125,8 +125,9 @@ if [ "$run_api" = 1 ]; then
   done
 fi
 if [ "$run_web" = 1 ]; then
-  # Both suites always run; the part fails if either fails.
-  start web "$WEB_IMAGE" sh -c 'corepack pnpm --filter @classora/web test; web=$?;
+  # Both suites always run; the part fails if either fails. Two Vitest workers:
+  # the API shards share the CPU, and a starved full-app render times out.
+  start web "$WEB_IMAGE" sh -c 'corepack pnpm --filter @classora/web test --maxWorkers=2; web=$?;
     corepack pnpm --filter @classora/api-client test; client=$?;
     [ "$web" -eq 0 ] && [ "$client" -eq 0 ]'
 fi
