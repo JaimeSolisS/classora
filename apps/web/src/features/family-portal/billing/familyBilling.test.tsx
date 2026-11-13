@@ -541,6 +541,84 @@ describe('payments (E1-E4)', () => {
     expect(old.textContent).toContain('Receipt—');
   });
 
+  it('a reversed payment shows no credit amount, list and detail (#418)', async () => {
+    const reversed = {
+      ...PAYMENT,
+      is_reversed: true,
+      reversed_at: '2026-10-15T17:00:00Z',
+      allocated_amount: '1000.00',
+      unallocated_amount: '500.00',
+    };
+    stub({
+      [PAYMENTS]: () =>
+        jsonResponse(200, {
+          ...PAYMENTS_PAGE,
+          items: [reversed, PAYMENT_OLD],
+        }),
+      [PAYMENT_ROUTE]: () =>
+        jsonResponse(200, {
+          ...STAFF_PAYMENT_DETAIL,
+          ...reversed,
+          allocations: [],
+        }),
+    });
+    app = await open();
+    const row = main().querySelector(`[data-payment-id="${PAYMENT.id}"]`)!;
+    expect(row.textContent).toContain('Reversed');
+    expect(row.textContent).toContain(
+      'Not applied (credit)Not applicable (payment reversed)',
+    );
+    expect(row.textContent).not.toContain('$500.00');
+    // A non-reversed payment keeps its amount, $0.00 included.
+    const old = main().querySelector(`[data-payment-id="${PAYMENT_OLD.id}"]`)!;
+    expect(old.textContent).toContain('Not applied (credit)$0.00');
+    await click(
+      button(
+        main(),
+        'Details of the payment of $1,500.00 received Oct 12, 2026',
+      ),
+    );
+    await settleUntil(() =>
+      openDialog()?.querySelector('[data-payment-detail]'),
+    );
+    const dialog = openDialog()!;
+    expect(dialog.textContent).toContain(
+      'Not applied (credit)Not applicable (payment reversed)',
+    );
+    expect(dialog.textContent).not.toContain('$500.00');
+    // Round 2: no allocations is not "account credit" once reversed.
+    expect(dialog.textContent).toContain(
+      'Not applied to any charge: the payment was reversed.',
+    );
+    expect(dialog.textContent).not.toContain('it is account credit');
+  });
+
+  it('a payment applied to nothing is account credit while not reversed (#418)', async () => {
+    stub({
+      [PAYMENT_ROUTE]: () =>
+        jsonResponse(200, {
+          ...STAFF_PAYMENT_DETAIL,
+          ...PAYMENT,
+          allocations: [],
+        }),
+    });
+    app = await open();
+    await click(
+      button(
+        main(),
+        'Details of the payment of $1,500.00 received Oct 12, 2026',
+      ),
+    );
+    await settleUntil(() =>
+      openDialog()?.querySelector('[data-payment-detail]'),
+    );
+    const dialog = openDialog()!;
+    expect(dialog.textContent).toContain(
+      'Not applied to any charge: it is account credit.',
+    );
+    expect(dialog.textContent).not.toContain('the payment was reversed');
+  });
+
   it('never renders staff-only fields, even unredacted (E4)', async () => {
     stub(
       {

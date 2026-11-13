@@ -104,6 +104,12 @@ export const Reversed: Story = {
     await expect(
       within(dialog).getByText('Transferencia rechazada por el banco'),
     ).toBeVisible();
+    // #418: the unapplied amount of a reversed payment is not credit.
+    await expect(
+      within(dialog).getByText(
+        i18n.t('billing.accounts.payments.unallocatedNotApplicable'),
+      ),
+    ).toBeVisible();
   },
 };
 

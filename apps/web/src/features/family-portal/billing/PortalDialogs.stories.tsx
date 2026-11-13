@@ -115,6 +115,12 @@ export const PaymentReversed: Story = {
     await expect(
       within(dialog).getByText(i18n.t('familyBilling.paymentDetail.reversal')),
     ).toBeVisible();
+    // #418: no credit amount for a reversed payment.
+    await expect(
+      within(dialog).getByText(
+        i18n.t('familyBilling.payments.creditNotApplicable'),
+      ),
+    ).toBeVisible();
   },
 };
 

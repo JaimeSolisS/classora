@@ -71,7 +71,9 @@ export function PaymentDetailDialog({
               ],
               [
                 t('familyBilling.payments.credit'),
-                labels.money(payment.unallocated_amount),
+                payment.is_reversed
+                  ? t('familyBilling.payments.creditNotApplicable')
+                  : labels.money(payment.unallocated_amount),
               ],
               [
                 t('billing.accounts.payments.columns.reference'),
@@ -151,7 +153,9 @@ export function PaymentDetailDialog({
           </h3>
           {payment.allocations.length === 0 ? (
             <p className="text-sm">
-              {t('familyBilling.paymentDetail.noAllocations')}
+              {payment.is_reversed
+                ? t('familyBilling.paymentDetail.noAllocationsReversed')
+                : t('familyBilling.paymentDetail.noAllocations')}
             </p>
           ) : (
             <ul className="flex flex-col gap-2">

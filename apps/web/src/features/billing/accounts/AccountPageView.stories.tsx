@@ -121,6 +121,34 @@ export const NoAccount: Story = {
   },
 };
 
+// #418: a reversed payment shows "—" under "Not applied", with hidden
+// text for screen readers, never its unapplied amount as credit.
+export const ReversedPayment: Story = {
+  args: {
+    payments: {
+      status: 'ready',
+      page: {
+        ...PAYMENTS_PAGE,
+        items: [
+          {
+            ...PAYMENTS_PAGE.items[0]!,
+            is_reversed: true,
+            reversed_at: '2026-10-15T17:00:00Z',
+          },
+          ...PAYMENTS_PAGE.items.slice(1),
+        ],
+      },
+    },
+  },
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.getByText(
+        i18n.t('billing.accounts.payments.notApplicableReversed'),
+      ),
+    ).toBeInTheDocument();
+  },
+};
+
 export const ReadOnly: Story = {
   args: { canRecord: false },
   play: async ({ canvas }) => {

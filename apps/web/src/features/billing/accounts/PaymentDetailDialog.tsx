@@ -100,7 +100,9 @@ export function PaymentDetailDialog({
       ],
       [
         t('billing.accounts.payments.columns.unallocated'),
-        labels.money(payment.unallocated_amount),
+        payment.is_reversed
+          ? t('billing.accounts.payments.unallocatedNotApplicable')
+          : labels.money(payment.unallocated_amount),
       ],
       [
         t('billing.accounts.payments.columns.reference'),
@@ -238,7 +240,9 @@ export function PaymentDetailDialog({
         </h3>
         {payment.allocations.length === 0 ? (
           <p className="text-sm">
-            {t('billing.accounts.payments.noAllocations')}
+            {payment.is_reversed
+              ? t('billing.accounts.payments.noAllocationsReversed')
+              : t('billing.accounts.payments.noAllocations')}
           </p>
         ) : (
           <Table aria-label={t('billing.accounts.payments.allocations')}>
