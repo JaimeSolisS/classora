@@ -83,15 +83,18 @@ The full feature list is in the
 
 ### Run it on your machine
 
-You need Docker (with Compose v2), GNU Make, [uv](https://docs.astral.sh/uv/)
-and Node.js 24. Then run one command:
+You need only Docker (with Compose v2) and GNU Make. Python, Node.js,
+PostgreSQL and everything else run in containers, on Intel/AMD and ARM
+(Apple Silicon) machines alike. Run one command:
 
 ```bash
 make start
 ```
 
 It creates `.env` from `.env.example`, sets up the database and starts every
-part of the system in Docker. It returns when all of them are healthy:
+part of the system in Docker. The first run builds the images: about 2
+minutes on a 4-core Intel Mac, plus the download of the base images. Later
+runs take seconds. It returns when all of them are healthy:
 - PostgreSQL;
 - PgBouncer;
 - the API;
@@ -106,6 +109,9 @@ role, run:
 ```bash
 make seed-data-english   # or make seed-data-spanish
 ```
+
+It runs in a container too, on the database `make start` created (use a fresh
+one: it refuses a database that already has data).
 
 Then sign in as `owner` with the password `classora-sim-owner` (in Spanish,
 use `direccion`). The [full README](_docs/Full_README.md#simulated-operations-data)
@@ -134,7 +140,7 @@ parts that touch the database. The design and its reasons are in
 ## Tests
 
 ```bash
-make test   # all API unit and integration tests, then the web app tests
+make test   # all API unit and integration tests, plus the web app tests
 make e2e    # end-to-end tests in a real browser, with accessibility checks
 ```
 
@@ -145,9 +151,22 @@ make e2e    # end-to-end tests in a real browser, with accessibility checks
 - **End-to-end tests** (Playwright) click through the app on its own Docker
   stack.
 
-The API tests need Docker running and Pango installed on the host, which the
-PDF tests use (see [prerequisites](_docs/Full_README.md#prerequisites)).
-The end-to-end tests need nothing beyond Docker, uv and Node.
+`make test` needs only Docker and Make. It builds two test images, then runs
+the API tests in 4 containers at once (each with its own throwaway
+PostgreSQL) next to the web app tests. A full run is long: the API suite is
+about 2½ hours of test time on CI's runners, which the 4 containers share,
+and the web tests took about 12 minutes on a 4-core Intel Mac. It prints one
+summary line per part and fails if any part fails; full logs are in
+`test-results/docker/`. On a machine with less than 16 GB of RAM (or a Docker Desktop VM under 8 GB), run
+`make test SHARDS=2`.
+
+`make test` does not work with rootless Docker, Podman, Docker Desktop with
+Enhanced Container Isolation, or a Linux firewall that blocks containers from
+reaching the host. Use the native commands in the
+[full README](_docs/Full_README.md#running-tests) there.
+
+The end-to-end tests also need Node.js 24 and
+[uv](https://docs.astral.sh/uv/) on the host.
 
 How to write tests is in the
 [testing guidelines](_docs/testing-guidelines.md).

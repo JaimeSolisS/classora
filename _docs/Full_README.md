@@ -618,8 +618,30 @@ planned for a later version.
 
 ## Prerequisites
 
-- [Docker Engine](https://docs.docker.com/engine/) with Docker Compose v2
-- GNU Make
+### Docker-only path
+
+To run the app, load the simulated data and run the unit and integration
+tests, you need only:
+
+- [Docker Engine](https://docs.docker.com/engine/) 20.10 or later, or Docker
+  Desktop, with Docker Compose v2
+- GNU Make (and the POSIX shell and bash that macOS and Linux ship with)
+
+`make start`, `make seed-data-spanish` / `make seed-data-english` and
+`make test` run everything in containers: Python, Node.js, PostgreSQL and the
+PDF libraries come from the images (both `linux/amd64` and `linux/arm64`).
+`make test` reaches the Docker daemon through its socket
+(`/var/run/docker.sock`) for its throwaway databases, so it does not work with
+rootless Docker, Podman, or Docker Desktop with Enhanced Container Isolation,
+nor on a Linux host whose firewall (ufw, firewalld) blocks containers from
+reaching the host's published ports. Use the native path there.
+`make e2e`, the linters and Storybook need the native tools below.
+
+### Native development
+
+The engineer workflow (the `-native` targets, `make test-native` and its
+per-layer targets, linting, `make e2e`) also needs:
+
 - [uv](https://docs.astral.sh/uv/) (installs the pinned Python version; no other Python install is needed)
 - [Node.js](https://nodejs.org/) 24 (see `.nvmrc`; with nvm, run `nvm use`). pnpm
   runs through Corepack, which ships with Node 24, so no global pnpm install is
@@ -764,6 +786,8 @@ data are kept.
 make seed                # reference data
 make seed-data-spanish   # a simulated term of a tutoring center, in Spanish (local only)
 make seed-data-english   # the same simulated term, in English (local only)
+make seed-data-spanish-native   # the same, on the host into the database .env names (native stack)
+make seed-data-english-native
 ```
 
 `make seed` applies the reference data every environment needs: the user
@@ -790,9 +814,17 @@ make seed-data-english   # the same center, in English (its own database)
 These commands generate an invented tutoring center that has been running
 for a term, so you can see the system with realistic volumes. Both write
 through the application's services, and the names, addresses and texts are
-synthetic. They run on the host (with the API's development dependencies,
-via `uv`), need `.env`, and are **local only**: they refuse every `APP_ENV`
-except `local`.
+synthetic. They are **local only**: they refuse every `APP_ENV` except
+`local`. Both need `.env` (`make start` creates it).
+
+- `make seed-data-spanish` / `make seed-data-english` run in the Compose tools
+  service `devtools` (the API image's `test` stage, which has the development
+  dependencies) against the Compose database, as its owner, like `make seed`.
+  They need only Docker; run `make start` first. The first run builds the
+  image (`--build`; later runs reuse it).
+- `make seed-data-spanish-native` / `make seed-data-english-native` run the
+  same command on the host (with the API's development dependencies, via
+  `uv`) against the database `.env` names: the native stack.
 
 They need a **freshly migrated database** (the reference data and nothing
 else). They refuse a database that already has any account, student, class,
@@ -806,10 +838,10 @@ its own:
 make db-shared && make db-create NAME=classora_sim_es   # or classora_sim_en
 # set DATABASE_URL, DATABASE_DIRECT_URL and DATABASE_MIGRATION_URL in .env to the printed URLs
 make api-native          # migrates, then serves; keep it running
-make seed-data-spanish   # in another terminal
+make seed-data-spanish-native   # in another terminal
 
 # Compose
-docker compose down -v && make migrate && make dev && make seed-data-spanish
+docker compose down -v && make start && make seed-data-spanish
 ```
 
 Then open <http://127.0.0.1:5173> (native stack: start `make web-native`
@@ -1174,7 +1206,7 @@ make db-create NAME=<name>        # create a database and role <name> ([a-z0-9_]
 make api-native                   # migrations, then the API with reload on API_PORT
 make worker-native                # the background worker
 make web-native                   # Vite with hot reload on WEB_PORT
-make seed-data-spanish            # simulated data into the same, freshly migrated database (or seed-data-english)
+make seed-data-spanish-native     # simulated data into the same, freshly migrated database (or seed-data-english-native)
 make db-drop NAME=<name>          # drop the database and role (classora_app stays)
 make db-shared-down               # stop the server (V=1 also deletes its volume)
 ```
@@ -1200,7 +1232,7 @@ example, two worktrees, each with its own database:
 #   DATABASE_URL and DATABASE_DIRECT_URL: postgresql://classora_app:classora_app_local_only@127.0.0.1:55432/wt_b
 #   DATABASE_MIGRATION_URL:              postgresql://wt_b:classora_local_only@127.0.0.1:55432/wt_b
 make db-shared && make db-create NAME=wt_a   # in A (B: NAME=wt_b)
-make api-native                              # then worker-native, web-native, seed-data-spanish
+make api-native                              # then worker-native, web-native, seed-data-spanish-native
 ```
 
 Browsers share cookies between ports of `127.0.0.1`, so sign in to two stacks
@@ -1242,8 +1274,8 @@ read only by migrations, seeds, operator commands and the local data
 factories; unset, they use `DATABASE_DIRECT_URL`, and as `classora_app` a
 migration fails without changing anything. Inside Compose all three are built
 from the `POSTGRES_*` values; the values in `.env` only matter when you run
-the API, Alembic or the simulated seeds (`make seed-data-spanish`,
-`make seed-data-english`) on the host.
+the API, Alembic or the simulated seeds (`make seed-data-spanish-native`,
+`make seed-data-english-native`) on the host.
 
 If your `.env` was copied before a variable was added, refresh it from
 `.env.example` (for example, copy it again).
@@ -1253,11 +1285,45 @@ If your `.env` was copied before a variable was added, refresh it from
 Docker must be running: API integration tests start a throwaway PostgreSQL
 container (and a PgBouncer container built from this repository) with
 [Testcontainers](https://testcontainers.com/). The Compose
-stack and `.env` are not needed. The API unit tests render PDFs, so they need
-Pango (see [Prerequisites](#prerequisites)).
+stack and `.env` are not needed.
+
+### In Docker (Docker and Make only)
 
 ```bash
-make test              # all tests: API (unit + integration) then web (Vitest)
+make test              # all API tests (unit + integration) and the web and API client tests, in containers
+make test-api-docker   # only the API part
+make test-web-docker   # only the web and API client part (Vitest)
+make test SHARDS=2     # fewer API containers at once, for smaller machines (default 4)
+make test-api-docker PYTEST_ARGS="tests/unit/test_pdf.py tests/integration/test_health_ready.py"   # a narrower selection
+```
+
+`make test` builds the `test` stages of `infrastructure/docker/api.Dockerfile`
+(the API's development dependencies, Pango and the whole repository) and
+`infrastructure/docker/web.Dockerfile` (Node 24 and pnpm from `packageManager`),
+then runs the API suite as `SHARDS` containers at once, each
+`pytest --shard=K/SHARDS` with its own Testcontainers PostgreSQL, next to one
+container for the web and API client Vitest suites
+(`infrastructure/docker/test-in-docker.sh`). The API containers use the host's
+Docker daemon through its socket: their PostgreSQL, PgBouncer and Ryuk
+containers are siblings, reached at `host.docker.internal`. It selects the same
+tests as `make test-native`. `PYTEST_ARGS` adds pytest arguments (paths are
+relative to `apps/api`; a shard that gets no file passes). Every part always
+runs; the command prints one summary line per part, then the failure summary
+and the last 40 log lines of any part that failed, and exits non-zero if any
+part failed. Each part's full output is in `test-results/docker/<part>.log`.
+Ctrl-C removes the test containers. There is no coverage report in Docker: the
+native targets below (and CI) keep it. With `SHARDS=4` the Docker VM needs
+about 4 to 5 GB of memory; use `SHARDS=2` (or `1`) on a machine with less than
+16 GB of RAM or a Docker Desktop VM under 8 GB. The unsupported setups are listed
+under [Prerequisites](#docker-only-path).
+
+### Native (engineers)
+
+These run on the host and need the [native tools](#native-development); the
+API unit tests render PDFs, so they need Pango.
+
+```bash
+make test-native       # all tests: API (unit + integration) then web (Vitest)
 make test-api          # all API tests with a coverage report
 make test-web          # web and API client tests (Vitest, no Docker needed; includes the es/en translation-key check)
 make test-unit         # API unit tests only (no Docker needed)
@@ -1288,7 +1354,8 @@ volume, applies the migrations (before starting the app, which then runs as
 `classora_app`, as in `make dev`; the run checks it), the reference seeds and its own test fixture
 data (`demo.*` accounts, `--seed 1`; see
 [`_docs/testing-guidelines.md`](testing-guidelines.md)), runs the tests and always removes the stack again (`down -v`).
-It needs Docker, uv and Node 24 but no `.env` (it uses `.env.example`), and it
+It needs Docker, uv and Node 24 (its fixtures and Playwright run on the host; the
+first run downloads Chromium) but no `.env` (it uses `.env.example`), and it
 can run while `make dev` is up without touching that stack or its data. A
 failed run leaves Playwright traces, screenshots and the Compose logs
 (`compose.log`) in `e2e/test-results/` and an HTML report in
@@ -1298,10 +1365,10 @@ failed run leaves Playwright traces, screenshots and the Compose logs
 To keep the stack up for debugging, run `E2E_KEEP=1 make e2e`; the command it
 prints removes it afterwards.
 
-Each API run prints a terminal coverage report for the API (`app/`), with
-branch coverage and missing lines. `make test` does not start the Compose database,
-and it can run while `make dev` is up. `make test` does not run the Storybook or
-E2E tests.
+Each native API run prints a terminal coverage report for the API (`app/`), with
+branch coverage and missing lines; coverage is native only. `make test` and
+`make test-native` do not start the Compose database, and they can run while
+`make dev` is up. Neither runs the Storybook or E2E tests.
 
 Rules for writing tests (layers, fixtures and test data, authorization and
 financial invariant tests, E2E and accessibility) are in
@@ -1318,8 +1385,8 @@ make lint-e2e  # TypeScript (strict) and Prettier check on the E2E tests (e2e/)
 
 Lint targets only check and never modify files. The web targets install
 dependencies from the committed lockfile first, so no manual `pnpm install` is
-needed. `make lint` and `make test` fail if any part fails; use `make -k` to
-run every part regardless.
+needed. `make lint` and `make test-native` fail if any part fails; use `make -k` to
+run every part regardless (`make test` always runs every part).
 
 To build the web app for production: `make build-web` (output in
 `apps/web/dist/`).
@@ -1360,7 +1427,7 @@ flowchart TB
   local["💻 <b>Local development</b><br/>native stack or Docker Compose<br/>one git worktree per issue"]
   branch["🌿 Issue branch"]
   pr["🔀 Pull request<br/>to develop"]
-  ci["⚙️ <b>GitHub Actions</b><br/>lint · unit · migrations<br/>billing invariants<br/>simulation · integration ×5<br/>API client drift<br/>web · Storybook · E2E<br/>security scans"]
+  ci["⚙️ <b>GitHub Actions</b><br/>lint · unit · migrations<br/>billing invariants<br/>simulation · integration ×5<br/>API client drift<br/>web · Storybook · E2E<br/>grader path · security scans"]
   develop["develop"]
   main["main"]
   devenv["☁️ DEV on AWS"]
@@ -1405,6 +1472,7 @@ command:
 | `e2e` | `make lint-e2e`, `make e2e`, `make check-pdf-image` (builds the API image and renders a sample PDF in es and en inside it) (on failure, uploads traces, the HTML report and the Compose logs as the `e2e-report` artifact) |
 | `images` | `make build-images`, `make check-images`, `make check-pdf-image`, `make smoke-edge`, `make scan-image IMAGE=<ref>` for each image (CI builds the `api`, `web` (Caddy edge with the built SPA) and `pgbouncer` images natively for `linux/arm64` with `PLATFORM=linux/arm64`; locally the default is `linux/amd64`) |
 | `infra` | `make check-observability` (validates the observability configuration with the pinned images: Collector, Prometheus, Loki, Tempo, Grafana provisioning; starts nothing), `make check-infra` (`terraform fmt -check` and `terraform validate` for every Terraform root, shellcheck on `infrastructure/scripts/` and `infrastructure/host/`, and actionlint on the workflows, in pinned containers; no AWS credentials) |
+| `grader-path (ubuntu-24.04)`, `grader-path (ubuntu-24.04-arm)` | `make start`, `make seed-data-english`, a sign-in as `owner`, `make test` (amd64 and arm64), run in a "clean room" container that has only the Docker CLI (with Compose), GNU Make, bash and curl: no uv, Python, Node or Pango. Pull requests run `make test SHARDS=2 PYTEST_ARGS="tests/unit tests/integration/test_runtime_role.py tests/integration/test_health_ready.py tests/integration/test_receipts_pdf.py"` (with the full web tests); pushes and manual runs run the full `make test`. On failure, uploads `test-results/docker/` as the `grader-path-<runner>` artifact |
 | `security-deps` | `make audit-deps` (pip-audit and `pnpm audit` over both lockfiles; also every Monday on `develop` by [`security-audit.yml`](../.github/workflows/security-audit.yml)) |
 | `security-secrets` | `make scan-secrets` (gitleaks, full history); on pull requests also `make scan-secrets-diff BASE=<sha> HEAD=<sha>` |
 | `security-sast` | `make sast` (Semgrep); Ruff's security (`S`) rules run in `make lint-api` |
@@ -1421,10 +1489,10 @@ changes to `infrastructure/observability/`, `infrastructure/terraform/`,
 `infrastructure/scripts/`, `infrastructure/host/` and `compose.yaml`, and for
 `Makefile` and workflow changes.
 The `api-client` drift check runs whenever the API or web jobs run. The three
-security jobs run on every pull request and push, documentation included.
+security jobs and `grader-path` run on every pull request and push, documentation included.
 `ci-required` is the one required check: it reports on every pull request and
 fails if any job that ran failed or was cancelled, if a job was skipped although
-its paths changed, or if a security job was skipped.
+its paths changed, or if a security job or `grader-path` was skipped.
 
 ### Security scans
 
