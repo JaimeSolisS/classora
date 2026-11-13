@@ -178,22 +178,22 @@ reset-owner-password:
 	@test -n "$(USERNAME)" || { echo "usage: make reset-owner-password USERNAME=<name>" >&2; exit 2; }
 	docker compose run --rm --build migrate python -m app.cli reset-owner-password --username "$(USERNAME)"
 
-## Generate the simulated operations data in Spanish into the Compose database (APP_ENV=local only; run `make start` first, on a fresh volume).
+## Generate the simulated operations data in Spanish into the Compose database (APP_ENV=local and dev only; run `make start` first, on a fresh volume).
 # A deterministic center from 1 Sep to 5 Dec 2026 (history to 18 Nov), through the services; _docs/Full_README.md "Simulated operations data".
 # Runs in the Compose tools service `devtools` (the API image's test stage; #672 D4): only Docker is needed.
 seed-data-spanish:
 	docker compose run --rm --build devtools python -m tests.factories.simulation --language es
 
-## Generate the simulated operations data in English into the Compose database (APP_ENV=local only; run `make start` first, on a fresh volume).
+## Generate the simulated operations data in English into the Compose database (APP_ENV=local and dev only; run `make start` first, on a fresh volume).
 seed-data-english:
 	docker compose run --rm --build devtools python -m tests.factories.simulation --language en
 
-## Generate the simulated operations data in Spanish on the host (APP_ENV=local only; needs a freshly migrated database and .env).
+## Generate the simulated operations data in Spanish on the host (APP_ENV=local and dev only; needs a freshly migrated database and .env).
 # Native stack (uv); the database is the one this checkout's .env names.
 seed-data-spanish-native:
 	cd apps/api && uv run --env-file ../../.env python -m tests.factories.simulation --language es
 
-## Generate the simulated operations data in English on the host (APP_ENV=local only; needs its own freshly migrated database).
+## Generate the simulated operations data in English on the host (APP_ENV=local and dev only; needs its own freshly migrated database).
 seed-data-english-native:
 	cd apps/api && uv run --env-file ../../.env python -m tests.factories.simulation --language en
 

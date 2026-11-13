@@ -1,18 +1,20 @@
 # User data (no secrets, ADR-0012): the host settings, the host scripts,
 # systemd units and logrotate config from infrastructure/host/, then
 # host-setup.sh. Gzipped: EC2 allows 16 KiB of user data (about 11 KiB used).
-# The backup and restore scripts (#616) aren't needed before the first
-# release, so they come only with the release bundle (deploy.sh; on a
-# replaced instance host-setup.sh installs them from the current release).
+# The backup and restore scripts (#616) and the DEV data reset's script and
+# units (#674) aren't needed before the first release, so they come only with
+# the release bundle (deploy.sh; on a replaced instance host-setup.sh installs
+# them from the current release).
 locals {
-  release_only_scripts = ["backup.sh", "backup-common.sh", "restore.sh", "final-dump.sh"]
+  release_only_scripts = ["backup.sh", "backup-common.sh", "restore.sh", "final-dump.sh", "dev-data-reset.sh"]
+  release_only_units   = ["classora-dev-data-reset.service", "classora-dev-data-reset.timer"]
 
   host_files = merge(
     { for name in setsubtract(fileset("${local.host_dir}/bin", "*.sh"), local.release_only_scripts) : "/opt/classora/bin/${name}" => {
       content     = file("${local.host_dir}/bin/${name}")
       permissions = "0755"
     } },
-    { for name in fileset("${local.host_dir}/systemd", "*") : "/opt/classora/systemd/${name}" => {
+    { for name in setsubtract(fileset("${local.host_dir}/systemd", "*"), local.release_only_units) : "/opt/classora/systemd/${name}" => {
       content     = file("${local.host_dir}/systemd/${name}")
       permissions = "0644"
     } },

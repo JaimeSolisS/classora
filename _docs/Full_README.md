@@ -794,8 +794,8 @@ data are kept.
 
 ```bash
 make seed                # reference data
-make seed-data-spanish   # a simulated term of a tutoring center, in Spanish (local only)
-make seed-data-english   # the same simulated term, in English (local only)
+make seed-data-spanish   # a simulated term of a tutoring center, in Spanish (local and DEV only)
+make seed-data-english   # the same simulated term, in English (local and DEV only)
 make seed-data-spanish-native   # the same, on the host into the database .env names (native stack)
 make seed-data-english-native
 ```
@@ -808,8 +808,9 @@ nothing.
 The simulated seeds are the local demo data: `make seed-data-spanish` or
 `make seed-data-english` fills a database with a term's worth of realistic,
 synthetic data and accounts for every role (see
-[Simulated operations data](#simulated-operations-data)). They are **local
-only** (`APP_ENV=local`) and each language needs a **freshly migrated
+[Simulated operations data](#simulated-operations-data)). They run only with
+`APP_ENV=local` or `dev` (DEV gets the English center from its deploy
+pipeline, see below; PROD never does), and each language needs a **freshly migrated
 database** of its own. They refuse a database that already has an account,
 and `make bootstrap-owner` (below) is refused once any Owner exists, so use
 either the simulated data or `make bootstrap-owner` on a database, not both.
@@ -824,8 +825,8 @@ make seed-data-english   # the same center, in English (its own database)
 These commands generate an invented tutoring center that has been running
 for a term, so you can see the system with realistic volumes. Both write
 through the application's services, and the names, addresses and texts are
-synthetic. They are **local only**: they refuse every `APP_ENV` except
-`local`. Both need `.env` (`make start` creates it).
+synthetic. They refuse every `APP_ENV` except `local` and `dev` (`prod`
+exits 2 before touching anything). Both need `.env` (`make start` creates it).
 
 - `make seed-data-spanish` / `make seed-data-english` run in the Compose tools
   service `devtools` (the API image's `test` stage, which has the development
@@ -869,12 +870,21 @@ transaction, so a failed run leaves the database as it was. It exits with:
 |---|---|
 | `0` | Data generated, or already there in this language (nothing changed) |
 | `1` | Configuration error, or the database has pending migrations (run `make migrate`) |
-| `2` | `APP_ENV` is not `local`; nothing is touched |
+| `2` | `APP_ENV` is not `local` or `dev`; nothing is touched |
 | `3` | The database is not fresh, or holds the other language; the message says why, and nothing is written |
 
 The timeline is fixed, whatever day you run it. History runs from
 1 Sep to 18 Nov 2026. From 19 Nov 2026 to 5 Dec 2026, items are only
 scheduled or pending.
+
+**On DEV** (<https://dev.classora.dev>) the database holds the English
+center (`--seed 1`) plus one more Owner for visitors and graders:
+`visitor` / `visitor-classora` (display name "Demo visitor"). Every English
+account below also works there with its published password. DEV is wiped
+and restored to this data every night at 04:00 UTC, so changes made there
+last until then. The pipeline and the reset are in the
+[DEV data runbook](runbooks/dev-data.md). PROD never gets simulated data or
+the visitor.
 
 The staff accounts use development passwords. Tutors, guardians and
 students who can sign in use one password per role. The lists below are

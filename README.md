@@ -77,7 +77,7 @@ The full feature list is in the
 
 | Where | Link |
 |---|---|
-| DEV: every merge to `develop` deploys here | <https://dev.classora.dev> |
+| DEV: every merge to `develop` deploys here. Sign in as `visitor` / `visitor-classora` (an Owner on an English simulated center; the other simulated accounts in the [full README](_docs/Full_README.md#simulated-operations-data) also work; DEV resets nightly at 04:00 UTC) | <https://dev.classora.dev> |
 | PROD: the owner releases here after approval (serves after the first release) | <https://app.classora.dev> |
 | Monitoring (Grafana, login required) | <https://grafana.classora.dev> |
 

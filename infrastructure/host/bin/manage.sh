@@ -9,12 +9,17 @@
 #   manage.sh reset-owner-password <username>  print a one-time reset link
 #   manage.sh migrate                          alembic upgrade head, then
 #                                              sync-runtime-role and db-roles.sh
+#   manage.sh reset-dev-data                   DEV only (#674): starts
+#       classora-dev-data-reset.service (dev-data-reset.sh) and waits; prints
+#       its JSON result line. Exit 2 on any other host, 3 without the marker.
+# CLASSORA_TEST_ROOT (tests only) prefixes the host.env and marker paths.
 set -euo pipefail
 
 BIN=/opt/classora/bin
+ROOT=${CLASSORA_TEST_ROOT:-}
 
 usage() {
-  echo "usage: manage.sh bootstrap-owner <username> [options] | reset-owner-password <username> | migrate" >&2
+  echo "usage: manage.sh bootstrap-owner <username> [options] | reset-owner-password <username> | migrate | reset-dev-data" >&2
   exit 2
 }
 
@@ -41,6 +46,24 @@ case "$1" in
     "$BIN/compose.sh" --profile tools run --rm -T migrate \
       sh -c 'alembic upgrade head && python -m app.cli sync-runtime-role'
     "$BIN/db-roles.sh"
+    ;;
+  reset-dev-data)
+    [ $# -eq 1 ] || usage
+    env_name=$(sed -n 's/^CLASSORA_ENV=//p' "$ROOT/etc/classora/host.env" 2>/dev/null | tail -n 1 || true)
+    [ "$env_name" = dev ] || {
+      echo "manage.sh: reset-dev-data runs on DEV only; this host is '${env_name:-unknown}'" >&2
+      exit 2
+    }
+    [ -f "$ROOT/srv/classora-data/dev-data/ENABLED" ] || {
+      echo "manage.sh: /srv/classora-data/dev-data/ENABLED is missing: take the pre-wipe backup first (runbook dev-data.md)" >&2
+      exit 3
+    }
+    since=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+    rc=0
+    systemctl start --wait classora-dev-data-reset.service || rc=$?
+    journalctl -u classora-dev-data-reset.service --since "$since" -o cat --no-pager |
+      grep '^{"event": "dev-data-reset"' | tail -n 1 || echo "manage.sh: no result line; see journalctl -u classora-dev-data-reset" >&2
+    exit "$rc"
     ;;
   *) usage ;;
 esac

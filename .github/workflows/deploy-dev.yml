@@ -5,6 +5,10 @@
 #   build   (ECR present) build the three arm64 images with the M9-02
 #           Dockerfiles and checks, push sha-<commit> (skipped when all three
 #           already exist), upload releases/<commit>.tgz to the DEV ops bucket
+#   dev-data (DEV present) build the English simulated center with the
+#           `visitor` Owner on a throwaway PostgreSQL and upload
+#           releases/<commit>.dev-data.dump and .dev-data.counts.json (#674;
+#           the host's nightly reset restores it; runbook dev-data.md)
 #   deploy  (DEV present) send the SSM document classora-deploy-dev (only
 #           parameter: the SHA) to the DEV instance, wait for deploy.sh and
 #           report its exit code: 0 deployed, 10 migration failed, 20 rolled
@@ -255,9 +259,155 @@ jobs:
             infrastructure/observability
           aws s3 cp --only-show-errors release.tgz "s3://$OPS_BUCKET/releases/$SHA.tgz"
 
+  # DEV's data (#674, ADR-0018 amendment "DEV data"; runbook
+  # _docs/runbooks/dev-data.md): migrate, reference seeds, the English
+  # simulation (--seed 1) and the `visitor` Owner, with APP_ENV=dev, on a
+  # throwaway PostgreSQL that is the host's exact pin (checked below, so the
+  # host's pg_restore reads the dump); then pg_dump -Fc --no-owner --no-acl
+  # and exact per-table row counts (backup-common.sh's query), uploaded next
+  # to the bundle. A failure here skips the deploy: a broken simulation never
+  # reaches DEV. A commit from before #674 (a rollback) builds nothing; the
+  # host's reset then uses its newest cached dump. PROD never gets any of it
+  # (release-prod.yml doesn't know these objects).
+  dev-data:
+    name: dev-data
+    needs: probe
+    if: needs.probe.outputs.dev == 'true'
+    runs-on: ubuntu-24.04
+    environment: dev
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    services:
+      postgres:
+        image: postgres:18.6@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
+        env:
+          POSTGRES_USER: classora
+          POSTGRES_DB: classora
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U classora -d classora"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      SHA: ${{ needs.probe.outputs.sha }}
+      UV_LOCKED: "1"
+      # Throwaway server on the runner, trust auth: no secret.
+      APP_ENV: dev
+      APP_ORIGIN: https://dev.classora.dev
+      DATABASE_URL: postgresql://classora@127.0.0.1:5432/classora
+      DATABASE_DIRECT_URL: postgresql://classora@127.0.0.1:5432/classora
+      DATABASE_MIGRATION_URL: postgresql://classora@127.0.0.1:5432/classora
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.probe.outputs.sha }}
+
+      - name: Does this commit build DEV data?
+        run: |
+          set -euo pipefail
+          if [ -f apps/api/tests/factories/simulation/visitor.py ]; then
+            echo "BUILD_DEV_DATA=true" >>"$GITHUB_ENV"
+          else
+            echo "::notice::$SHA predates the DEV data (#674): nothing built; the host's reset keeps its newest cached dump"
+            echo "BUILD_DEV_DATA=false" >>"$GITHUB_ENV"
+          fi
+
+      - name: The service is the host's PostgreSQL pin
+        if: env.BUILD_DEV_DATA == 'true'
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          host_pin=$(sed -n 's/^    image: \(postgres:[^ ]*\)$/\1/p' infrastructure/host/compose.aws.yaml)
+          service=$(docker inspect --format '{{.Config.Image}}' "$PG_CONTAINER")
+          echo "host: $host_pin; service: $service"
+          if [ -z "$host_pin" ] || [ "$host_pin" != "$service" ]; then
+            echo "::error::update the dev-data service image to the host's pin ($host_pin)"
+            exit 1
+          fi
+
+      - name: Set up uv
+        if: env.BUILD_DEV_DATA == 'true'
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+
+      - name: Prefer the main Ubuntu mirror (#626)
+        if: env.BUILD_DEV_DATA == 'true'
+        run: .github/scripts/apt-mirror.sh
+
+      - name: Install the PDF system libraries (ADR-0015)
+        if: env.BUILD_DEV_DATA == 'true'
+        run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core
+
+      - name: Migrate, reference seeds, English simulation, visitor
+        if: env.BUILD_DEV_DATA == 'true'
+        working-directory: apps/api
+        run: |
+          set -euo pipefail
+          uv run alembic upgrade head
+          uv run python -m app.seeds
+          uv run python -m tests.factories.simulation --language en --seed 1
+          uv run python -m tests.factories.simulation.visitor
+
+      - name: Dump and count
+        if: env.BUILD_DEV_DATA == 'true'
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          docker exec "$PG_CONTAINER" pg_dump -U classora -d classora -Fc --no-owner --no-acl >dev-data.dump
+          # shellcheck source=/dev/null # COUNTS_SQL
+          . infrastructure/host/bin/backup-common.sh
+          counts=$(printf '%s\n' "$COUNTS_SQL" | docker exec -i "$PG_CONTAINER" psql -X -q -At -v ON_ERROR_STOP=1 -U classora -d classora)
+          COUNTS=$counts KEY="releases/$SHA.dev-data.dump" python3 - <<'PY'
+          import datetime, json, os
+          tables = json.loads(os.environ["COUNTS"])
+          assert isinstance(tables, dict) and tables
+          doc = {
+              "env": "dev",
+              "dump": os.environ["KEY"],
+              "created_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "tables": tables,
+          }
+          with open("dev-data.counts.json", "w", encoding="utf-8") as out:
+              json.dump(doc, out, indent=1, sort_keys=True)
+          print(f"{len(tables)} tables, {sum(tables.values())} rows; users {tables.get('public.users')}")
+          PY
+          {
+            echo "### DEV data for \`$SHA\`"
+            echo "dump $(stat -c %s dev-data.dump) bytes; $(python3 -c 'import json; t=json.load(open("dev-data.counts.json"))["tables"]; print(len(t), "tables,", sum(t.values()), "rows")')"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Configure AWS credentials (OIDC, classora-gha-dev)
+        if: env.BUILD_DEV_DATA == 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-2
+          mask-aws-account-id: true
+
+      # The counts go last: the host reads them first, so a dump without its
+      # counts is never picked up half-written.
+      - name: Upload releases/<commit>.dev-data.{dump,counts.json}
+        if: env.BUILD_DEV_DATA == 'true'
+        env:
+          OPS_BUCKET: ${{ vars.OPS_BUCKET }}
+        run: |
+          set -euo pipefail
+          aws s3 cp --only-show-errors dev-data.dump "s3://$OPS_BUCKET/releases/$SHA.dev-data.dump"
+          aws s3 cp --only-show-errors dev-data.counts.json "s3://$OPS_BUCKET/releases/$SHA.dev-data.counts.json"
+          echo "uploaded releases/$SHA.dev-data.dump and releases/$SHA.dev-data.counts.json"
+
   deploy:
     name: deploy
-    needs: [probe, build]
+    needs: [probe, build, dev-data]
     if: needs.probe.outputs.dev == 'true'
     runs-on: ubuntu-24.04
     environment: dev
