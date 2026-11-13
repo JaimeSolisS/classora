@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { api, csrfTokenOf } from '../support/api';
 import {
@@ -9,7 +8,7 @@ import {
   recordCspViolations,
   SIGNED_OUT_STATE,
 } from '../support/auth';
-import { switchColorScheme } from '../support/a11y';
+import { expectNoAxeViolations, switchColorScheme } from '../support/a11y';
 import { common, errors, fill, signedInAs } from '../support/catalog';
 import { createApprovedAccount } from '../support/consent';
 import { addToFamilyViaApi, createFamilyViaApi } from '../support/families';
@@ -148,7 +147,6 @@ const BILLING_OPEN_MONEY = new Intl.NumberFormat('es-MX', {
   style: 'currency',
   currency: 'MXN',
 }).format(450);
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 // A seeded level (#32) that no spec deactivates.
 const LEVEL = 'Secundaria';
 
@@ -201,13 +199,6 @@ async function signInFresh(
   // A new user lands on the privacy notice first (#174).
   await acceptPrivacyNoticeIfShown(page);
   return { context, page, consoleErrors };
-}
-
-async function axeViolations(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-  );
 }
 
 /** Today in the center zone, as YYYY-MM-DD (E2E never changes the zone). */
@@ -608,7 +599,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
       await expect(slot).toBeVisible();
       // Slots are tutor-agnostic: the tutor is never named to families.
       await expect(parent.page.getByText(TUTOR_NAME)).toHaveCount(0);
-      expect(await axeViolations(parent.page)).toEqual([]);
+      await expectNoAxeViolations(parent.page);
 
       await slot.click();
       const confirm = parent.page.getByRole('dialog');
@@ -665,7 +656,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
       const late = cards.filter({ hasNotText: REQUEST_NOTE });
       await expect(early).toContainText(common.sessionRequests.status.pending);
       await expect(late).toContainText(common.sessionRequests.status.pending);
-      expect(await axeViolations(parent.page)).toEqual([]);
+      await expectNoAxeViolations(parent.page);
 
       // The ids of both requests (newest first), through the guardian's API.
       const mine = await api(parent.page, '/api/v1/session-requests');
@@ -704,7 +695,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
         }),
       });
       await expect(chooseTutor).toBeVisible();
-      expect(await axeViolations(page)).toEqual([]);
+      await expectNoAxeViolations(page);
       await chooseTutor.click();
       await main
         .getByRole('button', {
@@ -795,7 +786,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
       await parent.page.keyboard.press('Escape');
       await expect(parentPanel).toBeHidden();
       await expect(parent.page.getByText(TUTOR_NAME)).toHaveCount(0);
-      expect(await axeViolations(parent.page)).toEqual([]);
+      await expectNoAxeViolations(parent.page);
 
       // 4c. (#67 G8) The tutor accepts the offer the Owner's confirm made,
       // through the #52 API in the tutor's context.
@@ -863,7 +854,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
           name: sessionName(common.mySchedule.states.confirmed, studentName),
         }),
       ).toHaveCount(1);
-      expect(await axeViolations(tutor.page)).toEqual([]);
+      await expectNoAxeViolations(tutor.page);
       // Back to the tutor's profile for step 6.
       if (tutorViewport) {
         await tutor.page.setViewportSize(tutorViewport);
@@ -894,7 +885,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
           fill(common.mySchedule.tutor, { name: TUTOR_NAME }),
         ),
       );
-      expect(await axeViolations(parent.page)).toEqual([]);
+      await expectNoAxeViolations(parent.page);
 
       // #79 I8: the tutor (phone) opens the class's notes from My schedule,
       // writes an internal note, then writes and shares a second one; the
@@ -947,7 +938,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
         .getByRole('listitem')
         .filter({ hasText: sharedText });
       await expect(sharedItem).toContainText(common.notes.badges.internal);
-      expect(await axeViolations(tutor.page)).toEqual([]);
+      await expectNoAxeViolations(tutor.page);
       await sharedItem
         .getByRole('button', { name: common.notes.actions.share })
         .click();
@@ -955,7 +946,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
         name: common.notes.share.title,
       });
       await expect(shareDialog).toContainText(sharedText);
-      expect(await axeViolations(tutor.page)).toEqual([]);
+      await expectNoAxeViolations(tutor.page);
       await shareDialog
         .getByRole('button', { name: common.notes.share.confirm })
         .click();
@@ -1003,7 +994,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
       ).toBeVisible();
       await expect(noteDetails).toContainText(sharedText);
       await expect(noteDetails).not.toContainText(internalText);
-      expect(await axeViolations(parent.page)).toEqual([]);
+      await expectNoAxeViolations(parent.page);
       await parent.page.keyboard.press('Escape');
       await expect(noteDetails).toBeHidden();
       const learning = await api(
@@ -1050,7 +1041,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
       await expect(
         main.getByRole('link', { name: templateName }),
       ).toBeVisible();
-      expect(await axeViolations(page)).toEqual([]);
+      await expectNoAxeViolations(page);
 
       const evaluationsPage = tutor.page.url();
       const evaluationsSize = tutor.page.viewportSize();
@@ -1126,12 +1117,12 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
       await expect(tutorMain).toContainText(
         common.academics.evaluations.status.draft,
       );
-      expect(await axeViolations(tutor.page)).toEqual([]);
+      await expectNoAxeViolations(tutor.page);
       await tutor.page.goto(`/students/${childId}/evaluations/new`);
       await startEvaluation();
       await scores.nth(0).fill('8');
       await scores.nth(1).fill('9.5');
-      expect(await axeViolations(tutor.page)).toEqual([]);
+      await expectNoAxeViolations(tutor.page);
       await saveDraft(finalText);
       await tutorMain
         .getByRole('button', {
@@ -1216,7 +1207,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
         yearSection.getByRole('article').filter({ hasText: finalText }),
       ).toHaveCount(1);
       await expect(historyMain).not.toContainText(draftText);
-      expect(await axeViolations(parent.page)).toEqual([]);
+      await expectNoAxeViolations(parent.page);
       await historyMain
         .getByRole('button', { name: common.academics.history.views.list })
         .click();
@@ -1289,7 +1280,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
           level: LEVEL,
         }),
       });
-      expect(await axeViolations(tutor.page)).toEqual([]);
+      await expectNoAxeViolations(tutor.page);
       const editor = common.learningPlans.editor;
       await plansMain.getByLabel(editor.title, { exact: true }).fill(planTitle);
       await plansMain
@@ -1429,7 +1420,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
           name: common.learningPlans.actions.edit,
         }),
       ).toHaveCount(0);
-      expect(await axeViolations(parent.page)).toEqual([]);
+      await expectNoAxeViolations(parent.page);
       await parent.page
         .getByRole('banner')
         .getByRole('button', { name: common.nav.toggle })
@@ -1522,7 +1513,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
           .getByRole('status')
           .filter({ hasText: reports.notices.saved }),
       ).toBeVisible();
-      expect(await axeViolations(tutor.page)).toEqual([]);
+      await expectNoAxeViolations(tutor.page);
       await reportsMain
         .getByRole('button', { name: reports.actions.submit, exact: true })
         .click();
@@ -1568,7 +1559,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
       await expect(page).toHaveURL(`/progress-reports/${reportId}`);
       await expect(reviewMain).toContainText(reportDraft);
       await expect(reviewMain).toContainText(evaluationFacts);
-      expect(await axeViolations(page)).toEqual([]);
+      await expectNoAxeViolations(page);
       await reviewMain
         .getByRole('button', {
           name: reports.actions.requestChanges,
@@ -1633,7 +1624,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
         exact: true,
       });
       await expect(queued).toBeVisible();
-      expect(await axeViolations(page)).toEqual([]);
+      await expectNoAxeViolations(page);
       await queued.click();
       await expect(page).toHaveURL(`/progress-reports/${reportId}`);
       await expect(reviewMain).toContainText(reportApproved);
@@ -1683,7 +1674,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
       );
       await expect(familyReportMain).toContainText(evaluationFacts);
       await expect(familyReportMain).not.toContainText(reportReason);
-      expect(await axeViolations(parent.page)).toEqual([]);
+      await expectNoAxeViolations(parent.page);
       const approvedList = await api(
         parent.page,
         `/api/v1/students/${childId}/progress-reports`,
@@ -1768,7 +1759,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
       await expect(requestDialog).toContainText(
         common.changeRequests.preview.estimate,
       );
-      expect(await axeViolations(parent.page)).toEqual([]);
+      await expectNoAxeViolations(parent.page);
       await requestDialog
         .getByRole('button', { name: common.changeRequests.dialog.send })
         .click();
@@ -1857,9 +1848,9 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
       );
       await expect(decidedCard).toContainText(EXCEPTION_REASON);
       await expect(parent.page.getByText(TUTOR_NAME)).toHaveCount(0);
-      expect(await axeViolations(parent.page)).toEqual([]);
+      await expectNoAxeViolations(parent.page);
       await switchColorScheme(parent.page, 'dark');
-      expect(await axeViolations(parent.page)).toEqual([]);
+      await expectNoAxeViolations(parent.page);
       await switchColorScheme(parent.page, 'light');
 
       // #388 J3: the family billing portal, on a phone. The Owner (shared
@@ -1941,7 +1932,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
           .locator('[data-student-balance]')
           .filter({ hasText: `Andrés Solicitudes ${suffix}` }),
       ).toContainText(BILLING_OPEN_MONEY);
-      expect(await axeViolations(parent.page)).toEqual([]);
+      await expectNoAxeViolations(parent.page);
 
       // Lucía, every status: her charge is Paid.
       await portal
@@ -1971,7 +1962,7 @@ test('a tutor requests qualifications; the Owner approves, rejects and revokes',
       await expect(
         chargeDialog.locator('[data-charge-allocation]'),
       ).toHaveCount(1);
-      expect(await axeViolations(parent.page)).toEqual([]);
+      await expectNoAxeViolations(parent.page);
       await chargeDialog
         .locator('[data-slot="dialog-footer"]')
         .getByRole('button', { name: common.familyBilling.close, exact: true })

@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
 import { pickOption } from '../support/combobox';
@@ -24,7 +24,6 @@ import { createSubjectViaApi } from '../support/tutors';
 // (_docs/testing-guidelines.md, E2E data rules).
 
 const ZONE = 'America/Mexico_City';
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const TEST_TIMEOUT_MS = 90_000;
 
 // Chromium logs every 4xx resource as a console error: the expected 409.
@@ -43,13 +42,6 @@ function firstSundayAhead(): string {
     date.setUTCDate(date.getUTCDate() + 1);
   }
   return date.toISOString().slice(0, 10);
-}
-
-async function axeViolations(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-  );
 }
 
 test('an Owner overrides a soft conflict with a reason', async ({
@@ -123,7 +115,7 @@ test('an Owner overrides a soft conflict with a reason', async ({
   });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('listitem')).toHaveCount(1);
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
 
   // 3. A reason, then "Override and schedule": scheduled with an override.
   await dialog

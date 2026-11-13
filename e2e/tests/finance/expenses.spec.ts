@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
 
@@ -11,14 +11,6 @@ import { common } from '../support/catalog';
 
 const finance = common.finance;
 const labels = finance.expenses;
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
-
-async function axeViolations(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-  );
-}
 
 test('the Owner records an expense and pays it in two payments', async ({
   page,
@@ -56,7 +48,7 @@ test('the Owner records an expense and pays it in two payments', async ({
   await create
     .getByLabel(labels.dialog.create.amount, { exact: true })
     .fill('1000');
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   await create
     .getByRole('button', { name: labels.dialog.create.submit })
     .click();
@@ -81,7 +73,7 @@ test('the Owner records an expense and pays it in two payments', async ({
   await pay
     .getByLabel(labels.dialog.payment.method, { exact: true })
     .selectOption({ label: common.billing.paymentMethods.cash });
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   await pay.getByRole('button', { name: labels.dialog.payment.submit }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(status).toHaveText(labels.detail.saved.payment);
@@ -110,6 +102,6 @@ test('the Owner records an expense and pays it in two payments', async ({
   const row = main.locator('[data-expenses-table] tbody tr');
   await expect(row).toHaveCount(1);
   await expect(row).toContainText(labels.statuses.paid);
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   expect(await cspViolations(page)).toEqual([]);
 });

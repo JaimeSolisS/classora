@@ -1,6 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { switchColorScheme } from '../support/a11y';
+import { expectNoAxeViolations, switchColorScheme } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
 import { pickOption } from '../support/combobox';
@@ -38,7 +37,6 @@ const EXPECTED_RESOURCE_ERROR =
 // closures.
 
 const ZONE = 'America/Mexico_City';
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const TEST_TIMEOUT_MS = 120_000;
 const series = common.scheduling.series;
 
@@ -227,14 +225,7 @@ test('an Owner schedules, edits and cancels a weekly series', async ({
   // 3. Accessibility of the series page, light and dark (#241 switch).
   for (const colorScheme of ['light', 'dark'] as const) {
     await switchColorScheme(page, colorScheme);
-    const results = await new AxeBuilder({ page })
-      .withTags(WCAG_TAGS)
-      .analyze();
-    expect(
-      results.violations.map(
-        (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-      ),
-    ).toEqual([]);
+    await expectNoAxeViolations(page);
   }
   await page.emulateMedia({ colorScheme: 'light' });
 
@@ -334,12 +325,7 @@ test('an Owner overrides the closed Sundays of a weekly series', async ({
   await dialog
     .getByLabel(common.scheduling.override.reason, { exact: true })
     .fill('Clases de regularización acordadas con la familia.');
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  expect(
-    results.violations.map(
-      (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-    ),
-  ).toEqual([]);
+  await expectNoAxeViolations(page);
   await dialog
     .getByRole('button', {
       name: common.scheduling.override.submit,

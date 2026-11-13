@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { api, csrfTokenOf } from '../support/api';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common, fill } from '../support/catalog';
@@ -44,7 +44,6 @@ import { createSubjectViaApi } from '../support/tutors';
 // closures.
 
 const ZONE = 'America/Mexico_City';
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const TEST_TIMEOUT_MS = 120_000;
 const cohorts = common.courses.cohorts;
 /** The enrollment test's required whole-course assessment (#323). */
@@ -204,15 +203,6 @@ async function pick(
   name: string,
 ) {
   await pickOption(scope, label, query, name);
-}
-
-async function expectNoAxeViolations(page: Page) {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  expect(
-    results.violations.map(
-      (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-    ),
-  ).toEqual([]);
 }
 
 test('an Owner creates a cohort whose syllabus stays frozen', async ({

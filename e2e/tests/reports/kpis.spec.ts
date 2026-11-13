@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
 
@@ -13,14 +13,6 @@ import { common } from '../support/catalog';
 const labels = common.reports;
 const kpis = labels.kpis;
 const profitability = labels.profitability;
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
-
-async function axeViolations(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-  );
-}
 
 test('the Owner reads the six KPI sections, by range and basis', async ({
   page,
@@ -60,7 +52,7 @@ test('the Owner reads the six KPI sections, by range and basis', async ({
   await expect(
     main.locator('[data-kpi-section]:not([data-kpi-status="ready"])'),
   ).toHaveCount(0);
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
 
   // 2. A preset writes the range to the URL.
   await main
@@ -89,6 +81,6 @@ test('the Owner reads the six KPI sections, by range and basis', async ({
   await expect(
     main.locator('[data-kpi-section]:not([data-kpi-status="ready"])'),
   ).toHaveCount(0);
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   expect(await cspViolations(page)).toEqual([]);
 });

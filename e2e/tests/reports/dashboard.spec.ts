@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { api, csrfTokenOf } from '../support/api';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common, fill } from '../support/catalog';
@@ -16,7 +16,6 @@ import { common, fill } from '../support/catalog';
 const dashboard = common.dashboard;
 const dialogText = dashboard.dialog;
 const kpis = common.reports.kpis;
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const LAYOUT = '/api/v1/reports/dashboard/layout';
 
 const TITLES = {
@@ -36,13 +35,6 @@ const DEFAULT: Code[] = [
   'student_retention',
   'tutor_performance',
 ];
-
-async function axeViolations(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-  );
-}
 
 /** Back to the role default (`DELETE`, 204 with or without a row). */
 async function resetLayout(page: Page): Promise<void> {
@@ -95,7 +87,7 @@ test('the Owner customizes the home dashboard and it persists', async ({
       }),
     ).toBeVisible();
     await expect(today.locator('[aria-busy="true"]')).toHaveCount(0);
-    expect(await axeViolations(page)).toEqual([]);
+    await expectNoAxeViolations(page);
 
     // 2. Customize: dnd-kit's keyboard sensor moves "rooms" up one.
     await page
@@ -110,7 +102,7 @@ test('the Owner customizes the home dashboard and it persists', async ({
         nodes.map((node) => node.getAttribute('data-dashboard-row')),
       );
     await expect.poll(order).toEqual(DEFAULT);
-    expect(await axeViolations(page)).toEqual([]);
+    await expectNoAxeViolations(page);
 
     const handle = dialog.getByRole('button', {
       name: fill(dialogText.reorder, { title: TITLES.room_utilization }),
@@ -174,7 +166,7 @@ test('the Owner customizes the home dashboard and it persists', async ({
     // 4. A reload keeps the order and the hidden widget.
     await page.reload();
     await expectWidgets(page, shown);
-    expect(await axeViolations(page)).toEqual([]);
+    await expectNoAxeViolations(page);
     expect(await cspViolations(page)).toEqual([]);
   } finally {
     // 5. Other specs see the Owner's default home.

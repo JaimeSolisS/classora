@@ -1,4 +1,3 @@
-import AxeBuilder from '@axe-core/playwright';
 import {
   expect,
   test,
@@ -6,6 +5,7 @@ import {
   type Page,
   type TestInfo,
 } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { api, csrfTokenOf } from '../support/api';
 import {
   acceptPrivacyNoticeIfShown,
@@ -130,7 +130,6 @@ import { createApprovedTutor, createSubjectViaApi } from '../support/tutors';
 // demo.tutor's or demo.student's notifications (#313 parallel safety).
 
 const ZONE = 'America/Mexico_City';
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 // #313 G3 adds about 30 s (the homework steps): 180 → 210 s. #322 G3 adds
 // about 20 s (the progress steps): 210 → 230 s. #323 adds about 10 s (the
 // course completion step): 230 → 240 s. #425 adds about 10 s (My pay):
@@ -173,22 +172,11 @@ function firstWeekdayAhead(days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-async function axeViolations(page: Page): Promise<string[]> {
+async function expectNoAxeViolationsAtRest(page: Page): Promise<void> {
   // Scan the resting state: a pointer left on the last clicked button keeps it
   // mid-hover-transition, which axe reads as a color-contrast violation (#369).
   await page.mouse.move(0, 0);
-  await page.evaluate(() =>
-    Promise.allSettled(
-      document
-        .getAnimations()
-        .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity)
-        .map((a) => a.finished),
-    ),
-  );
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-  );
+  await expectNoAxeViolations(page);
 }
 
 // Chromium logs every 4xx resource as a console error: the tutor's signed-out
@@ -661,7 +649,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
       main.getByRole('article').filter({ hasText: subject });
     await expect(card(accepted)).toBeVisible();
     await expect(card(declined)).toBeVisible();
-    expect(await axeViolations(tutor.page)).toEqual([]);
+    await expectNoAxeViolationsAtRest(tutor.page);
 
     await card(accepted)
       .getByRole('button', { name: common.offers.accept.action })
@@ -682,7 +670,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     const decline = tutor.page.getByRole('dialog', {
       name: common.offers.decline.title,
     });
-    expect(await axeViolations(tutor.page)).toEqual([]);
+    await expectNoAxeViolationsAtRest(tutor.page);
     await decline
       .getByLabel(common.offers.decline.note, { exact: true })
       .fill(note);
@@ -733,7 +721,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     await expect(card(weekly)).toContainText(
       fill(common.offers.series.scheduled_other, { count: 2 }),
     );
-    expect(await axeViolations(tutor.page)).toEqual([]);
+    await expectNoAxeViolationsAtRest(tutor.page);
     await card(weekly)
       .getByRole('button', { name: common.offers.accept.action })
       .click();
@@ -780,7 +768,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     await substitute
       .getByLabel(common.scheduling.substitution.reason, { exact: true })
       .fill('La tutora tiene un compromiso ese día.');
-    expect(await axeViolations(page)).toEqual([]);
+    await expectNoAxeViolationsAtRest(page);
     await substitute
       .getByRole('button', { name: common.scheduling.substitution.submit })
       .click();
@@ -828,7 +816,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     const cancel = page.getByRole('dialog', {
       name: common.scheduling.cancel.title,
     });
-    expect(await axeViolations(page)).toEqual([]);
+    await expectNoAxeViolationsAtRest(page);
     await cancel
       .getByLabel(common.scheduling.cancel.reason, { exact: true })
       .fill('Cierre por mantenimiento.');
@@ -899,7 +887,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     await tutor.page.reload();
     await expect(radio(first, 'present')).toBeChecked();
     await expect(radio(second, 'late')).toBeChecked();
-    expect(await axeViolations(tutor.page)).toEqual([]);
+    await expectNoAxeViolationsAtRest(tutor.page);
 
     // 9. Closeout (#77 H8): the tutor closes out the other started session
     // from My schedule, still at 390×844.
@@ -958,7 +946,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     await flow
       .getByLabel(common.closeout.fields.next_steps, { exact: false })
       .fill('Suma de fracciones.');
-    expect(await axeViolations(tutor.page)).toEqual([]);
+    await expectNoAxeViolationsAtRest(tutor.page);
     await next.click();
     await flow
       .getByRole('button', { name: common.closeout.submit, exact: true })
@@ -976,7 +964,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
         fill(common.closeout.minutesOfScheduled, { actual: 55, scheduled: 60 }),
       ),
     ).toBeVisible();
-    expect(await axeViolations(tutor.page)).toEqual([]);
+    await expectNoAxeViolationsAtRest(tutor.page);
 
     // 9b. Closeout resubmission (#305 G3), still in the tutor block: the
     // Owner (shared page) requests changes on the session page; the tutor
@@ -1041,7 +1029,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
       }),
     ).toBeVisible();
     await expect(flow.getByText(changesReason)).toBeVisible();
-    expect(await axeViolations(tutor.page)).toEqual([]);
+    await expectNoAxeViolationsAtRest(tutor.page);
     await flow
       .getByRole('button', {
         name: common.closeout.tutorView.resubmit,
@@ -1079,7 +1067,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
         fill(common.closeout.minutesOfScheduled, { actual: 58, scheduled: 60 }),
       ),
     ).toBeVisible();
-    expect(await axeViolations(tutor.page)).toEqual([]);
+    await expectNoAxeViolationsAtRest(tutor.page);
 
     // 9c. Homework (#313 G3), still in the tutor's block: the tutor sets
     // homework from the demo class U1 (demo.student's) in My schedule; a
@@ -1128,7 +1116,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
     await homeworkForm
       .getByLabel(common.assignments.form.maxScore, { exact: true })
       .fill('10');
-    expect(await axeViolations(tutor.page)).toEqual([]);
+    await expectNoAxeViolationsAtRest(tutor.page);
     await homeworkForm
       .getByRole('button', { name: common.assignments.form.save, exact: true })
       .click();
@@ -1143,7 +1131,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
       .getByRole('listitem')
       .filter({ hasText: demo.u1.studentName });
     await expect(rosterRow).toContainText(common.assignments.states.pending);
-    expect(await axeViolations(tutor.page)).toEqual([]);
+    await expectNoAxeViolationsAtRest(tutor.page);
 
     // The student (+1 login, #313): the bell at desktop width (the header
     // shows only the menu button at 390 px), then the phone.
@@ -1214,7 +1202,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
       await expect(studentMain).toContainText(
         common.assignments.states.submitted,
       );
-      expect(await axeViolations(student.page)).toEqual([]);
+      await expectNoAxeViolationsAtRest(student.page);
 
       // The tutor: the bell (desktop width) opens the roster.
       if (desktop) {
@@ -1261,7 +1249,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
       await gradeDialog
         .getByLabel(common.assignments.grade.feedbackOptional, { exact: true })
         .fill(feedback);
-      expect(await axeViolations(tutor.page)).toEqual([]);
+      await expectNoAxeViolationsAtRest(tutor.page);
       await gradeDialog
         .getByRole('button', { name: common.assignments.grade.save })
         .click();
@@ -1323,7 +1311,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
         name: common.progress.grades.heading,
       });
       await expect(trend).toBeVisible();
-      expect(await axeViolations(student.page)).toEqual([]);
+      await expectNoAxeViolationsAtRest(student.page);
       await trend
         .getByRole('button', { name: common.progress.chart.table, exact: true })
         .click();
@@ -1349,7 +1337,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
       await expect(mathRow).toContainText(
         fill(common.progress.percent, { value: '80.00' }),
       );
-      expect(await axeViolations(student.page)).toEqual([]);
+      await expectNoAxeViolationsAtRest(student.page);
       expect(await cspViolations(student.page)).toEqual([]);
       expect(student.consoleErrors).toEqual([]);
     } catch (error) {
@@ -1436,7 +1424,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
   });
   await expect(history).toContainText(common.offers.status.declined);
   await expect(history).toContainText(fill(common.offers.card.note, { note }));
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolationsAtRest(page);
 
   // 8. Attendance (#76 H9): the Owner corrects the second student.
   const lesson = await attendanceSession(page, tutorId);
@@ -1478,7 +1466,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
   await expect(attendanceRow).toContainText(
     fill(common.attendance.reason, { reason }),
   );
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolationsAtRest(page);
 
   // 10. Closeout (#77 H8, #78 G2): the Owner finds the item in the approval
   // inbox (the #305 resubmission: "Reenviado", 58 min, no decision buttons)
@@ -1512,7 +1500,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
   await expect(closeoutSection).toContainText(
     fill(common.closeout.minutesOfScheduled, { actual: 58, scheduled: 60 }),
   );
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolationsAtRest(page);
 
   // 11. Closeout review (#78 I9), on the shared Owner session: correct the
   // minutes 58 → 50 with a reason (the history shows it), approve
@@ -1563,7 +1551,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
       exact: true,
     }),
   ).toHaveCount(0);
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolationsAtRest(page);
   // The approved list is oldest first, 10 a page, and the demo seed's
   // approved closeouts (#353) come before this one: page through the list
   // instead of expecting the row on the first page.
@@ -1614,7 +1602,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
   ).toContainText(
     fill(common.progress.tiles.attended_one, { attended: 1, count: 1 }),
   );
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolationsAtRest(page);
 
   // demo.student's API (#322 G3): its own class log doesn't carry the
   // closeout student's summary; that student's progress is 404.
@@ -1687,7 +1675,7 @@ test('a tutor accepts one offer and declines another; staff see the reassignment
           .join('|'),
       ),
     );
-    expect(await axeViolations(student!.page)).toEqual([]);
+    await expectNoAxeViolationsAtRest(student!.page);
 
     // #388 J3: no family billing for a student: not in the menu (opened
     // when closed, as above), and a direct visit is the access-denied page.

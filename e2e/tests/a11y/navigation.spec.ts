@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { axeViolations } from '../support/a11y';
 import { SIGNED_OUT_STATE } from '../support/auth';
 import { common } from '../support/catalog';
 import { FIRST_RENDER_TIMEOUT_MS } from '../support/timeouts';
@@ -8,9 +8,6 @@ import { FIRST_RENDER_TIMEOUT_MS } from '../support/timeouts';
 // the shared demo Owner state. Budgets (see support/auth.ts): 0 logins,
 // 0 registrations, 0 one-time-link redemptions. #396 F1/F2: no page scrolls
 // sideways.
-
-// WCAG 2.0, 2.1 and 2.2 level A and AA, as in shell.spec.ts.
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
 // F1: the Owner's pages checked at 1024 and 1280 px.
 const PAGES = [
@@ -43,25 +40,6 @@ async function expectNoSidewaysScroll(page: Page, where: string) {
   }));
   expect(scrollWidth, `${where} scrolls sideways`).toBeLessThanOrEqual(
     clientWidth,
-  );
-}
-
-async function scan(page: Page): Promise<string[]> {
-  // Scan the resting state (#369): finite transitions and animations done.
-  await page.evaluate(() =>
-    Promise.allSettled(
-      document
-        .getAnimations()
-        .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity)
-        .map((a) => a.finished),
-    ),
-  );
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (violation) =>
-      `${violation.id} (${violation.impact ?? 'unknown'}): ${violation.nodes
-        .map((node) => node.target.join(' '))
-        .join(', ')}`,
   );
 }
 
@@ -160,14 +138,14 @@ test('collapsed survives a reload, shows tooltips on keyboard focus and passes a
   await expect(page.getByRole('tooltip')).toHaveCount(0);
 
   await expect(page.locator('html')).toHaveClass(/\bdark\b/);
-  const collapsedDark = await scan(page);
+  const collapsedDark = await axeViolations(page);
   expect(collapsedDark, collapsedDark.join('\n')).toEqual([]);
 
   await expand.click();
   await expectRailWidth(page, false);
   await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
-  const expandedLight = await scan(page);
+  const expandedLight = await axeViolations(page);
   expect(expandedLight, expandedLight.join('\n')).toEqual([]);
 });
 
@@ -196,7 +174,7 @@ for (const width of [390, 320]) {
       }),
     ).toBeVisible();
     await expectNoSidewaysScroll(page, `/ at ${width}, drawer open`);
-    const drawerOpen = await scan(page);
+    const drawerOpen = await axeViolations(page);
     expect(drawerOpen, drawerOpen.join('\n')).toEqual([]);
 
     await page.keyboard.press('Escape');

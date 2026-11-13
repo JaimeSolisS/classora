@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { api, csrfTokenOf } from '../support/api';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
@@ -25,7 +25,6 @@ import { createSubjectViaApi } from '../support/tutors';
 // never changes the zone, the policy or the closures.
 
 const ZONE = 'America/Mexico_City';
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const TEST_TIMEOUT_MS = 90_000;
 
 /** The first Monday-Friday at least 14 days after today, in the center zone. */
@@ -65,15 +64,6 @@ async function createSessionViaApi(
   });
   expect(created.status).toBe(201);
   return (created.body as { id: string }).id;
-}
-
-async function expectNoAxeViolations(page: Page) {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  expect(
-    results.violations.map(
-      (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-    ),
-  ).toEqual([]);
 }
 
 test('an Owner finds a session on the calendar in every view', async ({

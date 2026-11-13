@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common, fill } from '../support/catalog';
 
@@ -10,14 +10,6 @@ import { common, fill } from '../support/catalog';
 // tests/authz/matrix.toml and Vitest cover them.
 
 const finance = common.finance;
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
-
-async function axeViolations(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-  );
-}
 
 test('the Owner adds, renames, deactivates and reactivates a category', async ({
   page,
@@ -46,7 +38,7 @@ test('the Owner adds, renames, deactivates and reactivates a category', async ({
   await main.getByRole('button', { name: labels.add, exact: true }).click();
   const add = page.getByRole('dialog', { name: labels.dialog.addTitle });
   await add.getByLabel(labels.dialog.name, { exact: true }).fill(name);
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   await add.getByRole('button', { name: finance.save }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(status).toHaveText(labels.saved);
@@ -93,7 +85,7 @@ test('the Owner adds, renames, deactivates and reactivates a category', async ({
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(status).toHaveText(labels.reactivated);
   await expect(row).toContainText(labels.states.active);
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   expect(await cspViolations(page)).toEqual([]);
 });
 
@@ -126,7 +118,7 @@ test('the Owner adds a vendor, finds it by search and deactivates it', async ({
   await add
     .getByLabel(labels.dialog.contact, { exact: true })
     .fill('compras@proveedor.example\n55 0000 0000');
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   await add.getByRole('button', { name: finance.save }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(main.getByRole('status')).toHaveText(labels.saved);
@@ -150,6 +142,6 @@ test('the Owner adds a vendor, finds it by search and deactivates it', async ({
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(main.getByRole('status')).toHaveText(labels.deactivated);
   await expect(row).toContainText(labels.states.inactive);
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   expect(await cspViolations(page)).toEqual([]);
 });

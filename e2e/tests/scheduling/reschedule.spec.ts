@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
 import {
@@ -37,7 +37,6 @@ import { createSubjectViaApi } from '../support/tutors';
 // relies on Sunday being closed in the demo hours at or after 09:00
 // (_docs/testing-guidelines.md, E2E data rules).
 
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const TEST_TIMEOUT_MS = 90_000;
 const REASON = 'La familia pidió el domingo; el centro abre por esta clase.';
 
@@ -46,13 +45,6 @@ const EXPECTED_RESOURCE_ERROR =
   /Failed to load resource: the server responded with a status of 409/;
 
 test.use({ viewport: { width: 1280, height: 900 } });
-
-async function axeViolations(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-  );
-}
 
 /** The text before the first interpolation of a catalog message. */
 function prefix(message: string): string {
@@ -205,7 +197,7 @@ test('an Owner reschedules by dragging, with an override and with the keyboard',
   await expect(
     notSaved.getByRole('button', { name: move.overrideAction }),
   ).toHaveCount(0);
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   await notSaved.getByRole('button', { name: move.close, exact: true }).click();
   await expect(notSaved).toBeHidden();
   await expect(eventB).toContainText('14:00–15:00');

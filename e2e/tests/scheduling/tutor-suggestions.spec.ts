@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { api, csrfTokenOf } from '../support/api';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common, fill } from '../support/catalog';
@@ -36,16 +36,8 @@ import { createSubjectViaApi } from '../support/tutors';
 // from a fresh database; the exceptions on D are deleted first, so a rerun
 // on the same database starts clean too.
 
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const TEST_TIMEOUT_MS = 120_000;
 const DEMO_TUTOR = 'demo.tutor';
-
-async function axeViolations(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-  );
-}
 
 /** The first Monday at least 63 days after today (center zone). */
 function mondayAhead(): string {
@@ -183,7 +175,7 @@ test('suggested tutors follow the subject and time, and a granted subject', asyn
     subjectSelect.getByRole('option', { name: subjectName, exact: true }),
   ).toBeAttached();
   await subjectSelect.selectOption({ label: subjectName });
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   await dialog.getByRole('button', { name: grant.submit, exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(
@@ -241,7 +233,7 @@ test('suggested tutors follow the subject and time, and a granted subject', asyn
   await expect(
     main.getByText(common.scheduling.tutorAvailability.exceptions),
   ).toBeVisible();
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
 
   // 5. A weekly series of 2: D + 7 has no exception, so nobody can.
   const series = common.scheduling.series;

@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { api, csrfTokenOf } from '../support/api';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
@@ -12,7 +12,6 @@ import { common } from '../support/catalog';
 // run left, through the API. No other spec reads the rules.
 
 const rules = common.payroll.payRules;
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
 interface Overview {
   today: string;
@@ -29,13 +28,6 @@ function addDays(date: string, days: number): string {
   return new Date(Date.UTC(year, month - 1, day + days))
     .toISOString()
     .slice(0, 10);
-}
-
-async function axeViolations(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-  );
 }
 
 /** The overview, with no upcoming makeup version left behind. */
@@ -75,7 +67,7 @@ test('the Owner adds a pay rule version and deletes it', async ({ page }) => {
     await expect(
       makeup.locator('[data-version-status="current"]'),
     ).toBeVisible();
-    expect(await axeViolations(page)).toEqual([]);
+    await expectNoAxeViolations(page);
 
     // 2. A new version, dated in the future.
     await makeup
@@ -85,7 +77,7 @@ test('the Owner adds a pay rule version and deletes it', async ({ page }) => {
       .click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
-    expect(await axeViolations(page)).toEqual([]);
+    await expectNoAxeViolations(page);
     await dialog
       .getByLabel(rules.fields.mode, { exact: true })
       .selectOption('fixed');

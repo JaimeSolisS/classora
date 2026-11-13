@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { api, csrfTokenOf } from '../support/api';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
@@ -22,7 +22,6 @@ import { inviteTutorViaApi } from '../support/tutors';
 // scheduling/offers.spec.ts, on the existing demo.tutor context.
 
 const payroll = common.payroll;
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
 /** `YYYY-MM-DD` plus `days` (calendar arithmetic, no zone). */
 function addDays(date: string, days: number): string {
@@ -34,13 +33,6 @@ function addDays(date: string, days: number): string {
   return new Date(Date.UTC(year, month - 1, day + days))
     .toISOString()
     .slice(0, 10);
-}
-
-async function axeViolations(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-  );
 }
 
 function versionIn(page: Page, kind: string, status: string) {
@@ -133,7 +125,7 @@ test('the Owner sets a tutor pay terms and rates in Payroll', async ({
   await main.getByLabel(payroll.list.search, { exact: true }).fill(name);
   const link = main.getByRole('link', { name, exact: true });
   await expect(link).toBeVisible();
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   await link.click();
   await expect(page).toHaveURL(`/payroll/tutors/${tutorId}`);
   await expect(main.getByRole('heading', { level: 1, name })).toBeVisible();
@@ -155,7 +147,7 @@ test('the Owner sets a tutor pay terms and rates in Payroll', async ({
 
   // 3. A per-hour rate from today (axe with the dialog open).
   const first = await fillRate(page, '250.1250');
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   await first.getByRole('button', { name: payroll.rateDialog.submit }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(versionIn(page, 'individual', 'current')).toContainText(
@@ -172,7 +164,7 @@ test('the Owner sets a tutor pay terms and rates in Payroll', async ({
   await expect(versionIn(page, 'individual', 'current')).toContainText(
     '$250.125',
   );
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
 
   // 5. Delete the upcoming one.
   await versionIn(page, 'individual', 'upcoming').getByRole('button').click();

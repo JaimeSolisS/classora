@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { axeViolations } from '../support/a11y';
 import {
   cspViolations,
   recordCspViolations,
@@ -16,10 +16,9 @@ import { FIRST_RENDER_TIMEOUT_MS } from '../support/timeouts';
 import { createActiveUser } from '../support/users';
 
 // WCAG 2.0, 2.1 and 2.2 level A and AA (the A7 tags in
-// _docs/testing-guidelines.md). No rule is disabled; a per-test exclusion
-// needs a reason comment here and a line in "E2E axe exceptions".
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
-
+// _docs/testing-guidelines.md), WCAG_TAGS in support/a11y.ts. No rule is
+// disabled; a per-test exclusion needs a reason comment here and a line in
+// "E2E axe exceptions". Scans go through `axeViolations` (resting state).
 const THEMES = ['light', 'dark'] as const;
 
 // Home, 404, /users, a user's detail (demo.owner's own record, opened from
@@ -251,26 +250,6 @@ const ROUTES: ScannedRoute[] = [
 // (support/timeouts.ts, #252), inside a longer test timeout.
 const TEST_TIMEOUT_MS = 90_000;
 
-/** Every violation as `rule-id (impact): selector, selector`. */
-async function scan(page: Page): Promise<string[]> {
-  // Scan the resting state (#369): finite transitions and animations done.
-  await page.evaluate(() =>
-    Promise.allSettled(
-      document
-        .getAnimations()
-        .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity)
-        .map((a) => a.finished),
-    ),
-  );
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (violation) =>
-      `${violation.id} (${violation.impact ?? 'unknown'}): ${violation.nodes
-        .map((node) => node.target.join(' '))
-        .join(', ')}`,
-  );
-}
-
 for (const theme of THEMES) {
   for (const route of ROUTES) {
     test.describe(() => {
@@ -429,7 +408,7 @@ for (const theme of THEMES) {
           await expect(html).not.toHaveClass(/\bdark\b/);
         }
 
-        const violations = await scan(page);
+        const violations = await axeViolations(page);
         expect(violations, violations.join('\n')).toEqual([]);
       });
     });
@@ -474,7 +453,7 @@ for (const theme of THEMES) {
         await expect(html).not.toHaveClass(/\bdark\b/);
       }
 
-      const violations = await scan(page);
+      const violations = await axeViolations(page);
       expect(violations, violations.join('\n')).toEqual([]);
       expect(await cspViolations(page)).toEqual([]);
     });
@@ -544,7 +523,7 @@ test('privacy-notice (to accept) has no axe violations in light and dark', async
       } else {
         await expect(html).not.toHaveClass(/\bdark\b/);
       }
-      const violations = await scan(page);
+      const violations = await axeViolations(page);
       expect(violations, `${theme}:\n${violations.join('\n')}`).toEqual([]);
     }
     expect(await cspViolations(page)).toEqual([]);

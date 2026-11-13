@@ -808,6 +808,17 @@ en labels or an explicit classification. Run `make api-client` and
   `@axe-core/playwright`). Selecting the tags also runs rules axe leaves off
   by default, such as `target-size` (WCAG 2.2). A scan passes only with zero
   violations.
+- Every E2E scan goes through `e2e/tests/support/a11y.ts`:
+  `expectNoAxeViolations(page, { include?, exclude?, label? })` (or
+  `axeViolations` for a spec that collects the list itself). No spec builds
+  its own `AxeBuilder` or `WCAG_TAGS` (#642).
+- Scan the resting state. The helper first waits for every finite CSS
+  transition and animation to finish (a `Button` fading out of
+  `disabled:opacity-50`, a dialog animating in), so axe never measures a
+  blended colour mid-fade. Infinite animations (spinners) are ignored, and
+  nothing is disabled (no `reducedMotion`): the page is scanned as users see
+  it. The caller still waits for loaded content (no skeleton) before it
+  scans.
 - No rule is disabled globally.
 - A per-test exclusion needs a reason comment in the test and a line in the
   list below (story-level exceptions are listed in `_docs/design-system.md`).

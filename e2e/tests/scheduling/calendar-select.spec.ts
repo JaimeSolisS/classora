@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
 import { pickOption } from '../support/combobox';
@@ -34,17 +34,9 @@ import { createClassroomViaApi, createSubjectViaApi } from '../support/tutors';
 // Owner session). It never changes the zone, the opening hours, the policy
 // or closures. Each `make e2e` run starts from a fresh database: no cleanup.
 
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const TEST_TIMEOUT_MS = 90_000;
 
 test.use({ viewport: { width: 1280, height: 900 } });
-
-async function axeViolations(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-  );
-}
 
 /** Today and the wall-clock minutes now, in the center zone. */
 function centerNow(): { today: string; minutes: number } {
@@ -149,7 +141,7 @@ test('an Owner schedules by selecting times in the calendar', async ({
   // 1. Drag 10:00 → 11:30 in D's lane.
   await page.goto(week);
   await loaded();
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   await centreRow(calendar, '10:30');
   const from = await pointAt(calendar, day, '10:00', 0.25);
   const to = await pointAt(calendar, day, '11:00', 0.75);
@@ -163,7 +155,7 @@ test('an Owner schedules by selecting times in the calendar', async ({
   await expect(field(fields.date)).toHaveValue(day);
   await expect(field(fields.start)).toHaveValue('10:00');
   await expect(field(fields.end)).toHaveValue('11:30');
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   await pickOption(main, fields.student, familyNames, studentName);
   await field(fields.subject).selectOption({ label: subjectName });
   await main

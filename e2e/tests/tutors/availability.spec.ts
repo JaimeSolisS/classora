@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { api, csrfTokenOf } from '../support/api';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
@@ -217,7 +217,6 @@ test('a tutor availability is set by an Owner', async ({ page }, testInfo) => {
   expect(consoleErrors).toEqual([]);
 });
 
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const ZONE = 'America/Mexico_City';
 const DEMO_TUTOR = 'Demo Tutor';
 const OVERRIDE_CODES = [
@@ -382,11 +381,7 @@ test('time off over a scheduled class waits for approval (#63)', async ({
       .last();
     await expect(pending).toBeVisible();
     const change = (await pending.locator('p').first().textContent()) ?? '';
-    const axe = await new AxeBuilder({ page })
-      .include('#availability')
-      .withTags(WCAG_TAGS)
-      .analyze();
-    expect(axe.violations.map((v) => v.id)).toEqual([]);
+    await expectNoAxeViolations(page, { include: '#availability' });
 
     // 2. Approvals: the affected class, approved.
     await page.goto('/approvals?type=staff.availability_change');

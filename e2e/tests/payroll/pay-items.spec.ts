@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { expectNoAxeViolations } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
 import { inviteTutorViaApi } from '../support/tutors';
@@ -13,14 +13,6 @@ import { inviteTutorViaApi } from '../support/tutors';
 // E2E session: tests/authz/matrix.toml and Vitest cover it.
 
 const payroll = common.payroll;
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
-
-async function axeViolations(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  return results.violations.map(
-    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
-  );
-}
 
 test('the Owner adds a type and a recurring item, then ends it', async ({
   page,
@@ -55,13 +47,13 @@ test('the Owner adds a type and a recurring item, then ends it', async ({
   await typeDialog
     .getByLabel(payroll.payItemTypes.dialog.direction, { exact: true })
     .selectOption('bonus');
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   await typeDialog
     .getByRole('button', { name: payroll.payItemTypes.dialog.submit })
     .click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(main.getByText(typeName).first()).toBeVisible();
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
 
   // 2. A recurring item on the tutor's pay page.
   await page.goto(`/payroll/tutors/${tutorId}`);
@@ -85,7 +77,7 @@ test('the Owner adds a type and a recurring item, then ends it', async ({
   await dialog
     .getByLabel(labels.recurrence, { exact: true })
     .selectOption('recurring');
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
   await dialog.getByRole('button', { name: labels.submit }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
@@ -94,7 +86,7 @@ test('the Owner adds a type and a recurring item, then ends it', async ({
   await expect(table).toContainText('Apoyo de transporte');
   await expect(table).toContainText('$300.00');
   await expect(table).toContainText(payroll.payItems.recurrences.recurring);
-  expect(await axeViolations(page)).toEqual([]);
+  await expectNoAxeViolations(page);
 
   // 4. End it. The date starts at today.
   await table

@@ -1,6 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
-import { switchColorScheme } from '../support/a11y';
+import { expect, test } from '@playwright/test';
+import { expectNoAxeViolations, switchColorScheme } from '../support/a11y';
 import { cspViolations, recordCspViolations } from '../support/auth';
 import { common } from '../support/catalog';
 import {
@@ -25,13 +24,7 @@ import { createSubjectViaApi } from '../support/tutors';
 // Budgets (#27, ADR-0008; see support/auth.ts): no login, no redemption and
 // no registration. It never changes the zone or a scheduling policy.
 
-const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const TEST_TIMEOUT_MS = 90_000;
-
-async function expectNoAxeViolations(page: Page) {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-  expect(results.violations.map((v) => v.id)).toEqual([]);
-}
 
 function sevenDaysAfter(date: string): string {
   const day = new Date(`${date}T12:00:00Z`);
