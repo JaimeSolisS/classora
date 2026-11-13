@@ -673,6 +673,16 @@ and returns once all of them are healthy. The API reaches PostgreSQL through
 PgBouncer (connection pooling). The API and the worker connect as a
 least-privilege database role (`classora_app`: data access only, no schema
 changes), while migrations, seeds and operator commands use the database owner.
+
+On a slow or very busy machine the first start can take up to about 3 minutes
+to report that everything is up: each service's health check gets 180 s to pass
+once (on a fast machine the first passing check counts at once, so nothing
+waits). A real failure still stops it (a crash or an invalid `.env` value at
+once, a missing `make migrate` in about a minute, a worker that can't reach
+PostgreSQL within about 6.5 minutes). `make dev` then exits non-zero and prints
+the containers' status and the last 40 log lines of each service that is not
+running and healthy. `make dev` and `make start` are safe to run again.
+
 Then open:
 
 - Web app: <http://127.0.0.1:5173>. It opens the sign-in page; after signing in
