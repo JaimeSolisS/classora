@@ -612,13 +612,15 @@ async def _accept_substitution(
         starts_at=row.starts_at,
         actor_id=offer.tutor_user_id,
     )
+    student_of = await family_recipients(session, row.id)
     await notify_session(
         session,
-        await family_recipients(session, row.id),
+        student_of.keys(),
         SESSION_TUTOR_CHANGED,
         class_session_id=row.id,
         starts_at=row.starts_at,
         actor_id=offer.tutor_user_id,
+        student_of=student_of,
     )
 
 

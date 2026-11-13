@@ -1068,8 +1068,13 @@ from_date, changed, cancelled}` (the resulting series; the recipient's own
 counts) and `scheduling.series_cancelled` `{series_id, from_date}` (#54, see
 Class sessions and Class series; no link yet); `scheduling.tutor_substituted`,
 `scheduling.session_tutor_changed` and `scheduling.session_cancelled`, each
-`{class_session_id, starts_at}` (#55, see Substitutions and Class sessions;
-never the reason or a tutor's name; no link until #67). A substitution
+`{class_session_id, starts_at, student_id}` (#55, see Substitutions and Class
+sessions; never the reason or a tutor's name; no link until #67).
+`student_id` (#349) is nullable: for a family recipient (the student's own
+login or a linked guardian) the participant they are linked to (the
+smallest id, in string order, when several), so the link selects that
+child's schedule; `null` for a tutor or substitute, and always `null` for
+`scheduling.tutor_substituted`. Rows from before #349 have no `student_id`. A substitution
 offer's `scheduling.offer_received` / `_declined` / `_expired` params add
 `kind = "substitution"` and `original_tutor_name`.
 `scheduling.session_request_confirmed` and `_rejected` `{session_request_id,

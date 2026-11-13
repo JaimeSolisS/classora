@@ -207,13 +207,15 @@ async def cancel_class_session(
     previous_state = row.state
     audience = cancel_audience(previous_state)
     recipients: set[uuid.UUID] = set()
+    student_of: dict[uuid.UUID, uuid.UUID] = {}
     if "tutor" in audience and row.tutor_user_id is not None:
         recipients.add(row.tutor_user_id)
     pending = await pending_substitution_of(session, row.id)
     if pending is not None:
         recipients.add(pending.substitute_tutor_user_id)
     if "family" in audience:
-        recipients |= await family_recipients(session, row.id)
+        student_of = await family_recipients(session, row.id)
+        recipients |= student_of.keys()
 
     withdrawn = await withdraw_pending_offers(session, [row.id], by_user_id=by_user_id)
     await transition_class_session(
@@ -248,6 +250,7 @@ async def cancel_class_session(
         class_session_id=row.id,
         starts_at=row.starts_at,
         actor_id=by_user_id,
+        student_of=student_of,
     )
     cancelled_at = row.cancelled_at
     assert cancelled_at is not None  # noqa: S101 - just cancelled
