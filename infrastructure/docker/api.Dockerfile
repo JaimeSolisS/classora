@@ -4,7 +4,13 @@
 # Build context: repository root.
 # The Python 3.14 pin is set by _docs/adr/0001-runtime-version-pins.md (accepted).
 # Keep in sync with apps/api/.python-version and apps/api/pyproject.toml.
-FROM python:3.14-slim
+#
+# Stages (#672 D1): `base` (system libraries, user, uv), `test` (the API
+# test and tools image: dev dependencies and the whole repository; only for
+# `make test` and `make seed-data-*`, never pushed) and the runtime image as
+# the LAST stage, so a build without --target (make dev, make build-images,
+# make check-images, make check-pdf-image, AWS) produces it, unchanged.
+FROM python:3.14-slim AS base
 
 # libpq for psycopg (used only by Procrastinate, ADR-0003): Debian's runtime
 # library, OS-patched and visible to image scanners. The psycopg[binary] wheel
@@ -34,6 +40,28 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never \
     PYTHONUNBUFFERED=1
+
+# Test and tools image (#672 D1): `make test` runs pytest in it (Testcontainers
+# through the host's Docker socket) and `make seed-data-*` runs the simulated
+# seed in it (Compose `devtools`). Dev dependencies in /opt/venv, outside the
+# copied repository; the repository at /repo, at its real layout, because the
+# unit tests read Makefile, ci.yml, the docs and infrastructure/. Runs as
+# root: Docker Desktop's socket inside a container is root-only.
+FROM base AS test
+
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+
+WORKDIR /repo/apps/api
+
+COPY apps/api/pyproject.toml apps/api/uv.lock apps/api/.python-version ./
+RUN uv sync --frozen --no-install-project
+
+COPY . /repo
+
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Runtime image (the default build): the API, the worker and `migrate`.
+FROM base
 
 WORKDIR /app
 

@@ -16,3 +16,17 @@
 **/node_modules
 **/dist
 **/coverage
+# The API test image copies the whole repository (#672 D1): no local test
+# output, Storybook builds, Terraform providers or caches, and none of the
+# local-only files that hold sessions or passwords (E2E storage state, the
+# load-test accounts and results).
+**/test-results
+**/playwright-report
+**/blob-report
+**/storybook-static
+**/.terraform
+**/.mypy_cache
+**/.ruff_cache
+e2e/.auth
+infrastructure/load/accounts.local.json
+infrastructure/load/out

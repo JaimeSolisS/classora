@@ -1,4 +1,4 @@
-.PHONY: start dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english lint lint-api lint-web lint-e2e check-pdf-image test test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability check-infra tf-plan tf-apply tf-destroy env-teardown monitoring-sync load-test
+.PHONY: start dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english seed-data-spanish-native seed-data-english-native lint lint-api lint-web lint-e2e check-pdf-image test test-api-docker test-web-docker test-native test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability check-infra tf-plan tf-apply tf-destroy env-teardown monitoring-sync load-test
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -167,13 +167,23 @@ reset-owner-password:
 	@test -n "$(USERNAME)" || { echo "usage: make reset-owner-password USERNAME=<name>" >&2; exit 2; }
 	docker compose run --rm --build migrate python -m app.cli reset-owner-password --username "$(USERNAME)"
 
-## Generate the simulated operations data in Spanish on the host (APP_ENV=local only; needs a freshly migrated database and .env).
+## Generate the simulated operations data in Spanish into the Compose database (APP_ENV=local only; run `make start` first, on a fresh volume).
 # A deterministic center from 1 Sep to 5 Dec 2026 (history to 18 Nov), through the services; _docs/Full_README.md "Simulated operations data".
+# Runs in the Compose tools service `devtools` (the API image's test stage; #672 D4): only Docker is needed.
 seed-data-spanish:
+	docker compose run --rm --build devtools python -m tests.factories.simulation --language es
+
+## Generate the simulated operations data in English into the Compose database (APP_ENV=local only; run `make start` first, on a fresh volume).
+seed-data-english:
+	docker compose run --rm --build devtools python -m tests.factories.simulation --language en
+
+## Generate the simulated operations data in Spanish on the host (APP_ENV=local only; needs a freshly migrated database and .env).
+# Native stack (uv); the database is the one this checkout's .env names.
+seed-data-spanish-native:
 	cd apps/api && uv run --env-file ../../.env python -m tests.factories.simulation --language es
 
 ## Generate the simulated operations data in English on the host (APP_ENV=local only; needs its own freshly migrated database).
-seed-data-english:
+seed-data-english-native:
 	cd apps/api && uv run --env-file ../../.env python -m tests.factories.simulation --language en
 
 ## Lint both apps and the E2E tests (check only, never modifies files). Fails if any part fails.
@@ -201,8 +211,28 @@ lint-e2e:
 	$(PNPM) --filter @classora/e2e typecheck
 	$(PNPM) --filter @classora/e2e format:check
 
-## Run all tests for both apps (not E2E). Fails if either part fails.
-test: test-api test-web
+# Parallel API shard containers for the Docker test targets (#672 D3); PYTEST_ARGS="..."
+# narrows the selection (paths relative to apps/api).
+SHARDS ?= 4
+TEST_IN_DOCKER = SHARDS="$(SHARDS)" infrastructure/docker/test-in-docker.sh
+
+## Run all API tests (unit + integration) and the web and API client tests in Docker
+## (not E2E): needs only Docker. SHARDS=n API containers at once (default 4; 2 or 1 on
+## smaller machines), PYTEST_ARGS="..." narrows the API selection; no coverage report.
+## Every part runs; fails if any part fails. Logs in test-results/docker/.
+test:
+	@$(TEST_IN_DOCKER) all
+
+## Only the API part of `make test` (SHARDS, PYTEST_ARGS as there).
+test-api-docker:
+	@$(TEST_IN_DOCKER) api
+
+## Only the web and API client part of `make test` (Vitest, in Docker).
+test-web-docker:
+	@$(TEST_IN_DOCKER) web
+
+## Run all tests for both apps on the host (not E2E; needs uv, Pango, Node 24). Fails if either part fails.
+test-native: test-api test-web
 
 ## Run all API tests (unit + integration) with one coverage report.
 ## Integration tests start a throwaway Testcontainers PostgreSQL; Docker must be running.
