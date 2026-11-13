@@ -290,6 +290,49 @@ describe('notification links (F3)', () => {
     expect(NOTIFICATION_LINKS[type]?.({}, { userId: TUTOR_ID })).toBe(
       '/my-schedule?view=list',
     );
+    // #349 B2: a null or empty student_id (a tutor) adds no `for`.
+    for (const studentId of [null, '']) {
+      expect(
+        NOTIFICATION_LINKS[type]?.(
+          {
+            class_session_id: 'x',
+            starts_at: '2026-11-10T05:00:00Z',
+            student_id: studentId,
+          },
+          recipient,
+        ),
+      ).toBe('/my-schedule?view=list&date=2026-11-09');
+    }
+  });
+
+  // #349 B1: a family recipient's notice selects their child.
+  it.each(['scheduling.session_cancelled', 'scheduling.session_tutor_changed'])(
+    '%s selects the student_id',
+    (type) => {
+      expect(
+        NOTIFICATION_LINKS[type]?.(
+          {
+            class_session_id: 'x',
+            starts_at: '2026-11-10T05:00:00Z',
+            student_id: 'abc',
+          },
+          recipient,
+        ),
+      ).toBe('/my-schedule?for=abc&view=list&date=2026-11-09');
+    },
+  );
+
+  it('scheduling.tutor_substituted ignores a student_id (#349 E3)', () => {
+    expect(
+      NOTIFICATION_LINKS['scheduling.tutor_substituted']?.(
+        {
+          class_session_id: 'x',
+          starts_at: '2026-11-10T05:00:00Z',
+          student_id: 'abc',
+        },
+        recipient,
+      ),
+    ).toBe('/my-schedule?view=list&date=2026-11-09');
   });
 });
 
