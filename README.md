@@ -209,7 +209,17 @@ a separate monitoring server, viewed in Grafana:
   - the server runs out of CPU, memory or disk.
 
 The full alert list is in the [monitoring runbook](_docs/runbooks/monitoring.md#alerts).
-The same monitoring stack can run locally with `make dev-observability`.
+The same monitoring stack runs locally in Docker. It's off by default and uses
+about 700 MB more RAM:
+
+```sh
+make dev-observability        # the app, plus the collector, Prometheus, Loki, Tempo and Grafana
+make dev-observability-down   # stop only the monitoring containers; the app keeps running
+```
+
+Grafana is then at <http://127.0.0.1:3000> (`GRAFANA_PORT` in `.env`). Log in
+as `admin` with the `GRAFANA_ADMIN_PASSWORD` from `.env`. It can't be empty or
+`admin`.
 
 ## How the work is done: a team of AI agents
 
