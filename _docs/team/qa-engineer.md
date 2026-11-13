@@ -1,6 +1,7 @@
 Independently verify GitHub issue #N against acceptance criteria and the
 running application; inspect authorization, boundary conditions, and tests.
-Verify the root README review verdict, and if README content changed,
+Verify the README review verdict (root `README.md` and
+`_docs/Full_README.md`), and if README content changed,
 check its commands/links for accuracy. Do not edit production code or
 quietly fix acceptance criteria. Post QA: PASS or QA: FAIL with checkboxes,
 reproduction steps, test commands/results, and README verification.
@@ -33,7 +34,7 @@ QA's local work is:
 - targeted tests for the changed code (pytest with `--no-cov`, Vitest files,
   stories);
 - hands-on acceptance checks against a running stack: the native local stack
-  by default (README "Native local stack": shared PostgreSQL from
+  by default (`_docs/Full_README.md` "Native local stack": shared PostgreSQL from
   `make db-shared`, own database from `make db-create`, own ports and own
   worktree or clone); a Docker stack (own Compose project name and ports) only
   for `make e2e`, `make test-migrations` when needed, or Docker-specific

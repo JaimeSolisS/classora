@@ -156,7 +156,7 @@ def test_the_other_language_is_refused(migrated_url):
     assert out == []
     assert err.strip() == (
         "The database holds the Spanish simulation; use a separate database"
-        ' (README "Simulated operations data")'
+        ' (_docs/Full_README.md "Simulated operations data")'
     )
     assert table_counts(migrated_url) == before
 

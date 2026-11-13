@@ -28,5 +28,5 @@ A specific user-visible or operational result.
 
 ## README gate
 
-- [ ] Reviewed root `README.md` and updated only if needed.
+- [ ] Reviewed root `README.md` and `_docs/Full_README.md` and updated only if needed.
 - [ ] Final issue comment states updated sections or no-update verdict.

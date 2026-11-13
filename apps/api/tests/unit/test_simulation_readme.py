@@ -1,6 +1,6 @@
-"""The README lists the simulated accounts exactly (#586 HF-09, E2 a).
+"""The full README lists the simulated accounts exactly (#586 HF-09, E2 a).
 
-README "Simulated operations data" lists every login the default seed
+`_docs/Full_README.md` "Simulated operations data" lists every login the default seed
 (``make seed-data-spanish`` / ``make seed-data-english``: the ``full``
 profile, ``--seed 1``) creates. These tests rebuild each table from the
 pure plan and compare it with the README text between the markers, so a
@@ -20,7 +20,7 @@ from tests.factories.simulation.plan import (
 )
 from tests.factories.simulation.texts import Language
 
-README = Path(__file__).resolve().parents[4] / "README.md"
+README = Path(__file__).resolve().parents[4] / "_docs" / "Full_README.md"
 
 SEED = 1
 """The ``--seed`` default the ``make seed-data-*`` targets run with."""

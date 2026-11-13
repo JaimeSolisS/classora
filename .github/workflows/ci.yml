@@ -1,5 +1,5 @@
 # Pull request quality gates. Every check is one `make` target, so a red step
-# is reproduced locally with the same command (see README "Continuous
+# is reproduced locally with the same command (see _docs/Full_README.md "Continuous
 # integration"). Runtime versions come from the ADR-0001 pin files: Node from
 # .nvmrc, Python from the apps/api pin file (read by uv), pnpm from packageManager
 # (Corepack), PostgreSQL from POSTGRES_IMAGE in the integration conftest.

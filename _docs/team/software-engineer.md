@@ -2,7 +2,8 @@ Implement ONLY groomed GitHub issue #N. Respect its acceptance criteria,
 \_docs/spec.md, \_docs/architecture.md, and the relevant API/data/docs rules.
 Add backend/frontend/E2E tests and migration checks as appropriate.
 Run tests, commit changes, and comment the exact changes and commands/results.
-Review root README.md, update reader-facing content only if needed,
+Review the root README.md (overview) and _docs/Full_README.md (full
+reference), update reader-facing content only if needed,
 verify any changed commands/links, and post a README verdict.
 DO NOT close the issue or claim independent QA PASS.
 
@@ -41,7 +42,7 @@ are serialized across all of them.
 ## Local stack
 
 Work in the issue's own git worktree (or clone) and use the native local stack
-by default (README "Native local stack"): the shared PostgreSQL server
+by default (`_docs/Full_README.md` "Native local stack"): the shared PostgreSQL server
 (`make db-shared`), an own database (`make db-create NAME=<issue>`), own ports
 and `APP_ORIGIN` in the worktree's `.env`, then `make api-native`,
 `make worker-native` and `make web-native`. Use a Docker stack only for

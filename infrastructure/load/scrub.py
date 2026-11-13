@@ -13,7 +13,7 @@ As the database owner on the given (local, never ``classora``) database:
 2. ``auth_sessions``, ``account_tokens``, ``idempotency_keys`` and
    ``rate_limit_counters`` are emptied;
 3. every user that can sign in accepts the current privacy notice;
-4. the README's documented ``classora-sim-<role>`` passwords are checked
+4. the full README's documented ``classora-sim-<role>`` passwords are checked
    against every stored hash and must all fail.
 
 It prints counts only, never a password or hash. Exit 0 when every check

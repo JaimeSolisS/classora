@@ -1,6 +1,6 @@
 """PDF rendering (#98a D1-D5, E3, E4; ADR-0015 E14, ADR-0006 E15).
 
-The PDF tests render with WeasyPrint, so they need Pango on the host (README
+The PDF tests render with WeasyPrint, so they need Pango on the host (full README
 prerequisites; CI installs it). They assert on the text pypdf extracts, never
 on bytes or images: fonts and timestamps differ between macOS, CI and Docker.
 """
