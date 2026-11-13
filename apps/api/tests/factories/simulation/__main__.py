@@ -1,10 +1,13 @@
 """``make seed-data-spanish`` / ``make seed-data-english``:
 ``python -m tests.factories.simulation --language {es,en} [--seed N]``.
 
-1. **Local-only guard (E5).** ``APP_ENV`` is read from the environment
-   first: any value but ``local`` (``dev``, ``prod`` or a value the settings
-   would reject) prints ``Refusing to generate simulated data: APP_ENV=<value>
-   (local only)`` and exits 2 before any engine, connection or Faker call.
+1. **Local and DEV guard (E5, widened to DEV by #674).** ``APP_ENV`` is
+   read from the environment first: any value but ``local`` or ``dev``
+   (``prod`` or a value the settings would reject) prints ``Refusing to
+   generate simulated data: APP_ENV=<value> (local and dev only)`` and exits
+   2 before any engine, connection or Faker call. DEV gets the English
+   center from deploy-dev's ``dev-data`` job (``_docs/runbooks/dev-data.md``);
+   PROD never does.
 2. Load the settings (a configuration error exits 1).
 3. :func:`~.timeline.run_simulation` in one Unit of Work: the Alembic head
    (exit 1 when not at head, as ``make seed``), the reference seeds,
@@ -45,22 +48,26 @@ from tests.factories.simulation.timeline import (
     run_simulation,
 )
 
-ALLOWED_APP_ENV: Final = "local"
+ALLOWED_APP_ENV: Final = frozenset({"local", "dev"})
 DEFAULT_SEED: Final = 1
 DESCRIPTION: Final = (
     "Generate the simulated operations data of a tutoring center (1 Sep to"
     " 5 Dec 2026, history to 18 Nov) in Spanish (es) or English (en)."
-    " Local only (APP_ENV=local). It needs a freshly migrated database (the"
+    " Local and DEV only (APP_ENV=local or dev; never prod). It needs a"
+    " freshly migrated database (the"
     " reference seeds and nothing else); a rerun in the same language changes"
     " nothing."
 )
 
 
 def refusal(app_env: str) -> str | None:
-    """The refusal line for ``app_env``, or ``None`` when it is ``local``."""
-    if app_env == ALLOWED_APP_ENV:
+    """The refusal line for ``app_env``, or ``None`` when it is ``local`` or
+    ``dev``."""
+    if app_env in ALLOWED_APP_ENV:
         return None
-    return f"Refusing to generate simulated data: APP_ENV={app_env} (local only)"
+    return (
+        f"Refusing to generate simulated data: APP_ENV={app_env} (local and dev only)"
+    )
 
 
 def summary(result: SimulationResult) -> list[str]:
