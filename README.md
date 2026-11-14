@@ -94,7 +94,9 @@ make start
 It creates `.env` from `.env.example`, sets up the database and starts every
 part of the system in Docker. The first run builds the images: about 2
 minutes on a 4-core Intel Mac, plus the download of the base images. Later
-runs take seconds. It returns when all of them are healthy:
+runs take seconds; on a slow or very busy machine the start can take up to
+about 3 minutes more. If a part fails, it says which one and shows its logs;
+`make start` is safe to run again. It returns when all of them are healthy:
 - PostgreSQL;
 - PgBouncer;
 - the API;

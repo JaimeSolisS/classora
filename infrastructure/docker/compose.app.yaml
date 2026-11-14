@@ -41,12 +41,16 @@ services:
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     # Lets `docker compose up --wait` (make dev) return only once the API serves requests.
+    # start_period 180s (#660): on a slow or busy machine (a grader's laptop)
+    # uvicorn can take minutes to serve; failed checks in that window don't
+    # count, and the first passing check marks it healthy at once, so a fast
+    # machine sees no delay. A crash still fails `make dev` at once.
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2)"]
       interval: 2s
       timeout: 3s
       retries: 15
-      start_period: 5s
+      start_period: 180s
 
   # Background jobs (Procrastinate, ADR-0003): the image built for api, with
   # another command; no build of its own, so both containers always run the
@@ -81,12 +85,21 @@ services:
     # schema itself. On a fresh volume the role classora_app does not exist
     # (or cannot log in) until `make migrate` has run, so run `make migrate`
     # before `make dev` (#165); `make dev` prints that hint when it fails.
+    # Each check starts Python and imports the whole app (about 2.5 CPU-s,
+    # ADR-0018): on a slow or busy machine (a grader's laptop) one check took
+    # 17-60 s, so with a 6 s timeout the worker could never turn healthy
+    # (#660). Locally: a 30 s timeout, a check every 10 s, and a 180 s start
+    # period whose failures don't count; the first passing check marks it
+    # healthy at once (about 10 s on a fast machine). A worker that runs but
+    # never reaches PostgreSQL is unhealthy after at most
+    # 180 + 5 x (10 + 30) = 380 s; a configuration error exits at once.
+    # The AWS hosts pin their own values (infrastructure/host/compose.aws.yaml).
     healthcheck:
       test: ["CMD", "python", "-m", "app.worker", "--healthcheck"]
-      interval: 5s
-      timeout: 6s
-      retries: 10
-      start_period: 5s
+      interval: 10s
+      timeout: 30s
+      retries: 5
+      start_period: 180s
     # Longer than the largest WORKER_SHUTDOWN_TIMEOUT_SECONDS (30), so Docker
     # never kills the worker before Procrastinate's own graceful timeout ends.
     stop_grace_period: 40s
@@ -134,12 +147,15 @@ services:
     ports:
       - "127.0.0.1:${WEB_PORT:-5173}:5173"
     # Lets `docker compose up --wait` (make dev) return only once the page is served.
+    # start_period 180s (#660): a slow or busy machine can take minutes to
+    # start Vite; the first passing check marks it healthy at once, so a fast
+    # machine sees no delay.
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173/').then(async (r) => process.exit(r.ok && (await r.text()).includes('id=\"root\"') ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 2s
       timeout: 3s
       retries: 15
-      start_period: 5s
+      start_period: 180s
     depends_on:
       api:
         condition: service_healthy
