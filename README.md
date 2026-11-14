@@ -142,8 +142,9 @@ parts that touch the database. The design and its reasons are in
 ## Tests
 
 ```bash
-make test   # all API unit and integration tests, plus the web app tests
-make e2e    # end-to-end tests in a real browser, with accessibility checks
+make test       # the API unit and integration tests, plus the web app tests
+make test-all   # everything make test runs, plus the slow migration, billing and simulation suites
+make e2e        # end-to-end tests in a real browser, with accessibility checks
 ```
 
 - **Unit tests** check the business rules on their own.
@@ -153,14 +154,22 @@ make e2e    # end-to-end tests in a real browser, with accessibility checks
 - **End-to-end tests** (Playwright) click through the app on its own Docker
   stack.
 
-`make test` needs only Docker and Make. It builds two test images, then runs
-the API tests in 4 containers at once (each with its own throwaway
-PostgreSQL) next to the web app tests. A full run is long: the API suite is
-about 2½ hours of test time on CI's runners, which the 4 containers share,
-and the web tests took about 12 minutes on a 4-core Intel Mac. It prints one
-summary line per part and fails if any part fails; full logs are in
-`test-results/docker/`. On a machine with less than 16 GB of RAM (or a Docker Desktop VM under 8 GB), run
-`make test SHARDS=2`.
+`make test` and `make test-all` need only Docker and Make. They build two test
+images, then run the tests in a few containers at once (by default one fewer
+than the CPUs Docker has, at most 4), each API container with its own
+throwaway PostgreSQL. They print one summary line per part and fail if any
+part fails; full logs are in `test-results/docker/`. On a machine with little
+memory (a Docker Desktop VM under 8 GB), run `make test SHARDS=2` or
+`SHARDS=1`.
+
+`make test` runs the same API tests as CI's unit and integration jobs. The
+full `make test` took about 53 minutes on CI's 4-core amd64 runner and about
+66 minutes on its 4-core arm64 runner (3 test containers at a time). A pull
+request's smaller selection takes about 8 minutes, and the web tests alone
+took about 12 minutes on a 4-core Intel Mac.
+`make test-all` also runs the migration checks, the billing invariant suite
+and the simulation seed tests; that full selection took 1½ to 2 hours on CI's
+4-core runners.
 
 `make test` does not work with rootless Docker, Podman, Docker Desktop with
 Enhanced Container Isolation, or a Linux firewall that blocks containers from
@@ -276,6 +285,58 @@ every decision stays in the tracker. Agents start from
 - the [testing guidelines](_docs/testing-guidelines.md);
 - the [API conventions](_docs/api.md);
 - the [architecture](_docs/architecture.md).
+
+## Lessons learned
+
+Classora was built in four weeks (from 2026-10-16) by the agent team above:
+310 issues closed and 279 pull requests merged. What we learned:
+
+- **Independent QA is worth its cost.** About one QA report in five was a
+  FAIL. QA found false claims in docs, broken edge cases and, on the grader
+  path (#672), a test command that passed on the engineer's subsets but
+  failed in full on both CPU architectures. An agent's "done" is a claim
+  that still needs checking, never proof.
+- **Groom first, then build.** Issues with checkable acceptance criteria and
+  the owner's decisions written down went through in one round. A decision
+  changed mid-build is expensive: the demo visitor's guards (#673) were
+  dropped after an engineer had started on them.
+- **One machine, one agent.** On an 8 GB laptop, running agents in parallel
+  made them wait for each other and swap memory, roughly doubling the time
+  per issue. One issue in flight, with heavy commands run one at a time,
+  was faster overall.
+- **Engineers run only the tests for what they changed.** CI runs the full
+  suites on every pull request, and QA cites that run. A local full-suite
+  run had taken longer than writing the code.
+- **Agents need hard boundaries around shared state.** Two early incidents
+  reached the owner's own local stack; in the second, the database
+  containers were restored the same minute and no data was lost. Since then every agent uses its
+  own Compose project, ports and database, and prints its target before
+  migrating.
+- **Flaky tests add up fast.** Tests that search for a number inside JSON
+  with timestamps (#557), or that give a database 2 seconds to connect
+  (#661), each turned a pull request red and cost a 25-minute rerun.
+- **CI speed is an architecture decision.** Almost every integration test
+  file creates its own database and runs all 96 migrations on it, and about
+  700 tests do that for themselves alone. That adds up to about 2.5 hours of
+  API test time per pull request and 25 to 30 minutes of waiting. By the
+  time it hurt, thousands of tests depended on it.
+
+### What we'd do differently
+
+- **Set a CI time budget in the first milestone** (for example 10 minutes
+  per pull request). Migrate one template database per test session and copy
+  it for each test, or roll each test back in a transaction.
+- **Fix a flaky test the first time it shows up** instead of rerunning it,
+  and give flake fixes priority over features.
+- **Test the grader path from day one.** A CI job that runs the README's
+  commands on a clean machine with only Docker would have caught missing
+  host tools weeks earlier.
+- **Decide the demo and environment story early:** who will try the app,
+  where, and with which data and accounts.
+- **Keep issues small.** The largest issues needed several QA rounds; small
+  ones usually passed the first time.
+- **Run agents in the cloud,** or on a bigger machine, so they can run in
+  parallel safely.
 
 ## Status
 

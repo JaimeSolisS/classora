@@ -21,7 +21,7 @@ make db-shared
 infrastructure/load/prepare-dataset.sh --upload
 ```
 
-It builds the simulated center (`make seed-data-spanish`, FULL profile: 40 students, 12 tutors, 4 staff, 30 sign-in guardians) in its own native database `classora_load_prep`, then scrubs it:
+It builds the simulated center (`make seed-data-spanish-native`, FULL profile: 40 students, 12 tutors, 4 staff, 30 sign-in guardians) in its own native database `classora_load_prep`, then scrubs it:
 
 - every sign-in account gets a new random password, written only to the accounts file;
 - sessions, account tokens, idempotency keys and rate-limit counters are emptied;

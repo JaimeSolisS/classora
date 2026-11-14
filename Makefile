@@ -1,4 +1,4 @@
-.PHONY: start dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english seed-data-spanish-native seed-data-english-native lint lint-api lint-web lint-e2e check-pdf-image test test-api-docker test-web-docker test-native test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability check-infra tf-plan tf-apply tf-destroy env-teardown monitoring-sync load-test
+.PHONY: start dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english seed-data-spanish-native seed-data-english-native lint lint-api lint-web lint-e2e check-pdf-image test test-all test-api-docker test-web-docker test-native test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability check-infra tf-plan tf-apply tf-destroy env-teardown monitoring-sync load-test
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -222,17 +222,22 @@ lint-e2e:
 	$(PNPM) --filter @classora/e2e typecheck
 	$(PNPM) --filter @classora/e2e format:check
 
-# Parallel API shard containers for the Docker test targets (#672 D3); PYTEST_ARGS="..."
-# narrows the selection (paths relative to apps/api).
-SHARDS ?= 4
+# Docker test targets (#672; infrastructure/docker/test-in-docker.sh). SHARDS=n test
+# containers at once (default: Docker's CPUs minus one, 1 to 4); PYTEST_ARGS="..."
+# narrows the API selection (paths relative to apps/api).
 TEST_IN_DOCKER = SHARDS="$(SHARDS)" infrastructure/docker/test-in-docker.sh
 
-## Run all API tests (unit + integration) and the web and API client tests in Docker
-## (not E2E): needs only Docker. SHARDS=n API containers at once (default 4; 2 or 1 on
-## smaller machines), PYTEST_ARGS="..." narrows the API selection; no coverage report.
-## Every part runs; fails if any part fails. Logs in test-results/docker/.
+## Run the API unit and integration tests (the selections of make test-unit and
+## make test-integration) and the web and API client tests in Docker (not E2E): needs
+## only Docker. SHARDS=n containers at once, PYTEST_ARGS="..." narrows the API part;
+## no coverage report. Every part runs; fails if any part fails. Logs in test-results/docker/.
 test:
-	@$(TEST_IN_DOCKER) all
+	@$(TEST_IN_DOCKER) both
+
+## Everything `make test` runs plus the migration checks, the billing invariant suite
+## and the simulation seed tests (all API tests), in Docker. Much longer than make test.
+test-all:
+	@SUITE=everything $(TEST_IN_DOCKER) both
 
 ## Only the API part of `make test` (SHARDS, PYTEST_ARGS as there).
 test-api-docker:

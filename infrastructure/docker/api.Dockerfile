@@ -60,6 +60,12 @@ COPY . /repo
 
 ENV PATH="/opt/venv/bin:$PATH"
 
+# Bytecode for the API, its migrations and the tests (#672 QA D1): the copied
+# sources carry no .pyc (.dockerignore), and several tests start the API in a
+# subprocess with a fixed readiness window; compiling there on a busy machine
+# took most of it.
+RUN python -m compileall -q -j 0 app migrations tests
+
 # Runtime image (the default build): the API, the worker and `migrate`.
 FROM base
 
