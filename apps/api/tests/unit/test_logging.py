@@ -352,29 +352,42 @@ def test_uvicorn_process_writes_only_json_lines():
         stderr=subprocess.PIPE,
         text=True,
     )
+    started = time.monotonic()
+    # Diagnostics (#680): why the server never answered, reported with its output.
+    not_live: str | None = None
     try:
         base = f"http://127.0.0.1:{port}"
-        deadline = time.monotonic() + 30
+        deadline = started + 30
         while True:
             try:
                 # S310: a fixed http://127.0.0.1 URL to the server started above.
                 urllib.request.urlopen(f"{base}/health/live", timeout=1)  # noqa: S310
                 break
-            except OSError:
-                if time.monotonic() > deadline or process.poll() is not None:
-                    raise
+            except OSError as error:
+                code = process.poll()
+                if time.monotonic() > deadline or code is not None:
+                    state = "still running" if code is None else f"exited with {code}"
+                    not_live = (
+                        f"uvicorn on port {port} not live after"
+                        f" {time.monotonic() - started:.1f} s ({state}): {error!r}"
+                    )
+                    break
                 time.sleep(0.1)
-        # S310: a fixed http://127.0.0.1 URL to the server started above.
-        request = urllib.request.Request(  # noqa: S310
-            f"{base}/nope?q=1", headers={"X-Request-ID": "qa-proc"}
-        )
-        with pytest.raises(urllib.error.HTTPError) as exc_info:
-            urllib.request.urlopen(request, timeout=5)  # noqa: S310 (same fixed URL)
-        assert exc_info.value.headers["X-Request-ID"] == "qa-proc"
+        if not_live is None:
+            # S310: a fixed http://127.0.0.1 URL to the server started above.
+            request = urllib.request.Request(  # noqa: S310
+                f"{base}/nope?q=1", headers={"X-Request-ID": "qa-proc"}
+            )
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                urllib.request.urlopen(request, timeout=5)  # noqa: S310 (same URL)
+            assert exc_info.value.headers["X-Request-ID"] == "qa-proc"
     finally:
         process.send_signal(signal.SIGINT)
         stdout, stderr = process.communicate(timeout=30)
 
+    assert not_live is None, (
+        f"{not_live}\n--- server stdout ---\n{stdout}\n--- server stderr ---\n{stderr}"
+    )
     lines = (stdout + stderr).splitlines()
     assert lines
     parsed = [json.loads(line) for line in lines]  # every line is JSON
