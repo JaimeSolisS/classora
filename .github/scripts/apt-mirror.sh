@@ -20,20 +20,40 @@
 #   its own security.ubuntu.com source: every full mirror carries it, and a
 #   lone security.ubuntu.com would fail with the rest of *.ubuntu.com as on
 #   2026-11-11.
-# - IPv4 only (the runners have no IPv6 route), a 10 s timeout so a dead mirror
-#   costs seconds rather than 20 s per file, and 5 retries for transient errors.
+# - apt does NOT remember a dead mirror: every file (about 30 per update)
+#   starts at the first mirror again, and Acquire::Retries retries it there
+#   with a growing delay first. A black-holed first mirror (connect never
+#   answers) hung `apt-get update` for 45+ minutes in a local test. So the
+#   script first probes each mirror (IPv4, 5 s cap) and lists only the ones
+#   that answer, in order; if none answers it keeps them all.
+# - IPv4 only (the runners have no IPv6 route), a 10 s timeout, and 2 retries
+#   (not 5) for transient errors. A mirror that dies between the probe and
+#   apt still costs ~30 s per file; the probe keeps that window to seconds.
 # A no-op for the sources where /etc/apt/apt-mirrors.txt doesn't exist.
 set -euo pipefail
 
 mirrors=/etc/apt/apt-mirrors.txt
 if [ -f "$mirrors" ]; then
   echo "apt mirrors before:"; cat "$mirrors"
-  printf '%s\tpriority:%s\n' \
-    http://archive.ubuntu.com/ubuntu/ 1 \
-    http://azure.archive.ubuntu.com/ubuntu/ 2 \
-    http://mirrors.edge.kernel.org/ubuntu/ 3 \
-    http://mirror.math.princeton.edu/pub/ubuntu/ 4 \
-    | sudo tee "$mirrors" >/dev/null
+  candidates=(
+    http://archive.ubuntu.com/ubuntu/
+    http://azure.archive.ubuntu.com/ubuntu/
+    http://mirrors.edge.kernel.org/ubuntu/
+    http://mirror.math.princeton.edu/pub/ubuntu/
+  )
+  codename=$(sed -n 's/^VERSION_CODENAME=//p' /etc/os-release)
+  live=()
+  for m in "${candidates[@]}"; do
+    if curl -4 -fsSI --max-time 5 -o /dev/null "${m}dists/${codename}/InRelease"; then
+      live+=("$m")
+    else
+      echo "skipping unreachable mirror $m"
+    fi
+  done
+  [ "${#live[@]}" -gt 0 ] || live=("${candidates[@]}")
+  for i in "${!live[@]}"; do
+    printf '%s\tpriority:%s\n' "${live[$i]}" "$((i + 1))"
+  done | sudo tee "$mirrors" >/dev/null
   echo "apt mirrors now:"; cat "$mirrors"
   # Route the separate security source through the same list.
   for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; do
@@ -47,5 +67,5 @@ fi
 printf '%s\n' \
   'Acquire::ForceIPv4 "true";' \
   'Acquire::http::Timeout "10";' \
-  'Acquire::Retries "5";' \
+  'Acquire::Retries "2";' \
   | sudo tee /etc/apt/apt.conf.d/80-retries >/dev/null
