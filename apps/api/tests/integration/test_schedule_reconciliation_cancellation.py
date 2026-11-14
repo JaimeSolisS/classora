@@ -488,7 +488,7 @@ def test_the_log_line_carries_counts_only(module_seeded_url, caplog):
 
     [record] = [r for r in caplog.records if r.message == "Reconciled session charges"]
     assert record.cancellation_credited_count == 1
-    assert "250" not in caplog.text
+    assert sr.PRICE not in caplog.text
 
 
 # --- E12: the statement bound --------------------------------------------------------

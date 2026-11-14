@@ -834,8 +834,8 @@ def test_g2_no_amount_or_text_in_the_key_store_the_audit_or_the_logs(
         "Pago secreto",
         "Motivo secreto",
         "Ajuste secreto",
-        "12.34",
-        "56.78",
+        "312.34",
+        "356.78",
     )
     with caplog.at_level(logging.DEBUG):
         expense = created(
@@ -853,12 +853,12 @@ def test_g2_no_amount_or_text_in_the_key_store_the_audit_or_the_logs(
             client,
             owner,
             expense,
-            "12.34",
+            "312.34",
             reference="SPEI-SECRETO",
             note="Pago secreto",
         )
         reversed_ = reverse(client, owner, payment, "Motivo secreto")
-        adjusted = adjust(client, owner, expense, "56.78", "Ajuste secreto")
+        adjusted = adjust(client, owner, expense, "356.78", "Ajuste secreto")
     assert code(reversed_) == code(adjusted) == CREATED
 
     keys = stored_keys(url, owner.user.id)

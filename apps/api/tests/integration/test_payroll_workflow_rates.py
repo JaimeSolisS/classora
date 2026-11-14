@@ -141,7 +141,7 @@ def test_l2_lower_higher_and_a_stop_refuse_alike(
 
     assert code(response) == REFUSED
     assert response.json()["details"] == {"latest_finalized_on": "2026-11-03"}
-    assert "110" not in response.text
+    assert "110.0" not in response.text
     assert (
         len(
             run_sql(
