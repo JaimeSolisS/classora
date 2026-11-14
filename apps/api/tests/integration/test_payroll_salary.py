@@ -3,6 +3,7 @@ E1, E7). The pieces themselves are ``tests/unit/test_payroll_salary_pure.py``,
 the races ``test_payroll_calculation_concurrency.py``.
 """
 
+import json
 import uuid
 from collections.abc import Iterator
 from datetime import date
@@ -321,7 +322,13 @@ def test_c7_a_total_out_of_range_answers_409_and_writes_nothing(
     response = post(client, staff, f"{ROOT}/{period}/recalculate", None)
 
     assert code_of(response) == OUT_OF_RANGE
-    assert "99999" not in response.text
+    body = response.json()
+    assert body.get("details") is None
+    # request_id and details hold random UUIDs that can contain "99999" (#557):
+    # pin them by value and check every other field of the problem for the amount.
+    assert body["request_id"] == response.headers["x-request-id"]
+    rest = {k: v for k, v in body.items() if k not in ("request_id", "details")}
+    assert "99999" not in json.dumps(rest)
     assert lines(url, period) == []
 
 

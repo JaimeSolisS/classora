@@ -236,7 +236,12 @@ def test_b6_the_log_line_has_counts_and_no_amount(
         "posted_count": 1,
         "failed_count": 0,
     }
-    assert "90.53" not in str(vars(record)) and "98.76" not in str(vars(record))
+    # The message, its args and every non-standard (``extra``) attribute; the
+    # standard ones hold random floats (created, msecs) that can match by chance.
+    standard = set(vars(logging.makeLogRecord({}))) | {"message"}
+    extra = {k: v for k, v in vars(record).items() if k not in standard}
+    text = record.getMessage() + repr(record.args) + repr(extra)
+    assert "90.53" not in text and "98.76" not in text
 
 
 def test_e9_the_adjustment_is_audited_with_no_actor_and_masked(

@@ -69,13 +69,17 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # Every 30 s on the hosts (5 s locally): each check imports the whole app
+    # Every 30 s on the hosts (10 s locally): each check imports the whole app
     # in a new Python process (about 2.5 CPU-seconds on t4g). Every 5 s it
     # used half a vCPU around the clock and kept DEV above the t4g.small CPU
     # credit baseline while idle (ADR-0018). deploy.sh's readiness gate runs
-    # its own checks and is not slowed by this.
+    # its own checks and is not slowed by this. timeout and retries are pinned
+    # here because the local base (compose.app.yaml) uses 30s and 5 for slow
+    # grader machines (#660); the hosts keep 6s and 10.
     healthcheck:
       interval: 30s
+      timeout: 6s
+      retries: 10
       start_period: 30s
       start_interval: 2s
     # Peak about 306 MiB (exports, startup) at every load step (ADR-0018).

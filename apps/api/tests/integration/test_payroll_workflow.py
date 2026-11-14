@@ -254,7 +254,7 @@ def test_b5_a_negative_total_refuses_with_a_real_deduction(
     response = prepare(client, finance, period)
 
     assert code(response) == (409, "payroll_negative_total")
-    assert "110" not in response.text
+    assert "110.0" not in response.text
     assert "-0.01" not in response.text
 
 
@@ -604,7 +604,7 @@ def test_g1_g3_the_inbox_lists_it_with_no_amount_and_no_decisions(
             "prepared_by": {"display_name": name_of(url, finance.user.id)},
             "prepared_at": NOW.isoformat(),
         }
-        assert "110" not in str(body["subject"])
+        assert "110.0" not in str(body["subject"])
     assert code(get_as(client, finance.cookie, f"{APPROVALS}/{request.id}")) == (
         404,
         "not_found",

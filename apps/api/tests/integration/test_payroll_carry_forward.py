@@ -412,11 +412,11 @@ def test_e4_e5_own_pay_needs_no_reauthentication_and_the_store_holds_no_amount(
     assert code(response) == CREATED, response.text
     [stored] = stored_keys(url, teller.user.id)
     assert set(stored.response_body) == CARRIED_KEYS
-    assert "321" not in json.dumps(stored.response_body)
+    assert "321.09" not in json.dumps(stored.response_body)
     ids = response.json()["adjustment_ids"]
     audits = audit_rows(url, ids)
     assert [a.action for a in audits] == ["create", "create"]
     for audit in audits:
         assert audit.actor_user_id == teller.user.id
         assert audit.changes["amount"]["new"] == "[masked]"
-        assert "321" not in json.dumps(audit.changes, default=str)
+        assert "321.09" not in json.dumps(audit.changes, default=str)

@@ -2,11 +2,12 @@
 (#58 G4; the #47 D3 two-connection pattern of
 :mod:`~tests.integration.test_class_series_edit_concurrency`).
 
-Transaction A flushes its move and keeps its transaction open for a moment;
-transaction B starts then. Both take the student lock, then the row ``FOR
-UPDATE``, so B waits for A's commit and then fails its version check:
-exactly one ``200`` and one ``409 version_conflict``, whichever carries the
-override, and at most one override row (none when the override loses).
+Transaction A flushes its move and keeps its transaction open until B waits
+on its lock (#336); transaction B starts then. Both take the student lock,
+then the row ``FOR UPDATE``, so B waits for A's commit and then fails its
+version check: exactly one ``200`` and one ``409 version_conflict``,
+whichever carries the override, and at most one override row (none when the
+override loses).
 
 Each order runs 5 times, on new references.
 """

@@ -18,12 +18,16 @@ from collections.abc import Callable, Iterator
 import pytest
 
 from tests.integration.billing_invariants import world as worlds
+from tests.integration.conftest import raised_connect_timeout
 
 
 @pytest.fixture(scope="session")
 def world_template(database_url: str) -> Iterator[worlds.Template]:
-    """The migrated, seeded database holding the shared world (session)."""
-    template = worlds.build_template(database_url)
+    """The migrated, seeded database holding the shared world (session).
+    Session-scoped, so it is built before the module-scoped connect timeout
+    applies; it raises the timeout for its build itself (#661)."""
+    with raised_connect_timeout():
+        template = worlds.build_template(database_url)
     try:
         yield template
     finally:

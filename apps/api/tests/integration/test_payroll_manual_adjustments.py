@@ -460,7 +460,7 @@ def test_d4_late_work_with_no_rate_is_paid_by_hand_and_settled(
         str(tutor.id),
         str(second),
     )
-    assert "110" not in response.text and REASON not in response.text
+    assert "110.0" not in response.text and REASON not in response.text
     [row] = adjustments(url, tutor.id)
     assert str(row.id) == posted["id"]
     assert (str(row.class_session_id), row.origin_line_id) == (session_id, None)
@@ -726,7 +726,7 @@ def test_e4_the_key_store_holds_no_amount_and_no_reason(
     assert code(response) == CREATED
     [stored] = stored_keys(url, owner.user.id)
     assert set(stored.response_body) == POSTED_KEYS
-    assert "777" not in json.dumps(stored.response_body)
+    assert "777.77" not in json.dumps(stored.response_body)
     assert reason not in json.dumps(stored.response_body)
 
 

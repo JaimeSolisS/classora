@@ -12,6 +12,7 @@ import os
 import signal
 import subprocess
 import time
+from pathlib import Path
 
 import httpx
 
@@ -29,7 +30,9 @@ STREAM = "/api/v1/notifications/stream"
 GRACEFUL_SECONDS = 5
 
 
-def test_sigterm_ends_open_streams_cleanly_and_quietly(module_seeded_url: str) -> None:
+def test_sigterm_ends_open_streams_cleanly_and_quietly(
+    module_seeded_url: str, tmp_path: Path
+) -> None:
     user = create_user(module_seeded_url, roles=("owner",))
     port = free_port()
     env = {
@@ -46,9 +49,14 @@ def test_sigterm_ends_open_streams_cleanly_and_quietly(module_seeded_url: str) -
         "--timeout-graceful-shutdown",
         str(GRACEFUL_SECONDS),
     ]
-    process = subprocess.Popen(  # noqa: S603 - fixed argument list
-        command, cwd=API_ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
-    )
+    # Output to a file, not a pipe nobody reads until the end (#680): a pipe can
+    # be only 8 KiB (a user over fs.pipe-user-pages-soft), and the startup log is
+    # longer, so the server would block on a write before it answers.
+    output_path = tmp_path / "server.log"
+    with output_path.open("w") as output_file:
+        process = subprocess.Popen(  # noqa: S603 - fixed argument list
+            command, cwd=API_ROOT, env=env, stdout=output_file, stderr=subprocess.STDOUT
+        )
     base_url = f"http://127.0.0.1:{port}"
     try:
         wait_until_live(process, base_url)
@@ -77,7 +85,7 @@ def test_sigterm_ends_open_streams_cleanly_and_quietly(module_seeded_url: str) -
         if process.poll() is None:
             process.kill()
             process.wait(timeout=10)
-    output = process.stdout.read().decode() if process.stdout else ""
+    output = output_path.read_text()
     assert "Exception in ASGI application" not in output
     assert "Traceback" not in output
     assert "timeout graceful shutdown exceeded" not in output

@@ -39,9 +39,20 @@ start:
 ## Build the images and start db, pgbouncer, api, worker and web in the background (idempotent).
 ## On a new checkout or volume run `make migrate` first: it creates the database role
 ## (classora_app) the api, worker and PgBouncer log in as (#165).
+## On failure it prints each container's status and the last 40 log lines of every service
+## that is not running and healthy (#660), then exits non-zero. No retry: re-run it.
 dev:
 	@docker compose up -d --build --wait || { status=$$?; \
+	  echo "make dev: docker compose up failed (exit $$status). Containers:" >&2; \
+	  docker compose ps -a >&2; \
+	  for id in $$(docker compose ps -a -q); do \
+	    set -- $$(docker inspect --format '{{index .Config.Labels "com.docker.compose.service"}} {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$$id"); \
+	    case "$$2/$$3" in running/healthy|running/none) continue ;; esac; \
+	    echo "--- $$1 ($$2, health: $$3), last 40 log lines ---" >&2; \
+	    docker compose logs --no-color --tail 40 "$$1" >&2; \
+	  done; \
 	  echo "If this is a new checkout or volume, run make migrate first (it creates the database role the app uses)." >&2; \
+	  echo "A very busy machine can be slow on the first start; make dev is safe to run again." >&2; \
 	  exit $$status; }
 
 # Optional local observability (ADR-0014, #611): OTel Collector, Prometheus, Loki,
