@@ -324,34 +324,40 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def test_uvicorn_process_writes_only_json_lines():
+def test_uvicorn_process_writes_only_json_lines(tmp_path: Path):
     port = _free_port()
-    # Fixed argument list (this interpreter running uvicorn), no shell, no input.
-    process = subprocess.Popen(  # noqa: S603
-        [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "--factory",
-            "app.main:create_app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-            "--no-access-log",
-        ],
-        cwd=API_ROOT,
-        env={
-            "PATH": os.environ.get("PATH", ""),
-            "APP_ENV": "local",
-            "APP_ORIGIN": TEST_APP_ORIGIN,
-            "DATABASE_URL": "postgresql://u:placeholder-pw@127.0.0.1:1/db",
-            "DATABASE_DIRECT_URL": "postgresql://u:placeholder-pw@127.0.0.1:1/db",
-        },
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+    # The server writes to files, not pipes (#680). Nothing reads its output
+    # until it stops, and Linux gives a new pipe only 8 KiB once its user is over
+    # fs.pipe-user-pages-soft (root in parallel test containers, without
+    # CAP_SYS_RESOURCE): the startup log passed 8 KiB and the server blocked on
+    # a write, never answering within the window.
+    out_path, err_path = tmp_path / "stdout.log", tmp_path / "stderr.log"
+    with out_path.open("w") as out, err_path.open("w") as err:
+        # Fixed argument list (this interpreter running uvicorn), no shell, no input.
+        process = subprocess.Popen(  # noqa: S603
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "--factory",
+                "app.main:create_app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "--no-access-log",
+            ],
+            cwd=API_ROOT,
+            env={
+                "PATH": os.environ.get("PATH", ""),
+                "APP_ENV": "local",
+                "APP_ORIGIN": TEST_APP_ORIGIN,
+                "DATABASE_URL": "postgresql://u:placeholder-pw@127.0.0.1:1/db",
+                "DATABASE_DIRECT_URL": "postgresql://u:placeholder-pw@127.0.0.1:1/db",
+            },
+            stdout=out,
+            stderr=err,
+        )
     started = time.monotonic()
     # Diagnostics (#680): why the server never answered, reported with its output.
     not_live: str | None = None
@@ -383,7 +389,8 @@ def test_uvicorn_process_writes_only_json_lines():
             assert exc_info.value.headers["X-Request-ID"] == "qa-proc"
     finally:
         process.send_signal(signal.SIGINT)
-        stdout, stderr = process.communicate(timeout=30)
+        process.wait(timeout=30)
+    stdout, stderr = out_path.read_text(), err_path.read_text()
 
     assert not_live is None, (
         f"{not_live}\n--- server stdout ---\n{stdout}\n--- server stderr ---\n{stderr}"
