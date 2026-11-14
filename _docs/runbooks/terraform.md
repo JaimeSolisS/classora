@@ -34,6 +34,7 @@ make tf-apply ENV=<root>   # shows the saved plan summary, asks "Type the root n
 
 - Read every line of the plan. Stop if it destroys or replaces anything you didn't expect.
 - An apply that creates billable resources needs the owner's go-ahead.
+- A tag-only change to an S3 bucket (for example a new `default_tags` key) also shows its bucket policy, and in `envs/*` the host role's inline policy (`aws_iam_role_policy.host`), as `policy = jsonencode(...) -> (known after apply)`: the policy documents use the bucket's ARN, so Terraform reads them during the apply. The policy text is unchanged, so after the apply `make tf-plan ENV=<root>` must show `No changes`, which proves the same policy was put back (#669).
 - A wrong answer to the prompt applies nothing and keeps the plan. Terraform refuses a plan that has gone stale; run `tf-plan` again.
 
 ## First bootstrap and state migration
