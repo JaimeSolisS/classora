@@ -256,6 +256,58 @@ every decision stays in the tracker. Agents start from
 - the [API conventions](_docs/api.md);
 - the [architecture](_docs/architecture.md).
 
+## Lessons learned
+
+Classora was built in four weeks (from 2026-10-16) by the agent team above:
+310 issues closed and 279 pull requests merged. What we learned:
+
+- **Independent QA is worth its cost.** About one QA report in five was a
+  FAIL. QA found false claims in docs, broken edge cases and, on the grader
+  path (#672), a test command that passed on the engineer's subsets but
+  failed in full on both CPU architectures. An agent's "done" is a claim
+  that still needs checking, never proof.
+- **Groom first, then build.** Issues with checkable acceptance criteria and
+  the owner's decisions written down went through in one round. A decision
+  changed mid-build is expensive: the demo visitor's guards (#673) were
+  dropped after an engineer had started on them.
+- **One machine, one agent.** On an 8 GB laptop, running agents in parallel
+  made them wait for each other and swap memory, roughly doubling the time
+  per issue. One issue in flight, with heavy commands run one at a time,
+  was faster overall.
+- **Engineers run only the tests for what they changed.** CI runs the full
+  suites on every pull request, and QA cites that run. A local full-suite
+  run had taken longer than writing the code.
+- **Agents need hard boundaries around shared state.** Two early incidents
+  reached the owner's own local stack; in the second, the database
+  containers were restored the same minute and no data was lost. Since then every agent uses its
+  own Compose project, ports and database, and prints its target before
+  migrating.
+- **Flaky tests add up fast.** Tests that search for a number inside JSON
+  with timestamps (#557), or that give a database 2 seconds to connect
+  (#661), each turned a pull request red and cost a 25-minute rerun.
+- **CI speed is an architecture decision.** Almost every integration test
+  file creates its own database and runs all 96 migrations on it, and about
+  700 tests do that for themselves alone. That adds up to about 2.5 hours of
+  API test time per pull request and 25 to 30 minutes of waiting. By the
+  time it hurt, thousands of tests depended on it.
+
+### What we'd do differently
+
+- **Set a CI time budget in the first milestone** (for example 10 minutes
+  per pull request). Migrate one template database per test session and copy
+  it for each test, or roll each test back in a transaction.
+- **Fix a flaky test the first time it shows up** instead of rerunning it,
+  and give flake fixes priority over features.
+- **Test the grader path from day one.** A CI job that runs the README's
+  commands on a clean machine with only Docker would have caught missing
+  host tools weeks earlier.
+- **Decide the demo and environment story early:** who will try the app,
+  where, and with which data and accounts.
+- **Keep issues small.** The largest issues needed several QA rounds; small
+  ones usually passed the first time.
+- **Run agents in the cloud,** or on a bigger machine, so they can run in
+  parallel safely.
+
 ## Status
 
 **Pre-alpha, close to its first production release.**
