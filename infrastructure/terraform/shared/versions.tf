@@ -24,6 +24,7 @@ provider "aws" {
       Project     = "classora"
       Environment = "shared"
       ManagedBy   = "terraform"
+      App         = "classora-shared"
     }
   }
 }

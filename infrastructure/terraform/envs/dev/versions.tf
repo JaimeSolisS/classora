@@ -29,6 +29,7 @@ provider "aws" {
       Project     = "classora"
       Environment = "dev"
       ManagedBy   = "terraform"
+      App         = "classora-dev"
     }
   }
 }

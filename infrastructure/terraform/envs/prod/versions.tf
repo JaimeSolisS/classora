@@ -30,6 +30,7 @@ provider "aws" {
       Project     = "classora"
       Environment = "prod"
       ManagedBy   = "terraform"
+      App         = "classora-prod"
     }
   }
 }
