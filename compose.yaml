@@ -67,6 +67,26 @@ services:
       db:
         condition: service_healthy
 
+  # Dev tools (#672 D4): `migrate`'s settings (the owner, directly to db) in
+  # the API image's `test` stage, which has the dev dependencies and tests/.
+  # `make seed-data-spanish` / `make seed-data-english` run the simulated
+  # seed here, so a machine needs only Docker and Make. Local Compose only:
+  # not in compose.app.yaml (the AWS hosts); the seed itself refuses any
+  # APP_ENV but local and dev. Profile `tools`: only
+  # `docker compose run --rm devtools ...`.
+  devtools:
+    extends:
+      file: infrastructure/docker/compose.app.yaml
+      service: migrate
+    build:
+      target: test
+    image: ${COMPOSE_PROJECT_NAME}-api-test
+    # Profile `tools` comes with `extends` (compose.app.yaml's migrate).
+    command: ["python", "-m", "tests.factories.simulation", "--help"]
+    depends_on:
+      db:
+        condition: service_healthy
+
   # --- Optional local observability (profile `observability`) -------------
   # One collector plays agent and gateway (collector/local.yaml): container
   # stats from the Docker socket (read-only), PostgreSQL metrics and the

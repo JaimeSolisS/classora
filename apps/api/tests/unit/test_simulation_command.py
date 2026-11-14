@@ -53,22 +53,49 @@ def no_faker(monkeypatch):
     monkeypatch.setattr(timeline, "make_faker", _fail)
 
 
-def test_make_targets_run_the_command_per_language():
-    makefile = (REPO_ROOT / "Makefile").read_text()
-    lines = makefile.splitlines()
-    for target, language in (
-        ("seed-data-spanish", "es"),
-        ("seed-data-english", "en"),
-    ):
-        index = lines.index(f"{target}:")
-        assert lines[index + 1] == (
-            "\tcd apps/api && uv run --env-file ../../.env python -m"
-            f" tests.factories.simulation --language {language}"
-        )
-        # A `##` help comment right above the target, like the other targets.
-        above = [line for line in lines[:index] if line.startswith("##")][-1]
-        assert "APP_ENV=local only" in above
-        assert f" {target} " in f" {lines[0]} "  # in .PHONY
+def _target(lines: list[str], target: str) -> tuple[str, str]:
+    """The first recipe line of ``target`` and the ``##`` help line above it."""
+    index = lines.index(f"{target}:")
+    # A `##` help comment right above the target, like the other targets.
+    above = [line for line in lines[:index] if line.startswith("##")][-1]
+    assert f" {target} " in f" {lines[0]} "  # in .PHONY
+    return lines[index + 1], above
+
+
+@pytest.mark.parametrize("language", ["es", "en"])
+def test_make_targets_run_the_command_per_language(language):
+    lines = (REPO_ROOT / "Makefile").read_text().splitlines()
+    name = {"es": "spanish", "en": "english"}[language]
+
+    # #672 D4: the grader path runs it in the Compose `devtools` service.
+    recipe, above = _target(lines, f"seed-data-{name}")
+    assert recipe == (
+        "\tdocker compose run --rm --build devtools python -m"
+        f" tests.factories.simulation --language {language}"
+    )
+    assert "APP_ENV=local and dev only" in above
+
+    # #672 D5: the host recipe is unchanged, under its -native name.
+    recipe, above = _target(lines, f"seed-data-{name}-native")
+    assert recipe == (
+        "\tcd apps/api && uv run --env-file ../../.env python -m"
+        f" tests.factories.simulation --language {language}"
+    )
+    assert "APP_ENV=local and dev only" in above
+
+
+def test_the_devtools_service_runs_the_api_test_stage_as_the_owner():
+    # #672 D4: migrate's settings (the owner, directly to db), in the image
+    # stage that has the dev dependencies and tests/; local Compose only.
+    compose = (REPO_ROOT / "compose.yaml").read_text()
+    block = compose[compose.index("\n  devtools:\n") :]
+    block = block[: block.index("\n\n")]
+    assert "      file: infrastructure/docker/compose.app.yaml" in block
+    assert "      service: migrate" in block
+    assert "      target: test" in block
+    assert "condition: service_healthy" in block
+    app_compose = REPO_ROOT / "infrastructure" / "docker" / "compose.app.yaml"
+    assert "devtools" not in app_compose.read_text()
 
 
 @pytest.mark.parametrize(
@@ -180,7 +207,7 @@ def test_the_package_name_does_not_match_the_demo_recipe_pin():
     recipes = [
         line for line in makefile.splitlines() if "tests.factories.simulation" in line
     ]
-    assert len(recipes) == 2
+    assert len(recipes) == 4  # seed-data-{spanish,english}[-native]
     assert all("python -m tests.factories.demo" not in line for line in recipes)
 
 

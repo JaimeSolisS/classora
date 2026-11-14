@@ -37,11 +37,12 @@ import asyncio
 import os
 import uuid
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
 
 import pytest
+from docker.errors import NotFound
 from pydantic import SecretStr
 from sqlalchemy import make_url, pool, text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -73,6 +74,15 @@ POSTGRES_IMAGE = "postgres:18"
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 PGBOUNCER_BUILD_CONTEXT = REPO_ROOT / "infrastructure" / "docker" / "pgbouncer"
+PGBOUNCER_TEST_REPOSITORY = "classora-pgbouncer-test"
+# `make test` in Docker (#672 QA D3) sets CLASSORA_TEST_RUN per run: every
+# container and image the tests start carries it as a label, so Ctrl-C removes
+# this run's databases even when Ryuk does not. Unset natively: no label.
+TEST_RUN_LABELS = (
+    {"classora.test-run": os.environ["CLASSORA_TEST_RUN"]}
+    if os.environ.get("CLASSORA_TEST_RUN")
+    else {}
+)
 # Server connections per database/user pair in the test PgBouncer. Smaller than
 # the concurrency the tests use, so server connections must be shared.
 PGBOUNCER_POOL_SIZE = 5
@@ -103,6 +113,7 @@ def postgres_container() -> Iterator[PostgresContainer]:
         password="classora_test",
         dbname="classora_test",
         driver=None,
+        labels=TEST_RUN_LABELS,
     ) as container:
         yield container
 
@@ -121,12 +132,23 @@ def pgbouncer_image() -> Iterator[str]:
     role's in ``test_runtime_role.py``) runs it, and it is removed only after
     the last of them has stopped: two builds of the same context share one
     image ID, so a module-scoped removal failed with 409 while the session
-    container still ran it (#165 QA round 1).
+    container still ran it (#165 QA round 1). Removing the session's tag
+    deletes the image once no other tag (another session's) refers to it.
     """
-    with DockerImage(
-        path=PGBOUNCER_BUILD_CONTEXT, tag="classora-pgbouncer-test:latest"
-    ) as image:
-        yield str(image)
+    # A tag of its own per session (#672 D3): concurrent sessions on one Docker
+    # daemon (`make test` runs SHARDS of them) build the same image ID, so
+    # each removes only its own tag, never the image by ID while another
+    # session's container still runs it.
+    tag = f"{PGBOUNCER_TEST_REPOSITORY}:{uuid.uuid4().hex[:12]}"
+    image = DockerImage(
+        path=PGBOUNCER_BUILD_CONTEXT, tag=tag, clean_up=False, labels=TEST_RUN_LABELS
+    )
+    with image:
+        try:
+            yield tag
+        finally:
+            with suppress(NotFound):
+                image.get_docker_client().client.images.remove(tag)
 
 
 @contextmanager
@@ -153,7 +175,7 @@ def started_pgbouncer(
     )
     container = (
         DockerContainer(image)
-        .with_kwargs(extra_hosts={"db": postgres_ip})
+        .with_kwargs(extra_hosts={"db": postgres_ip}, labels=TEST_RUN_LABELS)
         .with_env("PGBOUNCER_AUTH_USER", user)
         .with_env("PGBOUNCER_AUTH_PASSWORD", password)
         .with_env("POSTGRES_DB", dbname)

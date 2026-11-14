@@ -574,6 +574,79 @@ jobs:
       - name: make check-infra
         run: make check-infra
 
+  # Grader path (#672 D6): the root README's three commands on a machine that
+  # has only Docker and GNU Make. The runner ships Python and Node, so the make
+  # commands run inside a "clean room": the Docker CLI image (Compose and buildx
+  # plugins; by multi-arch index digest, the tag is informational) plus make,
+  # bash and curl, with the runner's Docker socket, the checkout at its own path
+  # and the host network. No uv, Python, Node, pnpm or Pango is installed.
+  # Pull requests run a test subset (unit tests, PostgreSQL, PgBouncer and Ryuk
+  # through the socket, a Pango PDF); pushes to develop/main and manual runs run
+  # the full `make test`. Not path-filtered; amd64 and arm64.
+  grader-path:
+    name: grader-path (${{ matrix.runner }})
+    needs: changes
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    env:
+      CLEAN_ROOM_IMAGE: docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Start the clean room
+        run: |
+          docker run -d --name clean-room --network host \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD:$PWD" -w "$PWD" "$CLEAN_ROOM_IMAGE" sleep infinity
+          docker exec clean-room apk add --no-cache make bash curl
+          # Nothing but Docker, Make and the shells: no language toolchain.
+          docker exec clean-room sh -c 'for tool in uv python python3 node pnpm; do
+            if command -v "$tool"; then echo "unexpected: $tool" >&2; exit 1; fi; done'
+          docker exec clean-room sh -c 'docker version --format "Docker {{.Server.Version}}"; docker compose version; make --version | head -n 1'
+
+      - name: make start
+        run: docker exec clean-room make start
+
+      - name: make seed-data-english
+        run: docker exec clean-room make seed-data-english
+
+      - name: Sign in as owner / classora-sim-owner
+        run: |
+          code=$(docker exec clean-room curl -fsS -o /dev/null -w '%{http_code}' -X POST \
+            http://127.0.0.1:5173/api/v1/auth/login -H 'Origin: http://127.0.0.1:5173' \
+            -H 'Content-Type: application/json' -d '{"username":"owner","password":"classora-sim-owner"}')
+          echo "$code"
+          test "$code" = 200
+
+      - name: make test (pull request subset)
+        if: github.event_name == 'pull_request'
+        run: >-
+          docker exec clean-room make test SHARDS=2
+          PYTEST_ARGS="tests/unit tests/integration/test_runtime_role.py tests/integration/test_health_ready.py tests/integration/test_receipts_pdf.py"
+
+      - name: make test (full)
+        if: github.event_name != 'pull_request'
+        run: docker exec clean-room make test
+
+      - name: Compose logs
+        if: failure()
+        run: docker exec clean-room docker compose logs --no-color --tail 200 || true
+
+      - name: Upload the test logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: grader-path-${{ matrix.runner }}
+          path: test-results/docker/
+          retention-days: 7
+
   # Security scans (ADR-0016). Not path-filtered: a new advisory or a secret in
   # any file (documentation included) must turn every pull request red. The
   # scanner versions are pinned in the Makefile only.
@@ -642,13 +715,13 @@ jobs:
 
   # The one required status check (repository ruleset on develop and main).
   # Path-filtered jobs may be skipped when their paths did not change; the
-  # security jobs always run, so a skipped security job is a failure. `e2e`,
+  # security jobs and grader-path always run, so a skipped one is a failure. `e2e`,
   # `images` and `infra` are path-filtered like the others (skipped only when
   # changes set them to false).
   ci-required:
     name: ci-required
     if: always()
-    needs: [changes, api-lint, api-unit, api-migrations, api-billing-invariants, api-simulation, api-integration, web, web-storybook, api-client, e2e, images, infra, security-deps, security-secrets, security-sast]
+    needs: [changes, api-lint, api-unit, api-migrations, api-billing-invariants, api-simulation, api-integration, web, web-storybook, api-client, e2e, images, infra, grader-path, security-deps, security-secrets, security-sast]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -674,6 +747,8 @@ jobs:
           E2E: ${{ needs.e2e.result }}
           IMAGES: ${{ needs.images.result }}
           INFRA: ${{ needs.infra.result }}
+          # Both architectures (matrix): "failure" when either failed.
+          GRADER_PATH: ${{ needs['grader-path'].result }}
           SECURITY_DEPS: ${{ needs.security-deps.result }}
           # Index syntax, so a grep for repository-secret references stays empty.
           SECURITY_SECRETS: ${{ needs['security-secrets'].result }}
@@ -718,6 +793,7 @@ jobs:
           check images "$IMAGES" "$RUN_IMAGES"
           check infra "$INFRA" "$RUN_INFRA"
           # Always-on jobs: "skipped" is a failure.
+          check grader-path "$GRADER_PATH" always
           check security-deps "$SECURITY_DEPS" always
           check security-secrets "$SECURITY_SECRETS" always
           check security-sast "$SECURITY_SAST" always
