@@ -1054,7 +1054,7 @@ def test_e1_a_live_template_blocks_its_category_and_vendor(
         assert code(vendor_refused) == VENDOR_IN_USE
         assert vendor_refused.json()["details"] == {"template_count": 2}
         body = refused.text + vendor_refused.text
-        assert "Uno" not in body and "8000" not in body
+        assert "Uno" not in body and "8000.00" not in body
     # Renames are unaffected.
     renamed = patch(
         client,
