@@ -2,6 +2,7 @@ import { Menu, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import {
   useEffect,
   useRef,
+  useState,
   useSyncExternalStore,
   type MouseEvent,
 } from 'react';
@@ -29,6 +30,10 @@ import { HeaderLanguageSwitcher, HeaderThemeSwitcher } from './HeaderSwitchers';
 export const MAIN_ID = 'main';
 const HEADER_MENU_ID = 'app-header-menu';
 const NAV_ID = 'app-nav';
+
+// The width and margin animation of the sidebar, the top bar and <main>: at
+// `lg` and up only (#576), never under reduced motion.
+const SHELL_TRANSITION = 'lg:duration-200 lg:motion-reduce:transition-none';
 
 const focusRing =
   'rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring';
@@ -121,6 +126,22 @@ export function AppLayout({ navItems = NAV_ITEMS }: AppLayoutProps) {
   const hasNav = visibleItems.length > 0;
   // The icon rail: collapsed, at `lg` and up only (B6).
   const rail = hasNav && collapsed && isDesktop;
+  // #688: the sidebar width and the header/main margins animate only after
+  // the user collapses or expands the sidebar. When the navigation first
+  // appears (the session resolving on a page load, the privacy notice
+  // accepted), they start at their final value: a 0 → 240 px slide on every
+  // load made the KPI charts overflow sideways while it ran. Without the
+  // navigation the flag resets in the same render, so the margin never
+  // slides in or out with it.
+  const [animateShell, setAnimateShell] = useState(false);
+  if (!hasNav && animateShell) {
+    setAnimateShell(false);
+  }
+
+  function onToggleSidebar() {
+    setAnimateShell(true);
+    toggleSidebar();
+  }
 
   const toggleRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -241,7 +262,8 @@ export function AppLayout({ navItems = NAV_ITEMS }: AppLayoutProps) {
         </a>
         <header
           className={cn(
-            'min-w-0 border-b border-border lg:transition-[margin] lg:duration-200 lg:motion-reduce:transition-none',
+            'min-w-0 border-b border-border',
+            animateShell && ['lg:transition-[margin]', SHELL_TRANSITION],
             hasNav && (collapsed ? 'lg:ml-16' : 'lg:ml-60'),
           )}
         >
@@ -293,7 +315,8 @@ export function AppLayout({ navItems = NAV_ITEMS }: AppLayoutProps) {
                   id={NAV_ID}
                   aria-label={t('nav.label')}
                   className={cn(
-                    'flex flex-col gap-1 lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:overflow-x-hidden lg:overflow-y-auto lg:border-r lg:border-border lg:bg-background lg:p-2 lg:transition-[width] lg:duration-200 lg:motion-reduce:transition-none',
+                    'flex flex-col gap-1 lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:overflow-x-hidden lg:overflow-y-auto lg:border-r lg:border-border lg:bg-background lg:p-2',
+                    animateShell && ['lg:transition-[width]', SHELL_TRANSITION],
                     collapsed ? 'lg:w-16' : 'lg:w-60',
                   )}
                 >
@@ -309,7 +332,7 @@ export function AppLayout({ navItems = NAV_ITEMS }: AppLayoutProps) {
                         )}
                         aria-controls={NAV_ID}
                         aria-label={collapseName}
-                        onClick={toggleSidebar}
+                        onClick={onToggleSidebar}
                       >
                         <CollapseIcon aria-hidden="true" />
                       </Button>
@@ -370,7 +393,8 @@ export function AppLayout({ navItems = NAV_ITEMS }: AppLayoutProps) {
           tabIndex={-1}
           inert={navOpen}
           className={cn(
-            'min-w-0 flex-1 p-4 outline-none lg:transition-[margin] lg:duration-200 lg:motion-reduce:transition-none',
+            'min-w-0 flex-1 p-4 outline-none',
+            animateShell && ['lg:transition-[margin]', SHELL_TRANSITION],
             hasNav && (collapsed ? 'lg:ml-16' : 'lg:ml-60'),
           )}
         >
