@@ -19,7 +19,7 @@ How the AWS infrastructure is planned, applied and destroyed ([ADR-0011](../adr/
 | `shared` | `shared` | VPC `10.40.0.0/16` with `dev`, `prod` and `monitoring` public subnets in one AZ, internet gateway (no NAT); ECR `classora/api`, `classora/web`, `classora/pgbouncer` | free without images; ECR storage ≈ $0.10/GB-month | until full teardown |
 | `envs/dev`, `envs/prod`, `envs/monitoring` | `dev`, `prod`, `monitoring` | hosts (M9-06, M9-09, M9-10) | see those runbooks | ~20 days |
 
-Each root has its own state, `<root>/terraform.tfstate` in the state bucket (`envs/<name>/terraform.tfstate` for environments), locked with S3 native lock files. Every resource carries `Project=classora`, `Environment=<root>` and `ManagedBy=terraform`.
+Each root has its own state, `<root>/terraform.tfstate` in the state bucket (`envs/<name>/terraform.tfstate` for environments), locked with S3 native lock files. Every resource carries `Project=classora`, `Environment=<root>`, `ManagedBy=terraform` and the cost tag `App` (#669): `classora-dev` for `envs/dev`, `classora-prod` for `envs/prod`, and `classora-shared` for `bootstrap`, `shared` and `envs/monitoring`. The tags come from each root's `provider "aws"` `default_tags`; EC2 root volumes repeat them in `root_block_device.tags`. Data Lifecycle Manager snapshots copy the data volume's tags, and `snapshot-drill.sh` tags its drill volume.
 
 The deploy roles trust only this repository's **immutable** OIDC subjects: the repository has `use_immutable_subject: true` (`gh api repos/JaimeSolisS/classora/actions/oidc/customization/sub`), so a job in GitHub environment `dev` presents `sub = repo:JaimeSolisS@26722249/classora@1422814793:environment:dev` (`production` for PROD). The owner and repository IDs are the `github_owner_id` / `github_repository_id` variables (`gh api repos/JaimeSolisS/classora --jq '[.owner.id, .id]'`); if the repository is renamed or the subject setting changes, update them and re-apply `bootstrap`. Any job that names the environment can assume its role, so the `dev` environment's deployment branches are restricted to `develop` (M9-07, [`deploy.md`](deploy.md#github-environment-dev)), and the `production` environment is restricted to `main` with the owner as required reviewer (M9-10, [`release.md`](release.md#github-environment-production-and-variables)). `release-prod`'s pre-approval `verify` job uses a third, read-only role, `classora-gha-release-check`, which trusts `…:ref:refs/heads/main` (jobs on `main` without an environment).
 
@@ -34,6 +34,7 @@ make tf-apply ENV=<root>   # shows the saved plan summary, asks "Type the root n
 
 - Read every line of the plan. Stop if it destroys or replaces anything you didn't expect.
 - An apply that creates billable resources needs the owner's go-ahead.
+- A tag-only change to an S3 bucket (for example a new `default_tags` key) also shows its bucket policy, and in `envs/*` the host role's inline policy (`aws_iam_role_policy.host`), as `policy = jsonencode(...) -> (known after apply)`: the policy documents use the bucket's ARN, so Terraform reads them during the apply. The policy text is unchanged, so after the apply `make tf-plan ENV=<root>` must show `No changes`, which proves the same policy was put back (#669).
 - A wrong answer to the prompt applies nothing and keeps the plan. Terraform refuses a plan that has gone stale; run `tf-plan` again.
 
 ## First bootstrap and state migration
@@ -70,6 +71,13 @@ use_lockfile = true
   ```
 
   Activation can take up to 24 hours to apply, and costs before it are not counted.
+- **`App` cost allocation tag (#669):** splits costs per environment (`classora-dev`, `classora-prod`, `classora-shared`). Activate it the same way after the first apply that adds it; the key appears in Billing up to 24 hours later:
+
+  ```bash
+  aws ce update-cost-allocation-tags-status --region us-east-1 \
+    --cost-allocation-tags-status TagKey=App,Status=Active
+  aws ce list-cost-allocation-tags --tag-keys App --region us-east-1
+  ```
 
 ## Destroy
 
@@ -87,3 +95,24 @@ Removing a bootstrap resource that isn't protected (for example the budget or th
 ## Static checks
 
 `make check-infra` runs `terraform fmt -check -recursive` and `terraform validate` for every root (`init -backend=false`) in the pinned `hashicorp/terraform` image, and `shellcheck` on `infrastructure/scripts/` and `infrastructure/host/` in the pinned `koalaman/shellcheck` image. It needs Docker only. Fix formatting with `terraform fmt -recursive infrastructure/terraform`.
+
+It also runs `infrastructure/scripts/check-default-tags.sh` (bash and awk, no Docker): every root must be in its `App` map, every `provider "aws"` block (aliases included) must have `default_tags` with that root's `App` value, and every `root_block_device` `tags` block under `modules/` must have an `App` key. It prints `OK <root> App=<value>` per root and `FAIL <root>: <reason>` per problem. A new root needs an entry in the script's map. Run it alone with `infrastructure/scripts/check-default-tags.sh [terraform_dir]`.
+
+## Tag check
+
+`infrastructure/scripts/check-tags.sh` checks the `App` tag on the live account (#669). It is read-only (`describe*`, `list*` and `get*` calls only) and needs the AWS CLI v2 and bash, with the owner's profile:
+
+```bash
+AWS_PROFILE=jsolisdev infrastructure/scripts/check-tags.sh
+```
+
+It finds Classora's resources by the `Project=classora` tag, a `classora` name or ARN prefix, or membership in the Classora VPC: us-east-2 for regional resources, us-east-1 for global ones (IAM, Route 53, the budget). Other projects in the account are ignored. The expected value follows the `Environment` tag: `dev` → `classora-dev`, `prod` → `classora-prod`, `bootstrap`/`shared`/`monitoring` → `classora-shared`. It prints one line per finding, then a summary:
+
+- `MISSING <arn-or-id> <name>`: no `App` tag.
+- `WRONG <arn-or-id> App=<got> expected=<want>`.
+- `PENDING <snapshot-id> pre-apply DLM snapshot, expires <date>`: a Data Lifecycle Manager snapshot taken before the apply that added `App`. Old snapshots are not re-tagged. The policy keeps 7, so each one is deleted within 8 days of its `StartTime`. After that date, an untagged snapshot counts as `MISSING`.
+- `EXCEPTION <id> <reason>`: the VPC's default security group (and its rules), default network ACL and main route table. AWS creates them with the VPC, they cost nothing, and Terraform doesn't manage them.
+- `checked=N ok=N missing=N wrong=N pending=N exceptions=N`.
+
+It exits 0 when `missing=0` and `wrong=0`, 1 otherwise, and 2 on a usage or credential error. E-mail identities are printed as `***@<domain>`. ECR images and S3 objects are not checked: they can't carry the tag, and their cost is billed to the tagged repository or bucket.
+
