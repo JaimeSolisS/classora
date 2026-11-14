@@ -18,10 +18,13 @@ it does not decide anything that task or its ADR owns.
 | Storybook story tests | Every component story with its play function and an axe check, in light and dark, in headless Chromium. | `apps/web/src/**/*.stories.tsx` | Vitest projects `storybook-light`, `storybook-dark` | `make test-storybook` | `web-storybook` |
 | E2E | Cross-application flows in a real browser against the full Compose stack (web → API → PgBouncer → PostgreSQL, worker running), plus the axe scan of each route. | `e2e/tests/` | Playwright project `chromium` | `make e2e` | `e2e` |
 
-`make test` runs the API (unit and integration) and the web unit tests in
-Docker (only Docker and Make needed; #672), and `make test-native` runs the same
-selection on the host with the API coverage report; the per-layer targets in the
-table above are native. Neither runs the Storybook story tests or E2E.
+`make test` runs the API unit and integration tests (the selections of
+`make test-unit` and `make test-integration`) and the web unit tests in Docker
+(only Docker and Make needed; #672); `make test-all` adds the migration checks,
+the billing invariant suite and the simulation seed tests, also in Docker.
+`make test-native` runs every API test and the web unit tests on the host with
+the API coverage report; the per-layer targets in the table above are native.
+None of them runs the Storybook story tests or E2E.
 
 The web `unit` project allows 15 s per test and 20 s per hook (#260), so a
 starved CPU does not fail a full-app render; tests wait on conditions

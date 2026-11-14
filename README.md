@@ -140,8 +140,9 @@ parts that touch the database. The design and its reasons are in
 ## Tests
 
 ```bash
-make test   # all API unit and integration tests, plus the web app tests
-make e2e    # end-to-end tests in a real browser, with accessibility checks
+make test       # the API unit and integration tests, plus the web app tests
+make test-all   # everything make test runs, plus the slow migration, billing and simulation suites
+make e2e        # end-to-end tests in a real browser, with accessibility checks
 ```
 
 - **Unit tests** check the business rules on their own.
@@ -151,14 +152,20 @@ make e2e    # end-to-end tests in a real browser, with accessibility checks
 - **End-to-end tests** (Playwright) click through the app on its own Docker
   stack.
 
-`make test` needs only Docker and Make. It builds two test images, then runs
-the API tests in 4 containers at once (each with its own throwaway
-PostgreSQL) next to the web app tests. A full run is long: the API suite is
-about 2½ hours of test time on CI's runners, which the 4 containers share,
-and the web tests took about 12 minutes on a 4-core Intel Mac. It prints one
-summary line per part and fails if any part fails; full logs are in
-`test-results/docker/`. On a machine with less than 16 GB of RAM (or a Docker Desktop VM under 8 GB), run
-`make test SHARDS=2`.
+`make test` and `make test-all` need only Docker and Make. They build two test
+images, then run the tests in a few containers at once (by default one fewer
+than the CPUs Docker has, at most 4), each API container with its own
+throwaway PostgreSQL. They print one summary line per part and fail if any
+part fails; full logs are in `test-results/docker/`. On a machine with little
+memory (a Docker Desktop VM under 8 GB), run `make test SHARDS=2` or
+`SHARDS=1`.
+
+`make test` runs the same API tests as CI's unit and integration jobs. On
+CI's 4-core runners a pull request's smaller selection takes about 8 minutes,
+and the web tests alone took about 12 minutes on a 4-core Intel Mac.
+`make test-all` also runs the migration checks, the billing invariant suite
+and the simulation seed tests; that full selection took 1½ to 2 hours on CI's
+4-core runners.
 
 `make test` does not work with rootless Docker, Podman, Docker Desktop with
 Enhanced Container Isolation, or a Linux firewall that blocks containers from

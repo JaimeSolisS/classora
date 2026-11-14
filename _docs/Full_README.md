@@ -627,10 +627,10 @@ tests, you need only:
   Desktop, with Docker Compose v2
 - GNU Make (and the POSIX shell and bash that macOS and Linux ship with)
 
-`make start`, `make seed-data-spanish` / `make seed-data-english` and
-`make test` run everything in containers: Python, Node.js, PostgreSQL and the
+`make start`, `make seed-data-spanish` / `make seed-data-english`, `make test`
+and `make test-all` run everything in containers: Python, Node.js, PostgreSQL and the
 PDF libraries come from the images (both `linux/amd64` and `linux/arm64`).
-`make test` reaches the Docker daemon through its socket
+The Docker test targets reach the Docker daemon through their socket
 (`/var/run/docker.sock`) for its throwaway databases, so it does not work with
 rootless Docker, Podman, or Docker Desktop with Enhanced Container Isolation,
 nor on a Linux host whose firewall (ufw, firewalld) blocks containers from
@@ -1300,32 +1300,54 @@ stack and `.env` are not needed.
 ### In Docker (Docker and Make only)
 
 ```bash
-make test              # all API tests (unit + integration) and the web and API client tests, in containers
-make test-api-docker   # only the API part
+make test              # the API unit and integration tests (as make test-unit + make test-integration) and the web and API client tests
+make test-all          # everything: make test plus the migration checks, the billing invariant suite and the simulation seed tests
+make test-api-docker   # only the API part of make test
 make test-web-docker   # only the web and API client part (Vitest)
-make test SHARDS=2     # fewer API containers at once, for smaller machines (default 4)
-make test-api-docker PYTEST_ARGS="tests/unit/test_pdf.py tests/integration/test_health_ready.py"   # a narrower selection
+make test SHARDS=2     # fewer containers at once, for smaller machines
+make test-api-docker SHARDS=1 PYTEST_ARGS="tests/unit/test_pdf.py tests/integration/test_health_ready.py"   # a narrower selection
 ```
 
-`make test` builds the `test` stages of `infrastructure/docker/api.Dockerfile`
-(the API's development dependencies, Pango and the whole repository) and
-`infrastructure/docker/web.Dockerfile` (Node 24 and pnpm from `packageManager`),
-then runs the API suite as `SHARDS` containers at once, each
-`pytest --shard=K/SHARDS` with its own Testcontainers PostgreSQL, next to one
-container for the web and API client Vitest suites
-(`infrastructure/docker/test-in-docker.sh`). The API containers use the host's
-Docker daemon through its socket: their PostgreSQL, PgBouncer and Ryuk
-containers are siblings, reached at `host.docker.internal`. It selects the same
-tests as `make test-native`. `PYTEST_ARGS` adds pytest arguments (paths are
-relative to `apps/api`; a shard that gets no file passes). Every part always
-runs; the command prints one summary line per part, then the failure summary
-and the last 40 log lines of any part that failed, and exits non-zero if any
-part failed. Each part's full output is in `test-results/docker/<part>.log`.
-Ctrl-C removes the test containers. There is no coverage report in Docker: the
-native targets below (and CI) keep it. With `SHARDS=4` the Docker VM needs
-about 4 to 5 GB of memory; use `SHARDS=2` (or `1`) on a machine with less than
-16 GB of RAM or a Docker Desktop VM under 8 GB. The unsupported setups are listed
-under [Prerequisites](#docker-only-path).
+These targets build the `test` stages of `infrastructure/docker/api.Dockerfile`
+(the API's development dependencies, Pango, the whole repository and its
+precompiled bytecode) and `infrastructure/docker/web.Dockerfile` (Node 24 and
+pnpm from `packageManager`), then work through a queue of test containers,
+at most `SHARDS` at a time (`infrastructure/docker/test-in-docker.sh`).
+`SHARDS` defaults to the CPUs Docker has minus one, between 1 and 4, so the
+tests don't fight for the CPU (several start the API in a subprocess with a
+fixed readiness window).
+
+- `make test` selects what CI's `api-unit` and `api-integration` jobs run:
+  `-m "unit or integration"` without `test_migrations.py`,
+  `billing_invariants/` and `test_simulation_*.py`. It splits that selection
+  into `2 × SHARDS` parts (`pytest --shard=K/N`, files dealt round-robin by
+  path), more parts than slots so the slots finish close together, and runs
+  the web part last.
+- `make test-all` first starts the three slow suites as parts of their own
+  (simulation, migrations, billing invariants: the selections of
+  `make test-simulation`, `make test-migrations` and
+  `make test-billing-invariants`), then the same parts as `make test`. It
+  runs every API test, like the sum of CI's `api-*` jobs.
+
+Each API part has its own Testcontainers PostgreSQL. The API containers use
+the host's Docker daemon through its socket: their PostgreSQL, PgBouncer and
+Ryuk containers are siblings, reached at `host.docker.internal`.
+`PYTEST_ARGS` adds pytest arguments to the API parts (paths relative to
+`apps/api`; a part that gets no file passes; with `PYTEST_ARGS`, `make test-all`
+runs no separate slow suites). Every part always runs; the command prints
+when each part starts and finishes, one summary line per part, then the
+failure summary and the last 40 log lines of any part that failed, and exits
+non-zero if any part failed. Each part's full output is in
+`test-results/docker/<part>.log`. Ctrl-C removes the test containers and the
+run's Testcontainers databases and images (label `classora.test-run`). There
+is no coverage report in Docker: the native targets below (and CI) keep it.
+Each running API part needs about 1 GB of memory in the Docker VM; use
+`SHARDS=2` (or `1`) with a Docker Desktop VM under 8 GB. The unsupported setups
+are listed under [Prerequisites](#docker-only-path).
+
+Times: on CI's 4-core runners the pull-request selection of `grader-path`
+takes about 8 minutes, and the full selection of `make test-all` took 1½ to 2
+hours. The web part alone took about 12 minutes on a 4-core Intel Mac.
 
 ### Native (engineers)
 
@@ -1482,7 +1504,7 @@ command:
 | `e2e` | `make lint-e2e`, `make e2e`, `make check-pdf-image` (builds the API image and renders a sample PDF in es and en inside it) (on failure, uploads traces, the HTML report and the Compose logs as the `e2e-report` artifact) |
 | `images` | `make build-images`, `make check-images`, `make check-pdf-image`, `make smoke-edge`, `make scan-image IMAGE=<ref>` for each image (CI builds the `api`, `web` (Caddy edge with the built SPA) and `pgbouncer` images natively for `linux/arm64` with `PLATFORM=linux/arm64`; locally the default is `linux/amd64`) |
 | `infra` | `make check-observability` (validates the observability configuration with the pinned images: Collector, Prometheus, Loki, Tempo, Grafana provisioning; starts nothing), `make check-infra` (`terraform fmt -check` and `terraform validate` for every Terraform root, shellcheck on `infrastructure/scripts/` and `infrastructure/host/`, and actionlint on the workflows, in pinned containers; no AWS credentials) |
-| `grader-path (ubuntu-24.04)`, `grader-path (ubuntu-24.04-arm)` | `make start`, `make seed-data-english`, a sign-in as `owner`, `make test` (amd64 and arm64), run in a "clean room" container that has only the Docker CLI (with Compose), GNU Make, bash and curl: no uv, Python, Node or Pango. Pull requests run `make test SHARDS=2 PYTEST_ARGS="tests/unit tests/integration/test_runtime_role.py tests/integration/test_health_ready.py tests/integration/test_receipts_pdf.py"` (with the full web tests); pushes and manual runs run the full `make test`. On failure, uploads `test-results/docker/` as the `grader-path-<runner>` artifact |
+| `grader-path (ubuntu-24.04)`, `grader-path (ubuntu-24.04-arm)` | `make start`, `make seed-data-english`, a sign-in as `owner`, `make test` (amd64 and arm64), run in a "clean room" container that has only the Docker CLI (with Compose), GNU Make, bash and curl: no uv, Python, Node or Pango. Pull requests run `make test SHARDS=2 PYTEST_ARGS="tests/unit tests/integration/test_runtime_role.py tests/integration/test_health_ready.py tests/integration/test_receipts_pdf.py"` (with the full web tests); pushes and manual runs run the full `make test` (the unit and integration selection; `make test-all` is not run in CI, whose `api-*` jobs cover the slow suites). On failure, uploads `test-results/docker/` as the `grader-path-<runner>` artifact |
 | `security-deps` | `make audit-deps` (pip-audit and `pnpm audit` over both lockfiles; also every Monday on `develop` by [`security-audit.yml`](../.github/workflows/security-audit.yml)) |
 | `security-secrets` | `make scan-secrets` (gitleaks, full history); on pull requests also `make scan-secrets-diff BASE=<sha> HEAD=<sha>` |
 | `security-sast` | `make sast` (Semgrep); Ruff's security (`S`) rules run in `make lint-api` |
