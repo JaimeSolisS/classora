@@ -11,8 +11,9 @@
 #   terraform.sh migrate-bootstrap  after the first bootstrap apply: write backend.hcl
 #                                   and move the local bootstrap state into the bucket
 #   terraform.sh check              fmt -check and validate every root (pinned
-#                                   TERRAFORM_IMAGE), shellcheck (SHELLCHECK_IMAGE)
-#                                   and actionlint on the workflows (ACTIONLINT_IMAGE)
+#                                   TERRAFORM_IMAGE), shellcheck (SHELLCHECK_IMAGE),
+#                                   actionlint on the workflows (ACTIONLINT_IMAGE) and
+#                                   check-default-tags.sh (App tag, #669)
 #
 # Roots: bootstrap, shared, dev, prod, monitoring (envs/<name>). Plans and applies
 # use the local terraform binary with AWS_PROFILE (default jsolisdev); `check`
@@ -192,6 +193,15 @@ cmd_check() {
   # The image bundles shellcheck, so run: steps are checked too (#615).
   echo "--- actionlint: .github/workflows"
   if docker run --rm -v "$PWD:/repo:ro" -w /repo "$ACTIONLINT_IMAGE" -no-color; then
+    echo OK
+  else
+    echo FAIL >&2
+    fail=1
+  fi
+
+  # Every root tags its resources with App, root volumes included (#669).
+  echo "--- default_tags App"
+  if infrastructure/scripts/check-default-tags.sh "$tf_dir"; then
     echo OK
   else
     echo FAIL >&2

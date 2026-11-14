@@ -30,6 +30,7 @@ provider "aws" {
       Project     = "classora"
       Environment = "bootstrap"
       ManagedBy   = "terraform"
+      App         = "classora-shared"
     }
   }
 }

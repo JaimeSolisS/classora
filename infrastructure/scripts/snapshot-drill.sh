@@ -5,7 +5,8 @@
 #   infrastructure/scripts/snapshot-drill.sh [dev|prod] [--snapshot <snap-id>]
 # 1. picks the newest completed Data Lifecycle Manager snapshot of the
 #    environment's data volume (or the given one);
-# 2. creates a gp3 volume from it in the host's zone, tagged Purpose=drill;
+# 2. creates a gp3 volume from it in the host's zone, tagged Purpose=drill
+#    and App=classora-<env> (#669);
 # 3. attaches it to the host as a second device;
 # 4. on the host (AWS-RunShellScript), restore.sh --from-device: mounts it
 #    read-only, copies the PostgreSQL directory, starts the scratch container
@@ -75,7 +76,7 @@ cleanup() {
 trap cleanup EXIT
 
 volume=$(aws ec2 create-volume --snapshot-id "$snapshot" --availability-zone "$zone" --volume-type gp3 \
-  --tag-specifications "ResourceType=volume,Tags=[{Key=Name,Value=classora-$env_name-drill},{Key=Purpose,Value=drill},{Key=Project,Value=classora},{Key=Environment,Value=$env_name}]" \
+  --tag-specifications "ResourceType=volume,Tags=[{Key=Name,Value=classora-$env_name-drill},{Key=Purpose,Value=drill},{Key=Project,Value=classora},{Key=Environment,Value=$env_name},{Key=App,Value=classora-$env_name}]" \
   --query VolumeId --output text)
 log "created $volume in $zone"
 aws ec2 wait volume-available --volume-ids "$volume"
