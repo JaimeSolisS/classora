@@ -31,6 +31,18 @@ calls ``tests.integration.shared_databases.share_database``), and
 Async tests run on the anyio pytest plugin (``pytest.mark.anyio``, asyncio
 backend). Setup and checks that run outside a test's event loop use
 ``run_sql`` / ``asyncio.run`` with a short-lived ``NullPool`` engine.
+
+Connect timeout (#661): the app's engines (``app.core.db.engine_options``,
+which Alembic's ``migrations/env.py`` and the seed engine use too) fail fast
+after ``CONNECT_TIMEOUT_SECONDS = 2.0``. A fresh per-test database on a loaded
+runner sometimes takes longer than that to answer a new connection, so the
+autouse, module-scoped :func:`integration_connect_timeout` raises it to
+:data:`INTEGRATION_CONNECT_TIMEOUT_SECONDS` for every integration module and
+restores it at module end. It is not session-scoped: in the Docker
+``make test`` chunks the unit tests run later in the same pytest process and
+must still see the production 2.0. A session-scoped fixture that builds
+databases (the billing-invariants world template) wraps its build in
+:func:`raised_connect_timeout` itself.
 """
 
 import asyncio
@@ -50,6 +62,7 @@ from testcontainers.core.container import DockerContainer
 from testcontainers.core.image import DockerImage
 from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
+from app.core import db
 from app.core.config import Settings
 from app.core.db import async_database_url
 from tests.authz.csrf import TEST_APP_ORIGIN
@@ -76,6 +89,30 @@ PGBOUNCER_BUILD_CONTEXT = REPO_ROOT / "infrastructure" / "docker" / "pgbouncer"
 # Server connections per database/user pair in the test PgBouncer. Smaller than
 # the concurrency the tests use, so server connections must be shared.
 PGBOUNCER_POOL_SIZE = 5
+
+# The asyncpg connect timeout of the app's engines in integration tests (#661).
+# A real outage still fails every test, after this long.
+INTEGRATION_CONNECT_TIMEOUT_SECONDS = 30.0
+
+
+@contextmanager
+def raised_connect_timeout() -> Iterator[None]:
+    """``app.core.db.CONNECT_TIMEOUT_SECONDS`` is
+    :data:`INTEGRATION_CONNECT_TIMEOUT_SECONDS` inside, restored after."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            db, "CONNECT_TIMEOUT_SECONDS", INTEGRATION_CONNECT_TIMEOUT_SECONDS
+        )
+        yield
+
+
+@pytest.fixture(scope="module", autouse=True)
+def integration_connect_timeout() -> Iterator[None]:
+    """Every integration module runs with :func:`raised_connect_timeout`
+    (module docstring). Autouse, so it is set up before the module's other
+    module-scoped fixtures (``module_seeded_url``)."""
+    with raised_connect_timeout():
+        yield
 
 
 @pytest.fixture
