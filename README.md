@@ -160,9 +160,11 @@ part fails; full logs are in `test-results/docker/`. On a machine with little
 memory (a Docker Desktop VM under 8 GB), run `make test SHARDS=2` or
 `SHARDS=1`.
 
-`make test` runs the same API tests as CI's unit and integration jobs. On
-CI's 4-core runners a pull request's smaller selection takes about 8 minutes,
-and the web tests alone took about 12 minutes on a 4-core Intel Mac.
+`make test` runs the same API tests as CI's unit and integration jobs. The
+full `make test` took about 53 minutes on CI's 4-core amd64 runner and about
+66 minutes on its 4-core arm64 runner (3 test containers at a time). A pull
+request's smaller selection takes about 8 minutes, and the web tests alone
+took about 12 minutes on a 4-core Intel Mac.
 `make test-all` also runs the migration checks, the billing invariant suite
 and the simulation seed tests; that full selection took 1½ to 2 hours on CI's
 4-core runners.

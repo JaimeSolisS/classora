@@ -1321,8 +1321,8 @@ fixed readiness window).
   `-m "unit or integration"` without `test_migrations.py`,
   `billing_invariants/` and `test_simulation_*.py`. It splits that selection
   into `2 × SHARDS` parts (`pytest --shard=K/N`, files dealt round-robin by
-  path), more parts than slots so the slots finish close together, and runs
-  the web part last.
+  path), more parts than slots so the slots finish close together, and starts
+  the web part first.
 - `make test-all` first starts the three slow suites as parts of their own
   (simulation, migrations, billing invariants: the selections of
   `make test-simulation`, `make test-migrations` and
@@ -1345,9 +1345,10 @@ Each running API part needs about 1 GB of memory in the Docker VM; use
 `SHARDS=2` (or `1`) with a Docker Desktop VM under 8 GB. The unsupported setups
 are listed under [Prerequisites](#docker-only-path).
 
-Times: on CI's 4-core runners the pull-request selection of `grader-path`
-takes about 8 minutes, and the full selection of `make test-all` took 1½ to 2
-hours. The web part alone took about 12 minutes on a 4-core Intel Mac.
+Times: on CI's 4-core runners the full `make test` took about 53 minutes on
+amd64 and about 66 minutes on arm64 (3 test containers at a time; run
+43535857123), the pull-request selection of `grader-path` takes about 8
+minutes, and the full selection of `make test-all` took 1½ to 2 hours. The web part alone took about 12 minutes on a 4-core Intel Mac.
 
 ### Native (engineers)
 
