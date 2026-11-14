@@ -12,7 +12,9 @@
   (America/Mexico_City), each year with its own series row;
 - B6: the series row is locked only after the account row: a payment
   waiting for its account holds no series lock, so another account's
-  payment goes through meanwhile;
+  payment goes through meanwhile (A holds the account until that payment
+  committed and B waits on A's lock: an event and
+  ``lock_support.waiting_on_a_lock``, #683; no stagger or fixed hold);
 - B1: past 999999 → ``NumberSeriesExhaustedError`` and nothing is written.
 
 The clock is frozen at noon on 2031-03-10 in the center's zone unless a
@@ -38,6 +40,7 @@ from tests.integration import payment_support as ps
 from tests.integration import receipt_support as rs
 from tests.integration.conftest import run_sql, short_lived_engine
 from tests.integration.lifecycle_support import in_uow
+from tests.integration.lock_support import LOCK_WAIT_CAP_SECONDS, waiting_on_a_lock
 
 YEAR = ps.TODAY.year
 HOLD_SECONDS = 0.5
@@ -187,33 +190,44 @@ def test_the_series_lock_comes_after_the_account_lock(
     _, account_x, _ = rs.new_account(url)
     _, account_y, _ = rs.new_account(url)
     holding = asyncio.Event()
+    done = {"b": asyncio.Event(), "c": asyncio.Event()}
     ended: dict[str, float] = {}
 
     async def run_a() -> None:
-        # A holds account X (as a payment on X would) for a while.
-        engine = short_lived_engine(url)
+        # A holds account X (as a payment on X would) until B waits on it
+        # and C has committed; A's mark is taken right before its commit.
+        engine, probe = short_lived_engine(url), short_lived_engine(url)
         try:
             async with UnitOfWork(create_sessionmaker(engine), actor) as uow:
                 await billing.lock_billing_account(uow.session, account_x)
                 holding.set()
-                await asyncio.sleep(HOLD_SECONDS * 2)
-            ended["a"] = time.monotonic()
+                await waiting_on_a_lock(probe, done["b"])
+                try:
+                    async with asyncio.timeout(LOCK_WAIT_CAP_SECONDS):
+                        await done["c"].wait()
+                except TimeoutError:
+                    raise AssertionError(
+                        f"C didn't commit within {LOCK_WAIT_CAP_SECONDS} s"
+                        " while A held account X"
+                    ) from None
+                ended["a"] = time.monotonic()
         finally:
             holding.set()
             await engine.dispose()
+            await probe.dispose()
 
-    async def run(name: str, account: uuid.UUID, delay: float) -> Any:
+    async def run(name: str, account: uuid.UUID) -> Any:
         await holding.wait()
-        await asyncio.sleep(delay)
-        result = await _in_own_uow(url, actor, _pay(account))
-        ended[name] = time.monotonic()
-        return result
+        try:
+            result = await _in_own_uow(url, actor, _pay(account))
+            ended[name] = time.monotonic()
+            return result
+        finally:
+            done[name].set()
 
     async def _all() -> tuple[Any, ...]:
         return tuple(
-            await asyncio.gather(
-                run_a(), run("b", account_x, 0.0), run("c", account_y, 0.2)
-            )
+            await asyncio.gather(run_a(), run("b", account_x), run("c", account_y))
         )
 
     _, b, c = asyncio.run(_all())

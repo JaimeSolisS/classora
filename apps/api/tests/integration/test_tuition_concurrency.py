@@ -4,7 +4,9 @@
 - a linked plan create and the session step of a group session in its
   window both wait on the family's account lock (held by a third
   connection): after the release exactly one of {plan, session charge}
-  exists, whichever queued first;
+  exists, whichever queued first (the second starts once the first waits
+  on the lock, and the gate is released once both wait:
+  ``lock_support.waiting_on_a_lock(waiters=n)``, #683);
 - the job's plan step holds the plan ``FOR SHARE``: a pause waits, then
   refuses the period that just posted, or succeeds for a later one;
 - billing turned off while the job waits on ``billing_settings``: nothing
@@ -33,6 +35,7 @@ from tests.integration import tuition_support as ts
 from tests.integration.auth_support import auth_client
 from tests.integration.conftest import run_sql, settings_for, short_lived_engine
 from tests.integration.lifecycle_support import in_uow
+from tests.integration.lock_support import waiting_on_a_lock
 from tests.integration.series_support import owner_cookie, timeline
 from tests.integration.test_class_session_create import new_student, new_subject
 
@@ -123,7 +126,15 @@ def test_a_linked_plan_and_an_in_window_session_charge_never_both_exist(
     session_id = session.id
 
     async def _race() -> list[Any]:
-        engine = short_lived_engine(url)
+        engine, probe = short_lived_engine(url), short_lived_engine(url)
+        # Set when either step finishes: it then didn't wait on the gate.
+        finished = asyncio.Event()
+
+        def start(step: Callable[[Any], Awaitable[Any]]) -> asyncio.Task[Any]:
+            task = asyncio.create_task(_in_uow(url, step))
+            task.add_done_callback(lambda _: finished.set())
+            return task
+
         try:
             async with engine.begin() as conn:
                 await conn.execute(
@@ -131,13 +142,14 @@ def test_a_linked_plan_and_an_in_window_session_charge_never_both_exist(
                     {"a": account},
                 )
                 first, second = (_create, _charge) if plan_first else (_charge, _create)
-                one = asyncio.create_task(_in_uow(url, first))
-                await asyncio.sleep(HOLD_SECONDS)
-                two = asyncio.create_task(_in_uow(url, second))
-                await asyncio.sleep(HOLD_SECONDS)
+                one = start(first)
+                await waiting_on_a_lock(probe, finished, waiters=1)
+                two = start(second)
+                await waiting_on_a_lock(probe, finished, waiters=2)
             return [await one, await two]
         finally:
             await engine.dispose()
+            await probe.dispose()
 
     with frozen_clock(tl.now):
         outcomes = asyncio.run(_race())

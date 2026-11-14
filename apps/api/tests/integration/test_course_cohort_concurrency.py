@@ -1,6 +1,8 @@
 """Concurrent cohort writes (#65 G2, C3; the #47 D3 two-connection
-pattern): transaction A makes its change and keeps its transaction open for
-a moment; B starts once A's change is flushed and uncommitted.
+pattern): transaction A makes its change and keeps its transaction open
+until B waits on one of its locks (``lock_support.waiting_on_a_lock``, #683);
+B starts once A's change is flushed and uncommitted. A's end mark is taken
+before its commit.
 
 - **One name twice** (different case): one ``201``, one ``409
   cohort_name_taken`` (the unique index waits for A).
@@ -38,8 +40,8 @@ from app.workflows.cohort_schemas import CohortCreate, CohortRecurrence
 from tests.conftest import frozen_clock
 from tests.factories.courses import persist_course_template
 from tests.integration.conftest import run_sql_async, short_lived_engine
+from tests.integration.lock_support import waiting_on_a_lock
 from tests.integration.test_class_session_create_concurrency import (
-    HOLD_SECONDS,
     REPEATS,
     _references,
 )
@@ -68,23 +70,26 @@ async def _outcome(engine: Any, change: Change, after: Any = None) -> str:
 
 
 async def race(url: str, first: Change, second: Change) -> tuple[list[str], float]:
-    """``first`` (A, held open after its change) and ``second`` (B, started
-    once A's change is flushed); the outcomes and how long B finished after
-    A committed (negative: before)."""
+    """``first`` (A, held open after its change until B waits on its lock)
+    and ``second`` (B, started once A's change is flushed); the outcomes and
+    how long B finished after A's mark, taken right before A's commit
+    (negative: before)."""
     engine_a, engine_b = short_lived_engine(url), short_lived_engine(url)
-    changed = asyncio.Event()
+    probe = short_lived_engine(url)
+    changed, b_done = asyncio.Event(), asyncio.Event()
     loop = asyncio.get_running_loop()
     ends: dict[str, float] = {}
 
     async def hold() -> None:
         changed.set()
-        await asyncio.sleep(HOLD_SECONDS)
+        await waiting_on_a_lock(probe, b_done)
+        ends["a"] = loop.time()
 
     async def run_a() -> str:
         try:
             return await _outcome(engine_a, first, hold)
         finally:
-            ends["a"] = loop.time()
+            ends.setdefault("a", loop.time())
             changed.set()
 
     async def run_b() -> str:
@@ -93,12 +98,14 @@ async def race(url: str, first: Change, second: Change) -> tuple[list[str], floa
             return await _outcome(engine_b, second)
         finally:
             ends["b"] = loop.time()
+            b_done.set()
 
     try:
         outcomes = list(await asyncio.gather(run_a(), run_b()))
     finally:
         await engine_a.dispose()
         await engine_b.dispose()
+        await probe.dispose()
     return outcomes, ends["b"] - ends["a"]
 
 

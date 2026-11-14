@@ -1,7 +1,9 @@
 """Payments under concurrency on one account (#96 F4, B5; I2, I3; the
 #90/#94 lock-test pattern): transaction A runs its step, which takes the
 billing account ``FOR UPDATE``, and holds it; B starts once A holds the
-lock, waits for A's commit, then decides from what A committed.
+lock, waits for A's commit, then decides from what A committed. A commits
+only once B waits on its lock (``lock_support.waiting_on_a_lock``, #683), and
+A's end mark is taken before its commit.
 
 - two oldest-first payments of 500 against one open charge of 500: A
   allocates it, B is all account credit;
@@ -44,9 +46,12 @@ from tests.factories import billing as factories
 from tests.integration import payment_support as ps
 from tests.integration.conftest import short_lived_engine
 from tests.integration.lifecycle_support import in_uow
-from tests.integration.lock_support import commit_b_inside_a, on_session
+from tests.integration.lock_support import (
+    commit_b_inside_a,
+    on_session,
+    waiting_on_a_lock,
+)
 
-HOLD_SECONDS = 0.5
 REPEATS = 5
 
 Step = Callable[[AsyncSession], Awaitable[Any]]
@@ -60,11 +65,13 @@ def actor(module_seeded_url: str) -> uuid.UUID:
 async def _hold_then(
     url: str, actor: uuid.UUID, first: Step, second: Step
 ) -> tuple[Any, Any, float, float]:
-    """A runs ``first`` and holds its transaction for :data:`HOLD_SECONDS`;
+    """A runs ``first`` and holds its transaction until B waits on its lock;
     B runs ``second`` once A has run its step. Returns both results (an
-    ``AppError`` as its code) and when each transaction ended."""
+    ``AppError`` as its code), A's mark taken right before its commit and
+    when B's transaction ended."""
     engine_a, engine_b = short_lived_engine(url), short_lived_engine(url)
-    holding = asyncio.Event()
+    probe = short_lived_engine(url)
+    holding, b_done = asyncio.Event(), asyncio.Event()
     ended: dict[str, float] = {}
 
     async def run_a() -> Any:
@@ -72,8 +79,8 @@ async def _hold_then(
             async with UnitOfWork(create_sessionmaker(engine_a), actor) as uow:
                 result = await first(uow.session)
                 holding.set()
-                await asyncio.sleep(HOLD_SECONDS)
-            ended["a"] = time.monotonic()
+                await waiting_on_a_lock(probe, b_done)
+                ended["a"] = time.monotonic()
             return result
         finally:
             holding.set()
@@ -81,18 +88,22 @@ async def _hold_then(
     async def run_b() -> Any:
         await holding.wait()
         try:
-            async with UnitOfWork(create_sessionmaker(engine_b), actor) as uow:
-                result = await second(uow.session)
-        except AppError as error:
-            result = error.code
-        ended["b"] = time.monotonic()
-        return result
+            try:
+                async with UnitOfWork(create_sessionmaker(engine_b), actor) as uow:
+                    result = await second(uow.session)
+            except AppError as error:
+                result = error.code
+            ended["b"] = time.monotonic()
+            return result
+        finally:
+            b_done.set()
 
     try:
         a, b = await asyncio.gather(run_a(), run_b())
     finally:
         await engine_a.dispose()
         await engine_b.dispose()
+        await probe.dispose()
     return a, b, ended["a"], ended["b"]
 
 

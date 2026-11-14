@@ -1,5 +1,9 @@
 """The export run (#124 D1-D4, E4, E7, F2, F3, G1), calling the task
-function in-process."""
+function in-process.
+
+Two concurrent runs: the run building the job (holding its row; the other
+run's ``SKIP LOCKED`` never waits) stays in the dataset's rows until the
+other run has returned (an event, #683), not for a fixed delay."""
 
 import asyncio
 import io
@@ -44,6 +48,7 @@ from tests.integration.export_support import (
     unique,
 )
 from tests.integration.lifecycle_support import in_uow
+from tests.integration.lock_support import LOCK_WAIT_CAP_SECONDS
 
 TASK_LOGGER = "app.modules.reporting.tasks"
 
@@ -85,15 +90,22 @@ class Probe:
     def __init__(self) -> None:
         self.calls: list[str] = []
         self.error: BaseException | None = None
-        self.delay = 0.0
+        # When set, rows() waits for this event (another run returned).
+        self.until: asyncio.Event | None = None
 
     async def rows(
         self, session: Any, principal: Any, filters: Any, *, limit: int, language: str
     ) -> list[dict[str, Any]]:
         level = await session.scalar(text("SHOW transaction_isolation"))
         self.calls.append(str(level))
-        if self.delay:
-            await asyncio.sleep(self.delay)
+        if self.until is not None:
+            try:
+                async with asyncio.timeout(LOCK_WAIT_CAP_SECONDS):
+                    await self.until.wait()
+            except TimeoutError:
+                raise AssertionError(
+                    f"The other run didn't return within {LOCK_WAIT_CAP_SECONDS} s"
+                ) from None
         if self.error is not None:
             raise self.error
         return [{"name": "uno"}]
@@ -436,11 +448,19 @@ def test_a_locked_job_is_skipped(module_seeded_url, client):
 def test_two_concurrent_runs_build_a_job_once(module_seeded_url, client, probe):
     who = actor(module_seeded_url, client, "finance_staff")
     job = insert_job(module_seeded_url, who.user, "probe_rows")
-    probe.delay = 0.5
 
     async def both() -> Any:
         settings = settings_for(module_seeded_url)
-        return await asyncio.gather(run_exports(settings), run_exports(settings))
+        returned = asyncio.Event()
+        probe.until = returned
+
+        async def run() -> Any:
+            try:
+                return await run_exports(settings)
+            finally:
+                returned.set()
+
+        return await asyncio.gather(run(), run())
 
     first, second = asyncio.run(both())
 

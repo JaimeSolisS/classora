@@ -28,8 +28,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import create_sessionmaker
 from app.core.models import StaleVersionError
@@ -44,6 +43,7 @@ from app.modules.scheduling.schemas import (
 )
 from tests.conftest import frozen_clock
 from tests.integration.conftest import run_sql_async, short_lived_engine
+from tests.integration.lock_support import waiting_on_a_lock
 from tests.integration.test_class_session_create_concurrency import (
     REPEATS,
     _references,
@@ -57,10 +57,6 @@ MX = ZoneInfo("America/Mexico_City")
 NOW = datetime(2031, 1, 5, 12, 0, tzinfo=MX)  # Sunday
 MONDAY = date(2031, 1, 6)
 WEEK_3 = MONDAY + timedelta(weeks=2)
-# How long A waits for B to block on its lock before the race fails (#336).
-# Generous: B normally blocks within 0.1 s; hitting it fails the test.
-LOCK_WAIT_CAP_SECONDS = 30.0
-POLL_SECONDS = 0.02
 
 
 async def _outcome(engine: Any, change: Change, after_change: Any = None) -> str:
@@ -74,36 +70,6 @@ async def _outcome(engine: Any, change: Change, after_change: Any = None) -> str
     except StaleVersionError:
         return "version_conflict"
     return "ok"
-
-
-async def waiting_on_a_lock(probe: AsyncEngine, b_done: asyncio.Event) -> None:
-    """Returns once another backend of this test's database waits on a lock
-    (B on A's: only A, B and this probe use the database). Fails when B
-    finished without waiting, or after :data:`LOCK_WAIT_CAP_SECONDS`."""
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + LOCK_WAIT_CAP_SECONDS
-    async with probe.connect() as conn:
-        while True:
-            waiting = await conn.scalar(
-                text(
-                    "SELECT count(*) FROM pg_stat_activity"
-                    " WHERE datname = current_database()"
-                    " AND pid <> pg_backend_pid()"
-                    " AND wait_event_type = 'Lock'"
-                )
-            )
-            # pg_stat_activity is read once per transaction: end it, so the
-            # next poll sees fresh rows.
-            await conn.commit()
-            if waiting:
-                return
-            if b_done.is_set():
-                raise AssertionError("B finished without waiting on A's lock")
-            if loop.time() >= deadline:
-                raise AssertionError(
-                    f"B never waited on A's lock within {LOCK_WAIT_CAP_SECONDS} s"
-                )
-            await asyncio.sleep(POLL_SECONDS)
 
 
 async def race(url: str, first: Change, second: Change) -> list[str]:
