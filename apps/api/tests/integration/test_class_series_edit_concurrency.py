@@ -1,7 +1,11 @@
 """Concurrent edits (#54 E4; the #47 D3 two-connection pattern).
 
-Transaction A runs and keeps its transaction open for a moment once its
-writes are flushed; transaction B starts then.
+Transaction A runs and, once its writes are flushed, keeps its transaction
+open; transaction B starts then. A commits only once B waits on a lock A holds
+(``pg_stat_activity``), so B always runs its reads and writes against A's
+uncommitted work, however slow the machine (#336). A fixed hold made that a
+timing bet: on a loaded runner B sometimes reached its conflict reads after A
+had committed and answered a different, also correct, 409.
 
 - **An edit and the nightly extension of the same series:** both take the
   student lock, then the series row ``FOR UPDATE`` (re-read,
@@ -24,7 +28,8 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.db import create_sessionmaker
 from app.core.models import StaleVersionError
@@ -52,7 +57,10 @@ MX = ZoneInfo("America/Mexico_City")
 NOW = datetime(2031, 1, 5, 12, 0, tzinfo=MX)  # Sunday
 MONDAY = date(2031, 1, 6)
 WEEK_3 = MONDAY + timedelta(weeks=2)
-HOLD_SECONDS = 0.5
+# How long A waits for B to block on its lock before the race fails (#336).
+# Generous: B normally blocks within 0.1 s; hitting it fails the test.
+LOCK_WAIT_CAP_SECONDS = 30.0
+POLL_SECONDS = 0.02
 
 
 async def _outcome(engine: Any, change: Change, after_change: Any = None) -> str:
@@ -68,15 +76,46 @@ async def _outcome(engine: Any, change: Change, after_change: Any = None) -> str
     return "ok"
 
 
+async def waiting_on_a_lock(probe: AsyncEngine, b_done: asyncio.Event) -> None:
+    """Returns once another backend of this test's database waits on a lock
+    (B on A's: only A, B and this probe use the database). Fails when B
+    finished without waiting, or after :data:`LOCK_WAIT_CAP_SECONDS`."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + LOCK_WAIT_CAP_SECONDS
+    async with probe.connect() as conn:
+        while True:
+            waiting = await conn.scalar(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity"
+                    " WHERE datname = current_database()"
+                    " AND pid <> pg_backend_pid()"
+                    " AND wait_event_type = 'Lock'"
+                )
+            )
+            # pg_stat_activity is read once per transaction: end it, so the
+            # next poll sees fresh rows.
+            await conn.commit()
+            if waiting:
+                return
+            if b_done.is_set():
+                raise AssertionError("B finished without waiting on A's lock")
+            if loop.time() >= deadline:
+                raise AssertionError(
+                    f"B never waited on A's lock within {LOCK_WAIT_CAP_SECONDS} s"
+                )
+            await asyncio.sleep(POLL_SECONDS)
+
+
 async def race(url: str, first: Change, second: Change) -> list[str]:
     """Outcomes of ``first`` (A) and ``second`` (B, started once A's writes
-    are flushed and still uncommitted)."""
+    are flushed and still uncommitted). A commits once B waits on its lock."""
     engine_a, engine_b = short_lived_engine(url), short_lived_engine(url)
-    changed = asyncio.Event()
+    probe = short_lived_engine(url)
+    changed, b_done = asyncio.Event(), asyncio.Event()
 
     async def hold() -> None:
         changed.set()
-        await asyncio.sleep(HOLD_SECONDS)
+        await waiting_on_a_lock(probe, b_done)
 
     async def run_a() -> str:
         try:
@@ -86,13 +125,17 @@ async def race(url: str, first: Change, second: Change) -> list[str]:
 
     async def run_b() -> str:
         await changed.wait()
-        return await _outcome(engine_b, second)
+        try:
+            return await _outcome(engine_b, second)
+        finally:
+            b_done.set()
 
     try:
         return list(await asyncio.gather(run_a(), run_b()))
     finally:
         await engine_a.dispose()
         await engine_b.dispose()
+        await probe.dispose()
 
 
 async def _in_uow(url: str, change: Change) -> Any:
