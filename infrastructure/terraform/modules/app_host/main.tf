@@ -130,6 +130,7 @@ resource "aws_instance" "this" {
       Environment = var.env
       ManagedBy   = "terraform"
       Role        = "root"
+      App         = "classora-${var.env}"
     }
   }
 
