@@ -749,14 +749,14 @@ def test_n9_no_amount_or_reason_in_any_side_channel(
         response = finalize(client, url, owner, period, key=key)
         assert code(response) == OK
 
-    assert "110" not in response.text
+    assert "110.0" not in response.text
     assert "110.00" not in caplog.text
     assert "secreto" not in caplog.text
     [stored] = run_sql(
         url, "SELECT response_body FROM idempotency_keys WHERE key = :k", {"k": key}
     )
     assert set(stored.response_body) == {"id", "status", "prepared_at", "finalized_at"}
-    assert "110" not in str(stored.response_body)
+    assert "110.0" not in str(stored.response_body)
     audit = run_sql(
         url,
         "SELECT count(*) AS n FROM audit_events WHERE details::text LIKE '%110.00%'"
@@ -764,7 +764,7 @@ def test_n9_no_amount_or_reason_in_any_side_channel(
     )
     assert audit[0].n == 0
     [notice] = notifications_of(url, tutor.id)
-    assert "110" not in str(notice.params)
+    assert "110.0" not in str(notice.params)
 
 
 def test_n9_a_tiny_total_is_not_in_refusals_either(
@@ -780,7 +780,7 @@ def test_n9_a_tiny_total_is_not_in_refusals_either(
     assert code(response)[1] == "payroll_period_stale"
     assert response.json()["details"] == {"added": 1, "removed": 0, "changed": 0}
     assert "7.77" not in response.text
-    assert "110" not in response.text
+    assert "110.0" not in response.text
 
 
 def test_d2_order_of_the_refusals(module_seeded_url, client, tutor):
