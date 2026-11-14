@@ -134,6 +134,7 @@ resource "aws_instance" "this" {
       Environment = "monitoring"
       ManagedBy   = "terraform"
       Role        = "root"
+      App         = "classora-shared"
     }
   }
 
