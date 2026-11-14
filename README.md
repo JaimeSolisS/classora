@@ -278,15 +278,17 @@ Classora was built in four weeks (from 2026-10-16) by the agent team above:
   suites on every pull request, and QA cites that run. A local full-suite
   run had taken longer than writing the code.
 - **Agents need hard boundaries around shared state.** Two early incidents
-  reached the owner's own local stack (no data was lost). Since then every agent uses its
+  reached the owner's own local stack; in the second, the database
+  containers were restored the same minute and no data was lost. Since then every agent uses its
   own Compose project, ports and database, and prints its target before
   migrating.
 - **Flaky tests add up fast.** Tests that search for a number inside JSON
   with timestamps (#557), or that give a database 2 seconds to connect
   (#661), each turned a pull request red and cost a 25-minute rerun.
-- **CI speed is an architecture decision.** Most integration tests create
-  their own database and run all 96 migrations on it. That is about 2.5 hours
-  of test time per pull request and roughly 25 minutes of waiting. By the
+- **CI speed is an architecture decision.** Almost every integration test
+  file creates its own database and runs all 96 migrations on it, and about
+  700 tests do that for themselves alone. That adds up to about 2.5 hours of
+  API test time per pull request and 25 to 30 minutes of waiting. By the
   time it hurt, thousands of tests depended on it.
 
 ### What we'd do differently
