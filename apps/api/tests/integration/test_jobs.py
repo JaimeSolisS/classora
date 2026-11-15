@@ -26,6 +26,7 @@ from app.core.config import Settings
 from app.core.demo_jobs import FAIL_ATTEMPTS, FAIL_RETRY
 from app.main import create_app
 from app.worker import run as run_worker_process
+from tests.authz.csrf import ORIGIN_HEADER, origin_for
 from tests.integration.conftest import run_sql_async, settings_for
 from tests.integration.test_migrations import alembic_config
 
@@ -77,8 +78,14 @@ async def wait_until(
 
 
 def make_app(settings: Settings, **tasks: Any) -> App:
-    """A worker-side app with no demo tasks plus ``tasks`` (name -> task kwargs)."""
+    """A worker-side app with no demo tasks plus ``tasks`` (name -> task kwargs).
+
+    The module schedules registered in every environment (the hourly session
+    purge, #25) are dropped, so a worker started near their tick never defers
+    them into these tests.
+    """
     app = jobs.create_job_app(jobs.worker_connector(settings), app_env="prod")
+    app.periodic_registry.periodic_tasks.clear()
     for name, (func, options) in tasks.items():
         app.task(name=name, **options)(func)
     return app
@@ -438,9 +445,12 @@ def api_client(
     pgbouncer_url: str, jobs_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[TestClient]:
     monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("APP_ORIGIN", origin_for("local"))
     monkeypatch.setenv("DATABASE_URL", through_pgbouncer(pgbouncer_url, jobs_url))
     monkeypatch.setenv("DATABASE_DIRECT_URL", jobs_url)
-    with TestClient(create_app(), raise_server_exceptions=False) as client:
+    with TestClient(
+        create_app(), raise_server_exceptions=False, headers=ORIGIN_HEADER
+    ) as client:
         yield client
 
 

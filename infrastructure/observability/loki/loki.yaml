@@ -1,0 +1,70 @@
+# Loki, single binary, for the monitoring stack (ADR-0014): logs arrive over
+# OTLP from the Collector. Filesystem storage on the host's data volume (no S3,
+# decision 15); retention from LOKI_RETENTION (default 168h = 7 days), applied
+# by the compactor. Started with -config.expand-env=true.
+# The same file runs locally and on the monitoring host (M9-09, #617).
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+
+schema_config:
+  configs:
+    - from: "2026-11-01"
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+limits_config:
+  retention_period: ${LOKI_RETENTION:-168h}
+  # OTLP log attributes are kept as structured metadata (trace_id, span_id,
+  # request_id), not as labels.
+  allow_structured_metadata: true
+  volume_enabled: true
+  otlp_config:
+    resource_attributes:
+      # Index labels on top of Loki's defaults (service.name,
+      # deployment.environment.name, ...): the container a log line came from.
+      attributes_config:
+        - action: index_label
+          attributes: [container.name]
+
+# Small single-node footprint.
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 32
+
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /loki/rules
+
+analytics:
+  reporting_enabled: false

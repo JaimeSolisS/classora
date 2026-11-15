@@ -1,0 +1,185 @@
+# Host overlay for the AWS app hosts (ADR-0010, #614), on top of
+# infrastructure/docker/compose.data.yaml and compose.app.yaml, through
+# /opt/classora/bin/compose.sh (project `classora`). Needs Compose >= 2.24
+# (!reset/!override); the hosts pin it in host-setup.sh, local stays 2.19.
+#
+# Interpolation values: /opt/classora/env/app.env (render-env.sh, Parameter
+# Store) and the release's images.env (API_IMAGE, WEB_IMAGE, PGBOUNCER_IMAGE,
+# each repository@sha256 digest). The env file is NOT given to services as
+# env_file: each service gets only what its `environment:` names, so api,
+# worker and pgbouncer see the runtime role classora_app and never the owner's
+# password (#165).
+#
+# Differences from local:
+#   - images by digest from ECR, no build, no pull_policy: never; postgres by
+#     tag and digest from Docker Hub (ADR-0001 A2);
+#   - no host ports except the edge's 80/443; the Vite dev server `web` is off;
+#   - `edge` is the web image (Caddy + SPA) on a fixed address, the only
+#     TRUSTED_PROXIES entry (172.30.0.10/32, set by render-env.sh);
+#   - PostgreSQL data and Caddy's /data on the data volume (bind mounts);
+#   - mem_limit per service, restart unless-stopped, PostgreSQL
+#     shared_buffers=128MB, one Uvicorn worker, slower api and worker
+#     healthchecks (measured by M10-04, ADR-0018);
+#   - the collector agent in profile `telemetry` (compose.sh enables it only
+#     when /classora/shared/otlp_endpoint exists, ADR-0014).
+# Log rotation (json-file 10m x 3) and the Compose service label on log lines
+# are Docker daemon settings (host-setup.sh).
+
+services:
+  # PostgreSQL by exact minor and multi-arch index digest on the hosts
+  # (ADR-0001 amendment A2, #632): a replaced instance gets the same image.
+  # The major stays 18; local and CI keep the major tag postgres:18.
+  db:
+    image: postgres:18.6@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
+    command: ["postgres", "-c", "shared_buffers=128MB"]
+    volumes: !override
+      - /srv/classora-data/postgres:/var/lib/postgresql
+    # 640m (ADR-0018): shared_buffers, PgBouncer's 5 backends (about 40 MB of
+    # caches each) and page cache; at 512m the db sat at its limit after a
+    # few hours under load and swapped its own pages.
+    mem_limit: 640m
+    restart: unless-stopped
+
+  pgbouncer:
+    build: !reset null
+    image: ${PGBOUNCER_IMAGE:?set by the release's images.env}
+    # Peak 14 MiB under 7x load (ADR-0018).
+    mem_limit: 32m
+    restart: unless-stopped
+
+  api:
+    build: !reset null
+    image: ${API_IMAGE:?set by the release's images.env}
+    ports: !reset []
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+    # Every 10 s on the hosts (2 s locally): each check is a Python start
+    # (ADR-0018). start_interval keeps the start-up checks fast.
+    healthcheck:
+      interval: 10s
+      start_period: 30s
+      start_interval: 2s
+    mem_limit: 512m
+    restart: unless-stopped
+
+  worker:
+    image: ${API_IMAGE:?set by the release's images.env}
+    pull_policy: !reset null
+    depends_on:
+      db:
+        condition: service_healthy
+    # Every 30 s on the hosts (10 s locally): each check imports the whole app
+    # in a new Python process (about 2.5 CPU-seconds on t4g). Every 5 s it
+    # used half a vCPU around the clock and kept DEV above the t4g.small CPU
+    # credit baseline while idle (ADR-0018). deploy.sh's readiness gate runs
+    # its own checks and is not slowed by this. timeout and retries are pinned
+    # here because the local base (compose.app.yaml) uses 30s and 5 for slow
+    # grader machines (#660); the hosts keep 6s and 10.
+    healthcheck:
+      interval: 30s
+      timeout: 6s
+      retries: 10
+      start_period: 30s
+      start_interval: 2s
+    # Peak about 306 MiB (exports, startup) at every load step (ADR-0018).
+    mem_limit: 384m
+    restart: unless-stopped
+
+  migrate:
+    build: !reset null
+    image: ${API_IMAGE:?set by the release's images.env}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # The local Vite dev server: never on a host.
+  web:
+    build: !reset null
+    image: ${WEB_IMAGE:?set by the release's images.env}
+    profiles: !override [local-dev-server]
+    ports: !reset []
+
+  # The edge (ADR-0010): Caddy with the built SPA, automatic HTTPS for
+  # SITE_ADDRESS, certificates in /data on the data volume. Runs as a non-root
+  # user with only CAP_NET_BIND_SERVICE (for 80/443).
+  edge:
+    image: ${WEB_IMAGE:?set by the release's images.env}
+    user: "10002:10002"
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set by render-env.sh}
+      ACME_CA: ${ACME_CA:-production}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - /srv/classora-data/caddy:/data
+      # Extra sites: grafana.caddy when monitoring is colocated (#617);
+      # empty otherwise.
+      - /opt/classora/caddy-sites:/etc/caddy/sites.d:ro
+    tmpfs:
+      - /config:uid=10002,gid=10002,mode=0700
+    networks:
+      default:
+        ipv4_address: 172.30.0.10
+    healthcheck:
+      # Caddy's admin endpoint (localhost only) answers once the config loaded.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    mem_limit: 96m
+    restart: unless-stopped
+
+  # Collector agent (ADR-0014, collector/agent.yaml from #611): host metrics,
+  # container logs and stats, the host's /var/log/classora logs, PostgreSQL as
+  # classora_monitor, the API's readiness; the API and worker export to it.
+  # Docker's json logs are root-only (0640 in a 0710 directory), so the agent
+  # runs as root with every capability dropped except DAC_READ_SEARCH (read
+  # any file, write nothing it doesn't own); the Docker socket (root-owned)
+  # and the read-only mounts need nothing more (#617).
+  collector:
+    image: otel/opentelemetry-collector-contrib:0.164.0@sha256:340c9ca6a36617084c6661bdc4f0fe92b7cda5a805d61673ec8db375fddc522b
+    profiles: [telemetry]
+    command: ["--config=/etc/otelcol/agent.yaml"]
+    # The config is bind-mounted through releases/current, whose path never
+    # changes: the hash (compose.sh) makes Compose recreate the agent when
+    # agent.yaml does (#617 QA D1 rollout).
+    labels:
+      classora.config-sha256: ${AGENT_CONFIG_SHA256:-none}
+    # host.name (resource_detection reads the container's hostname): stable
+    # per host, so a recreated agent continues the same series and alerts.
+    hostname: classora-${DEPLOYMENT_ENVIRONMENT:?set by render-env.sh}-host
+    user: "0:0"
+    cap_drop: [ALL]
+    cap_add: [DAC_READ_SEARCH]
+    environment:
+      OTLP_GATEWAY_ENDPOINT: ${OTLP_GATEWAY_ENDPOINT:-}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:?set by render-env.sh}
+      PG_MONITOR_USER: ${PG_MONITOR_USER:?set by render-env.sh}
+      PG_MONITOR_PASSWORD: ${PG_MONITOR_PASSWORD:?set by render-env.sh}
+      PG_MONITOR_DATABASE: ${PG_MONITOR_DATABASE:?set by render-env.sh}
+      GOMEMLIMIT: 128MiB
+    volumes:
+      - ../observability/collector/agent.yaml:/etc/otelcol/agent.yaml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /:/hostfs:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 160m
+    restart: unless-stopped
+
+networks:
+  default:
+    ipam:
+      config:
+        # Dynamic addresses come from the upper half, so the edge's fixed
+        # address is never taken by another container.
+        - subnet: 172.30.0.0/24
+          ip_range: 172.30.0.128/25

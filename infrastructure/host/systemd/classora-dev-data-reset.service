@@ -1,0 +1,22 @@
+# DEV data reset (#674; runbook _docs/runbooks/dev-data.md): wipes DEV's
+# database and restores the English simulated center with the `visitor`
+# Owner. Started by classora-dev-data-reset.timer (04:00 UTC) or by
+# `manage.sh reset-dev-data`. Installed on DEV only (install-units.sh), and
+# dev-data-reset.sh refuses any other host. dev-data-reset.sh logs one JSON
+# result line to the journal and to /var/log/classora/dev-data-reset.log; a
+# failure fails the unit.
+[Unit]
+Description=Classora DEV data reset (English simulated center and the visitor login)
+Requires=docker.service
+After=docker.service classora-data.service classora-app.service network-online.target
+Wants=network-online.target
+# The operator's go-ahead, created after the verified pre-wipe backup
+# (runbook dev-data.md). Without it the unit is skipped and nothing is wiped.
+ConditionPathExists=/srv/classora-data/dev-data/ENABLED
+ConditionPathExists=/opt/classora/bin/dev-data-reset.sh
+ConditionPathExists=/srv/classora-data/releases/current/images.env
+
+[Service]
+Type=oneshot
+ExecStart=/opt/classora/bin/dev-data-reset.sh
+TimeoutStartSec=3600

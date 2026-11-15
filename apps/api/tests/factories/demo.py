@@ -1,4 +1,8 @@
-"""``make seed-demo`` / ``python -m tests.factories.demo [--seed N]``.
+"""``python -m tests.factories.demo [--seed N] [--without-billing]``.
+
+The E2E and test fixture data; no make target (HF-587: the local example data
+is ``make seed-data-spanish`` / ``make seed-data-english``). ``e2e/scripts/run.sh``
+runs it, and tests call its generators.
 
 Generates synthetic ``es_MX`` demo data for local and DEV databases:
 
@@ -10,17 +14,33 @@ Generates synthetic ``es_MX`` demo data for local and DEV databases:
    engine, connecting, or seeding or calling Faker.
 3. :func:`~tests.factories.base.reseed` with ``--seed`` (default
    :data:`DEFAULT_SEED`).
-4. In **one** Unit of Work: check the Alembic head (as ``make seed``), apply the
+4. Register the app's approval and notification wiring
+   (``app.wiring.register_approval_wiring``, as ``app.cli`` and ``app.worker``
+   do; #299 A3), so approval items and notifications are created as in the
+   API.
+5. In **one** Unit of Work: check the Alembic head (as ``make seed``), apply the
    reference seeds, then run every generator in :data:`DEMO_GENERATORS` in
    order. Everything is committed, or nothing.
-5. Print generator names and row counts, never generated values.
+6. Print generator names and row counts (or ``skipped (<reason>)``), never
+   generated values.
 
-Demo data is not idempotent: a rerun adds rows or fails atomically (for
-example on a unique conflict). Reset with ``docker compose down -v``, then
-``make migrate`` and ``make seed-demo``.
+``--without-billing`` (M6-demo E3; ``e2e/scripts/run.sh`` passes it) makes
+the billing, payroll (#499 E3), expense (#501) and M8 administration
+(#539 E1) generators print ``skipped
+(--without-billing)`` without touching the database, so billing, payroll,
+expenses and the M8 administration data stay off in the E2E database.
 
-Like ``make seed``, it connects directly to PostgreSQL (``DATABASE_DIRECT_URL``,
-ADR-0003).
+The registered generators (#23, #195, #299, #303, #353, #354, M6-demo #413,
+M6-demo-b #420, M7-demo #499, M7-demo-b #501, M8-demo #539) write nothing on
+a rerun (``0 rows``), even on a later day: the #299, #303, #353, #354,
+M6-demo, M7-demo, M7-demo-b and M8-demo data keep the dates of their first
+run. A future generator may add
+rows on a rerun unless its issue says otherwise. The payroll start date locks
+once a payroll period exists (#106 E6), so the payroll data can't be moved
+either. To start over, run it again on a freshly migrated database.
+
+Like ``make seed``, it connects directly to PostgreSQL as the database owner
+(``DATABASE_MIGRATION_URL``, else ``DATABASE_DIRECT_URL``; ADR-0003, #165).
 """
 
 import argparse
@@ -45,7 +65,33 @@ from app.seeds.runner import (
     seed_summary,
 )
 from app.seeds.upsert import UpsertResult
-from tests.factories.base import reseed
+from app.wiring import register_approval_wiring
+from tests.factories import (
+    demo_admin,
+    demo_billing,
+    demo_billing_money,
+    demo_finance,
+    demo_payroll,
+)
+from tests.factories.base import GeneratorSkipped, reseed
+from tests.factories.catalog import DemoCatalogGenerator
+from tests.factories.demo_academics import (
+    DemoEvaluationsGenerator,
+    DemoHeldSessionsGenerator,
+    DemoNotesGenerator,
+)
+from tests.factories.demo_changes import DemoChangesGenerator
+from tests.factories.demo_courses import DemoCoursesGenerator
+from tests.factories.demo_learning import (
+    DemoHomeworkGenerator,
+    DemoLearningPlansGenerator,
+    DemoProgressReportsGenerator,
+)
+from tests.factories.demo_past_cohort import DemoPastCohortGenerator
+from tests.factories.demo_schedule import DemoScheduleGenerator
+from tests.factories.families import DemoFamiliesGenerator
+from tests.factories.identity import DEMO_ACCOUNT_GENERATORS
+from tests.factories.staff import DemoSecondTutorGenerator, DemoTutorGenerator
 
 ALLOWED_APP_ENVS = frozenset({"local", "dev"})
 DEFAULT_SEED = 1
@@ -53,24 +99,193 @@ NO_GENERATORS_MESSAGE = "No demo generators are registered."
 
 
 class DemoGenerator(Protocol):
-    """Writes demo rows with domain factories; returns the number of rows."""
+    """Writes demo rows with domain factories; returns the number of rows, or
+    :class:`~tests.factories.base.GeneratorSkipped` when it writes nothing on
+    purpose."""
 
     @property
     def name(self) -> str: ...
 
-    async def generate(self, session: AsyncSession) -> int: ...
+    async def generate(self, session: AsyncSession) -> int | GeneratorSkipped: ...
 
 
-DEMO_GENERATORS: tuple[DemoGenerator, ...] = ()
+DEMO_GENERATORS: tuple[DemoGenerator, ...] = (
+    *DEMO_ACCOUNT_GENERATORS,
+    DemoFamiliesGenerator(),
+    DemoCatalogGenerator(),
+    DemoTutorGenerator(),
+    DemoScheduleGenerator(),
+    DemoSecondTutorGenerator(),
+    DemoCoursesGenerator(),
+    DemoChangesGenerator(),
+    DemoHeldSessionsGenerator(),
+    DemoPastCohortGenerator(),
+    DemoNotesGenerator(),
+    DemoEvaluationsGenerator(),
+    DemoLearningPlansGenerator(),
+    DemoHomeworkGenerator(),
+    DemoProgressReportsGenerator(),
+    demo_admin.DemoReceiptMessageGenerator(),
+    demo_billing.DemoPricingGenerator(),
+    demo_billing.DemoPackagesGenerator(),
+    demo_billing.DemoChargesGenerator(),
+    demo_billing_money.DemoReconciliationGenerator(),
+    demo_billing_money.DemoPaymentsGenerator(),
+    demo_billing_money.DemoRemindersGenerator(),
+    demo_payroll.DemoPayrollSetupGenerator(),
+    demo_payroll.DemoPayrollPeriodsGenerator(),
+    demo_payroll.DemoPayrollCorrectionsGenerator(),
+    demo_finance.DemoPastCohortFeeGenerator(),
+    demo_finance.DemoFinanceSetupGenerator(),
+    demo_finance.DemoFinanceTemplatesGenerator(),
+    demo_finance.DemoFinanceExpensesGenerator(),
+    demo_admin.DemoAdminGenerator(),
+    demo_admin.DemoImportsGenerator(),
+    demo_admin.DemoSetupsGenerator(),
+    demo_admin.DemoDeletedGenerator(),
+)
 """Every demo generator, in order. Domain tasks append generators that use
-their factories (``persist`` / ``persist_batch``; never commit). Empty until the
-first domain factories arrive."""
+their factories (``persist`` / ``persist_batch``; never commit).
+
+- ``identity.demo_owner`` (#23): the demo Owner, ``APP_ENV=local`` only.
+- ``identity.demo_admin``, ``identity.demo_coordinator``,
+  ``identity.demo_finance``, ``identity.demo_tutor``, ``identity.demo_student``
+  and ``identity.demo_guardian`` (#195): one demo account per other role,
+  ``APP_ENV=local`` only.
+- ``identity.demo_tutor2`` (#303): a second tutor account, the cohort's tutor
+  and the substitute, ``APP_ENV=local`` only.
+- ``families.demo_families`` (#195): three demo families, the first with the
+  ``demo.student`` and ``demo.guardian`` logins, ``APP_ENV=local`` only.
+- ``catalog.demo_catalog`` (#299): subjects for the four reference levels,
+  three classrooms, the current school year and one holiday,
+  ``APP_ENV=local`` only.
+- ``staff.demo_tutor`` (#299): ``demo.tutor``'s profile, qualifications
+  (three approved, one pending), availability, a day off, limits and a
+  preferred classroom, ``APP_ENV=local`` only.
+- ``scheduling.demo_schedule`` (#299): completed and upcoming sessions, a
+  weekly series and a group around the center's today, through the
+  scheduling services, ``APP_ENV=local`` only.
+- ``staff.demo_tutor2`` (#303): ``demo.tutor2``'s two approved
+  qualifications and weekly availability, ``APP_ENV=local`` only.
+- ``courses.demo_courses`` (#303): a course template and a cohort taught by
+  ``demo.tutor2`` with two students enrolled, ``APP_ENV=local`` only.
+- ``scheduling.demo_changes`` (#303): an accepted substitution, a cancelled
+  cohort class, ``demo.guardian``'s pending session and reschedule requests
+  and ``demo.tutor``'s pending time off, ``APP_ENV=local`` only. The course
+  and change generators skip a database whose #299 schedule is from an
+  earlier day (reset to add them).
+- ``scheduling.demo_held_sessions`` (#353): ``demo.tutor``'s three past
+  classes, each with attendance and a closeout approved by
+  ``demo.coordinator``, through the services under the seed clock,
+  ``APP_ENV=local`` only.
+- ``courses.demo_past_cohort`` (#353): a finished six-class cohort taught by
+  ``demo.tutor2`` with three students enrolled, every class closed out and
+  approved, ``APP_ENV=local`` only.
+- ``academics.demo_notes`` (#353): two notes shared with ``demo.guardian``'s
+  family and one internal note, ``APP_ENV=local`` only.
+- ``academics.demo_evaluations`` (#353): two evaluation templates,
+  ``demo.tutor``'s evaluations (one still a draft) and the finished cohort's
+  course evaluations, so its completion shows ``completed`` and
+  ``not_completed``, ``APP_ENV=local`` only. The four #353 generators also
+  skip a database whose #299 schedule is from an earlier day.
+- ``academics.demo_learning_plans`` (#354): ``demo.tutor``'s learning plans
+  for ``demo.student``, one active with an overdue milestone and one
+  completed, through the services under the seed clock, ``APP_ENV=local``
+  only.
+- ``academics.demo_homework`` (#354): ``demo.tutor``'s homework for
+  ``demo.student``, graded (Inglés only), handed in and assigned,
+  ``APP_ENV=local`` only.
+- ``academics.demo_progress_reports`` (#354): ``demo.tutor``'s progress
+  reports about ``demo.student`` (approved for the family, waiting for
+  review and a draft) and ``demo.coordinator``'s weekly report schedule,
+  ``APP_ENV=local`` only. The three #354 generators also skip a database
+  whose #299 schedule is from an earlier day.
+- ``administration.demo_receipt_message`` (M8-demo #539): ``demo.owner``
+  sets the receipt message (Spanish and English) before any receipt is
+  issued, ``APP_ENV=local`` only.
+- ``billing.demo_pricing`` (M6-demo #413): ``demo.finance`` turns billing on
+  from about three weeks back and creates catalog prices (one with a change
+  next month), a sibling discount, a scholarship and two package products,
+  ``APP_ENV=local`` only.
+- ``billing.demo_packages`` (M6-demo #413): an English package for
+  ``demo.student`` with one session used (a new class closed out and approved)
+  and an expired package for the sibling, under the seed clock,
+  ``APP_ENV=local`` only.
+- ``billing.demo_charges`` (M6-demo #413): a monthly tuition plan, then every
+  charge the billing jobs would post (their per-item steps in this Unit of
+  Work), ``APP_ENV=local`` only.
+- ``billing.demo_reconciliation`` (M6-demo-b #420): ``demo.owner`` cancels
+  one of ``demo.student``'s upcoming series classes as the center, then the
+  reconciliation step credits its charge, ``APP_ENV=local`` only.
+- ``billing.demo_payments`` (M6-demo-b #420): two payments with receipts for
+  ``demo.guardian``'s family (one paying the oldest charges, one kept as
+  account credit), and for the second family a due-date offset and a manual
+  charge whose payment ``demo.owner`` reversed, ``APP_ENV=local`` only.
+- ``billing.demo_reminders`` (M6-demo-b #420): a due date moved with a
+  reason, then the payment reminders the reminder job would send (to
+  ``demo.guardian``), ``APP_ENV=local`` only. The six billing generators
+  also skip a database whose #299 schedule is from an earlier day or whose
+  billing was set up by hand, and under ``--without-billing``.
+- ``payroll.demo_setup`` (M7-demo #499): ``demo.finance`` turns payroll on
+  from about three weeks back (weekly periods), gives ``demo.tutor`` hourly
+  and per-session rates, a weekly punctuality bonus and a one-time
+  deduction, and ``demo.tutor2`` a weekly salary and a per-course rate,
+  ``APP_ENV=local`` only.
+- ``payroll.demo_periods`` (M7-demo #499): two new ``demo.tutor`` classes
+  (one approved late, one a no-show) and their charges, then every ended
+  week of both tutors prepared by ``demo.finance`` and finalized by
+  ``demo.owner``, oldest first, each with its payslip; the last one also
+  carries a late approval and a manual adjustment, ``APP_ENV=local`` only.
+- ``payroll.demo_corrections`` (M7-demo #499): an hours correction in the
+  current week, then ``demo.tutor``'s first week paid, the second partly
+  paid with one payment reversed by ``demo.owner``; ``demo.tutor2`` stays
+  unpaid, ``APP_ENV=local`` only. The three payroll generators also skip a
+  database whose #299 schedule is from an earlier day or whose payroll was
+  set up by hand, and under ``--without-billing``. The payroll start date
+  locks once periods exist, so a re-seed needs a clean database.
+- ``billing.demo_past_cohort_fee`` (M7-demo-b #501): ``demo.finance`` prices
+  the finished cohort, then the enrollment-charge and reminder job steps post
+  its three fees and the reminder they call for, ``APP_ENV=local`` only.
+- ``finance.demo_setup`` (M7-demo-b #501): ``demo.finance`` renames one
+  default expense category and adds a "Mobiliario" category and four
+  vendors, ``APP_ENV=local`` only.
+- ``finance.demo_templates`` (M7-demo-b #501): five recurring expense
+  templates (monthly rent, a monthly service anchored on the 31st, a weekly
+  cleaning that ends up paused with one week paid and one voided, an ended
+  weekly print job and an annual contract), created the day before they
+  start, then the recurring-expense job step generates their expenses,
+  ``APP_ENV=local`` only.
+- ``finance.demo_expenses`` (M7-demo-b #501): nine expenses in every state
+  (payments, a payment reversed by ``demo.owner`` and entered again,
+  adjustments, a void), then "Mobiliario" and its vendor deactivated,
+  ``APP_ENV=local`` only. The four #501 generators also skip a database
+  whose #299 schedule is from an earlier day, and under
+  ``--without-billing``; the cohort fee skips billing set up by hand and the
+  three finance generators expenses set up by hand.
+- ``administration.demo_admin`` (M8-demo #539): ``demo.coordinator`` mutes
+  the assignment notice, then ``demo.owner`` assigns ``demo.tutor``'s
+  pending qualification item to ``demo.admin`` (notified) and R2's review
+  item to ``demo.coordinator``, ``APP_ENV=local`` only.
+- ``administration.demo_imports`` (M8-demo #539): ``demo.admin``'s
+  students (with a duplicate), tutors (left staged) and schedules (one
+  conflict; the series is offered to ``demo.tutor``) imports, and
+  ``demo.finance``'s opening balances for the third family, committed in
+  this Unit of Work, ``APP_ENV=local`` only.
+- ``reporting.demo_setups`` (M8-demo #539): ``demo.finance``'s expenses
+  setup shared with the Owner role and ``demo.admin``'s private students
+  setup, ``APP_ENV=local`` only.
+- ``academics.demo_deleted`` (M8-demo #539): ``demo.tutor`` creates a
+  learning-plan draft and deletes it, ``APP_ENV=local`` only. The five M8
+  generators also skip a database whose #299 schedule is from an earlier
+  day, and under ``--without-billing``; the receipt message skips a message
+  set by hand. No audit event is written by hand, and no export, dashboard
+  layout, job, job failure or retention run is seeded."""
 
 
 @dataclass
 class DemoResult:
     seeds: list[tuple[str, UpsertResult]] = field(default_factory=list)
-    generators: list[tuple[str, int]] = field(default_factory=list)
+    generators: list[tuple[str, int | GeneratorSkipped]] = field(default_factory=list)
 
 
 def refusal(app_env: str) -> str | None:
@@ -87,7 +302,9 @@ async def run_demo(
     seeds: Sequence[ReferenceSeed] = REFERENCE_SEEDS,
     generators: Sequence[DemoGenerator] = DEMO_GENERATORS,
 ) -> DemoResult:
-    """Reseed, then reference seeds and generators in one Unit of Work."""
+    """Register the app wiring, reseed, then reference seeds and generators in
+    one Unit of Work."""
+    register_approval_wiring()  # #299 A3; registering again changes nothing
     reseed(seed)
     result = DemoResult()
     async with UnitOfWork(create_sessionmaker(engine)) as uow:
@@ -104,7 +321,13 @@ def summary(result: DemoResult) -> list[str]:
     lines = seed_summary(result.seeds)
     if not result.generators:
         return [*lines, NO_GENERATORS_MESSAGE]
-    return [*lines, *(f"{name}: {rows} rows" for name, rows in result.generators)]
+    return [*lines, *(_generator_line(name, rows) for name, rows in result.generators)]
+
+
+def _generator_line(name: str, rows: int | GeneratorSkipped) -> str:
+    if isinstance(rows, GeneratorSkipped):
+        return f"{name}: skipped ({rows.reason})"
+    return f"{name}: {rows} rows"
 
 
 async def _run(
@@ -132,6 +355,13 @@ def main(
         description="Generate synthetic demo data (APP_ENV local or dev only).",
     )
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parser.add_argument(
+        "--without-billing",
+        action="store_true",
+        help="without the billing, payroll, expense and M8 administration demo"
+        " data (E2E; e2e/scripts/run.sh passes it, so the E2E database keeps"
+        " them off)",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -147,7 +377,8 @@ def main(
 
     engine = engine_factory(settings)
     try:
-        result = asyncio.run(_run(engine, args.seed, seeds, generators))
+        with demo_billing.without_billing(args.without_billing):
+            result = asyncio.run(_run(engine, args.seed, seeds, generators))
     except DatabaseNotAtHeadError as exc:
         print(exc, file=sys.stderr)
         return 1

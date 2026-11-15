@@ -1,0 +1,47 @@
+# Weekly dependency audit of the default branch (ADR-0016 amendment, #150 SR-01).
+# The pull-request and push jobs in ci.yml only run when something changes, so a
+# new advisory against unchanged lockfiles would go unnoticed between pull
+# requests. This runs the same `make audit-deps` every week on `develop` (the
+# default branch: GitHub runs schedules there). A failure is a red run and a
+# GitHub notification; triage it as a failing scan (ADR-0016 "Exceptions").
+# Not a required check. Only the approved actions, pinned as in ci.yml.
+name: security-audit
+
+on:
+  schedule:
+    # Mondays 06:17 UTC (off the hour, when GitHub's scheduler is less busy).
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  audit-deps:
+    name: audit-deps
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      UV_LOCKED: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+
+      # pnpm audit reads pnpm-lock.yaml only; nothing is installed.
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: make audit-deps
+        run: make audit-deps

@@ -1,0 +1,442 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Link, useLocation, useParams } from 'react-router';
+import { ApiError } from '@/app/api';
+import { useDocumentTitle } from '@/app/useDocumentTitle';
+import { ErrorAlert } from '@/components/feedback/ErrorAlert';
+import { LoadingState } from '@/components/feedback/LoadingState';
+import { Button } from '@/components/ui/button';
+import { canAccess } from '@/features/auth/access';
+import { useSession } from '@/features/auth/useSession';
+import { StateBadge } from '@/features/users/admin/StateBadge';
+import { useCenterTimeZone } from '@/features/auth/useCenterTimeZone';
+import {
+  ACTIVE_CLASSROOM_OPTIONS_KEY,
+  availabilityKey,
+  cancelAvailabilityChangeRequest,
+  cancelQualification,
+  createAvailabilityException,
+  deleteAvailabilityException,
+  fetchActiveClassroomOptions,
+  fetchAvailability,
+  isChangeRequest,
+  fetchQualifications,
+  fetchTutor,
+  grantQualification,
+  qualificationsKey,
+  replaceWeeklyAvailability,
+  requestQualification,
+  revokeQualification,
+  tutorDetailKey,
+  TUTORS_LIST_QUERY_KEY,
+  updateAvailabilitySettings,
+  updateTutor,
+  type TutorDetail,
+  type TutorUpdate,
+} from './api';
+import { AvailabilitySection } from './AvailabilitySection';
+import { QualificationsSection } from './QualificationsSection';
+import { TutorForm } from './TutorForm';
+
+// /tutors/:userId (#43 E3): one tutor profile. The h1 is the tutor's name;
+// the contact fields and the professional experience are shown as text, with
+// "Edit" when the server's `editable_fields` isn't empty. The form shows only
+// those fields. A successful save replaces the cached detail with the
+// response and refreshes the list. A tutor the caller may not see is a 404
+// like a missing one: "This tutor doesn't exist."
+//
+// Below the profile, the Qualifications section (#44 F1): the list query of
+// the tutor's qualifications and, for the tutor themselves, request and
+// cancel; for holders of qualification.review, revoke (#198), which then
+// refreshes the list and the profile (its teaching subjects). A
+// `#qualifications` hash (the notifications' link) scrolls to it once the
+// page has loaded. Reviewers other than the tutor themselves assign
+// subjects directly (HF-05b A1), which refreshes the list, the profile and
+// the tutor list (its subjects column); a pending row links to Approvals.
+//
+// Then the Availability section (#45 F1): the availability query; the
+// tutor themselves and tutor.manage holders (a non-empty `editable_fields`)
+// edit it. After a change the query is refetched. Editors also load the
+// active classrooms for the preferred-room choices (#197). A change sent for
+// approval (#63) refetches it too (its pending list); a `#availability`
+// hash scrolls to the section.
+
+const LINK_CLASS =
+  'font-medium underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring';
+
+export function TutorDetailPage() {
+  const { t } = useTranslation();
+  const { userId = '' } = useParams();
+  const queryClient = useQueryClient();
+  const key = tutorDetailKey(userId);
+  const detail = useQuery({
+    queryKey: key,
+    queryFn: ({ signal }) => fetchTutor(userId, signal),
+  });
+  const notFound =
+    detail.isError &&
+    detail.error instanceof ApiError &&
+    detail.error.status === 404;
+  useDocumentTitle(
+    detail.data?.display_name ??
+      (notFound ? t('tutors.detail.notFound') : t('tutors.title')),
+  );
+
+  async function save(body: TutorUpdate) {
+    const tutor = await updateTutor(userId, body);
+    queryClient.setQueryData(key, tutor);
+    void queryClient.invalidateQueries({ queryKey: TUTORS_LIST_QUERY_KEY });
+  }
+
+  async function reload() {
+    await detail.refetch();
+  }
+
+  if (detail.isError) {
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="text-2xl font-semibold">
+          {notFound ? t('tutors.detail.notFound') : t('tutors.title')}
+        </h1>
+        {notFound ? null : (
+          <ErrorAlert error={detail.error} onRetry={() => void reload()} />
+        )}
+        <p>
+          <Link to="/tutors" className={LINK_CLASS}>
+            {t('tutors.detail.backToList')}
+          </Link>
+        </p>
+      </div>
+    );
+  }
+  if (!detail.data) {
+    return <LoadingState />;
+  }
+  return (
+    <TutorDetailView
+      key={detail.data.user_id}
+      tutor={detail.data}
+      onSave={save}
+      onReload={reload}
+    >
+      <TutorQualifications tutor={detail.data} />
+      <TutorAvailability tutor={detail.data} />
+    </TutorDetailView>
+  );
+}
+
+/** The Qualifications section with its query and actions. */
+function TutorQualifications({ tutor }: { tutor: TutorDetail }) {
+  const { t } = useTranslation();
+  const session = useSession();
+  const queryClient = useQueryClient();
+  const location = useLocation();
+  const key = qualificationsKey(tutor.user_id);
+  const list = useQuery({
+    queryKey: key,
+    queryFn: ({ signal }) => fetchQualifications(tutor.user_id, signal),
+  });
+  const isSelf =
+    session.status === 'signedIn' && session.user.id === tutor.user_id;
+  const canRevoke =
+    session.status === 'signedIn' &&
+    canAccess(session.user, { permission: 'qualification.review' });
+  const scrolled = useRef(false);
+
+  useEffect(() => {
+    if (
+      !scrolled.current &&
+      location.hash === '#qualifications' &&
+      list.data !== undefined
+    ) {
+      scrolled.current = true;
+      document.getElementById('qualifications')?.scrollIntoView?.();
+    }
+  }, [location.hash, list.data]);
+
+  async function refresh() {
+    await queryClient.invalidateQueries({ queryKey: key });
+  }
+
+  return (
+    <QualificationsSection
+      state={
+        list.isError
+          ? {
+              status: 'error',
+              error: list.error,
+              onRetry: () => void list.refetch(),
+            }
+          : list.data
+            ? { status: 'ready', items: list.data }
+            : { status: 'loading' }
+      }
+      teachingSubjects={tutor.teaching_subjects}
+      canRequest={isSelf && tutor.state === 'active'}
+      onRequest={async (subjectId) => {
+        await requestQualification(tutor.user_id, subjectId);
+        await refresh();
+      }}
+      onCancel={async (item) => {
+        try {
+          await cancelQualification(tutor.user_id, item.id);
+        } finally {
+          await refresh();
+        }
+      }}
+      canRevoke={canRevoke}
+      canGrant={canRevoke && !isSelf}
+      onGrant={async (subjectId) => {
+        const item = await grantQualification(tutor.user_id, subjectId);
+        await Promise.all([
+          refresh(),
+          queryClient.invalidateQueries({
+            queryKey: tutorDetailKey(tutor.user_id),
+          }),
+          queryClient.invalidateQueries({ queryKey: TUTORS_LIST_QUERY_KEY }),
+        ]);
+        return item;
+      }}
+      approvalsLink={
+        <Link to="/approvals?type=staff.qualification" className={LINK_CLASS}>
+          {t('tutors.qualifications.grant.approveHint')}
+        </Link>
+      }
+      onReload={refresh}
+      onRevoke={async (item, reason) => {
+        await revokeQualification(tutor.user_id, item.id, {
+          reason,
+          version: item.version,
+        });
+        await Promise.all([
+          refresh(),
+          queryClient.invalidateQueries({
+            queryKey: tutorDetailKey(tutor.user_id),
+          }),
+        ]);
+      }}
+    />
+  );
+}
+
+/** The Availability section with its query and actions. */
+function TutorAvailability({ tutor }: { tutor: TutorDetail }) {
+  const queryClient = useQueryClient();
+  const timeZone = useCenterTimeZone();
+  const location = useLocation();
+  const key = availabilityKey(tutor.user_id);
+  const availability = useQuery({
+    queryKey: key,
+    queryFn: ({ signal }) => fetchAvailability(tutor.user_id, signal),
+  });
+  const scrolled = useRef(false);
+
+  // #63: the availability decisions' notifications and the inbox link to
+  // `#availability`.
+  useEffect(() => {
+    if (
+      !scrolled.current &&
+      location.hash === '#availability' &&
+      availability.data !== undefined
+    ) {
+      scrolled.current = true;
+      document.getElementById('availability')?.scrollIntoView?.();
+    }
+  }, [location.hash, availability.data]);
+
+  // Self or tutor.manage: exactly the callers with editable fields (#43).
+  const canEdit = tutor.editable_fields.length > 0;
+  const rooms = useQuery({
+    queryKey: ACTIVE_CLASSROOM_OPTIONS_KEY,
+    queryFn: ({ signal }) => fetchActiveClassroomOptions(signal),
+    enabled: canEdit,
+  });
+
+  async function refresh() {
+    await queryClient.invalidateQueries({ queryKey: key });
+  }
+
+  return (
+    <AvailabilitySection
+      state={
+        availability.isError
+          ? {
+              status: 'error',
+              error: availability.error,
+              onRetry: () => void availability.refetch(),
+            }
+          : availability.data
+            ? { status: 'ready', availability: availability.data }
+            : { status: 'loading' }
+      }
+      canEdit={canEdit}
+      timeZone={timeZone}
+      onSaveWeekly={async (version, windows) => {
+        const saved = await replaceWeeklyAvailability(tutor.user_id, {
+          version,
+          windows,
+        });
+        if (isChangeRequest(saved)) {
+          // #63: sent for approval; the pending list shows it.
+          await refresh();
+          return saved;
+        }
+        queryClient.setQueryData(key, saved);
+        return null;
+      }}
+      onReload={refresh}
+      classrooms={
+        rooms.isError
+          ? {
+              status: 'error',
+              error: rooms.error,
+              onRetry: () => void rooms.refetch(),
+            }
+          : rooms.data
+            ? { status: 'ready', items: rooms.data }
+            : { status: 'loading' }
+      }
+      onSaveSettings={async (body) => {
+        const saved = await updateAvailabilitySettings(tutor.user_id, body);
+        queryClient.setQueryData(key, saved);
+      }}
+      onAddException={async (body) => {
+        const answer = await createAvailabilityException(tutor.user_id, body);
+        await refresh();
+        return isChangeRequest(answer) ? answer : null;
+      }}
+      onDeleteException={async (item) => {
+        try {
+          return await deleteAvailabilityException(tutor.user_id, item.id);
+        } finally {
+          await refresh();
+        }
+      }}
+      onWithdrawChange={async (request) => {
+        try {
+          await cancelAvailabilityChangeRequest(tutor.user_id, request);
+        } finally {
+          await refresh();
+        }
+      }}
+    />
+  );
+}
+
+interface TutorDetailViewProps {
+  tutor: TutorDetail;
+  /** Sends the change; resolves after the cache holds the new detail. */
+  onSave: (body: TutorUpdate) => Promise<void>;
+  onReload: () => Promise<void>;
+  /** Opens with the form shown (stories). */
+  initiallyEditing?: boolean;
+  /** Sections below the profile (the page's Qualifications section). */
+  children?: ReactNode;
+}
+
+/** The detail page's content, without any query (stories use it). */
+export function TutorDetailView({
+  tutor,
+  onSave,
+  onReload,
+  initiallyEditing = false,
+  children,
+}: TutorDetailViewProps) {
+  const { t } = useTranslation();
+  const id = useId();
+  const canEdit = tutor.editable_fields.length > 0;
+  const [editing, setEditing] = useState(initiallyEditing && canEdit);
+  const [saved, setSaved] = useState(false);
+  const editButton = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef(false);
+  const notSet = t('tutors.profile.notSet');
+
+  useEffect(() => {
+    if (!editing && returnFocus.current) {
+      returnFocus.current = false;
+      editButton.current?.focus();
+    }
+  }, [editing]);
+
+  async function submit(body: TutorUpdate) {
+    await onSave(body);
+    setSaved(true);
+    returnFocus.current = true;
+    setEditing(false);
+  }
+
+  function cancel() {
+    returnFocus.current = true;
+    setEditing(false);
+  }
+
+  return (
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-3">
+        <p>
+          <Link to="/tutors" className={LINK_CLASS}>
+            {t('tutors.detail.backToList')}
+          </Link>
+        </p>
+        <h1 className="text-2xl font-semibold break-words">
+          {tutor.display_name}
+        </h1>
+        <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 text-sm">
+          <dt className="font-medium">{t('tutors.detail.username')}</dt>
+          <dd className="min-w-0 break-words">{tutor.username}</dd>
+          <dt className="font-medium">{t('tutors.detail.state')}</dt>
+          <dd>
+            <StateBadge state={tutor.state} />
+          </dd>
+        </dl>
+      </div>
+      {editing ? (
+        <TutorForm
+          tutor={tutor}
+          onSubmit={submit}
+          onCancel={cancel}
+          onReload={onReload}
+        />
+      ) : (
+        <section
+          aria-labelledby={`${id}-title`}
+          className="flex flex-col gap-4"
+        >
+          <h2 id={`${id}-title`} className="text-lg font-semibold">
+            {t('tutors.profile.title')}
+          </h2>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+            <dt className="font-medium">{t('tutors.profile.email')}</dt>
+            <dd className="min-w-0 break-words">{tutor.email ?? notSet}</dd>
+            <dt className="font-medium">{t('tutors.profile.phone')}</dt>
+            <dd className="min-w-0 break-words">{tutor.phone ?? notSet}</dd>
+            <dt className="font-medium">{t('tutors.profile.experience')}</dt>
+            <dd className="min-w-0 break-words whitespace-pre-line">
+              {tutor.professional_experience ?? notSet}
+            </dd>
+          </dl>
+          {canEdit ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                ref={editButton}
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setSaved(false);
+                  setEditing(true);
+                }}
+              >
+                {t('tutors.profile.edit')}
+              </Button>
+              <p role="status" className="text-sm">
+                {saved ? t('tutors.profile.saved') : null}
+              </p>
+            </div>
+          ) : null}
+        </section>
+      )}
+      {children}
+    </div>
+  );
+}

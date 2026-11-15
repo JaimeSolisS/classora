@@ -20,6 +20,23 @@ export const resources = {
 
 export const i18n = i18next.createInstance();
 
+/**
+ * Whether a missing key is logged (#130 C5): in a development build only
+ * (the Vite dev server, which the E2E stack runs), never in production or
+ * under Vitest, where many tests render fallbacks on purpose.
+ */
+export function reportsMissingKeys(env: {
+  DEV: boolean;
+  MODE: string;
+}): boolean {
+  return env.DEV && env.MODE !== 'test';
+}
+
+/** The development log line the E2E language spec fails on. */
+export const MISSING_KEY_LOG = '[i18n] missing key';
+
+const reportMissing = reportsMissingKeys(import.meta.env);
+
 // <html lang> always follows the active language (WCAG 2.2 SC 3.1.1).
 i18n.on('languageChanged', (language: string) => {
   document.documentElement.lang = language;
@@ -37,6 +54,12 @@ void i18n.use(initReactI18next).init({
   // text, never as raw HTML (use <Trans> for rich text).
   interpolation: { escapeValue: false },
   react: { useSuspense: false },
+  saveMissing: reportMissing,
+  missingKeyHandler: reportMissing
+    ? (lngs, ns, key) => {
+        console.error(MISSING_KEY_LOG, ns, key, lngs);
+      }
+    : false,
 });
 
 /**

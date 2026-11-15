@@ -1,0 +1,257 @@
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { expect, fn, screen, waitFor, within } from 'storybook/test';
+import { ApiError } from '@/app/api';
+import { i18n } from '@/i18n';
+import { StoryQueryClient } from '@/test/StoryQueryClient';
+import { StoryRouter } from '@/test/StoryRouter';
+import {
+  LEVEL_PREPARATORIA,
+  LEVEL_SECUNDARIA,
+  QUALIFICATIONS,
+  QUALIFICATIONS_WITH_REVOKED,
+  REVOKED_QUALIFICATION,
+  SUBJECT_ALGEBRA,
+  SUBJECT_CALCULO,
+  SUBJECT_FISICA,
+  TEACHING_SUBJECTS,
+} from './fixtures';
+import { QualificationsSection } from './QualificationsSection';
+
+// The tutor profile's Qualifications section (#44 F4): every status as a
+// word, the teaching subjects, the empty state, and the request dialog
+// answering 409 qualification_exists. #198 E4: a revoked row as a reviewer
+// sees it (Revoke on the approved row), and the revoke dialog answering 409
+// qualification_not_approved. HF-05b E3: the grant dialog as a reviewer
+// sees it (taken subjects disabled and marked, the pending row's link to
+// Approvals). No request: every call is a stub.
+
+const meta = {
+  title: 'Tutors/QualificationsSection',
+  component: QualificationsSection,
+  args: {
+    state: { status: 'ready', items: QUALIFICATIONS },
+    teachingSubjects: TEACHING_SUBJECTS,
+    canRequest: true,
+    onRequest: fn(() => Promise.resolve()),
+    onCancel: fn(() => Promise.resolve()),
+    loadLevels: fn(() =>
+      Promise.resolve([LEVEL_SECUNDARIA, LEVEL_PREPARATORIA]),
+    ),
+    loadSubjects: fn((levelId: string) =>
+      Promise.resolve(
+        levelId === LEVEL_SECUNDARIA.id
+          ? [SUBJECT_ALGEBRA, SUBJECT_FISICA]
+          : [SUBJECT_CALCULO],
+      ),
+    ),
+  },
+  render: (args) => (
+    <StoryQueryClient>
+      <StoryRouter
+        routes={[
+          {
+            path: '*',
+            element: (
+              <main>
+                <QualificationsSection {...args} />
+              </main>
+            ),
+          },
+        ]}
+      />
+    </StoryQueryClient>
+  ),
+} satisfies Meta<typeof QualificationsSection>;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+export const MixedStatuses: Story = {
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.getByRole('heading', {
+        level: 2,
+        name: i18n.t('tutors.qualifications.title'),
+      }),
+    ).toBeVisible();
+    for (const status of [
+      'approved',
+      'pending',
+      'rejected',
+      'cancelled',
+    ] as const) {
+      await expect(
+        canvas.getByText(i18n.t(`tutors.qualifications.statuses.${status}`)),
+      ).toBeVisible();
+    }
+    await expect(
+      canvas.getByText('Please add a certificate for calculus first.'),
+    ).toBeVisible();
+    // Only the pending row can be cancelled.
+    await expect(
+      canvas.getAllByRole('button', {
+        name: /^(Cancel request|Cancelar solicitud) /,
+      }),
+    ).toHaveLength(1);
+  },
+};
+
+export const ReadOnly: Story = {
+  args: { canRequest: false },
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.queryByRole('button', {
+        name: i18n.t('tutors.qualifications.request'),
+      }),
+    ).toBeNull();
+  },
+};
+
+export const Empty: Story = {
+  args: { state: { status: 'ready', items: [] }, teachingSubjects: [] },
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.getByText(i18n.t('tutors.qualifications.empty')),
+    ).toBeVisible();
+    await expect(
+      canvas.getByText(i18n.t('tutors.qualifications.teachingEmpty')),
+    ).toBeVisible();
+  },
+};
+
+export const RequestDialogExists: Story = {
+  args: {
+    onRequest: fn(() =>
+      Promise.reject(
+        new ApiError({ code: 'qualification_exists', status: 409 }),
+      ),
+    ),
+  },
+  play: async ({ canvas, userEvent, args }) => {
+    await userEvent.click(
+      canvas.getByRole('button', {
+        name: i18n.t('tutors.qualifications.request'),
+      }),
+    );
+    const dialog = within(await screen.findByRole('dialog'));
+    const levelSelect = dialog.getByRole('combobox', {
+      name: i18n.t('tutors.qualifications.levelLabel'),
+    });
+    await dialog.findByRole('option', { name: LEVEL_SECUNDARIA.name });
+    await userEvent.selectOptions(levelSelect, LEVEL_SECUNDARIA.id);
+    await waitFor(() => expect(args.loadSubjects).toHaveBeenCalled());
+    await dialog.findByRole('option', { name: SUBJECT_FISICA.name });
+    await userEvent.selectOptions(
+      dialog.getByRole('combobox', {
+        name: i18n.t('tutors.qualifications.subjectLabel'),
+      }),
+      SUBJECT_FISICA.id,
+    );
+    await userEvent.click(
+      dialog.getByRole('button', {
+        name: i18n.t('tutors.qualifications.send'),
+      }),
+    );
+    await expect(
+      await dialog.findByText(i18n.t('errors:qualification_exists')),
+    ).toBeVisible();
+  },
+};
+
+export const WithRevoked: Story = {
+  args: {
+    state: { status: 'ready', items: QUALIFICATIONS_WITH_REVOKED },
+    canRequest: false,
+    canRevoke: true,
+  },
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.getByText(i18n.t('tutors.qualifications.statuses.revoked')),
+    ).toBeVisible();
+    await expect(
+      canvas.getByText(REVOKED_QUALIFICATION.revocation_reason!, {
+        exact: false,
+      }),
+    ).toBeVisible();
+    // Only the approved row can be revoked.
+    await expect(
+      canvas.getAllByRole('button', {
+        name: i18n.t('tutors.qualifications.revokeFor', {
+          subject: SUBJECT_ALGEBRA.name,
+        }),
+      }),
+    ).toHaveLength(1);
+    await expect(
+      canvas.getAllByRole('button', { name: /^(Revoke|Revocar) / }),
+    ).toHaveLength(1);
+  },
+};
+
+export const RevokeDialogNotApproved: Story = {
+  args: {
+    canRequest: false,
+    canRevoke: true,
+    initiallyRevokingId: QUALIFICATIONS[0]!.id,
+    onRevoke: fn(() =>
+      Promise.reject(
+        new ApiError({ code: 'qualification_not_approved', status: 409 }),
+      ),
+    ),
+  },
+  play: async ({ userEvent, args }) => {
+    const dialog = within(await screen.findByRole('dialog'));
+    await userEvent.type(
+      dialog.getByRole('textbox', {
+        name: i18n.t('tutors.qualifications.revokeReason'),
+      }),
+      'The certificate has expired.',
+    );
+    await userEvent.click(
+      dialog.getByRole('button', {
+        name: i18n.t('tutors.qualifications.revokeConfirm'),
+      }),
+    );
+    await waitFor(() => expect(args.onRevoke).toHaveBeenCalled());
+    await expect(
+      await dialog.findByText(i18n.t('errors:qualification_not_approved')),
+    ).toBeVisible();
+  },
+};
+
+export const GrantDialog: Story = {
+  args: {
+    canRequest: false,
+    canRevoke: true,
+    canGrant: true,
+    onGrant: fn(() => Promise.resolve(QUALIFICATIONS[0]!)),
+    approvalsLink: (
+      <a href="#approvals" className="underline underline-offset-4">
+        {i18n.t('tutors.qualifications.grant.approveHint')}
+      </a>
+    ),
+    initiallyGranting: true,
+  },
+  play: async ({ canvas, userEvent }) => {
+    // The dialog hides the page from the accessibility tree meanwhile.
+    await expect(
+      canvas.getByText(i18n.t('tutors.qualifications.grant.approveHint')),
+    ).toHaveAttribute('href', '#approvals');
+    const dialog = within(await screen.findByRole('dialog'));
+    await expect(
+      dialog.getByRole('heading', {
+        name: i18n.t('tutors.qualifications.grant.title'),
+      }),
+    ).toBeVisible();
+    await dialog.findByRole('option', { name: LEVEL_SECUNDARIA.name });
+    await userEvent.selectOptions(
+      dialog.getByRole('combobox', {
+        name: i18n.t('tutors.qualifications.levelLabel'),
+      }),
+      LEVEL_SECUNDARIA.id,
+    );
+    const taken = await dialog.findByRole('option', {
+      name: `${SUBJECT_ALGEBRA.name} (${i18n.t('tutors.qualifications.grant.assigned')})`,
+    });
+    await expect(taken).toBeDisabled();
+  },
+};

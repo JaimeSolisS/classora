@@ -12,12 +12,22 @@ Two connection paths (ADR-0003, ``_docs/adr/0003-database-connection-topology.md
   prepared statement gets a unique name, so statements never collide on a
   server connection that PgBouncer shares between clients.
 - **Direct** (``Settings.database_direct_url``, straight to PostgreSQL):
-  :func:`create_direct_engine`, for Alembic, the SSE ``LISTEN`` connection and
-  the worker.
+  :func:`create_direct_engine`, for the SSE ``LISTEN`` connection and the
+  worker.
+
+Both carry the least-privilege runtime role :data:`RUNTIME_ROLE` (#165,
+ADR-0003 amendment). The tools that need the database **owner** (Alembic, the
+seeds, the operator CLI, the local factories) use
+:func:`async_migration_database_url` (``Settings.database_migration_url``,
+direct, falling back to the direct URL); the API and the worker never do.
 
 Settings keep plain ``postgresql://`` DSNs; this module derives the
 ``postgresql+asyncpg`` driver URLs. ``asyncpg`` is used only as the SQLAlchemy
 driver and is never imported by application code.
+
+Both factories pass the engine to ``app.core.telemetry.instrument_engine``
+(a no-op while telemetry is off; when on, SQL spans carry the statement text
+with placeholders, never parameter values).
 
 SQL echo is off and SQL statements and parameters are never logged by default;
 ``hide_parameters`` also keeps parameter values out of error messages.
@@ -37,9 +47,17 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+# Maps every model (and registers the audit flush hooks of app.core.audit)
+# before any session from this module is used.
+import app.core.model_registry  # noqa: F401
 from app.core.config import Settings
+from app.core.telemetry import instrument_engine
 
 ASYNC_DRIVER = "postgresql+asyncpg"
+
+# The runtime role the API and the worker log in as (#165). Fixed, not
+# configurable: migration 0096 creates it and grants it DML only.
+RUNTIME_ROLE = "classora_app"
 
 # asyncpg connect timeout, so a down or unreachable database fails fast.
 CONNECT_TIMEOUT_SECONDS = 2.0
@@ -63,6 +81,17 @@ def async_direct_database_url(settings: Settings) -> URL:
     The returned ``URL`` hides its password in ``str()`` and ``repr()``.
     """
     return _async_url(settings.database_direct_url)
+
+
+def async_migration_database_url(settings: Settings) -> URL:
+    """The owner's direct ``postgresql+asyncpg`` URL for the tools (#165).
+
+    ``Settings.database_migration_url``, or the direct URL when it is unset
+    (single-role setups and tests). Only Alembic, the seeds, the operator CLI
+    and the local factories call this; the API and the worker never do. The
+    returned ``URL`` hides its password in ``str()`` and ``repr()``.
+    """
+    return _async_url(settings.database_migration_url or settings.database_direct_url)
 
 
 def prepared_statement_name() -> str:
@@ -98,19 +127,24 @@ def engine_options(*, pgbouncer: bool = True) -> dict[str, Any]:
 
 def create_engine(settings: Settings) -> AsyncEngine:
     """Create the process's request engine (pooled URL). Does not connect."""
-    return create_async_engine(async_database_url(settings), **engine_options())
+    engine = create_async_engine(async_database_url(settings), **engine_options())
+    instrument_engine(engine)
+    return engine
 
 
 def create_direct_engine(url: URL | str, **kwargs: Any) -> AsyncEngine:
     """Create an engine that connects directly to PostgreSQL. Does not connect.
 
-    ``url`` is normally :func:`async_direct_database_url`. Per ADR-0003 this is
-    for Alembic, the SSE ``LISTEN`` connection (M3-06) and the worker container
-    (M1-16), which must not go through PgBouncer. Request traffic uses
+    ``url`` is normally :func:`async_direct_database_url` (or, for the tools,
+    :func:`async_migration_database_url`). Per ADR-0003 this is for Alembic,
+    the SSE ``LISTEN`` connection (M3-06) and the worker container (M1-16),
+    which must not go through PgBouncer. Request traffic uses
     :func:`create_engine`. ``kwargs`` are extra :func:`create_async_engine`
     arguments (for example ``poolclass``).
     """
-    return create_async_engine(url, **engine_options(pgbouncer=False), **kwargs)
+    engine = create_async_engine(url, **engine_options(pgbouncer=False), **kwargs)
+    instrument_engine(engine)
+    return engine
 
 
 def create_sessionmaker(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:

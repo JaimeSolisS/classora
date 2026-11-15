@@ -10,9 +10,13 @@ request it:
   the request carries it;
 * sets exactly one ``X-Request-ID`` response header;
 * turns any unhandled exception into a generic ``500 internal_error`` Problem
-  and logs it once, with the traceback, at ``ERROR``;
-* writes one access line to ``app.access`` (method, path without query string,
-  status, duration). Successful health probes are not logged.
+  and logs it once, with the traceback (types and frames, no message;
+  ``app.core.logging``), at ``ERROR``, and records it on the current span;
+* writes one access line to ``app.access`` (method, the matched route's
+  template such as ``/api/v1/users/{user_id}`` or :data:`UNMATCHED_PATH`,
+  status, duration). Never the raw path: it can carry personal data (an
+  e-mail in a mistyped URL) and is exported to Loki (#617 QA D1). Successful
+  health probes are not logged.
 """
 
 import logging
@@ -20,6 +24,7 @@ import re
 import time
 import uuid
 
+from opentelemetry import trace
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core.errors import internal_error_response
@@ -29,6 +34,9 @@ REQUEST_ID_HEADER = b"x-request-id"
 REQUEST_ID_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,128}")
 # 2xx responses on these paths are not access-logged (Compose healthcheck noise).
 QUIET_PATHS = frozenset({"/health/live", "/health/ready"})
+
+# The access line's path when no route matched (404) or routing never ran.
+UNMATCHED_PATH = "<unmatched>"
 
 access_logger = logging.getLogger("app.access")
 error_logger = logging.getLogger("app.errors")
@@ -42,6 +50,13 @@ def _inbound_request_id(scope: Scope) -> str | None:
                 return candidate
             return None
     return None
+
+
+def _route_template(scope: Scope) -> str:
+    """The template of the route the router matched (it sets ``scope["route"]``,
+    also for a 405 partial match), or :data:`UNMATCHED_PATH`."""
+    template = getattr(scope.get("route"), "path_format", None)
+    return template if isinstance(template, str) else UNMATCHED_PATH
 
 
 class RequestContextMiddleware:
@@ -75,15 +90,19 @@ class RequestContextMiddleware:
         try:
             try:
                 await self.app(scope, receive, send_with_request_id)
-            except Exception:
+            except Exception as exc:
                 # Logged once here; not re-raised, so neither Starlette nor
                 # uvicorn logs it again or renders their own error page.
                 error_logger.exception("Unhandled exception while handling a request")
+                # The request's span (telemetry on) gets an exception event,
+                # type and frames only once scrubbed (#612 E2); a no-op on the
+                # API's non-recording default span while telemetry is off.
+                trace.get_current_span().record_exception(exc)
                 if status is None:
                     response = internal_error_response()
                     await response(scope, receive, send_with_request_id)
             final_status = status if status is not None else 500
-            path = str(scope.get("path", ""))
+            path = _route_template(scope)
             if not (200 <= final_status < 300 and path in QUIET_PATHS):
                 access_logger.info(
                     "request completed",

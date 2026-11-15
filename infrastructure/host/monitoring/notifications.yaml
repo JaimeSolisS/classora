@@ -1,0 +1,36 @@
+# Alert delivery on AWS (ADR-0014 "Alerts"; M9-09, #617): every Grafana-managed
+# rule e-mails the owner through Amazon SES (SMTP settings GF_SMTP_* from
+# Parameter Store, compose.monitoring.yaml). AWS only: monitoring-up.sh copies
+# this file into the release's grafana/provisioning/alerting/ on the monitoring
+# host (or on DEV when colocated). Locally it is absent, so the rules evaluate
+# with no contact point (M9-04).
+#
+# ALERT_EMAIL is interpolated by Grafana from its environment. A literal
+# dollar sign would have to be written $$ here.
+# Bodies carry only rule names, label values (environment, host name, mount
+# point, route) and the summary annotation: no data from the application.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: owner-email
+    receivers:
+      - uid: owner-email
+        type: email
+        disableResolveMessage: false
+        settings:
+          addresses: ${ALERT_EMAIL}
+          singleEmail: true
+          message: |
+            {{ template "default.message" . }}
+
+            Sent by Classora's Grafana from alerts@classora.dev. This address
+            receives no mail: replies go nowhere.
+
+policies:
+  - orgId: 1
+    receiver: owner-email
+    group_by: [grafana_folder, alertname, deployment_environment_name]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h

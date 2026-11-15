@@ -1,0 +1,22 @@
+# Classora monitoring stack (ADR-0014; M9-09, #617): the gateway collector,
+# Prometheus, Loki, Tempo, Grafana and, on the dedicated host, Caddy (Compose
+# project `monitoring`). Enabled by monitoring-up.sh on the monitoring host,
+# or on an app host whose monitoring_mode is colocated (after its app stack,
+# whose network it joins).
+[Unit]
+Description=Classora monitoring stack (collector, Prometheus, Loki, Tempo, Grafana)
+Requires=docker.service
+After=docker.service network-online.target classora-app.service
+Wants=network-online.target
+RequiresMountsFor=/srv/classora-data
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/classora/bin/monitoring-up.sh
+ExecStop=/opt/classora/bin/monitoring-compose.sh stop
+TimeoutStartSec=900
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

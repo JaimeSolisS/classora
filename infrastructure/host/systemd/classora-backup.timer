@@ -1,0 +1,12 @@
+# 08:30 UTC every night (ADR-0013), within 5 minutes; a run missed while the
+# host was off happens at the next boot.
+[Unit]
+Description=Classora nightly database backup at 08:30 UTC
+
+[Timer]
+OnCalendar=*-*-* 08:30:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

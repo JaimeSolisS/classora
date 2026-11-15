@@ -1,0 +1,39 @@
+{
+  "v1": {
+    "title": "Payment receipt",
+    "number": "Number",
+    "issued_on": "Issue date",
+    "received_from": "Received from",
+    "family": "Family",
+    "received_on": "Payment date",
+    "method": "Payment method",
+    "reference": "Reference",
+    "amount": "Amount received",
+    "allocations": {
+      "title": "How the payment was applied",
+      "student": "Student",
+      "concept": "Item",
+      "amount": "Amount",
+      "none": "This payment was not applied to any charge.",
+      "allocated_total": "Total applied",
+      "credit": "Left as account credit"
+    },
+    "methods": {
+      "cash": "Cash",
+      "transfer": "Transfer",
+      "other": "Other"
+    },
+    "kinds": {
+      "session": "Session on {date} ({minutes} min)",
+      "session_untimed": "Session on {date}",
+      "group_enrollment": "Group enrollment",
+      "cohort_enrollment": "Course enrollment",
+      "tuition_period": "Tuition from {start} to {end}",
+      "tuition_period_open": "Tuition from {start}",
+      "package_purchase": "Package purchase on {date}",
+      "manual": "Manual charge"
+    },
+    "reversed": "REVERSED on {date}",
+    "notice": "This receipt is not a tax invoice (CFDI)."
+  }
+}

@@ -3,7 +3,14 @@
 Every error response has ``Content-Type: application/problem+json`` and a body
 with ``type`` (always ``"about:blank"``), ``title`` (the HTTP reason phrase),
 ``status``, a stable ``snake_case`` ``code``, the ``request_id`` and an optional
-fixed ``detail``. Field-level errors add ``errors``.
+fixed ``detail``. Field-level errors add ``errors``; a ``409
+scheduling_conflict`` adds ``conflicts`` (ADR-0005 wire format, #48); a few
+state errors add ``details``, a flat map of short codes (for example ``409
+offer_not_pending`` ``{"status": "accepted"}``, #52) or lists of ids (``409
+closeout_attendance_incomplete`` ``{"missing_student_ids": [...]}``, #77),
+never record data. One staff-only exception carries an object: ``409
+withdrawal_preview_stale`` ``{"preview": {...}}`` (the fresh preview, #101
+B7).
 
 Routes and dependencies raise :class:`AppError` (or a subclass); they never
 build Problem JSON by hand. A domain error defines only its class attributes::
@@ -36,6 +43,15 @@ PROBLEM_JSON = "application/problem+json"
 INTERNAL_ERROR_DETAIL = "An unexpected error occurred."
 PROBLEM_DETAILS_REF = "#/components/schemas/ProblemDetails"
 
+CORE_PROBLEM_CODES: frozenset[str] = frozenset(
+    {"internal_error", "validation_error", "not_found", "method_not_allowed"}
+)
+"""The codes the core sends without an :class:`AppError` subclass: the
+handlers below (``internal_error``, ``validation_error``) and the router's
+own ``404``/``405`` (:func:`status_code_name`). Listed in the generated i18n
+inventory (``app.core.i18n_inventory``, #130 B1); pinned in
+``tests/unit/test_errors.py``."""
+
 
 @with_config(ConfigDict(extra="forbid"))
 class FieldError(TypedDict):
@@ -44,6 +60,17 @@ class FieldError(TypedDict):
     path: list[str | int]
     code: str
     message: str
+
+
+@with_config(ConfigDict(extra="forbid"))
+class SchedulingConflict(TypedDict):
+    """One broken scheduling rule (ADR-0005): its code, whether it is
+    ``hard`` (never allowed) or ``soft`` (allowed with an override), and
+    code-specific details."""
+
+    code: str
+    severity: Literal["hard", "soft"]
+    details: dict[str, Any]
 
 
 # The single source of the ProblemDetails schema in the OpenAPI document
@@ -60,6 +87,8 @@ class ProblemDetails(TypedDict):
     request_id: str
     detail: NotRequired[str]
     errors: NotRequired[list[FieldError]]
+    conflicts: NotRequired[list[SchedulingConflict]]
+    details: NotRequired[dict[str, str | int | list[Any] | dict[str, Any]]]
 
 
 class AppError(Exception):
@@ -68,16 +97,25 @@ class AppError(Exception):
     status: ClassVar[int] = 500
     code: ClassVar[str] = "internal_error"
     detail: str | None = None
+    headers: Mapping[str, str] | None = None
+    """Extra response headers (for example ``Retry-After`` on a ``429``)."""
+    abstract_problem: ClassVar[bool] = False
+    """``True`` on a base that is never raised itself (its subclasses are):
+    its ``code`` is left out of the i18n inventory (#130 B1)."""
 
     def __init__(
         self,
         detail: str | None = None,
         *,
         errors: Sequence[FieldError] | None = None,
+        conflicts: Sequence[SchedulingConflict] | None = None,
+        details: Mapping[str, str | int | list[Any] | dict[str, Any]] | None = None,
     ) -> None:
         if detail is not None:
             self.detail = detail
         self.errors = list(errors) if errors is not None else None
+        self.conflicts = list(conflicts) if conflicts is not None else None
+        self.details = dict(details) if details is not None else None
         super().__init__(self.code)
 
 
@@ -113,6 +151,8 @@ def problem_response(
     detail: str | None = None,
     *,
     errors: Sequence[FieldError] | None = None,
+    conflicts: Sequence[SchedulingConflict] | None = None,
+    details: Mapping[str, str | int | list[Any] | dict[str, Any]] | None = None,
     headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     """The single renderer for Problem Details responses."""
@@ -127,6 +167,10 @@ def problem_response(
         body["detail"] = detail
     if errors is not None:
         body["errors"] = list(errors)
+    if conflicts is not None:
+        body["conflicts"] = list(conflicts)
+    if details is not None:
+        body["details"] = dict(details)
     return JSONResponse(
         status_code=status,
         content=body,
@@ -154,7 +198,15 @@ def _validation_errors(exc: RequestValidationError) -> list[FieldError]:
 async def _app_error_handler(request: Request, exc: Exception) -> JSONResponse:
     # Type narrowing only: the handler is registered for this exception type.
     assert isinstance(exc, AppError)  # noqa: S101
-    return problem_response(exc.status, exc.code, exc.detail, errors=exc.errors)
+    return problem_response(
+        exc.status,
+        exc.code,
+        exc.detail,
+        errors=exc.errors,
+        conflicts=exc.conflicts,
+        details=exc.details,
+        headers=exc.headers,
+    )
 
 
 async def _stale_version_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -184,7 +236,8 @@ async def _http_exception_handler(request: Request, exc: Exception) -> JSONRespo
 
 
 def problem_details_schemas() -> dict[str, Any]:
-    """``ProblemDetails`` and ``FieldError`` as OpenAPI component schemas."""
+    """``ProblemDetails``, ``FieldError`` and ``SchedulingConflict`` as OpenAPI
+    component schemas."""
     schema = TypeAdapter(ProblemDetails).json_schema(
         ref_template="#/components/schemas/{model}"
     )

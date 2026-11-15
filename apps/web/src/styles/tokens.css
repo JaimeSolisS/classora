@@ -5,8 +5,9 @@
  * rounded-md, ...), never raw values.
  *
  * Colors are hex so the contrast test (src/styles/tokens.test.ts) can read
- * them from this file. Every text pair must reach 4.5:1 and the input border
- * and focus ring 3:1 against the background, in both themes (WCAG 2.2 AA).
+ * them from this file. Every text pair must reach 4.5:1 and the input border,
+ * the focus ring and the chart series 3:1 against the background, in both
+ * themes (WCAG 2.2 AA).
  * See _docs/design-system.md.
  */
 
@@ -20,6 +21,7 @@
   --popover-foreground: #0f172a;
   --primary: #1d4ed8;
   --primary-foreground: #ffffff;
+  --primary-hover: #1e40af;
   --secondary: #f1f5f9;
   --secondary-foreground: #0f172a;
   --muted: #f1f5f9;
@@ -31,6 +33,22 @@
   --border: #cbd5e1;
   --input: #64748b;
   --ring: #1d4ed8;
+  /* Chart series (#322 C3): fixed order, each >= 3:1 against background
+     and card; never the only cue (patterns, dashes and markers too). */
+  --chart-1: #2563eb;
+  --chart-2: #c2410c;
+  --chart-3: #0d9488;
+  --chart-4: #9333ea;
+  /* Class types (HF-07 E1): a tint for the event background (card-,
+     muted-foreground and destructive text reach 4.5:1 on it) and a strong
+     shade for swatches, legend and list dots (3:1 against background and
+     card). One colour cannot do both, so each type has the pair. */
+  --kind-individual: #dbeafe;
+  --kind-individual-strong: #2563eb;
+  --kind-group: #fde68a;
+  --kind-group-strong: #b45309;
+  --kind-course: #f5d0fe;
+  --kind-course-strong: #a21caf;
 
   /* Base radius; sm/md/lg derive from it in @theme. */
   --radius: 0.5rem;
@@ -46,6 +64,7 @@
   --popover-foreground: #f8fafc;
   --primary: #60a5fa;
   --primary-foreground: #020617;
+  --primary-hover: #3b82f6;
   --secondary: #1e293b;
   --secondary-foreground: #f8fafc;
   --muted: #1e293b;
@@ -57,6 +76,16 @@
   --border: #334155;
   --input: #64748b;
   --ring: #60a5fa;
+  --chart-1: #3b82f6;
+  --chart-2: #ea580c;
+  --chart-3: #0d9488;
+  --chart-4: #a855f7;
+  --kind-individual: #1e3066;
+  --kind-individual-strong: #60a5fa;
+  --kind-group: #4a2a06;
+  --kind-group-strong: #fbbf24;
+  --kind-course: #4a1658;
+  --kind-course-strong: #e879f9;
 }
 
 @theme inline {
@@ -71,6 +100,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);

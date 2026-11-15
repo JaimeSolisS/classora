@@ -9,15 +9,35 @@ it does not decide anything that task or its ADR owns.
 
 | Layer | What belongs here | Where the files live | Marker or project | Local command | CI job |
 |---|---|---|---|---|---|
-| API unit | Pure logic: validation, services with fakes, configuration, error mapping, job rules. No Docker, no network, no database. | `apps/api/tests/unit/` | `unit` (applied by directory) | `make test-unit` | `api-test` |
-| API integration | Anything that needs PostgreSQL: repositories, the Unit of Work, endpoints through the ASGI app, seeds, jobs, PgBouncer behavior, authorization and financial invariants. Testcontainers `postgres:18`, plus the PgBouncer image built from `infrastructure/docker/pgbouncer` when a test asks for it. | `apps/api/tests/integration/` | `integration` (applied by directory) | `make test-integration` | `api-test` |
-| Migration checks | Upgrade from an empty database, a single Alembic head, the downgrade/upgrade round trip, no drift between models and migrations. A subset of the integration layer. | `apps/api/tests/integration/test_migrations.py` | `integration` | `make test-migrations` | `api-test` |
+| API unit | Pure logic: validation, services with fakes, configuration, error mapping, job rules. No Docker, no network, no database. | `apps/api/tests/unit/` | `unit` (applied by directory) | `make test-unit` | `api-unit` |
+| API integration | Anything that needs PostgreSQL: repositories, the Unit of Work, endpoints through the ASGI app, seeds, jobs, PgBouncer behavior, authorization and financial invariants. Testcontainers `postgres:18`, plus the PgBouncer image built from `infrastructure/docker/pgbouncer` when a test asks for it. | `apps/api/tests/integration/` | `integration` (applied by directory) | `make test-integration` (without the migration checks, the billing invariant suite and the simulation seed tests); `make test-integration SHARD=K/5` runs one CI shard | `api-integration (K/5)`, five parallel shards |
+| Billing invariant suite | Randomized sequences of every M6 ledger operation, cross-operation races and the billing job walk, checked against the whole invariant catalogue after every step (#103; "Financial invariant tests" below). A subset of the integration layer, run only by its own target. | `apps/api/tests/integration/billing_invariants/` | `integration` | `make test-billing-invariants` (`SEEDS=`, `STEPS=`, `EXTRA_SEED=`) | `api-billing-invariants` |
+| Simulation seed tests | The simulated-operations seed runs (#543 chain), checked end to end on a real database. A subset of the integration layer, run only by its own target. | `apps/api/tests/integration/test_simulation_*.py` | `integration` | `make test-simulation` | `api-simulation` |
+| Migration checks | Upgrade from an empty database, a single Alembic head, the downgrade/upgrade round trip, no drift between models and migrations. A subset of the integration layer, run only by its own target. | `apps/api/tests/integration/test_migrations.py` | `integration` | `make test-migrations` | `api-migrations` |
 | Web unit and component | Hooks, stores, formatters, the API call wrapper, routing, rendered components in jsdom, translation catalogs. | `apps/web/src/**/*.test.{ts,tsx}`, `packages/api-client/src/**/*.test.ts` | Vitest project `unit` (web); the api-client package's own Vitest run | `make test-web` | `web` |
 | Storybook story tests | Every component story with its play function and an axe check, in light and dark, in headless Chromium. | `apps/web/src/**/*.stories.tsx` | Vitest projects `storybook-light`, `storybook-dark` | `make test-storybook` | `web-storybook` |
 | E2E | Cross-application flows in a real browser against the full Compose stack (web → API → PgBouncer → PostgreSQL, worker running), plus the axe scan of each route. | `e2e/tests/` | Playwright project `chromium` | `make e2e` | `e2e` |
 
-`make test` runs the API (unit and integration) and the web unit tests. It
-does not run the Storybook story tests or E2E.
+`make test` runs the API unit and integration tests (the selections of
+`make test-unit` and `make test-integration`) and the web unit tests in Docker
+(only Docker and Make needed; #672); `make test-all` adds the migration checks,
+the billing invariant suite and the simulation seed tests, also in Docker.
+`make test-native` runs every API test and the web unit tests on the host with
+the API coverage report; the per-layer targets in the table above are native.
+None of them runs the Storybook story tests or E2E.
+
+The web `unit` project allows 15 s per test and 20 s per hook (#260), so a
+starved CPU does not fail a full-app render; tests wait on conditions
+(`findBy*`, `waitFor`, or `settleUntil(() => …)` from `src/test/render-app.ts`
+for a code-split route), never on time or a tick count.
+
+In CI the API layers run as parallel jobs, and each API test runs in exactly
+one of them: `api-unit`, `api-migrations`, `api-billing-invariants`,
+`api-simulation`, and `api-integration` in five shards. `--shard=K/N` (`apps/api/tests/sharding.py`) sorts the selected test
+files by path and deals them round-robin, so a file always stays in one shard
+and a red shard is reproduced locally with `make test-integration SHARD=K/5`.
+Coverage is reported per job (`--cov-report=term-missing`); no coverage
+threshold is enforced.
 
 ### Choosing a layer
 
@@ -31,6 +51,9 @@ does not run the Storybook story tests or E2E.
   replaces many manual clicks, not an API test.
 - A component's states (loading, empty, error, disabled) and its accessibility
   are covered by stories, not by E2E.
+- Route guards and hidden navigation items are tested in Vitest (test-only
+  routes and items). They are UX only and never replace the API permission
+  matrix.
 
 ## Fixtures and test data
 
@@ -66,8 +89,13 @@ does not run the Storybook story tests or E2E.
 - Faker uses the `es_MX` locale. Emails come only from `reserved_email()`
   (`example.com`, `example.org`, `example.net`), never from Faker's email
   providers.
+- Users come from `UserFactory` / `persist_user(session, roles=[...],
+  delegations=[...])` (`apps/api/tests/factories/identity.py`) on a database
+  with the reference seeds applied (`seeded_url`). Every factory user shares one
+  precomputed Argon2id hash of the test-only `TEST_USER_PASSWORD`.
 - Types follow ADR-0004: money is a `Decimal` with exactly 2 places
-  (`money()`), never built from a `float`; calendar values are `date`
+  (`money()`), never built from a `float`; billing tests use `Money`
+  (`app/core/money.py`) through `money_value()`; calendar values are `date`
   (`calendar_date()`); instants are timezone-aware UTC `datetime` (`instant()`).
 
 ### Reference seeds and demo data
@@ -76,10 +104,25 @@ does not run the Storybook story tests or E2E.
 |---|---|---|
 | Purpose | Data every environment needs (for example roles, education levels) | Synthetic records for local, DEV and E2E use |
 | Values | Fixed literals; no Faker, randomness, current date or environment-specific value | Factories with a fixed seed (`--seed`, default 1) |
-| Idempotent | Yes (upsert on a key) | No (a rerun adds rows) |
+| Idempotent | Yes (upsert on a key) | The registered generators (#23, #195, #299, #303, #353, #354, #413, #420, #499, #501) write nothing on a rerun; a future generator may add rows unless its issue says otherwise |
 | Where to register | Append to `REFERENCE_SEEDS` in `apps/api/app/seeds/registry.py`, in dependency order | Append a generator to `DEMO_GENERATORS` in `apps/api/tests/factories/demo.py` |
-| Command | `make seed` (`python -m app.seeds`) | `make seed-demo` (`python -m tests.factories.demo`); refused unless `APP_ENV` is `local` or `dev` |
+| Command | `make seed` (`python -m app.seeds`) | No make target: `python -m tests.factories.demo` (run by `e2e/scripts/run.sh`; tests call its generators); refused unless `APP_ENV` is `local` or `dev` |
+| Deletes rows | Never, with one exception: `identity.role_permissions` also deletes the pairs of the seeded roles that `ROLE_PERMISSIONS` no longer lists, so the database's role permission sets equal the code (ADR-0007). `roles` and `permissions` rows are never deleted. | Never |
 | Never | Creates user accounts or credentials | Runs in PROD |
+
+Example data for people (local demos, trying a role) is `make seed-data-spanish` / `make seed-data-english`, not the demo data (HF-587).
+
+- The simulated-operations seed (#543 HF-01; `make seed-data-spanish` /
+  `make seed-data-english`) is test-support code in
+  `apps/api/tests/factories/simulation/`, separate from the demo data: a pure
+  plan, a chronological driver and one module per area, written through the
+  services under `sim_clock`. Its tests use the `small` profile and the real
+  clock frozen at 2026-11-20 18:00 UTC, except the determinism tests (the
+  plan at several frozen dates, and two runs frozen before and after the
+  anchor compared row by row). Its integration tests are named
+  `tests/integration/test_simulation_*.py` and run only in `make
+  test-simulation` (CI job `api-simulation`), so a new part's test file must
+  keep that prefix.
 
 ### Synthetic data only (architecture ISSUE-I7)
 
@@ -102,22 +145,266 @@ does not run the Storybook story tests or E2E.
 - The web unit tests run under `Pacific/Kiritimati` (UTC+14) by default, so a
   helper that leaks the host zone fails. E2E runs in `America/Mexico_City`.
 
+### Time travel (M2-07)
+
+- API code that needs "now" for a time-based rule that must be testable
+  (session expiry, the session purge, and later rules like them) reads
+  `app.core.clock.now()`, never `datetime.now()` or the database's `now()`.
+- Tests move that clock with the `clock` fixture (`apps/api/tests/conftest.py`):
+  it starts frozen at a fixed UTC instant and offers `clock.set(dt)` and
+  `clock.advance(timedelta)`. It replaces a module attribute, so it also
+  reaches the app inside `TestClient`, and it restores the real clock after
+  the test.
+- Never `sleep` to let time pass; test boundaries exactly (one second before
+  and at the limit).
+
+### Rate limits (M2-09)
+
+- Login and reauthentication count attempts in `rate_limit_counters`
+  (`app/core/ratelimit.py`). A per-test database starts empty. The autouse
+  `empty_rate_limit_counters` fixture (`tests/integration/conftest.py`)
+  empties the table before each test in every database shared by several
+  tests (`module_seeded_url`, or a module fixture that calls
+  `tests.integration.shared_databases.share_database`), and
+  `reset_rate_limits(url)` empties it inside a test.
+- Windows follow `app.core.clock.now()`: cross a window with the `clock`
+  fixture (`clock.advance(timedelta(minutes=15))`), never by waiting.
+- `TestClient` requests come from the peer `testclient`, which is not an IP
+  address, so they all share one IP key (`unknown`): about 50 logins per test
+  and database before `login.ip` answers `429`. A test that needs distinct
+  client addresses builds its client with `TestClient(app, client=(ip, port))`.
+- Never add a setting that disables the limits. A test that must log in more
+  often resets the counters; E2E reuses signed-in sessions.
+
+### Approval types (M3-04)
+
+- `tests/conftest.py` registers the real approval wiring for every test
+  (`approval_wiring`, autouse: the `identity.registration` handler and the
+  account-reference resolver, as `app/wiring.py` does), so a registration
+  submitted outside an app (`in_uow`) raises its approval request too.
+- A test that needs another type registers a **fake handler** and removes it
+  afterwards, in a fixture:
+
+  ```python
+  @pytest.fixture
+  def sample_type() -> Iterator[SampleHandler]:
+      handler = SampleHandler()  # request_type "test.sample"
+      administration.register_approval_handler(handler)
+      yield handler
+      administration.unregister_approval_handler("test.sample")
+  ```
+
+  The handler is any object with the `ApprovalHandler` attributes and async
+  methods (see `tests/integration/test_approval_requests.py`: it records
+  calls and can be told to fail). Use a `test.*` type and a real permission
+  code as its review permission (`payroll.finalize` there, so an
+  Administrator sees it only with that delegation). The registry is
+  process-wide, like the student-login gate: never leave a fake type
+  registered, or the pinned `registered_approval_types()` test fails.
+- A test that unregisters the resolver (`register_account_reference_resolver(None)`)
+  restores `identity.service.get_account_references` in a `finally`.
+
 ## Permission-matrix approach
 
 These rules restate tasks §0.3, M2-03 and spec §10 ("automated authorization
-tests") and §16. M2-03 builds the matrix framework and decides the matrix file
-location and format.
+tests") and §16. M2-03 built the framework (`apps/api/app/core/authz.py`,
+`apps/api/tests/authz/`); `_docs/api.md` "Authentication and authorization"
+describes the route declarations and the 401/403/404 rule.
 
 - Every endpoint task adds at least one allowed test and one denied test.
-- A machine-readable matrix (role × endpoint × expected outcome) lives in the
-  test suite. A route with no matrix entry fails CI.
+- **The matrix** is `apps/api/tests/authz/matrix.toml` (read with the
+  standard-library `tomllib`). One `[[route]]` table per method and path
+  template, kept sorted by path, then method:
+
+  ```toml
+  [[route]]
+  method = "GET"
+  path = "/api/v1/users"
+  access = "permission"            # or "public" (needs reason) / "authenticated"
+  permission = "user.view"         # the code the route's require() names
+  allow = ["owner", "administrator"]
+  # optional: path_params = { user_id = "..." }, query = { ... } (#67), json = { ... }
+  ```
+
+  Every role not in `allow` is expected to get `403 permission_denied`;
+  anonymous gets `401 authentication_required` for `authenticated` and
+  `permission` entries. The file's header comment explains how to add an entry.
+- **Static check** (unit, `tests/unit/test_permission_matrix_static.py`):
+  every route of `build_app(include_dev_routes=True)` has exactly one entry
+  and exactly one access declaration, and they agree; stale entries, unknown
+  permissions or roles, a `public` entry without a reason and a protected
+  route that does not document its `401`/`403` all fail, each listed as
+  `METHOD path: reason`.
+- **Runtime check** (integration, `tests/integration/test_permission_matrix.py`):
+  one test per entry and actor (`METHOD path as role`): anonymous, each of the
+  seven roles, and, for a delegable permission, an Administrator holding that
+  delegation (no separate entry needed). Every `401`/`403` must be Problem
+  Details with the expected `code`. Every actor is a real, active user in a
+  migrated, seeded Testcontainers database (`matrix_user_for` in
+  `tests/authz/harness.py`), and each case logs in through
+  `POST /api/v1/auth/login` and sends that fresh session's cookie (M2-05).
+  Only the runner's self-test on the test-only sample app overrides the
+  session (`get_current_session`).
+- **CSRF (M2-06):** test clients send the test app origin (`Origin`) by
+  default and the matrix runner adds the session's `X-CSRF-Token` to unsafe
+  requests, so CSRF never hides the outcome under test; the runtime check
+  also generates `METHOD path csrf:no-origin` (expects `403 csrf_failed`) and
+  `METHOD path csrf:no-token` (`403 csrf_failed` on a protected route, anything
+  but `403` on a public one) for every unsafe entry. CSRF tests remove or
+  change the header explicitly (`tests/authz/csrf.py`).
+- **Reauthentication (M2-08):** a sensitive route's entry adds `reauth =
+  "<action>"` (and `reauth_conditional = true` for `recent_auth_guard`); the
+  static check requires it to match the route's marker, allows markers only on
+  unsafe, non-public routes, and fails an unsafe route that requires a bound
+  permission (`app/core/reauth.py`) without the marker. At runtime the allowed
+  actors of an unconditional entry reauthenticate first (denied ones do not,
+  so they still prove `permission_denied`), and `METHOD path reauth:none`
+  expects `403 reauth_required`. The owning issue tests a conditional guard's
+  two branches itself.
+- **Rate limits (M2-09):** a route with `rate_limit(...)` lists the same codes
+  in `rate_limit = [...]` (order ignored) and documents `429`; every unsafe
+  `public()` route declares a policy or has `rate_limit_exempt = "<reason>"`;
+  every policy is applied by a route or listed in `PENDING_POLICIES`
+  (`app/core/ratelimit.py`), never both. Static check only: the runtime matrix
+  sends no rate-limit cases (integration tests cover the behaviour).
+- **Privacy notice (#174):** an `authenticated(notice_exempt=True)` route's
+  entry adds `notice_exempt = true` (only on `authenticated` entries); the
+  static check requires it to match the route's `AccessRule`. At runtime
+  `METHOD path notice:pending` sends every `authenticated` and `permission`
+  entry as an Owner who hasn't accepted the current notice: `403
+  privacy_notice_required`, except on notice-exempt entries, which must not
+  answer that code. Every other matrix actor, `principal_for(actor)` and every
+  user made by `persist_user` / `create_user` accepts the current version by
+  default (one audited acceptance row), so tests about something else never
+  meet the gate; pass `privacy_notice_accepted=False` (or
+  `Actor(..., notice_pending=True)`) for a user who still has to accept.
+  Version 1 is published at 2026-10-18 00:00 UTC, before the frozen clock's
+  start, so frozen-clock tests see it; a test that publishes another version
+  inserts it with raw SQL (as a migration would) in its own database.
+- Unit tests of a route declaration use a test-only app and override
+  `get_current_principal` with `app.dependency_overrides`.
 - Record-level (IDOR) tests are separate from role checks: a user with the
-  right role asks for another family's, tutor's or student's record.
+  right role asks for another family's, tutor's or student's record. Use
+  `assert_same_not_found(hidden_response, missing_response)` from
+  `tests/authz/assertions.py`: both are `404 not_found` with identical bodies
+  apart from `request_id` and the same headers.
+- **IDOR inventory** (#149): `apps/api/tests/authz/idor.toml` lists every
+  route a tutor, student or guardian can reach (from the matrix) that takes a
+  record id: a path parameter, or a query parameter or top-level JSON body
+  property named `*_id`/`*_ids` (from the OpenAPI). Each entry names the
+  integration test(s) proving another party's record is hidden: the same
+  status and Problem code as a missing id for detail and unsafe routes (unsafe
+  ones also show the record unchanged; new tests use
+  `assert_same_not_found`), or the other party's rows absent for lists. A
+  route whose ids are all shared catalog ids is `exempt` with a reason; a
+  leak too big for its issue is `pending = "#<bug>"`. A new scoped route, or
+  a new `*_id` query or body field on one, fails
+  `tests/unit/test_idor_inventory.py` (`missing IDOR entry`) until it has an
+  entry; a cited test that no longer exists fails it too. The file header
+  says how to add one.
+- **Job inventory** (#640): `apps/api/tests/authz/jobs.toml` lists every
+  registered Procrastinate task. A new task gets an entry: its `kind`
+  (`reader_checked` or `actor_rechecked` with a one-sentence `check` and the
+  integration `tests` that show the check stopping a reader or actor who lost
+  access, or `no_reader_output` with a `reason`) and the notification types
+  it creates. `tests/unit/test_job_inventory.py` fails with `missing job
+  inventory entry` until it has one. The file header says how to add one.
+- **Visibility tests** (#67): a read that shows rows by state (the
+  role-scoped schedules) is tested for every state × the fact it depends on
+  (`first_confirmed_at` set or `NULL`), through the real route, against the
+  pure rule (`states.is_family_visible` / `is_tutor_visible`); a unit drift
+  test compares the SQL predicate with the same sets. A closed response is
+  checked on the raw JSON: its key sets, and a leak test that the ids and
+  names it must never carry (other participants, the tutor's id) are absent
+  from the body text.
+- **Family leak walk** (#79, extended by #80 for evaluations, #81 for learning plans, #82 for homework assignments, #83 for progress reports, #84 for the progress dashboard's closeout summaries and #85 for course completion): `tests/integration/test_session_notes_leak.py`
+  calls every `GET` route a student or guardian can reach (from the app's
+  routes and the static matrix) as a minor's guardian, an adult's consenting
+  guardian and both students, with every mapped path parameter, and asserts
+  that no body carries a canary string that a family must never see. A new
+  family-reachable route with a new path parameter name fails the walk until
+  it is added to `PATH_PARAMS`; a new family-facing record adds a canary
+  source to `CANARY_SOURCES` (the module docstring says how).
+- **Injected facts** (#33): a record policy whose facts come from another
+  module that doesn't exist yet reads them through one FastAPI dependency the
+  tests override. Tutor assignments come from
+  `get_tutor_assignment_source` (`app/modules/families/assignments.py`):
+  since #67 `app.wiring` registers the scheduling source
+  (`scheduling.service.student_ids_for_tutor`, so `families` never imports
+  `scheduling`), and `NoTutorAssignments` (always empty) is only the
+  default before any registration and the source of the family routes.
+  `test_tutor_assignment_source.py` uses the real source with real
+  sessions and a frozen clock (the 30-day lookback). Integration tests inject a
+  fixed tutor → students map with `student_support.assigned(client,
+  {tutor_id: {student_id, ...}})`, which overrides that dependency on the
+  test client's app for the block and counts the calls (facts are loaded only
+  for callers holding the matching role). Which scheduled sessions a tutor
+  availability change affects (M4-18) comes from
+  `get_availability_impact_source` (`app/modules/staff/assignment_impact.py`;
+  `app.wiring` registers the scheduling source, so `staff` never imports
+  `scheduling`): `test_tutor_availability.impact(client, [AffectedSession])`
+  overrides it with a fixed source that records the current and proposed
+  rules it was asked about, to prove a non-empty answer is a `202` change
+  request with nothing written; `test_availability_change_requests.py`
+  uses the real source with real sessions. Guardian links (#34) are real
+  rows: build them with `guardian_support` (API) or the
+  `tests/factories/families.py` helpers `GuardianFactory` and
+  `link_guardian(session, student, guardian, relationship="mother")` (for
+  #35 and later milestones). Guardian facts are loaded on every
+  request; tests prove a change applies on the same session's next request.
+  Families (#172) are real rows too: `family_support` (API) or
+  `FamilyFactory` and `add_to_family(session, family, *members)` (for M6).
+  Family membership is never student access: a family test that grants a
+  guardian a student must link them (#34).
+  Student logins (#35): an account holding `student` passes the
+  student-login gate only with a linked profile, so a test that activates a
+  student (redemption, approval, reactivation, adding the role) first links
+  one with `student_login(session, student, user_id)` (an adult's,
+  `birthdate=ADULT_BIRTHDATE`, needs nothing more; a minor needs a
+  `login_consent(session, student, guardian, recorded_by=...)` from a linked,
+  active guardian). `consent_support.adult_profile_for(url, user_id)` and
+  `minor_profile_for(url, user_id, consenting=True)` commit both. Never
+  weaken the gate in a test. The root conftest registers the families gate
+  for every test (`student_login_gate`, autouse); `no_student_login_gate`
+  unregisters it to prove the fail-closed path.
 - A denial returns `403` with Problem Details (`_docs/api.md`). A record that
   exists but is not visible to the caller returns `404`, the same as a record
-  that does not exist.
+  that does not exist. Record policies (`can_<action>_<resource>`) are
+  unit-tested per role.
 - Background jobs, generated files and presigned links are checked as well,
-  not only endpoints (M10-01 sweeps them all).
+  not only endpoints; they use `ensure_permission`. Routes and generated
+  files are in the IDOR inventory (#149); background jobs are in the job
+  inventory (`tests/authz/jobs.toml`, #640).
+
+## Audit
+
+M2-04 built the audit trail (`apps/api/app/core/audit.py`; architecture
+ISSUE-A3). Events are written in the same transaction as the change.
+
+- **Mark the model.** A model whose changes must be audited mixes in
+  `Audited` and lists its sensitive columns: `__audit_exclude__` for columns
+  that must never appear (password hashes, tokens, file contents) and
+  `__audit_mask__` for columns stored only as `"[masked]"`. The unit guard
+  (`tests/unit/test_audit_guard.py`) fails any audited model with an unlisted
+  `password|token|secret|hash` or binary column.
+- **Explicit events.** Actions that are not column changes use
+  `record_audit_event(session, action="<module>.<event>", ...)`: login
+  attempts, token issue and redemption, password changes and resets, and
+  overrides with a reason. Never put a password, a token or a hash in
+  `details` (a sensitive key is refused).
+- **Assert the events.** Every issue that audits something asserts its events
+  with `audit_events_for(session, record_type=..., record_id=..., action=...)`
+  and `assert_no_secret_in_audit(session, *secrets)` from
+  `apps/api/tests/audit/assertions.py`.
+- **ORM only.** Never change an audited table with raw SQL or Core
+  statements. ORM bulk `insert`/`update`/`delete` statements on an audited
+  table raise `AuditBypassError`; raw `text()` SQL cannot be detected and is
+  forbidden by this rule. Change rows with `session.add` / `session.delete`.
+- **Rollback.** An audit row rolls back with its transaction. An event that
+  must survive a failed request (for example a failed login) is written in a
+  transaction that commits.
+- `audit_events` is append-only: `UPDATE`, `DELETE` and `TRUNCATE` fail with
+  SQLSTATE `42501` for every role.
 
 ## Financial invariant tests
 
@@ -135,9 +422,80 @@ follows these rules.
 - Duplicate or concurrent submissions never double-post (W4.4, W7.4). These
   tests use real concurrent sessions against the Testcontainers PostgreSQL,
   not mocks.
+- Every route with `idempotent()` (#88) is tested for a replay, a key reused
+  with another body (`422 idempotency_key_reused`) and a two-connection
+  concurrent duplicate that runs once. The pattern is
+  `apps/api/tests/integration/test_idempotency.py` (with its test-only router
+  `idempotency_app.py`).
 - Randomized operation sequences are reproducible: the test prints its seed
   and accepts it as input. A property-based testing library is **not**
   approved; adding one needs approval first.
+
+### The billing invariant suite (#103)
+
+`apps/api/tests/integration/billing_invariants/` holds the cross-cutting
+proof that the billing invariants hold together. It is excluded from `make
+test-integration` and runs with `make test-billing-invariants` (no coverage;
+the ten slowest tests are printed) in the `api-billing-invariants` CI job,
+which `ci-required` checks whenever the API changed.
+
+- **World.** One template database per session (migrated, seeded, plus the
+  shared world of `world.py`: three families with guardian logins, a
+  student with no family, catalog prices, a sibling discount and a
+  scholarship, a package product, two groups, a cohort, an Owner and a
+  Finance user). Every sequence, race attempt and job case runs on its own
+  copy (`CREATE DATABASE … TEMPLATE`).
+- **Sequences** (`test_billing_invariant_{ledger,packages,schedule}.py`):
+  each seed draws operations with one `random.Random(seed)` and calls the
+  real workflow entry points and `run_*` jobs; about one step in eight is a
+  burst of 2–3 operations on one account on separate engines. After every
+  step: the outcome contract (accepted, or refused with a declared code),
+  net-balance conservation per account, "refused ⇒ unchanged" and the whole
+  check catalogue. Each sequence ends with the portal check (the guardian's
+  summary equals the sums over their own charges, payments and ledger).
+  The ledger module also runs one seed through the real routes (D8).
+- **Seeds.** Pull requests run the fixed defaults of each module. Pushes and
+  manual runs add `github.run_id` as one more seed. Locally:
+  `make test-billing-invariants SEEDS=5,9` (replaces the defaults),
+  `EXTRA_SEED=123` (adds one), `STEPS=17` (truncates every sequence). A
+  failure prints the scenario, seed, step, failing check and its rows, the
+  last 25 operations and `reproduce: make test-billing-invariants SEEDS=<seed>
+  STEPS=<step>`; the reproduction holds on the same commit.
+- **Walks.** `test_billing_invariant_idempotent_routes.py` sends two
+  concurrent requests with the same key to every idempotent billing route
+  of `tests/authz/matrix.toml`; `test_billing_invariant_jobs.py` reruns,
+  runs concurrently and retries after a failed item every registered
+  `billing:` task. `test_billing_invariant_races.py` holds the
+  cross-operation races (5 attempts each).
+- **Rules for later issues.** A new billing table, append-only billing
+  table or billing invariant adds a check to `checks.py` (and its plant to
+  `test_billing_invariant_harness.py`, which fails for an App-enforced check
+  without one and for an append-only billing table the I11 check doesn't
+  hash). A new idempotent billing route or `billing:` job adds a case to
+  the route or job walk, or the walk fails naming it.
+
+| Invariant | Check id(s) in `checks.py` | Earlier single-path proof |
+|---|---|---|
+| I1 net ≥ 0 | `I1` | #90 (`test_billing_ledger_adjustments.py`), #100 |
+| I2 Σ valid allocations ≤ net | `I2` | #96 (`test_billing_payments_record.py`, `_credit.py`, `_concurrency.py`) |
+| I3 Σ allocations + refunds ≤ amount; reversed ⇒ nothing valid; no reversal with refunds | `I3`, `I3r`, `I3x` | #96, #100 (`test_billing_payment_reversals.py`, `test_billing_refunds.py`) |
+| I4 same account (allocations, reversals, refunds, receipts) | `I4` (DB) | #90 (`test_billing_ledger_constraints.py`) |
+| I5 adjustment's account and student | `I5` (DB) | #90 |
+| I6 signs and ranges | `I6` (DB) | #90, #94 |
+| I7 amount = list − discount; Σ discount lines | `I7` (DB), `I7d` | #90, #95 |
+| I8 package units ≥ 0 | `I8` | #94, #100 |
+| I9 one of {session charge, consumption} | `I9` | #94 (`test_package_consumption.py`) |
+| I10 one receipt per payment; gap-free numbers | `I10`, `I10n` | #98 (`test_receipts_numbering.py`) |
+| I11 posted rows never change | `I11` (row hashes) | #90 (`test_billing_ledger_immutability.py`) and each append-only table |
+| I12 withdrawals | `I12` (DB), `W2`–`W5` | #101 (`test_billing_withdrawals_*.py`) |
+| Balance equation (W4.4) | `REC` (suite SQL = `billing.service` = Σ ledger `balance_effect`; charge open and status) | #90 (`test_billing_ledger_balances.py`), #102 (`test_billing_family_leak.py` F1) |
+| #92 J5 one fee while the earlier one has net > 0 | `J5` | #92 (`test_group_enrollment_charges.py`) |
+| #93 one tuition charge per period; none in a pause | `T1` (DB), `T2` | #93 (`test_tuition_charges.py`) |
+| #94 one grant/expire; consumption inside the window | `K1` (DB), `K2` | #94 (`test_package_constraints.py`, `test_package_expiry.py`) |
+| #97 one reminder per stage; previous due date; no reminder at open 0 | `R1` (DB), `R2`, step check of `run_reminders` | #97 (`test_charge_reminders_job.py`, `test_billing_due_date_changes.py`) |
+| #99 one decision per key; closure credits; repricing; never on zero charges or non-participants | `S1` (DB), `S2`, `S3` (after a reconcile run), `S4`, step check of `run_reconcile` | #99 (`test_schedule_reconciliation_*.py`) |
+| #100 reversal rows; cancellation and manual adjustment kinds | `X2`, `X3`, `X4` | #100 (`test_billing_package_cancellation.py`, `test_billing_manual_adjustments.py`) |
+| Adjustment source keys name their kind and charge (#90 QA O4) | `SK` | #90 |
 
 ## E2E data rules
 
@@ -146,14 +504,231 @@ follows these rules.
   database, DEV or PROD.
 - Every run starts from an empty volume, then runs the migrations, then the
   reference seeds, then the demo command with the fixed seed (`--seed 1`).
+  Then `e2e/scripts/run.sh` runs the E2E attendance fixture
+  (`python -m tests.factories.e2e_attendance`, #76): one started
+  `confirmed` group session of `demo.tutor` with two synthetic students
+  (subject `E2E Attendance`, no room) in the latest free hour before now. It
+  is test data for `e2e/tests/scheduling/offers.spec.ts` only, separate
+  from the demo fixture data, guarded like the demo command (`local`/`dev`) and
+  idempotent; no other spec may use that subject or session. #77 adds a
+  second session for the closeout steps: one started `confirmed`
+  individual session of `demo.tutor` with one synthetic student (subject
+  `E2E Closeout`) in the latest free hour before the attendance session,
+  under the same rules.
+- The billing demo data (#413, #420) is not in the E2E database: `run.sh` passes
+  `--without-billing` to the demo command, so billing stays off there (#366)
+  and specs keep creating their own billing data. The payroll demo data
+  (#499) honours the same flag and is not there either, so payroll stays off
+  in the E2E database (#105) and specs never set `payroll_starts_on`. The
+  expense demo data and the finished cohort's fees (#501) honour it too and
+  are not in the E2E database either, so specs keep creating their own
+  categories, vendors, expenses and templates. The M8 administration demo
+  data (#118-#129, M8-demo #539: approval assignments, a muted notice type,
+  the receipt message, imports, saved setups and a deleted draft) honours
+  the flag as well and is not in the E2E database.
 - Tests do not depend on each other or on the order they run in, and they
   pass with Playwright's parallel workers. Data a test changes is created by
   that test, with a unique per-test suffix. Tests never depend on a
   Faker-generated value by position.
+- The business settings are a singleton (#37): specs never change the
+  center time zone (every spec relies on `America/Mexico_City`), and only
+  `e2e/tests/settings/settings.spec.ts` edits the settings, in one serial
+  test that restores what it changed. The shared demo Owner session is
+  never reauthenticated, so a zone change there always asks for the
+  password. Sunday is closed for every spec; only `settings.spec.ts`
+  briefly opens Sunday 07:00–08:00, so specs that need
+  `outside_operating_hours` use Sunday at or after 09:00, and no spec
+  schedules Sunday before 09:00.
+- The scheduling policy (#61) applies to every spec: specs never publish an
+  immediate scheduling-policy version, so version 1's defaults (24 h
+  notice, 48 h to answer an offer) hold everywhere. Only
+  `e2e/tests/settings/settings.spec.ts` creates an upcoming version (from
+  today + 60 days) and deletes it again in the same test.
+- Notifications (#41): specs create them through the local/DEV route
+  `POST /api/v1/dev/notifications` (`createDemoNotificationViaApi` in
+  `e2e/tests/support/notifications.ts`), always for the shared `demo.owner`
+  with a label unique to the test. Several specs notify `demo.owner`, so
+  assertions use that unique label and never exact counts (unread count,
+  number of items).
+- Academic periods (#38) can't overlap within a type, so specs that add
+  periods or closures use dates in a year unique to the run (for example
+  `2100 + (Date.now() % 500)`), never the current years.
 - Named fixtures that tests read (for example one account per role, from M2)
   are added by their domain task as deterministic demo generators with
   documented keys. The task that adds them also lists them in this section.
-  Named E2E fixtures: none yet.
+  Named E2E fixtures:
+  - `demo.owner` (password `classora-demo-owner`): an active Owner, from the
+    `identity.demo_owner` demo generator. It exists only in local stacks
+    (`APP_ENV=local`, including the E2E stack); the E2E tests read it from
+    `e2e/tests/support/credentials.ts`. The other demo accounts, one per
+    role plus a second tutor (`demo.admin`, `demo.coordinator`,
+    `demo.finance`, `demo.tutor`, `demo.tutor2`, `demo.student`,
+    `demo.guardian`, each with the password `classora-demo-<name after
+    "demo.">`), are listed in `DEMO_ACCOUNTS`
+    (`apps/api/tests/factories/identity.py`) under the same rules.
+  - `e2e.coordinator`: the Academic coordinator that
+    `e2e/tests/auth/invitations.spec.ts` invites and activates (#29). It is
+    created by that test in every run (unique per run, because every run
+    starts from an empty database); no other test may use the name.
+  - `e2e.reset.tutor` and `e2e.change.guardian`: the Tutor whose password
+    is reset and the Parent/Guardian who changes their own password in
+    `e2e/tests/auth/password-reset.spec.ts` (#30). The same rules: created by
+    that test in every run, no other test may use the names.
+  - `e2e.parent`: the Parent/Guardian who requests an account on
+    `/register` and is approved by the demo Owner in
+    `e2e/tests/auth/registration.spec.ts` (#169). The same rules: created by
+    that test in every run, no other test may use the name. The run's one IP
+    sends 1 of the 10 registration requests `registration.ip` allows per hour
+    (`REGISTRATIONS_PER_RUN` in `e2e/tests/support/auth.ts`).
+  - `e2e.suspend.tutor`: the Tutor whom the demo Owner suspends and
+    reactivates in `e2e/tests/users/suspend.spec.ts` (#31). The same rules:
+    created by that test in every run, no other test may use the name.
+  - `e2e.roles.tutor` and `e2e.roles.admin`: the Tutor who gets the
+    Finance staff role and the Administrator who gets the "Approve refunds"
+    delegation from the demo Owner in `e2e/tests/users/roles.spec.ts`
+    (#170). The same rules: created by that test in every run, no other test
+    may use the names.
+  - `e2e.students.tutor`: the Tutor who opens a student's page and finds
+    "This student doesn't exist." in `e2e/tests/students/students.spec.ts`
+    (#33). The same rules: created by that test in every run, no other test
+    may use the name.
+  - `e2e.guardians.parent`: the Parent/Guardian account the demo Owner links
+    to a guardian profile in `e2e/tests/families/guardians.spec.ts` (#34);
+    it sees the linked student until the Owner unlinks it. It is a
+    self-registration the Owner's shared session approves
+    (`createApprovedAccount`, #36: no login, no redemption). The same rules:
+    created by that test in every run, no other test may use the name.
+  - `e2e.prefs.tutor`: the Tutor whose language and theme follow the account
+    across two fresh contexts in `e2e/tests/preferences/preferences.spec.ts`
+    (#36). The same rules: created by that test in every run, no other test
+    may use the name.
+  - `e2e.families.parent`: the Parent/Guardian account in
+    `e2e/tests/families/families.spec.ts` (#172), invited by the shared demo
+    Owner session and redeemed without a login
+    (`support/families.ts` `createGuardianAccountViaPage`); it sees its own
+    family until the Owner removes its profile from it. The same rules:
+    created by that test in every run, no other test may use the name.
+  - `e2e.consent.parent`, `e2e.consent.student`, `e2e.consent.adultparent`
+    and `e2e.consent.adult`: the parents and students of
+    `e2e/tests/families/consent.spec.ts` (#35). The parents and the adult
+    student are self-registrations the Owner's shared session approves
+    (`support/consent.ts` `createApprovedAccount`, no login and no token
+    redemption); the minor's account is invited and linked to the profile
+    with `createStudentLogin(page, {username, displayName, studentId})`
+    (`support/consent.ts`), which returns the invitation link without
+    redeeming it. The same rules: created by that test in every run, no
+    other test may use the names.
+  - `e2e.requests.parent`: the Parent/Guardian who requests a session in
+    the #59 step of `e2e/tests/tutors/qualifications.spec.ts`. It is a
+    self-registration the Owner's shared session approves
+    (`createApprovedAccount`: 1 of the run's registrations, no redemption)
+    and signs in once (1 login). The same rules: created by that test in
+    every run, no other test may use the name. With it the run sends 48
+    login attempts (`LOGIN_ATTEMPTS_PER_RUN`) and 8 registration requests
+    (`REGISTRATIONS_PER_RUN`).
+  - `e2e.inbox.older` and `e2e.inbox.newer`: the two Parent/Guardian
+    registration requests the demo Owner rejects and approves in the
+    approval inbox's detail panel in `e2e/tests/approvals/inbox.spec.ts`
+    (M8-01b). They are sent through the public API and never sign in (0
+    logins, 0 redemptions, 2 registrations). The same rules: created by that
+    test in every run, no other test may use the names. With them the run
+    sends 10 registration requests, the whole `registration.ip` hourly
+    limit (`REGISTRATIONS_PER_RUN`).
+- **Catalog data** (#32): names a spec creates (levels, subjects) carry a
+  unique per-run suffix (for example `E2E Nivel <suffix>`), and specs never
+  rename, reorder or deactivate the seeded levels (Primaria, Secundaria,
+  Preparatoria, Universidad): `e2e/tests/catalog/levels-subjects.spec.ts`
+  expects them first, in that order.
+- **Student data** (#33): students a spec creates carry a unique per-test
+  suffix in their family names (for example `Ñúñez Pérez <suffix>`), and
+  specs search with that suffix, so parallel tests never see each other's
+  students. Guardian profiles a spec creates (#34) and families (#172,
+  `Familia Ñúñez <suffix>`) follow the same rule. The E2E stack also has the
+  #195 demo accounts (`demo.admin`, `demo.coordinator`, `demo.finance`,
+  `demo.tutor`, `demo.student` and `demo.guardian`), the #303 second tutor
+  `demo.tutor2` (display name `Demo Second Tutor`) and the three demo
+  families with their students and guardians. They are **not** E2E fixtures:
+  specs never sign them in, change them, or assert on them or on unfiltered
+  list totals. `demo.owner` remains the only named demo fixture.
+- The E2E stack also has the #299 demo catalog, tutor and schedule data
+  (the `catalog.demo_catalog`, `staff.demo_tutor` and
+  `scheduling.demo_schedule` generators: subjects, the classrooms `Aula 1`,
+  `Aula 2` and `Sala de usos múltiples`, a school year, a holiday,
+  `demo.tutor`'s qualifications and availability, and sessions, a series, a
+  group, offers, approval items and notifications around the run's day).
+  It is **not** an E2E fixture: specs never select a demo subject,
+  classroom, period or closure, `demo.tutor` or a demo session, and never
+  assert on unfiltered totals of subjects, classrooms, sessions, offers,
+  approvals or notifications. The demo data has one holiday within the
+  next 4–6 days, so specs keep scheduling at least 14 days ahead, as all of
+  them do today.
+- The E2E stack also has the #303 demo data (the `staff.demo_tutor2`,
+  `courses.demo_courses` and `scheduling.demo_changes` generators:
+  `demo.tutor2`'s qualifications and availability, a course template and a
+  cohort, a substitution, a cancelled session, a session request, a change
+  request and an availability change request, with their approval items and
+  notifications, all dated `T + 2` to `T + 28`). It is **not** an E2E
+  fixture: specs never select it or `demo.tutor2`, and never assert on
+  unfiltered totals of templates, cohorts, requests, change requests,
+  approvals or notifications. `demo.tutor` has one pending availability
+  change from it, so specs that read `demo.tutor`'s pending changes pick
+  their own (as `availability.spec.ts` does with the newest).
+- The E2E stack also has the #353 demo data (the
+  `scheduling.demo_held_sessions`, `courses.demo_past_cohort`,
+  `academics.demo_notes` and `academics.demo_evaluations` generators: past
+  classes with attendance and approved closeouts, a finished cohort, session
+  notes, evaluation templates and evaluations, with their approval items and
+  notifications). It is **not** an E2E fixture:
+  - specs never select it, and never assert on unfiltered totals of
+    closeouts, notes, templates, evaluations or completion rows;
+  - `demo.tutor`'s demo classes are always more than 7 days old (outside the
+    E2E attendance fixture's slot search), every one is closed out and
+    approved, and none is overdue or waiting on Approvals;
+  - `demo.student` has evaluations and a second cohort, which is `ended`
+    (hidden by the cohort list's default `current` filter), so specs keep
+    opening cohorts by name. Its homework is the #354 data (next bullet).
+- The E2E stack also has the #354 demo data (the
+  `academics.demo_learning_plans`, `academics.demo_homework` and
+  `academics.demo_progress_reports` generators: learning plans, homework,
+  progress reports and a weekly report schedule for `demo.student`, with
+  their approval item and notifications). It is **not** an E2E fixture:
+  - specs never select it, and never assert on unfiltered totals of plans,
+    homework, reports, schedules or open Approvals items;
+  - `demo.student`'s only graded demo homework is in Inglés (Secundaria), so
+    a spec's own Matemáticas grade gives the Matemáticas homework average;
+  - the Owner's Approvals have one open progress report item from it, so
+    specs filter Approvals by type (as `registration.spec.ts` now does).
+- **Never change `demo.owner` in a spec** (its profile, state, roles,
+  password or preferences): every test shares its signed-in session
+  (`storageState`). A test that needs an Owner to act signs `demo.owner` in
+  in its own fresh context and changes only the users it created.
+- **Preferences (#36):** `demo.owner` has stored preferences (`es`,
+  `system`, from the demo generator), so no spec's local language or theme
+  is ever saved onto the shared account, and no spec switches the language
+  or theme while signed in as `demo.owner`. After sign-in the account's
+  values win over `classora.language` and `classora.theme`: a signed-in
+  theme scan uses colour-scheme emulation (`test.use({ colorScheme })` or
+  `page.emulateMedia`), never `classora.theme` (the account's `system`
+  follows it). Local values for a "device" go in the context's
+  `storageState.origins`, not an init script, so a reload keeps them.
+- **`createActiveUser(playwright.request, baseURL, { username, role,
+  password })`** (`e2e/tests/support/users.ts`, #30) creates an active user
+  through the API: the demo Owner invites the user, then a signed-out API
+  context redeems the invitation (no lookup call, #34). For a Tutor or a
+  Parent/Guardian the invitation is sent with the shared demo Owner session
+  (an API context on `storageState`; no login, #36). For a staff role
+  (`administrator`, `academic_coordinator`, `finance_staff`; #170) the demo
+  Owner signs in in the helper's own API context and reauthenticates there
+  (`POST /api/v1/auth/reauthenticate`), so the shared session is never
+  reauthenticated. It costs one redemption call, plus one login for a staff
+  role; count them in the budgets below.
+- **Privacy notice (#174):** every new user must accept the notice before any
+  other page. `e2e/global-setup.ts` accepts it for `demo.owner` through the
+  API, so the shared state and every `demo.owner` login start past it. After
+  a new user signs in (the header shows "Signed in as …"), call
+  `acceptPrivacyNoticeIfShown(page)` (`e2e/tests/support/auth.ts`): it asks
+  `/auth/me`, clicks "I accept" only when the notice is required and waits
+  for the page the user was going to. It costs no login.
 - Only synthetic data is used. Committed E2E credentials are placeholders that
   work only in the local or CI E2E stack.
 
@@ -165,17 +740,67 @@ follows these rules.
   (`e2e/tests/support/catalog.ts`) instead of repeating strings.
 - Use web-first assertions (`await expect(locator).toBeVisible()`). No fixed
   sleeps (`waitForTimeout`).
+- The first visible element after loading a page in a fresh context (a new
+  browser context, a `goto` or a navigation) waits up to
+  `FIRST_RENDER_TIMEOUT_MS` (`e2e/tests/support/timeouts.ts`, 60 s, #252);
+  later assertions on the rendered page keep the default 5 s.
 - No retries: a test that fails once is a failure. `test.only` fails the run in
   CI (`forbidOnly`).
 - The time zone (`America/Mexico_City`) and the locale (`es-MX`) are fixed in
-  `e2e/playwright.config.ts`. M1-15 adds the per-language runs.
+  `e2e/playwright.config.ts`. Each UI language is walked by
+  `e2e/tests/i18n/languages.spec.ts` (Translation guards below); other specs
+  stay `es-MX`.
 - Viewports: desktop Chromium only. A task that names "mobile viewport" adds a
   project.
-- A new route gets an axe scan (next section).
+- A new route gets an axe scan (next section). A spec that switches the
+  colour scheme on an already-rendered page calls `switchColorScheme`
+  (`e2e/tests/support/a11y.ts`) before axe runs: it waits for the `html`
+  class and for the colour transitions to finish (#241).
+- **Signed-in state (#28):** `e2e/global-setup.ts` signs the demo Owner in
+  once through the API and saves Playwright `storageState` to
+  `e2e/.auth/owner.json` (gitignored); every test starts signed in from it.
+  The shared session is never logged out.
+- **Fresh contexts for login and logout:** a test that logs in or out uses
+  `test.use({ storageState: SIGNED_OUT_STATE })`
+  (`e2e/tests/support/auth.ts`). A login sent with the shared cookie would
+  revoke the shared session (#23 rotation), and a logout would end it.
+- **Login budget:** the whole run shares one `login.ip` budget of 50 per 15
+  minutes, and `demo.owner` has 10 failures per 15 minutes (#27). Each
+  `make e2e` starts from an empty volume, so the budget is per run. Keep the
+  count in `LOGIN_ATTEMPTS_PER_RUN` (`e2e/tests/support/auth.ts`) up to date
+  and well under both limits; never add a setting that disables the limits.
+  One-time links (invitations and password resets) share one
+  `token_redemption.ip` budget of 20 lookups and redemptions per 15 minutes
+  (#29, #30); keep `TOKEN_REDEMPTIONS_PER_RUN` up to date too.
+- **Reauthentication dialog:** a test that needs the password dialog signs in
+  with a fresh login in its own fresh context (#29 L1), never with the shared
+  `storageState`: parallel tests share that session and its reauthentication
+  mark.
 - A failing run keeps the trace (`trace.zip`), a screenshot and the Compose
   logs in `e2e/test-results/`. Open a trace from the repository root with
   `corepack pnpm --filter @classora/e2e exec playwright show-trace test-results/<test>/trace.zip`
   (the command runs in `e2e/`, so the path is relative to `e2e/`).
+
+## Translation guards
+
+Every screen, error, notification, label and document is complete in Spanish
+and English (#130). These guards fail CI when it isn't; each failure message
+lists every gap by area, language and code.
+
+| Guard | What it checks | How to fix a failure |
+| --- | --- | --- |
+| Catalog parity (`apps/web/src/i18n/check.test.ts`, `apps/api/tests/unit/test_i18n_catalogs.py`) | es and en have the same namespaces, keys, plural families and placeholders; no repeated key | Add the key to the other language. |
+| The i18n inventory (`packages/api-client/i18n-inventory.json`, `apps/api/tests/unit/test_i18n_inventory.py`, `apps/web/src/i18n/inventory.test.ts`) | Every Problem code, field-error code, notification type, job task and import row code the API can send has an es and en label through the UI's own key builder | Run `make api-client` and commit the inventory, then add the label (`ERROR_CODE_KEYS` in `src/app/errors.ts` and both `errors.json` for a code). A code the field scan can't resolve goes in `DYNAMIC_FIELD_CODE_SITES` (`app/core/i18n_inventory.py`) with the codes it can send. Local-only codes go in `LOCAL_ONLY_CODES`, Pydantic's own codes in `GENERIC_FIELD_CODES`. |
+| Enum classification (`apps/web/src/i18n/enumLabels.test.ts`) | Every enum of `openapi.json` (named schemas and inline component-property enums) is in exactly one of `ENUM_LABELS` (with the UI's key builder) and `UNLABELLED_ENUMS` (with a reason), and every labelled value has an es and en label | Classify the new enum, or add the value's label. |
+| Hard-coded text (`apps/web/src/i18n/literals.test.ts`) | No JSX text, no literal `aria-label`/`title`/`placeholder`/`alt`/`label`-type attribute, no literal `announce`/`setAnnouncement`/`useDocumentTitle`/`toast*` text in production TS/TSX | Use `t()`. A justified exception goes in `LITERAL_ALLOWLIST` (`src/i18n/literals.ts`) with its reason; the list starts empty. |
+| Formatting (`apps/web/eslint.config.js` time guard) | No `toLocaleString`/`toLocaleDateString`/`toLocaleTimeString` | Use `src/lib/money.ts` or `src/lib/time.ts`. |
+| Server key usage (`apps/api/tests/unit/test_i18n_catalogs.py`) | Every literal key in a template or a `t()`/`message()` call exists in es and en; every computed key site is pinned in `DYNAMIC_KEY_SITES` with the keys it can build | Add the key, or pin the new site with the enum or constant its values come from. |
+| Each language end to end (`e2e/tests/i18n/languages.spec.ts`) | Every Owner nav page, one student and one family detail page, and the login page, in es and en: `html[lang]`, the `h1`, the nav labels, no `{{` and no raw key, no `[i18n] missing key` log (the dev-only `missingKeyHandler`, `src/i18n/index.ts`) | Add the missing key. English is shown by rewriting only `preferences.language` in that context's `GET /api/v1/auth/me` (0 logins; a preferences `PATCH` fails the test). |
+
+Pinned-list sweep: a new Problem code, field code, notification type,
+Procrastinate task, import row code or API enum (or enum value) gets es and
+en labels or an explicit classification. Run `make api-client` and
+`pnpm vitest run --project unit --maxWorkers=2 src/i18n src/app/errors.test.ts`.
 
 ## Accessibility tests
 
@@ -188,12 +813,27 @@ follows these rules.
   `@axe-core/playwright`). Selecting the tags also runs rules axe leaves off
   by default, such as `target-size` (WCAG 2.2). A scan passes only with zero
   violations.
+- Every E2E scan goes through `e2e/tests/support/a11y.ts`:
+  `expectNoAxeViolations(page, { include?, exclude?, label? })` (or
+  `axeViolations` for a spec that collects the list itself). No spec builds
+  its own `AxeBuilder` or `WCAG_TAGS` (#642).
+- Scan the resting state. The helper first waits for every finite CSS
+  transition and animation to finish (a `Button` fading out of
+  `disabled:opacity-50`, a dialog animating in), so axe never measures a
+  blended colour mid-fade. Infinite animations (spinners) are ignored, and
+  nothing is disabled (no `reducedMotion`): the page is scanned as users see
+  it. The caller still waits for loaded content (no skeleton) before it
+  scans.
 - No rule is disabled globally.
 - A per-test exclusion needs a reason comment in the test and a line in the
   list below (story-level exceptions are listed in `_docs/design-system.md`).
 - The manual keyboard and screen-reader audit belongs to M10-03.
 
 E2E axe exceptions: none.
+
+## Telemetry tests
+
+Telemetry is off in every test run unless a test turns it on (#612): `tests/unit/test_telemetry.py` proves the off path creates nothing (in a fresh interpreter) and checks scrubbing, job spans and an unreachable collector; `tests/integration/test_telemetry_export.py` plants `ZZ-PII-MARKER-7f3a` in a query string, header, body and unique-violation message and asserts it reaches no exported span, log, metric or stdout line. Both use in-memory exporters (`app.core.telemetry_sdk.TestExporters`) and shut telemetry down after each test.
 
 ## Quality practice
 
@@ -203,7 +843,7 @@ Spec §17 definition of done, mapped to the tests a change needs:
 
 | Change | Tests it adds |
 |---|---|
-| Endpoint | Integration tests for success and Problem Details errors; one allowed and one denied test per role rule; an IDOR test for record access; a matrix entry (from M2-03); `make check-api-client` in sync. |
+| Endpoint | Integration tests for success and Problem Details errors; one allowed and one denied test per role rule; an IDOR test for record access; a matrix entry in `tests/authz/matrix.toml`; `make check-api-client` in sync. |
 | Financial change | The invariant tests above, including retry and concurrency cases, with exact `Decimal` assertions. |
 | UI screen | Unit tests for its logic; stories for loading, empty and error states in light and dark (axe); es and en text; an E2E test when it completes a cross-application flow, with an axe scan of the route. |
 | Migration | `make test-migrations` passes (upgrade, single head, round trip, no drift); the change is expand-and-contract compatible with the previous image. |

@@ -1,0 +1,504 @@
+# ADR-0017: Payroll and expenses
+
+## Status
+
+Proposed (orchestrator-recommended, pending owner review)
+
+## Date
+
+2026-10-31
+
+## Sign-off
+
+No owner sign-off yet. Decision items E1–E18 are **orchestrator-recommended** (option (a) for each), taken on 2026-10-31 (GitHub issue #104, M7-01) so that M7 can proceed. The owner has **not reviewed them**, so this ADR stays Proposed. M7 issues build on these decisions in the meantime. The owner's review result, and any amendment, will be recorded in this section.
+
+Items flagged for the owner's review:
+
+- **(product):** E1, E2, E3, E4, E5, E6, E7, E8, E9 (the negative-total rule only), E10, E12, E14 (the non-fiscal wording), E15 and E18.
+- **E4 defaults:** the three seeded defaults (late cancellation `none`, no-show 100%, makeup 100%). With `none`, a tutor earns nothing for a late-cancelled slot.
+- **E14:** whether a payslip that is not a tax document (no CFDI de nómina) is acceptable for the center's legal payroll process, which stays outside the platform.
+- **(spec reading):** E3, E4, E5, E10, E11 and E16, recorded under Context.
+
+## Context
+
+Records decision items **E1–E18** of issue #104, the M7 decision gate. The schema that implements this ADR is in [`../data-model.md`](../data-model.md) §11 onward. Architecture context is in [`../architecture.md`](../architecture.md) §4.1, §5, §10.6 and §12.
+
+- Spec [`../spec.md`](../spec.md) §1: MXN only; staff record payments made outside the platform; in-app notifications only; no CFDI or SAT integration.
+- Spec §2: Academic Coordinators verify teaching hours; Finance Staff prepare payroll and track payments and expenses; sensitive actions need password reauthentication; tutors see only their own compensation details.
+- Spec §3: approved closeouts and re-approval; corrections after approval.
+- Spec §7: the compensation models, tutor-specific rates with history, individual payroll frequencies, configurable late-cancellation, no-show and makeup payments, the workflow, proration, bonuses and deductions, the lock, logged payments, the tutor portal.
+- Spec §8: expense records, categories, recurring templates, vendors, cash and accrual reporting, payables apart from receivables, direct tutor cost by class type, and no shared-overhead allocation.
+- Spec §9: audit trail, corrections through adjustments and reversals. Spec §10: PostgreSQL transactions, idempotency keys, Procrastinate, no Redis or Celery.
+- Spec §16: decimal-safe money, local dates, payroll locks, immutable posted activity, database-enforced invariants, indexed access paths.
+- Spec §17: `data-model.md` is the schema review required before financial workflows. Spec §18 item 1 leaves table names, cardinalities and finance ledger conventions open; this ADR resolves the payroll and expense part, together with `data-model.md`.
+- Spec §15 W3 (session closeout to payroll, in particular W3.2, W3.4 and W3.5), W4 (the billing conventions this ADR mirrors) and W7 (background jobs: repeatable without duplicates, tested for retries and concurrency).
+- **File deferral:** the 2026-10-21 owner decision (no uploads in this version, #68–#75 deferred) applies to #112 and #115. A reference and a note replace the proof or receipt file.
+- **Spec readings, without changing the spec:**
+  - **E3:** a per-course amount is agreed once, so its rate version is the one in effect on the cohort's first session's local date, not on each session's date. W3.4 stays literal for every other model.
+  - **E4:** a no-show is a current approval revision with every participant `absent`, or a future cancellation classified `no_show`. No M4 path produces that classification today (ADR-0006 Q8).
+  - **E5:** spec §7's configurable makeup payment needs to know which session is a makeup, so scheduling gains a link that billing ignores.
+  - **E10:** "Academic Coordinators verify hours" is the closeout approval (`teaching_hours.approve`, #78). There is no second verification step.
+  - **E11:** #111's "each adjustment references the original line" can't hold for a `late_approval`, which has no line; it references the session and the origin period.
+  - **E16:** spec §8's "paid/unpaid status" is derived, never stored.
+- **Builds on:**
+  - [ADR-0002](0002-module-boundaries-and-reporting.md): the `payroll` and `finance` modules, cross-module calls through `service.py`, and read-only reporting in `reporting`.
+  - [ADR-0003](0003-database-connection-topology.md): Procrastinate, after-commit enqueue, sweepers and `queueing_lock`.
+  - [ADR-0004](0004-money-time-and-date-representation.md): `NUMERIC(14,2)`, half-up per line, `DATE` for calendar values, the center time zone.
+  - [ADR-0005](0005-scheduling-invariants-overrides-and-recurrence.md) D6: `skipped_closure` sessions and makeups.
+  - [ADR-0006](0006-financial-ledger-idempotency-and-numbering.md): E3 (cancellation outcomes), E5 (ledger shape and triggers), E6 (idempotency keys), E7 (recognition), E8 (permissions) and E13 (the `P` number series).
+  - [ADR-0007](0007-authentication-sessions-recovery-and-delegation.md): D4 (`payroll.finalize` is delegable) and D10 (reauthentication).
+  - [ADR-0015](0015-server-side-i18n.md): server-rendered, language-neutral documents.
+- **Code it builds on** (merged): `session_closeouts.current_approval_id` and `session_closeout_approvals` (#78), on-behalf closeouts (#301), accepted substitutes (#55), change-request outcomes read through `get_change_request_outcome` and `cancellation_classification` (#62, #99), the seams `on_closeout_approved`, `on_session_cancelled` and `on_session_rescheduled`, `payment_methods` (#90), `number_series` (#98) and `Money.prorate` (#87).
+
+## Decision
+
+No new runtime dependency is needed; WeasyPrint, Jinja2 and `number_series` already exist. No Redis, Celery, RDS, uploads or file storage.
+
+Each (a) is the additive, reversible choice: money errors go to the side a later positive adjustment can fix, and every configurable rule stays effective-dated.
+
+### Compensation (E1 (a), spec §7, #105, product)
+
+- Two effective-dated, per-tutor tables in the new `payroll` module:
+  - **`tutor_pay_terms`** `(tutor_user_id, effective_from DATE, pay_frequency NULL, salary_amount NULL)`, `UNIQUE (tutor_user_id, effective_from)`, holds what applies to the tutor as a whole. `salary_amount` is per full pay period of that row's frequency, so salary and frequency can't disagree. `pay_frequency NULL` means "not on payroll from this date" (the tutor has left).
+  - **`compensation_rates`** `(tutor_user_id, class_kind, effective_from DATE, rate_model NULL, rate NUMERIC(14,4) NULL)`, `UNIQUE (tutor_user_id, class_kind, effective_from)`. That key is the no-overlap constraint #105 asks for, by the ADR-0006 E9 pattern: each version runs until the next one's `effective_from`. `class_kind` ∈ `individual`, `group`, `course` (the `class_sessions.kind` values). `rate_model` ∈ `per_hour`, `per_session`, `per_course`, with `per_course` only for `course`. `rate_model` and `rate` are both `NULL` to mean "no rate from this date".
+- **The five spec models are combinations:** rates only → hourly, per-session or per-course; `salary_amount` only → fixed salary; both → salary plus extras.
+- **"Additional paid hours or sessions"** is work in a class kind that has a rate. A salaried tutor's work in a class kind with no rate is **covered by salary**: it gets a `0.00` line, for traceability. There is no quota.
+- **No center-wide default rates** and no rate per subject or level: the spec says tutor-specific.
+- **Versions** are immutable once referenced by a line of a finalized period (guarded, like `price_versions`); a change is a new version.
+
+#### Implementation notes (#105)
+
+Recommended options taken while grooming and building #105. They are orchestrator-recommended and pending owner review, like the rest of this ADR.
+
+- **Audit masks (#105 E2):** `rate` and `salary_amount` are masked in the audit log, for every reader, because Administrators hold `audit.view` and this ADR keeps pay from them. Rate history stays readable in the version rows.
+- **Finance tutor list (#105 E3):** `GET /api/v1/payroll/tutors` under `payroll.view`, with no contact data, because Finance Staff don't hold `tutor.view`.
+- **Dates and deletion (#105 E4):** any `effective_from` is accepted, past or future. There is no edit route. Any version can be deleted until a finalized line uses it. Finalized lines keep their snapshots, so a back-dated version reaches only open periods at the next `recalculate` and later `late_approval` amounts (E11).
+- **Own pay (#105 E5):** a `payroll.manage` holder can't write their own terms or rates (`403 payroll_own_compensation`). The Owner is excepted, as in E10.
+- **Read surface (#105 E6):** one compensation read with a record policy: a `payroll.view` holder or the tutor themselves. Everyone else gets the same `404`. `payroll.finalize` gives no read here.
+- **Frequency refusal (#105 E7):** #106 owns `effective_from_inside_generated_period`, on both the terms insert and delete. A stop isn't a frequency change.
+
+#### Implementation notes (#106)
+
+Recommended options taken while grooming and building #106. They are orchestrator-recommended and pending owner review, like the rest of this ADR. E1-E10 here are #106's own items.
+
+- **Split (#106 E1):** #106 is API only; the settings page stays in #425.
+- **Periods are never re-dated (#106 E2):** a stub exists only when the stop or change is recorded before the period is generated. Otherwise the period keeps its natural end and the days after a stop carry no terms, so #108 pays no salary for them. The money is the same, but a leaver's last period can't be prepared until its natural end.
+- **Frequency rule (#106 E3):** one rule on the terms as they would be after a write: on every date inside a generated period, the frequency is `NULL` or the period's. Otherwise `422 effective_from_inside_generated_period`.
+- **Terms before the first period (#106 E4), narrowing E2 for one case:** `422 effective_from_before_first_period` when a write would give a frequency to a date on or after the floor and before the first period, because no period can ever cover it. An approved closeout dated there can't be fixed by any terms change, so #107 gives it the reason `before_first_period`: it stays on the staff list, **doesn't block `prepare`**, and Finance pays it with a one-time item (E8). Every other `no_pay_terms` stays blocking, and each has a fix.
+- **The returning period (#106 E5):** a period's end comes from its first covered date, so a gap opens no empty periods. `natural_days` is defined by date through `natural_bounds(frequency, day, anchor)`.
+- **Settings once periods exist (#106 E6):** the floor locks once any period exists and the anchor once a biweekly one does (`409`). The basis stays editable. A wrong floor can't be fixed in the app after the job has run.
+- **No job on `PATCH` (#106 E7):** the daily 07:50 UTC run is the only trigger, which leaves staff until then to correct a wrong floor.
+- **Archived tutors (#106 E8):** periods follow terms only. Archiving doesn't stop them; a stop row does. A salaried leaver with no stop row keeps earning salary lines until Finance reviews the period.
+- **No period read yet (#106 E9):** `GET /payroll/settings` returns `start_locked` and `anchor_locked`; #110 owns the period list.
+- **Serialization (#106 E10):** one advisory lock, taken first by the job's per-tutor unit and by the terms insert and delete.
+- **`previous_ends_on`:** PostgreSQL accepts the stored generated column in the composite foreign key, so the plain-column fallback of E6 isn't used.
+
+#### Implementation notes (#107)
+
+Recommended options taken while grooming and building #107 and its split issues. They are orchestrator-recommended and pending owner review, like the rest of this ADR. Plain E numbers here are #107's own items. #107 adds the rest of this section.
+
+- **Pay rule dates (#107 E9):** a new version of a session pay rule takes the center's today or later, and later than every version of its event (`422 invalid_effective_from`). No rule can reach a prepared or finalized period, because `prepare` needs `ends_on` before today, so a rule change never needs an adjustment. Past work can't be repriced by a rule; use a one-time item.
+- **Percent cap (#441):** `percent` runs from 0 to 1000, in the column's CHECK and the body. Values above 100 stay allowed. A line beyond the money range refuses the run (`409 payroll_amount_out_of_range`).
+- **Split (#107 E1):** #441 pay rules API → #107 lines and calculation → #442 per-course pay → #443 unresolved work → #444 web → #108.
+- **Percent of a line (#107 E2), refining E4's wording:** the base is the exact expression, never a rounded line: `Rate.to_money(numerator, denominator, percent=)` rounds once. `175.0000 × 50/60 × 15%` is `21.88`, not the `21.87` of a rounded base.
+- **A makeup that is also a no-show (#107 E3):** `no_show` wins. With the seeds both are 100%; it matters only if the owner lowers `no_show`.
+- **The makeup chain (#107 E4):** pay is per session actually worked. Calculation never walks the chain, reads the target or re-checks the deadline, so a late-cancelled session under a paying rule and its makeup both pay the tutor: two events.
+- **Salary coverage (#107 E5):** coverage beats every event: a `0.00` `session` line, with no rule. A cancellation gets no line.
+- **One basis (#107 E6):** every session-sourced path, `fixed` included, resolves terms, then rate, then coverage on the service date. A `fixed` rule pays nothing with no terms or no rate.
+- **`recalculate` (#107 E7):** open periods only (`409 payroll_period_not_open`), also before the period ends. A read-only `compute_lines` returns frozen drafts, for #110's drift check. Only `REBUILT_KINDS` are deleted. Line ids change on every run, so nothing references a line of an open period.
+- **Deleting a rate an open line uses (#107 E8), correcting data-model §11.6:** `recalculate` would pick the same version, so the delete removes the lines in open periods itself, periods locked first. A prepared line refuses with `23001`, a finalized one with `42501`: the same `409`. Upcoming pay rules follow suit.
+- **Running and reading (#107 E10):** `payroll.prepare` runs, `payroll.view` reads, Owner and Finance Staff. A named event with ids and a count, no amounts. A delegated Administrator gets `403` until #110.
+- **Per-course (#107 E11), refining E3's formula (`Money.prorate` rounds twice), unresolved items (#107 E12, E13), refining E2:** delivered by #442 and #443.
+- **Unresolved work (#443; #107 E6, E12, E13; #106 E4), pending owner review:** an item is an approved closeout or a family's `late` or `no_show` cancellation under a paying rule, on or after the floor, with no session-sourced line and no basis, read by the same code as a line. Reasons, first match: `before_first_period`, never blocking; `no_pay_terms`; `no_rate`. A blocking item stops `prepare` of a period when it is dated on or before that period's `ends_on`, whatever its own period's status. #110 owns the `409`. The list is a prompt, not a ledger: nothing marks an item resolved, so `before_first_period` work paid by a one-time item stays listed.
+- **A finalized cancellation (#443 D8, QA D1, orchestrator ruling, pending owner review, #111 to build):** E11 could pay only closeouts, so a cancellation in a finalized period that gained a basis would leave the list with nothing to pay it. #111 pays it by `late_approval` with `source_key` `cancellation:<class_session_id>` and no `approval_id`. P8 is unchanged.
+- **`blocking_work` and #110's order (#443 D9, QA D2, orchestrator ruling, pending owner review):** `prepare` recalculates, then calls `blocking_work`, because a line a recalculation drops isn't an item until then. `finalize` calls `blocking_work` again: work approved after `prepare` with no basis has no draft and no line, so the drift comparison passes it.
+- **Per-course anchors (#442, orchestrator-recommended, pending owner review), refining #107 E11:** a finalized line sets `k` and `cum` for the sessions **after it**, not for every session. A cohort can hold approved sessions earlier than a finalized line that aren't in a finalized period: work before the tutor's first period, or an earlier period still open when a later one is finalized. Their share is already in that line's `k`, so anchoring them on the latest line would count them twice. When every finalized line comes before the walked sessions, this is E11's rule exactly. No rule yet makes a tutor's periods finalize oldest first; #110 will require it, because an out-of-order finalize still pays wrongly when `N` changes afterwards, in both directions: `N` growing underpays (833.33 on 1000.00), `N` shrinking overpays (1166.67 on 1000.00). Oldest-first finalize covers both.
+- **Per-course running maximum (#442 N1, orchestrator decision, pending owner review), refining #107 E11 and #442 C3:** `cum` at a finalized line is the highest `rate.to_money(k, N)` of the finalized lines so far, not that line's own value. When `N` grows, a `0.00` floored line stores less than was already paid, and its own value would pay that amount again (1000.00 over six sessions paid 1166.67). The maximum covers finalized lines only: `max(cum, line)` would keep the amount of sessions walked before the line, and underpay what comes after it.
+- **A no-show below 100% on a per-course session (#442 D8, orchestrator decision, pending owner review), refining #442 D2:** the amount is capped at the session's line, `min(line, max(0.00, to_money(k, N, percent=p) − to_money(k − 1, N, percent=p)))`. A no-show never pays more than teaching that session, so a share floored at `0.00` pays `0.00` (without the cap, 1125.00 on 1000.00). A percent above 100 and `fixed` stay as D2 says, uncapped: the Owner set them on purpose, they aren't shares of the course, and they can take the course's total above the rate.
+
+### Paid work (E2 (a), spec §3, §7, W3, ISSUE-F2, #107, #111, #117, product)
+
+- **Source of hours:** only the **current approval revision** (`session_closeouts.current_approval_id`, #78). A closeout without one is never paid. A closeout back in review keeps its revision in force, as #78 and #94 already read it. There is no `teaching_hours` table: the spec's candidate "TeachingHours" entity **is** `session_closeout_approvals`.
+- **Who is paid:** the approval's `tutor_user_id`, which is the session's current tutor at closeout (an accepted substitute, #55). A closeout submitted on behalf stays the tutor's (#301).
+- **Service date:** the center-local date of the approval's `session_starts_at`. It decides both the rate in effect (W3.4) and the period. A started session can't move, so it is stable.
+- **Amounts, rounded half-up once per line (ADR-0004):** `per_hour` = `rate × approved_minutes / 60`; `per_session` = `rate`, whatever the minutes or the number of students; `per_course` = E3. Families stay billed on `scheduled_minutes` (ISSUE-F2).
+- **Go-live floor:** `payroll_settings.payroll_starts_on DATE NULL`. `NULL` means payroll is off and no period is opened; afterwards work dated before the floor is never paid. It mirrors `billing_starts_on`, so going live never pays DEV history or demo data.
+- **Unresolved work:** an approved closeout dated on or after the floor whose tutor has no terms or no rate gets no line and appears on a staff list with reason `no_pay_terms` or `no_rate`. Nothing is paid at zero by accident. Open items block `prepare` for that tutor (`409 payroll_unresolved_work`).
+
+### Per-course pay (E3 (a), spec §7, W3.4, #107, #117, spec reading, product)
+
+- A `per_course` rate is one amount for teaching a whole cohort, earned session by session with cumulative rounding, the same shape as ADR-0006 E7 for course fees.
+- For a tutor with `k` approved sessions in a cohort of `N` sessions, the cumulative earned amount is `rate × k / N` (`Money.prorate`). Each line takes "cumulative now − cumulative before", floored at `0.00`. `N` counts the cohort's sessions that aren't cancelled or skipped at calculation time.
+- **Spec reading:** the rate version is the one in effect on the **cohort's first session's local date**, not each session's date. W3.4 is otherwise literal for every other model.
+- A substitute with their own `per_course` rate earns their share by the same formula. A substitute with a `per_session` or `per_hour` rate on `course` is paid by that rate.
+
+### Pay events (E4 (a), spec §7, M4-17 outcomes, #107, product, spec reading)
+
+A payroll-owned, center-wide table `session_pay_rules`, with one row per `(event, effective_from DATE)`, append-only with an upcoming version deletable (the `cancellation_billing_rules` shape). The rule in effect on the **service date** applies. Each row has `mode` ∈ `none`, `percent`, `fixed`, with `percent` or `amount`.
+
+| Event | Detected from | Base for `percent` | Seeded default |
+|---|---|---|---|
+| `late_cancellation` | `cancelled` session, `initiated_by = family`, classification `late` | the ordinary line on `scheduled_minutes` | `none` |
+| `no_show` | current revision with every participant `absent` (spec reading), or a future cancellation classified `no_show` | the ordinary line on `approved_minutes` | `percent` 100 |
+| `makeup` | the session has `makeup_of_session_id` (E5) | the ordinary line | `percent` 100 |
+
+- **Defaults:** approved minutes stay payable as W3.4 says (no-show and makeup at 100%). Late cancellation pays nothing until the owner sets a rule, because no work happened; a positive adjustment can fix an underpayment, while an overpayment on a locked period is harder to recover. **The owner should review these three defaults.**
+- **Never paid:** on-time and excused cancellations, center cancellations, tutor-initiated cancellations, and `skipped_closure`.
+- **Reschedules have no pay effect:** the spec lists none. `on_session_rescheduled` stays a no-op and #107 corrects its docstring.
+- A partly absent group is an ordinary session.
+- The outcomes come from what the code exposes: `get_change_request_outcome` and `cancellation_classification`. Requests exist only for confirmed, not-started individual sessions, and a center cancellation is `excused`.
+
+### Makeup link (E5 (a), spec §7, ADR-0006 E3, #423 M7-04a, #107, product, spec reading)
+
+- A nullable self-reference `class_sessions.makeup_of_session_id` (`ON DELETE RESTRICT`), set by staff with `schedule.manage` when creating a one-off individual session.
+- The target must be `cancelled` with `makeup_allowed`, the new session must start by `makeup_until`, and a partial unique index allows one makeup per cancelled session.
+- `NULL` keeps every current behavior. **Billing doesn't read it**, so E3 of ADR-0006 stands.
+- **Implementation note (#423, orchestrator-recommended, pending owner review):** refines this decision where it is silent; `_docs/data-model.md` §11.13 is the current rule.
+  - **Targets (#423 E2, E3):** individual targets only, one-off or occurrence, with the same student and subject; the tutor is free. A makeup for a group or course student stays an ordinary session, without makeup pay.
+  - **Deadline (#423 E4):** an approved request's stored date; otherwise the target's start + the window of the policy at `cancelled_at`. Inclusive, with no lower bound.
+  - **One live makeup (#423 E5):** the index adds `state <> 'cancelled'`, so a cancelled makeup keeps its link and frees its target.
+  - **Later moves (#423 E6):** the rules run at create only; a later move keeps the link.
+  - **Reads (#423 E7):** `ClassSessionDetail` gains `makeup_of_session_id` and a `makeup` block; there is no list route.
+  - **Existing rows (#423 E8):** no backfill; linking is forward only.
+
+### Period calendars (E6 (a), spec §7, ADR-0004, #106, product)
+
+- Periods are per tutor, inclusive `DATE` ranges `starts_on … ends_on`, on fixed calendars so tutors of one frequency share boundaries:
+  - **weekly:** Monday to Sunday;
+  - **biweekly:** 14 days from `payroll_settings.biweekly_anchor_on`, a Monday (default `2026-01-05`);
+  - **monthly:** the calendar month.
+- A period runs from the day after the previous one (or the first terms date on or after the floor) to the natural end of its calendar, or to the day before the terms stop or the frequency changes. So a **stub period** is possible. A frequency change must be dated after every generated period (`422 effective_from_inside_generated_period`).
+- **No overlaps:** `EXCLUDE USING gist (tutor_user_id WITH =, daterange(starts_on, ends_on, '[]') WITH &&)`.
+- **No gaps:** a generated `previous_ends_on` (`starts_on − 1`, `NULL` for the tutor's first period) with a composite foreign key onto `UNIQUE (tutor_user_id, ends_on)`, plus one partial unique "first period" per tutor. #106 proves it in its migration test; if PostgreSQL refuses the generated foreign key column, it uses a plain column with a `CHECK`, and the guarantee stays database-enforced.
+- **Job:** `payroll:open_periods`, daily at 07:50 UTC with a `queueing_lock`, on the natural key `(tutor_user_id, starts_on)`. It opens each period up to the one containing the center's today, with catch-up, and one more when an adjustment needs an open period (E11).
+
+### Salary and proration (E7 (a), spec §7, #108, product)
+
+- A full period with one terms version pays exactly `salary_amount`.
+- Otherwise each terms piece inside the period pays `salary_amount × paid_days / natural_days` (`Money.prorate`, one `salary` line per piece). `natural_days` belongs to the natural calendar period, not a stub.
+- `payroll_settings.salary_proration_basis` is `calendar_days` (default) or `weekdays` (Monday to Friday), and each line stores its numerator, denominator and basis. A change of basis affects open periods only.
+- **Finance review** is the line display before `prepare`; a different amount is a one-time pay item (E8), never an edited line.
+- Closures and absences don't reduce salary.
+
+#### Implementation notes (#108)
+
+Recommended options taken while grooming and building #108. They are orchestrator-recommended and pending owner review, like the rest of this ADR. E numbers here are #108's own items.
+
+- **One line per piece (#108 E1), correcting data-model §11.6:** the key `(payroll_period_id, tutor_pay_terms_id)` can't hold, because pieces also split at natural boundaries (#106 E5) and one terms version can cover two natural periods inside a long returning period. A line has `salary_starts_on`, `salary_ends_on` and a `salary_amount` snapshot, and the key is `(payroll_period_id, salary_starts_on) WHERE kind = 'salary'`.
+- **A piece with no paid days (#108 E2):** on `weekdays`, a Saturday and Sunday piece is a `0.00` line, `0/5`, so Finance sees why the salary is zero.
+- **Two versions with the same salary (#108 E3):** each piece rounds once, so they can differ from the whole by a centavo per version boundary (`100.01` biweekly with a version on day 8 pays `100.02`). "Exactly `salary_amount`" holds for one terms version over a natural period.
+- **No web issue (#108 E4):** the basis is already edited in Payroll → Settings (#425). Until #110's web half shows lines, Finance's review reads `GET /api/v1/payroll/periods/{period_id}/lines`. #110's web half carries the salary fields.
+- **Downgrade (#108 E5):** the downgrade of `0077` removes `salary` rows, with the finalized-line trigger disabled, because the old CHECKs can't hold them. Nothing is deployed until M9.
+- **Deleting a terms version (#108 F), mirroring #107 E8:** the advisory lock, the tutor's open periods, the version, the #106 refusals, its lines in those periods, the version. A prepared line refuses with `23001`, a finalized one with `42501`, both `409 pay_terms_in_use`.
+
+### Bonuses and deductions (E8 (a), spec §7, #109, product)
+
+- `pay_item_types` (staff-defined name, `direction` `bonus` or `deduction`, `is_active`), and `pay_items` (tutor, type, description, positive `amount`, `recurrence` `one_time` or `recurring`, `effective_from`, `effective_to NULL`).
+- **Recurring:** the full amount in every period overlapping the range, with no proration. **One-time:** in the period containing `effective_from`, or the tutor's next open period if that one is finalized.
+- **Natural key:** `(pay_item_id, payroll_period_id)` on the lines. Each is a separate line; deductions are negative lines.
+- **Fixed amounts only, no percentages:** there is no tax or social-security calculation (spec, #109 out of scope). An item applied to a finalized line can only have its `effective_to` set.
+
+#### Implementation notes (#109)
+
+Recommended options taken while grooming and building #109. They are orchestrator-recommended and pending owner review, like the rest of this ADR. E numbers here are #109's own items. E3 refines E8's wording; the rest settle what E8 leaves silent.
+
+- **Split (#109 E1):** #109 is the API, M7-06b the pages.
+- **One total (#109 E2):** `recalculate` returns `line_count` and `total` of all the period's lines after the run, as `GET …/lines` does, and #110 stores that figure. Both routes may show a negative total; only `prepare` refuses one (E9).
+- **One-time placement (#109 E3, refining "the tutor's next open period"):** an item with a finalized line is done. Otherwise its period is the tutor's earliest not-finalized period with `ends_on >= effective_from`. One answer in every state: if that period is `prepared`, the item has no line there, so finalize answers `409 payroll_period_stale` and the period goes back (E10). Nothing moves to a later month by itself. A leaver with no later period keeps the item waiting (`placed_period: null`), and a `manual` adjustment pays it after the item is deleted (M7-08c E5, under E11).
+- **Work before the first period (#109 E4, shared with #111):** a fixed amount typed by Finance, with no formula in the code and no link to the session. The rule is in data-model §13.2: for `per_course`, `rate.to_money(k0, N1)`. #111 must not pay this work.
+- **Double submit (#109 E5):** an item has no natural key, so its `POST` requires an `Idempotency-Key`. A type's name is one.
+- **Reauthentication (#109 E6):** none on items, the rate precedent. The controls are the own-pay refusal, the masked audit trail, the key, a line per item, and `finalize` by a second person with reauthentication (E10). #105 O1 stays open: an Administrator who self-assigns `finance_staff` can now also write items.
+- **Audit masks (#109 E7):** `amount` and `description`, because free text can state an amount or a personal reason.
+- **Types (#109 E8):** `direction` can't change, no delete route, deactivation refused while a recurring item runs, none seeded.
+- **Changing an item (#109 E9):** `PATCH` sets `effective_to` only; otherwise a delete and a new item. A recurring item never reaches a finalized period, so a back-dated start pays open periods only, and the difference is a one-time item.
+- **A retired type doesn't pay again (#109 QA O3, ruled by the orchestrator):** a `PATCH` that reopens an item on an inactive type or moves its end later is `409 pay_item_type_inactive`, the reasoning E8 gives for refusing deactivation. Ending or shortening passes.
+- **"Apply automatically" (spec §7):** at every `recalculate`, including the one `prepare` runs, with no job and no hook.
+- **`amount_sign` replaces `amount_non_negative`:** the old CHECK refused every deduction. The item FK on a line is composite (P12), tightening data-model §11.6's plain FK.
+
+### Lines and calculation (E9 (a), spec §7, §16, ADR-0004, #107, #110; product for the negative-total rule only)
+
+- **One `payroll_lines` row per source:** a session, a pay event, a salary piece, a pay item or an adjustment. A rate change mid-period therefore splits naturally by service date, each line references its session, and an adjustment can reference the exact line. Each line snapshots `service_date`, `class_kind`, `minutes`, `rate_model`, `rate`, the rate version and the rule version. The period total is the sum of rounded lines (ADR-0004).
+- **State-derived calculation:** `recalculate(period)` under the period row lock deletes the open period's lines and rebuilds them from committed state, so it is repeatable. It runs on demand and at `prepare`. **No hook posts pay:** `on_closeout_approved`, `on_session_cancelled` and `on_session_rescheduled` stay free of pay steps, and #107 updates their docstrings, which still promise one. This is the #99 Q1 reasoning: a payroll failure never rolls back a closeout or a cancellation.
+- **Audit:** lines are working data until finalized, so they aren't `Audited`; named audit events on the period (`payroll.period_prepared`, `_returned`, `_finalized`) carry the totals, the #78 precedent. Rates, terms, rules, items, adjustments and payments are audited.
+- **Negative total (product):** `prepare` refuses a period whose total is below `0.00` (`409 payroll_negative_total`); Finance reduces the deduction or moves it to a later period. ~~No carry-forward.~~ Amended by M7-08c E3 (orchestrator-recommended, pending owner review): an adjustment can't be reduced, so a negative total that only an adjustment caused is moved forward by a `carry_forward` pair (see "Implementation notes (M7-08c)" under E11). Nothing carries automatically.
+
+### Workflow and lock (E10 (a), spec §7, W3.5, ISSUE-F7, #110, product, spec reading)
+
+- **States** are `open → prepared → finalized`, plus a return `prepared → open` with a reason, so the approver can send a period back. #110's forward states are unchanged.
+- **"Coordinators verify hours" is the closeout approval** (`teaching_hours.approve`, #78). There is no second verification step (spec reading).
+- **`prepare`** (`payroll.prepare`): only after `ends_on` is before the center's today; recalculates, then is refused with unresolved work (E2, #443 D9) or a negative total (E9). Closeouts still unapproved are shown as a warning, not a block; they arrive later as `late_approval` adjustments (E11).
+- **`finalize`** (`payroll.finalize`, reauthentication, `Idempotency-Key`): recomputes the lines and compares them with the prepared ones. Any drift is `409 payroll_period_stale`, and the period must be returned and prepared again. It then calls `blocking_work` again (`409 payroll_unresolved_work`): work approved after `prepare` with no basis has no draft, so drift can't see it. Then it stores `total_amount`, `finalized_at` and `finalized_by_user_id`.
+- **Duty separation:** the preparer can't finalize, and nobody can finalize their own pay (`403 payroll_self_finalize`), unless they hold the Owner role (the `closeout_self_review` precedent). A delegated Administrator needs no `payroll.view` to review: holding `payroll.finalize` reads the period.
+- **Inbox:** a prepared period creates an approval request of type `payroll.period`, decided only on its page (`409 payroll_review_route_required` from the generic route, the #60 and #62 precedent).
+- **Lock:** a database trigger on `payroll_lines` raises 42501 on any `INSERT`, `UPDATE` or `DELETE` whose period is `finalized`, and refuses `TRUNCATE`; `payroll_periods` refuses any change to a finalized row. Line writes are serialized by the period row lock.
+- **Notifications:** in-app only, `payroll.period_finalized` and `payroll.payment_recorded` to the tutor, with no amounts in `params`.
+
+#### Implementation notes (#110)
+
+Recommended options E1 to E11 taken while grooming and building #110. They are orchestrator-recommended and pending owner review, not owner sign-off.
+
+- **Split (#110 E1):** #110 is the API, and M7-07b the pages.
+- **Oldest first (#110 E2):** `finalize` refuses while an earlier period of the tutor isn't finalized (`409 payroll_period_out_of_order`). `prepare` stays free, so a backlog can be prepared in any order. Every period counts, an empty one too: it is prepared and finalized at `0.00`. No auto-finalize, so a weekly tutor's empty weeks each take two people.
+- **A refused `prepare` (#110 E3, a spec reading of #443 D9):** one transaction, so a refusal changes no line. `409 payroll_unresolved_work` carries `details.count` and at most 20 `details.items`, and the page then runs `recalculate`, which commits.
+- **The figures reviewed (#110 E4):** `finalize` takes `prepared_at` from the page; a mismatch is `409 payroll_review_outdated`. Lines can't change while a period is `prepared`, so this one value identifies them. Drift can't see a return and a new `prepare` under a stale page.
+- **A back-dated rate (#110 E5) narrows #105 E4's "any `effective_from`":** `422 effective_from_under_finalized_line`, in any direction, when the version would re-price a finalized line of that tutor and class kind. The window runs from `effective_from` to the next version of the kind. A correction is a later version plus a `manual` adjustment (#111). `no_rate` work and "covered by salary" lines have no priced line, so #443 D7's exit stays open. A late stop or back-dated salary isn't refused.
+- **The `course` window (#110 QA D1, D2, D3, orchestrator rulings, pending owner review), correcting the groomed "no upper end":** a version is refused only if it would change a finalized line's price, decided per line by its model and the new version's. A `per_course` line is priced by the version on its cohort's first date, so a window holding that date refuses, any model; its own date plays no part. A `per_hour` or `per_session` course line is priced on its own date, so a window holding that date refuses, any model. It reads the first date only for "the version there isn't `per_course`", so a window holding the first date alone refuses a `per_course` version (#442 D6) and passes any other, a stop included. Service dates alone refused versions that re-price nothing, and a `no_rate` course item in a finalized period could then never get a rate, which blocked the tutor for good. `details.latest_finalized_on` is the newest date taken over. Hourly kinds are unchanged. The first dates are `scheduling`'s, and the workflow passes them in (ADR-0002). **A version of a line's own model and the exact same rate never refuses that line (#110 QA D4, ruling (a), pending owner review), for any class kind:** it changes the version the line names, never its price. Without it, a late `no_rate` session dated between a switch to per-course and a finalized cohort's first date blocked the tutor for good, because the only cut of the window is a version on that first date. Any other model or rate keeps the rule. Rates compare by exact value; money is MXN only, so there is no currency to compare.
+- **Audit (#110 E6) corrects E9's "carry the totals":** the events carry ids, `line_count` and status, no amount and no reason. Administrators hold `audit.view` and see no pay (#105 E2).
+- **Return (#110 E7) reads E12's table:** either permission, no reauthentication and no key: it changes no money, and it is undone by preparing again. The reason lives on the period (migration `0079`), because `approval_requests.reason` can only be written through a decision Finance can't make.
+- **A delegated read (#110 E8):** `prepared` and `finalized` periods only, through the list and `GET …/lines`. An `open` period is the same `404` as a missing one, and nothing else opens to them. `POST …/return` and `…/finalize` on an `open` period answer `409 payroll_period_not_prepared`, by #110's order, which says only that it exists and isn't prepared.
+- **Invariant test (#110 E9):** one seeded random test in the normal shards, with no harness copy and no CI job.
+- **No pay in the idempotency store (#110 E10):** the transitions answer ids, status and timestamps.
+- **Preparing your own pay (#110 E11):** allowed, the `recalculate` precedent. Only `finalize` refuses own pay.
+- **A sole Owner:** E10's exception covers both duty rules, so an Owner can prepare and finalize their own pay alone, and the audit trail is the only control. As decided, and worth the owner's review.
+- **`details` (#110 B4):** a Problem Details `details` map now also holds numbers and lists of objects, for `payroll_unresolved_work` and `payroll_period_stale`.
+
+### Corrections after lock (E11 (a), spec §3, §7, W3.5, #111, spec reading)
+
+Append-only `payroll_adjustments`:
+
+- **Kinds:** `hours_correction` (a superseding revision of a closeout on a finalized line), `late_approval` (a closeout approved after its service date's period was finalized, or finalized work that gets a basis later, a family cancellation included, #443 D8) and `manual` (including a wrong rate). `carry_forward` is M7-08c's (#111 E1). `pay_event_change` was dropped (#111 E3, below).
+- **Target:** the tutor's **earliest open period**. `payroll:open_periods` opens one if needed, even after the tutor has left. A prepared period is not a target.
+- **Amount:** `target − (origin line + earlier adjustments of that line)`, using the origin line's **rate snapshot**, never 0. `late_approval` uses the service date's rate and rule.
+- **Reference:** `origin_line_id NOT NULL`, except for `late_approval`, which has no line and stores `class_session_id` and `origin_period_id`.
+- **Natural key:** `source_key` unique (`approval:<approval_id>`, `cancellation:<class_session_id>`, `event:<line_id>:<n>`). A job `payroll:post_adjustments` every 15 minutes with a `queueing_lock` finds them by anti-join, and closeout corrections may enqueue it after commit. `manual` rows use the API idempotency key.
+- **Rate corrections:** a used rate version is immutable (E1), so a wrong finalized rate is a `manual` adjustment on the line, with `payroll.manage` plus `finance.correction` reauthentication.
+- An adjustment appears as a line (kind `adjustment`) in its target period. The finalized period doesn't change.
+
+#### Implementation notes (#111)
+
+Recommended options E1 to E10 taken while grooming and building #111. They are orchestrator-recommended and pending owner review, not owner sign-off. E2, E3, E4 and E7 refine E11 above.
+
+- **Split (#111 E1):** #111 is the job and the automatic kinds; M7-08c the `manual` and `carry_forward` routes and paying unresolved work by hand; M7-08d per-course corrections and the rate-delete refusal; M7-08b the pages. Migration `0080` defines every column and kind the next two need.
+- **One key per revision (#111 E2), refining "Amount":** every automatic adjustment for a closeout revision is keyed `approval:<that revision's id>`. The **first** payment of work in a finalized period is a `late_approval`; **any later revision** of a session already paid in a finalized way is an `hours_correction`, whatever paid it first. Its origin is the finalized session line, or the `adjustment` line of the session's `late_approval` (never rebuilt, so its id is stable). Its amount is the current revision priced on the **origin's snapshot** (rate model, rate, and the rule on the service date) minus what was paid so far: the origin line's amount and every earlier automatic adjustment of the session. A `manual` one is left out: the job never undoes a person's correction. A zero difference writes nothing and is worked out again on the next run. This closes qa-104 O3: a `late_approval` corrected later never pays a second full amount.
+- **No `pay_event_change` (#111 E3), correcting the kind list:** checked in code, no finalized pay event can change without a new revision (pay rules take today or later, a makeup link can't change, a change request can't be approved after the session starts, `completed` is final, a cancelled session stays cancelled). An event that changes **with** a revision is that revision's `hours_correction`, priced with the new kind. A later issue that makes an event mutable adds the kind with its producer.
+- **Salaried dates (#111 E4):** on a date a `salary` line of a **finalized** period paid, late work is judged as it stood at that period's finalize: a rate version written after it is ignored, and the salary covers whatever has no rate, whatever the terms say now (a late stop included). The job and the Unresolved list share the one helper, so covered work is neither paid nor listed. A rate that existed then still pays. "Then" is the period row's `updated_at`, the database time of its finalize (nothing writes the row after it), on the same clock as a version's `created_at`. Any other date uses the current basis, so #443 D7's exit (back-date a rate for a `no_rate` item) still works. A rate back-dated on purpose under a salaried period therefore pays nothing automatically: that is #110 E5's later version plus `manual`.
+- **References (#111 E5):** `hours_correction` has its origin line; `late_approval` has `class_session_id` and `origin_period_id`. The CHECKs per kind are in data-model §11.9.
+- **Target (#111 E6):** the tutor's earliest `open` period at insert, locked and re-read; a `prepared` one is never a target, so a period under review doesn't change. A tutor with no open period gets one, under the terms-and-periods advisory lock: first by the normal rule (`open_due_periods` with the center's today), and for a leaver one period for the adjustment, from the day after the last one, with the last frequency, to its natural end (or the day before a return of another frequency). Returning terms inside it follow #106 E3.
+- **Settled work (#111 E7):** a session an adjustment names is settled: never listed, never blocking, never paid a second time by the job. `uq_payroll_adjustments_first_payment` allows one first payment per session (`late_approval`, or M7-08c's `manual` resolution), so a person and the job can't both pay it.
+- **Negative total at finalize (#111 E8):** `finalize` refuses a negative total with `409 payroll_negative_total`, after drift and `blocking_work` and before any write, instead of the CHECK's `500`.
+- **Audit (#111 E9):** `payroll_adjustments` is audited with `amount`, `rate` and `reason` masked; the job's rows have no actor. Logs carry ids and counts, never an amount, a rate or a reason.
+- **When the job runs (#111 E10), narrowing "may enqueue":** the periodic job only, every 15 minutes. Nothing in academics or scheduling enqueues it, so no closeout route changed and a payroll failure can't touch a closeout.
+- **Per-course (#111):** ~~a session of a cohort priced `per_course`, and a correction of a `per_course` line, are skipped and counted until M7-08d.~~ Paid by M7-08d E1 and E2 (see "Implementation notes (M7-08d)").
+
+#### Implementation notes (M7-08c)
+
+Recommended options E1 to E7 taken while grooming and building M7-08c (#463). They are orchestrator-recommended and pending owner review, not owner sign-off.
+
+- **Three shapes of `manual` (M7-08c E1), reading "each adjustment references the original line":** on a line (`origin_line_id`, a line of this tutor in a **finalized** period, any kind; a line of an `open` or `prepared` period is `409 payroll_line_not_finalized`, because a run rebuilds it), on unresolved work (`class_session_id`, below), or free (neither), each with a required reason the tutor reads on the payslip once it is finalized. Both references at once are `422`.
+- **Paying unresolved work by hand (M7-08c E2):** a `manual` naming a session settles it (#111 E7), only for a current item of the tutor with a blocking reason (`no_pay_terms`, `no_rate`), classified again under the locks, in a period of any status. That is the exit for `no_rate` work no rate version can fix (#110 QA O4: an ordinary cohort's session on a per-course cohort's first date). Settled work leaves the Unresolved list and `blocking_work`, gets no line from a run (in a per-course walk it still counts in `k`), and the job never posts for it, a later revision included: that is Finance's, by another `manual`. `before_first_period` work is refused (`409 payroll_work_before_first_period`): #109 E4's one-time item pays it. Work already named by an adjustment is `409 payroll_work_settled`, and so is the loser of the first-payment index against the job's `late_approval`.
+- **Carry-forward (M7-08c E3), amending E9:** `POST /api/v1/payroll/periods/{id}/carry-forward` on an `open`, ended period whose total after a `recalculate` is negative writes, in one transaction, `+X` in that period (its total becomes `0.00`) and `−X` in the tutor's earliest `open` period starting after it (opened as #111 E6 opens one), `X` the negated total. Both rows have `origin_period_id` = the period, and the negative one names the positive one (`paired_adjustment_id`). Net zero, repeatable when the next period is short too. A leaver's last period stays negative until Finance records the repayment or the write-off with a `manual` `+X` and its reason.
+- **Access (M7-08c E4):** `manual` needs `payroll.manage`, `finance.correction` reauthentication and an `Idempotency-Key`; own pay is `403 payroll_own_compensation`, an Owner excepted (#105 E5). Carry-forward needs `payroll.prepare` and a key, no reauthentication, and own pay is allowed, like `prepare`: it is net zero and touches only `open` periods. The target period's `finalize` is the second person for both; nothing here changes a finalized row.
+- **A leaver's stranded item (M7-08c E5), refining #109 E3:** delete the waiting item, then post a free `manual`. A `manual` alongside the item would pay twice once an adjustment opens a period and a `recalculate` places the item there.
+- **No pay in the key store (M7-08c E6):** both routes answer ids, the kind, the target period and `created_at`, never an amount or a reason; the page refetches the lines.
+- **Bounds (M7-08c E7):** a signed amount within the money range, never `0.00`, with no cap against the target's total; a reason trimmed, 1 to 1000 characters, no NUL or lone surrogate.
+- **Lock order (M7-08c):** both routes take the terms-and-periods advisory lock, then the tutor's not-finalized periods `FOR UPDATE` oldest first, as a pay item or rate write does, before any check that reads money. A tutor with no period at all has nowhere to put an adjustment: `409 payroll_no_period` (M7-08c D2).
+- **Narrow race on salaried dates (#111 QA O2), recorded:** a rate whose transaction started before a finalize and committed after it gets `created_at < updated_at` and counts as existing at the finalize. It needs a sub-second overlap with a back-dated rate under a salaried week, and a `manual` on the line corrects it.
+
+#### Implementation notes (M7-08d)
+
+Recommended options E1 to E4 taken while grooming and building M7-08d (#464). They are orchestrator-recommended and pending owner review, not owner sign-off. E1 and E2 refine #107 E11 and #442's walk; E3 and E4 refine #110 E5.
+
+- **A per-course session paid after lock is an anchor of the walk (M7-08d E1), refining #442's "isn't walked and has no line (#111)":** the job posts a `late_approval` for a late session of a cohort priced `per_course`, under the target's lock and the tutor's other locks (below). It stores `k = K + 1`, the cohort's `N` now and the rate snapshot of the version on the cohort's first date, and pays `max(0.00, rate.to_money(k, N) − peak)`, or its event's amount through `course_event_amount`. `K` is the highest `k` of the cohort's finalized lines and earlier anchors of this tutor, plus the work before the first period, which the walk counts (read from the walk, not only from stored rows); `peak` is the highest `rate.to_money(k, N)` among them (#442 N1). The walk then reads anchors as fixed steps, exactly like finalized lines, in the places fixed steps hold, ordered by their stored `k` rather than by date: oldest-first finalize (#110 E2) makes the finalized periods a prefix in time, so approved steps never fall between two fixed ones. Later lines telescope, and `N` moving later is absorbed by the open lines and the floor, as before. Work before the first period is walked and never anchored (#109 E4's item pays it). A floored `0.00` writes nothing (P9) and is read again on the next run.
+- **Late sessions waiting behind a floored anchor (M7-08d D1, engineering, corrected by #464 QA round 1, orchestrator rulings, pending owner review), refining E1:** without help, a cohort whose remaining sessions are all late, after `N` grew, prices `K + 1` at `0.00` again and again, writes nothing, and never reaches its rate (found by the random-cohort oracle: 3.50 on 7.00). So:
+  - **Oldest first (QA D1 ruling):** the job posts a cohort's anchors by service date, then session, whatever order its selection reads them in (`posting_order`). Without it, an anchor's `k` depended on the heap's order, and a later shrink left a fully taught cohort at 750.00 on 1000.00.
+  - **Waiting sessions:** the cohort's other late sessions dated before the one being priced, with a paying basis and not settled, count in its `k` but raise nothing; with oldest first, each of them floored at `0.00` in the same run, and this anchor pays its share with its own. `k` is stored capped at `N`.
+  - **Counted once:** an anchor's jump in `k` over the fixed step before it is the number of waiting sessions it counted. That many of the cohort's oldest waiting sessions are consumed: never counted again and never anchored (their share is paid). Without it a floored session was counted by every later anchor and could take a slot a second time.
+  - **Settled work (QA D2 ruling, replacing D7):** a session settled by hand (M7-08c) or with no paying terms on its date never waits, as the walk never walks a finalized-period session with neither a line nor an anchor: the cohort's `k` stays one short, so its share is consumed once and no anchor pays it again (QA's 1200.00 on 900.00 is 900.00). D7's "counted, raising nothing" is withdrawn.
+  - So a cohort pays the highest `rate.to_money(k, N)` among its fixed steps, never more than its rate, and the rate itself once its last session is fixed, less one share for each session paid by hand. An `N` that drops after the cohort's last walk-paid session still has no later line to catch it up (#442 H3's rule, unchanged).
+- **A fixed step beyond `N` (M7-08d edge case, corrected by #464 QA round 1 D1):** a fixed step stores the `N` it was priced at, so a step after it can find `k > N` once a session not yet taught is cancelled. ~~It is unreachable through routes.~~ It is reachable (a waiting session counted before a shrink). The walk counts such a step as `N`: it catches the cohort up to the rate, never past it, and stores `N`. With no fixed step before it, `k > N` stays a bug (`CourseWalkError`).
+- **Per-course revisions (M7-08d E2):** an `hours_correction` of a per-course origin (a finalized line or an anchor) keeps the origin's `k`, `N` and rate, so the walk's later lines don't move. A revision of the origin's kind targets the origin's amount, so a minutes-only revision posts nothing. Another kind targets the share `S`: the origin's amount when it is a whole share (a `session`, or an event whose rule paid exactly 100 %), else `max(0.00, rate.to_money(k, N) − rate.to_money(k − 1, N))`; `S` for a `session` and `course_event_amount(rule, rate, S, k, N)` for a `no_show`. A per-course makeup can't occur (a course session is never a makeup target, #442 D3).
+- **A delete runs the add's refusal (M7-08d E3, MUST from #110 QA round 4 O5 and round 2 O2), refining #105 E4:** deleting a version gives its window, from its date to the next version of the kind, to the previous version, or to nothing if it is the first. On every date of that window the price is then the previous version's, exactly as if a version of its model and rate had been added there, so the same rule answers: `409 compensation_rate_delete_under_finalized_line` with `details.latest_finalized_on` when that would change the price of a finalized priced line or a posted adjustment of that tutor and kind (`latest_finalized_priced_date`, `repriced_on`, #110 D1-D4, the same-rate pass included). A version a prepared or finalized line or an adjustment names is `409 compensation_rate_in_use` first, as before, so its own lines never reach the new check. The delete locks the tutor's not-finalized periods `FOR UPDATE` oldest first, then the version, as an add does (#110 L5), so it can't race a finalize. QA round 2's mixed cohort (an hourly line, then a per-course cohort start reached through a delete) is no longer reachable through routes.
+- **Posted adjustments are fixed prices (M7-08d E4):** both refusals read posted `late_approval` and `hours_correction` snapshots as finalized priced lines, in a period of any status: an ordinary one on its service date, a per-course one (an anchor, or a correction of a per-course origin) on its cohort's first date. Otherwise a version back-dated over one passes, nothing re-pays, and the rate history contradicts what was paid, the case #110 E5 closed for lines.
+- **Lock order of an anchor (M7-08d A9, D2), and its run order (#464 QA round 1 D1, oldest first, above):** the advisory lock, then the tutor's not-finalized periods `FOR UPDATE` oldest first, then the target, as a person's adjustment does (M7-08c). `K` reads the finalized lines, so a `finalize` of an earlier `prepared` period either commits first and is read, or waits and then finds its lines stale. A `recalculate` of a later period sees the anchor or not; the second case is caught by drift at `finalize`. The selection counts a per-course late session without reading the walk; its amount is worked out under the locks only, so a floored one opens a Unit of Work that posts nothing.
+
+### Permissions (E12 (a), ISSUE-F7 follow-on, spec §2, §7, §8, #105, #107, #110, #112, #114, #115, #117, product)
+
+Permissions, not roles; each seeded by its first user; only `payroll.finalize` is delegable. `payroll.finalize` is in the code; `payroll.prepare` is not, and ADR-0006 E8 is clarified accordingly.
+
+| Permission | Holders | Scope | First used by |
+|---|---|---|---|
+| `payroll.view` | Owner, Finance Staff | read all terms, rates, periods, lines, payments | #105 |
+| `payroll.manage` | Owner, Finance Staff | terms, rates, pay rules, pay items, payroll settings, manual adjustments | #105 |
+| `payroll.prepare` | Owner, Finance Staff | recalculate, prepare, return | #107 |
+| `payroll.finalize` | Owner; delegable to Administrators (in code) | finalize, return, with reauthentication | #110 |
+| `payroll.payment.record` | Owner, Finance Staff | log payroll payments | #112 |
+| `expense.configure` | Owner, Administrator, Finance Staff | categories and vendors ("administrator-defined", spec §8) | #114 |
+| `expense.view` | Owner, Finance Staff | read expenses, templates, payments | #115 |
+| `expense.manage` | Owner, Finance Staff | expenses, payments, adjustments, templates | #115 |
+| `finance.report.view` | Owner, Finance Staff | #117 reports (seeded by #117) | #117 |
+
+- **Administrators see no pay and no expense amounts** unless delegated `payroll.finalize` (#105, #115 and #117 name only Finance and the Owner). **Academic Coordinators** get no payroll or expense permission.
+- **Tutors** read their own terms, rates, finalized lines, payments and payslips through record policy only, with no permission. Another tutor's id is the same `404`.
+- **Reversals** of payroll or expense payments reuse `finance.refund.approve` with `finance.refund_or_reversal` reauthentication. **Manual payroll adjustments and expense adjustments** need `finance.correction` reauthentication. Recording a payment needs none (the ADR-0006 M6 clarification).
+
+### Payroll payments (E13 (a), spec §7, #112, #117)
+
+- Append-only `payroll_payments` (`payroll_period_id`, `paid_on DATE`, `amount > 0`, `method_code` → the billing `payment_methods` table through `billing.service`, `reference` required 1–100, `note NULL` 1–1000, `recorded_by_user_id`). No file.
+- A finalized period only. **Partial payments are allowed**: Σ valid payments ≤ `total_amount`, checked under the period lock. Paid state is derived: `unpaid`, `partially_paid`, `paid`.
+- `Idempotency-Key` is required, and the same method and reference on the same period under a **different** key is `409 payroll_payment_duplicate`.
+- A mistaken payment gets one `payroll_payment_reversals` row (E12), never an edit.
+- **Implementation notes (#112, orchestrator-recommended, pending owner review):** a reversed payment frees the pair: only payments without a reversal count for `409 payroll_payment_duplicate`, the cap and the paid state (#112 E2). The reference is compared trimmed and case-insensitively, the method by code (E3). `paid_on` runs from the period's `starts_on` to the center's today (E4). Recording or reversing your own pay is `403 payroll_own_compensation`, an Owner excepted (E5). Responses carry ids and the paid state only (E6). Reads follow #110 E8 (E7). A finalized `0.00` period is `paid` and refuses any payment (E8). The period row `FOR UPDATE` is the only lock.
+
+### Payslips (E14 (a), spec §1, §7, ISSUE-F5, #113, ADR-0015, product for the non-fiscal wording)
+
+- The #98 pattern. One `payslips` row per finalized period that has lines, issued in the finalize transaction after the period lock, numbered from `number_series` `P` by the center-local year, in the format `P-2026-000123` (`P-YYYY-NNNNNN`).
+- It holds a frozen JSONB snapshot (center, tutor, period, lines, total), `language` (the tutor's stored preference, else `es`) and `template_version`. It is rendered synchronously and streamed, never stored.
+- Payment dates aren't in the snapshot; they are shown live.
+- **Only finalized lines count as earnings** in the portal.
+- Periods finalized before #113 merges get no payslip (DEV data only).
+- **The payslip states it is not a tax document (no CFDI de nómina, spec §1).** The owner should confirm that this is acceptable for the center's legal payroll process, which stays outside the platform.
+- **Implementation notes (#113, orchestrator-recommended, pending owner review):** the API and the PDF ship in #113, the tutor's pages in M7-10b (E1). The tutor's reads are `GET /api/v1/payroll/tutors/{id}/earnings[/{period_id}]` and `…/payslips/{id}/pdf` under the `GET …/compensation` record policy: the tutor holding the tutor role, or a `payroll.view` holder; everyone else, a delegated Administrator included, gets the same `404` (E2). A user who loses the tutor role loses the portal; Finance still reads their periods. Only `finalized` periods are listed, empty ones at `0.00` with no payslip (E3). The period detail reads the live lines through the snapshot's own projection, so screen and payslip agree, except a pay item type renamed after finalize (E4). The tutor sees each payment's date, amount, method and reference, and a reversed one marked with its date, never the note, the reversal reason or a name (E5). Lines carry no student or subject names; the `manual` reason is shown (E6). The title is "Comprobante de pago" / "Payslip" with the notice "Este documento no es un comprobante fiscal (no es un CFDI de nómina)." (E7). `finalize` issues the payslip last, with the `P` series row as its last lock; a failure there rolls the finalize back. `snapshot` is masked in the audit log. Migration `0082`.
+
+### Categories and vendors (E15 (a), spec §8, #114, #116, #117, product)
+
+- Module `finance`. `expense_categories` (`name`, `is_active`, `system_key NULL`, unique name ignoring case) is seeded with `rent`, `utilities`, `supplies`, `equipment` and `maintenance`; a seeded row keeps its `system_key` for translation until renamed, when staff text wins. `vendors` (`name`, `contact NULL`, `is_active`).
+- Both are mutable config with `version`, never deleted once referenced.
+- **Reports group by id and show the current name**, which answers #114's "if that is decided".
+- Deactivated rows can't be used on new expenses or templates but still appear in reports. Deactivating a row used by an active template is `409 expense_category_in_use` / `vendor_in_use` (named `in_use_by_template` before #116; see the #116 notes under E17).
+
+#### Implementation notes (#114)
+
+Orchestrator-recommended, pending owner review (#114 E2–E7, owner-delegated). They refine E15 where it is silent; `_docs/data-model.md` §12.1 and §12.2 and `_docs/api.md` "Expense categories and vendors" are the current rules.
+
+- **E2, the template refusal:** `expense_templates` arrives with #116, so in #114 deactivation always passes. #116 adds the refusal to the #114 `PATCH` routes, under the row lock, as `409 expense_category_in_use` / `vendor_in_use`.
+- **E3, seeded names:** the migration stores the Spanish name (Renta, Servicios, Insumos, Equipo, Mantenimiento) with the key. While a row holds its key, clients show the catalog label of the key in the viewer's language; the server catalog is `finance.json`. A real rename sets `system_key` to `NULL` for good. A new or renamed name is refused (`409 expense_category_exists`) when it equals, ignoring case and spaces, another row's stored name or the es or en label of another keyed row.
+- **E4, vendor names:** unique ignoring case (`409 vendor_exists`), so the name is the natural key and no `Idempotency-Key` is needed.
+- **E5, no delete:** neither table has a `DELETE` route; `is_active` retires a row, and both refuse `TRUNCATE` (42501). "Never deleted once referenced" holds trivially.
+- **E6, access:** all six routes, the reads included, need `expense.configure` (Owner, Administrator, Finance Staff; not delegable). No amount, so nothing is masked in the audit log, the vendor `contact` included.
+- **E7, "can't be used for new expenses":** `finance.service.usable_category` / `usable_vendor` read the row `FOR SHARE` and raise `422 expense_category_unknown|vendor_unknown` or `409 expense_category_inactive|vendor_inactive`; #115 and #116 call them before inserting.
+
+### Expense ledger (E16 (a), spec §8, §16, #115, #117, spec reading)
+
+The E5 shape of ADR-0006, smaller, all append-only:
+
+- `expenses` (`category_id`, `vendor_id NULL`, `description`, `amount > 0`, `incurred_on`, `due_on`, `receipt_reference NULL`, `note NULL`, `expense_template_id NULL`, `period_start NULL`);
+- `expense_payments` (`paid_on`, `amount`, `method_code`, `reference NULL`, `note NULL`), partial payments allowed;
+- `expense_payment_reversals` (at most one per payment);
+- `expense_adjustments` (signed, never 0, reason), the only correction.
+
+**Derived:** `net = amount + Σ adjustments ≥ 0`; `open = net − Σ valid payments ≥ 0`; status `unpaid`, `partially_paid`, `paid`, `overdue` (open > 0 and `due_on` before the center's today), `void` (net = 0). Spec reading of "paid/unpaid status": derived, never stored.
+
+**A wrong category, vendor or date** is corrected by voiding (a full negative adjustment) and entering a new expense. `receipt_reference` and `note` replace the attachment and are visible to `expense.view` holders only. No file. No tax column (spec §1). The expense row `FOR UPDATE` is the last lock.
+
+#### Implementation notes (#115)
+
+Orchestrator-recommended, pending owner review (#115 E1–E7, owner-delegated). They refine E16 where it is silent; `_docs/data-model.md` §12.3–§12.6 and `_docs/api.md` "Operating expenses" are the current rules. Migration `0084`; `expense_template_id` and `period_start` arrive with #116.
+
+- **E1, split:** the API (tables, permissions, six routes, the `insert_expense` seam for #116) in #115; the pages in M7-12b.
+- **E2, dates:** `incurred_on` not after the center's today (`422 incurred_on_in_future`); `due_on ≥ incurred_on` (a CHECK, and `422 due_on_before_incurred_on`); `paid_on` not after the center's today (`422 paid_on_in_future`) with no lower bound, because a payment may precede the expense it pays.
+- **E3, no edit:** no `PATCH`. Anything but the amount is corrected by a void and a new expense, so a typo in a description costs a void.
+- **E4, void is final:** once `net = 0`, every payment and adjustment is `409 expense_void`; nothing revives a void.
+- **E5, duplicates:** payments with a reference: the same expense, `method_code` and reference (trimmed, ignoring case) on a payment without a reversal is `409 expense_payment_duplicate`; a reversal frees the pair. No duplicate-expense rule; the `Idempotency-Key` covers a retry (vendor + receipt reference is a follow-up candidate).
+- **E6, reversals:** `finance.refund.approve` **and** `expense.view`, with `finance.refund_or_reversal` reauthentication: today the Owner only. A delegated Administrator holds no `expense.view`, so this keeps E12's "no expense amounts for Administrators".
+- **E7, side channels:** the `POST` answers hold ids and the derived status only (the stored idempotent response is in clear). Audit masks: `expenses {amount, description, receipt_reference, note}`, payments `{amount, reference, note}`, reversals `{reason}`, adjustments `{amount, reason}`. No named event or log line.
+- **Permissions:** `expense.view` and `expense.manage` (Owner, Finance Staff; not delegable), seeded by `make seed`.
+
+### Recurring templates (E17 (a), spec §8, #116, ISSUE-J4)
+
+- `expense_templates` (`name`, `category_id`, `vendor_id NULL`, `amount`, `frequency` `weekly`, `monthly` or `annual`, `starts_on`, `ends_on NULL`, `due_offset_days` 0–60, `next_period_start`, `is_active`, `version`).
+- Periods are anchored at `starts_on` (weekly `+7k` days, monthly `+k` months, annual `+k` years, day clamped, the #93 K3 rule).
+- The job `finance:generate_recurring_expenses`, daily at 07:55 UTC with a `queueing_lock`, posts each due period (`period_start ≤` the center's today), with catch-up, on the natural key `(expense_template_id, period_start)` from [`../architecture.md`](../architecture.md) ISSUE-J4.
+- `incurred_on = period_start`, `due_on = period_start + due_offset_days`. Generated rows snapshot the template's values, so editing a template affects only future periods.
+- Reactivating sets `next_period_start` to the first period on or after today, so a paused template never back-fills.
+
+#### Implementation notes (#116)
+
+Orchestrator-recommended, pending owner review (#116 E1–E10, owner-delegated). They refine E15 and E17 where they are silent; `_docs/data-model.md` §12.3, §12.7 and §15 and `_docs/api.md` "Recurring expense templates" are the current rules. Migration `0085`.
+
+- **E1, split:** the API (table, the two `expenses` columns, the job, four template routes plus the `template_id` filter, the category/vendor refusal) in #116; the pages in M7-13b.
+- **E2, what blocks a deactivation:** a **live** template, active and not ended (`ends_on IS NULL OR next_period_start <= ends_on`). The code is `409 expense_category_in_use` / `vendor_in_use` (E15's `in_use_by_template` renamed, the `pay_item_type_in_use` pattern), with `details.template_count` only, because Administrators hold `expense.configure` but not `expense.view`. Every write that leaves a template live reads its category and vendor through `usable_*`, so the job never meets an inactive one.
+- **E3, names:** unique ignoring case and surrounding spaces (`409 expense_template_exists`), paused and ended templates included; the name is the natural key, so the create takes no `Idempotency-Key`.
+- **E4, editable fields:** `name`, `category_id`, `vendor_id`, `amount`, `due_offset_days`, `ends_on`, `is_active`. `frequency` and `starts_on` are fixed for life; a new schedule is a new template.
+- **E5, start window:** `starts_on` from the center's today − 31 days to today + 366 days (`422 expense_template_starts_on_invalid`, the #93 tuition bound); the due past periods in the window are generated at once.
+- **E6, `ends_on`:** on or after `starts_on` and not before the latest generated `period_start` (`422 expense_template_ends_on_invalid`); a period is generated iff it starts on or before `ends_on`.
+- **E7, future periods:** every period not generated when a change commits, a due one the job hasn't reached included: after a worker outage, a back-filled period takes the current values. The template row lock serializes a change and a job step. The job's advance of `next_period_start` doesn't change `version`, so a change read before a run still applies after it.
+- **E8, a run after a write:** a create, a reactivation or an `ends_on` change queues one run after its commit (`defer_recurring_expenses`, the `defer_tuition_charges` contract).
+- **E9, text and masks:** the generated `description` is the template name verbatim; `receipt_reference`, `note` and `created_by_user_id` are `NULL`. `expense_templates` masks `name` and `amount` in the audit log; logs carry ids and counts only.
+- **E10, no delete:** pause or end a template; `TRUNCATE` is refused (42501).
+
+### Reporting (E18 (a), spec §8, ADR-0006 E7, #117, product)
+
+A reporting rule for #117, in the new read-only `reporting` module (ADR-0002 D3).
+
+- **Only finalized payroll counts.** Open and prepared periods are never reported as cost.
+- **Accrual:** session and pay-event lines by `service_date`; salary and pay items on their period's `ends_on`; adjustments on their target period's `ends_on`, so past reports don't change; expenses by `incurred_on`, net of adjustments.
+- **Cash:** payroll by `paid_on`, expenses by `paid_on`, net of reversals.
+- **Direct tutor cost by class type:** session and pay-event lines by `class_kind`; an adjustment inherits its origin line's kind. **Salary and pay items are not allocated** to class types: they are a separate center-wide row (spec §8 selected no overhead allocation). So a fully salaried tutor shows no direct cost by class type. Cash-basis profitability is center-wide only.
+- **Payables:** Σ open expenses plus Σ unpaid finalized payroll, reported apart from receivables.
+
+#### Implementation notes (#117)
+
+#117 E3, E8–E10 (orchestrator-recommended, pending owner review); `_docs/api.md` "Financial reports" is the current rule.
+
+- **E3:** expense accrual uses each expense's current net (`expense_figures`), so a later expense adjustment restates the month of its `incurred_on`; payroll adjustments still count on their target period's `ends_on` and never restate.
+- **E8, class kind of payroll adjustments:** `late_approval` and `hours_correction` by their `class_kind` snapshot; a `manual` on a line by that line's kind when it is session-sourced (else unallocated); a `manual` on unresolved work by the session's kind; a free `manual` and both `carry_forward` rows unallocated.
+- **E9:** balances are as of the center's today only: receivables (outstanding, overdue by the effective due date, account credit shown apart), payables (open non-void expenses, of which overdue, plus unpaid finalized payroll) and deferred revenue (packages, courses, scheduled sessions, other).
+- **E10:** operating expenses as a total, by category and by vendor ("no vendor" row), with the current category and vendor rows (inactive ones included), non-zero rows only; never by template, and no description, reference, note or template name.
+- Permission `finance.report.view` (E12) is seeded for the Owner and Finance Staff, not delegable.
+
+## Consequences
+
+- **Implementing issues** (each records its part; table detail in [`../data-model.md`](../data-model.md)):
+  - **#105 (M7-02):** `tutor_pay_terms`, `compensation_rates`, the lookup, the guarded triggers with their staged predicates; seeds `payroll.view` and `payroll.manage` (E1, E12).
+  - **#106 (M7-03):** `payroll_settings`, `payroll_periods`, the no-overlap and no-gap mechanisms, the job `payroll:open_periods` (E2 floor, E6).
+  - **#423 (M7-04a):** `class_sessions.makeup_of_session_id` and its form field (E5). A prerequisite of #107.
+  - **#441 (M7-04c):** `session_pay_rules` and its routes (E4, #107 E9).
+  - **#107 (M7-04):** `payroll_lines`, `recalculate`, per-hour and per-session lines, pay events, the seam docstrings; seeds `payroll.prepare` (E2, E4, E9, E12). Split by #107 E1: per-course amounts are #442 (E3), unresolved work #443 (E2), the web #444.
+  - **#108 (M7-05):** `salary` lines and proration (E1, E7).
+  - **#109 (M7-06):** `pay_item_types`, `pay_items`, `pay_item` lines (E8).
+  - **#110 (M7-07):** the workflow, finalization, the proof of the lock triggers (created with their tables in #106 and #107), the inbox type, notifications (E9, E10).
+  - **#111 (M7-08):** `payroll_adjustments`, `adjustment` lines, the job `payroll:post_adjustments` (E11).
+  - **#112 (M7-09):** `payroll_payments`, `payroll_payment_reversals`; seeds `payroll.payment.record` (E12, E13).
+  - **#113 (M7-10):** `payslips` and the tutor earnings portal (E12, E14).
+  - **#114 (M7-11):** `expense_categories`, `vendors`; seeds `expense.configure` (E12, E15).
+  - **#115 (M7-12):** `expenses`, `expense_payments`, `expense_payment_reversals`, `expense_adjustments`; seeds `expense.view` and `expense.manage` (E12, E16).
+  - **#116 (M7-13):** `expense_templates` and the job `finance:generate_recurring_expenses` (E17).
+  - **#117 (M7-14):** the `reporting` module and the reports; seeds `finance.report.view` (E12, E18).
+- The coverage table "M7 issue → decisions and tables" is [`../data-model.md` §19](../data-model.md#19-m7-issue-coverage).
+- **This ADR adds nothing** to the dependency files, the permission catalog or the migrations. Each implementing issue adds its own tables, seeds, permissions and jobs. **No new runtime dependency is needed.**
+- This ADR is Proposed: a different owner answer on any item is an amendment here and in `data-model.md`, plus a follow-up issue for any part already implemented.
+- Payroll is off until the Owner or Finance Staff set `payroll_starts_on`, so going live never pays DEV history or demo data (E2).
+- A payroll failure can't roll back a closeout or a cancellation, because pay is derived from committed state (E9).
+- An approved closeout with no terms or rate is visible and blocks `prepare`, rather than being silently paid at zero (E2).
+- A finalized period never changes; later corrections are lines in a later open period (E10, E11, W3.5).
+- A fully salaried tutor shows no direct cost by class type (E18).
+
+## Alternatives considered
+
+- **E1 (b), `included_minutes` per period, paying only minutes above a quota.** Rejected: it needs an ordering of sessions across rates and mid-period rate changes. A later version can add it, and today Finance can pay the excess with a bonus.
+- **E1 (c), a separate `compensation_models` row with a model enum per tutor.** Rejected: it duplicates what the rows already say and can disagree with them.
+- **E2 (b), assign work to periods by approval date.** Rejected: a tutor's hours land in a period that doesn't contain them, against W3.4's "service date".
+- **E3 (b), pay the whole rate as a lump sum when the cohort ends.** Rejected: a tutor waits months, and direct tutor cost wouldn't line up with E7 revenue in #117.
+- **E3 (c), use each session's own rate version.** Rejected: a mid-course change makes the cohort total unexplainable.
+- **E4 (b), per-tutor pay rules.** Rejected: it multiplies configuration for a one-location center; a later version can add a tutor override.
+- **E4 (c), pay outcomes on `scheduling_policies`.** Rejected for billing in ADR-0006 E3(c), for the same reason.
+- **E5 (b), Finance tags a line as a makeup while preparing payroll.** Rejected: Finance doesn't know which sessions were makeups, and the fact would live outside the schedule.
+- **E5 (c), no marker, makeups paid as ordinary sessions.** Rejected: it drops a spec §7 line and would need an explicit scope decision.
+- **E6 (b), anchor each tutor's periods on their own start date.** Rejected: no shared pay days, so Finance prepares payroll on a different day per tutor.
+- **E6 (c), one center-wide period for all tutors.** Rejected: contradicts "individual payroll frequencies".
+- **E7 (b), a free override of the salary line with a reason.** Rejected: a second path to the same result as a one-time item.
+- **E8 (b), percentage-based deductions.** Rejected: invites tax-like calculations the spec excludes.
+- **E9 (b), one aggregate line per rate version with a `payroll_line_sources` child table.** Rejected: adjustments would have to split an aggregate line, and the payslip can group lines for display anyway.
+- **E9 (c), post lines from the hooks in the closeout transaction.** Rejected: couples academics to payroll, and "recalculating gives the same result" gets harder.
+- **E10 (b), a separate coordinator "verified" state per period.** Rejected: it re-approves what `teaching_hours.approve` already approved session by session.
+- **E10 (c), no return path.** Rejected: a wrong prepared period could only be finalized and corrected later.
+- **E11 (b), reopen a finalized period.** Rejected by spec §7.
+- **E11 (c), adjust the period containing the approval date, even if already prepared.** Rejected: that would change a period someone is reviewing.
+- **E12 (b), give Administrators `payroll.view` and `expense.view`.** Rejected: #105 and #115 restrict them and spec §2 keeps pay private. Reversible with one seed change.
+- **E12 (c), one `payroll.manage` for everything.** Rejected: ISSUE-F7 asks for separation between preparing and paying.
+- **E13 (b), one payment per period.** Rejected: it doesn't fit paying a tutor in two transfers.
+- **E13 (c), a separate payroll payment-methods table.** Rejected: two lists to keep in step for M8-04.
+- **E14 (b), issue the payslip at first download.** Rejected for receipts in E13(c) of ADR-0006.
+- **E15 (b), show the name used at the time, with a name-history table.** Rejected: a lot of machinery for a rename, and the audit trail already holds old names.
+- **E16 (b), mutable expenses, audited, while unpaid.** Rejected: #115 says corrections use adjustments.
+- **E17 (b), generate only the current period.** Rejected: a stopped worker would silently lose rent.
+- **E18 (b), allocate salary to class types by approved minutes.** Rejected: it is an allocation the spec didn't select, and it changes when later minutes are approved.
+
+## References
+
+- [`../architecture.md`](../architecture.md) §4.2, §4.4, §5, §6, §7.4, §10.4 ISSUE-J4, §10.6 ISSUE-F2, F4, F5, F6, F7, §11, §12
+- [`../spec.md`](../spec.md) §1, §2, §3, §7, §8, §9, §10, §12, §16, §17, §18 item 1, §15 W3, W4 and W7
+- [`../data-model.md`](../data-model.md) §11 onward (payroll and expense tables, invariants, immutability, concurrency, indexes, migration strategy, coverage)
+- [`../api.md`](../api.md) "Approved fields for payroll"
+- [ADR-0002](0002-module-boundaries-and-reporting.md), [ADR-0003](0003-database-connection-topology.md), [ADR-0004](0004-money-time-and-date-representation.md), [ADR-0005](0005-scheduling-invariants-overrides-and-recurrence.md) D6, [ADR-0006](0006-financial-ledger-idempotency-and-numbering.md) E3, E5, E6, E7, E8, E13, [ADR-0007](0007-authentication-sessions-recovery-and-delegation.md) D4, D10, [ADR-0015](0015-server-side-i18n.md)
+- GitHub issue #104 (this decision gate, items E1–E18); #105–#117 and #423 (the M7 issues that implement it)

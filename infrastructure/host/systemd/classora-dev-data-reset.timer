@@ -1,0 +1,12 @@
+# 04:00 UTC every night (#674), within 5 minutes; a run missed while the
+# host was off happens at the next boot. DEV only (install-units.sh).
+[Unit]
+Description=Classora DEV data reset at 04:00 UTC
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

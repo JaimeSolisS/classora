@@ -1,0 +1,322 @@
+# Grafana-managed alert rules (ADR-0014 "Alerts", #612), provisioned from this
+# file and not editable in the UI. Thresholds are ADR-0014's. Each rule is one
+# Prometheus query (A), reduced to its last value (B) and compared (C); every
+# rule is multi-dimensional (one alert per environment, host or mount).
+#
+# Locally they evaluate and show in Grafana (Alerting > Alert rules) with no
+# contact point. On AWS the monitoring host adds the SES e-mail contact point
+# and notification policy (infrastructure/host/monitoring/notifications.yaml,
+# M9-09, #617). The backup rules (group classora-backups) read the backup
+# result lines from Loki.
+#
+# The host rules need the AWS agent's host_metrics (empty locally: no data is
+# "Normal"). Readiness, failed and stalled jobs come from the collector's
+# http_check and sql_query receivers. `make check-observability` checks this
+# file (check_config.py) and every PromQL expression (promtool).
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: classora
+    folder: Classora
+    interval: 30s
+    rules:
+      - uid: classora-host-cpu-high
+        title: Host CPU above 90%
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          # The panel linked from the alert e-mail (M9-09).
+          __dashboardUid__: classora-host-containers
+          __panelId__: "13"
+          summary: "Host {{ $labels.host_name }} CPU busy above 90% for 10 minutes ({{ $values.B }})."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                1 - avg by (deployment_environment_name, host_name)
+                (system_cpu_utilization_ratio{state="idle"})
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0.9]}
+
+      - uid: classora-host-memory-low
+        title: Available memory below 10%
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          # The panel linked from the alert e-mail (M9-09).
+          __dashboardUid__: classora-host-containers
+          __panelId__: "14"
+          summary: "Host {{ $labels.host_name }} has under 10% memory available for 10 minutes ({{ $values.B }})."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                1 - sum by (deployment_environment_name, host_name)
+                (system_memory_utilization_ratio{state="used"})
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: lt, params: [0.1]}
+
+      - uid: classora-disk-high
+        title: Disk above 85%
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          # The panel linked from the alert e-mail (M9-09).
+          __dashboardUid__: classora-host-containers
+          __panelId__: "15"
+          summary: "Host {{ $labels.host_name }} disk {{ $labels.mountpoint }} is above 85% used ({{ $values.B }})."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              # Root and the data volume (and any other mounted filesystem).
+              expr: >-
+                max by (deployment_environment_name, host_name, mountpoint)
+                (system_filesystem_utilization_ratio)
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0.85]}
+
+      - uid: classora-readiness-failing
+        title: API readiness failing
+        condition: C
+        # 90 s, not 2 m (#624, QA #612 N3): with the 1-minute lookback and the
+        # 30 s evaluation interval the worst case is 3 minutes after the first
+        # failed probe; the probe has then been failing for about 2 minutes.
+        for: 90s
+        # The probe's series stopping is a failure too (agent or API gone).
+        noDataState: Alerting
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          # The panel linked from the alert e-mail (M9-09).
+          __dashboardUid__: classora-host-containers
+          __panelId__: "7"
+          summary: "GET /health/ready has not answered 2xx for 2 minutes ({{ $labels.deployment_environment_name }})."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              # http_check writes a new series per status code (0 when the
+              # request fails), so only the last minute counts: an old 200
+              # series must not keep the probe "up" for Prometheus' 5-minute
+              # lookback.
+              expr: >-
+                max by (deployment_environment_name, http_url)
+                (last_over_time(httpcheck_status{http_status_class="2xx"}[1m]))
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+
+      - uid: classora-job-failed
+        title: Background job failed in the last hour
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          # The panel linked from the alert e-mail (M9-09).
+          __dashboardUid__: classora-jobs
+          __panelId__: "3"
+          summary: "{{ $values.B }} job(s) failed in the last hour ({{ $labels.deployment_environment_name }}). See Administration > Failed jobs and the Jobs dashboard."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                sum by (deployment_environment_name)
+                (last_over_time(classora_procrastinate_jobs_ended_last_hour{outcome="failed"}[3m]))
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+
+      - uid: classora-job-stalled
+        title: Background job doing for over 30 minutes
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          # The panel linked from the alert e-mail (M9-09).
+          __dashboardUid__: classora-jobs
+          __panelId__: "4"
+          summary: "{{ $values.B }} job(s) have been doing for over 30 minutes ({{ $labels.deployment_environment_name }})."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                sum by (deployment_environment_name)
+                (last_over_time(classora_procrastinate_jobs_stalled[3m]))
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+
+  # Backups (ADR-0013, ADR-0014; M9-09, #617): the JSON result lines of
+  # backup.sh in /var/log/classora/backup.log (#616), shipped by the agent's
+  # file_log/host receiver as service_name="backup". One alert per app
+  # environment (deployment_environment_name).
+  - orgId: 1
+    name: classora-backups
+    folder: Classora
+    interval: 1m
+    rules:
+      - uid: classora-backup-failed
+        title: Backup failed
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "The nightly backup failed in the last hour ({{ $labels.deployment_environment_name }}). See journalctl -u classora-backup on the host and _docs/runbooks/restore.md."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 3600, to: 0}
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: >-
+                sum by (deployment_environment_name)
+                (count_over_time({service_name="backup"} | json | event="backup" | status="failed" [1h]))
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+
+      - uid: classora-backup-missing
+        title: No successful backup in 26 hours
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "No successful nightly backup in 26 hours ({{ $labels.deployment_environment_name }}). See journalctl -u classora-backup on the host and _docs/runbooks/restore.md."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 93600, to: 0}
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              # Successful backups per environment, or 0 for an environment
+              # that is alive (its API or worker logged in the last hour) but
+              # has no `ok` line: a missing series would otherwise read as
+              # "no data", which is never an alert. A destroyed environment
+              # stops logging, and its alert resolves within an hour.
+              expr: >-
+                sum by (deployment_environment_name)
+                (count_over_time({service_name="backup"} | json | event="backup" | status="ok" [26h]))
+                or on (deployment_environment_name)
+                (0 * sum by (deployment_environment_name)
+                (count_over_time({service_name=~"classora-api|classora-worker", deployment_environment_name=~".+"}[1h])))
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: lt, params: [1]}

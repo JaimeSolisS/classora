@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addMonths,
   DEFAULT_CENTER_TIME_ZONE,
+  formatElapsed,
+  formatUtcOffset,
+  hasOffsetChange,
+  isoWeekday,
   formatInstant,
   formatLocalDate,
   localDateTimeToInstant,
@@ -9,6 +14,7 @@ import {
   parseLocalDate,
   todayInZone,
   toLocalDate,
+  toLocalTime,
 } from './time';
 
 // These tests must pass under any host zone. `make test-web` runs them under
@@ -37,6 +43,13 @@ describe('DEFAULT_CENTER_TIME_ZONE', () => {
 });
 
 describe('instant → local values', () => {
+  it('gives the 24-hour wall-clock time in the zone (#50), across a DST change', () => {
+    expect(toLocalTime('2026-10-18T05:30:00Z', MX)).toBe('23:30');
+    // Tijuana 2026-03-08: 01:59 PST, then 03:00 PDT.
+    expect(toLocalTime('2026-03-08T09:59:00Z', TIJUANA)).toBe('01:59');
+    expect(toLocalTime('2026-03-08T10:00:00Z', TIJUANA)).toBe('03:00');
+  });
+
   it('uses the zone date, not the UTC date, late in the evening', () => {
     expect(toLocalDate('2026-10-18T05:30:00Z', MX)).toBe('2026-10-17');
     expect(
@@ -90,6 +103,8 @@ describe('instant → local values', () => {
     ['en', 'date', 'Oct 17, 2026'],
     ['en', 'time', '11:30 PM'],
     ['en', 'dateTime', 'Oct 17, 2026, 11:30 PM'],
+    ['es', 'dateTimeSeconds', '17 oct 2026, 23:30:00'],
+    ['en', 'dateTimeSeconds', 'Oct 17, 2026, 11:30:00 PM'],
   ] as const)('formats in %s with style %s', (language, style, expected) => {
     expect(
       formatInstant('2026-10-18T05:30:00Z', { timeZone: MX, language, style }),
@@ -271,5 +286,72 @@ describe('strict parsing', () => {
     expect(() =>
       localDateTimeToInstant('2026-10-17', '10:00', 'Mars/Base'),
     ).toThrow(RangeError);
+  });
+});
+
+describe('calendar helpers (#57)', () => {
+  it('adds months, clamping the day to the month', () => {
+    expect(addMonths('2026-01-31', 1)).toBe('2026-02-28');
+    expect(addMonths('2028-01-31', 1)).toBe('2028-02-29');
+    expect(addMonths('2026-11-15', 2)).toBe('2027-01-15');
+    expect(addMonths('2026-01-15', -1)).toBe('2025-12-15');
+  });
+
+  it('formats the zone offset at an instant', () => {
+    expect(formatUtcOffset('2026-11-01T08:30:00Z', 'America/Tijuana')).toBe(
+      'UTC−07:00',
+    );
+    expect(formatUtcOffset('2026-11-01T09:30:00Z', 'America/Tijuana')).toBe(
+      'UTC−08:00',
+    );
+    expect(formatUtcOffset('2026-11-01T09:30:00Z', 'Asia/Kolkata')).toBe(
+      'UTC+05:30',
+    );
+  });
+
+  it('tells the DST transition days', () => {
+    expect(hasOffsetChange('2026-11-01', 'America/Tijuana')).toBe(true);
+    expect(hasOffsetChange('2026-03-08', 'America/Tijuana')).toBe(true);
+    expect(hasOffsetChange('2026-11-02', 'America/Tijuana')).toBe(false);
+    expect(hasOffsetChange('2026-11-01', 'America/Mexico_City')).toBe(false);
+  });
+});
+
+describe('isoWeekday (#54b)', () => {
+  it('numbers the days Monday 1 to Sunday 7, whatever the host zone', () => {
+    expect(isoWeekday('2026-11-09')).toBe(1);
+    expect(isoWeekday('2026-11-11')).toBe(3);
+    expect(isoWeekday('2026-11-15')).toBe(7);
+    // A DST change day in Tijuana is still a Sunday.
+    expect(isoWeekday('2026-03-08')).toBe(7);
+  });
+});
+
+describe('formatElapsed (#301b)', () => {
+  const ENDED = '2026-11-09T17:00:00Z';
+  const at = (ms: number) => new Date(Date.parse(ENDED) + ms);
+  const MINUTE = 60_000;
+  const HOUR = 60 * MINUTE;
+
+  it.each([
+    ['en', 0, '1 minute ago'],
+    ['en', 59 * MINUTE, '59 minutes ago'],
+    ['en', 60 * MINUTE, '1 hour ago'],
+    ['en', 3 * HOUR + 59 * MINUTE, '3 hours ago'],
+    ['en', 47 * HOUR + 59 * MINUTE, '47 hours ago'],
+    ['en', 48 * HOUR, '2 days ago'],
+    ['en', 30 * 24 * HOUR, '30 days ago'],
+    ['es', 0, 'hace 1 minuto'],
+    ['es', 59 * MINUTE, 'hace 59 minutos'],
+    ['es', 60 * MINUTE, 'hace 1 hora'],
+    ['es', 3 * HOUR, 'hace 3 horas'],
+    ['es', 47 * HOUR, 'hace 47 horas'],
+    ['es', 48 * HOUR, 'hace 2 días'],
+  ] as const)('%s, %d ms later: %s', (language, elapsed, expected) => {
+    expect(formatElapsed(ENDED, at(elapsed), language)).toBe(expected);
+  });
+
+  it('never reads a future end as negative', () => {
+    expect(formatElapsed(ENDED, at(-5 * MINUTE), 'en')).toBe('1 minute ago');
   });
 });

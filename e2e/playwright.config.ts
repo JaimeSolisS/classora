@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { OWNER_STATE_PATH } from './tests/support/auth';
 
 // Cross-application tests against the isolated `classora-e2e` Compose stack.
 // `make e2e` (e2e/scripts/run.sh) starts, migrates and seeds that stack, sets
@@ -10,7 +11,8 @@ const DEFAULT_BASE_URL = 'http://127.0.0.1:15173';
 
 export default defineConfig({
   testDir: 'tests',
-  // Loads the app once before the tests (warms the Vite dev server).
+  // Loads the app once before the tests (warms the Vite dev server) and saves
+  // the signed-in demo Owner state.
   globalSetup: './global-setup.ts',
   outputDir: 'test-results',
   // Tests are independent of each other and of their order.
@@ -28,6 +30,9 @@ export default defineConfig({
     // adds one project per UI language.
     timezoneId: 'America/Mexico_City',
     locale: 'es-MX',
+    // Signed in as the demo Owner (#28 H1). Tests that log in or out use
+    // SIGNED_OUT_STATE instead (tests/support/auth.ts).
+    storageState: OWNER_STATE_PATH,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },

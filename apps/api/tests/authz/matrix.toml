@@ -1,0 +1,3608 @@
+# Permission matrix (M2-03): every API route and who may call it.
+#
+# Read by tests/authz/harness.py with the standard-library tomllib.
+# - tests/unit/test_permission_matrix_static.py checks it against the routes of
+#   build_app(include_dev_routes=True): every route has exactly one entry and
+#   one access rule, and they agree.
+# - tests/integration/test_permission_matrix.py sends one request per entry and
+#   role (plus anonymous, plus a delegated Administrator for delegable
+#   permissions) and checks the outcome.
+# - Record-level (IDOR) tests of the routes a tutor, student or guardian can
+#   call with a record id are listed in tests/authz/idor.toml (#149).
+# - Background jobs and how they check their reader or actor are listed in
+#   tests/authz/jobs.toml (#640).
+#
+# Adding an entry: one [[route]] table per method and path template (as FastAPI
+# writes it, for example "/api/v1/users/{user_id}"). Keep the entries sorted by
+# path, then method (a test enforces it).
+#
+#   access = "public"         needs `reason` (why anyone may call it).
+#   access = "authenticated"  any signed-in user; anonymous gets 401.
+#   access = "permission"     needs `permission` (a catalog code, the one the
+#                             route's require() names) and `allow` (role
+#                             codes). Every other role gets 403
+#                             permission_denied, anonymous gets 401.
+#   Optional: `path_params` (values for the path template; default: a fixed
+#   UUID, or 1 for an int parameter), `query` (query parameters, #67) and
+#   `json` (a request body).
+#   `deny` (#110), only with access = "authenticated": role codes that get 403
+#   permission_denied from a check the route makes itself, for a route open to
+#   either of two permissions (require() takes one).
+#
+# Reauthentication (#26, ADR-0007 D10; actions and bound permissions in
+# apps/api/app/core/reauth.py):
+#   reauth = "<action code>"   the route carries require_recent_auth(<code>)
+#                              or recent_auth_guard(<code>); must match the
+#                              route's marker. Only on POST/PUT/PATCH/DELETE,
+#                              never on a public route.
+#   reauth_conditional = true  the route uses recent_auth_guard (the check
+#                              depends on the body; default false). Only the
+#                              static check covers it; the owning issue tests
+#                              its condition.
+#   For an unconditional entry the runtime check reauthenticates the allowed
+#   roles before the request, and adds a `reauth:none` case (an allowed role
+#   without reauthentication) that expects 403 reauth_required. An unsafe
+#   route requiring a bound permission (for example
+#   user.password_reset.issue) must carry the marker.
+#
+# Rate limits (#27, ADR-0008 D15; policies in apps/api/app/core/ratelimit.py):
+#   rate_limit = ["<policy>", ...]  the codes of the route's rate_limit(...)
+#                                   marker (order ignored); must match it, and
+#                                   the route passes RATE_LIMIT_RESPONSES (429).
+#   rate_limit_exempt = "<reason>"  why an unsafe public route has no limit.
+#   Every POST/PUT/PATCH/DELETE public route needs one of the two (never
+#   both). A policy that no route applies must be listed in PENDING_POLICIES
+#   (app/core/ratelimit.py); the issue that applies it removes it there. The
+#   runtime check sends no rate-limit cases (integration tests cover them).
+#
+# Idempotency keys (#88, ADR-0006 E6; apps/api/app/core/idempotency.py):
+#   idempotency = true   the route declares idempotent() (an Idempotency-Key
+#                        header); must match the route's marker in both
+#                        directions, and the route passes
+#                        IDEMPOTENCY_RESPONSES (400 and 422). Only on
+#                        POST/PUT/PATCH/DELETE, never on a public route. Every
+#                        endpoint that posts a ledger row needs it (#90/#99,
+#                        #94, #96, #100, #101, M7). The runtime check sends no
+#                        key: an allowed role gets 400, which counts as access
+#                        (tests/integration/test_idempotency.py covers replays).
+#
+# Privacy notice (#174; spec §9): every signed-in route answers 403
+# privacy_notice_required until the user accepts the current notice version,
+# except the notice-exempt ones:
+#   notice_exempt = true   the route is authenticated(notice_exempt=True);
+#                          must match the route's AccessRule. Only for
+#                          access = "authenticated" (require() has no
+#                          exemption). Today exactly GET /auth/me,
+#                          PATCH /auth/me/preferences (#36),
+#                          POST /auth/logout and the two /privacy-notice
+#                          routes; adding one is a reviewed change.
+#   The runtime check adds a `notice:pending` case per authenticated or
+#   permission entry: an Owner who hasn't accepted the current version gets
+#   403 privacy_notice_required, except on notice-exempt entries. Every other
+#   actor has accepted it.
+#
+# Streams (#42):
+#   stream = true   the route answers an endless text/event-stream (its
+#                   response_class is app.core.sse.EventStreamResponse); must
+#                   match the route. Only for GET. The runtime check reads a
+#                   200's status and headers and then disconnects (it never
+#                   waits for the body); any other answer is read whole.
+#
+# The runtime check signs every role in for real (POST /api/v1/auth/login, a
+# fresh session per request); anonymous sends no cookie.
+#
+# Example:
+#
+#   [[route]]
+#   method = "GET"
+#   path = "/api/v1/users"
+#   access = "permission"
+#   permission = "user.view"
+#   allow = ["owner", "administrator"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/academic-periods"
+access = "authenticated"
+
+[[route]]
+method = "POST"
+path = "/api/v1/academic-periods"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/academic-periods/{period_id}"
+access = "authenticated"
+# The placeholder id is no period: 404 for every signed-in role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/academic-periods/{period_id}"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/approval-requests"
+access = "authenticated"
+# Every signed-in role may call it; the list holds only the types whose
+# review permission the caller holds (#40 C1).
+
+[[route]]
+method = "GET"
+path = "/api/v1/approval-requests/{request_id}"
+access = "authenticated"
+# The placeholder id is no request: 404 for every signed-in role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/approval-requests/{request_id}/approve"
+access = "authenticated"
+# The placeholder id is no request: 404 for every signed-in role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/approval-requests/{request_id}/assign"
+access = "authenticated"
+json = { assignee_user_id = "00000000-0000-7000-8000-000000000001", version = 1 }
+# #118 A2: the placeholder id is no request: 404 for every signed-in role
+# (after the body's 422; the assignee check comes after the 404).
+
+[[route]]
+method = "GET"
+path = "/api/v1/approval-requests/{request_id}/assignee-options"
+access = "authenticated"
+# #118 B1: the placeholder id is no request: 404 for every signed-in role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/approval-requests/{request_id}/reject"
+access = "authenticated"
+# The placeholder id is no request: 404 for every signed-in role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/approval-requests/{request_id}/request-changes"
+access = "authenticated"
+# The placeholder id is no request: 404 for every signed-in role.
+
+[[route]]
+method = "GET"
+path = "/api/v1/assignment-offers"
+access = "authenticated"
+# #52 G2: record policy, only the caller's own offers (an empty page for
+# anyone who has none).
+
+[[route]]
+method = "POST"
+path = "/api/v1/assignment-offers/{offer_id}/accept"
+access = "authenticated"
+# #52 D1: only the offered tutor; the placeholder id is no offer, so 404 for
+# every role. The 200 and the other callers' 404 are in
+# tests/integration/test_assignment_offers.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/assignment-offers/{offer_id}/decline"
+access = "authenticated"
+# #52 D1: as accept.
+
+[[route]]
+method = "GET"
+path = "/api/v1/assignments"
+access = "authenticated"
+# #82 F1: tutors (their own) and assignment.review holders (all); anyone
+# else gets 403 permission_denied from the record policy (tutors hold no
+# permission for it). The matrix sends limit=0, so every signed-in role gets
+# the schema's 422 first. The 200 and 403 cases are tested in
+# tests/integration/test_assignments.py.
+query = { limit = "0" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/assignments"
+access = "authenticated"
+# #82 C2: tutor-role users (403 assignment_tutor_only otherwise, after the
+# schema). The matrix sends a body without the required keys, so every
+# signed-in role gets the schema's 422 first. The 201, 403, 409 and 422
+# cases are tested in tests/integration/test_assignments.py.
+json = { title = "Matrix" }
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/assignments/{assignment_id}"
+access = "authenticated"
+# #82 C5: the assignment record policy (the creator). The placeholder id is
+# no assignment: 404 for every role. The 204, 403 and 409 cases are tested
+# in tests/integration/test_assignments.py.
+query = { version = "1" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/assignments/{assignment_id}"
+access = "authenticated"
+# #82 F1: the creator and assignment.review holders. The placeholder id is
+# no assignment: 404 for every role. The leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/assignments/{assignment_id}"
+access = "authenticated"
+# #82 C4: as DELETE, with a valid body.
+json = { version = 1 }
+
+[[route]]
+method = "PUT"
+path = "/api/v1/assignments/{assignment_id}/students/{student_id}/grade"
+access = "authenticated"
+# #82 D2: the creator, student still assigned. The placeholder id is no
+# assignment: 404 for every role.
+json = { version = 1 }
+
+[[route]]
+method = "PUT"
+path = "/api/v1/assignments/{assignment_id}/students/{student_id}/submission"
+access = "authenticated"
+# #82 D1: the student (own row) or the creator. The placeholder id is no
+# assignment: 404 for every role. The guardian 403s are tested in
+# tests/integration/test_assignments.py.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/audit-events"
+access = "permission"
+permission = "audit.view"
+allow = ["owner", "administrator"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/audit-events/record-types"
+access = "permission"
+permission = "audit.view"
+allow = ["owner", "administrator"]
+# #120 B4: the audited table names (no record-level policy).
+
+[[route]]
+method = "POST"
+path = "/api/v1/auth/invitation/lookup"
+access = "public"
+reason = "The invited person has no session yet; the one-time token is the proof (Origin check plus SameSite, #24)"
+# An empty body gets 422: a well-formed unknown token would get 410 token_invalid.
+json = {}
+rate_limit = ["token_redemption.ip"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/auth/invitation/redeem"
+access = "public"
+reason = "The invited person has no session yet; the one-time token is the proof (Origin check plus SameSite, #24)"
+# An empty body gets 422: a well-formed unknown token would get 410 token_invalid.
+json = {}
+rate_limit = ["token_redemption.ip"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/auth/login"
+access = "public"
+reason = "Signing in needs no session; CSRF for login is the Origin check plus SameSite (#24)"
+# An empty body gets 422: a well-formed wrong login would get 401 invalid_credentials.
+json = {}
+rate_limit = ["login.ip", "login.username"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/auth/logout"
+access = "authenticated"
+notice_exempt = true
+
+[[route]]
+method = "GET"
+path = "/api/v1/auth/me"
+access = "authenticated"
+notice_exempt = true
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/auth/me/preferences"
+access = "authenticated"
+notice_exempt = true
+# A valid body: every role stores its own theme (#36; the same value each time).
+json = {theme = "system"}
+
+[[route]]
+method = "POST"
+path = "/api/v1/auth/password"
+access = "authenticated"
+# An empty body gets 422 for every role, so the matrix run rotates no session;
+# the change itself is tested in tests/integration/test_password_change.py.
+json = {}
+rate_limit = ["reauth.user"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/auth/password-reset/lookup"
+access = "public"
+reason = "The person has no session; the one-time token is the proof (Origin check plus SameSite, #24)"
+# An empty body gets 422: a well-formed unknown token would get 410 token_invalid.
+json = {}
+rate_limit = ["token_redemption.ip"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/auth/password-reset/redeem"
+access = "public"
+reason = "The person has no session; the one-time token is the proof (Origin check plus SameSite, #24)"
+# An empty body gets 422: a well-formed unknown token would get 410 token_invalid.
+json = {}
+rate_limit = ["token_redemption.ip"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/auth/reauthenticate"
+access = "authenticated"
+# An empty body gets 422: a wrong password would get 403 reauth_failed.
+json = {}
+rate_limit = ["reauth.user"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/auth/registrations"
+access = "public"
+reason = "The person has no account yet; the request stays pending until staff approve it (Origin check plus SameSite, #24)"
+# An empty body gets 422: nothing is written.
+json = {}
+rate_limit = ["registration.ip"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/available-slots"
+access = "authenticated"
+# #59 B: the family record policy (no permission, ADR-0005 D9). Without the
+# query every role gets 422; the 200, the 404 for another family's student
+# and the 403 student_consent_required are in
+# tests/integration/test_available_slots.py and
+# tests/integration/test_session_requests_security.py.
+rate_limit = ["available_slots.user"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/cancellation-rules"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #99 B3: the rule versions. Shapes:
+# tests/integration/test_schedule_reconciliation_rules.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/cancellation-rules"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #99 B3: an empty body gets 422 for the allowed roles: nothing is created.
+# No reauthentication, no Idempotency-Key (configuration).
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/billing/cancellation-rules/{rule_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #99 B3: the placeholder id is no rule version: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/custom-prices"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 E2 (H10): reads need billing.manage too. No reauthentication and no
+# Idempotency-Key: custom prices are configuration (#86 E6).
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/custom-prices"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 E3: the empty body is 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/billing/custom-prices/{custom_price_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 E6: the placeholder id is no custom price: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/custom-prices/{custom_price_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 E4: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/billing/custom-prices/{custom_price_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 E5: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/discounts"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 D2 (H10): reads need billing.manage too. No reauthentication and no
+# Idempotency-Key: discounts are configuration (#86 E6).
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/discounts"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 D3: the empty body is 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/discounts/{discount_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 D4: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/billing/discounts/{discount_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 D5: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/discounts/{discount_id}/assignments"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 D6: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/billing/discounts/{discount_id}/assignments/{assignment_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #95 D7: the placeholder ids are no discount: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/overdue-accounts"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #97 E1 (N7 (a)): the overdue accounts with aging buckets. Shapes, filters,
+# totals and statement bounds: tests/integration/test_billing_overdue_accounts.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/package-products"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #94 B1 (L7): reads need billing.manage too. No reauthentication and no
+# Idempotency-Key: a product is configuration.
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/package-products"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #94 B1, B2: the empty body is 422 for the allowed roles. The 201 and the
+# field codes are in tests/integration/test_package_products_routes.py.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/package-products/{product_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #94 B1: the placeholder id is no product: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/billing/package-products/{product_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #94 B1: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/package-products/{product_id}/versions"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #94 B1 (#89 B5): the empty body is 422 for the allowed roles (before the
+# 404).
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/billing/package-products/{product_id}/versions/{price_version_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #94 B1 (#89 B6): the placeholder ids are no product: 404 for the allowed
+# roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/packages"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #94 D5 (L9): staff only; guardians read packages through #102.
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/packages"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+idempotency = true
+# #94 C1 (L8): a purchase posts a ledger row, so it needs an Idempotency-Key
+# (#88); without one the allowed roles get 400. Replays, the concurrent
+# duplicate and the codes: tests/integration/test_package_purchase.py.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/packages/{package_id}"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #94 D5: the placeholder id is no package: 404 for the allowed roles.
+
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/packages/{package_id}/cancellation"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+idempotency = true
+reauth = "finance.correction"
+# #100 C5 (R3 (a), R6 (a)): cancelling a package purchase posts ledger rows
+# (a reversal of its units and a credit), so it needs an Idempotency-Key (#88)
+# and a recent reauthentication; without a key the reauthenticated allowed
+# roles get 400. Rules, replays and concurrency:
+# tests/integration/test_billing_package_cancellation.py and
+# test_billing_corrections_concurrency.py.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/payment-methods"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #96 C5 (M8): the payment methods, for the record-payment form.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/billing/payment-methods/{code}"
+access = "permission"
+permission = "settings.manage"
+allow = ["owner", "administrator"]
+# #121 A2: a no-op (the stored is_active with version 1: 200, or 409
+# version_conflict once a test of this database changed the method); nothing
+# changes. The reauthentication condition (is_active changes) is tested in
+# tests/integration/test_payment_methods_settings.py.
+path_params = { code = "other" }
+json = { is_active = true, version = 1 }
+reauth = "settings.payment_methods_or_time_zone"
+reauth_conditional = true
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/service-prices"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #89 E6 (a): reads need billing.manage too (no billing.view yet). No
+# reauthentication and no Idempotency-Key: catalog rows are configuration.
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/service-prices"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #89 B3: the empty body is 422 for the allowed roles. The 201, 409 and the
+# field codes are in tests/integration/test_price_catalog.py.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/service-prices/{service_price_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #89 B4: the placeholder id is no price: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/service-prices/{service_price_id}/versions"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #89 B5: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/billing/service-prices/{service_price_id}/versions/{price_version_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #89 B6: the placeholder ids are no price: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/settings"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #91 B2: the billing start date. Shapes:
+# tests/integration/test_billing_settings_routes.py.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/billing/settings"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #91 B3: the empty body is 422 for the allowed roles (nothing changes and
+# no job is queued). No reauthentication. The 200, 409 and the queued run:
+# tests/integration/test_billing_settings_routes.py.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/tuition-plans"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 D2: reads need billing.view.
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/tuition-plans"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 D3: the empty body is 422 for the allowed roles. No reauthentication
+# and no Idempotency-Key: a plan is configuration (#86 E6).
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/tuition-plans/eligible-enrollments"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 D9: the placeholder student has no enrollment: an empty list.
+query = { student_id = "00000000-0000-0000-0000-000000000000" }
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/billing/tuition-plans/{tuition_plan_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 D6: the placeholder id is no plan: 404 for the allowed roles.
+query = { version = "1" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/tuition-plans/{tuition_plan_id}"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 D4: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/billing/tuition-plans/{tuition_plan_id}"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 D5: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/tuition-plans/{tuition_plan_id}/pauses"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 D7: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/tuition-plans/{tuition_plan_id}/resume"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 D8: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/unbilled-enrollments"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #92 F2: computed on read; billing off (the seeded null) gives an empty page.
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/unbilled-items"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #91 D2: computed on read; billing off (the seeded null) gives an empty page.
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/unbilled-tuition-periods"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #93 G1: computed on read; billing off (the seeded null) gives an empty page.
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/withdrawal-preview"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #101 D1 (S5 (a)): read-only. The placeholder package is no package: 404
+# withdrawal_subject_not_found for the allowed roles.
+query = { package_id = "00000000-0000-0000-0000-000000000000" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/withdrawals"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #101 D3: staff only (#102 decides any guardian view).
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/withdrawals/account-credit"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+idempotency = true
+reauth = "finance.correction"
+# #101 D2 (S5 (a)): a withdrawal posts ledger rows, so it needs an
+# Idempotency-Key (#88) and a recent reauthentication; without a key the
+# reauthenticated allowed roles get 400. An enrollment subject also needs
+# schedule.manage, checked in the handler (403 permission_denied, so Finance
+# Staff can settle only packages): tests/integration/
+# test_billing_withdrawals_access.py.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/billing/withdrawals/refund"
+access = "permission"
+permission = "finance.refund.approve"
+allow = ["owner"]
+idempotency = true
+reauth = "finance.refund_or_reversal"
+# #101 D2 (S5 (a); ADR-0006 E8): a refund outcome; the Owner (and a delegated
+# Administrator) only. Like the account-credit route, an enrollment subject
+# also needs schedule.manage, checked in the handler
+# (test_billing_withdrawals_access.py).
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/billing/withdrawals/{withdrawal_id}"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #101 D3: the placeholder id is no withdrawal: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/business-settings"
+access = "authenticated"
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/business-settings"
+access = "permission"
+permission = "settings.manage"
+allow = ["owner", "administrator"]
+# Only the version: a no-op 200 (or 409 version_conflict once a test of this
+# database changed the settings); nothing changes. The time-zone condition is
+# tested in tests/integration/test_business_settings.py.
+json = { version = 1 }
+reauth = "settings.payment_methods_or_time_zone"
+reauth_conditional = true
+
+[[route]]
+method = "GET"
+path = "/api/v1/change-requests"
+access = "authenticated"
+# #62 D1: lists filter (an empty page for a caller with no family or tutor role).
+
+[[route]]
+method = "POST"
+path = "/api/v1/change-requests"
+access = "authenticated"
+# #62 B: the minimal body gets 422 for every role; the 201 and the
+# record-policy outcomes are in tests/integration/test_change_requests.py.
+json = {}
+rate_limit = ["change_request.user"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/change-requests/{change_request_id}"
+access = "authenticated"
+# #62 D2: the placeholder id is no request: 404 for every role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/change-requests/{change_request_id}/approve"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #62 C2: the minimal body gets 422 for every allowed role (no version); the
+# 200, 404 and 409 cases are in tests/integration/test_change_request_decisions.py.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/change-requests/{change_request_id}/reject"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #62 C4: the minimal body gets 422 for every allowed role (no reason).
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/change-requests/{change_request_id}/review"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #62 C1: the placeholder id is no request: 404 for every allowed role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/change-requests/{change_request_id}/withdraw"
+access = "authenticated"
+# #62 D3: the minimal body gets 422 for every role (then 404 for the
+# placeholder id).
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-series"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #53 J6: a valid body with unknown ids: 422 (student_unknown,
+# subject_unknown) for every allowed role ("not denied"); nothing is
+# created. The 201 and 409 cases are tested in
+# tests/integration/test_class_series_create.py.
+json = { kind = "individual", student_id = "00000000-0000-4000-8000-000000000053", subject_id = "00000000-0000-4000-8000-000000000053", starts_on = "2031-01-06", start_time = "16:00", duration_minutes = 60, recurrence = { weekdays = [1, 3], interval = 1 } }
+
+[[route]]
+method = "GET"
+path = "/api/v1/class-series/{class_series_id}"
+access = "permission"
+permission = "schedule.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+# #53 J6: every holder sees every series; the placeholder id is no series:
+# 404 for every allowed role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-series/{class_series_id}/cancellations"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #54 E7: a valid body; the placeholder id is no series: 404 for every
+# allowed role ("not denied"). The other cases are tested in
+# tests/integration/test_class_series_cancel.py.
+json = { mode = "following", from_date = "2031-01-06", reason = "Fin del curso", version = 1 }
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-series/{class_series_id}/edits"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #54 E7: a valid body; the placeholder id is no series: 404 for every
+# allowed role ("not denied"). The other cases are tested in
+# tests/integration/test_class_series_edit.py.
+# TOML has no null: the body is a `following` edit with a placeholder room.
+json = { mode = "following", from_date = "2031-01-06", version = 1, start_time = "17:00", duration_minutes = 60, classroom_id = "00000000-0000-4000-8000-000000000054", recurrence = { weekdays = [2, 4], interval = 1 } }
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-series/{class_series_id}/offers"
+access = "permission"
+permission = "schedule.assign"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #233 I5: a valid body; the placeholder id is no series: 404 for every
+# allowed role ("not denied"). The 201 and 409 cases are tested in
+# tests/integration/test_series_offers.py.
+json = { tutor_user_id = "00000000-0000-4000-8000-000000000233", version = 1 }
+
+[[route]]
+method = "GET"
+path = "/api/v1/class-sessions"
+access = "permission"
+permission = "schedule.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+# #57: the matrix sends no query parameters: the missing from/to gets 422 for
+# every allowed role ("not denied"). The 200 cases are tested in
+# tests/integration/test_class_session_calendar.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #48: a valid body with unknown ids: 422 (student_unknown, subject_unknown)
+# for every allowed role ("not denied"); nothing is created. The 201 and 409
+# cases are tested in tests/integration/test_class_session_create.py.
+json = { kind = "individual", student_id = "00000000-0000-4000-8000-000000000048", subject_id = "00000000-0000-4000-8000-000000000048", starts_at = "2031-01-06T16:00:00-06:00", ends_at = "2031-01-06T17:00:00-06:00" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/suggestions"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #50: read-only; a valid body with unknown ids: 422 (student_unknown,
+# subject_unknown) for every allowed role. The 200 cases are tested in
+# tests/integration/test_class_session_suggestions.py.
+json = { kind = "individual", student_id = "00000000-0000-4000-8000-000000000050", subject_id = "00000000-0000-4000-8000-000000000050", starts_at = "2031-01-06T16:00:00-06:00", ends_at = "2031-01-06T17:00:00-06:00" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/class-sessions/{class_session_id:uuid}"
+access = "permission"
+permission = "schedule.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+# #48: every holder sees every session; the placeholder id is no session:
+# 404 for every allowed role. The uuid convertor (#50) keeps the path from
+# shadowing /suggestions (a GET there is 405).
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/class-sessions/{class_session_id:uuid}"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #54 E7: a valid body; the placeholder id is no session: 404 for every
+# allowed role ("not denied"). The 200, 409 and 422 cases are tested in
+# tests/integration/test_class_session_edit.py.
+json = { version = 1, starts_at = "2031-01-06T16:00:00-06:00", ends_at = "2031-01-06T17:00:00-06:00" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/attendance"
+access = "authenticated"
+# #76 B1: the record policy (the session's current tutor, or a schedule.view
+# holder; anyone else the 404 of an unknown id). The placeholder id is no
+# session: 404 for every role. The 200 and IDOR cases are tested in
+# tests/integration/test_attendance.py.
+
+[[route]]
+method = "PUT"
+path = "/api/v1/class-sessions/{class_session_id}/attendance"
+access = "authenticated"
+# #76 C2: the record policy (the current tutor only; other visible callers
+# 403 attendance_tutor_only after the 404). A valid body; the placeholder id
+# is no session: 404 for every role. The 200, 403, 409 and 422 cases are
+# tested in tests/integration/test_attendance.py.
+json = { version = 1, marks = [{ student_id = "00000000-0000-4000-8000-000000000076", status = "present" }] }
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/attendance/corrections"
+access = "permission"
+permission = "attendance.correct"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #76 D2 (E1 (a)): a valid body; the placeholder id is no session: 404 for
+# every allowed role. The 201, 409 and 422 cases are tested in
+# tests/integration/test_attendance.py.
+json = { version = 1, student_id = "00000000-0000-4000-8000-000000000076", status = "absent", reason = "Matrix" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/cancel"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #55 I6: a valid body; the placeholder id is no session: 404 for every
+# allowed role. A Coordinator holds schedule.assign but not schedule.manage
+# (403). The 200, 409 and 422 cases are tested in
+# tests/integration/test_session_cancellation.py.
+json = { version = 1, reason = "Matrix" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/closeout"
+access = "authenticated"
+# #77 C1: the record policy (the session's current tutor, or a schedule.view
+# holder; anyone else the 404 of an unknown id). The placeholder id is no
+# session: 404 for every role. The 200 and IDOR cases are tested in
+# tests/integration/test_session_closeout.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/closeout"
+access = "authenticated"
+# #77 D2: the record policy (the current tutor only; other visible callers
+# 403 closeout_tutor_only after the 404). A valid body; the placeholder id
+# is no session: 404 for every role. The 201, 403, 409 and 422 cases are
+# tested in tests/integration/test_session_closeout.py.
+json = { version = 1, actual_minutes = 60, summary = { topics = "Matrix", performance = "Matrix", next_steps = "Matrix" } }
+
+[[route]]
+method = "PUT"
+path = "/api/v1/class-sessions/{class_session_id}/closeout"
+access = "authenticated"
+# #78 D2: the record policy (the current tutor who submitted it; other
+# visible callers 403 closeout_tutor_only after the 404). A valid body; the
+# placeholder id is no session: 404 for every role. The 200, 403, 409 and
+# 422 cases are tested in tests/integration/test_closeout_review.py.
+json = { version = 1, actual_minutes = 60, summary = { topics = "Matrix", performance = "Matrix", next_steps = "Matrix" }, reason = "Matrix" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/closeout/approve"
+access = "permission"
+permission = "teaching_hours.approve"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #78 C1: a valid body; the placeholder id is no session: 404 for every
+# allowed role. The 200, 403 closeout_self_review and 409 cases are tested
+# in tests/integration/test_closeout_review.py.
+json = { version = 1 }
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/closeout/corrections"
+access = "permission"
+permission = "teaching_hours.approve"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #78 C3: as approve, with minutes and a reason.
+json = { version = 1, actual_minutes = 50, reason = "Matrix" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/closeout/on-behalf"
+access = "permission"
+permission = "teaching_hours.approve"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #301 C2: checked before anything is read. A valid body; the placeholder id
+# is no session: 404 for every allowed role. The 201, 403
+# closeout_on_behalf_own_session, 409 and 422 cases are tested in
+# tests/integration/test_closeout_on_behalf.py.
+json = { version = 1, actual_minutes = 60, summary = { topics = "Matrix", performance = "Matrix", next_steps = "Matrix" }, reason = "Matrix" }
+
+[[route]]
+method = "PUT"
+path = "/api/v1/class-sessions/{class_session_id}/closeout/on-behalf"
+access = "permission"
+permission = "teaching_hours.approve"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #301 D2: as the POST (404: no session, no closeout); the takeover cases are
+# tested in tests/integration/test_closeout_on_behalf.py.
+json = { version = 1, actual_minutes = 60, summary = { topics = "Matrix", performance = "Matrix", next_steps = "Matrix" }, reason = "Matrix" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/closeout/request-changes"
+access = "permission"
+permission = "teaching_hours.approve"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #78 C2: as approve, with a reason.
+json = { version = 1, reason = "Matrix" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/conflict-overrides"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #236 G3/I7: a valid body; the placeholder id is no session: 404 for every
+# allowed role, before the schedule.override check ("not denied" for the
+# Administrator too). The 200, 403, 409 and 422 cases are tested in
+# tests/integration/test_class_series_conflict_overrides.py.
+json = { version = 1, override = { codes = ["outside_operating_hours"], reason = "Matrix" } }
+
+[[route]]
+method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/evaluation-context"
+access = "authenticated"
+# #80 AM1: the record policy (the session's current tutor only; anyone else,
+# staff included, the 404 of an unknown id). The placeholder id is no
+# session: 404 for every role. The 200 and IDOR cases are tested in
+# tests/integration/test_evaluations.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/notes"
+access = "authenticated"
+# #79 E1: the record policy (the session's current tutor, or an
+# academic_note.review holder; anyone else, Finance included, the 404 of an
+# unknown id). The placeholder id is no session: 404 for every role. The
+# 200 and IDOR cases are tested in tests/integration/test_session_notes.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/notes"
+access = "authenticated"
+# #79 C2: the record policy (the current tutor only; a reviewer 403
+# note_tutor_only after the 404). A valid body; the placeholder id is no
+# session: 404 for every role. The 201, 403, 409 and 422 cases are tested in
+# tests/integration/test_session_notes.py.
+json = { student_id = "00000000-0000-4000-8000-000000000079", body = "Matrix" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/offers"
+access = "permission"
+permission = "schedule.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+# #52 G3: the placeholder id is no session: 404 for every allowed role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/offers"
+access = "permission"
+permission = "schedule.assign"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #52 C2: a valid body, so the placeholder id gets 404 for every allowed role.
+json = {tutor_user_id = "00000000-0000-7000-8000-000000000001", version = 1}
+
+[[route]]
+method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/replacement-tutors"
+access = "permission"
+permission = "schedule.assign"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #51 H6: the placeholder id is no session: 404 for every allowed role.
+# Finance holds schedule.view but not schedule.assign. The 200 and 409 cases
+# are tested in tests/integration/test_replacement_tutors.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/class-sessions/{class_session_id}/substitutions"
+access = "permission"
+permission = "schedule.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+# #55 I6: the placeholder id is no session: 404 for every allowed role. The
+# 200 cases are tested in tests/integration/test_session_substitutions.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/substitutions"
+access = "permission"
+permission = "schedule.assign"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #55 I6: a valid body; the placeholder id is no session: 404 for every
+# allowed role ("not denied"). The 201, 409 and 422 cases are tested in
+# tests/integration/test_session_substitutions.py.
+json = { substitute_tutor_user_id = "00000000-0000-4000-8000-000000000055", version = 1, reason = "Matrix" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/class-sessions/{class_session_id}/substitutions/{substitution_id}/withdraw"
+access = "permission"
+permission = "schedule.assign"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #55 I6: the placeholder ids are no session and no substitution: 404 for
+# every allowed role.
+
+[[route]]
+method = "GET"
+path = "/api/v1/classrooms"
+access = "authenticated"
+
+[[route]]
+method = "POST"
+path = "/api/v1/classrooms"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/classrooms/{classroom_id}"
+access = "authenticated"
+# The placeholder id is no classroom: 404 for every signed-in role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/classrooms/{classroom_id}"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/closeouts/overdue"
+access = "permission"
+permission = "teaching_hours.approve"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #301 B: 200 for every allowed role; filters, order, budget and the
+# canary names are tested in tests/integration/test_closeout_on_behalf.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/closures"
+access = "authenticated"
+
+[[route]]
+method = "POST"
+path = "/api/v1/closures"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/closures/check"
+access = "authenticated"
+# The matrix sends no query parameters: the missing date gets 422 for every
+# signed-in role ("not denied"). The 200 case is tested in
+# tests/integration/test_closures.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/closures/{closure_id}"
+access = "authenticated"
+# The placeholder id is no closure: 404 for every signed-in role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/closures/{closure_id}"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
+
+# Course cohorts (#65).
+[[route]]
+method = "GET"
+path = "/api/v1/cohorts"
+access = "authenticated"
+# #66 G2/I2: record policy; course.view holders see every cohort, an
+# enrolled student and their linked guardians (an adult's only with the
+# consent, #246 E1) only their cohorts (no enrolled count), the tutor of a
+# producing series their cohorts (#246 A2), anyone else an empty list (200).
+# Tested in tests/integration/test_group_cohort_family_tutor_reads.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/cohorts"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #65 H2: a valid body with an unknown template: 422 (template_unknown) for
+# every allowed role ("not denied"); nothing is created. The 201, 409 and
+# other 422 cases are tested in tests/integration/test_course_cohorts_create.py.
+json = { name = "Matriz 65", template_id = "00000000-0000-4000-8000-000000000065", subject_id = "00000000-0000-4000-8000-000000000065", max_students = 12, starts_on = "2031-01-06", start_time = "17:00", recurrence = { weekdays = [1, 3], interval = 1 } }
+
+[[route]]
+method = "GET"
+path = "/api/v1/cohorts/{cohort_id}"
+access = "authenticated"
+# #66 G3/I2: the placeholder id is no cohort: 404 (cohort_not_found) for
+# every role. The record policy (404 for a hidden cohort) is tested in
+# tests/integration/test_cohort_reads_family.py and, for tutors and the
+# #246 consent rule, test_group_cohort_family_tutor_reads.py.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/cohorts/{cohort_id}"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #65 H2: a valid body; the placeholder id is no cohort: 404 for every
+# allowed role ("not denied").
+json = { version = 1, max_students = 8 }
+
+[[route]]
+method = "GET"
+path = "/api/v1/cohorts/{cohort_id}/completion"
+access = "authenticated"
+# #85 C1/D1: record policy; evaluation.manage holders and the tutor
+# currently teaching the cohort read every active enrollment, an enrolled
+# student and their guardians (an adult's only with the consent) their own
+# rows, Finance (course.view only) 403 permission_denied, anyone else 404.
+# The placeholder id is no cohort: 404 (cohort_not_found) for every role.
+# Tested in tests/integration/test_course_completion.py; the leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/cohorts/{cohort_id}/enrollments"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #66 I2: a valid body; the placeholder id is no cohort: 404 for every
+# allowed role ("not denied"). The other cases are tested in
+# tests/integration/test_cohort_enrollment.py.
+json = { student_id = "00000000-0000-4000-8000-000000000066" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/cohorts/{cohort_id}/enrollments/{enrollment_id}/withdraw"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #66 I2: a valid body; the placeholder ids are no cohort: 404 for every
+# allowed role ("not denied").
+json = { version = 1 }
+
+[[route]]
+method = "GET"
+path = "/api/v1/cohorts/{cohort_id}/sessions"
+access = "authenticated"
+# #66 G4/I2: the matrix sends no query parameters: the missing from/to gets
+# 422 for every role. The record policy is tested in
+# tests/integration/test_cohort_reads_family.py and
+# test_group_cohort_family_tutor_reads.py (#246).
+
+# Course templates (#64, owner decision E3 (a)).
+[[route]]
+method = "GET"
+path = "/api/v1/course-templates"
+access = "permission"
+permission = "course.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/course-templates"
+access = "permission"
+permission = "course.manage"
+allow = ["owner", "administrator", "academic_coordinator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/course-templates/{template_id}"
+access = "permission"
+permission = "course.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+# The placeholder id is no template: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/course-templates/{template_id}"
+access = "permission"
+permission = "course.manage"
+allow = ["owner", "administrator", "academic_coordinator"]
+# A valid body on the placeholder id: 404 for the allowed roles.
+json = { version = 1, is_active = false }
+
+[[route]]
+method = "PUT"
+path = "/api/v1/course-templates/{template_id}"
+access = "permission"
+permission = "course.manage"
+allow = ["owner", "administrator", "academic_coordinator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/deleted-records"
+access = "authenticated"
+# #129 B1: only the caller's own restorable records; an empty list for
+# everyone else (tests/integration/test_deleted_records.py).
+
+[[route]]
+method = "POST"
+path = "/api/v1/deleted-records/{kind}/{record_id}/restore"
+access = "authenticated"
+# #129 B2: the placeholder id is no deleted record: 404 for every role. The
+# 200, 403 and 409 cases are tested in tests/integration/test_deleted_records.py.
+path_params = { kind = "session_note" }
+json = { version = 1 }
+
+[[route]]
+method = "POST"
+path = "/api/v1/dev/demo-jobs"
+access = "public"
+reason = "Local/DEV-only demo job route; never mounted outside local or dev"
+json = { outcome = "succeed" }
+rate_limit_exempt = "Local/DEV only; takes no credentials or tokens"
+
+[[route]]
+method = "POST"
+path = "/api/v1/dev/notifications"
+access = "authenticated"
+# Local/DEV only (#41 D1): creates a dev.demo notification for the caller.
+json = { label = "Matrix" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/education-levels"
+access = "authenticated"
+
+[[route]]
+method = "POST"
+path = "/api/v1/education-levels"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/education-levels/{level_id}"
+access = "authenticated"
+# The placeholder id is no level: 404 for every signed-in role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/education-levels/{level_id}"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/education-levels/{level_id}/subjects"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/evaluation-templates"
+access = "authenticated"
+# #80 C2/C3: evaluation.manage holders and tutor-role users read; anyone
+# else gets 403 permission_denied from the record policy (not a require():
+# tutors hold no permission for it). The matrix sends an invalid kind, so
+# every signed-in role gets the schema's 422 first (C2 order: 422 before
+# 403). The 200 and 403 cases are tested in
+# tests/integration/test_evaluations.py.
+query = { kind = "matrix" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/evaluation-templates"
+access = "permission"
+permission = "evaluation.manage"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #80 C1: an empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/evaluation-templates/{template_id}"
+access = "authenticated"
+# #80 C2: as the list (403 permission_denied for callers without
+# evaluation.manage or the tutor role, before the 404). The matrix sends a
+# non-UUID id, so every signed-in role gets the schema's 422 first. The 200,
+# 403 and 404 cases are tested in tests/integration/test_evaluations.py.
+path_params = { template_id = "matrix" }
+
+[[route]]
+method = "PUT"
+path = "/api/v1/evaluation-templates/{template_id}"
+access = "permission"
+permission = "evaluation.manage"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #80 C1: an empty body gets 422 for the allowed roles: nothing changes.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/evaluations"
+access = "authenticated"
+# #80 D2: the record policy (a tutor currently teaching the student; a
+# reviewer 403 evaluation_tutor_only after the 404). A valid body; the
+# placeholder student is unknown: 404 for every role. The 201, 403, 409 and
+# 422 cases are tested in tests/integration/test_evaluations.py.
+json = { student_id = "00000000-0000-4000-8000-000000000080", template_id = "00000000-0000-4000-8000-000000000081" }
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/evaluations/{evaluation_id}"
+access = "authenticated"
+# #80 D7: the evaluation record policy (the author). The placeholder id is
+# no evaluation: 404 for every role. The 204, 403 and 409 cases are tested in
+# tests/integration/test_evaluations.py.
+query = { version = "1" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/evaluations/{evaluation_id}"
+access = "authenticated"
+# #80 D8: the evaluation record policy. The placeholder id is no evaluation:
+# 404 for every role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/evaluations/{evaluation_id}"
+access = "authenticated"
+# #80 D4: as DELETE, with a valid body.
+json = { version = 1 }
+
+[[route]]
+method = "POST"
+path = "/api/v1/evaluations/{evaluation_id}/finalize"
+access = "authenticated"
+# #80 D5: as DELETE, with a valid body.
+json = { version = 1 }
+
+[[route]]
+method = "POST"
+path = "/api/v1/evaluations/{evaluation_id}/void"
+access = "authenticated"
+# #80 D6: the record policy, then 403 permission_denied without
+# evaluation.manage (after the 404: a hidden evaluation stays hidden). The
+# placeholder id is no evaluation: 404 for every role. The 200, 403 and 409
+# cases are tested in tests/integration/test_evaluations.py.
+json = { version = 1, reason = "Matrix" }
+
+# Exports (#124 H1): open to a staff role holding some dataset's permission
+# (students: student.view; class_sessions: schedule.view; expenses:
+# expense.view), checked by the routes themselves, so tutors, students and
+# guardians get 403. Another user's export is 404 for every role, the Owner
+# included. Per-dataset cases (the Administrator's and Coordinator's 403 on an
+# expenses request, reauthentication for personal datasets):
+# tests/integration/test_exports_api.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/exports"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/exports"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+# An empty body gets 422 for every allowed role; nothing is queued. The
+# personal-dataset condition is tested in tests/integration/test_exports_api.py.
+json = {}
+reauth = "data.personal_export"
+reauth_conditional = true
+
+[[route]]
+method = "GET"
+path = "/api/v1/exports/datasets"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/exports/{export_id}"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+# The placeholder id is no export of the caller: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/exports/{export_id}/download"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+# The placeholder id is no export of the caller: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/families"
+access = "permission"
+permission = "guardian.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "guardian"]
+# The record policy filters the list: a guardian sees only the family of their
+# active profile (#172 D2).
+
+[[route]]
+method = "POST"
+path = "/api/v1/families"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/own"
+access = "authenticated"
+# #102 A1 (T2 (a)): the family of the caller's active guardian profile, or
+# null (no guardian role, an inactive profile, a profile in no family); any
+# signed-in role gets 200, never 404 (it only describes the caller). Staff
+# who are also guardians get their own family, unlike GET /api/v1/families.
+# Cases: tests/integration/test_billing_family_reads.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}"
+access = "permission"
+permission = "guardian.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "guardian"]
+# The placeholder id is no family: 404 for every allowed role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/families/{family_id}"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account"
+access = "authenticated"
+# #364 B1 the balance; #90b F1 (a) record policy: billing.view holders (Owner,
+# Administrator, Finance Staff) see every family, a guardian only the family
+# of their active profile, anyone else 404. The placeholder id is no family:
+# 404 for every signed-in role. Roles and guardians:
+# tests/integration/test_billing_account_access.py.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/families/{family_id}/billing-account"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #97 C1 (N6 (a)): the family's due-date offset. No Idempotency-Key and no
+# reauthentication (it moves no money). The placeholder id is no family: 404
+# for the allowed roles. The version rule, forward-only and the lock:
+# tests/integration/test_billing_account_offset.py.
+json = { version = 1, due_offset_days = 5 }
+
+[[route]]
+method = "POST"
+path = "/api/v1/families/{family_id}/billing-account/allocations"
+access = "permission"
+permission = "payment.record"
+allow = ["owner", "administrator", "finance_staff"]
+idempotency = true
+# #96 C4 (M1 (a), M4 (a); ADR-0006 E8): allocating account credit posts ledger
+# rows, so it needs an Idempotency-Key (#88); without one the allowed roles get
+# 400. No reauthentication (M6 (a)). Replays, the concurrent duplicate and the
+# codes: tests/integration/test_billing_payments_credit.py and
+# test_billing_payments_idempotency.py.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/charges"
+access = "authenticated"
+# #364 B2 the charges; #90b F1 (a) record policy: billing.view holders (Owner,
+# Administrator, Finance Staff) see every family, a guardian only the family
+# of their active profile, anyone else 404. The placeholder id is no family:
+# 404 for every signed-in role. Roles and guardians:
+# tests/integration/test_billing_account_access.py.
+
+
+[[route]]
+method = "POST"
+path = "/api/v1/families/{family_id}/billing-account/charges"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+idempotency = true
+# #100 C1 (R7 (a)): a manual charge posts a ledger row, so it needs an
+# Idempotency-Key (#88); without one the allowed roles get 400. No
+# reauthentication (R3 (a)). Rules and replays:
+# tests/integration/test_billing_manual_charges.py.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/charges/{charge_id}"
+access = "authenticated"
+# #100 C6 (R8 (a)) one charge with its adjustments and allocations; #90b F1 (a)
+# record policy: billing.view holders (Owner, Administrator, Finance Staff) see
+# every family, a guardian only the family of their active profile (reasons
+# and actor ids null), anyone else 404. The placeholder ids are no family: 404
+# for every signed-in role. Roles and guardians:
+# tests/integration/test_billing_corrections_access.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/families/{family_id}/billing-account/charges/{charge_id}/adjustments"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+idempotency = true
+reauth = "finance.correction"
+# #100 C2 (R3 (a)): a manual adjustment (credit or debit) posts a ledger row,
+# so it needs an Idempotency-Key (#88) and a recent reauthentication; without a
+# key the reauthenticated allowed roles get 400. Rules and replays:
+# tests/integration/test_billing_manual_adjustments.py.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/charges/{charge_id}/due-date-changes"
+access = "permission"
+permission = "billing.view"
+allow = ["owner", "administrator", "finance_staff"]
+# #97 D2: a charge's due-date history, staff only (the reasons are staff
+# text; guardians get 403). The placeholder ids are no family: 404 for the
+# allowed roles. Shapes: tests/integration/test_billing_due_date_changes.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/families/{family_id}/billing-account/charges/{charge_id}/due-date-changes"
+access = "permission"
+permission = "billing.manage"
+allow = ["owner", "administrator", "finance_staff"]
+# #97 D1 (N5 (a)): change a posted charge's due date. No Idempotency-Key (a
+# repeat is 409 due_date_unchanged) and no reauthentication. The placeholder
+# ids are no family: 404 for the allowed roles. Order, 409s and effects:
+# tests/integration/test_billing_due_date_changes.py.
+json = { due_date = "2031-03-10", reason = "Acuerdo con la familia" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/ledger"
+access = "authenticated"
+# #364 B3 the ledger; #90b F1 (a) record policy: billing.view holders (Owner,
+# Administrator, Finance Staff) see every family, a guardian only the family
+# of their active profile, anyone else 404. The placeholder id is no family:
+# 404 for every signed-in role. Roles and guardians:
+# tests/integration/test_billing_account_access.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/packages"
+access = "authenticated"
+# #102 B1 (T3 (a)) the packages on the family's account (#94's PackageItem);
+# #90b F1 (a) record policy: billing.view holders (Owner, Administrator,
+# Finance Staff) see every family, a guardian only the family of their active
+# profile, anyone else 404. The placeholder id is no family: 404 for every
+# signed-in role. Roles, guardians and the walk:
+# tests/integration/test_billing_family_reads.py and
+# test_billing_family_leak.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/packages/{package_id}"
+access = "authenticated"
+# #102 B2 (T3 (a)) one package on the family's account with its unit
+# movements; the same record policy (#90b F1 (a)); a package of another
+# family's account is the same 404 as an unknown family. The placeholder ids
+# are no family: 404 for every signed-in role. Roles, guardians and the walk:
+# tests/integration/test_billing_family_reads.py and
+# test_billing_family_leak.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/payments"
+access = "authenticated"
+# #96 C6 the payments; #90b F1 (a) record policy (#96 M7): billing.view holders
+# (Owner, Administrator, Finance Staff) see every family, a guardian only the
+# family of their active profile (note and actor ids null), anyone else 404.
+# The placeholder id is no family: 404 for every signed-in role. Roles and
+# guardians: tests/integration/test_billing_payments_access.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/families/{family_id}/billing-account/payments"
+access = "permission"
+permission = "payment.record"
+allow = ["owner", "administrator", "finance_staff"]
+idempotency = true
+# #96 C1 (M1 (a); ADR-0006 E8): recording a payment posts ledger rows, so it
+# needs an Idempotency-Key (#88); without one the allowed roles get 400. No
+# reauthentication (M6 (a)). Replays, the concurrent duplicate and the codes:
+# tests/integration/test_billing_payments_idempotency.py and
+# test_billing_payments_record.py.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/payments/{payment_id}"
+access = "authenticated"
+# #96 C6 one payment with its allocations; the same record policy as the list
+# (#90b F1 (a), #96 M7). The placeholder ids are no family: 404 for every
+# signed-in role. Roles and guardians:
+# tests/integration/test_billing_payments_access.py.
+
+
+[[route]]
+method = "POST"
+path = "/api/v1/families/{family_id}/billing-account/payments/{payment_id}/refunds"
+access = "permission"
+permission = "finance.refund.approve"
+allow = ["owner"]
+idempotency = true
+reauth = "finance.refund_or_reversal"
+# #100 C4 (R4 (a), R5 (a); ADR-0006 E8): a refund posts a ledger row, so it
+# needs an Idempotency-Key (#88) and a recent reauthentication; without a key
+# the reauthenticated Owner (and a delegated Administrator) get 400. Finance
+# Staff can't. Rules and replays: tests/integration/test_billing_refunds.py
+# and test_billing_corrections_access.py.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/families/{family_id}/billing-account/payments/{payment_id}/reversal"
+access = "permission"
+permission = "finance.refund.approve"
+allow = ["owner"]
+idempotency = true
+reauth = "finance.refund_or_reversal"
+# #100 C3 (R5 (a); ADR-0006 E8): a reversal posts ledger rows (the reversal and
+# its releases), so it needs an Idempotency-Key (#88) and a recent
+# reauthentication; without a key the reauthenticated Owner (and a delegated
+# Administrator) get 400. Finance Staff can't. Rules and replays:
+# tests/integration/test_billing_payment_reversals.py and
+# test_billing_corrections_access.py.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/families/{family_id}/billing-account/receipts/{receipt_id}/pdf"
+access = "authenticated"
+# #98 F1, F2 (P9 (a)) a payment receipt as a PDF; the #364 record policy:
+# billing.view holders (Owner, Administrator, Finance Staff) download any
+# family's receipts, a guardian with an active profile only their own family's,
+# anyone else 404. The placeholder ids are no family: 404 for every signed-in
+# role. Roles, guardians and cross-family ids:
+# tests/integration/test_billing_receipts_routes.py.
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/families/{family_id}/guardians/{guardian_id}"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# The placeholder ids are no membership: 404 for the allowed roles.
+
+[[route]]
+method = "PUT"
+path = "/api/v1/families/{family_id}/guardians/{guardian_id}"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# The placeholder ids are no family or guardian: 404 for the allowed roles.
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/families/{family_id}/students/{student_id}"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# The placeholder ids are no membership: 404 for the allowed roles.
+
+[[route]]
+method = "PUT"
+path = "/api/v1/families/{family_id}/students/{student_id}"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# The placeholder ids are no family or student: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/finance/expense-categories"
+access = "permission"
+permission = "expense.configure"
+allow = ["owner", "administrator", "finance_staff"]
+# #114 E6 (ADR-0017 E12): the reads need expense.configure too.
+
+[[route]]
+method = "POST"
+path = "/api/v1/finance/expense-categories"
+access = "permission"
+permission = "expense.configure"
+allow = ["owner", "administrator", "finance_staff"]
+# #114 B2: the empty body is 422 for the allowed roles. A name is a natural
+# key, so no Idempotency-Key.
+json = {}
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/finance/expense-categories/{category_id}"
+access = "permission"
+permission = "expense.configure"
+allow = ["owner", "administrator", "finance_staff"]
+# #114 B3: the empty body is 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/finance/expense-payments/{payment_id}/reversal"
+access = "permission"
+permission = "expense.view"
+allow = ["owner"]
+idempotency = true
+reauth = "finance.refund_or_reversal"
+json = {}
+# #115 E1, E6 (ADR-0017 E12): the rule is expense.view (not delegable) and
+# finance.refund.approve is checked with it, so Finance Staff and an
+# Administrator delegated finance.refund.approve get 403
+# (tests/integration/test_finance_expense_payments.py). Reauthentication, then
+# the key: without one the reauthenticated Owner gets 400.
+
+[[route]]
+method = "GET"
+path = "/api/v1/finance/expense-templates"
+access = "permission"
+permission = "expense.view"
+allow = ["owner", "finance_staff"]
+# #116 F1, ADR-0017 E12: a template holds an amount; Administrators get 403.
+
+[[route]]
+method = "POST"
+path = "/api/v1/finance/expense-templates"
+access = "permission"
+permission = "expense.manage"
+allow = ["owner", "finance_staff"]
+json = {}
+# #116 C1, E3: no Idempotency-Key (the name is the natural key); the empty body
+# is 422 for the allowed roles. Rules and races:
+# tests/integration/test_finance_expense_templates.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/finance/expense-templates/{template_id}"
+access = "permission"
+permission = "expense.view"
+allow = ["owner", "finance_staff"]
+# #116 C8: the placeholder id is no template: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/finance/expense-templates/{template_id}"
+access = "permission"
+permission = "expense.manage"
+allow = ["owner", "finance_staff"]
+json = {}
+# #116 C4: the empty body is 422 for the allowed roles (version is required).
+
+[[route]]
+method = "GET"
+path = "/api/v1/finance/expenses"
+access = "permission"
+permission = "expense.view"
+allow = ["owner", "finance_staff"]
+# #115 C1, ADR-0017 E12: Administrators see no expense amounts.
+
+[[route]]
+method = "POST"
+path = "/api/v1/finance/expenses"
+access = "permission"
+permission = "expense.manage"
+allow = ["owner", "finance_staff"]
+idempotency = true
+json = {}
+# #115 B1: no reauthentication. Without a key the allowed roles get 400. Rules,
+# replays and races: tests/integration/test_finance_expenses.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/finance/expenses/{expense_id}"
+access = "permission"
+permission = "expense.view"
+allow = ["owner", "finance_staff"]
+# #115 C3: the placeholder id is no expense: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/finance/expenses/{expense_id}/adjustments"
+access = "permission"
+permission = "expense.manage"
+allow = ["owner", "finance_staff"]
+idempotency = true
+reauth = "finance.correction"
+json = {}
+# #115 F1: reauthentication, then the key: without one the reauthenticated
+# allowed roles get 400. Rules and races:
+# tests/integration/test_finance_expense_adjustments.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/finance/expenses/{expense_id}/payments"
+access = "permission"
+permission = "expense.manage"
+allow = ["owner", "finance_staff"]
+idempotency = true
+json = {}
+# #115 D1: no reauthentication. Without a key the allowed roles get 400. Rules
+# and races: tests/integration/test_finance_expense_payments.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/finance/vendors"
+access = "permission"
+permission = "expense.configure"
+allow = ["owner", "administrator", "finance_staff"]
+# #114 E6, C1.
+
+[[route]]
+method = "POST"
+path = "/api/v1/finance/vendors"
+access = "permission"
+permission = "expense.configure"
+allow = ["owner", "administrator", "finance_staff"]
+# #114 C2, E4: the empty body is 422 for the allowed roles; no
+# Idempotency-Key.
+json = {}
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/finance/vendors/{vendor_id}"
+access = "permission"
+permission = "expense.configure"
+allow = ["owner", "administrator", "finance_staff"]
+# #114 C3: the empty body is 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/groups"
+access = "authenticated"
+# #56 H1/I2: record policy; schedule.view holders see every group, a student
+# or a linked guardian (an adult's only with the consent) only their own and
+# the tutor of a producing series theirs (#246; no enrolled count), anyone
+# else an empty list (200).
+
+[[route]]
+method = "POST"
+path = "/api/v1/groups"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #56 I2: a valid body with unknown ids: 422 (subject_unknown) for every
+# allowed role ("not denied"); nothing is created. The 201 and 409 cases are
+# tested in tests/integration/test_groups_create.py.
+json = { name = "Matriz 56", subject_id = "00000000-0000-4000-8000-000000000056", max_students = 6, starts_on = "2031-01-06", start_time = "16:00", duration_minutes = 60, recurrence = { weekdays = [1, 3], interval = 1 } }
+
+[[route]]
+method = "GET"
+path = "/api/v1/groups/{group_id}"
+access = "authenticated"
+# #56 H2/I2: record policy; the placeholder id is no group: 404
+# (group_not_found) for every role, never 403. Tutors and guardians: #246,
+# tests/integration/test_group_cohort_family_tutor_reads.py.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/groups/{group_id}"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #56 I2: a valid body; the placeholder id is no group: 404 for every allowed
+# role ("not denied").
+json = { version = 1, max_students = 8 }
+
+[[route]]
+method = "POST"
+path = "/api/v1/groups/{group_id}/enrollments"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #56 I2: a valid body; the placeholder id is no group: 404 for every allowed
+# role ("not denied"). The other cases are tested in
+# tests/integration/test_group_enrollment.py.
+json = { student_id = "00000000-0000-4000-8000-000000000056" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/groups/{group_id}/enrollments/{enrollment_id}/withdraw"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #56 I2: a valid body; the placeholder ids are no group: 404 for every
+# allowed role ("not denied").
+json = { version = 1 }
+
+[[route]]
+method = "GET"
+path = "/api/v1/groups/{group_id}/sessions"
+access = "authenticated"
+# #56 H3/I2: the matrix sends no query parameters: the missing from/to gets
+# 422 for every role. The record policy (404 for a hidden group) is tested in
+# tests/integration/test_group_reads.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/guardians"
+access = "permission"
+permission = "guardian.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "guardian"]
+# The record policy filters the list: a guardian sees only their own active
+# profile (#34 F3).
+
+[[route]]
+method = "POST"
+path = "/api/v1/guardians"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/guardians/{guardian_id}"
+access = "permission"
+permission = "guardian.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "guardian"]
+# The placeholder id is no guardian: 404 for every allowed role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/guardians/{guardian_id}"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
+
+# Imports (#122 G1, #123 E1): open to any kind's importer. Students need
+# student.manage (Owner, Administrator, Academic coordinator); tutors need
+# user.invite and may assign tutor (Owner, Administrator); schedules need
+# schedule.manage (Owner, Administrator); opening balances need
+# billing.manage (Owner, Administrator, Finance staff). The route checks it
+# itself, so the rest get 403. Per-kind cases (the Coordinator's 403 on a
+# tutors import and 404 on a tutors job; Finance's 403 on a schedules
+# import): tests/integration/test_imports_pipeline.py,
+# test_imports_schedules.py and test_imports_opening_balances.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/imports"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/imports"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+# An unknown kind gets 422 import_kind_unknown for every allowed role (each
+# may import a different kind); nothing is written.
+json = { kind = "no_such_kind", csv = "" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/imports/{import_id}"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+# The placeholder id is no import: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/imports/{import_id}/commit"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+json = { version = 1 }
+# The placeholder id is no import: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/imports/{import_id}/discard"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+json = { version = 1 }
+# The placeholder id is no import: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/imports/{import_id}/rows"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+# The placeholder id is no import: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/invitations"
+access = "permission"
+permission = "user.invite"
+allow = ["owner", "administrator"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/invitations"
+access = "permission"
+permission = "user.invite"
+allow = ["owner", "administrator"]
+# An empty body gets 422 (after the access checks); the staff-role condition
+# is tested in tests/integration/test_invitations.py.
+json = {}
+reauth = "user.invitation.staff_role"
+reauth_conditional = true
+
+[[route]]
+method = "POST"
+path = "/api/v1/invitations/{user_id}/reissue"
+access = "permission"
+permission = "user.invite"
+allow = ["owner", "administrator"]
+# The placeholder id is no open invitation: 404 for the allowed roles.
+json = {}
+reauth = "user.invitation.staff_role"
+reauth_conditional = true
+
+[[route]]
+method = "GET"
+path = "/api/v1/jobs"
+access = "permission"
+permission = "jobs.manage"
+allow = ["owner", "administrator"]
+# #128 D1, E3: failed background jobs (no record-level policy).
+
+[[route]]
+method = "GET"
+path = "/api/v1/jobs/tasks"
+access = "permission"
+permission = "jobs.manage"
+allow = ["owner", "administrator"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/jobs/{job_id}/retry"
+access = "permission"
+permission = "jobs.manage"
+allow = ["owner", "administrator"]
+# The placeholder id 1 is no failed job: 404 for the allowed roles. No
+# reauthentication and no Idempotency-Key (#128 E5).
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/learning-plan-milestones/{milestone_id}"
+access = "authenticated"
+# #81 D2: the plan record policy (holders and tutors teaching the student in
+# the plan's subject write). The placeholder id is no milestone: 404 for
+# every role. The 200, 403 and 409 cases are tested in
+# tests/integration/test_learning_plans.py.
+json = { version = 1, status = "done" }
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/learning-plans/{plan_id}"
+access = "authenticated"
+# #81 D3: the plan record policy. The placeholder id is no plan: 404 for
+# every role. The 204, 403 and 409 cases are tested in
+# tests/integration/test_learning_plans.py.
+query = { version = "1" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/learning-plans/{plan_id}"
+access = "authenticated"
+# #81 E1: the plan record policy (holders, tutors teaching the student, a
+# former creator for their own, the family for active and closed plans).
+# The placeholder id is no plan: 404 for every role. The leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
+method = "PUT"
+path = "/api/v1/learning-plans/{plan_id}"
+access = "authenticated"
+# #81 C4: as DELETE, with a valid body.
+json = { version = 1, title = "Matrix", starts_on = "2031-03-05", objectives = [] }
+
+[[route]]
+method = "POST"
+path = "/api/v1/learning-plans/{plan_id}/transition"
+access = "authenticated"
+# #81 D1: as DELETE, with a valid body.
+json = { version = 1, action = "activate" }
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/notes/{note_id}"
+access = "authenticated"
+# #79 D5: the note record policy (the author). The placeholder id is no
+# note: 404 for every role. The 204, 403 and 409 cases are tested in
+# tests/integration/test_session_notes.py.
+query = { version = "1" }
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/notes/{note_id}"
+access = "authenticated"
+# #79 D2: as DELETE, with a valid body.
+json = { version = 1, body = "Matrix" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/notes/{note_id}/publish"
+access = "authenticated"
+# #79 D3: as DELETE, with a valid body.
+json = { version = 1 }
+
+[[route]]
+method = "POST"
+path = "/api/v1/notes/{note_id}/unpublish"
+access = "authenticated"
+# #79 D4: the author, or an academic_note.review holder with a reason. As
+# DELETE, with a valid body.
+json = { version = 1, reason = "Matrix" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/notifications"
+access = "authenticated"
+# Every signed-in role lists its own notifications (#41 C1).
+
+[[route]]
+method = "GET"
+path = "/api/v1/notifications/preferences"
+access = "authenticated"
+# Every signed-in role reads its own catalogue (#119 C1, C4): no user id.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/notifications/preferences"
+access = "authenticated"
+json = { items = [{ notification_type = "test.not_registered", enabled = false }] }
+# Own rows only (#119 C4). The placeholder type is in no catalogue: 422
+# notification_type_unknown for every signed-in role (the 200 cases are in
+# tests/integration/test_notification_preferences.py).
+
+[[route]]
+method = "POST"
+path = "/api/v1/notifications/read-all"
+access = "authenticated"
+json = { up_to = "00000000-0000-4000-8000-000000000000" }
+# The placeholder up_to is no notification of the caller: 404 for every
+# signed-in role (the 200 cases are in tests/integration/test_notifications.py).
+
+[[route]]
+method = "GET"
+path = "/api/v1/notifications/stream"
+access = "authenticated"
+stream = true
+# Every signed-in role streams its own live notifications (#42 C6).
+
+[[route]]
+method = "GET"
+path = "/api/v1/notifications/unread-count"
+access = "authenticated"
+
+[[route]]
+method = "POST"
+path = "/api/v1/notifications/{notification_id}/read"
+access = "authenticated"
+# The placeholder id is no notification of the caller: 404 for every
+# signed-in role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/password-resets"
+access = "permission"
+permission = "user.password_reset.issue"
+allow = ["owner", "administrator"]
+# The allowed roles get 422 for the empty body after the runner reauthenticates
+# them; reauth:none gets 403 reauth_required.
+json = {}
+reauth = "user.password_reset.issue"
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/pay-item-types"
+access = "permission"
+permission = "payroll.view"
+allow = ["owner", "finance_staff"]
+# #109 D1, ADR-0017 E12: Administrators see no pay.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/pay-item-types"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #109 D2: the empty body is 422 for the allowed roles. A name is a natural
+# key, so no Idempotency-Key.
+json = {}
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/payroll/pay-item-types/{type_id}"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #109 D3: the empty body is 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/pay-rules"
+access = "permission"
+permission = "payroll.view"
+allow = ["owner", "finance_staff"]
+# #441 D1, ADR-0017 E12: Administrators see no pay rules.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/pay-rules"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #441 D2: the empty body is 422 for the allowed roles. No reauthentication
+# and no Idempotency-Key: a rule is configuration.
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/payroll/pay-rules/{rule_id}"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #441 D3: the placeholder id is no version: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/payments/{payment_id}/reversal"
+access = "permission"
+permission = "finance.refund.approve"
+allow = ["owner"]
+idempotency = true
+reauth = "finance.refund_or_reversal"
+json = { reason = "Monto equivocado" }
+# #112 C1, ADR-0017 E12: reauthentication, then the key: without one the
+# reauthenticated Owner (and a delegated Administrator) get 400. Finance Staff
+# can't. Rules, replays and races: tests/integration/test_payroll_payments*.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/periods"
+access = "authenticated"
+deny = ["administrator", "academic_coordinator", "tutor", "student", "guardian"]
+# #110 F1: payroll.view, or payroll.finalize for a delegated Administrator, who
+# lists prepared and finalized periods only. Delegated cases:
+# tests/integration/test_payroll_workflow_access.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/periods/{period_id}/carry-forward"
+access = "permission"
+permission = "payroll.prepare"
+allow = ["owner", "finance_staff"]
+idempotency = true
+# M7-08c C1, E4: no body and no reauthentication. Without a key the allowed
+# roles get 400; a delegated Administrator gets 403 (payroll.prepare isn't
+# delegable). Rules, replays and races: tests/integration/test_payroll_carry_forward.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/periods/{period_id}/finalize"
+access = "permission"
+permission = "payroll.finalize"
+allow = ["owner"]
+idempotency = true
+reauth = "payroll.finalize"
+json = { prepared_at = "2026-11-02T12:00:00Z" }
+# #110 D1: without a key the reauthenticated allowed roles get 400. Rules,
+# replays and races: tests/integration/test_payroll_workflow*.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/periods/{period_id}/lines"
+access = "authenticated"
+deny = ["administrator", "academic_coordinator", "tutor", "student", "guardian"]
+# #107 H3, H4, #110 F3: the placeholder id is no period: 404 for the rest. A
+# delegated Administrator reads prepared and finalized periods.
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/periods/{period_id}/payments"
+access = "authenticated"
+deny = ["administrator", "academic_coordinator", "tutor", "student", "guardian"]
+# #112 D1, E7: the period reads' check, then their record policy: the
+# placeholder id is no period: 404 for the rest. A delegated Administrator reads
+# those of prepared and finalized periods.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/periods/{period_id}/payments"
+access = "permission"
+permission = "payroll.payment.record"
+allow = ["owner", "finance_staff"]
+idempotency = true
+# #112 B1, ADR-0017 E12: no reauthentication. Without a key the allowed roles
+# get 400; a delegated Administrator gets 403 (not delegable). Rules, replays
+# and races: tests/integration/test_payroll_payments*.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/periods/{period_id}/prepare"
+access = "permission"
+permission = "payroll.prepare"
+allow = ["owner", "finance_staff"]
+# #110 B1: no key and no reauthentication. The placeholder id is no period: 404.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/periods/{period_id}/recalculate"
+access = "permission"
+permission = "payroll.prepare"
+allow = ["owner", "finance_staff"]
+# #107 H2, E10: no Idempotency-Key and no reauthentication. The placeholder
+# id is no period: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/periods/{period_id}/return"
+access = "authenticated"
+deny = ["administrator", "academic_coordinator", "tutor", "student", "guardian"]
+json = { reason = "Falta una sesión" }
+# #110 C1, E7: payroll.prepare or payroll.finalize, no key and no
+# reauthentication. A delegated Administrator returns too (the access tests).
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/settings"
+access = "permission"
+permission = "payroll.view"
+allow = ["owner", "finance_staff"]
+# #106 B1, ADR-0017 E12: Administrators see no payroll settings.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/payroll/settings"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #106 B3: the empty body is 422 for the allowed roles. No reauthentication
+# and no Idempotency-Key: the setting opens nothing by itself (E7).
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors"
+access = "permission"
+permission = "payroll.view"
+allow = ["owner", "finance_staff"]
+# #105 E3, ADR-0017 E12: Administrators see no pay, so neither this list.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/adjustments"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+idempotency = true
+reauth = "finance.correction"
+json = { amount = "10.00", reason = "Ajuste" }
+# M7-08c A, E4: reauthentication, then the key: without one the reauthenticated
+# allowed roles get 400. Rules, replays and races:
+# tests/integration/test_payroll_manual_adjustments*.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/compensation"
+access = "authenticated"
+# #105 E6: the record policy answers 404 for everyone but a payroll.view
+# holder and the tutor, and the placeholder id is no tutor: 404 for all. The
+# 200 cases are in tests/integration/test_payroll_compensation_access.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/earnings"
+access = "authenticated"
+# #113 E2: the compensation record policy (payroll.view or the tutor
+# themselves) answers 404 for everyone else, and the placeholder id is no
+# tutor: 404 for all. Roles, IDOR and the 200 cases:
+# tests/integration/test_payroll_earnings_access.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/earnings/{period_id}"
+access = "authenticated"
+# #113 E2, E3: as above; only a finalized period of this tutor is found.
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/pay-items"
+access = "permission"
+permission = "payroll.view"
+allow = ["owner", "finance_staff"]
+# #109 F1: a tutor reads finalized lines through #113, not here. The placeholder
+# id is no tutor: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/pay-items"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+idempotency = true
+# #109 F2, E5: no natural key, so an Idempotency-Key. The empty body is 422 for
+# the allowed roles. No reauthentication (E6).
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/pay-items/{item_id}"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #109 F6: the placeholder ids are no tutor: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/pay-items/{item_id}"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #109 F5: the empty body is 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/pay-terms"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #105 G4: the empty body is 422 for the allowed roles (before the 404). No
+# reauthentication and no Idempotency-Key: these rows are configuration.
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/pay-terms/{terms_id}"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #105 G6: the placeholder ids are no tutor: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/payslips/{payslip_id}/pdf"
+access = "authenticated"
+# #113 C4: as above; only a payslip of this tutor is found.
+
+[[route]]
+method = "POST"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/rates"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #105 G5: the empty body is 422 for the allowed roles (before the 404).
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/payroll/tutors/{tutor_user_id}/rates/{rate_id}"
+access = "permission"
+permission = "payroll.manage"
+allow = ["owner", "finance_staff"]
+# #105 G6: the placeholder ids are no tutor: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/payroll/unresolved-work"
+access = "permission"
+permission = "payroll.view"
+allow = ["owner", "finance_staff"]
+# #443 C5: Administrators get 403, also with payroll.finalize delegated.
+
+[[route]]
+method = "GET"
+path = "/api/v1/privacy-notice"
+access = "authenticated"
+notice_exempt = true
+
+[[route]]
+method = "POST"
+path = "/api/v1/privacy-notice/acceptance"
+access = "authenticated"
+notice_exempt = true
+# An empty body gets 422, so no case accepts the notice.
+json = {}
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/progress-report-schedules/{schedule_id}"
+access = "permission"
+permission = "progress_report.review"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #316 C3 (E4): checked before anything is read. The placeholder id is no
+# schedule: 404 for the allowed roles. The 200, 409 and 422 cases are tested
+# in tests/integration/test_progress_report_schedules.py.
+json = { version = 1, is_active = false }
+
+[[route]]
+method = "GET"
+path = "/api/v1/progress-reports"
+access = "authenticated"
+# #83 E2: a tutor's own reports; progress_report.review holders every
+# non-draft report. Anyone else gets 404 (the 200 cases are tested in
+# tests/integration/test_progress_reports.py).
+
+[[route]]
+method = "POST"
+path = "/api/v1/progress-reports"
+access = "authenticated"
+# #83 C2: a tutor-role user currently teaching the student. The placeholder
+# student is unknown: 404 for every role. The 201, 403
+# progress_report_tutor_only / report_subject_not_assigned and 409 cases are
+# tested in tests/integration/test_progress_reports.py.
+json = { student_id = "00000000-0000-4000-8000-000000000083", kind = "on_demand", period_start = "2026-01-05", period_end = "2026-01-11" }
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/progress-reports/{report_id}"
+access = "authenticated"
+# #83 C4: the report record policy (the author). The placeholder id is no
+# report: 404 for every role.
+query = { version = "1" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/progress-reports/{report_id}"
+access = "authenticated"
+# #83 E1: the author and progress_report.review holders (non-draft). The
+# placeholder id is no report: 404 for every role. The leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/progress-reports/{report_id}"
+access = "authenticated"
+# #83 C3: as DELETE, with a valid body.
+json = { version = 1 }
+
+[[route]]
+method = "POST"
+path = "/api/v1/progress-reports/{report_id}/approve"
+access = "authenticated"
+# #83 D1, D3: the record policy, then 403 permission_denied without
+# progress_report.review (after the 404: a hidden report stays hidden). The
+# placeholder id is no report: 404 for every role. The 200, 403 and 409
+# cases are tested in tests/integration/test_progress_reports.py.
+json = { version = 1 }
+
+[[route]]
+method = "POST"
+path = "/api/v1/progress-reports/{report_id}/request-changes"
+access = "authenticated"
+# #83 D1, D4: as approve, with a reason.
+json = { version = 1, reason = "Matrix" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/progress-reports/{report_id}/retract"
+access = "authenticated"
+# #83 D1, D5: as approve, with a reason.
+json = { version = 1, reason = "Matrix" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/progress-reports/{report_id}/submit"
+access = "authenticated"
+# #83 D2: as DELETE (the author), with a valid body.
+json = { version = 1 }
+
+# Saved export setups (#125 E1, E3): open to a staff role that may export
+# some dataset (as the exports), checked by the routes themselves, so tutors,
+# students and guardians get 403. A setup the caller may not see (another
+# user's private one, or one shared with a role or dataset the caller lacks)
+# is 404 for every role, the Owner included; a visible setup of another user
+# is 403 on PATCH and DELETE. Sharing and per-dataset cases:
+# tests/integration/test_report_setups_api.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/report-setups"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+
+[[route]]
+method = "POST"
+path = "/api/v1/report-setups"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+# An empty body gets 422 for every allowed role; nothing is saved.
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/report-setups/{setup_id}"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+# The placeholder id is no setup: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/report-setups/{setup_id}"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+# The placeholder id is no setup: 404 for the allowed roles (a valid body).
+json = { version = 1 }
+
+# The dashboard layout (#127 C): each caller's own layout, open to anyone with
+# an available KPI widget (finance.report.view or schedule.view); the route
+# denies the others itself. Checks and figures:
+# tests/integration/test_dashboard_layouts_api.py.
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/reports/dashboard/layout"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/reports/dashboard/layout"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+
+[[route]]
+method = "PUT"
+path = "/api/v1/reports/dashboard/layout"
+access = "authenticated"
+deny = ["tutor", "student", "guardian"]
+# A widget every staff role has: 200 for the allowed roles.
+json = { widgets = [{ widget = "room_utilization", visible = true }] }
+
+[[route]]
+method = "GET"
+path = "/api/v1/reports/finance/balances"
+access = "permission"
+permission = "finance.report.view"
+allow = ["owner", "finance_staff"]
+# #117 B1, ADR-0017 E12: Owner and Finance Staff only (not delegable, so an
+# Administrator with payroll.finalize delegated still gets 403).
+
+[[route]]
+method = "GET"
+path = "/api/v1/reports/finance/profitability"
+access = "permission"
+permission = "finance.report.view"
+allow = ["owner", "finance_staff"]
+query = { basis = "accrual", from = "2026-01-01", to = "2026-01-31" }
+# #117 B1. Range rules and figures: tests/integration/test_reporting_finance_*.
+
+# Analytics KPIs (#126 E3): each gated like the page its rows come from, no new
+# permission. Range rules and figures: tests/integration/test_reporting_kpis_*.
+
+[[route]]
+method = "GET"
+path = "/api/v1/reports/kpis/course-profitability"
+access = "permission"
+permission = "finance.report.view"
+allow = ["owner", "finance_staff"]
+query = { from = "2026-01-01", to = "2026-01-31" }
+# K2 (money): as the financial report; an Administrator with payroll.finalize
+# delegated still gets 403.
+
+[[route]]
+method = "GET"
+path = "/api/v1/reports/kpis/revenue-trend"
+access = "permission"
+permission = "finance.report.view"
+allow = ["owner", "finance_staff"]
+query = { basis = "accrual", from = "2026-01-01", to = "2026-01-31" }
+# K1 (money).
+
+[[route]]
+method = "GET"
+path = "/api/v1/reports/kpis/room-utilization"
+access = "permission"
+permission = "schedule.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+query = { from = "2026-01-01", to = "2026-01-31" }
+# K4: minutes and room names only.
+
+[[route]]
+method = "GET"
+path = "/api/v1/reports/kpis/student-retention"
+access = "permission"
+permission = "schedule.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+query = { from = "2026-01-01", to = "2026-01-31" }
+# K5: counts only.
+
+[[route]]
+method = "GET"
+path = "/api/v1/reports/kpis/tutor-performance"
+access = "permission"
+permission = "schedule.view"
+allow = ["owner", "administrator", "academic_coordinator"]
+query = { from = "2026-01-01", to = "2026-01-31" }
+# K6/K7: schedule.view (the access rule) and tutor.view (checked by the
+# route's dependency before the query), so Finance Staff, who lack tutor.view,
+# get 403 permission_denied, as from the tutor directory.
+
+[[route]]
+method = "GET"
+path = "/api/v1/schedule/family-students"
+access = "permission"
+permission = "student.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "tutor", "student", "guardian"]
+# #67 C4: every role; the caller's own family students only (an empty list
+# for a caller who is neither a student nor a guardian). 200 for every role.
+
+[[route]]
+method = "GET"
+path = "/api/v1/schedule/tutor-options"
+access = "permission"
+permission = "schedule.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff"]
+# #57 E2: the calendar's tutor filter; Finance holds schedule.view but not
+# tutor.view. 200 for every allowed role.
+
+[[route]]
+method = "GET"
+path = "/api/v1/scheduling-policies"
+access = "authenticated"
+# Every signed-in role reads the policy (#61 E2): nothing in it is personal.
+
+[[route]]
+method = "POST"
+path = "/api/v1/scheduling-policies"
+access = "permission"
+permission = "settings.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/scheduling-policies/{policy_id}"
+access = "permission"
+permission = "settings.manage"
+allow = ["owner", "administrator"]
+# The placeholder id is no policy version: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/session-requests"
+access = "authenticated"
+# #59 D1: lists filter (an empty page for a caller with no family role).
+
+[[route]]
+method = "POST"
+path = "/api/v1/session-requests"
+access = "authenticated"
+# #59 C: the minimal body gets 422 for every role; the 201 and the
+# record-policy outcomes are in tests/integration/test_session_requests*.py.
+json = {}
+rate_limit = ["session_request.user"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/session-requests/{request_id}"
+access = "authenticated"
+# #59 D2: the placeholder id is no request: 404 for every role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/session-requests/{request_id}/confirm"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #60 C: the minimal body gets 422 for every allowed role (no tutor); the
+# 200, 404 and 409 cases are in tests/integration/test_session_request_review.py.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/session-requests/{request_id}/reject"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #60 D: the minimal body gets 422 for every allowed role (no reason).
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/session-requests/{request_id}/review"
+access = "permission"
+permission = "schedule.manage"
+allow = ["owner", "administrator"]
+# #60 B: the placeholder id is no request: 404 for every allowed role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/session-requests/{request_id}/withdraw"
+access = "authenticated"
+# #59 D3: the minimal body gets 422 for every role (then 404 for the
+# placeholder id).
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/students"
+access = "permission"
+permission = "student.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "tutor", "student", "guardian"]
+# Every role may call it; the record policy filters the list (tutors see
+# the students of their recent and upcoming sessions, #67 D3; students their
+# own profile, #35; guardians their linked students, #34).
+
+[[route]]
+method = "POST"
+path = "/api/v1/students"
+access = "permission"
+permission = "student.manage"
+allow = ["owner", "administrator", "academic_coordinator"]
+# An empty body gets 422 for the allowed roles: nothing is created.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}"
+access = "permission"
+permission = "student.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "tutor", "student", "guardian"]
+# The placeholder id is no student: 404 for every allowed role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/students/{student_id}"
+access = "permission"
+permission = "student.manage"
+allow = ["owner", "administrator", "academic_coordinator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/academic-history"
+access = "authenticated"
+# #80 F1: reviewers, tutors with the student assigned, a former author (own
+# entries), the student and linked guardians with academic access (403
+# student_consent_required for a guardian of an adult without it); anyone
+# else the 404 of an unknown id. The placeholder id is no student: 404 for
+# every role. The 200 and 403 cases are in
+# tests/integration/test_evaluations.py; the leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
+method = "PUT"
+path = "/api/v1/students/{student_id}/account"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is linked.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/assignments"
+access = "authenticated"
+# #82 E1: assignment.review holders and tutors teaching the student (all),
+# a former creator (own), the student and linked guardians with academic
+# access (403 student_consent_required for a guardian of an adult without
+# it); anyone else the 404 of an unknown id. The placeholder id is no
+# student: 404 for every role. The leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/assignments/{assignment_id}"
+access = "authenticated"
+# #82 E1: as the list; an assignment the student didn't receive is 404.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/consents"
+access = "permission"
+permission = "consent.record"
+allow = ["owner", "administrator", "student", "guardian"]
+# The placeholder id is no student: 404 for every allowed role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/students/{student_id}/consents"
+access = "permission"
+permission = "consent.record"
+allow = ["owner", "administrator", "student", "guardian"]
+# A valid body for the placeholder id, which is no student: 404 for every
+# allowed role (nothing is recorded).
+json = { scope = "student_login", guardian_id = "00000000-0000-4000-8000-000000000001", method = "paper" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/students/{student_id}/consents/{consent_id}/revoke"
+access = "permission"
+permission = "consent.record"
+allow = ["owner", "administrator", "student", "guardian"]
+# The placeholder ids are no student or consent: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/evaluations"
+access = "authenticated"
+# #80 E1: the record policy (reviewers, tutors with the student assigned, a
+# former author for their own). The placeholder id is no student: 404 for
+# every role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/students/{student_id}/guardians"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 for the allowed roles: nothing is linked.
+json = {}
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/students/{student_id}/guardians/{guardian_id}"
+access = "permission"
+permission = "family.manage"
+allow = ["owner", "administrator"]
+# The placeholder ids are no link: 404 for the allowed roles.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/learning-notes"
+access = "authenticated"
+# #79 F1: the family route (the student, or a linked guardian of a minor or
+# of a consenting adult; anyone else, staff and tutors included, the 404 of
+# an unknown id). The placeholder id is no student: 404 for every role. The
+# 200 and 403 student_consent_required cases are in
+# tests/integration/test_session_notes.py; the leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/learning-plans"
+access = "authenticated"
+# #81 E1: holders and tutors teaching the student (every plan), a former
+# creator (own plans), the student and linked guardians with academic access
+# (active and closed plans; 403 student_consent_required for a guardian of
+# an adult without it); anyone else the 404 of an unknown id. The
+# placeholder id is no student: 404 for every role. The leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/students/{student_id}/learning-plans"
+access = "authenticated"
+# #81 C3: holders and tutors teaching the student. A valid body; the
+# placeholder student is unknown: 404 for every role. The 201, 403 and 422
+# cases are tested in tests/integration/test_learning_plans.py.
+json = { subject_id = "00000000-0000-4000-8000-000000000081", title = "Matrix", objectives = [] }
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/notes"
+access = "authenticated"
+# #79 E2: the record policy (reviewers, tutors with the student assigned, a
+# former tutor for their own notes). The placeholder id is no student: 404
+# for every role.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/progress"
+access = "authenticated"
+# #84 A1, B: evaluation.manage holders, the student's current tutors, the
+# student and linked guardians with academic access (403
+# student_consent_required for a guardian of an adult without it); a former
+# tutor and anyone else the 404 of an unknown id. The placeholder id is no
+# student: 404 for every role. The 200 and 403 cases are in
+# tests/integration/test_progress_dashboard.py; the leak walk is
+# tests/integration/test_session_notes_leak.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/progress-report-schedules"
+access = "permission"
+permission = "progress_report.review"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #316 C1 (E4): staff only, checked before anything is read (families and
+# tutors 403). The placeholder student is unknown: 404 for the allowed roles.
+
+[[route]]
+method = "POST"
+path = "/api/v1/students/{student_id}/progress-report-schedules"
+access = "permission"
+permission = "progress_report.review"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #316 C2: as GET. The 201, 409 and 422 cases are tested in
+# tests/integration/test_progress_report_schedules.py.
+json = { author_user_id = "00000000-0000-4000-8000-000000000316", cadence = "weekly" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/progress-reports"
+access = "authenticated"
+# #83 F1, F3: approved reports only, closed family-safe shape: holders, the
+# student's current tutors, a former author (own), the student and guardians
+# with academic access (403 student_consent_required for an adult's guardian
+# without the consent). The placeholder id is no student: 404 for every role.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/progress-reports/{report_id}"
+access = "authenticated"
+# #83 F1, F2: as the list; a report that isn't an approved report of the
+# student is 404.
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/schedule"
+access = "permission"
+permission = "student.view"
+allow = ["owner", "administrator", "academic_coordinator", "finance_staff", "tutor", "student", "guardian"]
+# #67 C1: the record policy (self, a linked guardian, staff with
+# schedule.view). A valid range; the placeholder id is no student: 404 for
+# every allowed role. The 200 and 403 student_consent_required cases are in
+# tests/integration/test_family_schedule.py.
+query = { from = "2031-01-06T00:00:00Z", to = "2031-01-13T00:00:00Z" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/students/{student_id}/session-log"
+access = "authenticated"
+# #84 A1, C: as /progress, plus a former tutor (taught an in-scope session of
+# the student) for the sessions they taught. The placeholder id is no
+# student: 404 for every role.
+
+[[route]]
+method = "GET"
+path = "/api/v1/subjects"
+access = "authenticated"
+
+[[route]]
+method = "GET"
+path = "/api/v1/subjects/{subject_id}"
+access = "authenticated"
+# The placeholder id is no subject: 404 for every signed-in role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/subjects/{subject_id}"
+access = "permission"
+permission = "catalog.manage"
+allow = ["owner", "administrator"]
+# An empty body (no version) gets 422 for the allowed roles.
+json = {}
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutor-suggestions"
+access = "permission"
+permission = "schedule.assign"
+allow = ["owner", "administrator", "academic_coordinator"]
+# #51 H6: the matrix sends no query parameters (the harness has none): the
+# missing subject_id/starts_at/ends_at get 422 for every allowed role ("not
+# denied"). The 422 references and 200 cases are tested in
+# tests/integration/test_tutor_suggestions.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutor-suggestions/series"
+access = "permission"
+permission = "schedule.assign"
+allow = ["owner", "administrator", "academic_coordinator"]
+# HF-05 C1: read-only (no idempotent()). No body: 422 for every allowed role
+# ("not denied"). The 200 and 422 cases are in
+# tests/integration/test_series_tutor_suggestions.py.
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# Owner decision #43 E1 (a). The record policy filters the list: a tutor
+# sees only themselves.
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# The placeholder id is no tutor: 404 for every allowed role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/tutors/{user_id}"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# A valid body for the placeholder id, which is no tutor: 404 for every
+# allowed role (nothing changes). tutor.manage is checked in the service.
+json = { version = 0 }
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}/availability"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #45: the #43 view policy. The placeholder id is no tutor: 404 for every
+# allowed role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/availability/change-requests/{change_request_id}/cancel"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #63 D6: the tutor themselves or tutor.manage withdraw. A valid body for the
+# placeholder ids, which are no tutor and no request: 404 for every allowed
+# role.
+json = { version = 1 }
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}/availability/check"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #45: the matrix sends no query parameters: the missing date gets 422 for
+# every allowed role ("not denied"). The 200 and 404 cases are tested in
+# tests/integration/test_tutor_availability.py.
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/availability/exceptions"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #45: the tutor themselves or tutor.manage edit. A valid body for the
+# placeholder id, which is no tutor: 404 for every allowed role.
+json = { kind = "unavailable", starts_on = "2031-01-06", ends_on = "2031-01-06" }
+
+[[route]]
+method = "DELETE"
+path = "/api/v1/tutors/{user_id}/availability/exceptions/{exception_id}"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #45: the placeholder ids are no tutor and no exception: 404 for every
+# allowed role.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/tutors/{user_id}/availability/settings"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #197: the tutor themselves or tutor.manage edit. A valid body for the
+# placeholder id, which is no tutor: 404 for every allowed role.
+json = { version = 0, daily_limit_minutes = 240 }
+
+[[route]]
+method = "PUT"
+path = "/api/v1/tutors/{user_id}/availability/weekly"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #45: a valid body for the placeholder id, which is no tutor: 404 for every
+# allowed role (nothing changes).
+json = { version = 0, windows = [] }
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}/qualifications"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #44: the #43 view policy. The placeholder id is no tutor: 404 for every
+# allowed role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/qualifications"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #44: only the tutor themselves requests. A valid body for the placeholder
+# id, which is no tutor: 404 for every allowed role (nothing is created).
+json = { subject_id = "00000000-0000-7000-8000-000000000001" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/qualifications/grant"
+access = "permission"
+permission = "qualification.review"
+allow = ["owner", "administrator"]
+# HF-05 A1: reviewers grant a subject directly. A valid body for the
+# placeholder id, which is no tutor: 404 for every allowed role (nothing is
+# created).
+json = { subject_id = "00000000-0000-7000-8000-000000000001" }
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/qualifications/{qualification_id}/cancel"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #44: only the tutor themselves cancels. The placeholder ids are no tutor
+# and no qualification: 404 for every allowed role.
+
+[[route]]
+method = "POST"
+path = "/api/v1/tutors/{user_id}/qualifications/{qualification_id}/revoke"
+access = "permission"
+permission = "qualification.review"
+allow = ["owner", "administrator"]
+# #198: reviewers revoke an approved qualification. A valid body for the
+# placeholder ids, which are no qualification: 404 for every allowed role.
+json = { reason = "Outdated certificate.", version = 2 }
+
+[[route]]
+method = "GET"
+path = "/api/v1/tutors/{user_id}/schedule"
+access = "permission"
+permission = "tutor.view"
+allow = ["owner", "administrator", "academic_coordinator", "tutor"]
+# #67 B1: the tutor themselves or staff with schedule.view. A valid range;
+# the placeholder id is no tutor: 404 for every allowed role. The 200 cases
+# are in tests/integration/test_tutor_schedule.py.
+query = { from = "2031-01-06T00:00:00Z", to = "2031-01-13T00:00:00Z" }
+
+[[route]]
+method = "GET"
+path = "/api/v1/users"
+access = "permission"
+permission = "user.view"
+allow = ["owner", "administrator"]
+
+[[route]]
+method = "GET"
+path = "/api/v1/users/{user_id}"
+access = "permission"
+permission = "user.view"
+allow = ["owner", "administrator"]
+# The placeholder id is no user: 404 for the allowed roles.
+
+[[route]]
+method = "PATCH"
+path = "/api/v1/users/{user_id}"
+access = "permission"
+permission = "user.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 (no version) for the allowed roles.
+json = {}
+
+[[route]]
+method = "POST"
+path = "/api/v1/users/{user_id}/archive"
+access = "permission"
+permission = "user.manage"
+allow = ["owner", "administrator"]
+# The allowed roles get 422 for the empty body after the runner reauthenticates
+# them; reauth:none gets 403 reauth_required.
+json = {}
+reauth = "user.suspend_or_archive"
+
+[[route]]
+method = "PUT"
+path = "/api/v1/users/{user_id}/delegations"
+access = "permission"
+permission = "user.delegation.manage"
+allow = ["owner"]
+# The Owner gets 422 for the empty body after the runner reauthenticates them;
+# reauth:none gets 403 reauth_required. Never delegable: a delegated
+# Administrator gets 403 permission_denied.
+json = {}
+reauth = "user.delegations.change"
+
+[[route]]
+method = "POST"
+path = "/api/v1/users/{user_id}/reactivate"
+access = "permission"
+permission = "user.manage"
+allow = ["owner", "administrator"]
+# An empty body gets 422 (no version) for the allowed roles.
+json = {}
+
+[[route]]
+method = "PUT"
+path = "/api/v1/users/{user_id}/roles"
+access = "permission"
+permission = "user.role.assign"
+allow = ["owner", "administrator"]
+# The allowed roles get 422 for the empty body after the runner reauthenticates
+# them; reauth:none gets 403 reauth_required.
+json = {}
+reauth = "user.roles.change"
+
+[[route]]
+method = "POST"
+path = "/api/v1/users/{user_id}/suspend"
+access = "permission"
+permission = "user.manage"
+allow = ["owner", "administrator"]
+# The allowed roles get 422 for the empty body after the runner reauthenticates
+# them; reauth:none gets 403 reauth_required.
+json = {}
+reauth = "user.suspend_or_archive"
+
+[[route]]
+method = "GET"
+path = "/docs"
+access = "public"
+reason = "FastAPI Swagger UI; not forwarded by Caddy (/api/* only) or the Vite proxy"
+
+[[route]]
+method = "GET"
+path = "/docs/oauth2-redirect"
+access = "public"
+reason = "FastAPI Swagger UI helper; not forwarded by Caddy or the Vite proxy"
+
+[[route]]
+method = "GET"
+path = "/health/live"
+access = "public"
+reason = "Liveness probe (architecture §9.3)"
+
+[[route]]
+method = "GET"
+path = "/health/ready"
+access = "public"
+reason = "Readiness probe (architecture §9.3)"
+
+[[route]]
+method = "GET"
+path = "/openapi.json"
+access = "public"
+reason = "FastAPI OpenAPI document; not forwarded by Caddy or the Vite proxy"
+
+[[route]]
+method = "GET"
+path = "/redoc"
+access = "public"
+reason = "FastAPI ReDoc; not forwarded by Caddy or the Vite proxy"

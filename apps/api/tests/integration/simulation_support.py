@@ -1,0 +1,843 @@
+"""Helpers for the simulated operations seed tests (#543 HF-01).
+
+- :data:`FROZEN_NOW`: the tests' real-clock instant (after the anchor);
+- the pinned module totals per profile, with their breakdowns;
+- :func:`run_command`: one ``python -m tests.factories.simulation`` run on a
+  database, in-process, with the environment it needs;
+- :func:`table_counts` (every table's row count) and :func:`canonical_dump`
+  (the rows this issue writes, without ids, database-set times, versions,
+  hashes or token secrets, foreign keys replaced by natural keys; C4).
+"""
+
+import asyncio
+import hashlib
+import io
+import json
+import re
+import uuid
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from datetime import UTC, datetime
+from typing import Any, Final
+
+import pytest
+from alembic import command
+from sqlalchemy import text
+
+from app.core.config import get_settings
+from tests.authz.csrf import origin_for
+from tests.conftest import frozen_clock
+from tests.factories.simulation import SIMULATION_MODULES
+from tests.factories.simulation import __main__ as simulation_command
+from tests.factories.simulation.plan import (
+    ProfileName,
+    SimulationPlan,
+    plan_simulation,
+)
+from tests.factories.simulation.timeline import SimulationModule
+from tests.integration.conftest import run_sql, short_lived_engine
+from tests.integration.test_migrations import alembic_config
+
+FROZEN_NOW: Final = datetime(2026, 11, 20, 18, 0, tzinfo=UTC)
+"""The real clock of the tests (E3 in testing-guidelines): a day after the
+anchor, so a value taken from the real clock would differ from the plan's."""
+
+SEED_LINES: Final = [
+    "identity.permissions: 47 inserted, 0 updated",
+    "identity.roles: 7 inserted, 0 updated",
+    "identity.role_permissions: 118 inserted, 0 updated",
+    "catalog.education_levels: 4 inserted, 0 updated",
+    "catalog.general_subject: 2 inserted, 0 updated",
+]
+RERUN_SEED_LINES: Final = [
+    "identity.permissions: 0 inserted, 0 updated",
+    "identity.roles: 0 inserted, 0 updated",
+    "identity.role_permissions: 0 inserted, 0 updated",
+    "catalog.education_levels: 0 inserted, 0 updated",
+    "catalog.general_subject: 0 inserted, 0 updated",
+]
+
+SMALL_PEOPLE_ROWS: Final = 184
+"""``small``: 20 users (4 staff, 4 tutors, 8 guardian and 2 student logins,
+the pending tutor and the pending registration), 19 user roles (not the
+pending registration), 17 invitation tokens (not the Owner or the two
+self-registrations; 16 redeemed), 18 preferences and 18 privacy acceptances
+(the login accounts), 1 delegation (granted 18 Nov; the 12 Oct one was
+revoked), 2 registration requests and their 2 approval requests, 8 families,
+11 family guardians, 10 family students, 11 guardians, 10 students, 13
+emergency contacts, 15 student-guardian links and 9 consents (the minors).
+HF-01d +28: every family's first guardian has a login (5 more) and the
+adult's family has the parent who pays."""
+SMALL_CATALOG_ROWS: Final = 18
+"""``small``: 6 subjects, 3 classrooms, 5 classroom windows, 1 academic
+period and 3 closures."""
+SMALL_STAFF_ROWS: Final = 90
+"""``small``: 4 profiles, 17 qualifications (14 approved, 1 revoked, 1
+rejected, 1 pending) with 17 approval requests and 17 decision notifications
+(15 approved, 1 rejected, 1 revoked), 4 availability settings, 24 weekly
+windows, 5 exceptions and 2 preferred classrooms."""
+SMALL_SCHEDULE_ROWS: Final = 1608
+"""HF-01f -27: the tutor who turns off ``academics.closeout_approved`` at
+setup gets none of those 27 notifications.
+``small`` (#550; HF-01d +28: 20 package units consumed by closeout
+approvals now that billing is on, and 8 more notifications: the class the
+Administrator shortens on 12 Nov and the guardians who now have a login): 12
+series (10 individual, 1 group, 1 tutor 12's) with 13 participants, 182
+sessions with 210 participants, 30 offers covering 178 sessions, 2
+substitutions, 2 reassignment flags, 1 group with 2 enrollments, 13 session
+requests, 15 change requests, 195 attendance marks with 3 corrections, 151
+closeouts with 153 approvals (two corrected) and 2 closeout corrections, 5
+availability change requests, 2 time-off exceptions, 189 approval requests
+and 247 notifications before HF-01d (override rows are not counted: they
+depend on the real date, D5)."""
+SMALL_COURSES_ROWS: Final = 142
+"""``small`` (HF-01d +2: the running cohort's two course fees, posted by
+the enrollment hook now that billing is on): 2 templates with 2 subjects,
+7 modules, 4 assessments and 2 snapshots; 2 cohorts with 4 enrollments;
+their 2 series with 4 participants, 27 sessions with 54 participants, 2
+series offers covering 26 sessions and 2 notifications."""
+SMALL_ACADEMICS_ROWS: Final = 704
+"""HF-01f -9: the guardian who turns off ``academics.assignment_set`` at
+setup gets none of those 9 notifications.
+``small`` (#551): 34 notes (21 shared), 3 evaluation templates with 9
+criteria, 34 evaluations with 105 scores, 10 learning plans with 20
+objectives and 40 milestones, 49 assignments with 49 submissions, 3 report
+schedules, 40 progress reports with their 40 approval requests and 277
+notifications (HF-01d +87: the guardians who now have a login are notified
+too)."""
+SMALL_BILLING_ROWS: Final = 536
+"""HF-01f +24: the imported child's 2 trial class charges with 2 sibling
+discount lines, 4 allocations (the trial charges and the 2 opening
+balances), 4 reminders with 8 notifications and 2 more payments with 2
+receipts.
+``small`` (#552): 8 billing accounts, 19 catalog items (4 of them the
+products') with 20 versions, 9 custom prices, 5 discounts with 2
+assignments, 4 products, 5 packages, 9 of the 29 unit rows (20 consumptions
+are ``schedule``'s), 6 tuition plans with 1 pause, 138 of the 140 charges (2
+course fees are ``courses``') with 24 discount lines, 5 adjustments, 1
+repricing, 7 cancellation decisions, 2 due-date changes, 43 reminders with
+43 notifications, 43 payments with 68 allocations and 43 receipts, 1
+reversal with 4 releases, 1 refund and 1 withdrawal."""
+SMALL_PAYROLL_ROWS: Final = 243
+"""HF-01f +2: the trial tutor's 2 payroll lines.
+``small`` (#553): 4 terms (1 monthly, 3 biweekly), 5 rates, 2 pay rule
+versions, 2 pay item types with 2 items, 19 periods (15 finalized, 4 open)
+with 139 lines, 7 adjustments (2 late approvals, 1 hours correction, 2
+manual, a carry-forward pair), 15 payments (one reversed and paid again;
+the joiner's first period is 0.00), 1 reversal, 15 payslips, and the 15
+period approval requests and 15 finalize notifications."""
+FINANCE_ROWS: Final = 83
+"""Both profiles (#553): 1 category, 9 vendors, 5 templates, 32 expenses (19
+generated, 13 one-off) with 32 payments, 1 reversal and 3 adjustments."""
+SMALL_ADMINISTRATION_ROWS: Final = 62
+"""``small`` (#554): 4 import jobs with 9 rows (the committed ones keep
+their rows without values), 2 imported students with 2 emergency contacts,
+2 family memberships, 4 guardian links and 2 consents, the 2 opening-balance
+charges, 2 series (the trial's and the imported one's) with 2 participants,
+4 sessions with 4 participants, 2 offers covering 4 sessions, 2 attendance
+marks, 2 closeouts with 2 approvals and their 2 approval requests, 6
+notifications (2 offers, 2 closeout approvals, 2 assignments), 2 opt-outs
+and 1 scheduling policy version."""
+SMALL_REPORTING_ROWS: Final = 14
+"""``small`` (#554): 3 report setups, 2 export jobs with 1 file (the other
+is purged), 2 dashboard layouts, the deleted learning-plan draft with its
+objective and milestone, the deleted internal note and the 2 export-ready
+notifications."""
+FULL_ADMINISTRATION_ROWS: Final = 62
+"""``full`` (#554): the same kinds and counts as ``small``
+(:data:`SMALL_ADMINISTRATION_ROWS`)."""
+FULL_REPORTING_ROWS: Final = 14
+"""``full`` (#554): as ``small`` (:data:`SMALL_REPORTING_ROWS`)."""
+SETTINGS_ROWS: Final = 1
+"""The scheduling-policy version effective at ``SIM_SETUP`` (the business
+settings, hours and renames update existing rows)."""
+
+FULL_PEOPLE_ROWS: Final = 626
+"""``full``: 54 users, 53 user roles, 51 tokens, 52 preferences, 52
+acceptances, 1 delegation, 2 registration requests and 2 approval requests,
+30 families, 46 family guardians, 40 family students, 46 guardians, 40
+students, 55 emergency contacts, 66 student-guardian links and 36 consents.
+HF-01d +102: every family's first guardian has a login (18 more) and each
+adult's family has the parent who pays (4)."""
+FULL_CATALOG_ROWS: Final = 26
+"""``full``: 12 subjects, 5 classrooms, 5 classroom windows, 1 academic
+period and 3 closures."""
+FULL_STAFF_ROWS: Final = 227
+"""``full``: 12 profiles, 42 qualifications with 42 approval requests and
+42 notifications, 12 availability settings, 60 weekly windows, 7 exceptions
+and 10 preferred classrooms."""
+
+FULL_SCHEDULE_ROWS: Final = 8921
+"""HF-01f -30: the tutor who turns off ``academics.closeout_approved``.
+``full`` (#550; HF-01d +107: 81 package units consumed by closeout
+approvals now that billing is on, and 26 more notifications: the class the
+Administrator shortens on 12 Nov and the guardians who now have a login): 78
+series (72 individual slots, 3 groups, 3 tutor 12's) with 90 participants,
+1085 sessions with 1416 participants, 106 offers covering 1043 sessions, 8
+substitutions, 8 reassignment flags, 3 groups with 15 enrollments, 13
+session requests, 65 change requests, 1170 attendance marks with 3
+corrections, 818 closeouts with 820 approvals and 2 closeout corrections, 11
+availability change requests, 8 time-off exceptions, 912 approval requests
+and 1170 notifications before HF-01d."""
+FULL_COURSES_ROWS: Final = 247
+"""``full`` (HF-01d +6: the running cohort's six course fees, posted by the
+enrollment hook now that billing is on): 2 templates with 2 subjects, 7
+modules, 4 assessments and 2 snapshots; 2 cohorts with 11 enrollments; their
+2 series with 11 participants, 26 sessions with 142 participants, 2 series
+offers covering 26 sessions and 2 notifications."""
+
+FULL_ACADEMICS_ROWS: Final = 2458
+"""HF-01f -15: the guardian who turns off ``academics.assignment_set``.
+``full`` (#551): 182 notes (113 shared), 3 evaluation templates with 9
+criteria, 130 evaluations with 413 scores, 28 learning plans with 56
+objectives and 112 milestones, 214 assignments with 214 submissions, 3
+report schedules, 95 progress reports with their 95 approval requests and
+919 notifications (HF-01d +242: the guardians who now have a login)."""
+
+FULL_BILLING_ROWS: Final = 2886
+"""HF-01g +271: a monthly plan per weekly subject (21 -> 54 tuition plans:
++22 individual, +11 linked to the g1/g2 enrollments; pauses 1 -> 3, every
+plan of the paused student), 2 more catalog items with their 2 versions (2
+more subjects' monthly items; g1/g2's flat fees become monthly group items),
+85 more charges (+96 tuition charges, -11 g1/g2 enrollment fees) with 46
+more discount lines, 22 more reminders (5 fewer reminder notifications), 4
+more payments with 4 receipts and 76 more allocations. ``small`` is
+unchanged (one subject per plan student; its only group keeps its fee).
+HF-01f +20: the imported child's 2 trial class charges with their
+discount lines, allocations, reminders and reminder notifications, and the
+2 opening balances' allocations (paid with an existing payment).
+``full`` (#552): 30 billing accounts, 42 catalog items (4 of them the
+products') with 43 versions, 50 custom prices, 5 discounts with 2
+assignments, 4 products, 15 packages, 20 of the 101 unit rows (81
+consumptions are ``schedule``'s), 21 tuition plans with 1 pause, 943 of
+the 949 charges (6 course fees are ``courses``') with 279 discount lines,
+20 adjustments, 1 repricing, 44 cancellation decisions, 2 due-date
+changes, 208 reminders with 186 notifications, 155 payments with 350
+allocations and 155 receipts, 1 reversal with 16 releases, 1 refund and
+1 withdrawal."""
+
+FULL_PAYROLL_ROWS: Final = 1027
+"""HF-01f +2: the trial tutor's 2 payroll lines.
+``full`` (#553): 12 terms (2 monthly, 10 biweekly), 15 rates, 2 pay rule
+versions, 2 pay item types with 3 items, 64 periods (52 finalized, 12
+open) with 711 lines, 7 adjustments (2 late approvals, 1 hours correction,
+2 manual, a carry-forward pair), 52 payments (one reversed and paid again;
+the joiner's first period is 0.00), 1 reversal, 52 payslips, and the 52
+period approval requests and 52 finalize notifications."""
+
+MODULE_ROWS: Final[dict[str, dict[str, int]]] = {
+    "small": {
+        "people": SMALL_PEOPLE_ROWS,
+        "catalog": SMALL_CATALOG_ROWS,
+        "staff": SMALL_STAFF_ROWS,
+        "settings": SETTINGS_ROWS,
+        "schedule": SMALL_SCHEDULE_ROWS,
+        "courses": SMALL_COURSES_ROWS,
+        "academics": SMALL_ACADEMICS_ROWS,
+        "billing": SMALL_BILLING_ROWS,
+        "payroll": SMALL_PAYROLL_ROWS,
+        "finance": FINANCE_ROWS,
+        "administration": SMALL_ADMINISTRATION_ROWS,
+        "reporting": SMALL_REPORTING_ROWS,
+    },
+    "full": {
+        "people": FULL_PEOPLE_ROWS,
+        "catalog": FULL_CATALOG_ROWS,
+        "staff": FULL_STAFF_ROWS,
+        "settings": SETTINGS_ROWS,
+        "schedule": FULL_SCHEDULE_ROWS,
+        "courses": FULL_COURSES_ROWS,
+        "academics": FULL_ACADEMICS_ROWS,
+        "billing": FULL_BILLING_ROWS,
+        "payroll": FULL_PAYROLL_ROWS,
+        "finance": FINANCE_ROWS,
+        "administration": FULL_ADMINISTRATION_ROWS,
+        "reporting": FULL_REPORTING_ROWS,
+    },
+}
+
+
+def first_run_lines(profile: ProfileName) -> list[str]:
+    return [
+        *SEED_LINES,
+        *(f"{name}: {rows} rows" for name, rows in MODULE_ROWS[profile].items()),
+    ]
+
+
+def migrate(url: str) -> None:
+    command.upgrade(alembic_config(url), "head")
+
+
+@contextmanager
+def simulation_env(url: str) -> Iterator[None]:
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("APP_ENV", "local")
+        patch.setenv("APP_ORIGIN", origin_for("local"))
+        patch.setenv("DATABASE_URL", url)
+        patch.setenv("DATABASE_DIRECT_URL", url)
+        get_settings.cache_clear()  # loaded once per process otherwise
+        try:
+            yield
+        finally:
+            get_settings.cache_clear()
+
+
+def run_command(
+    url: str,
+    language: str,
+    *,
+    profile: ProfileName = "small",
+    now: datetime = FROZEN_NOW,
+    modules: Sequence[SimulationModule] = SIMULATION_MODULES,
+) -> tuple[int, list[str], str]:
+    """One run with the real clock frozen at ``now``; returns the exit code,
+    the output lines and stderr."""
+    out, err = io.StringIO(), io.StringIO()
+    with (
+        simulation_env(url),
+        frozen_clock(now),
+        redirect_stdout(out),
+        redirect_stderr(err),
+    ):
+        code = simulation_command.main(
+            ["--language", language], profile=profile, modules=modules
+        )
+    return code, out.getvalue().splitlines(), err.getvalue()
+
+
+def table_counts(url: str) -> dict[str, int]:
+    """Every public table's row count (and the business settings version)."""
+    names = [
+        row[0]
+        for row in run_sql(
+            url,
+            "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+            " ORDER BY tablename",
+        )
+    ]
+    counts = {
+        name: run_sql(url, f'SELECT count(*) FROM "{name}"')[0][0]  # noqa: S608
+        for name in names
+    }
+    counts["business_settings.version"] = run_sql(
+        url, "SELECT version FROM business_settings"
+    )[0][0]
+    return counts
+
+
+# --- The canonical dump (C4) -------------------------------------------------------
+
+DUMP_TABLES: Final = (
+    "users",
+    "user_roles",
+    "account_tokens",
+    "user_preferences",
+    "privacy_notice_acceptances",
+    "user_delegations",
+    "registration_requests",
+    "approval_requests",
+    "notifications",
+    "families",
+    "family_guardians",
+    "family_students",
+    "guardians",
+    "students",
+    "student_emergency_contacts",
+    "student_guardians",
+    "consent_records",
+    "subjects",
+    "classrooms",
+    "classroom_availability_windows",
+    "academic_periods",
+    "closures",
+    "tutor_profiles",
+    "tutor_qualifications",
+    "tutor_availability_settings",
+    "tutor_availability_windows",
+    "tutor_availability_exceptions",
+    "tutor_preferred_classrooms",
+    "business_settings",
+    "operating_hours",
+    "scheduling_policies",
+    "education_levels",
+    "expense_categories",
+    # HF-01b (#550): the schedule and the courses.
+    "class_series",
+    "class_series_participants",
+    "class_sessions",
+    "class_session_participants",
+    "class_session_overrides",
+    "assignment_offers",
+    "assignment_offer_sessions",
+    "class_session_substitutions",
+    "class_session_reassignment_flags",
+    "class_groups",
+    "group_enrollments",
+    "session_requests",
+    "session_change_requests",
+    "class_session_attendance",
+    "class_session_attendance_corrections",
+    "session_closeouts",
+    "session_closeout_approvals",
+    "session_closeout_corrections",
+    "tutor_availability_change_requests",
+    "course_templates",
+    "course_template_subjects",
+    "course_template_modules",
+    "course_template_assessments",
+    "course_template_snapshots",
+    "course_cohorts",
+    "cohort_enrollments",
+    # HF-01c (#551): academics.
+    "session_notes",
+    "evaluation_templates",
+    "evaluation_template_criteria",
+    "evaluations",
+    "evaluation_scores",
+    "learning_plans",
+    "learning_plan_objectives",
+    "learning_plan_milestones",
+    "assignments",
+    "assignment_submissions",
+    "progress_report_schedules",
+    "progress_reports",
+    # HF-01d (#552): billing.
+    "billing_settings",
+    "service_prices",
+    "price_versions",
+    "custom_prices",
+    "discounts",
+    "discount_assignments",
+    "package_products",
+    "packages",
+    "package_credit_transactions",
+    "tuition_plans",
+    "tuition_plan_pauses",
+    "billing_accounts",
+    "charges",
+    "charge_discounts",
+    "charge_adjustments",
+    "charge_duration_repricings",
+    "session_cancellation_decisions",
+    "charge_due_date_changes",
+    "charge_reminders",
+    "payments",
+    "payment_allocations",
+    "payment_reversals",
+    "allocation_releases",
+    "refunds",
+    "receipts",
+    "withdrawals",
+    # HF-01e (#553): payroll and operating expenses.
+    "payroll_settings",
+    "tutor_pay_terms",
+    "compensation_rates",
+    "session_pay_rules",
+    "pay_item_types",
+    "pay_items",
+    "payroll_periods",
+    "payroll_lines",
+    "payroll_adjustments",
+    "payroll_payments",
+    "payroll_payment_reversals",
+    "payslips",
+    "vendors",
+    "expense_templates",
+    "expenses",
+    "expense_payments",
+    "expense_payment_reversals",
+    "expense_adjustments",
+    # HF-01f (#554): administration and reporting (``export_files`` is left
+    # out: an XLSX file stores the time it was rendered).
+    "import_jobs",
+    "import_rows",
+    "notification_opt_outs",
+    "report_setups",
+    "export_jobs",
+    "dashboard_layouts",
+)
+"""The tables HF-01 to HF-01f write."""
+
+REFERENCE_TABLES: Final = (
+    "roles",
+    "permissions",
+    "privacy_notice_versions",
+    "payment_methods",
+    "cancellation_billing_rules",
+)
+"""Tables only referenced (their rows resolve foreign keys)."""
+
+LEFT_OUT: Final = frozenset(
+    {"id", "created_at", "updated_at", "version", "password_hash", "token_hash"}
+)
+LEFT_OUT_KEYS: Final = frozenset({"fingerprint"})
+"""JSON keys left out: a withdrawal's stored preview ``fingerprint`` is a
+hash over its ids (HF-01d)."""
+LEFT_OUT_BY_TABLE: Final[dict[str, frozenset[str]]] = {
+    # HF-01f: an XLSX file stores the real time it was rendered (openpyxl's
+    # created/modified properties), and the zipped size changes with those
+    # digits by a few bytes; the file itself is left out for the same reason.
+    "export_jobs": frozenset({"byte_size"}),
+}
+"""Columns left out of one table's rows: values that depend on the real
+time the seed ran (E7), not on the plan."""
+_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+_EMBEDDED_UUID = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+)
+"""An id inside a longer string (HF-01d: an adjustment's ``source_key``
+such as ``withdrawal:<charge_id>:<withdrawal_id>``)."""
+
+
+async def _load(url: str) -> dict[str, list[dict[str, Any]]]:
+    engine = short_lived_engine(url)
+    rows: dict[str, list[dict[str, Any]]] = {}
+    try:
+        async with engine.connect() as conn:
+            for table in (*DUMP_TABLES, *REFERENCE_TABLES):
+                result = await conn.execute(text(f'SELECT * FROM "{table}"'))  # noqa: S608
+                rows[table] = [dict(row._mapping) for row in result]
+    finally:
+        await engine.dispose()
+    return rows
+
+
+def canonical_dump(url: str) -> dict[str, list[str]]:
+    """Every row of :data:`DUMP_TABLES`, canonical (C4): sorted, without
+    :data:`LEFT_OUT` columns, every id (column or JSON value) replaced by
+    the canonical form of the row it names."""
+    tables = asyncio.run(_load(url))
+    for table, columns in LEFT_OUT_BY_TABLE.items():
+        for row in tables[table]:
+            for column in columns:
+                row.pop(column, None)
+    by_id: dict[uuid.UUID, dict[str, Any]] = {
+        row["id"]: row for rows in tables.values() for row in rows if "id" in row
+    }
+    # Keyed by the depth too: a label resolved deep in one chain is cut
+    # shorter (``<unknown>`` past depth 6) than the same row's label near the
+    # top, so caching by id alone made the dump depend on which row was
+    # canonicalized first, i.e. on the order ``SELECT *`` returned the rows
+    # (HF-01f CI: the export notification's job label differed).
+    cache: dict[tuple[uuid.UUID, int], str] = {}
+
+    def resolve(value: uuid.UUID, depth: int) -> str:
+        found = cache.get((value, depth))
+        if found is not None:
+            return found
+        row = by_id.get(value)
+        if row is None or depth > 6:
+            return "<unknown>"
+        label = canon_row(row, depth + 1)
+        cache[(value, depth)] = label
+        return label
+
+    def canon(value: Any, depth: int) -> Any:
+        if isinstance(value, uuid.UUID):
+            return resolve(value, depth)
+        if isinstance(value, str) and _UUID.match(value):
+            return resolve(uuid.UUID(value), depth)
+        if isinstance(value, str) and _EMBEDDED_UUID.search(value):
+            return _EMBEDDED_UUID.sub(
+                lambda m: hashlib.sha256(
+                    resolve(uuid.UUID(m.group(0)), depth).encode()
+                ).hexdigest()[:16],
+                value,
+            )
+        if isinstance(value, dict):
+            # Keys can be ids too (a closeout approval's attendance by student).
+            return dict(
+                sorted(
+                    (
+                        resolve(uuid.UUID(k), depth) if _UUID.match(k) else k,
+                        canon(v, depth),
+                    )
+                    for k, v in value.items()
+                    if k not in LEFT_OUT_KEYS
+                )
+            )
+        if isinstance(value, list):
+            return [canon(v, depth) for v in value]
+        if isinstance(value, datetime):
+            return value.astimezone(UTC).isoformat()
+        return value if isinstance(value, int | float | bool | None) else str(value)
+
+    def canon_row(row: dict[str, Any], depth: int) -> str:
+        kept = {
+            key: canon(value, depth)
+            for key, value in sorted(row.items())
+            if key not in LEFT_OUT
+        }
+        return json.dumps(kept, sort_keys=True, ensure_ascii=False)
+
+    return {
+        table: sorted(canon_row(row, 0) for row in tables[table])
+        for table in DUMP_TABLES
+    }
+
+
+def _flatten(value: Any, path: str = "") -> dict[str, Any]:
+    """A JSON value as ``{dotted path: leaf}``; a string that is itself
+    JSON (a resolved label) is flattened too."""
+    if isinstance(value, str) and value[:1] in "{[":
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return {path: value}
+    if isinstance(value, dict):
+        found: dict[str, Any] = {}
+        for key, item in value.items():
+            found |= _flatten(item, f"{path}.{key}" if path else key)
+        return found
+    if isinstance(value, list):
+        found = {}
+        for index, item in enumerate(value):
+            found |= _flatten(item, f"{path}[{index}]")
+        return found
+    return {path: value}
+
+
+def dump_differences(
+    first: dict[str, list[str]], second: dict[str, list[str]], *, limit: int = 8
+) -> dict[str, Any]:
+    """A bounded description of where two canonical dumps differ (C4): per
+    table, the row counts, how many rows are only in each dump, and for the
+    first such pair the differing fields (``path: (first, second)``, values
+    cut at 200 characters); an unpaired row is shown cut at 400."""
+    from collections import Counter
+
+    found: dict[str, Any] = {}
+    for table in sorted(set(first) | set(second)):
+        a, b = first.get(table, []), second.get(table, [])
+        if a == b:
+            continue
+        only_a = sorted((Counter(a) - Counter(b)).elements())
+        only_b = sorted((Counter(b) - Counter(a)).elements())
+        entry: dict[str, Any] = {
+            "rows": (len(a), len(b)),
+            "only_in_first": len(only_a),
+            "only_in_second": len(only_b),
+        }
+        if only_a and only_b:
+            left, right = _flatten(only_a[0]), _flatten(only_b[0])
+            entry["fields"] = {
+                key: (str(left.get(key))[:200], str(right.get(key))[:200])
+                for key in sorted(set(left) | set(right))
+                if left.get(key) != right.get(key)
+            }
+            entry["fields"] = dict(list(entry["fields"].items())[:limit])
+        else:
+            entry["row"] = (only_a or only_b)[0][:400]
+        found[table] = entry
+    return found
+
+
+# --- HF-01b free text (B10) -------------------------------------------------------
+
+FREE_TEXT = (
+    ("session_change_requests", "note"),
+    ("session_change_requests", "decision_reason"),
+    ("session_requests", "note"),
+    ("session_requests", "rejection_reason"),
+    ("assignment_offers", "decline_note"),
+    ("class_session_substitutions", "reason"),
+    ("class_sessions", "cancellation_reason"),
+    ("class_session_attendance_corrections", "reason"),
+    ("session_closeouts", "topics"),
+    ("session_closeouts", "performance"),
+    ("session_closeouts", "homework"),
+    ("session_closeouts", "next_steps"),
+    ("session_closeouts", "review_reason"),
+    ("session_closeout_corrections", "reason"),
+    ("tutor_availability_change_requests", "rejection_reason"),
+    ("tutor_availability_exceptions", "note"),
+    ("class_groups", "name"),
+    ("course_templates", "name"),
+    ("course_templates", "description"),
+    ("course_template_modules", "title"),
+    ("course_template_modules", "materials"),
+    ("course_template_assessments", "title"),
+    ("course_cohorts", "name"),
+    ("class_session_overrides", "reason"),
+)
+
+
+def free_text(url: str) -> list[tuple[str, str]]:
+    """Every distinct value of :data:`FREE_TEXT`, with its column."""
+    found = []
+    for table, column in FREE_TEXT:
+        for (value,) in run_sql(
+            url,
+            f"SELECT DISTINCT {column} FROM {table}"  # noqa: S608
+            f" WHERE {column} IS NOT NULL",
+        ):
+            found.append((f"{table}.{column}", value))
+    return found
+
+
+SERVICE_CANCELLATION_REASONS: Final = frozenset({"family_request", "tutor_request"})
+"""The cancellation reasons an approved request stores (codes, not text)."""
+
+
+# --- HF-01c free text (B6) --------------------------------------------------------
+
+ACADEMIC_FREE_TEXT: Final = (
+    ("session_notes", "body"),
+    ("evaluation_templates", "name"),
+    ("evaluation_templates", "description"),
+    ("evaluation_template_criteria", "title"),
+    ("evaluations", "template_name"),
+    ("evaluations", "feedback"),
+    ("evaluations", "course_assessment_title"),
+    ("evaluation_scores", "criterion_title"),
+    ("evaluation_scores", "comment"),
+    ("learning_plans", "title"),
+    ("learning_plans", "description"),
+    ("learning_plan_objectives", "title"),
+    ("learning_plan_milestones", "title"),
+    ("learning_plan_milestones", "activities"),
+    ("assignments", "title"),
+    ("assignments", "instructions"),
+    ("assignment_submissions", "text"),
+    ("assignment_submissions", "feedback"),
+    ("progress_reports", "summary"),
+    ("progress_reports", "strengths"),
+    ("progress_reports", "areas_for_improvement"),
+    ("progress_reports", "next_steps"),
+    ("progress_reports", "changes_requested_reason"),
+)
+
+
+def academic_free_text(url: str) -> list[tuple[str, str]]:
+    """Every distinct value of :data:`ACADEMIC_FREE_TEXT`, with its column."""
+    found = []
+    for table, column in ACADEMIC_FREE_TEXT:
+        for (value,) in run_sql(
+            url,
+            f"SELECT DISTINCT {column} FROM {table}"  # noqa: S608
+            f" WHERE {column} IS NOT NULL",
+        ):
+            found.append((f"{table}.{column}", value))
+    return found
+
+
+def composed_texts(plan: SimulationPlan) -> set[str]:
+    """The academic texts the plan composes from pool fragments (note
+    bodies, plan and homework titles, a discontinued plan's description);
+    every other academic text is a pool value as is."""
+    work = plan.academics
+    return {
+        *(n.body for n in work.notes),
+        *(p.title for p in work.plans),
+        *(f"{p.description} {p.reason}" for p in work.plans if p.reason),
+        *(h.title for h in work.homework),
+    }
+
+
+# --- HF-01d free text (B7) ------------------------------------------------------------
+
+BILLING_FREE_TEXT: Final = (
+    ("charges", "description"),
+    ("charge_adjustments", "reason"),
+    ("charge_due_date_changes", "reason"),
+    ("withdrawals", "reason"),
+    ("payment_reversals", "reason"),
+    ("refunds", "reason"),
+    ("discounts", "name"),
+    ("package_products", "name"),
+)
+"""The billing columns the simulation writes free text into (B7; a
+job-written adjustment has no reason and an enrollment fee no
+description)."""
+
+
+def billing_free_text(url: str) -> list[tuple[str, str]]:
+    """Every distinct non-blank value of :data:`BILLING_FREE_TEXT`, with its
+    column."""
+    found = []
+    for table, column in BILLING_FREE_TEXT:
+        for (value,) in run_sql(
+            url,
+            f"SELECT DISTINCT {column} FROM {table}"  # noqa: S608
+            f" WHERE {column} IS NOT NULL AND {column} <> ''",
+        ):
+            found.append((f"{table}.{column}", value))
+    return found
+
+
+def billing_texts(language: str) -> set[str]:
+    billing = plan_simulation(language, "small", 1).billing  # type: ignore[arg-type]
+    return {
+        *(p.name for p in billing.products),
+        *(d.name for d in billing.discounts),
+        *(m.description for m in billing.manual_charges),
+        *(a.reason for a in billing.adjustments),
+        *(c.reason for c in billing.due_date_changes),
+        billing.reversal.reason,
+        *billing.reasons.values(),
+        # HF-01f: the opening balances' descriptions.
+        *(
+            b.description
+            for b in plan_simulation(language, "small", 1).administration.balances  # type: ignore[arg-type]
+        ),
+    }
+
+
+# --- HF-01e free text (B7) ------------------------------------------------------------
+
+PAYROLL_FREE_TEXT: Final = (
+    ("pay_item_types", "name"),
+    ("pay_items", "description"),
+    ("payroll_adjustments", "reason"),
+    ("payroll_payment_reversals", "reason"),
+    ("expense_categories", "name"),
+    ("vendors", "name"),
+    ("vendors", "contact"),
+    ("expense_templates", "name"),
+    ("expenses", "description"),
+    ("expense_adjustments", "reason"),
+    ("expense_payment_reversals", "reason"),
+)
+"""The payroll and finance columns the simulation writes free text into
+(B7; a job-written adjustment and a carry-forward have no reason)."""
+
+
+def payroll_free_text(url: str) -> list[tuple[str, str]]:
+    """Every distinct non-blank value of :data:`PAYROLL_FREE_TEXT`, with its
+    column."""
+    found = []
+    for table, column in PAYROLL_FREE_TEXT:
+        for (value,) in run_sql(
+            url,
+            f"SELECT DISTINCT {column} FROM {table}"  # noqa: S608
+            f" WHERE {column} IS NOT NULL AND {column} <> ''",
+        ):
+            found.append((f"{table}.{column}", value))
+    return found
+
+
+def payroll_texts(language: str) -> set[str]:
+    """The pool values HF-01e writes (B7)."""
+    from tests.factories.simulation.texts import POOLS
+
+    pool = POOLS[language]  # type: ignore[index]
+    found: set[str] = {str(pool["teaching_materials_category"])}
+    for key in (
+        "expense_categories",
+        "pay_item_types",
+        "pay_item_descriptions",
+        "payroll_manual_reasons",
+        "vendors",
+        "vendor_contacts",
+        "expense_templates",
+        "expense_descriptions",
+        "expense_adjustment_reasons",
+    ):
+        values = pool[key]
+        assert isinstance(values, dict)
+        found |= set(values.values())
+    for key in ("payroll_reversal_reasons", "expense_reversal_reasons"):
+        values = pool[key]
+        assert isinstance(values, list)
+        found |= set(values)
+    return found

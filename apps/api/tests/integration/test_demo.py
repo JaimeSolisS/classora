@@ -4,9 +4,11 @@ import pytest
 from alembic import command
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.authz.csrf import origin_for
 from tests.factories import demo
 from tests.factories.base import persist_batch
 from tests.integration.conftest import run_sql
+from tests.integration.demo_support import FROZEN_NOW
 from tests.integration.samples import TEST_REFERENCE_SEED, SampleProfileFactory
 from tests.integration.test_migrations import alembic_config
 
@@ -39,6 +41,7 @@ def migrated_url(tables_url: str) -> str:
 def env_for(monkeypatch):
     def _set(app_env: str, dsn: str) -> None:
         monkeypatch.setenv("APP_ENV", app_env)
+        monkeypatch.setenv("APP_ORIGIN", origin_for(app_env))
         monkeypatch.setenv("DATABASE_URL", dsn)
         monkeypatch.setenv("DATABASE_DIRECT_URL", dsn)
 
@@ -88,7 +91,7 @@ def test_same_seed_generates_the_same_data(migrated_url, env_for):
 def test_without_generators_only_reference_seeds_run(migrated_url, env_for, capsys):
     env_for("local", migrated_url)
 
-    assert demo.main([], seeds=[TEST_REFERENCE_SEED]) == 0
+    assert demo.main([], seeds=[TEST_REFERENCE_SEED], generators=()) == 0
 
     assert counts(migrated_url) == (3, 0)
     assert capsys.readouterr().out.splitlines() == [
@@ -97,10 +100,69 @@ def test_without_generators_only_reference_seeds_run(migrated_url, env_for, caps
     ]
 
 
-def test_registered_command_with_nothing_registered(migrated_url, env_for, capsys):
+def test_registered_command_applies_the_registered_reference_seeds(
+    migrated_url, env_for, capsys, clock
+):
+    # The #299 frozen day: the M6-demo-b, M7-demo and M7-demo-b counts depend
+    # on the center's today.
+    clock.set(FROZEN_NOW)
     env_for("local", migrated_url)
 
     assert demo.main([]) == 0
+
+    assert capsys.readouterr().out.splitlines() == [
+        "identity.permissions: 47 inserted, 0 updated",
+        "identity.roles: 7 inserted, 0 updated",
+        "identity.role_permissions: 118 inserted, 0 updated",
+        "catalog.education_levels: 4 inserted, 0 updated",
+        "catalog.general_subject: 2 inserted, 0 updated",
+        "identity.demo_owner: 1 rows",
+        "identity.demo_admin: 1 rows",
+        "identity.demo_coordinator: 1 rows",
+        "identity.demo_finance: 1 rows",
+        "identity.demo_tutor: 1 rows",
+        "identity.demo_student: 1 rows",
+        "identity.demo_guardian: 1 rows",
+        "identity.demo_tutor2: 1 rows",
+        "families.demo_families: 34 rows",
+        "catalog.demo_catalog: 24 rows",
+        "staff.demo_tutor: 21 rows",
+        "scheduling.demo_schedule: 111 rows",
+        "staff.demo_tutor2: 12 rows",
+        "courses.demo_courses: 49 rows",
+        "scheduling.demo_changes: 16 rows",
+        "scheduling.demo_held_sessions: 30 rows",
+        "courses.demo_past_cohort: 89 rows",
+        "academics.demo_notes: 7 rows",
+        "academics.demo_evaluations: 32 rows",
+        "academics.demo_learning_plans: 18 rows",
+        "academics.demo_homework: 16 rows",
+        "academics.demo_progress_reports: 9 rows",
+        "administration.demo_receipt_message: 0 rows",
+        "billing.demo_pricing: 22 rows",
+        "billing.demo_packages: 21 rows",
+        "billing.demo_charges: 97 rows",
+        "billing.demo_reconciliation: 2 rows",
+        "billing.demo_payments: 13 rows",
+        "billing.demo_reminders: 13 rows",
+        "payroll.demo_setup: 9 rows",
+        "payroll.demo_periods: 73 rows",
+        "payroll.demo_corrections: 9 rows",
+        "billing.demo_past_cohort_fee: 11 rows",
+        "finance.demo_setup: 5 rows",
+        "finance.demo_templates: 18 rows",
+        "finance.demo_expenses: 20 rows",
+        "administration.demo_admin: 2 rows",
+        "administration.demo_imports: 35 rows",
+        "reporting.demo_setups: 2 rows",
+        "academics.demo_deleted: 3 rows",
+    ]
+
+
+def test_nothing_registered(migrated_url, env_for, capsys):
+    env_for("local", migrated_url)
+
+    assert demo.main([], seeds=(), generators=()) == 0
 
     assert capsys.readouterr().out.splitlines() == [
         "No reference seeds are registered.",

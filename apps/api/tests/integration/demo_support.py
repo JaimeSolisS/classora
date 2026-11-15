@@ -1,0 +1,762 @@
+"""Helpers for the demo generator tests (#23, #195, #299, #303,
+#353, #354, M6-demo #413, M6-demo-b #420, M7-demo #499, M7-demo-b #501,
+M8-demo #539).
+
+- :func:`migrate` and :func:`demo_env`: a fresh database at the Alembic head,
+  and the environment of a ``demo.main`` run (each test module wraps them in
+  its ``migrated_url`` and ``env_for`` fixtures).
+- The expected summary lines of a first run, a rerun and a ``dev`` run.
+- The #299 tables and their counts after a first run (:func:`demo_table_counts`),
+  the #303 rows in the same tables and its own (:data:`DEMO_303_TABLE_COUNTS`,
+  :data:`TABLE_COUNTS_THROUGH_303`), the #353 ones
+  (:data:`DEMO_353_TABLE_COUNTS`, :data:`TABLE_COUNTS_THROUGH_353`) and the
+  #354 ones (:data:`DEMO_354_TABLE_COUNTS`, :data:`TABLE_COUNTS_THROUGH_354`)
+  and the M6-demo billing ones (:data:`DEMO_BILLING_TABLE_COUNTS`,
+  :data:`TABLE_COUNTS_THROUGH_413`) and the M6-demo-b ones
+  (:data:`DEMO_BILLING_MONEY_TABLE_COUNTS`, :data:`TABLE_COUNTS_THROUGH_420`)
+  and the M7-demo payroll ones (:data:`DEMO_PAYROLL_TABLE_COUNTS`,
+  :data:`TABLE_COUNTS_THROUGH_499`) and the M7-demo-b ones
+  (:data:`DEMO_FINANCE_TABLE_COUNTS`, :data:`TABLE_COUNTS_THROUGH_501`) and
+  the M8-demo ones (:data:`DEMO_ADMIN_TABLE_COUNTS`, :data:`ALL_TABLE_COUNTS`).
+- Prefixes of the registered generators by name (:func:`generators_through`).
+"""
+
+from collections.abc import Sequence
+from datetime import UTC, datetime
+
+import pytest
+from alembic import command
+
+from tests.authz.csrf import origin_for
+from tests.factories import demo
+from tests.factories.identity import DEMO_ACCOUNT_GENERATORS
+from tests.integration.conftest import run_sql
+from tests.integration.test_migrations import alembic_config
+
+FAMILIES_GENERATOR = "families.demo_families"
+DEMO_FAMILIES_ROWS = 34
+CATALOG_GENERATOR = "catalog.demo_catalog"
+DEMO_CATALOG_ROWS = 24
+TUTOR_GENERATOR = "staff.demo_tutor"
+DEMO_TUTOR_ROWS = 21
+"""#299 C5: 1 profile + 4 qualifications + 4 approval requests + 3
+notifications + 1 settings row + 6 windows + 1 exception + 1 preferred
+classroom."""
+SCHEDULE_GENERATOR = "scheduling.demo_schedule"
+DEMO_SCHEDULE_ROWS = 111
+"""#299 D8: see :data:`DEMO_TABLE_COUNTS` (the schedule's share of
+``approval_requests`` is 1 and of ``notifications`` 9)."""
+
+TUTOR2_GENERATOR = "staff.demo_tutor2"
+DEMO_TUTOR2_ROWS = 12
+"""#303 B4: 2 qualifications + 2 approval requests + 2 approval notifications
++ 1 settings row + 5 windows."""
+COURSES_GENERATOR = "courses.demo_courses"
+DEMO_COURSES_ROWS = 49
+"""#303 C5: 1 template + 2 subjects + 3 modules + 2 assessments + 1 snapshot,
+1 cohort, 2 enrollments, 1 series, 2 series participants, 8 sessions, 16
+session participants, 1 offer, 8 offer sessions, 1 notification."""
+CHANGES_GENERATOR = "scheduling.demo_changes"
+DEMO_CHANGES_ROWS = 16
+"""#303 D8: 1 substitution, 1 offer, 1 offer session, 1 session request, 1
+change request, 1 availability change request, 3 approval requests and 7
+notifications (see :data:`DEMO_303_TABLE_COUNTS`)."""
+
+HELD_SESSIONS_GENERATOR = "scheduling.demo_held_sessions"
+DEMO_HELD_SESSIONS_ROWS = 30
+"""#353 B4: 3 sessions, 3 participants, 3 offers, 3 offer sessions, 3
+attendance rows, 3 closeouts, 3 approvals, 3 approval requests and 6
+notifications (see :data:`DEMO_353_TABLE_COUNTS`)."""
+PAST_COHORT_GENERATOR = "courses.demo_past_cohort"
+DEMO_PAST_COHORT_ROWS = 89
+"""#353 C4: 1 template + 1 subject + 2 modules + 2 assessments + 1 snapshot,
+1 cohort, 3 enrollments, 1 series, 3 series participants, 6 sessions, 18
+session participants, 1 offer, 6 offer sessions, 18 attendance rows, 6
+closeouts, 6 approvals, 6 approval requests and 7 notifications."""
+NOTES_GENERATOR = "academics.demo_notes"
+DEMO_NOTES_ROWS = 7
+"""#353 D3: 3 notes and 4 notifications (N1 and N2 to ``demo.student`` and
+``demo.guardian``)."""
+EVALUATIONS_GENERATOR = "academics.demo_evaluations"
+DEMO_EVALUATIONS_ROWS = 32
+"""#353 E6: 2 templates, 3 criteria, 9 evaluations, 10 scores and 8
+notifications (S's four final evaluations to ``demo.student`` and
+``demo.guardian``)."""
+
+LEARNING_PLANS_GENERATOR = "academics.demo_learning_plans"
+DEMO_LEARNING_PLANS_ROWS = 18
+"""#354 B4: 2 plans, 3 objectives, 7 milestones and 6 notifications (LP1 and
+LP2 activated and LP2 completed, to ``demo.student`` and ``demo.guardian``)."""
+HOMEWORK_GENERATOR = "academics.demo_homework"
+DEMO_HOMEWORK_ROWS = 16
+"""#354 C4: 3 assignments, 3 submission rows and 10 notifications (3 set and
+1 graded to ``demo.student`` and ``demo.guardian``, 2 handed in to
+``demo.tutor``)."""
+PROGRESS_REPORTS_GENERATOR = "academics.demo_progress_reports"
+DEMO_PROGRESS_REPORTS_ROWS = 9
+"""#354 D4: 3 reports, 2 approval requests, 1 schedule and 3 notifications (R1
+approved, to ``demo.tutor``, ``demo.student`` and ``demo.guardian``)."""
+
+PRICING_GENERATOR = "billing.demo_pricing"
+DEMO_PRICING_ROWS = 22
+"""M6-demo B: 8 catalog items (PR1-PR6 and the two package items), 9 price
+versions (PR1's upcoming one included), 2 discounts, 1 assignment and 2
+package products."""
+PACKAGES_GENERATOR = "billing.demo_packages"
+DEMO_PACKAGES_ROWS = 21
+"""M6-demo C: H4 (1 session, 1 participant, 1 offer, 1 offer session, 1
+attendance row, 1 closeout, 1 approval, 1 approval request and 2
+notifications to ``demo.tutor``), F1's billing account, 2 packages, 4 credit
+transactions (2 grants, 1 consume, 1 expire), 2 purchase charges and their 2
+discount lines."""
+CHARGES_GENERATOR = "billing.demo_charges"
+DEMO_CHARGES_ROWS = 97
+"""M6-demo D: F2's and F3's billing accounts, TP1, 43 charges (40 sessions, 2
+cohort fees, 1 tuition period) and 51 discount lines."""
+
+RECONCILIATION_GENERATOR = "billing.demo_reconciliation"
+DEMO_RECONCILIATION_ROWS = 2
+"""M6-demo-b B: CX's cancellation decision and its ``cancellation_credit``
+adjustment (the cancellation's 3 notifications aren't counted, A2)."""
+PAYMENTS_GENERATOR = "billing.demo_payments"
+DEMO_PAYMENTS_ROWS = 13
+"""M6-demo-b C: PY1-PY3, their 4 allocations (3 for PY1, 1 for PY3) and 3
+receipts, MC, PY3's reversal and its allocation release."""
+REMINDERS_GENERATOR = "billing.demo_reminders"
+DEMO_REMINDERS_ROWS = 13
+"""M6-demo-b D: DC's due-date change, 10 ``charge_reminders`` rows of F1 (4
+``due_soon``, 6 ``overdue``) and 2 ``billing.payment_reminder``
+notifications to ``demo.guardian`` (at ``FROZEN_NOW``)."""
+
+PAYROLL_SETUP_GENERATOR = "payroll.demo_setup"
+DEMO_PAYROLL_SETUP_ROWS = 9
+"""M7-demo B: 2 terms, 3 rates, 2 pay item types and 2 pay items (the
+``payroll_settings`` update isn't counted, A2)."""
+PAYROLL_PERIODS_GENERATOR = "payroll.demo_periods"
+DEMO_PAYROLL_PERIODS_ROWS = 73
+"""M7-demo C at :data:`FROZEN_NOW` (three ended weeks): L1 and N1 (2 sessions,
+2 participants, 2 offers, 2 offer sessions, 2 attendance rows, 2 closeouts, 2
+approvals), 8 approval requests (2 closeouts, 6 periods), 11 notifications (2
+offers received and 2 closeouts approved to ``demo.tutor``, 1 payment reminder
+to ``demo.guardian``, 6 periods finalized), 2 charges, their 2 discount lines
+and 2 ``charge_reminders`` rows (engineer D3), 8 periods, 18 lines, 2
+adjustments and 6 payslips."""
+PAYROLL_CORRECTIONS_GENERATOR = "payroll.demo_corrections"
+DEMO_PAYROLL_CORRECTIONS_ROWS = 9
+"""M7-demo D: H2's new approval and its correction, the
+``academics.closeout_corrected`` notification, the ``hours_correction`` and
+its line, PP1-PP3 and PP3's reversal."""
+
+PAST_COHORT_FEE_GENERATOR = "billing.demo_past_cohort_fee"
+DEMO_PAST_COHORT_FEE_ROWS = 11
+"""M7-demo-b B: PR7 and its version, #353's three fees and their 4 discount
+lines (S and B sibling, A scholarship and sibling), F1's reminder row and its
+``billing.payment_reminder`` to ``demo.guardian``."""
+FINANCE_SETUP_GENERATOR = "finance.demo_setup"
+DEMO_FINANCE_SETUP_ROWS = 5
+"""M7-demo-b C: "Mobiliario" and V1-V4 (the rename isn't counted, A2)."""
+FINANCE_TEMPLATES_GENERATOR = "finance.demo_templates"
+DEMO_FINANCE_TEMPLATES_ROWS = 18
+"""M7-demo-b D at :data:`FROZEN_NOW`: 5 templates, 9 generated expenses, 3
+payments (TL's first week, TV's two) and TL's voiding adjustment."""
+FINANCE_EXPENSES_GENERATOR = "finance.demo_expenses"
+DEMO_FINANCE_EXPENSES_ROWS = 20
+"""M7-demo-b E: X1-X9, 8 payments, X5's reversal and 2 adjustments (the
+deactivations aren't counted, A2)."""
+
+RECEIPT_MESSAGE_GENERATOR = "administration.demo_receipt_message"
+DEMO_RECEIPT_MESSAGE_ROWS = 0
+"""M8-demo G1: the receipt message is an update of the settings row (not
+counted, as #501's rename)."""
+ADMIN_GENERATOR = "administration.demo_admin"
+DEMO_ADMIN_ROWS = 2
+"""M8-demo G2: ``demo.coordinator``'s opt-out and ``demo.admin``'s
+``administration.approval_assigned`` notification (the two assignments are
+updates; the coordinator's notice is muted)."""
+IMPORTS_GENERATOR = "administration.demo_imports"
+DEMO_IMPORTS_ROWS = 35
+"""M8-demo G3: 4 import jobs and their 9 rows (3 students, 2 tutors, 2
+schedules, 2 balances), 2 students and their 2 emergency contacts, the
+imported series (1 series, 1 participant, 4 sessions, 4 session
+participants, 1 offer, 4 offer sessions and ``demo.tutor``'s
+``scheduling.offer_received``) and 2 opening-balance charges."""
+SETUPS_GENERATOR = "reporting.demo_setups"
+DEMO_SETUPS_ROWS = 2
+"""M8-demo G4: the two saved setups."""
+DELETED_GENERATOR = "academics.demo_deleted"
+DEMO_DELETED_ROWS = 3
+"""M8-demo G5: the deleted draft, its objective and its milestone."""
+
+DEMO_TABLE_COUNTS = {
+    # The 8 demo subjects and the built-in General one (HF-12, a reference
+    # seed that ``demo.main`` applies first).
+    "subjects": 9,
+    "classrooms": 3,
+    "classroom_availability_windows": 11,
+    "academic_periods": 1,
+    "closures": 1,
+    "tutor_profiles": 1,
+    "tutor_qualifications": 4,
+    "tutor_availability_settings": 1,
+    "tutor_availability_windows": 6,
+    "tutor_availability_exceptions": 1,
+    "tutor_preferred_classrooms": 1,
+    # 4 completed + U1-U5 + 8 series occurrences + 8 group occurrences.
+    "class_sessions": 25,
+    # One student each, except the group's three.
+    "class_session_participants": 4 + 5 + 8 + 8 * 3,
+    # The D5 series and the group's series.
+    "class_series": 2,
+    "class_series_participants": 1 + 3,
+    "class_groups": 1,
+    "group_enrollments": 3,
+    # U1-U4, the series and the group.
+    "assignment_offers": 6,
+    # U1-U4, the series' 7 occurrences off the closure, the group's 8.
+    "assignment_offer_sessions": 4 + 7 + 8,
+    "class_session_reassignment_flags": 0,
+    # 4 qualifications + the U4 reassignment item.
+    "approval_requests": 5,
+    # 3 qualification approvals + 6 offers received + U4 declined to the
+    # Owner, the Administrator and the Coordinator.
+    "notifications": 3 + 6 + 3,
+}
+"""Every table the #299 generators count, after a first run of the
+generators through ``scheduling.demo_schedule`` on a fresh database."""
+
+DEMO_303_TABLE_COUNTS = {
+    # staff.demo_tutor2: Matemáticas and Ciencias (Secundaria), approved.
+    "tutor_qualifications": 2,
+    "tutor_availability_settings": 1,
+    "tutor_availability_windows": 5,
+    # courses.demo_courses.
+    "course_templates": 1,
+    "course_template_subjects": 2,
+    "course_template_modules": 3,
+    "course_template_assessments": 2,
+    "course_template_snapshots": 1,
+    "course_cohorts": 1,
+    "cohort_enrollments": 2,
+    "class_series": 1,
+    "class_series_participants": 2,
+    "class_sessions": 8,
+    "class_session_participants": 8 * 2,
+    # The cohort's series offer and the substitution offer.
+    "assignment_offers": 1 + 1,
+    "assignment_offer_sessions": 8 + 1,
+    # scheduling.demo_changes.
+    "class_session_substitutions": 1,
+    "session_requests": 1,
+    "session_change_requests": 1,
+    "tutor_availability_change_requests": 1,
+    # 2 qualifications; the session request, the change request and the
+    # availability change.
+    "approval_requests": 2 + 3,
+    # 2 qualification approvals and the cohort offer to demo.tutor2; the
+    # substitution offer to demo.tutor2, tutor_substituted to demo.tutor,
+    # session_tutor_changed to demo.student and demo.guardian, and
+    # session_cancelled to demo.tutor2, demo.student and demo.guardian.
+    "notifications": 2 + 1 + 1 + 1 + 2 + 3,
+}
+"""The rows the #303 generators add to each table they count, after a first
+run on a fresh database (several tables are shared with #299)."""
+
+DEMO_353_TABLE_COUNTS = {
+    # scheduling.demo_held_sessions (H1-H3) and courses.demo_past_cohort.
+    "class_sessions": 3 + 6,
+    "class_session_participants": 3 + 6 * 3,
+    "assignment_offers": 3 + 1,
+    "assignment_offer_sessions": 3 + 6,
+    "class_session_attendance": 3 + 6 * 3,
+    "session_closeouts": 3 + 6,
+    "session_closeout_approvals": 3 + 6,
+    "course_templates": 1,
+    "course_template_subjects": 1,
+    "course_template_modules": 2,
+    "course_template_assessments": 2,
+    "course_template_snapshots": 1,
+    "course_cohorts": 1,
+    "cohort_enrollments": 3,
+    "class_series": 1,
+    "class_series_participants": 3,
+    # The closeouts' review items, all approved.
+    "approval_requests": 3 + 6,
+    # academics.demo_notes and academics.demo_evaluations.
+    "session_notes": 3,
+    "evaluation_templates": 2,
+    "evaluation_template_criteria": 3,
+    "evaluations": 9,
+    "evaluation_scores": 10,
+    # Held: 3 offers received and 3 closeouts approved to demo.tutor. Past
+    # cohort: the series offer and 6 closeouts approved to demo.tutor2.
+    # Notes: N1 and N2 to demo.student and demo.guardian. Evaluations: S's
+    # Ev1, Ev2, midterm and final to demo.student and demo.guardian.
+    "notifications": 6 + 7 + 4 + 8,
+}
+"""The rows the #353 generators add to each table they count, after a first
+run on a fresh database (several tables are shared with #299 and #303)."""
+
+DEMO_354_TABLE_COUNTS = {
+    # academics.demo_learning_plans: LP1 (2 objectives, 4 milestones) and LP2
+    # (1 objective, 3 milestones).
+    "learning_plans": 2,
+    "learning_plan_objectives": 2 + 1,
+    "learning_plan_milestones": 4 + 3,
+    # academics.demo_homework: HW1-HW3, one recipient (S) each.
+    "assignments": 3,
+    "assignment_submissions": 3,
+    # academics.demo_progress_reports: R1-R3 and the weekly schedule; R1's and
+    # R2's review items.
+    "progress_reports": 3,
+    "progress_report_schedules": 1,
+    "approval_requests": 2,
+    # Plans: 2 activated + 1 completed, homework: 3 set + 1 graded, each to
+    # demo.student and demo.guardian; 2 handed in to demo.tutor; R1 approved
+    # to demo.tutor, demo.student and demo.guardian.
+    "notifications": 3 * 2 + 4 * 2 + 2 + 3,
+}
+"""The rows the #354 generators add to each table they count, after a first
+run on a fresh database (``approval_requests`` and ``notifications`` are
+shared)."""
+
+
+DEMO_BILLING_TABLE_COUNTS = {
+    # billing.demo_pricing.
+    "service_prices": 6 + 2,
+    "price_versions": 7 + 2,
+    "discounts": 2,
+    "discount_assignments": 1,
+    "package_products": 2,
+    # billing.demo_packages: H4, the two packages and their purchases.
+    "class_sessions": 1,
+    "class_session_participants": 1,
+    "assignment_offers": 1,
+    "assignment_offer_sessions": 1,
+    "class_session_attendance": 1,
+    "session_closeouts": 1,
+    "session_closeout_approvals": 1,
+    "approval_requests": 1,
+    # H4's offer received and closeout approved, to demo.tutor.
+    "notifications": 2,
+    "packages": 2,
+    "package_credit_transactions": 4,
+    # F1 (the first sale), then F2 and F3 (billing.demo_charges).
+    "billing_accounts": 1 + 2,
+    "tuition_plans": 1,
+    # 2 purchases; 40 sessions, 2 cohort fees and 1 tuition period.
+    "charges": 2 + 43,
+    "charge_discounts": 2 + 51,
+}
+"""The rows the M6-demo generators add to each table they count, after a
+first run on a fresh database (several tables are shared with #299-#354)."""
+
+DEMO_BILLING_MONEY_TABLE_COUNTS = {
+    # billing.demo_reconciliation: CX's decision and credit.
+    "session_cancellation_decisions": 1,
+    "charge_adjustments": 1,
+    # billing.demo_payments: PY1-PY3, MC, PY3's reversal.
+    "payments": 3,
+    "payment_allocations": 3 + 1,
+    "receipts": 3,
+    "charges": 1,
+    "payment_reversals": 1,
+    "allocation_releases": 1,
+    # billing.demo_reminders: DC and F1's reminders at FROZEN_NOW.
+    "charge_due_date_changes": 1,
+    "charge_reminders": 4 + 6,
+    # CX cancelled, to demo.tutor, demo.student and demo.guardian (not
+    # counted by the generator); the due_soon and overdue reminders to
+    # demo.guardian.
+    "notifications": 3 + 2,
+}
+"""The rows the M6-demo-b generators add to each table they count, and the
+cancellation's notifications, after a first run on a fresh database at
+:data:`FROZEN_NOW`."""
+DEMO_PAYROLL_TABLE_COUNTS = {
+    # payroll.demo_setup.
+    "tutor_pay_terms": 2,
+    "compensation_rates": 3,
+    "pay_item_types": 2,
+    "pay_items": 2,
+    # payroll.demo_periods: L1 and N1, their charges, the periods.
+    "class_sessions": 2,
+    "class_session_participants": 2,
+    "assignment_offers": 2,
+    "assignment_offer_sessions": 2,
+    "class_session_attendance": 2,
+    "session_closeouts": 2,
+    # L1's and N1's approvals, then H2's corrected revision.
+    "session_closeout_approvals": 2 + 1,
+    "session_closeout_corrections": 1,
+    # L1's and N1's review items and the six periods' approval items.
+    "approval_requests": 2 + 6,
+    "charges": 2,
+    "charge_discounts": 2,
+    # The reminder step for L1's and N1's charges (engineer D3).
+    "charge_reminders": 2,
+    "payroll_periods": 8,
+    # 18 period lines, then the hours correction's.
+    "payroll_lines": 18 + 1,
+    "payroll_adjustments": 2 + 1,
+    "payslips": 6,
+    "payroll_payments": 3,
+    "payroll_payment_reversals": 1,
+    # L1's and N1's offers and approvals to demo.tutor, their payment
+    # reminder to demo.guardian, the six periods finalized, then H2's
+    # correction to demo.tutor.
+    "notifications": 2 + 2 + 1 + 6 + 1,
+}
+"""The rows the M7-demo generators add to each table they count, after a first
+run on a fresh database at :data:`FROZEN_NOW` (several tables are shared)."""
+SEEDED_CATEGORIES = 5
+"""The expense categories migration 0083 seeds (in every fresh database)."""
+DEMO_FINANCE_TABLE_COUNTS = {
+    # billing.demo_past_cohort_fee.
+    "service_prices": 1,
+    "price_versions": 1,
+    "charges": 3,
+    "charge_discounts": 4,
+    "charge_reminders": 1,
+    "notifications": 1,
+    # finance.demo_setup: the five seeded categories are already there.
+    "expense_categories": SEEDED_CATEGORIES + 1,
+    "vendors": 4,
+    # finance.demo_templates, then finance.demo_expenses.
+    "expense_templates": 5,
+    "expenses": 9 + 9,
+    "expense_payments": 3 + 8,
+    "expense_payment_reversals": 1,
+    "expense_adjustments": 1 + 2,
+}
+"""The rows the M7-demo-b generators add to each table they count, after a
+first run on a fresh database at :data:`FROZEN_NOW` (``expense_categories``
+also holds the :data:`SEEDED_CATEGORIES`)."""
+IMPORTED_STUDENT_ROWS = 2 + 2
+"""The two imported students and their emergency contacts (in
+:data:`DEMO_IMPORTS_ROWS`, not in :data:`DEMO_ADMIN_TABLE_COUNTS`: the
+``students`` table also holds the #195 families' students)."""
+DEMO_ADMIN_TABLE_COUNTS = {
+    # administration.demo_admin: the mute and demo.admin's notice; then the
+    # imported series' offer to demo.tutor (administration.demo_imports).
+    "notification_opt_outs": 1,
+    "notifications": 1 + 1,
+    # administration.demo_imports: students (3 rows), tutors (2, staged),
+    # schedules (2) and opening balances (2).
+    "import_jobs": 4,
+    "import_rows": 3 + 2 + 2 + 2,
+    "class_series": 1,
+    "class_series_participants": 1,
+    "class_sessions": 4,
+    "class_session_participants": 4,
+    "assignment_offers": 1,
+    "assignment_offer_sessions": 4,
+    "charges": 2,
+    # reporting.demo_setups, then academics.demo_deleted.
+    "report_setups": 2,
+    "learning_plans": 1,
+    "learning_plan_objectives": 1,
+    "learning_plan_milestones": 1,
+}
+"""The rows the M8-demo generators add to each table they count, after a
+first run on a fresh database at :data:`FROZEN_NOW` (the imported students
+are :data:`IMPORTED_STUDENT_ROWS`)."""
+SEEDED_NOTHING_TABLES = (
+    "export_jobs",
+    "export_files",
+    "dashboard_layouts",
+    "job_failures",
+    "procrastinate_jobs",
+)
+"""The M8 tables the demo never writes (M8-demo B6): no export, dashboard
+layout, job or job failure."""
+CX_NOTIFICATIONS = 3
+"""CX's ``scheduling.session_cancelled`` notifications (in
+:data:`DEMO_BILLING_MONEY_TABLE_COUNTS`, not in a generator's rows)."""
+
+
+def _sum(*parts: dict[str, int]) -> dict[str, int]:
+    tables = {table for part in parts for table in part}
+    return {table: sum(part.get(table, 0) for part in parts) for table in tables}
+
+
+TABLE_COUNTS_THROUGH_303 = _sum(DEMO_TABLE_COUNTS, DEMO_303_TABLE_COUNTS)
+"""Every table of :data:`DEMO_TABLE_COUNTS` and :data:`DEMO_303_TABLE_COUNTS`
+after a first run of the generators through ``scheduling.demo_changes``."""
+
+TABLE_COUNTS_THROUGH_353 = _sum(
+    DEMO_TABLE_COUNTS, DEMO_303_TABLE_COUNTS, DEMO_353_TABLE_COUNTS
+)
+"""Every counted table of #299, #303 and #353 after a first run of the
+generators through ``academics.demo_evaluations`` (#354 G6)."""
+
+TABLE_COUNTS_THROUGH_354 = _sum(
+    DEMO_TABLE_COUNTS,
+    DEMO_303_TABLE_COUNTS,
+    DEMO_353_TABLE_COUNTS,
+    DEMO_354_TABLE_COUNTS,
+)
+"""Every counted table of #299, #303, #353 and #354 after a first run of the
+generators through ``academics.demo_progress_reports`` (M6-demo G8)."""
+
+TABLE_COUNTS_THROUGH_413 = _sum(TABLE_COUNTS_THROUGH_354, DEMO_BILLING_TABLE_COUNTS)
+"""Every counted table of #299-#354 and M6-demo after a first run of the
+generators through ``billing.demo_charges`` (M6-demo-b H7)."""
+
+TABLE_COUNTS_THROUGH_420 = _sum(
+    TABLE_COUNTS_THROUGH_413, DEMO_BILLING_MONEY_TABLE_COUNTS
+)
+"""Every counted table of #299-#354, M6-demo and M6-demo-b after a first run
+of the generators through ``billing.demo_reminders`` (at :data:`FROZEN_NOW`;
+M7-demo G9)."""
+
+TABLE_COUNTS_THROUGH_499 = _sum(TABLE_COUNTS_THROUGH_420, DEMO_PAYROLL_TABLE_COUNTS)
+"""Every counted table of #299-#354, M6-demo, M6-demo-b and M7-demo after a
+first run of the generators through ``payroll.demo_corrections`` (at
+:data:`FROZEN_NOW`; M7-demo-b G10)."""
+
+TABLE_COUNTS_THROUGH_501 = _sum(TABLE_COUNTS_THROUGH_499, DEMO_FINANCE_TABLE_COUNTS)
+"""Every counted table of #299-#354, M6-demo, M6-demo-b, M7-demo and
+M7-demo-b after a first run of the generators through
+``finance.demo_expenses`` (at :data:`FROZEN_NOW`; M8-demo E1). The receipt
+message adds no row."""
+
+ALL_TABLE_COUNTS = _sum(TABLE_COUNTS_THROUGH_501, DEMO_ADMIN_TABLE_COUNTS)
+"""Every counted table of #299-#354, M6-demo, M6-demo-b, M7-demo, M7-demo-b
+and M8-demo after a first run of every generator (at :data:`FROZEN_NOW`)."""
+
+FROZEN_NOW = datetime(2026, 11, 4, 17, 0, tzinfo=UTC)
+"""A Wednesday, 11:00 in Mexico City (#299 E2), after the privacy notice's
+version 1 (2026-10-18) that the demo families' consent needs."""
+
+REFERENCE_LINES = [
+    "identity.permissions: 47 inserted, 0 updated",
+    "identity.roles: 7 inserted, 0 updated",
+    "identity.role_permissions: 118 inserted, 0 updated",
+    "catalog.education_levels: 4 inserted, 0 updated",
+    "catalog.general_subject: 2 inserted, 0 updated",
+]
+RERUN_REFERENCE_LINES = [
+    "identity.permissions: 0 inserted, 0 updated",
+    "identity.roles: 0 inserted, 0 updated",
+    "identity.role_permissions: 0 inserted, 0 updated",
+    "catalog.education_levels: 0 inserted, 0 updated",
+    "catalog.general_subject: 0 inserted, 0 updated",
+]
+ACCOUNT_GENERATORS = [generator.name for generator in DEMO_ACCOUNT_GENERATORS]
+GENERATOR_NAMES = [
+    *ACCOUNT_GENERATORS,
+    FAMILIES_GENERATOR,
+    CATALOG_GENERATOR,
+    TUTOR_GENERATOR,
+    SCHEDULE_GENERATOR,
+    TUTOR2_GENERATOR,
+    COURSES_GENERATOR,
+    CHANGES_GENERATOR,
+    HELD_SESSIONS_GENERATOR,
+    PAST_COHORT_GENERATOR,
+    NOTES_GENERATOR,
+    EVALUATIONS_GENERATOR,
+    LEARNING_PLANS_GENERATOR,
+    HOMEWORK_GENERATOR,
+    PROGRESS_REPORTS_GENERATOR,
+    RECEIPT_MESSAGE_GENERATOR,
+    PRICING_GENERATOR,
+    PACKAGES_GENERATOR,
+    CHARGES_GENERATOR,
+    RECONCILIATION_GENERATOR,
+    PAYMENTS_GENERATOR,
+    REMINDERS_GENERATOR,
+    PAYROLL_SETUP_GENERATOR,
+    PAYROLL_PERIODS_GENERATOR,
+    PAYROLL_CORRECTIONS_GENERATOR,
+    PAST_COHORT_FEE_GENERATOR,
+    FINANCE_SETUP_GENERATOR,
+    FINANCE_TEMPLATES_GENERATOR,
+    FINANCE_EXPENSES_GENERATOR,
+    ADMIN_GENERATOR,
+    IMPORTS_GENERATOR,
+    SETUPS_GENERATOR,
+    DELETED_GENERATOR,
+]
+
+FIRST_RUN_LINES = [
+    *REFERENCE_LINES,
+    *(f"{name}: 1 rows" for name in ACCOUNT_GENERATORS),
+    f"{FAMILIES_GENERATOR}: {DEMO_FAMILIES_ROWS} rows",
+    f"{CATALOG_GENERATOR}: {DEMO_CATALOG_ROWS} rows",
+    f"{TUTOR_GENERATOR}: {DEMO_TUTOR_ROWS} rows",
+    f"{SCHEDULE_GENERATOR}: {DEMO_SCHEDULE_ROWS} rows",
+    f"{TUTOR2_GENERATOR}: {DEMO_TUTOR2_ROWS} rows",
+    f"{COURSES_GENERATOR}: {DEMO_COURSES_ROWS} rows",
+    f"{CHANGES_GENERATOR}: {DEMO_CHANGES_ROWS} rows",
+    f"{HELD_SESSIONS_GENERATOR}: {DEMO_HELD_SESSIONS_ROWS} rows",
+    f"{PAST_COHORT_GENERATOR}: {DEMO_PAST_COHORT_ROWS} rows",
+    f"{NOTES_GENERATOR}: {DEMO_NOTES_ROWS} rows",
+    f"{EVALUATIONS_GENERATOR}: {DEMO_EVALUATIONS_ROWS} rows",
+    f"{LEARNING_PLANS_GENERATOR}: {DEMO_LEARNING_PLANS_ROWS} rows",
+    f"{HOMEWORK_GENERATOR}: {DEMO_HOMEWORK_ROWS} rows",
+    f"{PROGRESS_REPORTS_GENERATOR}: {DEMO_PROGRESS_REPORTS_ROWS} rows",
+    f"{RECEIPT_MESSAGE_GENERATOR}: {DEMO_RECEIPT_MESSAGE_ROWS} rows",
+    f"{PRICING_GENERATOR}: {DEMO_PRICING_ROWS} rows",
+    f"{PACKAGES_GENERATOR}: {DEMO_PACKAGES_ROWS} rows",
+    f"{CHARGES_GENERATOR}: {DEMO_CHARGES_ROWS} rows",
+    f"{RECONCILIATION_GENERATOR}: {DEMO_RECONCILIATION_ROWS} rows",
+    f"{PAYMENTS_GENERATOR}: {DEMO_PAYMENTS_ROWS} rows",
+    f"{REMINDERS_GENERATOR}: {DEMO_REMINDERS_ROWS} rows",
+    f"{PAYROLL_SETUP_GENERATOR}: {DEMO_PAYROLL_SETUP_ROWS} rows",
+    f"{PAYROLL_PERIODS_GENERATOR}: {DEMO_PAYROLL_PERIODS_ROWS} rows",
+    f"{PAYROLL_CORRECTIONS_GENERATOR}: {DEMO_PAYROLL_CORRECTIONS_ROWS} rows",
+    f"{PAST_COHORT_FEE_GENERATOR}: {DEMO_PAST_COHORT_FEE_ROWS} rows",
+    f"{FINANCE_SETUP_GENERATOR}: {DEMO_FINANCE_SETUP_ROWS} rows",
+    f"{FINANCE_TEMPLATES_GENERATOR}: {DEMO_FINANCE_TEMPLATES_ROWS} rows",
+    f"{FINANCE_EXPENSES_GENERATOR}: {DEMO_FINANCE_EXPENSES_ROWS} rows",
+    f"{ADMIN_GENERATOR}: {DEMO_ADMIN_ROWS} rows",
+    f"{IMPORTS_GENERATOR}: {DEMO_IMPORTS_ROWS} rows",
+    f"{SETUPS_GENERATOR}: {DEMO_SETUPS_ROWS} rows",
+    f"{DELETED_GENERATOR}: {DEMO_DELETED_ROWS} rows",
+]
+RERUN_LINES = [
+    *RERUN_REFERENCE_LINES,
+    *(f"{name}: 0 rows" for name in GENERATOR_NAMES),
+]
+DEV_LINES = [
+    *REFERENCE_LINES,
+    *(f"{name}: skipped (APP_ENV=dev; local only)" for name in GENERATOR_NAMES),
+]
+
+
+NEW_303_GENERATORS = (
+    "identity.demo_tutor2",
+    TUTOR2_GENERATOR,
+    COURSES_GENERATOR,
+    CHANGES_GENERATOR,
+)
+
+
+def generators_through(name: str) -> list[demo.DemoGenerator]:
+    """The registered generators up to and including ``name``."""
+    names = [generator.name for generator in demo.DEMO_GENERATORS]
+    return list(demo.DEMO_GENERATORS[: names.index(name) + 1])
+
+
+NEW_353_GENERATORS = (
+    HELD_SESSIONS_GENERATOR,
+    PAST_COHORT_GENERATOR,
+    NOTES_GENERATOR,
+    EVALUATIONS_GENERATOR,
+)
+
+NEW_354_GENERATORS = (
+    LEARNING_PLANS_GENERATOR,
+    HOMEWORK_GENERATOR,
+    PROGRESS_REPORTS_GENERATOR,
+)
+
+BILLING_413_GENERATORS = (
+    PRICING_GENERATOR,
+    PACKAGES_GENERATOR,
+    CHARGES_GENERATOR,
+)
+"""The M6-demo generators (#413)."""
+BILLING_420_GENERATORS = (
+    RECONCILIATION_GENERATOR,
+    PAYMENTS_GENERATOR,
+    REMINDERS_GENERATOR,
+)
+"""The M6-demo-b generators (#420)."""
+BILLING_GENERATORS = (*BILLING_413_GENERATORS, *BILLING_420_GENERATORS)
+"""The six billing generators (#413, #420); they also skip a stale #299
+schedule, billing set up by hand and ``--without-billing``."""
+PAYROLL_GENERATORS = (
+    PAYROLL_SETUP_GENERATOR,
+    PAYROLL_PERIODS_GENERATOR,
+    PAYROLL_CORRECTIONS_GENERATOR,
+)
+"""The M7-demo payroll generators (#499); they also skip a stale #299
+schedule, payroll set up by hand and ``--without-billing``."""
+FINANCE_GENERATORS = (
+    PAST_COHORT_FEE_GENERATOR,
+    FINANCE_SETUP_GENERATOR,
+    FINANCE_TEMPLATES_GENERATOR,
+    FINANCE_EXPENSES_GENERATOR,
+)
+"""The M7-demo-b generators (#501): the cohort fee and the three finance ones;
+they also skip a stale #299 schedule, billing or expenses set up by hand and
+``--without-billing``."""
+ADMIN_GENERATORS = (
+    RECEIPT_MESSAGE_GENERATOR,
+    ADMIN_GENERATOR,
+    IMPORTS_GENERATOR,
+    SETUPS_GENERATOR,
+    DELETED_GENERATOR,
+)
+"""The M8-demo generators (#539), in registry order: the receipt message
+before ``billing.demo_pricing`` (E3), the other four last; they also skip a
+stale #299 schedule and ``--without-billing``."""
+FLAGGED_GENERATORS = (
+    RECEIPT_MESSAGE_GENERATOR,
+    *BILLING_GENERATORS,
+    *PAYROLL_GENERATORS,
+    *FINANCE_GENERATORS,
+    *ADMIN_GENERATORS[1:],
+)
+"""Every generator ``--without-billing`` skips (M7-demo E3, M7-demo-b G9,
+M8-demo A2), in registry order (they are the last 18)."""
+
+
+def generators_before_303() -> list[demo.DemoGenerator]:
+    """The #299 run: every registered generator except the four #303 ones,
+    the four #353 ones, the three #354 ones, the six billing ones, the
+    three payroll ones, the four #501 ones and the five M8-demo ones."""
+    later = {
+        *ADMIN_GENERATORS,
+        *NEW_303_GENERATORS,
+        *NEW_353_GENERATORS,
+        *NEW_354_GENERATORS,
+        *BILLING_GENERATORS,
+        *PAYROLL_GENERATORS,
+        *FINANCE_GENERATORS,
+    }
+    return [g for g in demo.DEMO_GENERATORS if g.name not in later]
+
+
+def first_run_lines(generators: Sequence[demo.DemoGenerator]) -> list[str]:
+    """The lines of :data:`FIRST_RUN_LINES` of a first run of ``generators``."""
+    names = {generator.name for generator in generators}
+    return [
+        line
+        for line in FIRST_RUN_LINES
+        if line in REFERENCE_LINES or line.split(":")[0] in names
+    ]
+
+
+def migrate(url: str) -> str:
+    command.upgrade(alembic_config(url), "head")
+    return url
+
+
+def demo_env(monkeypatch: pytest.MonkeyPatch, app_env: str, dsn: str) -> None:
+    monkeypatch.setenv("APP_ENV", app_env)
+    monkeypatch.setenv("APP_ORIGIN", origin_for(app_env))
+    monkeypatch.setenv("DATABASE_URL", dsn)
+    monkeypatch.setenv("DATABASE_DIRECT_URL", dsn)
+
+
+def count(url: str, table: str) -> int:
+    """``SELECT count(*)`` of ``table`` (a fixed table name from the test)."""
+    return int(run_sql(url, f"SELECT count(*) FROM {table}")[0][0])  # noqa: S608
+
+
+class UntouchedSession:
+    """Fails the test if the generator uses the session."""
+
+    def __getattr__(self, name: str) -> object:
+        raise AssertionError(f"the session was used ({name})")
+
+
+def demo_table_counts(
+    url: str, tables: dict[str, int] = DEMO_TABLE_COUNTS
+) -> dict[str, int]:
+    """The row count of every table in ``tables`` (default
+    :data:`DEMO_TABLE_COUNTS`)."""
+    return {table: count(url, table) for table in tables}

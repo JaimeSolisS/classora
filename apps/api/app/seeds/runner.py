@@ -6,13 +6,16 @@
    (otherwise exit 1 with a ``make migrate`` hint, having written nothing), then
    apply every seed in :data:`~app.seeds.registry.REFERENCE_SEEDS` in order.
    Any error rolls the whole run back.
-3. Print one line per seed with its inserted and updated counts, never values.
+3. Print one line per seed with its inserted and updated counts (and deleted,
+   when non-zero), never values.
 
 Runs in every ``APP_ENV``: reference data is not demo data.
 
 Connection (ADR-0003): like Alembic, seeds are a one-off maintenance command,
-not request traffic, so they connect directly to PostgreSQL through
-``DATABASE_DIRECT_URL`` (``db:5432`` inside Compose), never through PgBouncer.
+not request traffic, so they connect directly to PostgreSQL as the database
+owner: ``DATABASE_MIGRATION_URL`` (``db:5432`` in the Compose ``migrate``
+service), or ``DATABASE_DIRECT_URL`` when it is unset (#165); never through
+PgBouncer.
 """
 
 import asyncio
@@ -28,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.config import ConfigurationError, Settings, get_settings
 from app.core.db import (
-    async_direct_database_url,
+    async_migration_database_url,
     create_direct_engine,
     create_sessionmaker,
 )
@@ -56,9 +59,14 @@ class DatabaseNotAtHeadError(Exception):
 
 
 def create_seed_engine(settings: Settings) -> AsyncEngine:
-    """A short-lived direct engine (ADR-0003). Does not connect."""
+    """A short-lived direct engine as the database owner (ADR-0003, #165).
+
+    ``DATABASE_MIGRATION_URL``, or ``DATABASE_DIRECT_URL`` when it is unset.
+    The seeds, the operator CLI and the local factories use it. Does not
+    connect.
+    """
     return create_direct_engine(
-        async_direct_database_url(settings), poolclass=pool.NullPool
+        async_migration_database_url(settings), poolclass=pool.NullPool
     )
 
 
@@ -95,13 +103,19 @@ async def apply_seeds(
 
 
 def seed_summary(results: Sequence[tuple[str, UpsertResult]]) -> list[str]:
-    """One line per seed: its name and counts (never row values)."""
+    """One line per seed: its name and counts (never row values).
+
+    The deleted count appears only when it is non-zero.
+    """
     if not results:
         return [NO_SEEDS_MESSAGE]
-    return [
-        f"{name}: {result.inserted} inserted, {result.updated} updated"
-        for name, result in results
-    ]
+    lines = []
+    for name, result in results:
+        line = f"{name}: {result.inserted} inserted, {result.updated} updated"
+        if result.deleted:
+            line += f", {result.deleted} deleted"
+        lines.append(line)
+    return lines
 
 
 async def run_reference_seeds(

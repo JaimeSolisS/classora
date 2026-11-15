@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { common } from './support/catalog';
 
+// The page tests run signed in (the shared demo Owner state, #28 H1): every
+// app page is behind the session guard. The /health tests need no session.
+
 test('the app shell loads without errors', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
@@ -14,8 +17,23 @@ test('the app shell loads without errors', async ({ page }) => {
 
   await expect(page.getByRole('main')).toBeVisible();
   await expect(page).toHaveTitle('Classora');
-  // The home page's own API call has finished (and succeeded).
-  await expect(page.getByRole('status')).toHaveText(common.apiStatus.live);
+  // The Owner's home page is the dashboard (M8-10 D1): its layout loaded.
+  await expect(
+    page
+      .getByRole('main')
+      .getByRole('heading', { level: 1, name: common.dashboard.title }),
+  ).toBeVisible();
+  await expect(page.locator('[data-dashboard-widgets]')).toBeVisible();
+  // HF-06 F5: the fixed "Hoy" panel above the widgets, loaded without a
+  // refused request (no console error).
+  const today = page.locator('[data-home-today]');
+  await expect(
+    today.getByRole('heading', { level: 2, name: common.home.today.title }),
+  ).toBeVisible();
+  await expect(
+    today.getByRole('heading', { level: 3, name: common.home.staff.title }),
+  ).toBeVisible();
+  await expect(today.locator('[aria-busy="true"]')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

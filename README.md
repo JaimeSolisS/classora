@@ -1,284 +1,363 @@
 # Classora
 
-Classora is a management platform for a single tutoring center. It covers class
-scheduling and enrollment, attendance, academic records, documents, billing and
-payments, tutor payroll and operational reporting for owners, administrators,
-coordinators, finance staff, tutors, students and guardians. It is built as a
-FastAPI modular monolith with a React single-page client, backed by PostgreSQL.
+[![CI](https://github.com/JaimeSolisS/classora/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/JaimeSolisS/classora/actions/workflows/ci.yml)
+[![Deploy DEV](https://github.com/JaimeSolisS/classora/actions/workflows/deploy-dev.yml/badge.svg?branch=develop)](https://github.com/JaimeSolisS/classora/actions/workflows/deploy-dev.yml)
+
+**Classora runs a tutoring center in one place: who teaches what and when,
+who attended, what each family owes and what each tutor earns.**
+
+> Looking for every command and setting? See the
+> [full README](_docs/Full_README.md).
+
+## The problem
+
+A small tutoring or test-prep center usually runs on spreadsheets, chat
+groups and paper. Classes get double-booked. Nobody is sure whether a
+student came. Families ask "how much do I owe?" and get a different answer
+each time. Paying tutors means adding up hours by hand at the end of the
+month. The owner sees how the business is doing only when the bank balance
+changes.
+
+## What Classora does
+
+One web app for everyone in the center, each person seeing only what their
+role allows:
+
+| Who | What they do in Classora |
+|---|---|
+| **Owner and administrators** | Set up subjects, classrooms, prices and opening hours. Schedule individual, group and course classes. Invite people. Approve requests and refunds. See the KPI dashboard and reports. |
+| **Coordinators** | Offer classes to tutors and arrange substitutes. Manage course templates. Correct attendance, review class notes and approve progress reports. |
+| **Finance staff** | Charge families and record payments (each gets a receipt). Prepare tutor payroll and record tutor payments. Track expenses. |
+| **Tutors** | See their agenda, take attendance, write session notes and homework, and see their earnings. |
+| **Guardians and students** | See the schedule, request classes or changes, and follow progress. Guardians also see the family's balance and receipts. |
+
+```mermaid
+flowchart LR
+  staff["🏢 <b>Staff</b><br/>Owner · Administrator<br/>Coordinator · Finance"]
+  tutors["👩‍🏫 <b>Tutors</b>"]
+  families["👪 <b>Families</b><br/>Students · Guardians"]
+
+  app(["📚 <b>Classora</b><br/>runs one tutoring center"])
+
+  classes["📅 <b>Classes</b><br/>individual · group · course"]
+  learning["📝 <b>Learning</b><br/>attendance · notes<br/>homework · progress"]
+  money["💳 <b>Money</b><br/>family billing and receipts<br/>tutor payroll · expenses"]
+  reports["📊 <b>Reports</b><br/>dashboards · KPIs · exports"]
+
+  staff -->|"schedule classes<br/>bill families · pay tutors"| app
+  tutors -->|"teach classes<br/>take attendance · write notes"| app
+  families -->|"see the schedule<br/>request classes · see progress"| app
+
+  app --> classes
+  app --> learning
+  app --> money
+  app --> reports
+```
+
+**What you can expect it to do:**
+- **Scheduling:** a class can't double-book a tutor, a student or a
+  classroom, or overfill a room. Booking outside opening hours, on a closure
+  day or when the tutor is unavailable needs an explicit override with a
+  reason, which is audited.
+- **Approvals:** changes requested by families or tutors wait for staff
+  approval.
+- **Money:** every amount a family owes or a tutor earns comes from recorded
+  classes, charges, payments and pay terms. Corrections are new entries, never silent
+  edits.
+- **Privacy:** people see only their own data. A guardian sees only their
+  own children; a tutor sees only their own students.
+- **Bilingual:** the interface, the PDF receipts and payslips, and the CSV
+  and Excel exports are in Spanish and English.
+
+The full feature list is in the
+[full README](_docs/Full_README.md#features), and the product rules are in the
+[specification](_docs/spec.md).
+
+## Try it
+
+| Where | Link |
+|---|---|
+| DEV: every merge to `develop` deploys here. Sign in as `visitor` / `visitor-classora` (an Owner on an English simulated center; the other simulated accounts in the [full README](_docs/Full_README.md#simulated-operations-data) also work; DEV resets nightly at 04:00 UTC) | <https://dev.classora.dev> |
+| PROD: the owner releases here after approval (serves after the first release) | <https://app.classora.dev> |
+| Monitoring (Grafana, login required) | <https://grafana.classora.dev> |
+
+### Run it on your machine
+
+You need only Docker (with Compose v2) and GNU Make. Python, Node.js,
+PostgreSQL and everything else run in containers, on Intel/AMD and ARM
+(Apple Silicon) machines alike. Run one command:
+
+```bash
+make start
+```
+
+It creates `.env` from `.env.example`, sets up the database and starts every
+part of the system in Docker. The first run builds the images: about 2
+minutes on a 4-core Intel Mac, plus the download of the base images. Later
+runs take seconds; on a slow or very busy machine the start can take up to
+about 3 minutes more. If a part fails, it says which one and shows its logs;
+`make start` is safe to run again. It returns when all of them are healthy:
+- PostgreSQL;
+- PgBouncer;
+- the API;
+- the background worker;
+- the web app.
+
+Open <http://127.0.0.1:5173>.
+
+To get a center full of realistic, invented data, with an account for every
+role, run:
+
+```bash
+make seed-data-english   # or make seed-data-spanish
+```
+
+It runs in a container too, on the database `make start` created (use a fresh
+one: it refuses a database that already has data).
+
+Then sign in as `owner` with the password `classora-sim-owner` (in Spanish,
+use `direccion`). The [full README](_docs/Full_README.md#simulated-operations-data)
+lists every other login. To create a real first owner on an empty database
+instead, use `make bootstrap-owner USERNAME=<name>`.
+
+Stop everything with `docker compose down`. Your data is kept; add `-v` to
+delete it.
+
+## How it is built
+
+| Part | Technology |
+|---|---|
+| Web app | React, TypeScript, Vite, TanStack Query, Tailwind CSS with shadcn/ui |
+| API | Python FastAPI, a modular monolith with one module per business area |
+| Database | PostgreSQL behind PgBouncer, schema changes with Alembic migrations |
+| Background jobs | Procrastinate, a job queue that lives in PostgreSQL (no Redis) |
+| Containers | Docker Compose, locally and on the servers |
+| Cloud | AWS, created with Terraform: one small server per environment, with HTTPS from Caddy |
+
+The browser talks only to the API, and the API and the worker are the only
+parts that touch the database. The design and its reasons are in
+[architecture](_docs/architecture.md) and the
+[decision records (ADRs)](_docs/adr/).
+
+## Tests
+
+```bash
+make test       # the API unit and integration tests, plus the web app tests
+make test-all   # everything make test runs, plus the slow migration, billing and simulation suites
+make e2e        # end-to-end tests in a real browser, with accessibility checks
+```
+
+- **Unit tests** check the business rules on their own.
+- **Integration tests** run the API against a real, throwaway PostgreSQL
+  started by [Testcontainers](https://testcontainers.com/). They cover
+  permissions between roles and financial invariants (money always adds up).
+- **End-to-end tests** (Playwright) click through the app on its own Docker
+  stack.
+
+`make test` and `make test-all` need only Docker and Make. They build two test
+images, then run the tests in a few containers at once (by default one fewer
+than the CPUs Docker has, at most 4), each API container with its own
+throwaway PostgreSQL. They print one summary line per part and fail if any
+part fails; full logs are in `test-results/docker/`. On a machine with little
+memory (a Docker Desktop VM under 8 GB), run `make test SHARDS=2` or
+`SHARDS=1`.
+
+`make test` runs the same API tests as CI's unit and integration jobs. The
+full `make test` took about 53 minutes on CI's 4-core amd64 runner and about
+66 minutes on its 4-core arm64 runner (3 test containers at a time). A pull
+request's smaller selection takes about 8 minutes, and the web tests alone
+took about 12 minutes on a 4-core Intel Mac.
+`make test-all` also runs the migration checks, the billing invariant suite
+and the simulation seed tests; that full selection took 1½ to 2 hours on CI's
+4-core runners.
+
+`make test` does not work with rootless Docker, Podman, Docker Desktop with
+Enhanced Container Isolation, or a Linux firewall that blocks containers from
+reaching the host. Use the native commands in the
+[full README](_docs/Full_README.md#running-tests) there.
+
+The end-to-end tests also need Node.js 24 and
+[uv](https://docs.astral.sh/uv/) on the host.
+
+How to write tests is in the
+[testing guidelines](_docs/testing-guidelines.md).
+
+## From pull request to production
+
+```mermaid
+flowchart LR
+  pr["🔀 Pull request"] --> ci["⚙️ CI<br/>lint · tests · security scans"]
+  ci -->|green + QA PASS| develop["develop"]
+  develop -->|automatic| dev["☁️ DEV"]
+  develop -->|release pull request| main["main"]
+  main -->|"owner approves<br/>in GitHub"| prod["☁️ PROD"]
+```
+
+- **CI** runs on every pull request ([`ci.yml`](.github/workflows/ci.yml)):
+  - lint;
+  - unit, integration and end-to-end tests;
+  - checks that the generated API client is up to date;
+  - container image builds;
+  - security scans: dependencies, secrets and code.
+
+  One required check, `ci-required`, blocks the merge if anything fails.
+- **CD to DEV** is automatic
+  ([`deploy-dev.yml`](.github/workflows/deploy-dev.yml)). Every merge to
+  `develop` builds the images, deploys them to DEV, checks that the app is
+  healthy and rolls back if it isn't.
+- **Deploy to PROD** is manual
+  ([`release-prod.yml`](.github/workflows/release-prod.yml)). The owner merges
+  a release pull request into `main` and approves the deploy in GitHub. PROD
+  then runs the exact images DEV already tested.
+
+The servers back up their database every night and are rebuilt from code
+with Terraform. Details are in the
+[runbooks](_docs/runbooks/index.md).
+
+## Monitoring and alerts
+
+The API and the worker send logs, metrics and traces through OpenTelemetry to
+a separate monitoring server, viewed in Grafana:
+- **Storage:** metrics in Prometheus, logs in Loki, traces in Tempo.
+- **Dashboards:** API, database, background jobs, errors, logs, and host and
+  containers.
+
+- **One request, one ID:** every log line carries the `trace_id` of the
+  request or job that wrote it. Grafana jumps from a slow or failing request
+  to its trace and its logs.
+- **No personal data in telemetry:**
+  - spans keep the route template, never the URL, the body or the
+    headers;
+  - SQL keeps placeholders, never values;
+  - logs are redacted.
+
+  A test plants personal data and checks that none of it is exported.
+- **Alerts e-mail the owner** when users would feel it:
+  - the API stops answering its readiness check;
+  - a background job fails or hangs;
+  - a nightly backup fails or is missing;
+  - the server runs out of CPU, memory or disk.
+
+The full alert list is in the [monitoring runbook](_docs/runbooks/monitoring.md#alerts).
+The same monitoring stack runs locally in Docker. It's off by default and uses
+about 700 MB more RAM:
+
+```sh
+make dev-observability        # the app, plus the collector, Prometheus, Loki, Tempo and Grafana
+make dev-observability-down   # stop only the monitoring containers; the app keeps running
+```
+
+Grafana is then at <http://127.0.0.1:3000> (`GRAFANA_PORT` in `.env`). Log in
+as `admin` with the `GRAFANA_ADMIN_PASSWORD` from `.env`. It can't be empty or
+`admin`.
+
+## How the work is done: a team of AI agents
+
+The product is specified in the [specification](_docs/spec.md). Every piece
+of work is a public [GitHub issue](https://github.com/JaimeSolisS/classora/issues)
+with acceptance criteria, grouped into
+[milestones](https://github.com/JaimeSolisS/classora/milestones). A team of AI
+agents does the work, and the repository owner takes the product decisions:
+
+| Agent | Responsibility |
+|---|---|
+| **Orchestrator** (main session) | Picks the next issue, launches the other agents, opens and merges pull requests. Keeps one issue in flight. |
+| **Product manager** ([role](_docs/team/pm.md)) | Grooms the issue against the spec and architecture: checkable acceptance criteria, roles, edge cases, tests and what is out of scope. Escalates conflicts to the owner instead of guessing. |
+| **Software engineer** ([role](_docs/team/software-engineer.md)) | Implements the groomed issue in its own git worktree, with tests and docs. |
+| **QA engineer** ([role](_docs/team/qa-engineer.md)) | Checks every criterion independently on its own database, and posts PASS or FAIL with evidence. |
+
+```mermaid
+flowchart LR
+  owner["👤 Owner"] -->|issue| orch["🤖 Orchestrator"]
+  orch --> pm["🗂️ PM"]
+  pm -->|decisions| owner
+  pm -->|groomed issue| eng["🛠️ Engineer"]
+  eng --> pr["🔀 Pull request + CI"] --> qa["🔍 QA"]
+  qa -->|FAIL| eng
+  qa -->|PASS| merged["✅ Merged"]
+```
+
+Each agent's report is posted as a comment on the issue, so the history of
+every decision stays in the tracker. Agents start from
+[`AGENTS.md`](AGENTS.md), which points them to:
+- the [delivery process](_docs/process.md);
+- the role files;
+- the [testing guidelines](_docs/testing-guidelines.md);
+- the [API conventions](_docs/api.md);
+- the [architecture](_docs/architecture.md).
+
+## Lessons learned
+
+Classora was built in four weeks (from 2026-10-16) by the agent team above:
+310 issues closed and 279 pull requests merged. What we learned:
+
+- **Independent QA is worth its cost.** About one QA report in five was a
+  FAIL. QA found false claims in docs, broken edge cases and, on the grader
+  path (#672), a test command that passed on the engineer's subsets but
+  failed in full on both CPU architectures. An agent's "done" is a claim
+  that still needs checking, never proof.
+- **Groom first, then build.** Issues with checkable acceptance criteria and
+  the owner's decisions written down went through in one round. A decision
+  changed mid-build is expensive: the demo visitor's guards (#673) were
+  dropped after an engineer had started on them.
+- **One machine, one agent.** On an 8 GB laptop, running agents in parallel
+  made them wait for each other and swap memory, roughly doubling the time
+  per issue. One issue in flight, with heavy commands run one at a time,
+  was faster overall.
+- **Engineers run only the tests for what they changed.** CI runs the full
+  suites on every pull request, and QA cites that run. A local full-suite
+  run had taken longer than writing the code.
+- **Agents need hard boundaries around shared state.** Two early incidents
+  reached the owner's own local stack; in the second, the database
+  containers were restored the same minute and no data was lost. Since then every agent uses its
+  own Compose project, ports and database, and prints its target before
+  migrating.
+- **Flaky tests add up fast.** Tests that search for a number inside JSON
+  with timestamps (#557), or that give a database 2 seconds to connect
+  (#661), each turned a pull request red and cost a 25-minute rerun.
+- **CI speed is an architecture decision.** Almost every integration test
+  file creates its own database and runs all 96 migrations on it, and about
+  700 tests do that for themselves alone. That adds up to about 2.5 hours of
+  API test time per pull request and 25 to 30 minutes of waiting. By the
+  time it hurt, thousands of tests depended on it.
+
+### What we'd do differently
+
+- **Set a CI time budget in the first milestone** (for example 10 minutes
+  per pull request). Migrate one template database per test session and copy
+  it for each test, or roll each test back in a transaction.
+- **Fix a flaky test the first time it shows up** instead of rerunning it,
+  and give flake fixes priority over features.
+- **Test the grader path from day one.** A CI job that runs the README's
+  commands on a clean machine with only Docker would have caught missing
+  host tools weeks earlier.
+- **Decide the demo and environment story early:** who will try the app,
+  where, and with which data and accounts.
+- **Keep issues small.** The largest issues needed several QA rounds; small
+  ones usually passed the first time.
+- **Run agents in the cloud,** or on a bigger machine, so they can run in
+  parallel safely.
 
 ## Status
 
-**Pre-alpha.** Only the local development foundation exists so far: a FastAPI
-API with liveness and readiness health checks, backed by a local PostgreSQL
-container (reached through PgBouncer) whose schema is managed with Alembic
-migrations, a background worker for queued and periodic jobs (Procrastinate),
-and a React +
-TypeScript + Vite web app. The web app has a routed shell (a layout with
-navigation, a 404 page and central error handling) and a TanStack Query data
-layer; its home page shows whether the API is live,
-calling it through a typed client generated from the API's OpenAPI document.
-It also has its design system foundation (central design tokens, Tailwind CSS,
-shadcn/ui components catalogued in Storybook), a light/dark/system theme
-switch, and Spanish and English UI text with a language switch. No product
-features are implemented yet.
-
-## Prerequisites
-
-- [Docker Engine](https://docs.docker.com/engine/) with Docker Compose v2
-- GNU Make
-- [uv](https://docs.astral.sh/uv/) (installs the pinned Python version; no other Python install is needed)
-- [Node.js](https://nodejs.org/) 24 (see `.nvmrc`; with nvm, run `nvm use`). pnpm
-  runs through Corepack, which ships with Node 24, so no global pnpm install is
-  needed. Other Node majors are rejected with an engine error.
-
-## Getting started
-
-```bash
-cp .env.example .env
-make dev
-```
-
-`make dev` builds the images and starts PostgreSQL, PgBouncer, the API, the
-background worker and the web app in the background, and returns once all of
-them are healthy. The API reaches PostgreSQL through PgBouncer (connection
-pooling). Then open:
-
-- Web app: <http://127.0.0.1:5173> (shows `API: live` when the API is up)
-- Liveness: <http://127.0.0.1:8000/health/live>
-- Readiness (includes PgBouncer and PostgreSQL): <http://127.0.0.1:8000/health/ready>
-
-The web app calls the API on its own origin: the Vite dev server proxies
-`/health` and `/api` to the API. The Compose web service has no hot reload; for
-that, run `corepack pnpm --filter @classora/web dev` on the host, which proxies
-to `http://127.0.0.1:8000`.
-
-The background worker (`worker`, built from the same image as the API) runs
-queued and periodic jobs. It processes jobs only after `make migrate` (below)
-has created its tables; until then it waits and logs that it needs
-`make migrate`. Follow its logs with `docker compose logs -f worker`. In local
-and dev, `curl -X POST http://127.0.0.1:8000/api/v1/dev/demo-jobs` queues a
-demo job to check that the worker runs it.
-
-Stop the stack with `docker compose down` (data is kept in a named volume;
-`docker compose down -v` deletes it).
-
-### Compose layout
-
-The services are split into two stack files, the way the servers run them:
-
-- Data stack, `infrastructure/docker/compose.data.yaml`: PostgreSQL (`db`) and
-  PgBouncer (`pgbouncer`).
-- App stack, `infrastructure/docker/compose.app.yaml`: the API (`api`), the
-  background worker (`worker`) and the web app (`web`).
-
-Locally, the root `compose.yaml` combines both into one Compose project, so
-plain `docker compose` commands (`ps`, `logs api`, `logs worker`, `exec db psql ...`,
-`stop`/`start`, `down`) work from the repository root. The stack files publish
-no host ports for PostgreSQL or PgBouncer; only the local developer override,
-`compose.override.yaml` (loaded automatically), publishes them on `127.0.0.1`:
-PostgreSQL on `POSTGRES_PORT` (default 5432) and PgBouncer on `PGBOUNCER_PORT`
-(default 6432). The API and web ports are set in the app stack file, also on
-`127.0.0.1`: `API_PORT` (default 8000) and `WEB_PORT` (default 5173).
-
-### Database migrations
-
-```bash
-make migrate
-```
-
-`make migrate` applies the Alembic migrations to the local Compose database
-(it starts the database if it is not running). Migrations connect to PostgreSQL
-directly, not through PgBouncer. Neither `make dev` nor the API
-runs migrations, so run `make migrate` after `make dev` on a new checkout and
-again whenever you pull new migrations. Running it when the database is already
-up to date changes nothing.
-
-### Seed data
-
-```bash
-make seed       # reference data
-make seed-demo  # synthetic demo data (local and dev only)
-```
-
-`make seed` applies the reference data every environment needs. Run
-`make migrate` first: it refuses to run on a database with pending migrations.
-It is safe to repeat; a second run changes nothing.
-
-`make seed-demo` runs on the host (with the API's development dependencies, via
-`uv`) and needs `.env`. It applies the reference data and then generates
-synthetic Spanish (Mexico) demo data. It never uses real personal data, and it
-refuses to run unless `APP_ENV` is `local` or `dev`. Running it again adds more
-demo data; to start over, run `docker compose down -v`, then `make dev`,
-`make migrate` and `make seed-demo`.
-
-No reference seeds or demo generators exist yet, so both commands currently
-write nothing; they fill in as features are added.
-
-## Configuration
-
-`.env.example` documents every variable with safe local placeholders; copy it
-to `.env` as shown above. `.env` is git-ignored and must never be committed.
-The API and the worker validate their configuration when they start and refuse
-to start on a missing or invalid value; `docker compose logs api` (or
-`logs worker`) shows a short `Configuration error` message naming each bad
-variable. `WORKER_SHUTDOWN_TIMEOUT_SECONDS` (default 20, 1 to 30) sets how long
-a stopping worker lets running jobs finish before aborting them.
-
-The API uses two database URLs: `DATABASE_URL` is the pooled one (through
-PgBouncer) and `DATABASE_DIRECT_URL` the direct one to PostgreSQL (used by
-migrations, seeds and the worker). Inside Compose both are built from the `POSTGRES_*`
-values; the values in `.env` only matter when you run the API, Alembic or
-`make seed-demo` on the host.
-
-If your `.env` was copied before a variable was added, refresh it from
-`.env.example` (for example, copy it again).
-
-## Running tests
-
-Docker must be running: API integration tests start a throwaway PostgreSQL
-container (and a PgBouncer container built from this repository) with
-[Testcontainers](https://testcontainers.com/). The Compose
-stack and `.env` are not needed.
-
-```bash
-make test              # all tests: API (unit + integration) then web (Vitest)
-make test-api          # all API tests with a coverage report
-make test-web          # web and API client tests (Vitest, no Docker needed; includes the es/en translation-key check)
-make test-unit         # API unit tests only (no Docker needed)
-make test-integration  # API integration tests only
-make test-migrations   # API migration checks only (upgrade, round trip, no model drift)
-```
-
-Storybook story tests run separately, on the host:
-
-```bash
-make test-storybook    # every story in headless Chromium, with axe checks in light and dark
-```
-
-The first run downloads the Playwright headless Chromium (about 100 MB); later
-runs reuse it.
-
-End-to-end tests (Playwright) run against their own Compose stack:
-
-```bash
-make e2e               # smoke and accessibility (axe) tests in headless Chromium, light and dark
-```
-
-`make e2e` builds and starts a separate Compose project, `classora-e2e`, on its
-own ports (web 15173, API 18000, PostgreSQL 15432, PgBouncer 16432) with an empty
-volume, applies the migrations, the reference seeds and the demo data
-(`--seed 1`), runs the tests and always removes the stack again (`down -v`).
-It needs Docker, uv and Node 24 but no `.env` (it uses `.env.example`), and it
-can run while `make dev` is up without touching that stack or its data. A
-failed run leaves Playwright traces, screenshots and the Compose logs
-(`compose.log`) in `e2e/test-results/` and an HTML report in
-`e2e/playwright-report/`. Open a trace from the repository root with
-`corepack pnpm --filter @classora/e2e exec playwright show-trace test-results/<test>/trace.zip`
-(the command runs in `e2e/`, so the path is relative to `e2e/`).
-To keep the stack up for debugging, run `E2E_KEEP=1 make e2e`; the command it
-prints removes it afterwards.
-
-Each API run prints a terminal coverage report for the API (`app/`), with
-branch coverage and missing lines. `make test` does not start the Compose database,
-and it can run while `make dev` is up. `make test` does not run the Storybook or
-E2E tests.
-
-Rules for writing tests (layers, fixtures and test data, authorization and
-financial invariant tests, E2E and accessibility) are in
-[`_docs/testing-guidelines.md`](_docs/testing-guidelines.md).
-
-## Linting and type checks
-
-```bash
-make lint      # both apps and the E2E tests
-make lint-api  # Ruff (lint and format check) and mypy (strict) on the API
-make lint-web  # ESLint, Prettier check and TypeScript (strict) on the web app and the API client
-make lint-e2e  # TypeScript (strict) and Prettier check on the E2E tests (e2e/)
-```
-
-Lint targets only check and never modify files. The web targets install
-dependencies from the committed lockfile first, so no manual `pnpm install` is
-needed. `make lint` and `make test` fail if any part fails; use `make -k` to
-run every part regardless.
-
-To build the web app for production: `make build-web` (output in
-`apps/web/dist/`).
-
-## API client
-
-The web app calls the API through `@classora/api-client`
-(`packages/api-client`), a typed client generated from the API's OpenAPI
-document. After any API change, regenerate it and commit the result:
-
-```bash
-make api-client        # export packages/api-client/openapi.json, then regenerate the client types
-make check-api-client  # regenerate and fail if packages/api-client differs from the commit (CI drift check)
-```
-
-Both need uv and Node 24, but not Docker, a database or `.env`. API conventions
-(paths, Problem Details errors, pagination, versions) are in
-[`_docs/api.md`](_docs/api.md).
-
-## Storybook
-
-```bash
-make storybook
-```
-
-Opens the component catalog at <http://127.0.0.1:6006> (no browser is opened
-for you). The toolbar switches stories between light and dark. It fails
-instead of using another port when 6006 is taken. To build a static copy:
-`corepack pnpm --filter @classora/web build-storybook` (output in
-`apps/web/storybook-static/`).
-
-## Continuous integration
-
-GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on
-every pull request to `develop` or `main` and on pushes to both. Each check is
-one `make` target, so a failing check can be reproduced locally with the same
-command:
-
-| CI job | Local command |
-| --- | --- |
-| `api-lint` | `make lint-api` |
-| `api-test` | `make test-unit`, `make test-migrations`, `make test-integration` |
-| `web` | `make lint-web`, `make test-web`, `make build-web` |
-| `web-storybook` | `make test-storybook` |
-| `api-client` | `make check-api-client` |
-| `e2e` | `make lint-e2e`, `make e2e` (on failure, uploads traces, the HTML report and the Compose logs as the `e2e-report` artifact) |
-| `security-deps` | `make audit-deps` (pip-audit and `pnpm audit` over both lockfiles) |
-| `security-secrets` | `make scan-secrets` (gitleaks, full history); on pull requests also `make scan-secrets-diff BASE=<sha> HEAD=<sha>` |
-| `security-sast` | `make sast` (Semgrep); Ruff's security (`S`) rules run in `make lint-api` |
-
-Pull requests run only the jobs their changed files can affect (API jobs for
-`apps/api/` and the PgBouncer image, web jobs for the web app, its packages and the Node toolchain
-files; the `e2e` job for changes to either app, its packages, `e2e/`, the Compose
-and Docker files, the Node toolchain files or `.env.example`; all of them for
-`Makefile` and workflow changes; none for documentation).
-The `api-client` drift check runs whenever the API or web jobs run. The three
-security jobs run on every pull request and push, documentation included.
-`ci-required` is the one required check: it reports on every pull request and
-fails if any job that ran failed or was cancelled, or if a security job was skipped.
-
-### Security scans
-
-```bash
-make security                # audit-deps, scan-secrets and sast, as in CI (needs Docker, uv, Node 24)
-make scan-image IMAGE=<ref>  # Trivy scan of a built image; fails on fixable CRITICAL findings
-```
-
-Scanner versions are pinned in the `Makefile`. When a scan fails, fix the
-cause (upgrade the dependency, remove the secret, change the code). If that is
-not possible, add an exception with a reason and a review date as described in
-[ADR-0016](_docs/adr/0016-ci-security-tooling.md); it is reviewed in the pull
-request.
+**Pre-alpha, close to its first production release.**
+- **Built:** every feature in the [full README](_docs/Full_README.md#features)
+  works end to end on DEV.
+- **Hardening done:**
+  - a security review found no critical or high issues
+    ([security review](_docs/security-review.md));
+  - the server size was load-tested ([report](_docs/load-test-report.md)).
+- **Not in this version:** file uploads and documents.
+- **Remaining work:** what's left is in the open
+  [milestones](https://github.com/JaimeSolisS/classora/milestones).
 
 ## Documentation
 
+- [Full README](_docs/Full_README.md): every command, setting and environment detail
 - [Product specification](_docs/spec.md)
-- [Architecture](_docs/architecture.md)
-- [Design system](_docs/design-system.md) (tokens, theming, accessibility rules)
-- [API conventions](_docs/api.md) (paths, errors, pagination, versions, client workflow)
-- [Testing guidelines](_docs/testing-guidelines.md) (test layers, fixtures, permission matrix, financial invariants, E2E, accessibility)
-- [Agent instructions](AGENTS.md)
-- [Delivery process](_docs/process.md) (agent workflow and contribution guidance)
+- [Architecture](_docs/architecture.md) and [ADRs](_docs/adr/)
+- [API conventions](_docs/api.md)
+- [Design system](_docs/design-system.md)
+- [Testing guidelines](_docs/testing-guidelines.md)
+- [Delivery process](_docs/process.md) and [agent instructions](AGENTS.md)
+- [Runbooks](_docs/runbooks/index.md): AWS environments, deploys, releases, backups, monitoring

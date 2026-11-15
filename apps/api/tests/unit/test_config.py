@@ -5,6 +5,7 @@ Settings variable from the environment first, so each test sets exactly what it
 needs regardless of the developer's shell.
 """
 
+import ipaddress
 import os
 import re
 import subprocess
@@ -30,34 +31,56 @@ VALID_DSN = f"postgresql://{DB_USER}:{DB_PASSWORD}@pooler.example:6432/classora"
 DIRECT_PASSWORD = "Direct-S3cret-pw-55"
 DIRECT_DSN = f"postgresql://{DB_USER}:{DIRECT_PASSWORD}@db.example:5432/classora"
 STORAGE_SECRET = "Storage-S3cret-key-88"
+MIGRATION_PASSWORD = "migration-placeholder-pw"
+MIGRATION_DSN = f"postgresql://owner:{MIGRATION_PASSWORD}@db.example:5432/classora"
 
 DATABASE_URL_NAMES = ["DATABASE_URL", "DATABASE_DIRECT_URL"]
+# Same validation; the migration URL is optional (#165).
+VALIDATED_URL_NAMES = [*DATABASE_URL_NAMES, "DATABASE_MIGRATION_URL"]
 MINIMAL_ENV = {
     "APP_ENV": "local",
+    "APP_ORIGIN": "http://127.0.0.1:5173",
     "DATABASE_URL": VALID_DSN,
     "DATABASE_DIRECT_URL": DIRECT_DSN,
 }
 FULL_ENV = {
     **MINIMAL_ENV,
     "APP_ENV": "prod",
+    "APP_ORIGIN": "https://app.classora.example",
     "SESSION_COOKIE_SECURE": "true",
     "STORAGE_BUCKET": "classora-docs",
     "STORAGE_REGION": "us-east-1",
     "STORAGE_ENDPOINT_URL": "http://storage:9000",
     "STORAGE_ACCESS_KEY_ID": "access-key-id",
     "STORAGE_SECRET_ACCESS_KEY": STORAGE_SECRET,
+    "DATABASE_MIGRATION_URL": MIGRATION_DSN,
 }
-SECRETS = (VALID_DSN, DB_PASSWORD, DIRECT_DSN, DIRECT_PASSWORD, STORAGE_SECRET)
+SECRETS = (
+    VALID_DSN,
+    DB_PASSWORD,
+    DIRECT_DSN,
+    DIRECT_PASSWORD,
+    STORAGE_SECRET,
+    MIGRATION_DSN,
+    MIGRATION_PASSWORD,
+)
 
 # Variables that the Compose files interpolate from .env; not read by the API.
 COMPOSE_ONLY_VARIABLES = {
     "POSTGRES_USER",
     "POSTGRES_PASSWORD",
+    # The runtime role's password (#165): Compose builds the api and worker
+    # URLs and PgBouncer's auth file from it.
+    "POSTGRES_APP_PASSWORD",
     "POSTGRES_DB",
     "POSTGRES_PORT",
     "PGBOUNCER_PORT",
     "API_PORT",
     "WEB_PORT",
+    # The optional observability profile (make dev-observability, #611): read by
+    # the Grafana service in Compose, not API settings.
+    "GRAFANA_PORT",
+    "GRAFANA_ADMIN_PASSWORD",
 }
 
 
@@ -90,6 +113,7 @@ def test_minimal_environment_loads_with_defaults(monkeypatch):
     settings = load_settings()
 
     assert settings.app_env == "local"
+    assert settings.app_origin == "http://127.0.0.1:5173"
     assert settings.database_url.get_secret_value() == VALID_DSN
     assert settings.database_direct_url.get_secret_value() == DIRECT_DSN
     assert settings.session_cookie_secure is True
@@ -98,6 +122,8 @@ def test_minimal_environment_loads_with_defaults(monkeypatch):
     assert settings.storage_endpoint_url is None
     assert settings.storage_access_key_id is None
     assert settings.storage_secret_access_key is None
+    assert settings.trusted_proxies == ()
+    assert settings.database_migration_url is None
 
 
 def test_full_environment_loads(monkeypatch):
@@ -106,6 +132,7 @@ def test_full_environment_loads(monkeypatch):
     settings = load_settings()
 
     assert settings.app_env == "prod"
+    assert settings.app_origin == "https://app.classora.example"
     assert settings.session_cookie_secure is True
     assert settings.storage_bucket == "classora-docs"
     assert settings.storage_region == "us-east-1"
@@ -113,9 +140,13 @@ def test_full_environment_loads(monkeypatch):
     assert settings.storage_access_key_id == "access-key-id"
     assert settings.storage_secret_access_key is not None
     assert settings.storage_secret_access_key.get_secret_value() == STORAGE_SECRET
+    assert settings.database_migration_url is not None
+    assert settings.database_migration_url.get_secret_value() == MIGRATION_DSN
 
 
-@pytest.mark.parametrize("name", ["STORAGE_BUCKET", "STORAGE_ENDPOINT_URL"])
+@pytest.mark.parametrize(
+    "name", ["STORAGE_BUCKET", "STORAGE_ENDPOINT_URL", "DATABASE_MIGRATION_URL"]
+)
 def test_empty_optional_value_counts_as_unset(monkeypatch, name):
     set_env(monkeypatch, {**MINIMAL_ENV, name: ""})
 
@@ -144,7 +175,7 @@ def test_get_settings_is_cached(monkeypatch):
 # --- missing ----------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", ["APP_ENV", *DATABASE_URL_NAMES])
+@pytest.mark.parametrize("name", ["APP_ENV", "APP_ORIGIN", *DATABASE_URL_NAMES])
 def test_missing_required_variable(monkeypatch, name):
     env = {k: v for k, v in MINIMAL_ENV.items() if k != name}
 
@@ -186,7 +217,7 @@ def test_invalid_app_env_lists_allowed_values(monkeypatch):
         assert allowed in line
 
 
-@pytest.mark.parametrize("name", DATABASE_URL_NAMES)
+@pytest.mark.parametrize("name", VALIDATED_URL_NAMES)
 def test_non_postgresql_scheme_is_rejected(monkeypatch, name):
     dsn = f"mysql://{DB_USER}:{DB_PASSWORD}@db/x"
 
@@ -206,7 +237,7 @@ def test_non_postgresql_scheme_is_rejected(monkeypatch, name):
         (f"postgresql://{DB_USER}:{DB_PASSWORD}@[db.example/classora", "valid URL"),
     ],
 )
-@pytest.mark.parametrize("name", DATABASE_URL_NAMES)
+@pytest.mark.parametrize("name", VALIDATED_URL_NAMES)
 def test_dsn_without_host_or_database_is_rejected(monkeypatch, dsn, reason, name):
     message = config_error(monkeypatch, {**MINIMAL_ENV, name: dsn})
 
@@ -220,6 +251,73 @@ def test_non_boolean_cookie_secure_is_rejected(monkeypatch):
     )
 
     assert "boolean" in line_for(message, "SESSION_COOKIE_SECURE")
+
+
+def test_the_scheduling_horizon_defaults_to_12_weeks(monkeypatch):
+    set_env(monkeypatch, MINIMAL_ENV)
+
+    assert load_settings().scheduling_horizon_weeks == 12
+
+
+@pytest.mark.parametrize("value", ["4", "26"])
+def test_the_scheduling_horizon_accepts_its_bounds(monkeypatch, value):
+    set_env(monkeypatch, {**MINIMAL_ENV, "SCHEDULING_HORIZON_WEEKS": value})
+
+    assert load_settings().scheduling_horizon_weeks == int(value)
+
+
+@pytest.mark.parametrize("value", ["3", "27"])
+def test_the_scheduling_horizon_rejects_beyond_its_bounds(monkeypatch, value):
+    message = config_error(
+        monkeypatch, {**MINIMAL_ENV, "SCHEDULING_HORIZON_WEEKS": value}
+    )
+
+    assert "SCHEDULING_HORIZON_WEEKS" in message
+
+
+def test_the_general_api_limit_defaults_to_600_per_minute(monkeypatch):
+    set_env(monkeypatch, MINIMAL_ENV)
+
+    assert load_settings().api_rate_limit_per_minute == 600
+
+
+def test_an_empty_general_api_limit_means_the_default(monkeypatch):
+    set_env(monkeypatch, {**MINIMAL_ENV, "API_RATE_LIMIT_PER_MINUTE": ""})
+
+    assert load_settings().api_rate_limit_per_minute == 600
+
+
+@pytest.mark.parametrize("value", ["0", "1", "100000"])
+def test_the_general_api_limit_accepts_its_bounds(monkeypatch, value):
+    set_env(monkeypatch, {**MINIMAL_ENV, "API_RATE_LIMIT_PER_MINUTE": value})
+
+    assert load_settings().api_rate_limit_per_minute == int(value)
+
+
+@pytest.mark.parametrize("value", ["-1", "100001", "many"])
+def test_the_general_api_limit_rejects_beyond_its_bounds(monkeypatch, value):
+    message = config_error(
+        monkeypatch, {**MINIMAL_ENV, "API_RATE_LIMIT_PER_MINUTE": value}
+    )
+
+    assert "API_RATE_LIMIT_PER_MINUTE" in message
+    assert "Traceback" not in message
+
+
+def test_startup_exits_non_zero_on_an_invalid_general_api_limit():
+    result = run_api({**MINIMAL_ENV, "API_RATE_LIMIT_PER_MINUTE": "-1"})
+
+    output = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "API_RATE_LIMIT_PER_MINUTE" in output
+    assert "Traceback" not in output
+
+
+def test_compose_passes_the_general_api_limit_to_the_api_only():
+    line = "API_RATE_LIMIT_PER_MINUTE: ${API_RATE_LIMIT_PER_MINUTE:-}"
+
+    assert compose_service_environment("api").count(line) == 1
+    assert line not in compose_service_environment("worker")
 
 
 @pytest.mark.parametrize("app_env", ["dev", "prod"])
@@ -237,6 +335,82 @@ def test_insecure_cookie_accepted_in_local(monkeypatch):
     set_env(monkeypatch, {**MINIMAL_ENV, "SESSION_COOKIE_SECURE": "false"})
 
     assert load_settings().session_cookie_secure is False
+
+
+# --- APP_ORIGIN (#24 A2) ----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("app_env", "value", "expected"),
+    [
+        ("local", "http://127.0.0.1:5173", "http://127.0.0.1:5173"),
+        ("local", "https://127.0.0.1:5173", "https://127.0.0.1:5173"),
+        ("prod", "https://app.classora.example", "https://app.classora.example"),
+        (
+            "dev",
+            "https://dev.classora.example:8443",
+            "https://dev.classora.example:8443",
+        ),
+        # Normalized as browsers serialize Origin.
+        ("local", "HTTP://LocalHost:5173", "http://localhost:5173"),
+        ("prod", "HTTPS://App.Classora.Example", "https://app.classora.example"),
+        ("local", "http://127.0.0.1:80", "http://127.0.0.1"),
+        ("prod", "https://app.classora.example:443", "https://app.classora.example"),
+        ("local", "http://[::1]:5173", "http://[::1]:5173"),
+    ],
+)
+def test_app_origin_is_accepted_and_normalized(monkeypatch, app_env, value, expected):
+    set_env(monkeypatch, {**MINIMAL_ENV, "APP_ENV": app_env, "APP_ORIGIN": value})
+
+    assert load_settings().app_origin == expected
+
+
+@pytest.mark.parametrize("app_env", ["dev", "prod"])
+def test_http_app_origin_is_refused_outside_local(monkeypatch, app_env):
+    message = config_error(
+        monkeypatch,
+        {**MINIMAL_ENV, "APP_ENV": app_env, "APP_ORIGIN": "http://app.example.test"},
+    )
+
+    line = line_for(message, "APP_ORIGIN")
+    assert "http only when APP_ENV=local" in line
+    assert "app.example.test" not in message
+
+
+@pytest.mark.parametrize(
+    ("value", "reason"),
+    [
+        pytest.param("http://127.0.0.1:5173/", "path", id="trailing-slash"),
+        pytest.param("http://127.0.0.1:5173/app", "path", id="path"),
+        pytest.param("http://127.0.0.1:5173?x=1", "query", id="query"),
+        pytest.param("http://127.0.0.1:5173?", "query", id="empty-query"),
+        pytest.param("http://127.0.0.1:5173#top", "fragment", id="fragment"),
+        pytest.param("http://user:pw-77@127.0.0.1:5173", "userinfo", id="userinfo"),
+        pytest.param("http://user@127.0.0.1:5173", "userinfo", id="user-only"),
+        pytest.param("null", "null", id="null"),
+        pytest.param("ftp://127.0.0.1:21", "scheme", id="ftp"),
+        pytest.param("127.0.0.1:5173", "scheme", id="no-scheme"),
+        pytest.param("http://", "host", id="no-host"),
+        pytest.param("http://127.0.0.1:", "host", id="empty-port"),
+        pytest.param("http://127.0.0.1:99999", "valid origin", id="port-range"),
+        pytest.param("http://exa mple.test", "spaces", id="space"),
+        pytest.param("http://exämple.test", "non-ASCII", id="non-ascii"),
+    ],
+)
+def test_app_origin_must_be_a_bare_origin(monkeypatch, value, reason):
+    message = config_error(monkeypatch, {**MINIMAL_ENV, "APP_ORIGIN": value})
+
+    line = line_for(message, "APP_ORIGIN")
+    assert reason in line
+    if value != "null":
+        assert value not in message
+    assert "pw-77" not in message
+
+
+def test_empty_app_origin_counts_as_missing(monkeypatch):
+    message = config_error(monkeypatch, {**MINIMAL_ENV, "APP_ORIGIN": ""})
+
+    assert "missing" in line_for(message, "APP_ORIGIN")
 
 
 @pytest.mark.parametrize("url", ["ftp://storage:21", "s3://bucket", "not a url"])
@@ -320,6 +494,7 @@ def test_repr_and_str_mask_secrets(monkeypatch):
         assert DB_PASSWORD not in rendered
         assert DIRECT_PASSWORD not in rendered
         assert STORAGE_SECRET not in rendered
+        assert MIGRATION_PASSWORD not in rendered
 
 
 # --- startup entry point ----------------------------------------------------
@@ -432,8 +607,10 @@ def test_env_example_is_a_valid_local_configuration(monkeypatch):
 def test_settings_reads_exactly_the_documented_variables():
     assert env_var_names() == {
         "APP_ENV",
+        "APP_ORIGIN",
         "DATABASE_URL",
         "DATABASE_DIRECT_URL",
+        "DATABASE_MIGRATION_URL",
         "SESSION_COOKIE_SECURE",
         "STORAGE_BUCKET",
         "STORAGE_REGION",
@@ -441,6 +618,10 @@ def test_settings_reads_exactly_the_documented_variables():
         "STORAGE_ACCESS_KEY_ID",
         "STORAGE_SECRET_ACCESS_KEY",
         "WORKER_SHUTDOWN_TIMEOUT_SECONDS",
+        "SCHEDULING_HORIZON_WEEKS",
+        "TRUSTED_PROXIES",
+        "API_RATE_LIMIT_PER_MINUTE",
+        "OTEL_EXPORTER_OTLP_ENDPOINT",
     }
 
 
@@ -456,3 +637,191 @@ def test_settings_class_is_basesettings():
     from pydantic_settings import BaseSettings
 
     assert issubclass(Settings, BaseSettings)
+
+
+# --- TRUSTED_PROXIES (#27 C1) ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("", ()),
+        ("   ", ()),
+        ("10.0.0.5", ("10.0.0.5/32",)),
+        (" 10.0.0.5 , 172.16.0.0/12,::1 ", ("10.0.0.5/32", "172.16.0.0/12", "::1/128")),
+        ("2001:db8::/48,192.0.2.0/24", ("2001:db8::/48", "192.0.2.0/24")),
+        # Host bits are dropped: 10.1.2.3/8 is the network 10.0.0.0/8.
+        ("10.1.2.3/8", ("10.0.0.0/8",)),
+        ("10.0.0.5,,10.0.0.6", ("10.0.0.5/32", "10.0.0.6/32")),
+    ],
+)
+def test_trusted_proxies_accepts_ips_and_networks(monkeypatch, value, expected):
+    set_env(monkeypatch, {**MINIMAL_ENV, "TRUSTED_PROXIES": value})
+
+    settings = load_settings()
+
+    assert settings.trusted_proxies == tuple(ipaddress.ip_network(n) for n in expected)
+
+
+@pytest.mark.parametrize(
+    ("value", "reason"),
+    [
+        ("proxy.internal", "entry 1 is not an IP address or CIDR network"),
+        ("10.0.0.5, caddy", "entry 2 is not an IP address or CIDR network"),
+        ("10.0.0.5:8080", "entry 1 is not an IP address or CIDR network"),
+        ("[::1]", "entry 1 is not an IP address or CIDR network"),
+        ("10.0.0.0/33", "entry 1 is not an IP address or CIDR network"),
+        ('["10.0.0.5"]', "entry 1 is not an IP address or CIDR network"),
+        ("0.0.0.0/0", "entry 1 trusts every address (0.0.0.0/0 or ::/0)"),
+        ("10.0.0.5,::/0", "entry 2 trusts every address (0.0.0.0/0 or ::/0)"),
+    ],
+)
+def test_trusted_proxies_rejects_invalid_entries(monkeypatch, value, reason):
+    message = config_error(monkeypatch, {**MINIMAL_ENV, "TRUSTED_PROXIES": value})
+
+    assert line_for(message, "TRUSTED_PROXIES").strip() == f"TRUSTED_PROXIES: {reason}"
+    if value not in reason:  # the submitted value is never echoed
+        assert value not in message
+
+
+# --- OTEL_EXPORTER_OTLP_ENDPOINT (#612 AC9) -----------------------------------------
+
+
+def test_otlp_endpoint_defaults_to_off(monkeypatch):
+    set_env(monkeypatch, {**MINIMAL_ENV, "OTEL_EXPORTER_OTLP_ENDPOINT": ""})
+
+    assert load_settings().otel_exporter_otlp_endpoint is None
+
+
+def test_otlp_endpoint_accepts_an_http_url(monkeypatch):
+    set_env(
+        monkeypatch,
+        {**MINIMAL_ENV, "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4318"},
+    )
+
+    endpoint = load_settings().otel_exporter_otlp_endpoint
+
+    assert str(endpoint) == "http://otel-collector:4318/"
+
+
+@pytest.mark.parametrize(
+    ("value", "reason"),
+    [
+        ("not-a-url", "URL"),
+        ("ftp://collector:4318", "URL scheme"),
+        ("http://otel-user:Otel-S3cret@collector:4318", "must not contain credentials"),
+        ("http://collector:4318/?token=Otel-S3cret", "must not contain a query"),
+    ],
+)
+def test_otlp_endpoint_rejects_invalid_values_without_echoing_them(
+    monkeypatch, value, reason
+):
+    message = config_error(
+        monkeypatch, {**MINIMAL_ENV, "OTEL_EXPORTER_OTLP_ENDPOINT": value}
+    )
+
+    line = line_for(message, "OTEL_EXPORTER_OTLP_ENDPOINT")
+    assert reason in line
+    assert value not in message
+    assert "Otel-S3cret" not in message
+    assert "input_value" not in message
+
+
+def test_startup_fails_on_an_invalid_otlp_endpoint_without_echoing_it():
+    result = run_api(
+        {
+            "APP_ENV": "local",
+            "APP_ORIGIN": "http://127.0.0.1:5173",
+            "DATABASE_URL": VALID_DSN,
+            "DATABASE_DIRECT_URL": DIRECT_DSN,
+            "OTEL_EXPORTER_OTLP_ENDPOINT": "not-a-url",
+        }
+    )
+
+    output = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "Configuration error" in output
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT:" in output
+    for forbidden in ("not-a-url", "Traceback", *SECRETS):
+        assert forbidden not in output
+
+
+def test_compose_passes_the_otlp_endpoint_to_api_and_worker():
+    compose = (
+        API_ROOT.parents[1] / "infrastructure/docker/compose.app.yaml"
+    ).read_text()
+
+    assert (
+        compose.count("OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}")
+        == 2
+    )
+
+
+@pytest.mark.parametrize("service", ["api", "worker", "migrate"])
+def test_compose_passes_trusted_proxies_to_api_worker_and_migrate(service):
+    # migrate (#165) validates the same settings as the api.
+    environment = compose_service_environment(service)
+
+    assert environment.count("TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}") == 1
+
+
+# --- #165: least-privilege runtime role ---------------------------------------
+
+
+def compose_service_environment(service: str) -> str:
+    """The ``environment:`` block of one service in compose.app.yaml."""
+    compose = (
+        API_ROOT.parents[1] / "infrastructure/docker/compose.app.yaml"
+    ).read_text()
+    match = re.search(
+        rf"^  {service}:\n(?:    .*\n|\n)*?    environment:\n((?:      .*\n)+)",
+        compose,
+        re.MULTILINE,
+    )
+    assert match, f"no environment block for {service}"
+    return match.group(1)
+
+
+@pytest.mark.parametrize("service", ["api", "worker"])
+def test_compose_gives_api_and_worker_only_the_runtime_role(service):
+    environment = compose_service_environment(service)
+
+    assert (
+        "DATABASE_URL: postgresql://classora_app:${POSTGRES_APP_PASSWORD" in environment
+    )
+    assert (
+        "DATABASE_DIRECT_URL: postgresql://classora_app:${POSTGRES_APP_PASSWORD"
+        in environment
+    )
+    for owner_value in ("POSTGRES_PASSWORD", "POSTGRES_USER", "DATABASE_MIGRATION_URL"):
+        assert owner_value not in environment
+
+
+def test_compose_migrate_service_gets_the_owner_url():
+    environment = compose_service_environment("migrate")
+
+    assert (
+        "DATABASE_MIGRATION_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}"
+        "@db:5432/${POSTGRES_DB}"
+    ) in environment
+
+
+def env_example_values() -> dict[str, str]:
+    values = {}
+    for line in ENV_EXAMPLE.read_text().splitlines():
+        name, sep, value = line.partition("=")
+        if sep and re.fullmatch(r"[A-Z][A-Z0-9_]*", name):
+            values[name] = value
+    return values
+
+
+def test_env_example_host_urls_use_the_runtime_role_and_the_owner():
+    values = env_example_values()
+
+    for name in ("DATABASE_URL", "DATABASE_DIRECT_URL"):
+        assert values[name].startswith(
+            f"postgresql://classora_app:{values['POSTGRES_APP_PASSWORD']}@"
+        ), name
+    assert values["DATABASE_MIGRATION_URL"].startswith(
+        f"postgresql://{values['POSTGRES_USER']}:{values['POSTGRES_PASSWORD']}@"
+    )

@@ -1,0 +1,449 @@
+"""The approval inbox core without a database (#40 B1, B2, D3, E4; #312 B7)."""
+
+import inspect
+import uuid
+from collections.abc import Iterator
+from typing import Any
+
+import pytest
+
+from app.core.authz import Principal, RecordNotFoundError
+from app.core.errors import AppError
+from app.main import build_app
+from app.modules.administration import approvals
+from app.modules.administration.errors import (
+    ApprovalActionUnsupportedError,
+    ApprovalTransitionInvalidError,
+)
+from app.modules.administration.models import APPROVAL_STATUSES
+from app.modules.administration.service import (
+    register_account_reference_resolver,
+    register_approval_handler,
+    register_review_candidate_resolver,
+    registered_account_reference_resolver,
+    registered_approval_types,
+    registered_review_candidate_resolver,
+    unregister_approval_handler,
+)
+from app.modules.identity.service import (
+    REGISTRATION_APPROVAL_HANDLER,
+    get_account_references,
+)
+from app.modules.scheduling.service import (
+    CHANGE_REQUEST_APPROVAL_HANDLER,
+    OCCURRENCE_CONFLICT_HANDLER,
+    OFFER_REASSIGNMENT_HANDLER,
+    SESSION_REQUEST_APPROVAL_HANDLER,
+)
+from app.modules.staff.service import QUALIFICATION_APPROVAL_HANDLER
+from app.wiring import review_candidates
+from app.workflows.payroll_period_approval import PAYROLL_PERIOD_HANDLER
+from app.workflows.progress_report_approval import PROGRESS_REPORT_HANDLER
+from app.workflows.session_closeout import SESSION_CLOSEOUT_HANDLER
+
+ALLOWED = {
+    ("pending", "approved"),
+    ("pending", "rejected"),
+    ("pending", "changes_requested"),
+    ("pending", "cancelled"),
+    ("changes_requested", "pending"),
+    ("changes_requested", "rejected"),
+    ("changes_requested", "cancelled"),
+}
+
+
+@pytest.mark.parametrize("current", APPROVAL_STATUSES)
+@pytest.mark.parametrize("target", APPROVAL_STATUSES)
+def test_every_status_pair(current, target):
+    allowed = (current, target) in ALLOWED
+
+    assert approvals.transition_allowed(current, target) is allowed
+    if allowed:
+        approvals.ensure_transition(current, target)
+    else:
+        with pytest.raises(approvals.ApprovalTransitionInvalidError):
+            approvals.ensure_transition(current, target)
+
+
+def test_final_statuses_allow_nothing():
+    for final in ("approved", "rejected", "cancelled"):
+        assert not any(
+            approvals.transition_allowed(final, target) for target in APPROVAL_STATUSES
+        )
+
+
+def test_an_unknown_status_allows_nothing():
+    assert not approvals.transition_allowed("draft", "approved")
+
+
+@pytest.mark.parametrize(
+    ("status", "supports", "expected"),
+    [
+        ("pending", True, ["approve", "reject", "request_changes"]),
+        ("pending", False, ["approve", "reject"]),
+        ("changes_requested", True, ["reject"]),
+        ("approved", True, []),
+        ("rejected", True, []),
+        ("cancelled", True, []),
+    ],
+)
+def test_allowed_actions(status, supports, expected):
+    assert (
+        approvals.allowed_actions(status, supports_request_changes=supports) == expected
+    )
+
+
+class FakeHandler:
+    def __init__(
+        self, request_type: str = "test.unit", permission: str = "payroll.finalize"
+    ) -> None:
+        self.request_type = request_type
+        self.review_permission = permission
+        self.supports_request_changes = True
+        self.reason_required_on_reject = False
+
+    async def approve(self, *args: Any) -> None: ...
+
+    async def reject(self, *args: Any) -> None: ...
+
+    async def request_changes(self, *args: Any) -> None: ...
+
+    async def summaries(self, *args: Any) -> dict[uuid.UUID, dict[str, Any]]:
+        return {}
+
+
+@pytest.fixture
+def cleanup() -> Iterator[list[str]]:
+    types: list[str] = []
+    yield types
+    for request_type in types:
+        unregister_approval_handler(request_type)
+
+
+def test_registering_the_same_handler_twice_is_a_no_op(cleanup):
+    handler = FakeHandler()
+    cleanup.append(handler.request_type)
+
+    register_approval_handler(handler)
+    register_approval_handler(handler)
+
+    assert handler.request_type in registered_approval_types()
+
+
+def test_another_handler_for_a_registered_type_raises(cleanup):
+    cleanup.append("test.unit")
+    register_approval_handler(FakeHandler())
+
+    with pytest.raises(ValueError, match="already registered"):
+        register_approval_handler(FakeHandler())
+
+
+@pytest.mark.parametrize(
+    "request_type", ["unit", "Test.unit", "test.unit.", "test." + "a" * 60]
+)
+def test_a_bad_type_is_refused(request_type):
+    with pytest.raises(ValueError, match="not an approval request type"):
+        register_approval_handler(FakeHandler(request_type))
+    assert request_type not in registered_approval_types()
+
+
+def test_a_bad_review_permission_is_refused():
+    with pytest.raises(ValueError, match="not a permission code"):
+        register_approval_handler(FakeHandler(permission="Payroll"))
+
+
+REGISTERED_TYPES = {
+    "identity.registration",
+    "staff.qualification",
+    "scheduling.occurrence_conflict",
+    "scheduling.offer_reassignment",
+    "scheduling.session_request",
+    "scheduling.change_request",
+    "staff.availability_change",
+    "academics.session_closeout",
+    "academics.progress_report",
+    "payroll.period",
+}
+
+
+def test_build_app_registers_exactly_the_real_types():
+    # D3: build_app registers identity.registration, (#44 C1)
+    # staff.qualification, (#52 E2) scheduling.offer_reassignment and (#59
+    # E1) scheduling.session_request and (#62 C6) scheduling.change_request.
+    for request_type in REGISTERED_TYPES:
+        unregister_approval_handler(request_type)
+    build_app()
+
+    assert registered_approval_types() == REGISTERED_TYPES
+    handler = REGISTRATION_APPROVAL_HANDLER
+    assert handler.review_permission == "registration.review"
+    assert handler.supports_request_changes is False
+    assert handler.reason_required_on_reject is False
+    qualification = QUALIFICATION_APPROVAL_HANDLER
+    assert qualification.request_type == "staff.qualification"
+    assert qualification.review_permission == "qualification.review"
+    assert qualification.supports_request_changes is False
+    assert qualification.reason_required_on_reject is True
+    occurrence = OCCURRENCE_CONFLICT_HANDLER
+    assert occurrence.request_type == "scheduling.occurrence_conflict"
+    assert occurrence.review_permission == "schedule.manage"
+    assert occurrence.supports_request_changes is False
+    assert occurrence.reason_required_on_reject is True
+    # #52 E2: the reassignment item of a declined or expired offer.
+    reassignment = OFFER_REASSIGNMENT_HANDLER
+    assert reassignment.request_type == "scheduling.offer_reassignment"
+    assert reassignment.review_permission == "schedule.assign"
+    assert reassignment.supports_request_changes is False
+    assert reassignment.reason_required_on_reject is True
+    # #62 C6: decided on the review page only.
+    change = CHANGE_REQUEST_APPROVAL_HANDLER
+    assert change.request_type == "scheduling.change_request"
+    assert change.review_permission == "schedule.manage"
+    assert change.supports_request_changes is False
+    assert change.reason_required_on_reject is True
+    assert change.inbox_decisions is False
+    # #77 E1, #78 E2: closeouts; decided on the session page, not the inbox.
+    closeout = SESSION_CLOSEOUT_HANDLER
+    assert closeout.request_type == "academics.session_closeout"
+    assert closeout.review_permission == "teaching_hours.approve"
+    assert closeout.supports_request_changes is True
+    assert closeout.reason_required_on_reject is True
+    assert closeout.inbox_decisions is False
+    # #83 B4, E3, E4: progress reports; decided on their review page.
+    report = PROGRESS_REPORT_HANDLER
+    assert report.request_type == "academics.progress_report"
+    assert report.review_permission == "progress_report.review"
+    assert report.supports_request_changes is True
+    assert report.reason_required_on_reject is True
+    assert report.inbox_decisions is False
+    # #110 G, #118 F2: payroll periods; decided on the payroll period page.
+    payroll = PAYROLL_PERIOD_HANDLER
+    assert payroll.request_type == "payroll.period"
+    assert payroll.review_permission == "payroll.finalize"
+    assert payroll.supports_request_changes is False
+    assert payroll.reason_required_on_reject is True
+    assert payroll.inbox_decisions is False
+
+
+def test_build_app_registers_the_account_reference_resolver():
+    # E4: administration imports no module; the resolver comes from build_app.
+    register_account_reference_resolver(None)
+    try:
+        build_app()
+        assert registered_account_reference_resolver() is get_account_references
+    finally:
+        register_account_reference_resolver(get_account_references)
+
+
+def test_build_app_registers_the_review_candidate_resolver():
+    # #118 B2: administration imports no module; the assignee options and the
+    # assignment's eligibility check read the resolver build_app registers.
+    register_review_candidate_resolver(None)
+    try:
+        build_app()
+        assert registered_review_candidate_resolver() is review_candidates
+    finally:
+        register_review_candidate_resolver(review_candidates)
+
+
+@pytest.mark.anyio
+async def test_without_a_review_candidate_resolver_assignment_fails_closed():
+    register_review_candidate_resolver(None)
+    try:
+        with pytest.raises(approvals.ReviewCandidateResolverMissingError):
+            await approvals._review_candidates(None, "registration.review")  # type: ignore[arg-type]
+    finally:
+        register_review_candidate_resolver(review_candidates)
+
+
+@pytest.mark.anyio
+async def test_without_a_resolver_items_fail_closed():
+    register_account_reference_resolver(None)
+    try:
+        with pytest.raises(approvals.AccountResolverMissingError):
+            await approvals._account_names(None, [uuid.uuid4()])  # type: ignore[arg-type]
+    finally:
+        register_account_reference_resolver(get_account_references)
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+def test_the_cli_and_the_worker_register_the_wiring():
+    from app import cli, worker
+
+    for run in (
+        lambda: pytest.raises(SystemExit, cli.main, ["bootstrap-owner"]),
+        lambda: worker.main([]),
+    ):
+        for request_type in REGISTERED_TYPES:
+            unregister_approval_handler(request_type)
+        register_account_reference_resolver(None)
+        register_review_candidate_resolver(None)
+        run()
+        assert registered_approval_types() == REGISTERED_TYPES
+        assert registered_account_reference_resolver() is get_account_references
+        assert registered_review_candidate_resolver() is review_candidates
+
+
+# --- #312 B7: the opt-in inbox route hook ----------------------------------------
+
+
+class RouteRequiredError(AppError):
+    status = 409
+    code = "test_route_required"
+
+
+class FakeRequest:
+    """What ``_locked`` reads: an approved request (final, so the core's own
+    status check would answer ``approval_transition_invalid``)."""
+
+    def __init__(self, request_type: str) -> None:
+        self.id = uuid.uuid4()
+        self.request_type = request_type
+        self.subject_id = uuid.uuid4()
+        self.requester_user_id = uuid.uuid4()
+        self.status = "approved"
+
+
+class FakeSession:
+    def __init__(self, request: FakeRequest) -> None:
+        self.request = request
+
+    async def scalar(self, *args: Any) -> FakeRequest:
+        return self.request
+
+
+class PageDecidedHandler(FakeHandler):
+    inbox_decisions = False
+
+    def __init__(self, request_type: str = "test.page") -> None:
+        super().__init__(request_type)
+        self.seen: list[approvals.ApprovalRequestView] = []
+
+    async def inbox_route_error(
+        self, session: Any, request: approvals.ApprovalRequestView
+    ) -> AppError:
+        self.seen.append(request)
+        return RouteRequiredError()
+
+
+def reviewer() -> Principal:
+    return Principal(
+        user_id=uuid.uuid4(),
+        roles=frozenset({"owner"}),
+        permissions=frozenset({"payroll.finalize"}),
+    )
+
+
+async def decide_fake(
+    handler: Any, action: Any, *, via_inbox: bool, principal: Principal | None = None
+) -> FakeRequest:
+    request = FakeRequest(handler.request_type)
+    await approvals.decide_approval_request(
+        FakeSession(request),  # type: ignore[arg-type]
+        principal=principal or reviewer(),
+        request_id=request.id,
+        action=action,
+        reason="Una razón",
+        via_inbox=via_inbox,
+    )
+    return request  # pragma: no cover  (every case here raises)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("action", ["approve", "reject", "request_changes"])
+async def test_the_hook_answers_only_through_the_inbox(cleanup, action):
+    handler = PageDecidedHandler()
+    cleanup.append(handler.request_type)
+    register_approval_handler(handler)
+
+    with pytest.raises(RouteRequiredError):
+        await decide_fake(handler, action, via_inbox=True)
+    [view] = handler.seen
+    assert (view.request_type, view.status) == ("test.page", "approved")
+
+    with pytest.raises(ApprovalTransitionInvalidError):
+        await decide_fake(handler, action, via_inbox=False)
+    assert len(handler.seen) == 1
+
+
+@pytest.mark.anyio
+async def test_the_hook_runs_after_the_visibility_check(cleanup):
+    handler = PageDecidedHandler()
+    cleanup.append(handler.request_type)
+    register_approval_handler(handler)
+    outsider = Principal(
+        user_id=uuid.uuid4(), roles=frozenset(), permissions=frozenset()
+    )
+
+    with pytest.raises(RecordNotFoundError):
+        await decide_fake(handler, "approve", via_inbox=True, principal=outsider)
+    assert handler.seen == []
+
+
+@pytest.mark.anyio
+async def test_the_hook_precedes_the_unsupported_action(cleanup):
+    handler = PageDecidedHandler()
+    handler.supports_request_changes = False
+    cleanup.append(handler.request_type)
+    register_approval_handler(handler)
+
+    with pytest.raises(RouteRequiredError):
+        await decide_fake(handler, "request_changes", via_inbox=True)
+    with pytest.raises(ApprovalActionUnsupportedError):
+        await decide_fake(handler, "request_changes", via_inbox=False)
+
+
+@pytest.mark.anyio
+async def test_a_page_decided_type_without_the_hook_keeps_the_old_order(cleanup):
+    # The #60 and #62 types: absent hook = unchanged.
+    handler = FakeHandler("test.nohook")
+    handler.inbox_decisions = False  # type: ignore[attr-defined]
+    cleanup.append(handler.request_type)
+    register_approval_handler(handler)
+
+    with pytest.raises(ApprovalTransitionInvalidError):
+        await decide_fake(handler, "approve", via_inbox=True)
+
+
+@pytest.mark.anyio
+async def test_an_inbox_decided_type_ignores_the_hook(cleanup):
+    handler = PageDecidedHandler("test.inbox")
+    handler.inbox_decisions = True  # type: ignore[misc]
+    cleanup.append(handler.request_type)
+    register_approval_handler(handler)
+
+    with pytest.raises(ApprovalTransitionInvalidError):
+        await decide_fake(handler, "approve", via_inbox=True)
+    assert handler.seen == []
+
+
+def test_only_the_page_decided_academic_handlers_define_the_hook():
+    build_app()
+    hooked = {
+        request_type
+        for request_type, handler in approvals._handlers.items()
+        if request_type in REGISTERED_TYPES and hasattr(handler, "inbox_route_error")
+    }
+    # #312 (closeouts), #83 B4 (progress reports) and #110 G (payroll periods).
+    assert hooked == {
+        "academics.session_closeout",
+        "academics.progress_report",
+        "payroll.period",
+    }
+    assert approvals._inbox_route_error(PROGRESS_REPORT_HANDLER) is not None
+    assert list(
+        inspect.signature(PROGRESS_REPORT_HANDLER.inbox_route_error).parameters
+    ) == ["session", "request"]
+    closeout = SESSION_CLOSEOUT_HANDLER
+    assert approvals._inbox_route_error(closeout) is not None
+    assert approvals._inbox_route_error(SESSION_REQUEST_APPROVAL_HANDLER) is None
+    assert approvals._inbox_route_error(CHANGE_REQUEST_APPROVAL_HANDLER) is None
+    assert inspect.iscoroutinefunction(closeout.inbox_route_error)
+    assert list(inspect.signature(closeout.inbox_route_error).parameters) == [
+        "session",
+        "request",
+    ]

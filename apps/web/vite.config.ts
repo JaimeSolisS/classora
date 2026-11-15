@@ -4,6 +4,14 @@ import react from '@vitejs/plugin-react';
 import { playwright } from '@vitest/browser-playwright';
 import { loadEnv } from 'vite';
 import { defineConfig } from 'vitest/config';
+import {
+  endStreamWithUpstream,
+  NOTIFICATION_STREAM_PATH,
+} from './src/dev-proxy.ts';
+import {
+  DEVELOPMENT_HEADERS,
+  PRODUCTION_HEADERS,
+} from './src/security-headers.ts';
 
 // Story tests: every story (with its play function and the axe check) runs
 // headlessly in Chromium, once per theme through the `theme` toolbar global.
@@ -35,6 +43,11 @@ const DEFAULT_TEST_TIME_ZONE = 'Pacific/Kiritimati';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   const apiTarget = env.API_PROXY_TARGET ?? 'http://127.0.0.1:8000';
+  // The app's dev server (`make dev`, `make e2e`) enforces the development
+  // CSP (src/security-headers.ts). Storybook (it sets STORYBOOK) and Vitest
+  // (VITEST) reuse this file but serve their own inline scripts, so they get
+  // no policy. loadEnv with the '' prefix also returns process variables.
+  const appDevServer = !env.STORYBOOK && !env.VITEST;
 
   return {
     plugins: [react(), tailwindcss()],
@@ -45,11 +58,23 @@ export default defineConfig(({ mode }) => {
       host: '127.0.0.1',
       port: 5173,
       strictPort: true,
+      // Enforced (not Report-Only) on the pages the dev server serves. The
+      // proxied API responses keep the API's own headers (no CSP).
+      headers: appDevServer ? { ...DEVELOPMENT_HEADERS } : undefined,
       proxy: {
         '/health': apiTarget,
+        // Before '/api': the live stream ends for the browser when the API
+        // aborts it (a restart), so EventSource reconnects (#42, QA D1).
+        [NOTIFICATION_STREAM_PATH]: {
+          target: apiTarget,
+          configure: endStreamWithUpstream,
+        },
         '/api': apiTarget,
       },
     },
+    // `vite preview` serves a production build under the production policy
+    // (a manual check; the edge image serves the same headers, #610).
+    preview: { headers: { ...PRODUCTION_HEADERS } },
     test: {
       projects: [
         {
@@ -62,6 +87,12 @@ export default defineConfig(({ mode }) => {
             // so a helper that leaks the host zone fails here and in CI.
             // An explicit TZ (e.g. `TZ=UTC make test-web`) takes precedence.
             env: { TZ: env.TZ || DEFAULT_TEST_TIME_ZONE },
+            // Three times Vitest's defaults (5 s, 10 s): a full-app render
+            // can pass 5 s on a starved CPU (#260). The waits inside tests
+            // are condition-based (findBy*, waitFor) or a fixed tick count,
+            // so a higher ceiling hides no ordering bug; a hang still fails.
+            testTimeout: 15_000,
+            hookTimeout: 20_000,
             // Vitest replaces CSS with an empty module by default; the token
             // contrast test reads tokens.css as raw text.
             css: { include: [/tokens\.css/] },

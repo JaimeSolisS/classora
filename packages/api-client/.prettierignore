@@ -1,5 +1,6 @@
 # Written by `make api-client`; never formatted or hand-edited.
 openapi.json
+i18n-inventory.json
 src/generated/
 node_modules/
 coverage/

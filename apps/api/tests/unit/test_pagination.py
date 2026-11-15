@@ -257,7 +257,9 @@ def test_malformed_cursor_is_400_without_echo(client: TestClient, cursor: str):
     body = response.json()
     assert body["code"] == "invalid_cursor"
     assert body["request_id"] == response.headers["x-request-id"]
-    assert cursor not in response.text
+    # The random hex request_id can itself contain a short cursor such as
+    # "abc" (#215), so check the echo against the body without it.
+    assert cursor not in response.text.replace(body["request_id"], "")
 
 
 def test_cursor_limit_bounds(client: TestClient):

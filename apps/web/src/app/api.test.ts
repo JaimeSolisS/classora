@@ -84,6 +84,40 @@ describe('apiCall', () => {
     expect(error.message).not.toContain('Not Found');
   });
 
+  it('reads the whole seconds of Retry-After on a 429 (#59 F3)', async () => {
+    const { api } = clientReturning(
+      new Response(
+        JSON.stringify({
+          type: 'about:blank',
+          title: 'Too Many Requests',
+          status: 429,
+          code: 'rate_limited',
+          request_id: 'req-429',
+        }),
+        {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/problem+json',
+            'Retry-After': '120',
+          },
+        },
+      ),
+    );
+
+    const error = await apiFailure(apiCall(() => api.GET('/health/live')));
+
+    expect(error.code).toBe('rate_limited');
+    expect(error.retryAfter).toBe(120);
+  });
+
+  it('has no Retry-After when the header is absent', async () => {
+    const { api } = clientReturning(problemResponse(notFound));
+
+    const error = await apiFailure(apiCall(() => api.GET('/health/live')));
+
+    expect(error.retryAfter).toBeUndefined();
+  });
+
   it('exposes the field errors of a Problem 422', async () => {
     const errors = [
       { path: ['body', 'name'], code: 'missing', message: 'Field required' },

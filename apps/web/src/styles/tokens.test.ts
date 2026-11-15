@@ -13,6 +13,7 @@ const COLOR_TOKENS = [
   'popover-foreground',
   'primary',
   'primary-foreground',
+  'primary-hover',
   'secondary',
   'secondary-foreground',
   'muted',
@@ -24,6 +25,25 @@ const COLOR_TOKENS = [
   'border',
   'input',
   'ring',
+  'chart-1',
+  'chart-2',
+  'chart-3',
+  'chart-4',
+  'kind-individual',
+  'kind-individual-strong',
+  'kind-group',
+  'kind-group-strong',
+  'kind-course',
+  'kind-course-strong',
+] as const;
+
+// HF-07 E1: the class types. The tint is the calendar event's background;
+// the strong shade is the swatch (legend, Home rows, List view dot).
+const KIND_TINTS = ['kind-individual', 'kind-group', 'kind-course'] as const;
+const KIND_STRONG = [
+  'kind-individual-strong',
+  'kind-group-strong',
+  'kind-course-strong',
 ] as const;
 
 type ColorToken = (typeof COLOR_TOKENS)[number];
@@ -34,6 +54,9 @@ const TEXT_PAIRS: [ColorToken, ColorToken][] = [
   ['card-foreground', 'card'],
   ['popover-foreground', 'popover'],
   ['primary-foreground', 'primary'],
+  // The default button's hover background (opaque, so the surface behind
+  // the button does not change the ratio).
+  ['primary-foreground', 'primary-hover'],
   ['secondary-foreground', 'secondary'],
   ['muted-foreground', 'muted'],
   ['muted-foreground', 'background'],
@@ -42,12 +65,36 @@ const TEXT_PAIRS: [ColorToken, ColorToken][] = [
   // Error messages and link-style text drawn on the page background.
   ['destructive', 'background'],
   ['primary', 'background'],
+  // HF-07: event text on each class-type background — the normal text, the
+  // muted text of completed/cancelled/skipped events, and the marker text.
+  ...KIND_TINTS.flatMap((tint): [ColorToken, ColorToken][] => [
+    ['card-foreground', tint],
+    ['muted-foreground', tint],
+    ['destructive', tint],
+  ]),
 ];
 
 // Non-text pairs: SC 1.4.11, at least 3:1.
 const NON_TEXT_PAIRS: [ColorToken, ColorToken][] = [
   ['input', 'background'],
   ['ring', 'background'],
+  // The ProgressMeter (#310 B5): the fill (primary) against its track
+  // (muted); the track's border is the input/background pair above.
+  ['primary', 'muted'],
+  // #322 C3: every chart series colour against the page and the card the
+  // charts sit on (16 pairs over both themes).
+  ...(['chart-1', 'chart-2', 'chart-3', 'chart-4'] as const).flatMap(
+    (series): [ColorToken, ColorToken][] => [
+      [series, 'background'],
+      [series, 'card'],
+    ],
+  ),
+  // HF-07: each class-type swatch against the page (calendar legend) and
+  // the card (Home rows).
+  ...KIND_STRONG.flatMap((strong): [ColorToken, ColorToken][] => [
+    [strong, 'background'],
+    [strong, 'card'],
+  ]),
 ];
 
 function parseBlock(selector: string): Map<string, string> {

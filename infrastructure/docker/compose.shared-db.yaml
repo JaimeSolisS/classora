@@ -1,0 +1,37 @@
+# Native local stack: ONE shared PostgreSQL server for agent and developer work
+# outside Docker images (`make db-shared`, `make db-shared-down`). Local only;
+# never deployed. Separate from the reference stack (root compose.yaml, `make
+# dev`), which keeps its own PostgreSQL, PgBouncer and volume.
+#
+# Each worktree or clone gets its own database and role on this server
+# (`make db-create NAME=<name>`), then runs the API, worker and web app on the
+# host (`make api-native`, `make worker-native`, `make web-native`).
+#
+# Own Compose project (classora-shared) and named volume. Published on
+# 127.0.0.1 only, on SHARED_DB_PORT (default 55432), which does not collide
+# with the reference stack (5432, 6432, 8000, 5173) or make e2e (15432,
+# 16432, 18000, 15173). Keep the default: every worktree uses the same server.
+# The superuser password is a local placeholder, never a real credential.
+# The postgres:18 pin is set by _docs/adr/0001-runtime-version-pins.md (accepted).
+name: classora-shared
+
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: classora_local_only
+      POSTGRES_DB: postgres
+    ports:
+      - "127.0.0.1:${SHARED_DB_PORT:-55432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+
+volumes:
+  db-data:

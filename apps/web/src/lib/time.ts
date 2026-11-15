@@ -23,8 +23,9 @@ import { es } from 'date-fns/locale/es';
 import type { Language } from '@/i18n/language';
 
 /**
- * The center's time zone. M3-01 replaces this constant with the business
- * setting read from the API; until then every caller passes this value.
+ * The default center time zone (ADR-0004). The center's zone is a business
+ * setting (#37) that the app reads from the session through
+ * `useCenterTimeZone()`; this value is only for signed-out pages and tests.
  */
 export const DEFAULT_CENTER_TIME_ZONE = 'America/Mexico_City';
 
@@ -36,7 +37,7 @@ export type LocalTime = string;
 /** An ISO 8601 instant with an offset or `Z`. */
 export type Instant = string;
 
-export type InstantStyle = 'date' | 'time' | 'dateTime';
+export type InstantStyle = 'date' | 'time' | 'dateTime' | 'dateTimeSeconds';
 export type LocalDateStyle = 'date' | 'long';
 
 /** date-fns locale for each UI language (the only mapping). */
@@ -47,6 +48,8 @@ const DATE_LOCALES: Record<Language, Locale> = { es, en: enUS };
 //       long "17 de octubre de 2026"
 //   en: date "Oct 17, 2026", time "11:30 PM",
 //       dateTime "Oct 17, 2026, 11:30 PM", long "October 17, 2026"
+//   dateTimeSeconds (the audit log, #120 C3): "17 oct 2026, 23:30:05",
+//       "Oct 17, 2026, 11:30:05 PM"
 const PATTERNS: Record<
   Language,
   Record<InstantStyle, string> & { long: string }
@@ -55,12 +58,14 @@ const PATTERNS: Record<
     date: 'd MMM yyyy',
     time: 'HH:mm',
     dateTime: 'd MMM yyyy, HH:mm',
+    dateTimeSeconds: 'd MMM yyyy, HH:mm:ss',
     long: "d 'de' MMMM 'de' yyyy",
   },
   en: {
     date: 'MMM d, yyyy',
     time: 'h:mm a',
     dateTime: 'MMM d, yyyy, h:mm a',
+    dateTimeSeconds: 'MMM d, yyyy, h:mm:ss a',
     long: 'MMMM d, yyyy',
   },
 };
@@ -222,6 +227,11 @@ export function toLocalDate(instant: Instant, timeZone: string): LocalDate {
   return localDateOf(parseInstant(instant), timeZone);
 }
 
+/** The wall-clock time (HH:MM, 24-hour) of `instant` in `timeZone`. */
+export function toLocalTime(instant: Instant, timeZone: string): LocalTime {
+  return format(wallClock(parseInstant(instant), timeZone), 'HH:mm');
+}
+
 /** Today's calendar date in `timeZone`; `now` is injectable for tests. */
 export function todayInZone(
   timeZone: string,
@@ -252,6 +262,12 @@ export function formatLocalDate(
   return format(calendarDay(localDate), PATTERNS[language][style], {
     locale: DATE_LOCALES[language],
   });
+}
+
+/** The ISO weekday of a calendar date: 1 = Monday … 7 = Sunday (no zone). */
+export function isoWeekday(localDate: LocalDate | string): number {
+  const day = calendarDay(localDate).getUTCDay();
+  return day === 0 ? 7 : day;
 }
 
 /** Calendar arithmetic on a LocalDate (no zone involved). */
@@ -316,4 +332,76 @@ export function localDayBounds(
     start: localDateTimeToInstant(localDate, '00:00', timeZone),
     end: localDateTimeToInstant(addDays(localDate, 1), '00:00', timeZone),
   };
+}
+
+// ------------------------------------------------------ calendar helpers
+
+/**
+ * Calendar arithmetic on a LocalDate by whole months (no zone involved). The
+ * day is clamped to the target month's last day (2026-01-31 + 1 → 2026-02-28).
+ */
+export function addMonths(
+  localDate: LocalDate | string,
+  months: number,
+): LocalDate {
+  const [year, month, day] = parseLocalDate(localDate)
+    .split('-')
+    .map(Number) as [number, number, number];
+  const index = year * 12 + (month - 1) + months;
+  const targetYear = Math.floor(index / 12);
+  const targetMonth = index - targetYear * 12;
+  const lastDay = new Date(
+    Date.UTC(targetYear, targetMonth + 1, 0),
+  ).getUTCDate();
+  const target = new Date(
+    Date.UTC(targetYear, targetMonth, Math.min(day, lastDay)),
+  );
+  return target.toISOString().slice(0, 10) as LocalDate;
+}
+
+/** The UTC offset of `timeZone` at an instant, as text ("UTC−07:00"). */
+export function formatUtcOffset(instant: Instant, timeZone: string): string {
+  assertTimeZone(timeZone);
+  const text = formatInTimeZone(parseInstant(instant), timeZone, 'xxx');
+  return `UTC${text.replace('-', '−')}`;
+}
+
+/**
+ * Whether the zone's UTC offset changes during the local day (a DST
+ * transition day: its length is not 24 hours).
+ */
+export function hasOffsetChange(
+  localDate: LocalDate | string,
+  timeZone: string,
+): boolean {
+  const { start, end } = localDayBounds(localDate, timeZone);
+  return Date.parse(end) - Date.parse(start) !== DAY_MS;
+}
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+
+/**
+ * How long ago `instant` was at `now`, as relative text in `language`
+ * ("3 hours ago" / "hace 3 horas"; #301b): whole minutes under an hour,
+ * whole hours under 48 hours, then whole days (rounded down; at least 1
+ * minute). Uses `Intl.RelativeTimeFormat`; no zone is involved.
+ */
+export function formatElapsed(
+  instant: Instant,
+  now: Date,
+  language: Language,
+): string {
+  const elapsed = Math.max(0, now.getTime() - parseInstant(instant).getTime());
+  const relative = new Intl.RelativeTimeFormat(language, { numeric: 'always' });
+  if (elapsed < HOUR_MS) {
+    return relative.format(
+      -Math.max(1, Math.floor(elapsed / MINUTE_MS)),
+      'minute',
+    );
+  }
+  if (elapsed < 48 * HOUR_MS) {
+    return relative.format(-Math.floor(elapsed / HOUR_MS), 'hour');
+  }
+  return relative.format(-Math.floor(elapsed / DAY_MS), 'day');
 }

@@ -1,0 +1,203 @@
+"""Registrations that every composition root makes (#40 D3, E4).
+
+``administration`` imports no other module (it is the lower layer that
+``identity`` and later modules call), so the approval types' handlers, the
+import commit's principal loader (#640 E3: ``identity.service.
+load_principal``), the
+notification types of the modules (#41; #52's offer types and its
+``scheduling.offer_reassignment`` handler; #232's
+``scheduling.occurrence_skipped_closure``; #54's three edit types; #55's
+three substitution and cancellation types), the #55 cancellation workflow
+step (``app.workflows.session_cancellation``), the
+account-reference resolver of the approval inbox and the modules' time-zone
+dependency checks (#37, #47: ``scheduling.class_sessions``; #53:
+``scheduling.class_series``, and the ``scheduling.occurrence_conflict``
+approval type; #59: ``scheduling.session_requests`` and the
+``scheduling.session_request`` approval type; #60: the two session request
+decision notification types; #62: the ``scheduling.change_request``
+approval type, its two decision notification types and the
+``scheduling.change_requests`` time-zone check; M4-18 #63: the
+``staff.availability_change`` approval type
+(``app.workflows.availability_change``), its two decision notification
+types, ``scheduling.reassignment_needed`` and the scheduling implementation
+of the ``staff`` availability impact seam; #67 D2: the ``scheduling`` tutor
+assignment source of the ``families`` student record policy; #77: the
+``academics.session_closeout`` approval type,
+``app.workflows.session_closeout``; #78: the three closeout review
+notification types and the scheduling ``completed`` attendance unlock,
+``academics.service.closeout_awaits_tutor``; #301: the
+``academics.closeout_submitted_on_behalf`` notification type; #83: the
+``academics.progress_report`` approval type,
+``app.workflows.progress_report_approval``, and its three notification
+types; #316: ``academics.progress_report_due``; #97:
+``billing.payment_reminder``; #110: the ``payroll.period`` approval type,
+``app.workflows.payroll_period_approval``, and
+``payroll.period_finalized``; #118: the review-candidate resolver of the
+approval inbox, :func:`review_candidates`, and
+``administration.approval_assigned``; #122: the ``students`` and ``tutors``
+import kinds; #123: the ``schedules`` and ``opening_balances`` import kinds; #124: the
+three export datasets and ``reporting.export_ready``/``_failed``; #129: the
+retention rules ``academics.deleted_records`` and ``jobs.finished_jobs``)
+are wired
+here, by the API app factory
+(``app.main.build_app``), ``app.cli`` and ``app.worker``.
+"""
+
+from collections.abc import Sequence
+from typing import Final
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core import jobs
+from app.modules.academics import service as academics_service
+from app.modules.administration import service as administration_service
+from app.modules.billing import service as billing_service
+from app.modules.families import service as families_service
+from app.modules.identity.service import (
+    REGISTRATION_APPROVAL_HANDLER,
+    STAFF_ROLES,
+    TUTORS_IMPORT_KIND,
+    AccountReference,
+    active_user_ids_with_permission,
+    get_account_references,
+    load_principal,
+)
+from app.modules.reporting.exports.service import register_export_wiring
+from app.modules.scheduling import service as scheduling_service
+from app.modules.staff.service import (
+    QUALIFICATION_APPROVAL_HANDLER,
+    register_availability_impact_source,
+    register_availability_notifications,
+    register_qualification_notifications,
+)
+from app.workflows.assignments import register_assignment_notifications
+from app.workflows.availability_change import AVAILABILITY_CHANGE_HANDLER
+from app.workflows.charge_reminders import register_reminder_notifications
+from app.workflows.closeout_on_behalf import register_on_behalf_notifications
+from app.workflows.deleted_records import RULE_CODE as DELETED_RECORDS_RULE_CODE
+from app.workflows.deleted_records import purge_deleted_records
+from app.workflows.evaluations import register_evaluation_notifications
+from app.workflows.learning_plans import register_learning_plan_notifications
+from app.workflows.payroll_period_approval import PAYROLL_PERIOD_HANDLER
+from app.workflows.payroll_workflow import register_payroll_notifications
+from app.workflows.progress_report_approval import PROGRESS_REPORT_HANDLER
+from app.workflows.progress_report_schedules import register_schedule_notifications
+from app.workflows.progress_reports import register_progress_report_notifications
+from app.workflows.session_cancellation import on_session_cancelled
+from app.workflows.session_closeout import SESSION_CLOSEOUT_HANDLER
+from app.workflows.session_closeout_review import register_closeout_notifications
+from app.workflows.session_notes import register_note_notifications
+
+
+async def review_candidates(
+    session: AsyncSession, permission: str
+) -> Sequence[AccountReference]:
+    """The active holders of ``permission`` as account references (#118 B2:
+    who may be assigned an approval request); two statements."""
+    user_ids = await active_user_ids_with_permission(session, permission)
+    references = await get_account_references(session, user_ids)
+    return [references[user_id] for user_id in user_ids if user_id in references]
+
+
+DELETED_RECORDS_RULE: Final = administration_service.RetentionRule(
+    code=DELETED_RECORDS_RULE_CODE,
+    tables=academics_service.deleted_records.PURGED_TABLES,
+    run=purge_deleted_records,
+)
+"""#129 C3: deleted academic records after their 30-day recovery window."""
+
+FINISHED_JOBS_RULE: Final = administration_service.RetentionRule(
+    code=jobs.FINISHED_JOBS_RULE_CODE,
+    tables=jobs.FINISHED_JOBS_TABLES,
+    run=jobs.purge_finished_jobs,
+)
+"""#129 C4: succeeded, cancelled and aborted background jobs after 30 days."""
+
+
+def register_retention_wiring() -> None:
+    """The retention job's rules (#129 C1). Registering again changes
+    nothing."""
+    administration_service.register_retention_rule(DELETED_RECORDS_RULE)
+    administration_service.register_retention_rule(FINISHED_JOBS_RULE)
+
+
+def register_approval_wiring() -> None:
+    """Every approval type's handler, the modules' notification types, the
+    account-reference resolver, the import kinds and the import committer's
+    principal loader, the time-zone dependency
+    checks and the availability impact source.
+    Registering again changes nothing."""
+    administration_service.register_approval_handler(REGISTRATION_APPROVAL_HANDLER)
+    administration_service.register_approval_handler(QUALIFICATION_APPROVAL_HANDLER)
+    administration_service.register_approval_handler(
+        scheduling_service.OCCURRENCE_CONFLICT_HANDLER
+    )
+    register_qualification_notifications()
+    administration_service.register_approval_handler(
+        scheduling_service.OFFER_REASSIGNMENT_HANDLER
+    )
+    administration_service.register_approval_handler(
+        scheduling_service.SESSION_REQUEST_APPROVAL_HANDLER
+    )
+    administration_service.register_approval_handler(
+        scheduling_service.CHANGE_REQUEST_APPROVAL_HANDLER
+    )
+    administration_service.register_approval_handler(AVAILABILITY_CHANGE_HANDLER)
+    administration_service.register_approval_handler(SESSION_CLOSEOUT_HANDLER)
+    register_closeout_notifications()
+    register_on_behalf_notifications()
+    register_note_notifications()
+    register_evaluation_notifications()
+    register_learning_plan_notifications()
+    register_assignment_notifications()
+    administration_service.register_approval_handler(PROGRESS_REPORT_HANDLER)
+    register_progress_report_notifications()
+    register_schedule_notifications()
+    register_reminder_notifications()
+    administration_service.register_approval_handler(PAYROLL_PERIOD_HANDLER)
+    register_payroll_notifications()
+    scheduling_service.register_completed_attendance_unlock(
+        academics_service.closeout_awaits_tutor
+    )
+    register_availability_notifications()
+    scheduling_service.register_reassignment_notifications()
+    register_availability_impact_source(scheduling_service.AVAILABILITY_IMPACT_SOURCE)
+    scheduling_service.register_offer_notifications()
+    scheduling_service.register_closure_notifications()
+    scheduling_service.register_edit_notifications()
+    scheduling_service.register_substitution_notifications()
+    scheduling_service.register_request_notifications()
+    scheduling_service.register_change_request_notifications()
+    scheduling_service.register_cancellation_step(on_session_cancelled)
+    administration_service.register_account_reference_resolver(get_account_references)
+    administration_service.register_review_candidate_resolver(review_candidates)
+    administration_service.register_approval_notifications(STAFF_ROLES)
+    families_service.register_tutor_assignment_source(
+        scheduling_service.TUTOR_ASSIGNMENT_SOURCE
+    )
+    administration_service.register_import_kind(families_service.STUDENTS_IMPORT_KIND)
+    administration_service.register_import_kind(TUTORS_IMPORT_KIND)
+    administration_service.register_import_kind(
+        scheduling_service.SCHEDULES_IMPORT_KIND
+    )
+    administration_service.register_import_kind(
+        billing_service.OPENING_BALANCES_IMPORT_KIND
+    )
+    administration_service.register_import_principal_loader(load_principal)
+    register_export_wiring()
+    register_retention_wiring()
+    administration_service.register_time_zone_dependency(
+        scheduling_service.TIME_ZONE_DEPENDENCY, scheduling_service.has_class_sessions
+    )
+    administration_service.register_time_zone_dependency(
+        scheduling_service.SERIES_TIME_ZONE_DEPENDENCY,
+        scheduling_service.has_class_series,
+    )
+    administration_service.register_time_zone_dependency(
+        scheduling_service.SESSION_REQUESTS_TIME_ZONE_DEPENDENCY,
+        scheduling_service.has_pending_session_requests,
+    )
+    administration_service.register_time_zone_dependency(
+        scheduling_service.CHANGE_REQUESTS_TIME_ZONE_DEPENDENCY,
+        scheduling_service.has_pending_reschedule_requests,
+    )

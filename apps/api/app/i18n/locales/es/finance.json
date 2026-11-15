@@ -1,0 +1,11 @@
+{
+  "categories": {
+    "system": {
+      "rent": "Renta",
+      "utilities": "Servicios",
+      "supplies": "Insumos",
+      "equipment": "Equipo",
+      "maintenance": "Mantenimiento"
+    }
+  }
+}

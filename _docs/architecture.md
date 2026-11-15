@@ -18,8 +18,8 @@
 - **Modular monolith.** One FastAPI codebase (`apps/api`) organized by business domain. It ships as two runtime processes from the same image: the **API** and the **Procrastinate worker**.
 - **Single-page web client.** React + TypeScript + Vite (`apps/web`). It talks to the API only through the **generated typed client** (`packages/api-client`).
 - **PostgreSQL is the only stateful backend service.** It holds business data, server sessions, the job queue (Procrastinate), notifications and the LISTEN/NOTIFY fan-out. **No Redis and no Celery.**
-- **Object storage:** S3 (S3-compatible API locally) holds file contents. PostgreSQL holds the file metadata.
-- **Three deployed environments on AWS:** DEV, PROD and a monitoring host. Each one is a single EC2 instance running Docker Compose. There is also a local Compose environment.
+- **Object storage:** S3 (S3-compatible API locally) holds file contents. PostgreSQL holds the file metadata. *(Deferred to a later version, owner decision 2026-10-21: no uploads for now. Until then the app uses no object storage; the only S3 buckets are the Terraform state, backup and archive buckets. See §7.3.)*
+- **Three deployed environments on AWS (us-east-2):** DEV, PROD and a monitoring host. Each one is a single arm64 EC2 instance (t4g) running Docker Compose under systemd, created and destroyed with Terraform for windows of about 20 days; a Terraform switch can run the monitoring stack on DEV instead, or turn it off ([ADR-0010](adr/0010-hosting-edge-and-https.md), [ADR-0011](adr/0011-infrastructure-as-code-images-and-release.md), [ADR-0014](adr/0014-observability-error-tracking-and-alerting.md)). There is also a local Compose environment, with an optional local observability profile.
 
 ## 2. System context
 
@@ -30,37 +30,41 @@ flowchart LR
     T[Tutor]
     PS[Parent / Student]
   end
-  Users -->|HTTPS| R53[Route 53 customer hostname]
-  R53 --> CF[CloudFront]
-  CF -->|HTTPS, origin hostname| CADDY
+  Users -->|HTTPS| R53[Route 53: app, dev, grafana]
+  R53 -->|"HTTPS, ports 80/443 only"| CADDY
 
-  subgraph EC2_ENV["EC2 (DEV or PROD) — Docker Compose"]
-    CADDY[Caddy edge] --> WEB[web: static SPA]
-    CADDY --> API[api: FastAPI]
+  subgraph EC2_ENV["EC2 t4g, DEV or PROD (Compose)"]
+    CADDY[web: Caddy edge, HTTPS + SPA] --> API[api: FastAPI]
     API --> PGB[PgBouncer]
     PGB --> PG[(PostgreSQL on encrypted gp3 EBS)]
     WORKER[worker: Procrastinate] --> PG
     API -. LISTEN/NOTIFY .- PG
+    AGENT[OTel Collector agent]
+    API -.-> AGENT
+    WORKER -.-> AGENT
   end
 
-  API -->|presigned URLs| S3[(S3 bucket)]
-  WORKER --> S3
-  PG -->|pgBackRest WAL + backups| S3B[(S3 backup bucket)]
+  API -.->|presigned URLs, deferred| S3[("S3 uploads bucket (deferred)")]
+  PG -->|nightly pg_dump| S3B[("S3 backup bucket (14 days)")]
+  PG -.->|"final dump before PROD is destroyed"| ARCH[("S3 archive bucket (365 days)")]
 
-  subgraph EC2_MON["EC2 monitoring"]
-    OTEL[OTel Collector] --> PROM[Prometheus]
-    OTEL --> LOKI[Loki]
-    OTEL --> TEMPO[Tempo]
+  subgraph EC2_MON["EC2 monitoring (or on DEV)"]
+    GW[OTel Collector gateway] --> PROM[Prometheus]
+    GW --> LOKI[Loki]
+    GW --> TEMPO[Tempo]
     GRAF[Grafana] --> PROM & LOKI & TEMPO
   end
-  EC2_ENV -->|logs, metrics, traces| OTEL
+  AGENT -->|"OTLP, private IP"| GW
+  GRAF -->|alert e-mail| SES[Amazon SES]
+  SES --> OWN[Owner]
 ```
 
 Notes:
 
+- The uploads bucket and its presigned URLs (dashed) are deferred to a later version (§7.3).
 - PgBouncer placement and which processes bypass it: → ISSUE-D1.
-- How the web container is built and served: → ISSUE-I4.
-- How CloudFront authenticates to the origin: → ISSUE-I2.
+- There is no CloudFront: Route 53 points at the host, and Caddy terminates HTTPS ([ADR-0010](adr/0010-hosting-edge-and-https.md)). The `web` image is the edge: Caddy with the built SPA.
+- The monitoring stack runs on its own host by default; a Terraform switch (`monitoring_mode`) colocates it on DEV or turns it off. Prometheus, Loki and Tempo store data on the monitoring host's own encrypted disk, not in S3 ([ADR-0014](adr/0014-observability-error-tracking-and-alerting.md)). Daily EBS snapshots of the data volume complement the nightly dump ([ADR-0013](adr/0013-backups-restore-drills-and-shutdown-data.md)).
 
 ## 3. Repository layout (approved)
 
@@ -93,15 +97,15 @@ The candidate modules mirror the spec §12 domain inventory:
 | `staff` | Tutors, qualifications, availability, time off, teaching limits |
 | `catalog` | Subjects, education levels, academic periods, classrooms, holidays and closures |
 | `scheduling` | Class sessions, recurrence, enrollment, attendance, substitutions, booking requests, conflict detection |
-| `courses` | Course templates, modules, cohorts, cohort enrollment, completion criteria |
-| `academics` | Evaluations, learning plans, assignments and submissions, session summaries, progress reports, internal notes |
+| `courses` | Course templates, modules, cohorts, cohort enrollment, completion criteria (templates and snapshots: M4-19; cohorts: M4-20), completion evaluation (M5-18, computed live from the snapshot) |
+| `academics` | Evaluations, learning plans, assignments and submissions, session summaries, progress reports, internal notes (session closeouts: M5-10; closeout on behalf, overdue list: M5-10b; closeout review, approval revisions: M5-11; session notes, internal and family-visible: M5-12, read by staff through `academic_note.review` (Owner, Administrator, Academic Coordinator; not delegable), shown to families only through the family route; evaluation templates, evaluations and the unified academic history: M5-13, templates, oversight and voids through `evaluation.manage` (Owner, Administrator, Academic Coordinator; not delegable), shown to families only through the academic history; learning plans with objectives and milestones: M5-14, written by `learning_plan.manage` holders (Owner, Administrator, Academic Coordinator; not delegable) and by tutors currently teaching the student in the plan's subject, shown to families once activated; homework assignments and submissions (text and/or a link, no uploads) and their grades: M5-15, set and graded by the tutor who created them, read by staff through `assignment.review` (Owner, Administrator, Academic Coordinator; read-only, not delegable), shown to the student and their guardians with academic access through one per-student shape, scored grades also in the academic history; progress reports with review: M5-16, written by tutors currently teaching the student, with facts frozen at each submit, approved, sent back or retracted through `progress_report.review` (Owner, Administrator, Academic Coordinator; not delegable; never one's own report unless Owner), shown to families only once approved through one closed shape; report schedules and placeholders: M5-16c, set by `progress_report.review` holders per student, a daily job creating the tutor's empty draft after each week or month; progress dashboard reads (M5-17, in `app/workflows/`): per-student live attendance, grade, homework and learning-plan aggregates and the class log with approved summaries, one closed shape for `evaluation.manage` holders, current tutors and the family, a former tutor reading only the sessions they taught) |
 | `billing` | Price catalog, charges, payments, allocations, packages and credits, discounts, refunds, tuition plans, receipts |
 | `payroll` | Compensation rates, teaching hours, payroll periods and lines, adjustments, payments, payslips |
 | `finance` | Expenses, categories, vendors, recurring expense templates |
-| `documents` | Files, folders, access grants, tags, quotas, recycle bin |
+| `documents` | Files, folders, access grants, tags, quotas, recycle bin — *deferred to a later version (§7.3)* |
 | `administration` | Approval inbox, notifications, audit events, business settings, imports |
 
-Where reporting and analytics code lives: → ISSUE-A2.
+Reporting and analytics code lives in a read-only `reporting` module (ISSUE-A2, accepted in [ADR-0002](adr/0002-module-boundaries-and-reporting.md)).
 
 Each module has the same internal layout (the file names are a convention, not mandated by the spec):
 
@@ -116,17 +120,17 @@ modules/<domain>/
   tasks.py         # Procrastinate tasks owned by the module
 ```
 
-### 4.2 Cross-module rules (approved pattern, PROPOSED enforcement → ISSUE-A1)
+### 4.2 Cross-module rules (approved pattern; boundary rule and enforcement accepted in [ADR-0002](adr/0002-module-boundaries-and-reporting.md))
 
-- A module may call another module **only through that module's `service.py`**.
+- A module may call another module **only through that module's `service.py`** (or use its `schemas.py` types). An `ast`-based pytest check enforces this ([ADR-0002](adr/0002-module-boundaries-and-reporting.md)).
 - Operations that change state in several modules (for example: confirm a booking request → create sessions → post charges → notify) live in `app/workflows/` and run inside **one Unit of Work** (one database transaction).
 - There is **no in-process event bus**. Orchestration is explicit, as required by "application-level cross-module orchestration".
 
 ### 4.3 Request lifecycle
 
-1. Caddy receives the request from CloudFront and forwards `/api/*` to the API.
+1. Caddy (the edge, [ADR-0010](adr/0010-hosting-edge-and-https.md)) terminates HTTPS and forwards `/api/*` to the API.
 2. Middleware assigns or propagates a **request ID** and starts an OTel span.
-3. Session cookie → server session lookup in PostgreSQL → CSRF check on unsafe methods → rate-limit check (→ ISSUE-S3).
+3. General in-process rate limit per client IP, before routing and the session lookup (health probes exempt; `app/core/api_rate_limit.py`, #163) → session cookie → server session lookup in PostgreSQL → CSRF check on unsafe methods → authentication and domain rate-limit check ([ADR-0008](adr/0008-rate-limiting-without-redis.md); sessions and CSRF in [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md)) → idempotency key on decorated financial routes, claimed in the request's transaction ([ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md); `app/core/idempotency.py`).
 4. The route dependency resolves the current user and checks the **role permission**.
 5. The service loads the target record(s) and runs the **record-level policy** (ownership, guardian link, tutor assignment).
 6. The Unit of Work commits. Audit events, notifications and optimistic-version increments are written in the same transaction.
@@ -139,7 +143,7 @@ modules/<domain>/
 - Timestamps use ISO 8601 with offset. Instants are stored as UTC `TIMESTAMPTZ` (→ ISSUE-D3 for date-only values).
 - Pagination is offset/limit for ordinary tables and cursor-based for large histories (audit, ledger, notifications).
 - Optimistic concurrency uses a `version` column on edited records (→ ISSUE-D5 for the wire format).
-- Financial mutations require idempotency keys (→ ISSUE-F4 for the mechanism).
+- Financial mutations require idempotency keys (ISSUE-F4, accepted in [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md)).
 
 ## 5. Data architecture (approved constraints)
 
@@ -149,16 +153,18 @@ modules/<domain>/
 - UUID primary keys, FKs, unique and check constraints. Database constraints protect business invariants.
 - Search uses B-tree indexes, full-text search and `pg_trgm` (→ ISSUE-D6 for bilingual text).
 - Financial data is append-only with corrections made as adjustments and reversals. Payroll periods are locked once finalized. Catalog prices and rates are effective-dated.
-- The detailed schema belongs to `_docs/data-model.md` and is **not** designed here.
+- The detailed schema belongs to `_docs/data-model.md` and is **not** designed here. The billing schema is in [`data-model.md` §3](data-model.md#3-billing-tables). The payroll and expense schemas are in [`data-model.md` §11](data-model.md#11-payroll-tables) and [§12](data-model.md#12-expense-tables).
 
 ## 6. Background processing (approved)
 
 - **Procrastinate on PostgreSQL**, running in a **dedicated worker container** built from the API image.
 - Jobs include charge generation (recurring tuition and enrollments), recurring expenses, rolling recurrence generation, reminders, report and export generation (WeasyPrint PDF, openpyxl XLSX), imports, file scan follow-up, retention and purge tasks.
 - Every job must be **idempotent**. A retry must not create a duplicate business transaction (W4.1, W7.2).
-- Failed jobs must be visible to administrators, with retry controls (§9 of the spec).
+- Periodic tasks today (registered by `app/core/jobs.create_job_app`): `identity:purge_auth_sessions`, `ratelimit:purge_counters` and `idempotency:purge_keys` (hourly; M6-03), `scheduling:expire_offers` (every 5 minutes), `scheduling:materialize_series` (08:00 UTC) and `academics:create_progress_report_placeholders` (07:00 UTC, M5-16c). The last one lives in `app/workflows/progress_report_schedule_tasks.py`, not in a module's `tasks.py`, because it composes `academics` with `scheduling`, `families`, `catalog`, `identity` and `administration`. The billing jobs live in `app/workflows/*_tasks.py` for the same reason: `billing:post_session_charges` and `billing:post_enrollment_charges` (every 15 minutes; M6-06, M6-07), `billing:post_tuition_charges` (07:30 UTC; M6-08), `billing:expire_packages` (07:40 UTC; M6-09) and `billing:send_charge_reminders` (daily at 15:00 UTC, the in-app payment reminders to families; M6-12). `payroll:open_periods` (07:50 UTC; M7-03) opens tutors' payroll periods and composes `payroll` with `administration`. `finance:generate_recurring_expenses` (07:55 UTC; M7-13) generates the due periods of recurring expense templates and composes `finance` with `administration` (`app/workflows/recurring_expense_tasks.py`). `administration:run_imports` (every 15 minutes; M8-05) commits CSV imports in batches. `reporting:run_exports` (every 15 minutes, and queued after each export request; M8-07) builds the queued exports, one `REPEATABLE READ` transaction per job, and deletes files 24 hours after they are ready (`app/modules/reporting/tasks.py`). `administration:run_retention` (09:30 UTC; M8-12) runs the retention rules: deleted academic records 30 days after deletion and finished background jobs after 30 days (`app/modules/administration/retention.py`).
+- Failed jobs must be visible to administrators, with retry controls (§9 of the spec). Since M8-11 (#128, ISSUE-J3): a worker middleware (`app.core.jobs.record_job_failure`) records each failed run's sanitized error (class name, application code, SQLSTATE; never the message, traceback or arguments) in `job_failures`; every registered task is classified in `RETRYABLE_TASKS` or `NON_RETRYABLE_TASKS` (unit-pinned); Owners and Administrators (`jobs.manage`) list failed jobs and retry a retryable one through `/api/v1/jobs` (audited `administration.job_retried`), on the web page `/jobs`.
+- Jobs check authorization when they run (spec §16; M10-01b, #640). A job that writes for a reader (a notification, a file, a draft) checks that reader's current access when it writes, and a job that writes records **as** a user reloads that user's principal and re-checks the permission while it runs (the import commit does so before every batch; a lost committer fails the job). `apps/api/tests/authz/jobs.toml` classifies every registered task (`reader_checked`, `actor_rechecked` with its check and tests, or `no_reader_output` with a reason), and `tests/unit/test_job_inventory.py` fails for a task without an entry.
 
-Open points: → ISSUE-J1 (driver and transactional enqueue), ISSUE-J2 (periodic scheduler placement), ISSUE-J3 (failed-job admin UI), ISSUE-J4 (idempotency mechanics).
+Open points: → ISSUE-J1 (driver and transactional enqueue), ISSUE-J2 (periodic scheduler placement), ISSUE-J3 (failed-job admin UI, accepted in issue #128). ISSUE-J4 (idempotency mechanics for generated financial records) is accepted in [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md).
 
 ## 7. Cross-cutting concerns
 
@@ -166,10 +172,12 @@ Open points: → ISSUE-J1 (driver and transactional enqueue), ISSUE-J2 (periodic
 
 - Server-side sessions stored in PostgreSQL and referenced by an HTTP-only secure cookie. CSRF protection. Expiration and revocation.
 - Password reauthentication for sensitive actions.
-- Predefined roles plus record-level ownership checks, enforced on the server in endpoints, jobs, generated files and presigned links.
+- Predefined roles plus record-level ownership checks, enforced on the server in endpoints, jobs, generated files and presigned links (presigned links are deferred with §7.3).
+- A CI-checked IDOR inventory (`apps/api/tests/authz/idor.toml`, #149) names, for every route a tutor, student or guardian can call with a record id (receipt and payslip PDFs included), the test that proves another party's record is hidden.
 - User states: `pending`, `active`, `suspended`, `archived`.
+- Pre-go-live security review (M10-02, #150): findings, severities and the verification log in [`security-review.md`](security-review.md).
 
-Open points: → ISSUE-S1, S2, S4, S5, S6, S7.
+Accepted details (ISSUE-G2, S1, S2, S4, S5, S6, S7): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md). Rate limits (ISSUE-S3): see [ADR-0008](adr/0008-rate-limiting-without-redis.md).
 
 ### 7.2 Notifications (approved)
 
@@ -179,6 +187,8 @@ Open points: → ISSUE-S1, S2, S4, S5, S6, S7.
 Open point: → ISSUE-N1.
 
 ### 7.3 Files (approved)
+
+> **Deferred to a later version** (owner decision 2026-10-21: no uploads for now). This covers uploads, object storage, malware scanning, downloads and previews, presigned URLs, quotas, the recycle bin, the shared academic library and attachments (issues #68–#75, milestone "Next version — Files and documents (deferred)"). The text is kept for that version. In this version, generated PDFs are streamed on request and never stored, export results live in a PostgreSQL table with a short expiry behind an authorized endpoint, imports are sent in the request body, and there is no uploads bucket.
 
 - The browser uploads to and downloads from S3 directly through presigned URLs.
 - File metadata lives in PostgreSQL. A file stays unreleased until malware scanning passes.
@@ -191,22 +201,24 @@ Open points: → ISSUE-FL1, FL2, FL3.
 
 - The UI uses react-i18next (es and en) and date-fns/date-fns-tz.
 - The center's configured time zone governs scheduling, local date boundaries, recurrence and due dates.
+- Recurrence expansion and DST handling (local wall-clock expansion, `fold=0`): see [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md).
+- Server-rendered text (PDF documents): JSON catalogs in `apps/api/app/i18n/locales/{es,en}/` read by `app/core/i18n.py`, Jinja2 and WeasyPrint in `app/core/pdf.py`, and the branded templates in `app/templates/documents/` ([ADR-0015](adr/0015-server-side-i18n.md), #98a).
 
-Open points: → ISSUE-D3, ISSUE-X1.
+Open points: → ISSUE-D3. Server-rendered text (ISSUE-X1) is accepted in [ADR-0015](adr/0015-server-side-i18n.md).
 
 ### 7.5 Auditing
 
 - Important records get audit events with actor, action, timestamp, prior values and new values.
 
-Open point: → ISSUE-A3.
+Decision: → ISSUE-A3 (accepted on issue #22).
 
 ## 8. Frontend architecture (approved)
 
 - React Router with guarded views. The guards are for UX only; the server is authoritative.
 - **TanStack Query** for server state and caching. **Zustand** for UI-only state. React Hook Form + Zod for forms.
 - Tailwind + shadcn/ui, central design tokens, Storybook, light/dark/system themes with preferences stored in the database.
-- FullCalendar (daily/weekly/monthly; drag-and-drop validated by the server) → ISSUE-X2 for licensing.
-- Recharts and TanStack Table for analytics. Customizable dashboards → ISSUE-X3.
+- FullCalendar v7 standard views (MIT; no premium resource views) → ADR-0005. Daily/weekly/monthly; drag-and-drop validated by the server.
+- Recharts and TanStack Table for analytics; pinned `recharts` 3.10.1, added by #322 (lazy route chunk only). Customizable dashboards: `dnd-kit` (`@dnd-kit/core` 6.3.1, `@dnd-kit/sortable` 10.0.0, `@dnd-kit/utilities` 3.2.2, exact pins), added by #127 (lazy dialog chunk only; ISSUE-X3).
 - Centralized error handling, safe retries, skeleton states. **No optimistic updates on financial mutations.**
 - Layouts adapt by role: desktop-first admin, mobile-friendly tutor, student and guardian views. Target is WCAG 2.2 AA.
 
@@ -214,60 +226,78 @@ Typed API client: `openapi-typescript` + `openapi-fetch`, TanStack Query hooks w
 
 ## 9. Deployment, operations and observability (approved)
 
+Restates [ADR-0010](adr/0010-hosting-edge-and-https.md) (hosting, edge, HTTPS), [ADR-0011](adr/0011-infrastructure-as-code-images-and-release.md) (Terraform, images, release), [ADR-0012](adr/0012-secrets-and-configuration-delivery.md) (secrets), [ADR-0013](adr/0013-backups-restore-drills-and-shutdown-data.md) (backups) and [ADR-0014](adr/0014-observability-error-tracking-and-alerting.md) (observability), approved on 2026-11-11. The issues that build them are M9-02 (#610) to M9-10 (#618).
+
 ### 9.1 Per-environment host (DEV and PROD)
 
 | Compose stack | Services |
 |---|---|
-| **Data stack** (stateful) | PostgreSQL (+ pgBackRest), PgBouncer (→ ISSUE-D1) |
-| **App stack** | Caddy edge, `web`, `api`, `worker`, OTel agent (→ ISSUE-O2) |
+| **Data stack** (stateful) | PostgreSQL 18, PgBouncer (ADR-0003) |
+| **App stack** | `web` (Caddy edge: HTTPS, SPA, `/api` proxy), `api`, `worker`, OTel Collector agent (Compose profile `telemetry`, on when an OTLP endpoint is published); `migrate` tools service (Compose profile `tools`, run only with `docker compose run --rm`) |
 
+- **Database roles (#165, ADR-0003 amendment).** `api`, `worker` and `pgbouncer` receive only the least-privilege runtime role `classora_app` (its password `POSTGRES_APP_PASSWORD`; Parameter Store `app_db_password` on the hosts). `db` and the `migrate` tools service receive the owner credentials. `migrate` (the api image) runs `alembic upgrade head && python -m app.cli sync-runtime-role`, the seeds and the operator CLI as the owner over `DATABASE_MIGRATION_URL`. On a new volume it runs before the app stack, because PgBouncer and the worker authenticate as the runtime role.
+
+- One arm64 EC2 instance (t4g.small to start; t4g.medium for DEV when monitoring is colocated) on Amazon Linux 2023. Instance type and volume sizes are Terraform variables; M10-04 (#152) measures them.
 - Docker restart policy is `unless-stopped`. systemd units start the data stack before the app stack.
-- The EBS data volume is attached and mounted by cloud-init/SSM **without ever formatting a volume that already has a filesystem**.
-- Management goes through SSM Session Manager and Run Command. There is no inbound SSH, and PostgreSQL/PgBouncer have no public ports.
+- PostgreSQL data and Caddy's certificates live on a separate encrypted gp3 data volume, mounted by cloud-init **without ever formatting a volume that already has a filesystem**.
+- Network: one VPC, one Availability Zone, no NAT. Security groups allow only TCP 80 and 443. There is no inbound SSH, and PostgreSQL/PgBouncer have no public ports. Operators use SSM Session Manager.
+- Caddy obtains certificates itself (Let's Encrypt, HTTP-01/TLS-ALPN-01), is the first hop for client IPs (`TRUSTED_PROXIES` holds only its fixed address; ADR-0008 amendment), sends the production security headers and answers `/health/*` with 404 from outside.
+- Secrets are generated by Terraform into Parameter Store `SecureString` under `/classora/<env>/`. The instance role reads only its own path; `render-env.sh` writes a root-only `0600` env file for Compose. GitHub holds no application secret.
+- *Implementation note (M9-06, #614).* `infrastructure/terraform/modules/app_host` (used by `envs/dev`, applied 2026-11-11) creates the instance, an ENI with its Elastic IP **before** boot (the subnets assign no public IPs and there is no NAT), the 80/443-only security group, the data volume (`Role=data`, detached only after the instance is stopped), the instance role, the ops bucket `classora-<env>-ops-<suffix>`, the `/classora/<env>/` parameters and the A records. The AMI and the user data are ignored after creation; replacement is `terraform apply -replace`. User data (gzipped, no secrets) carries `infrastructure/host/bin` and `systemd`; `host-setup.sh` adds a 1 GiB swap file, Docker, the sha256-pinned Compose plugin (≥ 2.24 for `!reset`/`!override`; local stays 2.19), Docker's `json-file` rotation with the Compose service label, and mounts the volume at `/srv/classora-data` (`postgres/`, `caddy/`, `collector/`, `releases/`). Docker itself requires that mount. Releases (Compose files, host scripts, `images.env` with three digests) are unpacked on the data volume, so a replaced instance restarts the same release. Compose runs as project `classora` from `compose.data.yaml` + `compose.app.yaml` + `infrastructure/host/compose.aws.yaml`, with the rendered env file used **only for interpolation**: each service gets just the variables its `environment:` names, so the owner password never reaches `api`, `worker` or `pgbouncer`. The edge is service `edge` (the `web` image) at `172.30.0.10` on the fixed app network `172.30.0.0/24`, running as uid 10002 with only `CAP_NET_BIND_SERVICE`; the Vite `web` service is disabled. `deploy.sh` also creates `classora_monitor` (`pg_monitor`, `SELECT` on `procrastinate_jobs` and `procrastinate_events`). Runbook: [`runbooks/host.md`](runbooks/host.md). *Hardening (#632):* IMDSv2 with hop limit 1 on every host, so containers can't use the instance role (only the host's scripts, the SSM agent and dockerd's ECR pulls use it). sshd is stopped, disabled and masked (`install-units.sh` on each deploy; `monitoring-up.sh` on the monitoring host). `db` runs `postgres:18.6` pinned by digest (ADR-0001 A2).
 
 ### 9.2 Delivery pipeline
 
 ```mermaid
 flowchart LR
-  PR[Pull request] -->|lint, types, tests, security, tf plan| CHK{Checks}
-  CHK -->|merge to develop| BUILD[Build images, push to ECR by digest]
-  BUILD --> DEVD[Deploy DEV via SSM Run Command]
+  PR[Pull request] -->|"lint, types, tests, security, image and Terraform checks"| CHK{ci-required}
+  CHK -->|merge to develop| BUILD[Build arm64 images, scan, push to ECR by digest]
+  BUILD --> DEVD["SSM document classora-deploy-dev (SHA only) runs deploy.sh on DEV"]
   DEVD --> MIG1[Run Alembic] --> UP1[Compose up] --> RDY1{/health/ready}
-  RDY1 -->|fail| RB1[Restore previous digest]
-  DEVD -.->|promote same digest| MAIN[main + GitHub approval]
-  MAIN --> PRODD[Deploy PROD: migrate → up → ready check → rollback on fail]
+  RDY1 -->|fail| RB1[Restore previous digests]
+  RDY1 -->|ok| TAG1[Tag dev-sha]
+  TAG1 -.->|release PR merged to main| APPR[Owner approves the production environment]
+  APPR --> PRODD["Deploy the same digest to PROD: migrate, up, ready check, rollback on fail"]
 ```
 
-- GitHub Actions authenticates with OIDC using least-privilege DEV and PROD roles.
-- Images are promoted by **immutable digest** (→ ISSUE-I6 for how the digest reaches `main`).
-- Migrations run before the new version starts and are **never** reversed automatically.
-- The ECR lifecycle policy must keep deployed digests and rollback candidates.
-- Terraform uses separate state per environment and an encrypted, versioned S3 backend with native locking. DEV applies on merge, PROD needs approval, destructive plans need approval everywhere, and critical stateful resources have `prevent_destroy`.
-
-Open points: → ISSUE-I1 through I8.
+- GitHub Actions authenticates with OIDC using least-privilege DEV and PROD roles. The deploy role may send only the `classora-deploy` document, whose one parameter is a 40-hex commit SHA, to its own environment's instance.
+- Images are built **only** on `develop`, arm64, tagged `sha-<commit>`, and promoted by **immutable digest**. PROD deploys the release pull request's head commit and refuses a digest without a `dev-<sha>` tag. Release tag `vYYYY.MM.DD-<sha7>`.
+- `deploy.sh` saves the current release, pulls by digest, migrates on the direct connection as the owner (the `migrate` tools service, which also runs `sync-runtime-role`), runs the reference seeds, starts the app stack and polls readiness for up to 90 s; on failure it restores the previous digests. Migrations run before the new version starts and are **never** reversed automatically.
+- The ECR lifecycle policy keeps the newest 10 `prod-*`, 10 `dev-*` and 30 `sha-*` images.
+- While DEV is destroyed, the DEV deploy is skipped with a notice and `develop` stays green. Neither deploy workflow is part of `ci-required`.
+- *Implementation note (M9-07, #615).* `.github/workflows/deploy-dev.yml` runs on every push to `develop` (docs-only merges included) and by `workflow_dispatch` with an optional SHA that must be on the dispatched branch. Jobs: `probe` (assume `classora-gha-dev`; ECR and `/classora/dev/instance_id` present, instance running), `build` (the M9-02 checks, push `sha-<commit>` unless all three exist, upload `releases/<commit>.tgz` while DEV exists), `deploy` (send `classora-deploy-dev` to the instance in `/classora/dev/instance_id`, wait up to 15 minutes, map the exit code) and `tag` (`dev-<commit>`, an existing tag is fine). The document is created by `modules/app_host` as `classora-deploy-<env>` (names are unique per account and region): Command schema 2.2, one parameter `sha` matching `^[0-9a-f]{40}$`, one `aws:runShellScript` step `deploy.sh {{ sha }}`, 900 s. `deploy.sh` exits 0 (deployed), 10 (migration step failed, nothing switched), 20 (readiness failed, rolled back), 21 (readiness and rollback failed, site down) or 30 (bundle, env, lock, pull or database start failed, nothing changed), and prints a final JSON line. Its readiness gate is `/health/ready` in `api`, `app.worker --healthcheck` in `worker` and `/` through Caddy with a CSP header. After a healthy start or rollback it starts the systemd units, so they are active for the next reboot. The GitHub environment `dev` is restricted to `develop`. Runbook: [`runbooks/deploy.md`](runbooks/deploy.md).
+- *Implementation note (M9-10, #618).* `envs/prod` (applied 2026-11-12) is `modules/app_host` with `env = "prod"`, t4g.small, `app.classora.dev`, its own encrypted data volume, nightly dumps, snapshots and the archive's `prod/` prefix; the monitoring root admits its security group on 4318. `.github/workflows/release-prod.yml` runs on push to `main` and by `workflow_dispatch` with a SHA (on `main`): `resolve` (no AWS; the merged `develop` → `main` pull request's head SHA), `verify` (before any approval, with the read-only role `classora-gha-release-check`, which trusts `…:ref:refs/heads/main`: `sha-<sha>` and `dev-<sha>` on the same digest in all three repositories, the commit on `develop`, PROD running), `deploy` (GitHub environment `production`: the owner is the required reviewer, deployment branch `main`, no admin bypass; assumes `classora-gha-prod`, uploads the bundle from the `develop` commit's tree with the verified digests, sends `classora-deploy-prod`, adds `prod-<sha>`) and `tag` (annotated `vYYYY.MM.DD-<sha7>`, the only job with `contents: write`). `classora-gha-prod` still trusts only `…:environment:production`, so no job reaches PROD without the approval. The host roles carry an explicit deny on the other environments' `/classora/<env>/` paths, because `AmazonSSMManagedInstanceCore` allows `ssm:GetParameter` on every parameter. `make tf-destroy ENV=prod` runs `prod-destroy-guard.sh` (a verified final dump newer than PROD's launch, data volume and last deploy), and `make env-teardown MODE=dev-only|all` sequences the final dump and the destroys. Runbooks: [`runbooks/release.md`](runbooks/release.md), [`runbooks/teardown.md`](runbooks/teardown.md), [`runbooks/secrets.md`](runbooks/secrets.md), index [`runbooks/index.md`](runbooks/index.md).
+- Terraform: one state per root (`bootstrap`, `shared`, `envs/dev`, `envs/prod`, `envs/monitoring`) in an encrypted, versioned S3 backend with native locking. Applies and destroys run from the owner's machine after a shown plan; there is no plan pipeline and no apply from CI (CI runs `fmt` and `validate`). `prevent_destroy` only on the state bucket, the hosted zone and the archive bucket. Every resource is tagged `Project=classora`.
+- *Implementation note (M9-05, #613).* `infrastructure/terraform/bootstrap` and `shared` exist and were applied on 2026-11-11; `envs/*` follow in M9-06, M9-09 and M9-10. `make tf-plan` / `tf-apply` / `tf-destroy ENV=<root>` wrap `infrastructure/scripts/terraform.sh`: the apply shows the saved plan and asks for the root's name, `tf-destroy` refuses `bootstrap` (and `prod` without a verified final dump, M9-10). The registrar's hosted zone is adopted with an `import` block whose ID, like the alert e-mail, is a `TF_VAR_` value; the backend bucket lives in a git-ignored `backend.hcl`. The account's GitHub OIDC provider already belonged to another project, so `bootstrap` only reads it. The deploy roles `classora-gha-dev` / `classora-gha-prod` trust only this repository's `dev` / `production` environments (immutable OIDC subject `repo:<owner>@<owner id>/<repo>@<repo id>:environment:<name>`) and may push `classora/*` images, send `classora-deploy` (or `classora-deploy-<env>`) only to instances tagged with their own `Environment`, read their own `/classora/<env>/instance_id` and upload to `classora-<env>-ops-*/releases/`. `make check-infra` (CI `infra` job) runs `fmt -check`, `validate` and shellcheck in pinned containers. Runbook: [`runbooks/terraform.md`](runbooks/terraform.md).
 
 ### 9.3 Observability
 
-- A dedicated monitoring EC2 runs the OTel Collector, Prometheus, Loki, Tempo and Grafana.
+- An OTel Collector gateway, Prometheus, Loki, Tempo and Grafana run on a dedicated monitoring EC2 (default), colocated on DEV, or not at all (`monitoring_mode`). Storage is the monitoring host's encrypted data volume, not S3: metrics 15 days, logs and traces 7 days.
+- Each app host's agent sends OTLP/HTTP to the gateway over private IPs; the gateway's port admits only the app hosts' security groups.
+- The API and worker export traces, metrics and logs only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set; otherwise no telemetry code runs. Telemetry carries no personal data (route templates, no bodies, headers, query strings or exception messages).
 - Logs are structured JSON with `request_id` and `trace_id`.
 - Health endpoints: `/health/live` (process is up) and `/health/ready` (includes PostgreSQL).
-- Alerts are dashboard-only: no email or external notifications.
-
-Open points: → ISSUE-O1 (Sentry), ISSUE-O2 (collection topology), ISSUE-O3 (Grafana access).
+- No Sentry: exceptions are span events and `ERROR` logs, with a Grafana errors dashboard.
+- Grafana at `https://grafana.<domain>` with a login (admin password in Parameter Store), anonymous access off.
+- Alerts (CPU, memory, disk, readiness, failed and stalled jobs, missing or failed backups) are e-mailed to the owner through Amazon SES. An AWS budget of US$75/month, counting only `Project=classora` costs, e-mails the owner at 80% forecast and 100% actual.
+- Locally, `make dev-observability` runs the same stack from the same configuration files; it is off by default.
+- *Implementation note (M9-04, #612).* `app.core.telemetry` is the only entry point. With no endpoint, `configure_telemetry` returns at once and the SDK (`app.core.telemetry_sdk`) is never imported: no provider, exporter, thread or middleware exists, and FastAPI's own OpenTelemetry bridge is switched off in `build_app`. When on, FastAPI (without `/health/*` and the notification stream) and every SQLAlchemy engine are instrumented, each Procrastinate job runs in a `job <task>` span (worker middleware, outermost), and exports run in background batch processors. A scrubbing span processor keeps an allow-list of attributes (route template, method, status, SQL text with placeholders, job id, task and status), drops span status descriptions and keeps only `exception.type` and the message-free stack trace. Exception messages are dropped from the stdout log too (`app.core.logging.scrub_traceback`), and OTLP log records carry the stdout JSON line as their body. Exporter errors are logged at most once a minute. Dashboards (`infrastructure/observability/grafana/dashboards/`) and Grafana-managed alert rules (`grafana/provisioning/alerting/`) are files, checked by `make check-observability`.
+- *Implementation note (M9-09, #617).* `infrastructure/terraform/envs/monitoring` (applied 2026-11-12) uses `modules/monitoring_host`: a t4g.small with an ENI and Elastic IP before boot, a 20 GB encrypted data volume, the `grafana` A record, a security group with 80/443 open and 4318 only from the app hosts' groups (looked up by name `classora-<env>-host`), IMDS hop limit 1, an instance role limited to `/classora/monitoring/*` and its own ops bucket, and the SSM document `classora-monitoring-sync`. `modules/monitoring_config` (also used by `envs/dev` when `monitoring_mode = "colocated"`) creates Grafana's admin password, the IAM user `classora-ses-smtp` (only `ses:SendRawEmail` from `alerts@<domain>`) and its SigV4 SMTP password, all SecureStrings, the plain settings and `/classora/shared/otlp_endpoint`; each root refuses to plan while the other mode exists. The host runs Compose project `monitoring` from the unchanged `compose.observability.yaml` plus `infrastructure/host/monitoring/compose.monitoring.yaml` (gateway on the private IP's 4318, Grafana only behind a pinned Caddy, SES SMTP, named volumes bound to the data volume, retention and memory limits from the rendered env file); the AWS-only contact point and 4-hour policy (`notifications.yaml`) are copied into the provisioning directory at start. `make monitoring-sync` uploads a bundle of `infrastructure/observability` and `infrastructure/host` from HEAD and runs `deploy-monitoring.sh`; CI never deploys it. On the app hosts the agent runs as root with only `CAP_DAC_READ_SEARCH` (Docker's logs are root-only), as host `classora-<env>-host`, and also tails `/var/log/classora/*.log` (service `backup`), which the two backup rules read from Loki. Colocated, `deploy.sh` starts the same project on the app network and adds `grafana.caddy` to the edge's `sites.d`. Runbook: [`runbooks/monitoring.md`](runbooks/monitoring.md).
 
 ### 9.4 Backups
 
-- pgBackRest writes full and differential backups plus continuous WAL archiving to S3, enabling PITR.
-- Restore drills are required before production reliance (W8.5).
-
-Open point: → ISSUE-I7.
+- A systemd timer runs a nightly `pg_dump --format=custom` inside the `db` container to the environment's S3 backup bucket (kept 14 days) and logs a JSON result line that the backup alerts read.
+- Amazon Data Lifecycle Manager snapshots the data volume daily and keeps 7.
+- RPO up to 24 hours; RTO about 30 minutes (final values in M10-04 (#152)).
+- Restore drills restore a dump, and a volume from a snapshot, into a scratch container on the same host and compare row counts (W8.5): on DEV in M9-08 (#616), on PROD in M10-05 (#153).
+- Before PROD is destroyed, a verified final dump goes to the long-lived archive bucket (Glacier after 30 days, deleted after 365). No PROD data reaches DEV, local machines or CI.
+- *Implementation note (M9-08, #616).* `classora-backup.timer` (08:30 UTC, `Persistent`) runs `backup.sh`: `pg_dump -Fc` inside `db`, streamed to `s3://classora-<env>-ops-*/backups/<UTC date>/classora.dump` (SSE-S3) through a FIFO that is cut on failure, so no partial object is ever written; `counts.json` holds exact per-table counts from the same exported snapshot. The JSON result line goes to the journal and `/var/log/classora/backup.log` (logrotate weekly) for M9-09. `restore.sh` restores into a scratch `postgres:18` container (`classora-restore`, internal network, no port, 384 MB) and compares every table; `--self-test` plants a mismatch; `--from-device` runs the snapshot drill driven by `infrastructure/scripts/snapshot-drill.sh` from the operator's machine. `final-dump.sh` writes to the archive prefix in `/classora/<env>/archive_prefix` (`prod`; DEV's drill prefix `dev-drill`), restores it and only then writes `verified.json`. The instance role may put/get `backups/*`, list `backups/` and put/get its archive prefix; it can't delete. The per-environment DLM policy targets the data volume's `Name` tag (DLM matches any target tag). The backup scripts ship only in release bundles: the gzipped user data must stay under EC2's 16 KiB (a plan-time precondition checks it). Runbook: [`runbooks/restore.md`](runbooks/restore.md).
 
 ---
 
 ## 10. Issues: ambiguities, contradictions and missing details
 
 **Legend.** Type: **C** = contradiction, **A** = ambiguity, **M** = missing implementation detail.  
-Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Accepted so far: ISSUE-G1 (in part); ISSUE-D7 (ADR-0001); ISSUE-D1, ISSUE-J1 and ISSUE-J2 (ADR-0003); ISSUE-D2 and ISSUE-D3 (ADR-0004); ISSUE-X4 (issue #12).  
+Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Accepted so far: ISSUE-G1 (in part); ISSUE-D7 (ADR-0001); ISSUE-D1, ISSUE-J1 and ISSUE-J2 (ADR-0003); ISSUE-D2 and ISSUE-D3 (ADR-0004); ISSUE-X4 (issue #12); ISSUE-A1 and ISSUE-A2 (ADR-0002); ISSUE-A3 (issue #22); ISSUE-D6 names part (issue #33); ISSUE-G2, ISSUE-S1, ISSUE-S2, ISSUE-S4, ISSUE-S5, ISSUE-S6 and ISSUE-S7 (ADR-0007); ISSUE-S3 (ADR-0008); ISSUE-D4, ISSUE-D6 `btree_gist` part, ISSUE-SC1, ISSUE-SC2, ISSUE-SC3 and ISSUE-X2 (ADR-0005); ISSUE-F7 `teaching_hours.approve` part (issue #77), closeout review part (issue #78) and progress report review part (issue #83); ISSUE-F1, ISSUE-F2, ISSUE-F3, ISSUE-F4, ISSUE-F5, ISSUE-F6, ISSUE-F7 `payment.record` and `payroll.*` parts, and ISSUE-J4 (ADR-0006); ISSUE-X1 (ADR-0015); ISSUE-X3 (issue #127, orchestrator-recommended, pending owner review); ISSUE-J3 (issue #128, orchestrator-recommended, pending owner review); ISSUE-I1 to ISSUE-I10 and ISSUE-O1 to ISSUE-O3 (ADR-0010 to ADR-0014, owner re-plan of 2026-11-11; I2 and I10 superseded).  
 "Spec" references point to `_docs/spec.md` sections.
 
 ### 10.1 Governance and documentation
@@ -286,7 +316,7 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 #### ISSUE-G2 — "Session" names two different entities (C)
 - **Spec:** §12 lists `Session` under both Identity (login session) and Scheduling (class occurrence).
 - **Problem:** The duplicate name will collide in ORM class names, API paths and conversation.
-- **Resolution — PROPOSED:** Use `AuthSession` (identity) and `ClassSession` (scheduling). In the API, use `/api/v1/class-sessions`.
+- **Resolution — ACCEPTED** (ADR-0007, 2026-10-18): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md). Use `AuthSession` / `auth_sessions` (identity) and `ClassSession` / `class_sessions` (scheduling). In the API, use `/api/v1/class-sessions`.
 
 ### 10.2 Application structure
 
@@ -295,29 +325,35 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 - **Problem:**
   - No rule says whether modules may import each other's ORM models or join across module tables.
   - No mechanism enforces the boundary.
-- **Resolution — PROPOSED:**
+- **Resolution — ACCEPTED** (ADR-0002, 2026-10-18): see [ADR-0002](adr/0002-module-boundaries-and-reporting.md).
   - Cross-table **foreign keys** are allowed in the database.
-  - Python code imports another module only through its `service.py` or schema types.
-  - Read-heavy joins across modules are allowed only in `workflows/` and in reporting queries (ISSUE-A2).
-  - Enforce this with an import-linter-style CI check. This adds a dev-only tool, which needs approval; otherwise fall back to code review.
+  - Python code imports another module only through its `service.py` or `schemas.py`. Modules never import `app.workflows`.
+  - Joins across modules are allowed only in `app/workflows/` and in the `reporting` module (ISSUE-A2).
+  - Enforcement: a pytest test that reads imports with the standard-library `ast` module, run by `make test-api` and CI, added in #20 (M2-02). No new dependency. An import-linter CI check was considered and rejected (ADR-0002).
 
 #### ISSUE-A2 — Home for analytics, dashboards and exports (A)
 - **Spec:** §8 analytics, dashboards, saved reports, exports. §12 has no reporting domain.
 - **Problem:** Reports read across almost every module, and none of the twelve domains owns them.
-- **Resolution — PROPOSED:**
+- **Resolution — ACCEPTED** (ADR-0002, 2026-10-18): see [ADR-0002](adr/0002-module-boundaries-and-reporting.md). Built in M8.
   - Add a read-only `reporting` module that owns saved report setups and dashboard widget preferences.
   - It runs read-only SQL across module tables and never writes to other modules.
   - Heavy exports run as worker jobs.
+  - #117 (M7-14) creates the module for the financial reports ahead of M8 (see `_docs/api.md` "Financial reports").
+  - **Implementation note (M8-07, #124):** exports live in `reporting/exports/`. A dataset registry (`register_export_dataset`) maps each export to a staff list page and calls **that page's own service function** with the requester's principal (`families.service.list_students`, `scheduling.service.list_calendar_sessions`, `finance.service.list_expenses`), so it reads no other module's tables and its rows and fields are the page's. Its only writes are its own tables: `export_jobs` and `export_files` (the file's bytes for 24 hours; no file storage, §7.3). CSV and XLSX (`openpyxl`, ADR-0015 amendment); no PDF yet. See `_docs/api.md` Exports and `_docs/data-model.md` §21.
+  - **Implementation note (M8-08, #125):** the saved report setups are **export setups** (`reporting/setups/`, table `report_setups`): a name and one `ExportParameters`, owned by its creator and optionally shared with one staff role. Running one posts its parameters to `POST /api/v1/exports`, so every export check applies to the runner and there is one export path. Dashboard widget preferences remain M8-10 (#127), in their own table. See `_docs/api.md` Saved export setups and `_docs/data-model.md` §22.
+  - **Implementation note (M8-09, #126):** the analytics KPIs are read-only routes in `reporting` (`kpis.py`, the pure `kpi_rules.py`, `kpis_router.py`) under `/api/v1/reports/kpis/`. They store nothing: no table, migration, index, cache or materialized view; every figure is computed live, within a pinned statement count and a measured volume budget. The money KPIs reuse #117's loaders and pure assembly in `reporting/finance.py`, so a revenue-trend month equals the financial report for that month. Definitions, worked examples and the budget: `_docs/kpis.md`. Dashboard widget preferences remain M8-10 (#127), in their own table.
+  - **Implementation note (M8-10, #127):** the dashboard widget preferences are `reporting/dashboard/`, table `dashboard_layouts`: **one row per user** who customized (`user_id` unique, `ON DELETE RESTRICT`), `widgets` a JSONB array of `{widget, visible}` in display order. It is a per-user preference, **not audited** and not versioned (last write wins), like `user_preferences` (#36). A widget registry maps each widget to its KPI route's permission constants (pinned by a unit test); the effective layout is recomputed on every read, so a lost permission drops a widget at once. Widget data comes only from the KPI routes. See `_docs/api.md` Dashboard layout and `_docs/data-model.md` §23.
 
 #### ISSUE-A3 — How audit events are captured (M)
 - **Spec:** §9 audit trail (actor, action, timestamp, prior/new values).
 - **Problem:** The spec does not choose between database triggers and application-level capture. It also does not say which records count as "important" or how sensitive fields are treated.
-- **Resolution — PROPOSED:**
-  - Capture audit events at the application level inside the Unit of Work, so the actor and request ID are always available. A SQLAlchemy flush hook computes field diffs for models marked `Audited`.
-  - Store diffs as JSONB.
-  - Never store password hashes, tokens or file contents. Mask other secrets.
-  - Initial audited set: financial records, payroll, attendance corrections, schedule overrides, role and permission changes, user state changes, consent, settings, academic report approvals.
-  - Audit rows are append-only. Revoke UPDATE and DELETE on the audit table from the application database role.
+- **Resolution — ACCEPTED** (human decision on GitHub issue #22, M2-04, 2026-10-18, owner JaimeSolisS; no ADR):
+  - **Placement.** Capture lives in `app/core/audit.py`, shared infrastructure that every module and the Unit of Work may import (ADR-0002): the `AuditEvent` model, the `Audited` marker, the flush hook and `record_audit_event`. Events are written in the same transaction as the change, so they roll back with it, and a failed audit write fails the change.
+  - **What is captured.** Automatic `create`, `update`, `delete`, `soft_delete` and `restore` events for models marked `Audited`, with JSONB diffs `{column: {old, new}}`. Explicit dotted events (for example `identity.owner_bootstrapped`) for actions that are not column changes. Each event records the actor (the request's principal, or the `actor_id` of a job or command; `NULL` for none), the time and the request ID. ORM bulk statements on audited tables are refused because they skip the hook.
+  - **Excluded and masked fields.** `__audit_exclude__` columns never appear (password hashes, tokens, file contents). `__audit_mask__` columns appear only as `"[masked]"`. A test fails any audited model with an unlisted `password|token|secret|hash` or binary column.
+  - **Audited set.** M2-04 audits `users`, `user_roles` and `user_delegations` (role assignments, delegations and user state changes). Role and permission reference data is not audited. Each later issue marks its own models: financial records, payroll, attendance corrections, schedule overrides, consent, settings, academic report approvals.
+  - **Append-only.** `audit_events` has `BEFORE UPDATE OR DELETE` and `BEFORE TRUNCATE` triggers that raise SQLSTATE 42501 for every role, the owner (a superuser locally, in tests and CI) included. Since #165 (migration `0096`) the API and the worker connect as the least-privilege runtime role `classora_app`, which has only `SELECT, INSERT` on `audit_events`, so the `REVOKE` of `UPDATE`, `DELETE` and `TRUNCATE` applies as well (ADR-0003 amendment).
+  - **Read endpoint.** `GET /api/v1/audit-events` in the `administration` module, for holders of `audit.view`: newest first, cursor-paginated, filtered by record, actor and time range.
 
 ### 10.3 Data layer
 
@@ -359,14 +395,14 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - §16 says database constraints protect invariants.
   - §3 also says workload limits produce warnings only.
 - **Problem:** A database constraint cannot be overridden, and the spec does not list which restrictions are overridable.
-- **Resolution — PROPOSED:**
-  - **Hard, never overridable, enforced in the database:**
-    - Tutor double-booking and room double-booking. Use `EXCLUDE USING gist` on `tstzrange` for non-cancelled class sessions. This needs the `btree_gist` extension.
-    - Room capacity exceeded.
-  - **Soft, overridable with a reason and an audit record, checked in the application:**
-    - Tutor outside published availability, missing qualification, group/cohort max size, booking-policy notice windows.
-  - **Warning only:** workload limits and required breaks.
-  - **Student overlap:** checked in the application inside the booking transaction, using a per-student advisory lock. Group membership makes a pure constraint impractical. Hard by default.
+- **Resolution — ACCEPTED** (ADR-0005, 2026-10-19): see [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md).
+  - **Hard, never overridable:**
+    - `tutor_overlap` and `room_overlap`: partial `EXCLUDE USING gist` on `tstzrange(starts_at, ends_at, '[)')` over the occupying states (ISSUE-SC1); `btree_gist` is already enabled by #38. Back-to-back sessions are allowed.
+    - `student_overlap`: checked in the application inside the booking transaction, under a per-student transaction advisory lock.
+    - `room_capacity_exceeded`: checked in the application under a row lock.
+  - **Soft, overridable with `schedule.override` and a reason, then audited:** `tutor_unavailable`, `room_unavailable`, `center_closed`, `outside_operating_hours`, `tutor_not_qualified`, `group_capacity_exceeded`, `notice_window`.
+  - **Warning only, never blocks:** `daily_limit_exceeded`, `weekly_limit_exceeded`, `break_too_short`.
+  - Inactive or invalid references are `422`, not conflicts. Conflicts are `409 scheduling_conflict`; overrides send `override: {codes, reason}` and are stored as rows plus an audit event.
 
 #### ISSUE-D5 — Optimistic concurrency wire format (M)
 - **Resolution — PROPOSED:**
@@ -376,10 +412,10 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 
 #### ISSUE-D6 — Bilingual full-text search (M)
 - **Problem:** The spec does not choose a PostgreSQL text-search configuration for mixed Spanish and English content.
-- **Resolution — PROPOSED:**
-  - Names and short fields: `pg_trgm` + `unaccent` with the `simple` configuration.
-  - Library documents: a `language` column (`es`/`en`) and a generated `tsvector` that uses `spanish` or `english` accordingly.
-  - Enable the `pg_trgm`, `unaccent` and `btree_gist` extensions in the first migration.
+- **Resolution — names part ACCEPTED** (human decision on GitHub issue #33, M2-15, 2026-10-18, owner JaimeSolisS; no ADR); `btree_gist` part ACCEPTED (ADR-0005, 2026-10-19); the library-documents part stays PROPOSED:
+  - **Names and short fields — ACCEPTED:** `pg_trgm` + `unaccent` with the `simple` behaviour (no language stemming), enabled by the migration of their first consumer (M2-15, revision `0014`). Accent folding goes through an `IMMUTABLE` wrapper `public.f_unaccent(text)` (`SELECT public.unaccent('public.unaccent'::regdictionary, $1)`), because `unaccent()` itself is only `STABLE` and can't be used in an index; its `EXECUTE` stays granted to `PUBLIC`, so a least-privilege runtime role (#165) can call it. Search uses a GIN trigram **expression index** on `public.f_unaccent(lower(...))` of the searched text, never a stored search column (audit diffs carry no derived value). First use: student name search (`apps/api/app/modules/families/`).
+  - Library documents — PROPOSED, deferred to a later version with the shared library (§7.3): a `language` column (`es`/`en`) and a generated `tsvector` that uses `spanish` or `english` accordingly.
+  - `btree_gist` — ACCEPTED (decided in [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md), 2026-10-19, with ISSUE-D4). Enabled by #38 (M3-02, revision `0021`, owner-delegated decision #38 E1 (a)) for the academic-period exclusion constraint `ex_academic_periods_no_overlap`; ISSUE-D4 / M4-02 reuses it (`CREATE EXTENSION IF NOT EXISTS` or nothing).
 
 #### ISSUE-D7 — Version pins (M)
 - **Problem:** The spec pins no major versions.
@@ -406,16 +442,16 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 #### ISSUE-J3 — Failed-job visibility and retry UI (M)
 - **Spec:** §9 "failed background tasks visible with retry controls".
 - **Problem:** Procrastinate ships no standalone web UI for this.
-- **Resolution — PROPOSED:**
-  - Add admin API endpoints in `administration` that read the Procrastinate job tables (status, attempts, last error) and trigger a retry.
-  - Restrict them to Owner and Administrator.
-  - Store error text sanitized, with no PII in task arguments. Tasks receive IDs, not personal data.
+- **Resolution — ACCEPTED** (issue #128, 2026-11-06; orchestrator-recommended, pending owner review):
+  - Admin API endpoints in `administration` (`GET /api/v1/jobs`, `GET /api/v1/jobs/tasks`, `POST /api/v1/jobs/{job_id}/retry`) read the Procrastinate job tables and retry a failed job with Procrastinate's own `procrastinate_retry_job_v2`, in the same transaction as the audit event `administration.job_retried`.
+  - Restricted to Owner and Administrator by the new permission `jobs.manage` (not delegable).
+  - **Implementation note (M8-11):** Procrastinate stores no error text, so the worker middleware `app.core.jobs.record_job_failure` writes `job_failures` (one row per failed job, latest failure wins): the exception class name, an `AppError` code and the SQLSTATE only, never the message, traceback or arguments (driver messages quote key values). Task arguments stay IDs only (`ALLOWED_ARGUMENT_TYPES`) and are never shown. Every registered task is in `RETRYABLE_TASKS` (args are `timestamp`/ids, recomputes from committed state, idempotent writes) or `NON_RETRYABLE_TASKS`, pinned against the registry in `tests/unit/test_job_rules.py`; the retry route refuses anything else. Aborted and stalled (`doing`) jobs and per-item failures inside a run are out of scope.
 
 #### ISSUE-J4 — Idempotency mechanics for generated financial records (M)
 - **Spec:** W4.1, W7.2, §6 "transactional and idempotent".
-- **Resolution — PROPOSED:**
-  - Each generated record carries a deterministic **natural key** with a unique constraint. Examples: `(tuition_plan_id, billing_period_start)`, `(class_session_id, student_id, charge_kind)`, `(expense_template_id, period_start)`.
-  - Jobs insert with `ON CONFLICT DO NOTHING` and treat a conflict as success.
+- **Resolution — ACCEPTED** (ADR-0006, 2026-10-27): see [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md).
+  - Each generated record carries a deterministic **natural key** with a partial unique index (see [`data-model.md`](data-model.md#39-charges)). Examples: `(class_session_id, student_id)` for session charges, `(tuition_plan_id, period_start)` for tuition periods, `(package_id)` for package expiry; later `(expense_template_id, period_start)` for recurring expenses.
+  - Jobs insert with `ON CONFLICT DO NOTHING` and treat a conflict as success. Jobs never use the API `idempotency_keys` table.
 
 ### 10.5 Scheduling
 
@@ -425,26 +461,28 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - whether an offered-but-unaccepted session holds the room and tutor slot,
   - whether acceptance applies to a whole series or to each occurrence,
   - what happens if the tutor never responds.
-- **Resolution — PROPOSED:**
-  - Session states: `draft → offered → confirmed`, plus `declined → unassigned`, and `cancelled` / `completed`.
-  - `offered` **holds** the room and tutor slot, so it counts in the overlap constraints.
-  - Acceptance is per **series assignment**. Substitutions are per occurrence.
-  - Offers have a configurable response deadline. An expired offer becomes an approval-inbox item.
-  - Only `confirmed` sessions appear on family calendars.
+- **Resolution — ACCEPTED** (ADR-0005, 2026-10-19): see [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md).
+  - Session states: `unassigned`, `offered`, `confirmed`, `completed`, `cancelled`, `skipped_closure`, `conflict`. There is no `draft`. `completed` and `cancelled` are final.
+  - The tutor is occupied in `offered`, `confirmed` and `completed`; the room and students in `unassigned`, `offered`, `confirmed` and `completed`.
+  - An offer covers one session or one series assignment from a date onward. Substitutions are one-occurrence offers: the session stays `confirmed` with its tutor until the substitute accepts ([ADR-0005 amendment A1](adr/0005-scheduling-invariants-overrides-and-recurrence.md#a1--substitution-offers-55-e1-2026-10-22-owner-delegated), #55). Offers are rows (`pending`, `accepted`, `declined`, `expired`, `withdrawn`).
+  - Deadline: `respond_by = min(offered_at + response_hours, first covered start)`, with `response_hours` in the M4-16 policy (default 48); the administrator may choose an earlier one. A periodic task expires offers every 5 minutes.
+  - On decline or expiry the covered sessions go to `unassigned` with the tutor cleared (room and students stay held), and a system-raised inbox item plus a notification are created.
+  - Families see only `confirmed` and `completed` sessions, plus cancelled or skipped occurrences of sessions they had already seen.
 
 #### ISSUE-SC2 — Recurrence materialization horizon and editing semantics (M)
 - **Spec:** §3 RRULE, rolling generation, exceptions, future-occurrence changes, holiday skipping.
-- **Resolution — PROPOSED:**
-  - Materialize occurrences on a rolling **12-week** horizon (configurable), extended nightly by a worker task.
-  - Each occurrence stores `series_id` and `original_start` (equivalent to RECURRENCE-ID) so exceptions survive regeneration.
-  - "This and future" edits end the old rule with `UNTIL` and create a new series. Past and completed occurrences are never rewritten.
-  - A center closure turns the affected occurrence into a `skipped_closure` record rather than deleting it.
-  - Whether a skipped occurrence creates a makeup obligation and a billing adjustment needs a **product decision** (open).
-  - Use the `python-dateutil` `rrule` implementation on the backend. This is a supporting library and needs approval.
+- **Resolution — ACCEPTED** (ADR-0005, 2026-10-19): see [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md).
+  - Rule subset: `FREQ=WEEKLY`, `INTERVAL` 1–4, `BYDAY`, optional `UNTIL` (local date) or `COUNT` (1–200). The API also takes and returns structured fields; the web app never parses `RRULE`s.
+  - Expansion in naive local time, then `ZoneInfo(TZID)` with `fold=0`.
+  - Rolling **12-week** horizon (`SCHEDULING_HORIZON_WEEKS`, 4–26), extended nightly at 08:00 UTC. Inserts use `UNIQUE (series_id, original_start)` with `ON CONFLICT DO NOTHING`; `is_exception` rows survive regeneration.
+  - "This and future" edits set `UNTIL` to the local day before the split and start a new series; matching future occurrences move (keeping their id), the others become `cancelled` (`series_changed`). Past, completed and cancelled occurrences are never rewritten.
+  - A series create refuses on any conflict; the nightly extension inserts a failing occurrence as `conflict` and raises an inbox item.
+  - A center closure turns the affected series occurrence into `skipped_closure` (holds nothing, never deleted). Product decision: **no makeup obligation**; a skipped occurrence is **never billable** (M6-14: its reconciliation job credits a posted charge with a `closure_credit` and restores it if the date reopens) and courses and tuition plans are not prorated. Makeups are ordinary sessions.
+  - Library approved: `python-dateutil>=2.9.0.post0,<3` (lockfile 2.9.0.post0) with `types-python-dateutil`, backend only, added by #53. No JavaScript `rrule`.
 
 #### ISSUE-SC3 — Effective capacity (A)
 - **Spec:** §3 "Each group/cohort has its own maximum size and respects room capacity".
-- **Resolution — PROPOSED:** Effective capacity = `min(group_max, room_capacity)`. Group max can be overridden (soft, per ISSUE-D4). Room capacity cannot.
+- **Resolution — ACCEPTED** (ADR-0005, 2026-10-19): see [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md). Effective capacity = `min(group_or_cohort_max, room_capacity)`; with no room, the group or cohort maximum; an individual session has exactly one student. The group or cohort maximum is soft (`group_capacity_exceeded`, up to the room capacity). Room capacity is hard.
 
 ### 10.6 Billing and finance
 
@@ -453,78 +491,83 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
   - §6 "Charges generated automatically from billable lessons".
   - §3 "Rescheduling normally preserves an existing charge".
 - **Problem:** The spec does not say whether a charge is created when a session is confirmed, when it occurs, or when closeout is approved. The rescheduling rule implies the charge exists before the session.
-- **Resolution — PROPOSED:**
-  - Per-session lessons: post the charge when the occurrence is **confirmed and materialized**.
-  - Courses: post at **enrollment**.
-  - Tuition plans: post per billing period by a periodic job.
-  - Packages: charge at purchase. Each delivered session then **debits package credit** at closeout approval.
-  - Cancellations and duration changes create adjustment entries according to policy.
+- **Resolution — ACCEPTED** (ADR-0006, 2026-10-27): see [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md) (E1, E3).
+  - Per-session lessons: a 15-minute sweeper (`billing:post_session_charges`) posts a charge for each `confirmed` or `completed` participant on the natural key `(class_session_id, student_id)`, at the price in effect on the local service date. Nothing posts inside the scheduling transaction; #60's `apply_confirmation_charge` was removed by #91. A reschedule keeps the charge.
+  - Group and course enrollments: post at **enrollment**, in the M4 hooks' Unit of Work, plus a sweeper.
+  - Tuition plans: one charge per plan per local period, from a daily job.
+  - Packages: charge at purchase. A covered session posts no charge; its units are consumed at closeout approval (`app/workflows/closeout_approval.on_closeout_approved`, #78: revision 1 only), first-expiring-first, or at the latest by the daily expiry job's fallback (#94 L1); an approved session the credit can't cover is charged by the session sweeper (#94 L3).
+  - `billing_settings.billing_starts_on` (`NULL` = billing off) is the floor date. Items with no billing account or no price are listed for staff as unbilled, never charged at zero.
+  - Cancellations follow the billing-owned `cancellation_billing_rules` (`credit` or `charge` per classification); duration changes create delta adjustments.
 
 #### ISSUE-F2 — Billed duration vs actual duration (A)
 - **Spec:** §3 "billable duration changes create adjustment entries"; tutors report actual hours.
-- **Resolution — PROPOSED:**
-  - Families are billed on **scheduled** duration.
-  - An admin-approved change to billable duration creates an adjustment.
-  - Tutors are paid on **approved actual** hours.
-  - The two values are stored separately on the class session.
+- **Resolution — ACCEPTED** (ADR-0006, 2026-10-27): see [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md) (E2).
+  - Families are billed on **`scheduled_minutes`**.
+  - A staff edit of `scheduled_minutes` (which needs `schedule.manage`) on a charged session posts one delta adjustment per charged participant: the catalog price for the new duration minus the current net, or pro rata by minutes when that duration has no price. Its `source_key` includes the session version.
+  - Tutors are paid on **approved** `actual_minutes` (M7); `actual_minutes` never changes a family charge.
+  - The two values are stored separately on the class session (#47).
 
 #### ISSUE-F3 — Ledger owner and balance derivation (M)
 - **Spec:** §6 family-consolidated billing; W4.4 balance formula.
-- **Resolution — PROPOSED:**
-  - A **family billing account** owns the ledger, and every charge also references the student it covers.
-  - Balance = Σ posted charges and adjustments − Σ allocations − Σ refunds/credits. The balance is computed, not stored, with an optional verified snapshot used only for reporting.
-  - Rows become immutable once `posted`. The application database role has no UPDATE on posted financial columns, enforced by a trigger or by revoked privileges.
+- **Resolution — ACCEPTED** (ADR-0006, 2026-10-27): see [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md) (E4, E5, E10).
+  - One **family billing account** per family (`family_id` unique) owns the ledger, and every charge also references the student it covers. A student with no family isn't billed; guardians in `family_guardians` see the account.
+  - Typed append-only tables: charges, signed adjustments against a charge, payments and reversals, allocations and releases, refunds. Credits are negative adjustments; account credit is a payment's unallocated remainder.
+  - `net = amount + Σ adjustments`; `open = net − Σ valid allocations`; outstanding = Σ open; account credit = Σ over unreversed payments of (amount − valid allocations − refunds); net balance = outstanding − account credit. Computed, not stored; a verified snapshot only for reporting.
+  - Posted rows are immutable through `BEFORE UPDATE OR DELETE` and `BEFORE TRUNCATE` triggers raising 42501 (the migration 0004 pattern). The runtime role `classora_app` (#165) can't disable or drop those triggers because it owns no table.
   - When several packages apply, credit is consumed **first-expiring-first**.
-  - Data model detail is deferred to `_docs/data-model.md`.
+  - Data model: [`data-model.md`](data-model.md).
 
 #### ISSUE-F4 — API idempotency keys (M)
 - **Spec:** §10 "PostgreSQL transactions and idempotency keys".
-- **Resolution — PROPOSED:**
-  - Financial POST endpoints (payments, allocations, refunds, payroll approval and payment) require an `Idempotency-Key` header.
-  - Store key, user, endpoint, request hash, response status and body in an `idempotency_keys` table for 7 days.
-  - A replay with the same hash returns the stored response. The same key with a different hash returns `422`.
-  - The frontend generates the key once per form submission.
+- **Resolution — ACCEPTED** (ADR-0006, 2026-10-27): see [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md) (E6).
+  - Every endpoint that posts a ledger row (manual charges and adjustments, package purchases, payments, allocations, reversals, refunds, withdrawal confirmations; later payroll approval and payment) requires an `Idempotency-Key` header of 16–128 `[A-Za-z0-9_-]` characters (`400 idempotency_key_required` / `idempotency_key_invalid`).
+  - The core `idempotency_keys` table stores user, endpoint, key, request hash, response status and body, `UNIQUE (user_id, endpoint, key)`, inserted in the business transaction; only `2xx` responses are stored; 7 days, purged hourly by `idempotency:purge_keys`.
+  - A replay with the same hash returns the stored response with `Idempotent-Replayed: true`. The same key with a different hash returns `422 idempotency_key_reused`.
+  - The frontend generates the key (`crypto.randomUUID()`) once per form submission and reuses it on retry.
 
 #### ISSUE-F5 — Receipt and payslip numbering (M)
 - **Problem:** Branded receipts need human-readable numbers. PostgreSQL sequences can leave gaps on rollback.
-- **Resolution — PROPOSED:** Allocate gap-free yearly series (`R-2026-000123`, `P-2026-000045`) from a counter row locked `FOR UPDATE` inside the posting transaction.
+- **Resolution — ACCEPTED** (ADR-0006, 2026-10-27): see [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md) (E13). Allocate gap-free yearly series (`R-2026-000123`; `P` reserved for payslips in M7) from the core `number_series (code, year)` row locked `FOR UPDATE` inside the posting transaction, after the billing account lock; the year is the center-local year of the issue instant. One receipt per payment, issued in the payment's transaction, stored as a frozen snapshot.
 
 #### ISSUE-F6 — Accrual-basis revenue recognition (A)
 - **Spec:** §8 cash and accrual reporting.
 - **Problem:** The spec does not say when prepaid packages, course fees and tuition count as earned revenue.
-- **Resolution — PROPOSED:**
-  - Accrual revenue is recognized on **service delivery** (session date) for packages and per-session charges, and per billing period for tuition plans.
-  - Course fees are recognized pro rata over the cohort's sessions.
-  - Unrecognized prepaid amounts are reported as deferred revenue.
-  - This needs **Owner confirmation**.
+- **Resolution — ACCEPTED** (ADR-0006, 2026-10-27): see [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md) (E7). A reporting rule for #117.
+  - Per-session charges are recognized on the session's current local date, net of adjustments.
+  - Packages are deferred revenue, recognized per consumption (`net price × units consumed / units granted`); expired unused credit is recognized on the expiry date.
+  - Course fees are recognized pro rata over the cohort's not-cancelled, not-skipped sessions; tuition periods and flat group fees in full on `period_start` (or the enrollment date).
+  - Unrecognized prepaid amounts are reported as deferred revenue. Cash basis uses `received_on`, net of reversals and refunds.
+  - Implemented by #117 (M7-14): `app/modules/reporting/` and ADR-0006 "Implementation notes (M7-14)".
 
 #### ISSUE-F7 — Who records payments and approves closeout (C)
 - **Spec:**
   - §6 says "Admins record… payments" while W4.3 says "Finance staff record an external payment".
   - §3 says "submission for approval… admins reapprove", §7 says "Academic Coordinators verify hours", and W3.3 says "authorized academic reviewer".
-- **Resolution — PROPOSED:**
-  - Define permissions, not roles, in the spec.
-  - `payment.record` is granted to Finance and Administrator.
-  - `teaching_hours.approve` is granted to Academic Coordinator and Administrator.
-  - `payroll.prepare` goes to Finance. `payroll.finalize` goes to the Owner and is delegable to an Administrator (ISSUE-S2).
+- **Resolution — ACCEPTED** (ADR-0006, 2026-10-27), `payment.record` and `payroll.*` parts: see [ADR-0006](adr/0006-financial-ledger-idempotency-and-numbering.md) (E8). Permissions, not roles. `billing.view`, `billing.manage` and `payment.record` go to the Owner, the Administrator and Finance Staff (not delegable; each seeded by the first issue that uses it: #364, #89, #96). Reversals and refunds use `finance.refund.approve` (Owner, delegable) with reauthentication. `payroll.prepare` goes to Finance Staff; `payroll.finalize` goes to the Owner and is delegable to an Administrator (ISSUE-S2). Academic Coordinators and tutors get no billing permission.
+- **`teaching_hours.approve` part ACCEPTED** (#77, owner-delegated, 2026-10-24): granted to the Owner (all permissions), the Administrator and the Academic Coordinator; not delegable; seeded. It reviews tutors' session closeouts (the `academics.session_closeout` approval type).
+- **Closeout review part ACCEPTED** (#78, owner-delegated, 2026-10-24): `teaching_hours.approve` holders approve, request changes or correct a closeout on the staff session page; closeouts have **no reject**; a reviewer can't approve, send back or correct a closeout they submitted (`403 closeout_self_review`) unless they hold the Owner role; approvals are immutable revisions and a correction supersedes.
+- **Progress report review part ACCEPTED** (#83, owner-delegated decision E4, 2026-10-25): spec W5.2 "an administrator approves" progress reports is read as staff with academic approval authority, as above: a new permission `progress_report.review` for the Owner (all permissions), the Administrator and the Academic Coordinator; not delegable; seeded. Holders approve, request changes or retract a submitted progress report on its review page (the `academics.progress_report` approval type, decided only there); there is no reject; a reviewer can't decide a report they wrote (`403 progress_report_self_review`) unless they hold the Owner role. Only approved reports reach families.
+- **`payroll.*` pointer** (#104, 2026-10-31): the payroll and expense permissions are in [ADR-0017](adr/0017-payroll-and-expenses.md) (E12), which is Proposed: orchestrator-recommended, pending owner review.
+- **Closeout on behalf note** (#301, owner-delegated, 2026-10-25): staff on-behalf closeouts are attributed to the tutor (`tutor_user_id` and the approval requester stay the tutor, for payroll); the on-behalf submitter can't approve or correct them (`403 closeout_self_review`), Owner excepted; an on-behalf submission is corrected, never sent back.
 
 ### 10.7 Identity, security and privacy
 
 #### ISSUE-S1 — Account recovery and activation without email (M; spec §18.2 open)
-- **Resolution — PROPOSED:**
-  - Invitations and password resets use **single-use, time-limited tokens** (24 h, stored hashed).
-  - An authorized staff member generates the token in the app and shows it as a link or QR code. Staff hand it over **out of band**, for example in person or by the center's existing phone contact.
-  - Self-registration requests stay `pending` until an administrator approves them.
-  - Alternative, which would be a **scope change**: transactional-only email (for example, Amazon SES) restricted to authentication messages.
+- **Resolution — ACCEPTED** (ADR-0007, 2026-10-18): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md) (amended by #29), which also records who may reset whom, the Owner bootstrap and reset commands, and the self-registration rules.
+  - Invitations and password resets use **single-use, time-limited tokens** (32 random bytes, 24 h, stored only as a SHA-256 hash). A new token invalidates any unredeemed token of the same kind; a used or expired token returns `410`.
+  - An authorized staff member generates the token in the app and shows it once as a link. Staff hand it over **out of band**, for example in person or by the center's existing phone contact.
+  - Self-registration requests (Parent/Guardian or Student only) stay `pending` until an administrator approves them.
+  - Considered and rejected: transactional-only email (for example, Amazon SES) restricted to authentication messages, which would be a **scope change** to spec §1 and §14.
 
 #### ISSUE-S2 — "Authorized Administrator" and multi-role users (A)
 - **Spec:** §2 predefined roles. §7 "Owner or authorized Administrator". §12 lists `UserRole`.
 - **Problem:**
   - "Authorized" implies per-user grants beyond the fixed roles.
   - `UserRole` implies a user can hold several roles, for example a tutor who is also a parent.
-- **Resolution — PROPOSED:**
+- **Resolution — ACCEPTED** (ADR-0007, 2026-10-18): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md).
   - Permission sets per role are fixed in code and seeded.
-  - The Owner can grant a small, enumerated set of **delegable permissions** to individual administrators: `payroll.finalize`, `schedule.override`, `finance.refund.approve`, `user.role.assign`.
+  - The Owner can grant a small, enumerated set of **delegable permissions** to individual administrators: `payroll.finalize`, `schedule.override`, `finance.refund.approve`, `user.admin_role.assign`.
+  - Administrators assign and remove Academic Coordinator, Finance Staff, Tutor, Student and Parent/Guardian. Only an Owner or a holder of `user.admin_role.assign` assigns Administrator. Only an Owner assigns Owner (not delegable). An invitation that carries a role counts as assigning it. The last active Owner cannot be removed or suspended.
   - A user may hold several roles, and their effective permissions are the union.
   - Record-level policies still apply. For example, a tutor-parent sees their own children as a guardian and their students as a tutor.
 
@@ -532,48 +575,51 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 - **Spec:** §10 says "Caddy/FastAPI enforcement". Standard Caddy has no rate-limit directive; it needs a third-party module and a custom build.
 - **Problem:**
   - FastAPI in-memory limits are per process.
-  - Behind CloudFront, the client IP must come from `CloudFront-Viewer-Address`/`X-Forwarded-For`, trusted only from CloudFront.
-- **Resolution — PROPOSED:**
-  - **Authentication endpoints** (login, reauthentication, token redemption, registration): a PostgreSQL-backed fixed-window counter keyed by IP and account. It is correct across processes.
-  - **General API:** a coarse in-process limit per worker process.
-  - Caddy trusts forwarded headers only from CloudFront ranges.
-  - A Caddy rate-limit module is optional and would ride on the custom build from ISSUE-I3.
+  - Behind a proxy (Caddy in AWS), the client IP must come from `X-Forwarded-For`, trusted only from that proxy.
+- **Resolution — ACCEPTED** (ADR-0008, 2026-10-18): see [ADR-0008](adr/0008-rate-limiting-without-redis.md) for the thresholds and the client-IP rule.
+  - **Authentication endpoints** (login, reauthentication, token redemption, registration): a PostgreSQL-backed fixed-window counter keyed by IP and account. It is correct across processes. Over the limit: `429` with `Retry-After`; no permanent lockout.
+  - **Client IP:** the TCP peer, unless it is in `TRUSTED_PROXIES` (empty by default; Caddy in AWS); only then the right-most untrusted `X-Forwarded-For` entry. Caddy is the first hop and sets that header to the TCP peer ([ADR-0010](adr/0010-hosting-edge-and-https.md); M9-06 (#614) sets `TRUSTED_PROXIES` in AWS).
+  - **General API:** none in M2. Implemented in #163 (M10-09): a coarse in-process limit per API process and client IP, `API_RATE_LIMIT_PER_MINUTE` (default 600, `0` = off), health probes exempt (ADR-0008 amendment 2026-11-12).
+  - A Caddy rate-limit module is not required.
 
 #### ISSUE-S4 — Session and CSRF parameters (M)
-- **Resolution — PROPOSED:**
-  - The cookie is `__Host-classora_session`: `Secure`, `HttpOnly`, `SameSite=Lax`. Only a SHA-256 hash of the token is stored.
-  - Staff sessions: 30-minute idle timeout, 12-hour absolute. Family and tutor sessions: 7-day idle, 30-day absolute.
-  - CSRF uses a synchronizer token issued with the session and sent in the `X-CSRF-Token` header. The server also checks `Origin`.
-  - A user's sessions are revoked when the user is suspended or archived, changes password, or changes role.
+- **Resolution — ACCEPTED** (ADR-0007, 2026-10-18): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md).
+  - The cookie is `__Host-classora_session`: `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, no `Domain`. The token is 32 random bytes; only its SHA-256 hash is stored. A local-only setting uses `classora_session` without `Secure` for plain-HTTP development and is refused outside the local environment.
+  - Staff sessions (Owner, Administrator, Academic Coordinator, Finance Staff): 30-minute idle timeout, 12-hour absolute. Family and tutor sessions: 7-day idle, 30-day absolute. Several roles: the strictest class applies.
+  - CSRF uses a synchronizer token derived from the session token (base64url of HMAC-SHA256 keyed with the session token), so nothing extra is stored, returned by `POST /api/v1/auth/login` and `GET /api/v1/auth/me`, kept in memory by the SPA and sent in the `X-CSRF-Token` header. The server also requires `Origin` to equal the app origin (`403` otherwise).
+  - A new session ID is issued on every login. A user's sessions are revoked when the user is suspended or archived, changes role, or has a password reset. A self-service password change revokes the other sessions and rotates the current one.
 
 #### ISSUE-S5 — List of sensitive actions requiring reauthentication (A)
-- **Resolution — PROPOSED:**
-  - Actions: role and permission changes, user suspension or archival, payroll finalization, refunds and reversals, financial corrections, retention/permanent-deletion actions, business-settings changes to payment methods or time zone, bulk exports of personal data.
-  - Reauthentication stays valid for 5 minutes on the session.
+- **Resolution — ACCEPTED** (ADR-0007, 2026-10-18): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md).
+  - Actions: role, permission and delegation changes (including invitations for staff roles), user suspension or archival, issuing password-reset tokens, payroll finalization, refunds and reversals, financial corrections, retention/permanent-deletion actions, business-settings changes to payment methods or time zone, bulk exports of personal data.
+  - Reauthentication stays valid for 5 minutes on the session, not extended by activity. A self-service password change asks for the current password instead.
 
 #### ISSUE-S6 — Guardian access to adult students (A)
 - **Spec:** §2 "Parents access only linked children… as permitted". §9 privacy and minors' data.
 - **Problem:** Students can be university students who are adults. The spec does not say who controls guardian visibility once a student is 18.
-- **Resolution — PROPOSED:**
+- **Resolution — ACCEPTED** (ADR-0007, 2026-10-18): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md). The 18th birthday is computed in the center's time zone, and the birthdate is required on the student profile.
   - Minors: linked guardians have default access.
   - Students aged 18 or older: academic visibility for guardians requires a recorded student consent.
   - Billing visibility follows the **family billing account** regardless of age.
   - Legal wording is still open (spec §18.9).
 
 #### ISSUE-S7 — Student account creation for minors (A)
-- **Resolution — PROPOSED:** Creating a login for a minor student requires a linked guardian's **consent record** (who, when, which privacy-notice version).
+- **Resolution — ACCEPTED** (ADR-0007, 2026-10-18): see [ADR-0007](adr/0007-authentication-sessions-recovery-and-delegation.md). Creating a login for a minor student requires a linked guardian's **consent record** (who, when, which privacy-notice version, scope and method). Revoking it suspends the student's login. No minimum age.
 
 ### 10.8 Notifications
 
-#### ISSUE-N1 — SSE with LISTEN/NOTIFY across processes and CloudFront (M; spec §18.4 open)
+#### ISSUE-N1 — SSE with LISTEN/NOTIFY across processes and the edge proxy (M; spec §18.4 open)
 - **Resolution — PROPOSED:**
   - Each API worker process holds **one** direct `LISTEN` connection (see ISSUE-D1) and fans events out to its own in-memory SSE subscribers.
   - The `NOTIFY` payload carries only `{user_id, notification_id}`, well under the 8 KB limit. Clients refetch the notification through the regular API.
   - `NOTIFY` is transactional, so it is issued in the same transaction as the insert.
-  - The server sends a heartbeat comment every 15 s. Caddy disables response buffering for the SSE route. Set CloudFront's origin response timeout so an idle stream stays open between heartbeats.
+  - The server sends a heartbeat comment every 15 s. Caddy disables response buffering for the SSE route. (There is no CloudFront, so no edge timeout to set; [ADR-0010](adr/0010-hosting-edge-and-https.md).)
   - The client reconnects with `Last-Event-ID` and falls back to TanStack Query polling.
+  - **Implementation note (M3-06, #42):** the per-process listener and the in-memory SSE fan-out are implemented as proposed (`administration/live.py`; `GET /api/v1/notifications/stream`; details in [`api.md`](api.md) "Live notifications"). Also implemented: `resync` events after a listener reconnect or a buffer overflow, `Last-Event-ID` replay of up to 100 notifications, a 10-streams-per-user limit per process, and streams that never refresh the session. The Caddy part (no buffering or compression on the stream route) is in the edge Caddyfile (M9-02, #610); there is no CloudFront part (ADR-0010). The resolution stays PROPOSED.
 
 ### 10.9 Files
+
+> **Deferred to a later version** (owner decision 2026-10-21: no uploads for now). ISSUE-FL1 to FL3 stay PROPOSED for that version (see §7.3).
 
 #### ISSUE-FL1 — Malware scanning on a micro instance (C/M; spec §18.5 open)
 - **Problem:**
@@ -603,41 +649,45 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 
 ### 10.10 Infrastructure and delivery
 
-#### ISSUE-I1 — Secret delivery path (A; spec §18.8 open)
+#### ISSUE-I1 — Secret delivery path (A; spec §18.8, decided)
 - **Spec:** "GitHub Secrets delivered via SSM".
 - **Problem:** It is unclear whether this means SSM Parameter Store or passing values through Run Command. Run Command parameters appear in command history and logs.
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - GitHub Actions writes secrets to **SSM Parameter Store `SecureString`** under `/classora/<env>/...`.
   - The instance role reads only its own environment's path.
   - The deploy script renders an env file at mode `0600` owned by root and passes it to Compose with `env_file`.
   - Run Command receives only the image digest and the release tag.
   - Secrets are never baked into images.
+- **Resolved:** [ADR-0012](adr/0012-secrets-and-configuration-delivery.md). Terraform generates the secrets into Parameter Store; GitHub holds none (no CI write of secrets); Run Command carries only a commit SHA.
 
-#### ISSUE-I2 — CloudFront-specific origin authentication (M; spec §18.8 open)
-- **Resolution — PROPOSED:**
+#### ISSUE-I2 — CloudFront-specific origin authentication (M; spec §18.8, decided)
+- **Proposal (before the ADR):**
   - CloudFront adds a custom origin header, `X-Origin-Verify: <secret>`, sourced from Parameter Store.
   - Caddy rejects any request without the header (`403`). This applies alongside the security group's CloudFront-prefix-list restriction.
   - Rotate the secret by accepting two values during the switchover.
+- **Superseded:** [ADR-0010](adr/0010-hosting-edge-and-https.md). There is no CloudFront, so there is no origin header to verify.
 
 #### ISSUE-I3 — Origin TLS certificate issuance (C)
 - **Problem:**
   - Caddy's default ACME HTTP-01 and TLS-ALPN-01 challenges need Let's Encrypt to reach ports 80/443 directly.
   - The security group allows only CloudFront, so issuance and renewal would fail.
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - Use the **DNS-01** challenge through Route 53, with a Caddy build that includes the Route 53 DNS module (built in CI with `xcaddy` and pushed to ECR).
   - The instance role may change only the `_acme-challenge.<origin-host>` record.
   - Alternative: an origin certificate managed outside Caddy.
+- **Resolved:** [ADR-0010](adr/0010-hosting-edge-and-https.md). With no CloudFront, the security group allows 80/443 from anywhere, so stock Caddy uses HTTP-01/TLS-ALPN-01. No DNS-01, no custom Caddy build.
 
 #### ISSUE-I4 — How the SPA is served (A)
 - **Spec:** "Caddy origin on EC2 → web/API containers".
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - The `web` image is a small Caddy image serving the Vite build with an SPA fallback. The edge Caddy proxies `/` to `web` and `/api/*` to `api`.
   - CloudFront behaviors: caching disabled for `/api/*` (forward cookies and `Origin`); long TTL for hashed `/assets/*`; `index.html` sent with `no-cache`.
   - `/health/*` is not exposed through CloudFront. The deploy script checks it from inside the host.
   - Alternative (saves RAM): build the SPA into the edge Caddy image.
+- **Resolved:** [ADR-0010](adr/0010-hosting-edge-and-https.md). The alternative was chosen: the `web` image is the edge Caddy holding the built SPA (one Caddy per host, to save RAM). There are no CloudFront behaviors; Caddy sets the cache headers itself.
 
 #### ISSUE-I5 — Deployment sequence and downtime on one host (A; spec §14, §18.7)
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - Accept **short downtime** in the first release.
   - The SSM-triggered deploy script:
     1. records the current digests in `/opt/classora/release/previous`;
@@ -647,82 +697,95 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
     5. polls `/health/ready` for N seconds;
     6. on failure, restores the previous digests and runs `up` again, without touching the database.
   - The worker stops gracefully with a configured timeout; jobs are idempotent (ISSUE-J4).
+- **Resolved:** [ADR-0011](adr/0011-infrastructure-as-code-images-and-release.md). Short downtime is accepted; `deploy.sh` follows these steps, with readiness polled for up to 90 s, triggered by a custom SSM document that accepts only a commit SHA.
 
 #### ISSUE-I6 — Promoting the same digest from `develop` to `main` (C)
 - **Spec:** §10 "promoted by immutable digest DEV → PROD", "tested changes → main".
 - **Problem:** A merge commit on `main` has a new SHA. A build triggered on `main` would produce a different digest from the one tested in DEV.
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - Images are built **only** on `develop` and tagged with the commit SHA. ECR tag immutability is on.
   - `main` is updated by **fast-forward only** from a tested `develop` commit.
   - The PROD workflow resolves the digest by that SHA and refuses to deploy if the digest is missing or was never deployed to DEV.
   - The release tag `vX.Y.Z-YYYYMMDD` is added as an extra ECR tag and a Git tag.
+- **Resolved:** [ADR-0011](adr/0011-infrastructure-as-code-images-and-release.md). Images are built only on `develop`; PROD deploys the release pull request's head commit, so `main` needs no fast-forward-only rule. The release tag is `vYYYY.MM.DD-<sha7>`.
 
 #### ISSUE-I7 — pgBackRest packaging and retention (M)
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - Use a custom PostgreSQL image with pgBackRest installed. `archive_command` uses pgBackRest, and a dedicated repository bucket per environment has versioning, encryption and lifecycle rules.
   - PROD: weekly full backups, daily differentials, 14 days of PITR.
   - DEV: weekly full backups, 3 days of PITR.
   - A worker or host cron runs a monthly restore drill into a scratch container.
   - DEV never receives copies of PROD data; it uses synthetic seeds only.
+- **Superseded:** [ADR-0013](adr/0013-backups-restore-drills-and-shutdown-data.md). No pgBackRest or PITR: a nightly `pg_dump` to S3 (14 days), daily EBS snapshots (7), restore drills, and a final PROD dump to an archive bucket (365 days).
 
 #### ISSUE-I8 — Micro instance budget (A; spec §14, §18.7)
 - **Problem:** PostgreSQL, PgBouncer, API, worker (WeasyPrint), two Caddy containers and the OTel agent must all fit in about 1 GiB.
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - Set explicit Compose `mem_limit` per service.
   - Run 1–2 Uvicorn workers. Worker concurrency 1–2.
   - PostgreSQL `shared_buffers` around 128 MB.
   - Add a swap file on the root volume.
   - Run a benchmark gate in phase 6, with Terraform instance-type variables ready to step up to a `small` instance.
+- **Resolved (starting sizes):** [ADR-0010](adr/0010-hosting-edge-and-https.md). t4g.small (2 GiB) for DEV, PROD and monitoring, t4g.medium for DEV with monitoring colocated; the limits above still apply. M10-04 (#152) runs the benchmark.
+- **Resolved (measured):** [ADR-0018](adr/0018-sizing-load-and-recovery-objectives.md) (M10-04, #152). t4g.small kept for DEV and PROD, t4g.micro rejected; PgBouncer pool, host healthchecks and `mem_limit`s tuned from the DEV load test ([`load-test-report.md`](load-test-report.md)).
 
 #### ISSUE-I9 — Network layout between DEV, PROD and monitoring (M)
 - **Problem:** The spec does not say whether the hosts share a VPC or how the monitoring ingest endpoints are reached privately.
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - Use one VPC with separate subnets and security groups per environment.
   - The monitoring host's OTLP ports accept traffic only from the DEV and PROD security groups, over private IPs.
   - DEV and PROD security groups do not allow traffic to each other.
+- **Resolved:** [ADR-0010](adr/0010-hosting-edge-and-https.md) and [ADR-0014](adr/0014-observability-error-tracking-and-alerting.md). One VPC, one Availability Zone, a public subnet per host, no NAT; the monitoring ingest port admits only the app hosts' security groups.
 
 #### ISSUE-I10 — Detecting destructive Terraform plans in DEV (M)
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - CI runs `terraform show -json` on the plan.
   - Any `delete` or `replace` action routes the apply to a GitHub environment that requires approval, even for DEV.
+- **Superseded:** [ADR-0011](adr/0011-infrastructure-as-code-images-and-release.md). There is no plan pipeline: applies and destroys run from the owner's machine after a shown plan, and `prevent_destroy` guards the long-lived resources.
 
 ### 10.11 Observability
 
-#### ISSUE-O1 — Sentry hosting (A; spec §18.3 open)
+#### ISSUE-O1 — Sentry hosting (A; spec §18.3, decided)
 - **Problem:** Self-hosted Sentry requires Redis, Kafka and ClickHouse. That contradicts "no Redis" and would overload the monitoring host.
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - Option A: Sentry SaaS. Set `send_default_pii=False`, scrub request bodies, and disable email alerts so it matches the dashboard-only alerting decision. Needs a privacy review because the data includes minors' records.
   - Option B: drop Sentry and record exceptions as OTel span events and logs in Tempo/Loki, with Grafana error dashboards.
   - Either option needs an ADR.
+- **Resolved:** [ADR-0014](adr/0014-observability-error-tracking-and-alerting.md). Option B: no Sentry; exceptions are span events and logs, with a Grafana errors dashboard.
 
 #### ISSUE-O2 — Host and database metrics without extra tools (M)
-- **Resolution — PROPOSED:**
+- **Proposal (before the ADR):**
   - Run a local OTel Collector **agent** on each environment host, using the `hostmetrics`, `docker_stats` and `postgresql` receivers plus file log collection.
   - It forwards over OTLP to the monitoring collector.
   - This avoids adding node_exporter or postgres_exporter. Procrastinate queue depth is exported as a custom metric by the API.
+- **Resolved:** [ADR-0014](adr/0014-observability-error-tracking-and-alerting.md). As proposed, with a Collector gateway on the monitoring host. Procrastinate queue metrics come from the agent's `sqlquery` receiver, not from API code.
 
 #### ISSUE-O3 — Grafana access path (A)
-- **Resolution — PROPOSED:** Grafana sits behind Caddy on the monitoring host with a Let's Encrypt certificate (DNS-01, as in ISSUE-I3), Grafana login with no anonymous access, and an optional security-group allowlist of admin IPs.
+- **Proposal (before the ADR):** Grafana sits behind Caddy on the monitoring host with a Let's Encrypt certificate (DNS-01, as in ISSUE-I3), Grafana login with no anonymous access, and an optional security-group allowlist of admin IPs.
+- **Resolved:** [ADR-0014](adr/0014-observability-error-tracking-and-alerting.md). Grafana behind Caddy with an automatic HTTP-01 certificate, a login and no anonymous access; no IP allowlist.
 
 ### 10.12 Frontend and UX
 
 #### ISSUE-X1 — Server-rendered text language (M)
 - **Problem:** PDFs (receipts, payslips, reports) and job error messages are rendered on the server, but react-i18next only covers the client.
-- **Resolution — PROPOSED:**
+- **Resolution — ACCEPTED** (ADR-0015, 2026-10-27): see [ADR-0015](adr/0015-server-side-i18n.md) (E14).
   - Problem Details `code` values are stable keys that the client translates.
-  - Notifications are stored as `{type, params}` and rendered on the client, so a language switch applies retroactively.
-  - Server-side PDFs use gettext catalogs plus Babel for date and number formatting. These are supporting libraries and need approval.
-  - Each PDF uses the recipient's preferred language, falling back to the center default.
+  - Notifications are stored as `{type, params}` and rendered on the client, so a language switch applies retroactively. Stored data stays language-neutral.
+  - Server-side PDFs use Jinja2 templates (autoescape, `StrictUndefined`) converted by WeasyPrint, with JSON server catalogs (`apps/api/app/i18n/locales/{es,en}/`) and in-house money and date formatting. Jinja2, WeasyPrint and the Debian Pango and font packages are approved and added by #98; gettext and Babel are not used.
+  - Each PDF uses the recipient's preferred language, falling back to the center default `es`; the language is stored on the document record. Receipts render synchronously.
 
 #### ISSUE-X2 — FullCalendar licensing (A; spec §18.6 open)
-- **Resolution — PROPOSED:**
-  - Ship with the free standard views (day/week/month/list) plus filters.
-  - Buy a FullCalendar premium license only if room or tutor **resource columns** are confirmed as required. The license key would be a build-time setting.
+- **Resolution — ACCEPTED** (ADR-0005, 2026-10-19): see [ADR-0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md).
+  - FullCalendar **v7, standard MIT views only** (day/week time grid, month, list, `interaction`), with tutor, student, room and type filters instead of resource columns. No premium package and no licence key; spec §18.6 is resolved without changing the spec.
+  - Pins: `@fullcalendar/react` 7.1.3 and `temporal-polyfill` 1.0.6, added by #57.
 
 #### ISSUE-X3 — Dashboard drag-and-drop (M)
 - **Spec:** §8 "drag/reorder widgets".
 - **Problem:** No library for drag-and-drop is listed.
-- **Resolution — PROPOSED:** Use `dnd-kit`, which is accessible and supports keyboard sorting as WCAG requires. It is a supporting library and needs approval. Widget layout is stored per user in `reporting` (ISSUE-A2).
+- **Resolution — ACCEPTED** (orchestrator-recommended on #127, owner-delegated, pending owner review): `dnd-kit`, which is accessible and supports keyboard sorting as WCAG requires.
+  - Pins (exact, MIT, peer `react >=16.8`): `@dnd-kit/core` 6.3.1, `@dnd-kit/sortable` 10.0.0, `@dnd-kit/utilities` 3.2.2.
+  - Lazy dialog chunk only (the dashboard's "Personalizar" dialog), with the pointer, touch and keyboard sensors and localized screen-reader instructions and announcements. "Subir"/"Bajar" buttons on every row are the WCAG 2.2 SC 2.5.7 single-pointer alternative.
+  - Widget layout is stored per user in `reporting` (ISSUE-A2, `dashboard_layouts`).
 
 #### ISSUE-X4 — OpenAPI client generator and drift check (M)
 - **Resolution — ACCEPTED** (human decision on GitHub issue #12, M1-12, 2026-10-17, owner JaimeSolisS; no ADR). Option (a) as proposed below; conventions in [`_docs/api.md`](api.md):
@@ -736,42 +799,47 @@ Every **Resolution** below is **PROPOSED** unless it is marked **ACCEPTED**. Acc
 #### ISSUE-L1 — Import pipeline (M)
 - **Spec:** §9 CSV/Excel imports with validation.
 - **Resolution — PROPOSED:**
-  - Upload the file (as in ISSUE-FL2), then create an `ImportJob`.
+  - Upload the file (as in ISSUE-FL2), then create an `ImportJob`. *(In this version the file goes directly in the request body and is parsed into staging, not stored; FL2 is deferred, §7.3.)*
   - A worker parses the rows into a staging table and produces a per-row validation report.
   - An admin reviews the report and **commits** it. The commit runs as one transaction per batch, with natural-key deduplication.
   - Financial imports post as ordinary ledger entries with an import reference.
+- **Implementation note (M8-05, #122):** CSV only (UTF-8, `,` or `;`; `.xlsx` waits for an approved spreadsheet dependency). The browser sends the file's text in a JSON body (at most 2 MiB); the API parses and validates it **in the request** (no worker step, no stored file) into `import_rows` staging rows with a per-row report, in a fixed number of statements. `POST …/commit` marks the job `committing` and queues `administration:run_imports` (also every 15 minutes), which commits the ready rows in batches of 100, one transaction per batch, as the committer, under a per-kind advisory lock, re-checking natural-key duplicates per batch; a failed batch rolls back and the job can be retried. Staged values are cleared on commit and deleted on discard or 7-day expiry. Kinds (`students`, `tutors`; #123 schedules and opening balances) live in their owning modules and register with `administration.service.register_import_kind`. See `_docs/api.md` Imports and `_docs/data-model.md` §20.
+- **Implementation note (M8-06, #123):** two more kinds. `schedules` (`scheduling`, batches of 20): one recurring individual series per row through the real `create_class_series`, so every conflict check runs **at commit**, across the rows of one file too; any conflict fails the row (no override column). `opening_balances` (`billing`): one positive manual charge per row through `post_manual_charge` (account lock last, audited as the committer) with an **import reference** (`charges.import_job_id` + `import_row_number`, migration 0089), deduplicated four ways (job status, per-kind lock + re-check, `uq_charges_import_line` across jobs, `uq_charges_import_row` per line). These are the "financial imports … with an import reference" above; payments, credits and every other money row are not importable. The task puts the run's settings in each batch session (`administration.service.run_settings`) for the scheduling horizon.
 
 #### ISSUE-L2 — Retention vs immutability (A; spec §14, §18.9)
 - **Resolution — PROPOSED:**
   - Retention jobs **anonymize** personal fields on records that must be kept (financial, audit) and hard-delete only records with no legal hold.
   - Retention periods per category are business settings with a floor set in code.
   - Values are pending legal review.
+- **Implementation note (M8-12, #129):** without the legal values, #129 builds only what needs none: recovery of the five soft-deleted academic kinds for 30 days (`GET /api/v1/deleted-records`, `POST …/{kind}/{id}/restore`) and the daily `administration:run_retention` job with a rule registry (`register_retention_rule`): `academics.deleted_records` hard-deletes those records 30 days after deletion (ORM deletes, so `delete` audit events with no actor; migration 0094 lets the `progress_reports` trigger delete soft-deleted rows only) and `jobs.finished_jobs` deletes succeeded, cancelled and aborted jobs 30 days after their last event (failed jobs are kept). A unit pin keeps every rule off the protected tables (billing, payroll, finance, audit, consent, privacy acceptances, import/export job metadata). The policy is `_docs/data-model.md` "Retention and deletion". Anonymizing former students, guardians and users, redacting their audit values and the configurable legal periods wait for #155 in the follow-up issue (M10-07b); this ISSUE stays PROPOSED until then.
 
 ---
 
 ## 11. Proposed ADR backlog
 
-These ADRs record the accepted resolutions. ADR-0001, ADR-0003, ADR-0004 and ADR-0016 are **Accepted**. All others are **PROPOSED**.
+These ADRs record the accepted resolutions. ADR-0001 to ADR-0008 and ADR-0010 to ADR-0016 are **Accepted**. [ADR-0017](adr/0017-payroll-and-expenses.md) is **Proposed**: orchestrator-recommended, pending owner review, and M7 builds on it meanwhile. All others are **PROPOSED**.
 
 | ADR | Topic | Issues |
 |---|---|---|
 | [0001](adr/0001-runtime-version-pins.md) | Runtime version pins — **Accepted** | D7 |
-| 0002 | Module boundaries and the reporting module | A1, A2 |
+| [0002](adr/0002-module-boundaries-and-reporting.md) | Module boundaries and the reporting module — **Accepted** | A1, A2 |
 | [0003](adr/0003-database-connection-topology.md) | Database connection topology (PgBouncer, direct connections) and background jobs — **Accepted** | D1, J1, J2 (N1 stays PROPOSED apart from the direct `LISTEN` connection) |
 | [0004](adr/0004-money-time-and-date-representation.md) | Money, time and date representation — **Accepted** | D2, D3 |
-| 0005 | Scheduling invariants, overrides and recurrence | D4, SC1–SC3 |
-| 0006 | Financial ledger, idempotency and numbering | F1–F7, J4 |
-| 0007 | Authentication, sessions, recovery and delegated permissions | S1–S7 |
-| 0008 | Rate limiting without Redis | S3 |
-| 0009 | File scanning, release and previews | FL1–FL3 |
-| 0010 | Edge: CloudFront origin auth, TLS, SPA serving | I2–I4 |
-| 0011 | Release promotion and single-host deployment | I5, I6, I10 |
-| 0012 | Secrets delivery | I1 |
-| 0013 | Backups and restore drills | I7 |
-| 0014 | Error tracking (Sentry decision) and telemetry collection | O1–O3 |
-| 0015 | Server-side i18n | X1 |
+| [0005](adr/0005-scheduling-invariants-overrides-and-recurrence.md) | Scheduling invariants, overrides, recurrence and calendar — **Accepted** | D4, D6 (`btree_gist`), SC1–SC3, X2 |
+| [0006](adr/0006-financial-ledger-idempotency-and-numbering.md) | Financial ledger, idempotency and numbering — **Accepted** | F1–F7 (F7 `payment.record` and `payroll.*` parts), J4 |
+| [0007](adr/0007-authentication-sessions-recovery-and-delegation.md) | Authentication, sessions, recovery and delegated permissions — **Accepted** | G2, S1, S2, S4–S7 |
+| [0008](adr/0008-rate-limiting-without-redis.md) | Rate limiting without Redis — **Accepted** | S3 |
+| 0009 | File scanning, release and previews — *deferred to a later version* | FL1–FL3 |
+| [0010](adr/0010-hosting-edge-and-https.md) | Hosting, edge and HTTPS — **Accepted** | I2 (superseded), I3, I4, I8 (starting sizes), I9 |
+| [0011](adr/0011-infrastructure-as-code-images-and-release.md) | Infrastructure as code, images and release — **Accepted** | I5, I6, I10 (superseded) |
+| [0012](adr/0012-secrets-and-configuration-delivery.md) | Secrets and configuration delivery — **Accepted** | I1 |
+| [0013](adr/0013-backups-restore-drills-and-shutdown-data.md) | Backups, restore drills and data at shutdown — **Accepted** | I7 (superseded) |
+| [0014](adr/0014-observability-error-tracking-and-alerting.md) | Observability, error tracking and alerting — **Accepted** | O1–O3 |
+| [0015](adr/0015-server-side-i18n.md) | Server-side i18n — **Accepted** | X1 |
 | [0016](adr/0016-ci-security-tooling.md) | CI security tooling (dependency, secret, SAST and image scans) — **Accepted** | #11 (M1-11) |
+| [0017](adr/0017-payroll-and-expenses.md) | Payroll and expenses — **Proposed** (orchestrator-recommended, pending owner review) | #104 (M7-01), E1–E18 |
+| [0018](adr/0018-sizing-load-and-recovery-objectives.md) | Sizing, load profile and recovery objectives — **Accepted** (owner-delegated, pending owner review) | I8 (measured), #152 (M10-04), E1–E7 |
 
 ## 12. Decisions that need the product owner rather than engineering
 
-These items in §10 are product or business decisions, not technical ones: ISSUE-F1, F2, F6, F7, SC1 (offer deadline), SC2 (makeup after closures), S1 (recovery delivery), S5, S6, X2 (premium calendar), O1 (third-party data processing) and L2 (retention periods).
+These items in §10 are product or business decisions, not technical ones: ISSUE-F1, F2, F6, F7 (F1, F2, F6 and F7 decided in #86 (ADR-0006)), SC1 (offer deadline; decided in #46 (ADR-0005)), SC2 (makeup after closures; decided in #46 (ADR-0005)), S1 (recovery delivery), S5, S6 (S1, S5 and S6 decided in #19, ADR-0007), X2 (premium calendar; decided in #46 (ADR-0005)), O1 (third-party data processing; decided by the owner on 2026-11-11, no Sentry, [ADR-0014](adr/0014-observability-error-tracking-and-alerting.md)) and L2 (retention periods). The (product) items of #104 (payroll and expenses) are recommended by the orchestrator in [ADR-0017](adr/0017-payroll-and-expenses.md), flagged for owner review, and not yet decided by the owner.

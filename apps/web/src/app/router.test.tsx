@@ -1,17 +1,16 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyLanguage } from '@/i18n';
-import { resetUiStore, useUiStore } from '@/stores/ui';
-import {
-  buttonNamed,
-  renderApp,
-  stubPendingFetch,
-  type RenderedApp,
-} from '@/test/render-app';
+import { SIDEBAR_STORAGE_KEY } from '@/app/layout/sidebar';
+import { reloadSidebarPreference, resetUiStore, useUiStore } from '@/stores/ui';
+import { meAs, stubApi, stubSignedIn, TEST_USER } from '@/test/api-stub';
+import { pressEscape } from '@/test/dom';
+import { buttonNamed, renderApp, type RenderedApp } from '@/test/render-app';
 import { routes } from './router';
 
 // B/H7: route tree, layout, 404, skip link, guard, nav toggle and the header
-// switchers.
+// switchers. Signed in through a stubbed /auth/me (#28 I2): every page sits
+// behind the guard.
 
 let app: RenderedApp | undefined;
 
@@ -20,7 +19,7 @@ const FOCUSABLE =
 
 beforeEach(() => {
   applyLanguage('en');
-  stubPendingFetch();
+  stubSignedIn();
 });
 
 afterEach(() => {
@@ -29,23 +28,540 @@ afterEach(() => {
   resetUiStore();
   vi.unstubAllGlobals();
   window.localStorage.clear();
+  reloadSidebarPreference();
 });
 
 describe('route tree', () => {
-  it('is layout → guard → home and 404, nothing else', () => {
+  it('is layout → login, invite, reset, register and guard → home, pages and 404, nothing else', () => {
     expect(routes).toHaveLength(1);
     const [root] = routes;
     expect(root!.path).toBe('/');
     expect(root!.errorElement).toBeTruthy();
-    const [guard] = root!.children!;
-    expect(root!.children).toHaveLength(1);
+    const [login, invite, reset, register, guard] = root!.children!;
+    expect(root!.children).toHaveLength(5);
+    // /login, /invite, /reset and /register are the only pages outside the
+    // guard (#28 B1, #29 J1, #30 J1, #169 F1).
+    expect(login!.path).toBe('login');
+    expect(login!.children).toBeUndefined();
+    expect(invite!.path).toBe('invite');
+    expect(invite!.children).toBeUndefined();
+    expect(invite!.errorElement).toBeTruthy();
+    expect(reset!.path).toBe('reset');
+    expect(reset!.children).toBeUndefined();
+    expect(reset!.errorElement).toBeTruthy();
+    expect(register!.path).toBe('register');
+    expect(register!.children).toBeUndefined();
+    expect(register!.errorElement).toBeTruthy();
+    expect(guard!.id).toBe('guard');
     expect(guard!.path).toBeUndefined();
     expect(guard!.errorElement).toBeTruthy();
     const children = guard!.children!;
     expect(children.map((r) => (r.index ? 'index' : r.path))).toEqual([
       'index',
+      'users',
+      'users/:userId',
+      'invitations',
+      'password-resets',
+      'approvals',
+      'registration-requests',
+      'catalog/education-levels',
+      'catalog/education-levels/:levelId',
+      'catalog/periods',
+      'catalog/closures',
+      'catalog/classrooms',
+      'students',
+      'students/new',
+      'students/:studentId',
+      'students/:studentId/edit',
+      'guardians',
+      'guardians/new',
+      'guardians/:guardianId',
+      'guardians/:guardianId/edit',
+      'families',
+      'families/new',
+      'families/:familyId',
+      'families/:familyId/edit',
+      'tutors',
+      'tutors/:userId',
+      'schedule',
+      'schedule/new',
+      'schedule/overdue-closeouts',
+      'schedule/sessions/:sessionId',
+      'schedule/series/:seriesId',
+      'schedule/requests/:requestId',
+      'schedule/change-requests/:requestId',
+      'offers',
+      'courses',
+      'courses/templates/new',
+      'courses/templates/:templateId',
+      'courses/cohorts',
+      'courses/cohorts/new',
+      'courses/cohorts/:cohortId',
+      'settings',
+      'settings/scheduling-policies',
+      'groups',
+      'groups/new',
+      'groups/:groupId',
+      'requests',
+      'requests/new',
+      'my-billing',
+      'my-schedule',
+      'my-schedule/sessions/:sessionId/attendance',
+      'my-schedule/sessions/:sessionId/closeout',
+      'my-schedule/sessions/:sessionId/notes',
+      'change-requests',
+      'academics/evaluation-templates',
+      'academics/evaluation-templates/new',
+      'academics/evaluation-templates/:templateId',
+      'students/:studentId/history',
+      'students/:studentId/evaluations/new',
+      'evaluations/:evaluationId',
+      'my-history',
+      'students/:studentId/learning-plans',
+      'students/:studentId/learning-plans/new',
+      'learning-plans/:planId',
+      'learning-plans/:planId/edit',
+      'my-learning-plans',
+      'my-learning-plans/:planId',
+      'assignments',
+      'assignments/new',
+      'assignments/:assignmentId',
+      'assignments/:assignmentId/edit',
+      'students/:studentId/assignments',
+      'students/:studentId/assignments/:assignmentId',
+      'my-homework',
+      'my-homework/:assignmentId',
+      'progress-reports',
+      'progress-reports/:reportId',
+      'students/:studentId/progress-reports',
+      'students/:studentId/progress-reports/new',
+      'students/:studentId/progress-reports/:reportId',
+      'my-progress-reports',
+      'my-progress-reports/:reportId',
+      'students/:studentId/progress',
+      'my-progress',
+      'billing/prices',
+      'billing/prices/:priceId',
+      'billing/unbilled',
+      'billing/settings',
+      'billing',
+      'billing/discounts',
+      'billing/discounts/:discountId',
+      'billing/custom-prices',
+      'billing/tuition-plans',
+      'billing/tuition-plans/:planId',
+      'billing/packages',
+      'billing/packages/:packageId',
+      'billing/package-products',
+      'billing/package-products/:productId',
+      'billing/accounts',
+      'billing/accounts/:familyId',
+      'billing/overdue',
+      'payroll',
+      'payroll/tutors',
+      'payroll/tutors/:tutorUserId',
+      'payroll/settings',
+      'payroll/pay-rules',
+      'payroll/unresolved',
+      'payroll/pay-item-types',
+      'payroll/periods',
+      'payroll/periods/:periodId',
+      'my-pay',
+      'my-pay/periods/:periodId',
+      'expenses',
+      'expenses/records',
+      'expenses/records/:expenseId',
+      'expenses/templates',
+      'expenses/templates/:templateId',
+      'expenses/categories',
+      'expenses/vendors',
+      'reports',
+      'reports/kpis',
+      'reports/finance',
+      'audit',
+      'settings/payments',
+      'imports',
+      'imports/:importId',
+      'exports',
+      'recently-deleted',
+      'jobs',
+      'account/password',
+      'account/notifications',
+      'privacy-notice',
       '*',
     ]);
+    expect(children[1]!.handle).toEqual({ permission: 'user.view' });
+    expect(children[2]!.handle).toEqual({ permission: 'user.view' });
+    expect(children[3]!.handle).toEqual({ permission: 'user.invite' });
+    expect(children[4]!.handle).toEqual({
+      permission: 'user.password_reset.issue',
+    });
+    // #40 F1, F2: any review permission; the old path only redirects.
+    expect(children[5]!.handle).toEqual({
+      anyPermission: [
+        'registration.review',
+        'qualification.review',
+        'schedule.assign',
+        'schedule.manage',
+        'tutor.manage',
+        'teaching_hours.approve',
+        'progress_report.review',
+        'payroll.finalize',
+      ],
+    });
+    expect(children[6]!.handle).toBeUndefined();
+    // #32 H1, I1.
+    expect(children[7]!.handle).toEqual({ permission: 'catalog.manage' });
+    expect(children[8]!.handle).toEqual({ permission: 'catalog.manage' });
+    // #38 E1.
+    expect(children[9]!.handle).toEqual({ permission: 'catalog.manage' });
+    expect(children[10]!.handle).toEqual({ permission: 'catalog.manage' });
+    // #39 D1.
+    expect(children[11]!.handle).toEqual({ permission: 'catalog.manage' });
+    // #33 I1, J1, J3.
+    expect(children[12]!.handle).toEqual({ permission: 'student.view' });
+    expect(children[13]!.handle).toEqual({ permission: 'student.manage' });
+    expect(children[14]!.handle).toEqual({ permission: 'student.view' });
+    expect(children[15]!.handle).toEqual({ permission: 'student.manage' });
+    // #34 I1-I3.
+    expect(children[16]!.handle).toEqual({ permission: 'guardian.view' });
+    expect(children[17]!.handle).toEqual({ permission: 'family.manage' });
+    expect(children[18]!.handle).toEqual({ permission: 'guardian.view' });
+    expect(children[19]!.handle).toEqual({ permission: 'family.manage' });
+    // #172 H1-H3.
+    expect(children[20]!.handle).toEqual({ permission: 'guardian.view' });
+    expect(children[21]!.handle).toEqual({ permission: 'family.manage' });
+    expect(children[22]!.handle).toEqual({ permission: 'guardian.view' });
+    expect(children[23]!.handle).toEqual({ permission: 'family.manage' });
+    // #43 E1.
+    expect(children[24]!.handle).toEqual({ permission: 'tutor.view' });
+    expect(children[25]!.handle).toEqual({ permission: 'tutor.view' });
+    // #57 D1.
+    expect(children[26]!.handle).toEqual({ permission: 'schedule.view' });
+    // #48 F1.
+    expect(children[27]!.handle).toEqual({ permission: 'schedule.manage' });
+    // #301b A1.
+    expect(children[28]!.handle).toEqual({
+      permission: 'teaching_hours.approve',
+    });
+    // #52 H2, H1.
+    expect(children[29]!.handle).toEqual({ permission: 'schedule.view' });
+    // #54b B1.
+    expect(children[30]!.handle).toEqual({ permission: 'schedule.view' });
+    // #60 H1.
+    expect(children[31]!.handle).toEqual({ permission: 'schedule.manage' });
+    // #62 G1.
+    expect(children[32]!.handle).toEqual({ permission: 'schedule.manage' });
+    expect(children[33]!.handle).toEqual({ role: 'tutor' });
+    // #64 G1.
+    expect(children[34]!.handle).toEqual({ permission: 'course.view' });
+    expect(children[35]!.handle).toEqual({ permission: 'course.manage' });
+    expect(children[36]!.handle).toEqual({ permission: 'course.view' });
+    // #243 A2, #246 B2: the cohorts for course.view, tutors, students and
+    // guardians; the create form needs schedule.manage.
+    const cohorts = {
+      anyOf: [
+        { permission: 'course.view' },
+        { anyRole: ['tutor', 'student', 'guardian'] },
+      ],
+    };
+    expect(children[37]!.handle).toEqual(cohorts);
+    expect(children[38]!.handle).toEqual({ permission: 'schedule.manage' });
+    expect(children[39]!.handle).toEqual(cohorts);
+    // #37 H3.
+    expect(children[40]!.handle).toEqual({ permission: 'settings.manage' });
+    // #61 F1.
+    expect(children[41]!.handle).toEqual({ permission: 'settings.manage' });
+    // #234 A3, #246 B1: staff with schedule.view, students, tutors and
+    // guardians; the create form needs schedule.manage.
+    const groups = {
+      anyOf: [
+        { permission: 'schedule.view' },
+        { anyRole: ['student', 'tutor', 'guardian'] },
+      ],
+    };
+    expect(children[42]!.handle).toEqual(groups);
+    expect(children[43]!.handle).toEqual({ permission: 'schedule.manage' });
+    expect(children[44]!.handle).toEqual(groups);
+    // #59 F1: guardians and students (the API's record policy decides).
+    const requests = { anyRole: ['guardian', 'student'] };
+    expect(children[45]!.handle).toEqual(requests);
+    expect(children[46]!.handle).toEqual(requests);
+    // #388 A2: the family billing portal, guardians only.
+    expect(children[47]!.handle).toEqual({ anyRole: ['guardian'] });
+    // #67 E1: tutors, students and guardians (the API decides).
+    expect(children[48]!.handle).toEqual({
+      anyRole: ['tutor', 'student', 'guardian'],
+    });
+    // #76 G1: tutors only (the API's record policy decides).
+    expect(children[49]!.handle).toEqual({ role: 'tutor' });
+    // #77 G1: tutors only (the API's record policy decides).
+    expect(children[50]!.handle).toEqual({ role: 'tutor' });
+    // #79 H1: tutors only (the API's record policy decides).
+    expect(children[51]!.handle).toEqual({ role: 'tutor' });
+    // #62b B1: guardians, students and tutors (the API decides).
+    expect(children[52]!.handle).toEqual({
+      anyRole: ['guardian', 'student', 'tutor'],
+    });
+    // #308 A1: the evaluation pages (all code-split).
+    expect(children[53]!.handle).toEqual({ permission: 'evaluation.manage' });
+    expect(children[54]!.handle).toEqual({ permission: 'evaluation.manage' });
+    expect(children[55]!.handle).toEqual({ permission: 'evaluation.manage' });
+    expect(children[56]!.handle).toEqual({ permission: 'student.view' });
+    expect(children[57]!.handle).toEqual({ role: 'tutor' });
+    expect(children[58]!.handle).toEqual({
+      anyOf: [{ role: 'tutor' }, { permission: 'evaluation.manage' }],
+    });
+    expect(children[59]!.handle).toEqual({
+      anyRole: ['student', 'guardian'],
+    });
+    for (const index of [53, 54, 55, 56, 57, 58, 59]) {
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    // #310 A1: the learning plan pages (all code-split). The staff and
+    // tutor URLs let the family roles through, so the page can send them
+    // to their own page; the family pages serve students and guardians.
+    const planRoute = {
+      anyOf: [
+        { role: 'tutor' },
+        { permission: 'learning_plan.manage' },
+        { anyRole: ['student', 'guardian'] },
+      ],
+    };
+    for (const index of [60, 61, 62, 63]) {
+      expect(children[index]!.handle).toEqual(planRoute);
+    }
+    for (const index of [64, 65]) {
+      expect(children[index]!.handle).toEqual({
+        anyRole: ['student', 'guardian'],
+      });
+    }
+    for (const index of [60, 61, 62, 63, 64, 65]) {
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    // #313 A1: the homework pages (all code-split). The working URLs let
+    // the family roles through, so the page can send them to /my-homework;
+    // the form is for tutors; the family pages serve students and
+    // guardians.
+    const homeworkRoute = {
+      anyOf: [
+        { role: 'tutor' },
+        { permission: 'assignment.review' },
+        { anyRole: ['student', 'guardian'] },
+      ],
+    };
+    for (const index of [66, 68, 70, 71]) {
+      expect(children[index]!.handle).toEqual(homeworkRoute);
+    }
+    for (const index of [67, 69]) {
+      expect(children[index]!.handle).toEqual({ role: 'tutor' });
+    }
+    for (const index of [72, 73]) {
+      expect(children[index]!.handle).toEqual({
+        anyRole: ['student', 'guardian'],
+      });
+    }
+    for (const index of [66, 67, 68, 69, 70, 71, 72, 73]) {
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    // #315 A1: the progress report pages (all code-split). The working
+    // URLs let the family roles through, so the page can send them to
+    // /my-progress-reports; the start step is for tutors; the family pages
+    // serve students and guardians.
+    const reportRoute = {
+      anyOf: [
+        { role: 'tutor' },
+        { permission: 'progress_report.review' },
+        { anyRole: ['student', 'guardian'] },
+      ],
+    };
+    for (const index of [74, 75, 76, 78]) {
+      expect(children[index]!.handle).toEqual(reportRoute);
+    }
+    expect(children[77]!.handle).toEqual({ role: 'tutor' });
+    for (const index of [79, 80]) {
+      expect(children[index]!.handle).toEqual({
+        anyRole: ['student', 'guardian'],
+      });
+    }
+    for (const index of [74, 75, 76, 77, 78, 79, 80]) {
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    // #322 A2: the progress pages (code-split). The staff URL lets the
+    // family roles through, so the page can send them to /my-progress; the
+    // family page serves students and guardians.
+    expect(children[81]!.handle).toEqual({
+      anyOf: [
+        { permission: 'evaluation.manage' },
+        { role: 'tutor' },
+        { anyRole: ['student', 'guardian'] },
+      ],
+    });
+    expect(children[82]!.handle).toEqual({ anyRole: ['student', 'guardian'] });
+    for (const index of [81, 82]) {
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    // #363 A1: the price catalog (code-split), billing.manage holders.
+    for (const index of [83, 84]) {
+      expect(children[index]!.handle).toEqual({ permission: 'billing.manage' });
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    // #366: the unbilled sessions and the billing settings (code-split),
+    // billing.view holders; /billing for billing.view or billing.manage.
+    for (const index of [85, 86]) {
+      expect(children[index]!.handle).toEqual({ permission: 'billing.view' });
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    expect(children[87]!.handle).toEqual({
+      anyPermission: ['billing.view', 'billing.manage'],
+    });
+    expect(children[87]!.lazy).toBeTypeOf('function');
+    // #367 A1: discounts and custom prices (code-split), billing.manage.
+    for (const index of [88, 89, 90]) {
+      expect(children[index]!.handle).toEqual({ permission: 'billing.manage' });
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    // #374 A1: tuition plans (code-split), billing.view holders.
+    for (const index of [91, 92]) {
+      expect(children[index]!.handle).toEqual({ permission: 'billing.view' });
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    // #377 A1: packages (code-split); sold for billing.view, products for
+    // billing.manage.
+    for (const [index, permission] of [
+      [93, 'billing.view'],
+      [94, 'billing.view'],
+      [95, 'billing.manage'],
+      [96, 'billing.manage'],
+    ] as const) {
+      expect(children[index]!.handle).toEqual({ permission });
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    // #379 A2: the family billing accounts (code-split), billing.view.
+    // #382 A2: the overdue accounts (code-split), billing.view.
+    for (const index of [97, 98, 99]) {
+      expect(children[index]!.handle).toEqual({ permission: 'billing.view' });
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    // #425 A3: payroll (code-split, the index a redirect), then My pay.
+    const payroll = { anyPermission: ['payroll.view', 'payroll.manage'] };
+    const review = {
+      anyPermission: ['payroll.view', 'payroll.prepare', 'payroll.finalize'],
+    };
+    // #110b A3: /payroll also opens for a delegated Administrator.
+    expect(children[100]!.handle).toEqual({ anyOf: [payroll, review] });
+    expect(children[100]!.element).toBeDefined();
+    // #444 A1, #454 A1: the pay rules, the unresolved work and the pay item
+    // types are code-split the same.
+    for (const index of [101, 102, 103, 104, 105, 106]) {
+      expect(children[index]!.handle).toEqual(payroll);
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    // #110b A1: the periods and a period's review (code-split).
+    for (const index of [107, 108]) {
+      expect(children[index]!.handle).toEqual(review);
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    // #425 F, M7-10b A1: My pay and a finalized period, tutors only.
+    for (const index of [109, 110]) {
+      expect(children[index]!.handle).toEqual({ anyRole: ['tutor'] });
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    // M7-11b A3: expenses, the index included, code-split; M7-12b A2: the
+    // expense records, expense.view; M7-13b A2: the recurring templates,
+    // expense.view.
+    for (const index of [111, 116, 117]) {
+      expect(children[index]!.handle).toEqual({
+        permission: 'expense.configure',
+      });
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    for (const index of [112, 113, 114, 115]) {
+      expect(children[index]!.handle).toEqual({ permission: 'expense.view' });
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    // M8-09b A2: /reports redirects to the KPIs (code-split), both for
+    // finance.report.view or schedule.view; the financial report (M7-14b
+    // A2, code-split) stays finance.report.view.
+    const kpis = { anyPermission: ['finance.report.view', 'schedule.view'] };
+    expect(children[118]!.handle).toEqual(kpis);
+    expect(children[118]!.element).toBeDefined();
+    expect(children[119]!.handle).toEqual(kpis);
+    expect(children[119]!.lazy).toBeTypeOf('function');
+    expect(children[119]!.element).toBeUndefined();
+    expect(children[120]!.handle).toEqual({
+      permission: 'finance.report.view',
+    });
+    expect(children[120]!.lazy).toBeTypeOf('function');
+    expect(children[120]!.element).toBeUndefined();
+    // M8-03 (#120) D2: audit.view, code-split.
+    expect(children[121]!.handle).toEqual({ permission: 'audit.view' });
+    expect(children[121]!.lazy).toBeTypeOf('function');
+    expect(children[121]!.element).toBeUndefined();
+    // M8-04b A1: the Payments and receipts tab, settings.manage, code-split.
+    expect(children[122]!.handle).toEqual({ permission: 'settings.manage' });
+    expect(children[122]!.lazy).toBeTypeOf('function');
+    expect(children[122]!.element).toBeUndefined();
+    // M8-05b A1: imports, any import kind's permission (#123 F1 adds
+    // schedule.manage and billing.manage), code-split.
+    for (const index of [123, 124]) {
+      expect(children[index]!.handle).toEqual({
+        anyPermission: [
+          'student.manage',
+          'user.invite',
+          'schedule.manage',
+          'billing.manage',
+        ],
+      });
+      expect(children[index]!.lazy).toBeTypeOf('function');
+      expect(children[index]!.element).toBeUndefined();
+    }
+    // M8-07b A1: exports, any staff role, code-split.
+    expect(children[125]!.handle).toEqual({
+      anyRole: [
+        'owner',
+        'administrator',
+        'academic_coordinator',
+        'finance_staff',
+      ],
+    });
+    expect(children[125]!.lazy).toBeTypeOf('function');
+    expect(children[125]!.element).toBeUndefined();
+    // M8-12 (#129) D1: recently deleted, tutors and learning_plan.manage
+    // holders, code-split.
+    expect(children[126]!.handle).toEqual({
+      anyOf: [{ role: 'tutor' }, { permission: 'learning_plan.manage' }],
+    });
+    expect(children[126]!.lazy).toBeTypeOf('function');
+    expect(children[126]!.element).toBeUndefined();
+    // M8-11 (#128) G1: failed jobs, jobs.manage, code-split.
+    expect(children[127]!.handle).toEqual({ permission: 'jobs.manage' });
+    expect(children[127]!.lazy).toBeTypeOf('function');
+    expect(children[127]!.element).toBeUndefined();
+    expect(children[128]!.handle).toBeUndefined();
+    // M8-02b A1: any signed-in user, no permission, code-split.
+    expect(children[129]!.handle).toBeUndefined();
+    expect(children[129]!.lazy).toBeTypeOf('function');
+    expect(children[129]!.element).toBeUndefined();
+    // #174 G1: any signed-in user, no permission.
+    expect(children[130]!.id).toBe('privacy-notice');
+    expect(children[130]!.handle).toBeUndefined();
     expect(
       JSON.stringify(routes, (key, value: unknown) =>
         key === 'element' || key === 'errorElement' ? undefined : value,
@@ -60,8 +576,9 @@ describe('home', () => {
     const { container } = app;
 
     expect(container.querySelector('header')).not.toBeNull();
+    // HF-06 D2: the role home greets the user; the title stays the brand.
     expect(container.querySelector('main#main h1')?.textContent).toBe(
-      'Classora',
+      'Hello, Demo Owner',
     );
     expect(document.title).toBe('Classora');
     const home = container.querySelector('nav a[href="/"]');
@@ -72,9 +589,9 @@ describe('home', () => {
     );
   });
 
-  it('renders the guard route child (RouteGuard renders its Outlet)', async () => {
+  it('renders the guard route child for a signed-in user', async () => {
     app = await renderApp('/');
-    expect(app.container.querySelector('[role="status"]')).not.toBeNull();
+    expect(app.container.querySelector('[data-home-page]')).not.toBeNull();
   });
 });
 
@@ -102,7 +619,7 @@ describe('404', () => {
     act(() => back?.click());
 
     expect(app.container.querySelector('main h1')?.textContent).toBe(
-      'Classora',
+      'Hello, Demo Owner',
     );
     expect(document.title).toBe('Classora');
   });
@@ -144,6 +661,172 @@ describe('navigation toggle', () => {
     act(() => toggle.click());
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(useUiStore.getState().navOpen).toBe(false);
+  });
+});
+
+const navTexts = () =>
+  [...app!.container.querySelectorAll('header nav a')].map(
+    (a) => a.textContent,
+  );
+const main = () => app!.container.querySelector<HTMLElement>('main#main')!;
+
+// #546 B3/B5/H3: the sidebar's collapse toggle, its stored preference and
+// the icon rail (links keep their names and the active state).
+describe('sidebar collapse', () => {
+  it('flips its name and sidebarCollapsed, writes classora.sidebar and is restored on a fresh render', async () => {
+    app = await renderApp('/');
+    const expanded = navTexts();
+    const nav = app.container.querySelector('header nav')!;
+    const collapse = buttonNamed(nav, 'Collapse sidebar');
+    expect(collapse.getAttribute('aria-controls')).toBe(nav.id);
+    expect(nav.id).toBeTruthy();
+    expect(useUiStore.getState().sidebarCollapsed).toBe(false);
+
+    act(() => collapse.focus());
+    act(() => collapse.click());
+    expect(collapse.getAttribute('aria-label')).toBe('Expand sidebar');
+    expect(document.activeElement).toBe(collapse);
+    expect(useUiStore.getState().sidebarCollapsed).toBe(true);
+    expect(window.localStorage.getItem(SIDEBAR_STORAGE_KEY)).toBe('collapsed');
+    expect(navTexts()).toEqual(expanded);
+    const home = app.container.querySelector('header nav a[href="/"]');
+    expect(home?.getAttribute('aria-current')).toBe('page');
+    expect(home?.querySelector('svg')?.getAttribute('aria-hidden')).toBe(
+      'true',
+    );
+
+    // A fresh page load in the same browser.
+    app.unmount();
+    useUiStore.setState({ sidebarCollapsed: false });
+    reloadSidebarPreference();
+    app = await renderApp('/');
+    expect(useUiStore.getState().sidebarCollapsed).toBe(true);
+    expect(
+      buttonNamed(app.container, 'Expand sidebar').getAttribute(
+        'aria-controls',
+      ),
+    ).toBe(app.container.querySelector('header nav')!.id);
+    expect(navTexts()).toEqual(expanded);
+
+    act(() => buttonNamed(app!.container, 'Expand sidebar').click());
+    expect(useUiStore.getState().sidebarCollapsed).toBe(false);
+    expect(window.localStorage.getItem(SIDEBAR_STORAGE_KEY)).toBe('expanded');
+  });
+
+  // #576: the header/main margin animates only at lg and up. A bare
+  // transition-[margin] animated lg:ml-60 → 0 after a resize to phone width
+  // and made the page overflow sideways for 200 ms. #688: the margin animates
+  // only after a collapse or expand (AppLayout.test.tsx covers the load).
+  it('animates the header and main margins at lg and up only', async () => {
+    app = await renderApp('/');
+    const nav = app.container.querySelector('header nav')!;
+    act(() => buttonNamed(nav, 'Collapse sidebar').click());
+    const header = nav.closest('header')!;
+    const main = app.container.querySelector('main#main')!;
+    for (const element of [header, main]) {
+      const tokens = element.className.split(/\s+/);
+      expect(tokens).toContain('lg:transition-[margin]');
+      expect(tokens).toContain('lg:duration-200');
+      expect(tokens).toContain('lg:motion-reduce:transition-none');
+      expect(tokens).not.toContain('transition-[margin]');
+      expect(tokens).not.toContain('duration-200');
+      expect(tokens.some((token) => /^transition(-|$)/.test(token))).toBe(
+        false,
+      );
+    }
+  });
+
+  it('labels each section with a visible item and leaves empty sections out', async () => {
+    stubApi({
+      'GET /api/v1/auth/me': meAs({
+        ...TEST_USER,
+        roles: ['tutor'],
+        permissions: ['student.view', 'tutor.view'],
+      }),
+    });
+    app = await renderApp('/');
+    const nav = app.container.querySelector('header nav')!;
+    const labels = [...nav.querySelectorAll('ul[aria-labelledby]')].map(
+      (list) =>
+        document.getElementById(list.getAttribute('aria-labelledby')!)
+          ?.textContent,
+    );
+    expect(labels).toEqual(['People', 'Academics', 'My space']);
+    // Home has no section; no heading or group in the navigation.
+    expect(nav.querySelectorAll('ul')).toHaveLength(4);
+    expect(nav.querySelector('h1, h2, h3, h4, [role="group"]')).toBeNull();
+    for (const list of nav.querySelectorAll('ul[aria-labelledby]')) {
+      expect(list.querySelectorAll('a').length).toBeGreaterThan(0);
+    }
+  });
+});
+
+// #546 E1-E4/H3: below `lg` the navigation is a modal drawer.
+describe('navigation drawer', () => {
+  it('makes main inert, focuses the first link, and Escape closes it and focuses Menu', async () => {
+    app = await renderApp('/');
+    const toggle = buttonNamed(app.container, 'Menu');
+    expect(main().hasAttribute('inert')).toBe(false);
+
+    act(() => toggle.click());
+    expect(useUiStore.getState().navOpen).toBe(true);
+    expect(main().hasAttribute('inert')).toBe(true);
+    expect(document.activeElement).toBe(
+      app.container.querySelector('header nav a[href="/"]'),
+    );
+
+    await pressEscape();
+    expect(useUiStore.getState().navOpen).toBe(false);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(toggle);
+    expect(main().hasAttribute('inert')).toBe(false);
+  });
+
+  it('closes on a backdrop click and focuses Menu', async () => {
+    app = await renderApp('/');
+    const toggle = buttonNamed(app.container, 'Menu');
+    act(() => toggle.click());
+    const backdrop = app.container.querySelector<HTMLElement>(
+      'header div[aria-hidden="true"]',
+    );
+    expect(backdrop).not.toBeNull();
+
+    act(() => backdrop!.click());
+    expect(useUiStore.getState().navOpen).toBe(false);
+    expect(document.activeElement).toBe(toggle);
+    expect(
+      app.container.querySelector('header div[aria-hidden="true"]'),
+    ).toBeNull();
+  });
+
+  it('closes when a nav link is followed and focuses main, not a hidden link', async () => {
+    app = await renderApp('/missing');
+    act(() => buttonNamed(app!.container, 'Menu').click());
+    expect(main().hasAttribute('inert')).toBe(true);
+
+    act(() =>
+      app!.container
+        .querySelector<HTMLAnchorElement>('header nav a[href="/"]')!
+        .click(),
+    );
+    expect(app.location()).toBe('/');
+    expect(useUiStore.getState().navOpen).toBe(false);
+    expect(main().hasAttribute('inert')).toBe(false);
+    expect(document.activeElement).toBe(main());
+  });
+
+  it('closes when a user-menu link is followed', async () => {
+    app = await renderApp('/missing');
+    act(() => buttonNamed(app!.container, 'Menu').click());
+    const link = [
+      ...app.container.querySelectorAll<HTMLAnchorElement>(
+        '#app-header-menu a',
+      ),
+    ].find((a) => a.textContent === 'Change password')!;
+
+    act(() => link.click());
+    expect(useUiStore.getState().navOpen).toBe(false);
+    expect(main().hasAttribute('inert')).toBe(false);
   });
 });
 

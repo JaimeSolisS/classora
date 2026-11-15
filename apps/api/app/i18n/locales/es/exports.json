@@ -1,0 +1,72 @@
+{
+  "datasets": {
+    "students": "Alumnos",
+    "class_sessions": "Clases",
+    "expenses": "Gastos"
+  },
+  "columns": {
+    "students": {
+      "family_names": "Apellidos",
+      "given_names": "Nombres",
+      "is_active": "Activo",
+      "is_minor": "Menor de edad",
+      "school_grade": "Grado escolar",
+      "education_level": "Nivel educativo"
+    },
+    "class_sessions": {
+      "date": "Fecha",
+      "start_time": "Inicio",
+      "end_time": "Fin",
+      "duration_minutes": "Duración (minutos)",
+      "kind": "Tipo de clase",
+      "state": "Estado",
+      "subject": "Materia",
+      "education_level": "Nivel educativo",
+      "tutor": "Tutor",
+      "classroom": "Aula",
+      "students": "Alumnos",
+      "series": "Serie semanal"
+    },
+    "expenses": {
+      "incurred_on": "Fecha del gasto",
+      "due_on": "Fecha de vencimiento",
+      "category": "Categoría",
+      "vendor": "Proveedor",
+      "description": "Descripción",
+      "amount": "Monto",
+      "adjusted_amount": "Monto neto",
+      "paid_amount": "Pagado",
+      "open_amount": "Por pagar",
+      "status": "Estado",
+      "receipt_reference": "Referencia del comprobante",
+      "template": "Gasto recurrente"
+    }
+  },
+  "values": {
+    "boolean": {
+      "true": "Sí",
+      "false": "No"
+    },
+    "session_kind": {
+      "individual": "Individual",
+      "group": "Grupal",
+      "course": "Curso"
+    },
+    "session_state": {
+      "unassigned": "Sin asignar",
+      "offered": "Ofrecida",
+      "confirmed": "Confirmada",
+      "completed": "Impartida",
+      "cancelled": "Cancelada",
+      "skipped_closure": "Omitida (cierre)",
+      "conflict": "En conflicto"
+    },
+    "expense_status": {
+      "unpaid": "Sin pagar",
+      "partially_paid": "Pago parcial",
+      "paid": "Pagado",
+      "overdue": "Vencido",
+      "void": "Anulado"
+    }
+  }
+}

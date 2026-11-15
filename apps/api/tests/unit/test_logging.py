@@ -18,8 +18,11 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from procrastinate import App
+from procrastinate.testing import InMemoryConnector
 
 from app.core.logging import REDACTED, SENSITIVE_KEY_FRAGMENTS, is_sensitive_key
+from tests.authz.csrf import TEST_APP_ORIGIN
 from tests.unit.conventions_app import LEAK_MARKER, read_log_lines
 
 API_ROOT = Path(__file__).resolve().parents[2]
@@ -40,21 +43,31 @@ def test_log_line_shape_outside_a_request(test_app, capsys):
     assert line["logger"] == "tests.any"
     assert line["message"] == "outside"
     assert line["request_id"] is None
+    # Telemetry is off in tests: no span, so no trace ids (#612).
+    assert line["trace_id"] is None
+    assert line["span_id"] is None
     timestamp = datetime.fromisoformat(line["timestamp"])
     assert timestamp.utcoffset() is not None
     assert timestamp.utcoffset().total_seconds() == 0
 
 
-def test_exception_adds_formatted_traceback(test_app, capsys):
+def test_exception_adds_traceback_without_the_message(test_app, capsys):
+    # #612 E3 (a): the type and frames stay, the message (which can quote
+    # submitted values) is dropped. The source line is code and stays, so the
+    # value is built at run time.
+    value = "-".join(("boom", "value"))
     try:
-        raise ValueError("boom-value")
+        raise ValueError(value)
     except ValueError:
         logging.getLogger("tests.any").exception("failed")
 
     [line] = read_log_lines(capsys)
     assert line["level"] == "ERROR"
-    assert "Traceback" in line["exception"]
-    assert "ValueError: boom-value" in line["exception"]
+    assert line["exception"].startswith("Traceback (most recent call last):")
+    assert 'File "' in line["exception"]
+    assert "test_exception_adds_traceback_without_the_message" in line["exception"]
+    assert line["exception"].splitlines()[-1] == "ValueError"
+    assert "boom-value" not in line["exception"]
 
 
 # --- B4 request ID in every line ----------------------------------------------
@@ -102,8 +115,9 @@ def test_unhandled_exception_logged_once_with_traceback_and_request_id(
     assert len(errors) == 1
     [error] = errors
     assert error["request_id"] == "qa-boom"
-    assert LEAK_MARKER in error["exception"]
-    assert "RuntimeError" in error["exception"]
+    # Type and frames only (#612 E3 (a)): the message is not logged.
+    assert error["exception"].splitlines()[-1] == "RuntimeError"
+    assert LEAK_MARKER not in error["exception"]
     assert LEAK_MARKER not in error["message"]
     [access] = access_lines(lines)
     assert access["status"] == 500
@@ -141,10 +155,12 @@ def test_sensitive_key_rule():
         "dsn",
         "database_url",
         "database_direct_url",
+        "database_migration_url",
     }
     for key in (
         "DATABASE_URL",
         "DATABASE_DIRECT_URL",
+        "DATABASE_MIGRATION_URL",
         "X-Api-Key",
         "Set-Cookie",
         "refreshToken",
@@ -153,6 +169,62 @@ def test_sensitive_key_rule():
         assert is_sensitive_key(key), key
     for key in ("user_id", "path", "status", "request_id"):
         assert not is_sensitive_key(key), key
+
+
+# --- Job arguments (#624) -------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_job_arguments_and_results_never_reach_the_log(test_app, capsys):
+    # Procrastinate's own deferral, start and outcome lines name the job with
+    # its arguments and its result; the formatter keeps only task and id.
+    job_app = App(connector=InMemoryConnector())
+
+    @job_app.task(name="probe:args")
+    async def succeeds(note: str) -> str:
+        return f"done {note}"
+
+    @job_app.task(name="probe:args-fails")
+    async def fails(note: str) -> None:
+        raise RuntimeError("failed")
+
+    async with job_app.open_async():
+        ok_id = await succeeds.defer_async(note=LEAK_MARKER)
+        failed_id = await fails.defer_async(note=LEAK_MARKER)
+        await job_app.run_worker_async(wait=False, install_signal_handlers=False)
+
+    out = capsys.readouterr().out
+    assert LEAK_MARKER not in out
+    lines = [json.loads(line) for line in out.splitlines() if line.strip()]
+    messages = {line["message"] for line in lines}
+    assert f"Starting job probe:args[{ok_id}]([REDACTED])" in messages
+    assert f"Starting job probe:args-fails[{failed_id}]([REDACTED])" in messages
+    [ended] = [line for line in lines if line.get("action") == "job_success"]
+    assert ended["message"].startswith(
+        f"Job probe:args[{ok_id}]([REDACTED]) ended with status: Success, lasted"
+    )
+    assert "Result" not in ended["message"]
+    assert ended["result"] == REDACTED
+    assert ended["job"]["task_kwargs"] == REDACTED
+    assert ended["job"]["call_string"] == f"probe:args[{ok_id}]([REDACTED])"
+    [deferred, _] = [line for line in lines if line.get("action") == "jobs_deferred"]
+    assert deferred["jobs"][0]["task_kwargs"] == REDACTED
+
+
+def test_a_job_line_without_a_job_context_drops_the_arguments(test_app, capsys):
+    # The worker's shutdown line has the call string but no job extra.
+    logging.getLogger("procrastinate.worker").info(
+        f"Waiting for job to finish: worker: probe:args[3](note='{LEAK_MARKER}', "
+        "n=(1, 2)) (started 1.000 s ago)"
+    )
+    logging.getLogger("tests.any").info(f"probe:args[3](note='{LEAK_MARKER}')")
+
+    job_line, other = read_log_lines(capsys)
+    assert job_line["message"] == (
+        "Waiting for job to finish: worker: probe:args[3]([REDACTED])"
+    )
+    # Only Procrastinate's loggers are rewritten.
+    assert LEAK_MARKER in other["message"]
 
 
 # --- B6 access log ------------------------------------------------------------
@@ -184,6 +256,39 @@ def test_one_access_line_per_request_without_query_or_headers(
     for forbidden in ("qs-secret", "limit=5", "cookie-secret", "header-secret"):
         assert forbidden not in out
     assert "testclient" not in out  # the client address
+
+
+@pytest.mark.parametrize(
+    ("url", "status", "logged_path"),
+    [
+        # The route template, never the values in the path (#617 QA D1).
+        ("/path/48151623", 200, "/path/{number}"),
+        # No route: a placeholder, not the raw path an e-mail can be typed into.
+        ("/users/zz-probe@example.com/marker", 404, "<unmatched>"),
+        # A search term in the query string never reaches the line.
+        ("/query?limit=5&q=zz-probe@example.com", 200, "/query"),
+    ],
+)
+def test_access_line_logs_the_route_template_not_the_raw_path(
+    client: TestClient, capsys, url: str, status: int, logged_path: str
+):
+    response = client.get(url)
+
+    assert response.status_code == status
+    lines = [ln for ln in read_log_lines(capsys) if ln["logger"] != "httpx"]
+    [access] = access_lines(lines)
+    assert access["path"] == logged_path
+    out = "\n".join(json.dumps(ln) for ln in lines)
+    for forbidden in ("48151623", "zz-probe", "example.com", "marker"):
+        assert forbidden not in out
+
+
+def test_method_not_allowed_logs_the_route_template(client: TestClient, capsys):
+    client.delete("/path/48151623")
+
+    [access] = access_lines(read_log_lines(capsys))
+    assert access["status"] == 405
+    assert access["path"] == "/path/{number}"
 
 
 @pytest.mark.parametrize(
@@ -219,56 +324,77 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def test_uvicorn_process_writes_only_json_lines():
+def test_uvicorn_process_writes_only_json_lines(tmp_path: Path):
     port = _free_port()
-    # Fixed argument list (this interpreter running uvicorn), no shell, no input.
-    process = subprocess.Popen(  # noqa: S603
-        [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "--factory",
-            "app.main:create_app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-            "--no-access-log",
-        ],
-        cwd=API_ROOT,
-        env={
-            "PATH": os.environ.get("PATH", ""),
-            "APP_ENV": "local",
-            "DATABASE_URL": "postgresql://u:placeholder-pw@127.0.0.1:1/db",
-            "DATABASE_DIRECT_URL": "postgresql://u:placeholder-pw@127.0.0.1:1/db",
-        },
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+    # The server writes to files, not pipes (#680). Nothing reads its output
+    # until it stops, and Linux gives a new pipe only 8 KiB once its user is over
+    # fs.pipe-user-pages-soft (root in parallel test containers, without
+    # CAP_SYS_RESOURCE): the startup log passed 8 KiB and the server blocked on
+    # a write, never answering within the window.
+    out_path, err_path = tmp_path / "stdout.log", tmp_path / "stderr.log"
+    with out_path.open("w") as out, err_path.open("w") as err:
+        # Fixed argument list (this interpreter running uvicorn), no shell, no input.
+        process = subprocess.Popen(  # noqa: S603
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "--factory",
+                "app.main:create_app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "--no-access-log",
+            ],
+            cwd=API_ROOT,
+            env={
+                "PATH": os.environ.get("PATH", ""),
+                "APP_ENV": "local",
+                "APP_ORIGIN": TEST_APP_ORIGIN,
+                "DATABASE_URL": "postgresql://u:placeholder-pw@127.0.0.1:1/db",
+                "DATABASE_DIRECT_URL": "postgresql://u:placeholder-pw@127.0.0.1:1/db",
+            },
+            stdout=out,
+            stderr=err,
+        )
+    started = time.monotonic()
+    # Diagnostics (#680): why the server never answered, reported with its output.
+    not_live: str | None = None
     try:
         base = f"http://127.0.0.1:{port}"
-        deadline = time.monotonic() + 30
+        deadline = started + 30
         while True:
             try:
                 # S310: a fixed http://127.0.0.1 URL to the server started above.
                 urllib.request.urlopen(f"{base}/health/live", timeout=1)  # noqa: S310
                 break
-            except OSError:
-                if time.monotonic() > deadline or process.poll() is not None:
-                    raise
+            except OSError as error:
+                code = process.poll()
+                if time.monotonic() > deadline or code is not None:
+                    state = "still running" if code is None else f"exited with {code}"
+                    not_live = (
+                        f"uvicorn on port {port} not live after"
+                        f" {time.monotonic() - started:.1f} s ({state}): {error!r}"
+                    )
+                    break
                 time.sleep(0.1)
-        # S310: a fixed http://127.0.0.1 URL to the server started above.
-        request = urllib.request.Request(  # noqa: S310
-            f"{base}/nope?q=1", headers={"X-Request-ID": "qa-proc"}
-        )
-        with pytest.raises(urllib.error.HTTPError) as exc_info:
-            urllib.request.urlopen(request, timeout=5)  # noqa: S310 (same fixed URL)
-        assert exc_info.value.headers["X-Request-ID"] == "qa-proc"
+        if not_live is None:
+            # S310: a fixed http://127.0.0.1 URL to the server started above.
+            request = urllib.request.Request(  # noqa: S310
+                f"{base}/nope?q=1", headers={"X-Request-ID": "qa-proc"}
+            )
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                urllib.request.urlopen(request, timeout=5)  # noqa: S310 (same URL)
+            assert exc_info.value.headers["X-Request-ID"] == "qa-proc"
     finally:
         process.send_signal(signal.SIGINT)
-        stdout, stderr = process.communicate(timeout=30)
+        process.wait(timeout=30)
+    stdout, stderr = out_path.read_text(), err_path.read_text()
 
+    assert not_live is None, (
+        f"{not_live}\n--- server stdout ---\n{stdout}\n--- server stderr ---\n{stderr}"
+    )
     lines = (stdout + stderr).splitlines()
     assert lines
     parsed = [json.loads(line) for line in lines]  # every line is JSON
@@ -283,5 +409,5 @@ def test_uvicorn_process_writes_only_json_lines():
     assert len(access) == 1
     assert access[0]["logger"] == "app.access"
     assert access[0]["request_id"] == "qa-proc"
-    assert access[0]["path"] == "/nope"
+    assert access[0]["path"] == "<unmatched>"  # no route: never the raw path
     assert access[0]["status"] == 404

@@ -11,6 +11,9 @@ Domain models subclass :class:`Model`, which gives them:
 
 Models that need optimistic concurrency also mix in :class:`VersionedMixin`
 (architecture §4.4). A stale update raises :class:`StaleVersionError`.
+Models that are soft-deleted mix in :class:`SoftDeleteMixin` (``deleted_at``);
+the audit trail records its changes as ``soft_delete`` / ``restore``
+(``app.core.audit``).
 
 Constraint and index names follow :data:`NAMING_CONVENTION`, so they never
 depend on PostgreSQL defaults. Every model module is imported through
@@ -85,6 +88,19 @@ class VersionedMixin:
 
     version: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("1")
+    )
+
+
+class SoftDeleteMixin:
+    """Opt-in soft-delete convention: ``deleted_at TIMESTAMPTZ NULL``.
+
+    ``NULL`` means the row is live. Setting it marks the row deleted, and
+    clearing it restores the row; ``app.core.audit`` records these as
+    ``soft_delete`` and ``restore`` events for audited models.
+    """
+
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 

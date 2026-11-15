@@ -13,6 +13,21 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.1.5",
     "alembic>=1.20.0",
     "procrastinate>=3.10.0,<4",
+    "argon2-cffi>=25.1.0",
+    "python-dateutil>=2.9.0.post0,<3",
+    # Server-rendered PDFs (ADR-0015 E14, #98a): imported lazily by app/core/pdf.py.
+    "weasyprint>=70.0,<71",
+    "jinja2>=3.1.6,<4",
+    # XLSX exports (#124 E3; ADR-0015 amendment), written in the worker.
+    "openpyxl>=3.1.5,<4",
+    # OpenTelemetry (ADR-0014, #612 E1 (a)): one release train, pinned exactly
+    # (the instrumentations are tied to the SDK version). Used only when
+    # OTEL_EXPORTER_OTLP_ENDPOINT is set (app/core/telemetry.py).
+    "opentelemetry-api==1.45.2",
+    "opentelemetry-sdk==1.45.2",
+    "opentelemetry-exporter-otlp-proto-http==1.45.2",
+    "opentelemetry-instrumentation-fastapi==0.66b2",
+    "opentelemetry-instrumentation-sqlalchemy==0.66b2",
 ]
 
 [dependency-groups]
@@ -26,6 +41,11 @@ dev = [
     "factory-boy>=3.3.3",
     "faker>=40.43.0",
     "psycopg[binary]>=3.3.6",
+    "types-python-dateutil>=2.9.0.20260807",
+    # PDF text assertions in the tests (#98a P3).
+    "pypdf>=6.20.1,<7",
+    # Type stubs for openpyxl (mypy strict; #124 E3).
+    "types-openpyxl>=3.1.5.20261017",
 ]
 
 [tool.uv]
@@ -61,4 +81,10 @@ select = ["E", "W", "F", "I", "B", "UP", "S"]
 [tool.mypy]
 strict = true
 python_version = "3.14"
+
+# WeasyPrint ships no type information (no py.typed); app/core/pdf.py wraps its
+# one call site with typed signatures, so no Any leaks out (#98a A3).
+[[tool.mypy.overrides]]
+module = ["weasyprint", "weasyprint.*"]
+ignore_missing_imports = true
 

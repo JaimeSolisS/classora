@@ -1,0 +1,854 @@
+"""Creating and reading one-off individual sessions (#48 C, D, E; spec W1.1,
+W1.2; ADR-0005 D1, D2, D7, D9).
+
+The create body is discriminated on ``kind`` (#592): this module creates
+``individual`` sessions; one extra ``group`` or ``course`` session is
+:mod:`~app.modules.scheduling.owner_booking`'s, which reuses the bounds,
+tutor and classroom checks, the offer deadline and the response below.
+
+**Create** (:func:`create_class_session`), in this order, after the route's
+``401``/``403`` and the body's ``422``:
+
+1. the per-student advisory lock (:func:`~app.modules.scheduling.locks.lock_students`);
+2. the center zone ``FOR SHARE`` (``administration.service.get_center_time_zone``),
+   so a zone change waits for this transaction;
+3. ``422`` for the bounds (``validate_session_bounds``): the reason is a
+   field error on ``ends_at``, except ``naive_datetime`` and
+   ``not_whole_minutes``, which go on the field at fault;
+4. ``422`` for the references, collected in one response:
+   ``student_unknown`` / ``student_inactive`` (``families.service.student_references``),
+   ``subject_unknown`` / ``subject_inactive`` (the subject or its level;
+   ``catalog.service.get_subject_for_reference`` ``FOR SHARE``),
+   ``tutor_unknown`` (no such user, or not a tutor) / ``tutor_inactive``
+   (any state but ``active``, a pending invitee included;
+   ``identity.service.get_role_member``) and ``classroom_unknown`` /
+   ``classroom_inactive`` (``catalog.service.classroom_references``);
+4a. with ``makeup_of_session_id`` (#423), the link's rules
+   (:func:`~app.modules.scheduling.makeups.makeup_refusal`): one ``422``
+   field error, the first of ``makeup_target_unknown``,
+   ``makeup_target_not_cancelled``, ``makeup_target_not_individual``,
+   ``makeup_not_allowed``, ``makeup_student_mismatch``,
+   ``makeup_subject_mismatch`` and ``makeup_window_passed``, added to any
+   reference errors of step 4; none of them is overridable;
+4b. with a tutor, the offer deadline (#52 C1): ``respond_by`` defaults to
+   the scheduling policy's response time at now (never after the start); a
+   requested one must be after now and no later than that
+   (``422 respond_by_invalid``); without a tutor it is ``422
+   respond_by_requires_tutor``;
+4c. with ``makeup_of_session_id``, ``409 makeup_already_scheduled`` when the
+   target has a live makeup (``details.class_session_id``, #423 B5);
+5. every conflict check (:mod:`app.modules.scheduling.conflicts` lists the
+   codes and their data sources); the tutor checks run only with a tutor, the
+   room checks only with a room. Local values are taken in the center zone;
+   a local end at the next midnight is ``time.max`` for the window checks;
+6. the override decision (#49,
+   :func:`~app.modules.scheduling.overrides.evaluate_override`) on the
+   conflicts just computed: ``409 scheduling_conflict`` with **every**
+   conflict, sorted (:func:`~app.modules.scheduling.conflicts.sort_conflicts`),
+   unless there is none, or the body's ``override`` lists every one and all
+   are soft;
+6b. with a tutor, ``409 class_session_not_offerable`` (``details.reason =
+   "started"``) when the start is not after now (an overridden
+   ``notice_window`` can reach here; #52);
+7. the tutor's workload warnings (#50 A7,
+   :func:`~app.modules.scheduling.workload_sessions.session_warnings`): at
+   most two statements with a tutor, none without one; they never block and
+   come only with the ``201`` (an overridden create carries them too);
+8. the session (``offered`` with the tutor, or ``unassigned`` without one,
+   D2 / E1) and its one participant, flushed through
+   ``flush_class_sessions``: an ``EXCLUDE`` race becomes ``409
+   scheduling_conflict`` with that one hard conflict (its
+   ``class_session_ids`` is ``[]``: the other row is not known);
+9. with overridden conflicts, the override row and its
+   ``scheduling.session_override`` event
+   (:func:`~app.modules.scheduling.overrides.record_session_override`).
+
+10. with a tutor (#52 C1), its ``pending`` offer (``offered_at`` now,
+    ``offered_by`` the caller) and the tutor's ``scheduling.offer_received``
+    notification.
+
+The ``403`` for an ``override`` without ``schedule.override`` comes before
+step 1 (the route). Audit: the automatic ``create`` events of every table
+written, plus the override event when something was overridden.
+
+**Read** (:func:`get_class_session`): every holder of ``schedule.view``
+sees every session and its overrides (no record policy for staff, D9); at
+most seven statements, plus at most three for a cancelled session's ``makeup``
+block (#423 C3); ``404`` for an unknown id.
+
+Every function runs in the caller's Unit of Work and never commits.
+"""
+
+import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any, Final, Protocol
+
+from sqlalchemy import select, true
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core import clock
+from app.core.authz import RecordNotFoundError
+from app.core.errors import FieldError
+from app.modules.administration import service as administration
+from app.modules.catalog import service as catalog
+from app.modules.families import service as families
+from app.modules.identity import service as identity
+from app.modules.scheduling.checks import SlotCandidate, collect_conflicts
+from app.modules.scheduling.conflicts import (
+    ROOM_OVERLAP,
+    TUTOR_OVERLAP,
+    Conflict,
+)
+from app.modules.scheduling.errors import (
+    ClassSessionNotOfferableError,
+    InvalidSessionTimesError,
+    SchedulingConflictError,
+    SessionOverlapError,
+    SessionValidationError,
+)
+from app.modules.scheduling.locks import lock_students, lock_tutor
+from app.modules.scheduling.makeups import (
+    ensure_no_live_makeup,
+    makeup_refusal,
+    session_makeup,
+)
+from app.modules.scheduling.models import (
+    CHANGE_REQUEST_PENDING,
+    OFFER_KIND_ASSIGNMENT,
+    OFFER_KIND_SUBSTITUTION,
+    OFFER_PENDING,
+    REASSIGNMENT_AVAILABILITY_CHANGE,
+    AssignmentOffer,
+    AssignmentOfferSession,
+    ClassSession,
+    ClassSessionOverride,
+    ClassSessionParticipant,
+    ClassSessionReassignmentFlag,
+    ClassSessionSubstitution,
+    SessionChangeRequest,
+)
+from app.modules.scheduling.offer_records import insert_offer, notify_offer_received
+from app.modules.scheduling.offers import RespondByInvalidError, resolve_respond_by
+from app.modules.scheduling.overrides import evaluate_override, record_session_override
+from app.modules.scheduling.reassignment_rules import flag_tutor_matches, is_flag_open
+from app.modules.scheduling.schemas import (
+    ClassSessionCreate,
+    ClassSessionCreated,
+    ClassSessionDetail,
+    ClassSessionSlot,
+    OverrideActor,
+    PendingOffer,
+    PendingSubstitution,
+    SessionCancellation,
+    SessionClassroom,
+    SessionMakeup,
+    SessionOverrideItem,
+    SessionParticipant,
+    SessionReassignment,
+    SessionSubject,
+    SessionTutor,
+)
+from app.modules.scheduling.sessions import flush_class_sessions
+from app.modules.scheduling.states import SessionKind, SessionState
+from app.modules.scheduling.times import scheduled_minutes, validate_session_bounds
+from app.modules.scheduling.workload_sessions import session_warnings
+
+TUTOR_ROLE: Final = "tutor"
+ACTIVE: Final = "active"
+
+REFERENCE_MESSAGES: Final = {
+    "student_unknown": "Choose an existing student.",
+    "student_inactive": "The student is inactive.",
+    "subject_unknown": "Choose an existing subject.",
+    "subject_inactive": "The subject or its education level is inactive.",
+    "tutor_unknown": "Choose an existing tutor.",
+    "tutor_inactive": "The tutor's account is not active.",
+    "classroom_unknown": "Choose an existing classroom.",
+    "classroom_inactive": "The classroom is inactive.",
+}
+_TIME_MESSAGES: Final = {
+    "naive_datetime": "Give the time with its UTC offset.",
+    "not_whole_minutes": "Use whole minutes.",
+    "ends_before_start": "The end must be after the start.",
+    "duration_out_of_range": "A session lasts 15 to 480 minutes.",
+    "crosses_local_date": "A session starts and ends on the same local date.",
+}
+
+
+def _field_error(field: str, code: str, message: str) -> FieldError:
+    return {"path": ["body", field], "code": code, "message": message}
+
+
+def _is_naive(value: datetime) -> bool:
+    return value.tzinfo is None or value.utcoffset() is None
+
+
+def _bounds_field(reason: str, starts_at: datetime) -> str:
+    if reason == "naive_datetime":
+        return "starts_at" if _is_naive(starts_at) else "ends_at"
+    if reason == "not_whole_minutes":
+        return "starts_at" if starts_at.second or starts_at.microsecond else "ends_at"
+    return "ends_at"
+
+
+class SessionBounds(Protocol):
+    """A body with session bounds (the create, the suggestions, #54's
+    ``PATCH``)."""
+
+    @property
+    def starts_at(self) -> datetime: ...
+
+    @property
+    def ends_at(self) -> datetime: ...
+
+
+def validate_bounds(body: SessionBounds, zone: str) -> None:
+    """``422`` for the bounds (step 3; also the slot suggestions, #50, and
+    #54's ``PATCH``)."""
+    try:
+        validate_session_bounds(body.starts_at, body.ends_at, zone)
+    except InvalidSessionTimesError as exc:
+        field = _bounds_field(exc.reason, body.starts_at)
+        raise SessionValidationError(
+            [_field_error(field, exc.reason, _TIME_MESSAGES[exc.reason])]
+        ) from None
+
+
+class ReferenceIds(Protocol):
+    """The references a write names (a session body, a series body, a
+    stored series)."""
+
+    @property
+    def student_id(self) -> uuid.UUID: ...
+
+    @property
+    def subject_id(self) -> uuid.UUID: ...
+
+    @property
+    def tutor_user_id(self) -> uuid.UUID | None: ...
+
+    @property
+    def classroom_id(self) -> uuid.UUID | None: ...
+
+
+@dataclass(frozen=True)
+class _References:
+    student: SessionParticipant
+    subject: SessionSubject
+    tutor: SessionTutor | None
+    classroom: SessionClassroom | None
+
+
+async def references(
+    session: AsyncSession, body: ReferenceIds, *, lock: bool = True
+) -> _References:
+    """Every reference of the body, or one ``422`` with every invalid one
+    (step 4; also the slot suggestions, #50, with ``lock=False``: the
+    subject isn't read ``FOR SHARE`` when nothing is written)."""
+    errors: list[FieldError] = []
+
+    def reject(field: str, code: str) -> None:
+        errors.append(_field_error(field, code, REFERENCE_MESSAGES[code]))
+
+    student = (await families.student_references(session, [body.student_id])).get(
+        body.student_id
+    )
+    if student is None:
+        reject("student_id", "student_unknown")
+    elif not student.is_active:
+        reject("student_id", "student_inactive")
+
+    subject = await catalog.get_subject_for_reference(
+        session, body.subject_id, lock=lock
+    )
+    if subject is None:
+        reject("subject_id", "subject_unknown")
+    elif not (subject.is_active and subject.education_level_is_active):
+        reject("subject_id", "subject_inactive")
+
+    tutor, classroom = await tutor_and_room_references(
+        session, body.tutor_user_id, body.classroom_id, errors
+    )
+
+    if errors:
+        raise SessionValidationError(errors)
+    # Narrowing only: every missing reference was rejected above.
+    assert student is not None and subject is not None  # noqa: S101
+    return _References(
+        student=SessionParticipant(
+            student_id=student.id,
+            display_name=student.display_name,
+            is_active=student.is_active,
+        ),
+        subject=SessionSubject(
+            id=subject.id,
+            name=subject.name,
+            education_level_name=subject.education_level_name,
+            is_active=subject.is_active and subject.education_level_is_active,
+        ),
+        tutor=tutor,
+        classroom=classroom,
+    )
+
+
+async def tutor_and_room_references(
+    session: AsyncSession,
+    tutor_user_id: uuid.UUID | None,
+    classroom_id: uuid.UUID | None,
+    errors: list[FieldError],
+) -> tuple[SessionTutor | None, SessionClassroom | None]:
+    """The tutor and the classroom of a create (step 4; also the #592 group
+    and course create): ``tutor_unknown`` / ``tutor_inactive`` and
+    ``classroom_unknown`` / ``classroom_inactive`` are appended to
+    ``errors``; a refused one comes back as ``None``."""
+
+    def reject(field: str, code: str) -> None:
+        errors.append(_field_error(field, code, REFERENCE_MESSAGES[code]))
+
+    tutor = None
+    if tutor_user_id is not None:
+        member = await identity.get_role_member(session, TUTOR_ROLE, tutor_user_id)
+        if member is None:
+            reject("tutor_user_id", "tutor_unknown")
+        elif member.state != ACTIVE:
+            reject("tutor_user_id", "tutor_inactive")
+        else:
+            tutor = SessionTutor(id=member.id, display_name=member.display_name)
+
+    classroom = None
+    if classroom_id is not None:
+        room = (await catalog.classroom_references(session, [classroom_id])).get(
+            classroom_id
+        )
+        if room is None:
+            reject("classroom_id", "classroom_unknown")
+        elif not room.is_active:
+            reject("classroom_id", "classroom_inactive")
+        else:
+            classroom = SessionClassroom(
+                id=room.id, name=room.name, is_active=room.is_active
+            )
+    return tutor, classroom
+
+
+class OfferedBody(Protocol):
+    """A create body that may name a tutor (the individual, group and course
+    creates, #592)."""
+
+    @property
+    def tutor_user_id(self) -> uuid.UUID | None: ...
+
+    @property
+    def classroom_id(self) -> uuid.UUID | None: ...
+
+    @property
+    def starts_at(self) -> datetime: ...
+
+    @property
+    def respond_by(self) -> datetime | None: ...
+
+
+# --- Conflict checks (D) -------------------------------------------------------------
+
+
+def candidate_of(body: ClassSessionSlot) -> SlotCandidate:
+    """The checks' view of a one-off individual session body."""
+    return SlotCandidate(
+        kind=body.kind,
+        student_ids=(body.student_id,),
+        subject_id=body.subject_id,
+        tutor_user_id=body.tutor_user_id,
+        classroom_id=body.classroom_id,
+        starts_at=body.starts_at,
+        ends_at=body.ends_at,
+    )
+
+
+async def find_conflicts(
+    session: AsyncSession,
+    body: ClassSessionSlot,
+    zone: str,
+    *,
+    notice_reference_at: datetime | None = None,
+) -> list[Conflict]:
+    """Every hard and soft conflict of the body, sorted. The caller holds the
+    student locks and the zone ``FOR SHARE``, and has validated the bounds
+    and the references. The one shared collector
+    (:func:`~app.modules.scheduling.checks.collect_conflicts`, #53 D1) with
+    ``center_closed`` checked (one-off sessions) and the booking notice
+    measured from ``notice_reference_at`` with the policy in force then
+    (default: now; #60 E3 passes a session request's ``created_at``)."""
+    return await collect_conflicts(
+        session,
+        candidate_of(body),
+        zone=zone,
+        now=clock.now() if notice_reference_at is None else notice_reference_at,
+        check_center_closed=True,
+    )
+
+
+# --- Create (C) and read (E) ---------------------------------------------------------
+
+
+def _race_conflict(code: str, body: OfferedBody | ClassSessionSlot) -> Conflict:
+    if code == ROOM_OVERLAP:
+        return Conflict(
+            ROOM_OVERLAP,
+            {"classroom_id": str(body.classroom_id), "class_session_ids": []},
+        )
+    return Conflict(TUTOR_OVERLAP, {"class_session_ids": []})
+
+
+def _detail(
+    row: ClassSession,
+    *,
+    subject: SessionSubject,
+    tutor: SessionTutor | None,
+    classroom: SessionClassroom | None,
+    participants: list[SessionParticipant],
+    overrides: list[SessionOverrideItem],
+    pending_offer: PendingOffer | None,
+    pending_substitution: PendingSubstitution | None = None,
+    pending_change_request_id: uuid.UUID | None = None,
+    reassignment: SessionReassignment | None = None,
+    makeup: SessionMakeup | None = None,
+) -> ClassSessionDetail:
+    cancellation = None
+    if row.cancelled_at is not None and row.cancellation_reason is not None:
+        cancellation = SessionCancellation(
+            cancelled_at=row.cancelled_at.astimezone(UTC),
+            reason=row.cancellation_reason,
+        )
+    return ClassSessionDetail(
+        id=row.id,
+        kind=SessionKind(row.kind).value,
+        state=SessionState(row.state).value,
+        subject=subject,
+        tutor=tutor,
+        classroom=classroom,
+        participants=sorted(
+            participants, key=lambda p: (p.display_name.casefold(), str(p.student_id))
+        ),
+        # As stored: the request's offset is not kept (ADR-0004).
+        starts_at=row.starts_at.astimezone(UTC),
+        ends_at=row.ends_at.astimezone(UTC),
+        scheduled_minutes=row.scheduled_minutes,
+        version=row.version,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        overrides=overrides,
+        series_id=row.series_id,
+        original_start=(
+            None if row.original_start is None else row.original_start.astimezone(UTC)
+        ),
+        is_exception=row.is_exception,
+        conflict_codes=list(row.conflict_codes),
+        pending_offer=pending_offer,
+        pending_substitution=pending_substitution,
+        cancellation=cancellation,
+        group_id=row.group_id,
+        cohort_id=row.cohort_id,
+        pending_change_request_id=pending_change_request_id,
+        reassignment=reassignment,
+        makeup_of_session_id=row.makeup_of_session_id,
+        makeup=makeup,
+    )
+
+
+def _override_item(
+    row: ClassSessionOverride, actors: dict[uuid.UUID, Any]
+) -> SessionOverrideItem:
+    actor = actors[row.actor_user_id]
+    return SessionOverrideItem(
+        id=row.id,
+        codes=list(row.codes),
+        reason=row.reason,
+        actor=OverrideActor(id=actor.id, display_name=actor.display_name),
+        created_at=row.created_at,
+    )
+
+
+async def _respond_by(
+    session: AsyncSession, body: OfferedBody, offered_at: datetime
+) -> datetime | None:
+    """#52 C1: the offer's deadline with a tutor (``None`` without one, or
+    when the session has already begun: the create refuses it after the
+    conflicts). ``422 respond_by_requires_tutor`` / ``respond_by_invalid``
+    on ``respond_by``."""
+    if body.tutor_user_id is None:
+        if body.respond_by is not None:
+            raise SessionValidationError(
+                [
+                    _field_error(
+                        "respond_by",
+                        "respond_by_requires_tutor",
+                        "A deadline needs a tutor to answer it.",
+                    )
+                ]
+            )
+        return None
+    policy = await administration.get_scheduling_policy(session, offered_at)
+    try:
+        return resolve_respond_by(
+            policy,
+            offered_at=offered_at,
+            first_starts_at=body.starts_at,
+            requested=body.respond_by,
+        )
+    except RespondByInvalidError:
+        if body.respond_by is None:
+            return None
+        raise SessionValidationError([respond_by_error()]) from None
+
+
+def respond_by_error() -> FieldError:
+    """``respond_by_invalid`` on ``respond_by`` (#52 B2)."""
+    return _field_error(
+        "respond_by",
+        "respond_by_invalid",
+        "The deadline must be after now and no later than the default.",
+    )
+
+
+async def _checked_references(
+    session: AsyncSession, body: ClassSessionCreate
+) -> _References:
+    """Steps 4 and 4a: the references, and the link's first refusal added to
+    any reference errors. No link: no statement beyond step 4."""
+    if body.makeup_of_session_id is None:
+        return await references(session, body)
+    errors: list[FieldError] = []
+    refs = None
+    try:
+        refs = await references(session, body)
+    except SessionValidationError as exc:
+        errors.extend(exc.errors or [])
+    refusal = await makeup_refusal(
+        session,
+        body.makeup_of_session_id,
+        student_id=body.student_id,
+        subject_id=body.subject_id,
+        starts_at=body.starts_at,
+    )
+    if refusal is not None:
+        errors.append(refusal)
+    if errors:
+        raise SessionValidationError(errors)
+    assert refs is not None  # noqa: S101 - no errors, so references returned
+    return refs
+
+
+async def create_class_session(
+    session: AsyncSession,
+    body: ClassSessionCreate,
+    *,
+    actor_id: uuid.UUID,
+    notice_reference_at: datetime | None = None,
+) -> ClassSessionCreated:
+    """``POST /api/v1/class-sessions``: see the module docstring for the
+    order. ``actor_id`` is the signed-in user (the override's actor); the
+    route has already checked ``schedule.override`` for an ``override``.
+    ``notice_reference_at`` (#60 E3) is the instant the booking notice is
+    measured from (default now): a confirmed session request passes its
+    ``created_at``; every other check stays live."""
+    await lock_students(session, [body.student_id])
+    zone = await administration.get_center_time_zone(session, for_share=True)
+    if body.tutor_user_id is not None:
+        # #63 D5: serialized with a change of this tutor's availability.
+        await lock_tutor(session, body.tutor_user_id)
+    validate_bounds(body, zone)
+    refs = await _checked_references(session, body)
+    offered_at = clock.now()
+    respond_by = await _respond_by(session, body, offered_at)
+    if body.makeup_of_session_id is not None:
+        await ensure_no_live_makeup(session, body.makeup_of_session_id)
+    conflicts = await find_conflicts(
+        session, body, zone, notice_reference_at=notice_reference_at
+    )
+    decision = evaluate_override(conflicts, body.override)
+    if not decision.allowed:
+        raise SchedulingConflictError([conflict.as_wire() for conflict in conflicts])
+    if body.tutor_user_id is not None and body.starts_at <= offered_at:
+        # #52: an offer can't be answered before a session that has begun.
+        raise ClassSessionNotOfferableError(started=True)
+    warnings = (
+        []
+        if body.tutor_user_id is None
+        else await session_warnings(
+            session, body.tutor_user_id, body.starts_at, body.ends_at, zone
+        )
+    )
+
+    state = (
+        SessionState.UNASSIGNED if body.tutor_user_id is None else SessionState.OFFERED
+    )
+    row = ClassSession(
+        kind=SessionKind.INDIVIDUAL.value,
+        state=state.value,
+        subject_id=body.subject_id,
+        tutor_user_id=body.tutor_user_id,
+        classroom_id=body.classroom_id,
+        starts_at=body.starts_at,
+        ends_at=body.ends_at,
+        scheduled_minutes=scheduled_minutes(body.starts_at, body.ends_at),
+        makeup_of_session_id=body.makeup_of_session_id,
+    )
+    session.add(row)
+    try:
+        await flush_class_sessions(session)
+    except SessionOverlapError as exc:
+        raise SchedulingConflictError(
+            [_race_conflict(exc.code, body).as_wire()]
+        ) from None
+    session.add(
+        ClassSessionParticipant(class_session_id=row.id, student_id=body.student_id)
+    )
+    await flush_class_sessions(session)
+    overrides: list[SessionOverrideItem] = []
+    if decision.overridden:
+        # Only an allowed override reaches here, so body.override is set.
+        assert body.override is not None  # noqa: S101
+        stored = await record_session_override(
+            session,
+            row.id,
+            decision.overridden,
+            body.override.reason,
+            actor_id=actor_id,
+        )
+        actors = await identity.get_account_references(session, [actor_id])
+        overrides.append(_override_item(stored, actors))
+    pending_offer = None
+    if refs.tutor is not None and respond_by is not None:
+        # #52 C1: the offer, in the same transaction, and the tutor's
+        # notification.
+        offer = await insert_offer(
+            session,
+            tutor_user_id=refs.tutor.id,
+            offered_by_user_id=actor_id,
+            offered_at=offered_at,
+            respond_by=respond_by,
+            class_session_ids=[row.id],
+        )
+        await notify_offer_received(
+            session, offer, subject_name=refs.subject.name, starts_at=row.starts_at
+        )
+        pending_offer = PendingOffer(
+            id=offer.id,
+            scope="session",
+            tutor=refs.tutor,
+            respond_by=offer.respond_by.astimezone(UTC),
+        )
+    detail = _detail(
+        row,
+        subject=refs.subject,
+        tutor=refs.tutor,
+        classroom=refs.classroom,
+        participants=[refs.student],
+        overrides=overrides,
+        pending_offer=pending_offer,
+    )
+    return ClassSessionCreated(**detail.model_dump(), warnings=warnings)
+
+
+async def get_class_session(
+    session: AsyncSession, class_session_id: uuid.UUID
+) -> ClassSessionDetail:
+    """``GET /api/v1/class-sessions/{id}``: at most seven statements (the
+    tutor, the substitute and the override actors are read together; the
+    pending offer, #52 G3, and the pending substitution, #55 E3, come with
+    the session row), plus at most three for a cancelled session's ``makeup``
+    block (#423 C3)."""
+    pending = (
+        select(
+            AssignmentOfferSession.class_session_id,
+            AssignmentOffer.id,
+            AssignmentOffer.scope,
+            AssignmentOffer.respond_by,
+        )
+        .join(AssignmentOffer, AssignmentOffer.id == AssignmentOfferSession.offer_id)
+        .where(AssignmentOffer.status == OFFER_PENDING)
+        .where(AssignmentOffer.kind == OFFER_KIND_ASSIGNMENT)
+        .subquery()
+    )
+    substitution = (
+        select(
+            ClassSessionSubstitution.class_session_id,
+            ClassSessionSubstitution.id,
+            ClassSessionSubstitution.substitute_tutor_user_id,
+            AssignmentOffer.respond_by,
+        )
+        .join(AssignmentOffer, AssignmentOffer.id == ClassSessionSubstitution.offer_id)
+        .where(AssignmentOffer.status == OFFER_PENDING)
+        .where(AssignmentOffer.kind == OFFER_KIND_SUBSTITUTION)
+        .subquery()
+    )
+    change_request = (
+        select(SessionChangeRequest.class_session_id, SessionChangeRequest.id)
+        .where(SessionChangeRequest.status == CHANGE_REQUEST_PENDING)
+        .subquery()
+    )
+    # #63 E2: the newest flag whose tutor is still the session's (or none);
+    # is_flag_open then checks the state and the start.
+    flag = (
+        select(
+            ClassSessionReassignmentFlag.tutor_user_id,
+            ClassSessionReassignmentFlag.created_at,
+            ClassSessionReassignmentFlag.source_id,
+        )
+        .where(ClassSessionReassignmentFlag.class_session_id == ClassSession.id)
+        .where(flag_tutor_matches())
+        .order_by(
+            ClassSessionReassignmentFlag.created_at.desc(),
+            ClassSessionReassignmentFlag.id.desc(),
+        )
+        .limit(1)
+        .lateral()
+    )
+    found = (
+        await session.execute(
+            select(
+                ClassSession,
+                pending.c.id,
+                pending.c.scope,
+                pending.c.respond_by,
+                substitution.c.id,
+                substitution.c.substitute_tutor_user_id,
+                substitution.c.respond_by,
+                change_request.c.id,
+                flag.c.tutor_user_id,
+                flag.c.created_at,
+                flag.c.source_id,
+            )
+            .outerjoin(pending, pending.c.class_session_id == ClassSession.id)
+            .outerjoin(substitution, substitution.c.class_session_id == ClassSession.id)
+            .outerjoin(
+                change_request, change_request.c.class_session_id == ClassSession.id
+            )
+            .outerjoin(flag, true())
+            .where(ClassSession.id == class_session_id)
+        )
+    ).first()
+    if found is None:
+        raise RecordNotFoundError()
+    (
+        row,
+        offer_id,
+        offer_scope,
+        offer_respond_by,
+        substitution_id,
+        substitute_id,
+        substitution_respond_by,
+        change_request_id,
+        flag_tutor_id,
+        flagged_at,
+        flag_source_id,
+    ) = found
+    if flag_tutor_id is not None and not is_flag_open(
+        flag_tutor_user_id=flag_tutor_id,
+        state=row.state,
+        session_tutor_user_id=row.tutor_user_id,
+        starts_at=row.starts_at,
+        now=clock.now(),
+    ):
+        flag_tutor_id = None
+    student_ids = list(
+        await session.scalars(
+            select(ClassSessionParticipant.student_id).where(
+                ClassSessionParticipant.class_session_id == row.id
+            )
+        )
+    )
+    students = await families.student_references(session, student_ids)
+    subject = (await catalog.subject_references(session, [row.subject_id]))[
+        row.subject_id
+    ]
+    override_rows = list(
+        await session.scalars(
+            select(ClassSessionOverride)
+            .where(ClassSessionOverride.class_session_id == row.id)
+            .order_by(ClassSessionOverride.created_at, ClassSessionOverride.id)
+        )
+    )
+    account_ids = {override.actor_user_id for override in override_rows}
+    if row.tutor_user_id is not None:
+        account_ids.add(row.tutor_user_id)
+    if substitute_id is not None:
+        account_ids.add(substitute_id)
+    if flag_tutor_id is not None:
+        account_ids.add(flag_tutor_id)
+    accounts = await identity.get_account_references(session, account_ids)
+    tutor = None
+    if row.tutor_user_id is not None:
+        account = accounts[row.tutor_user_id]
+        tutor = SessionTutor(id=account.id, display_name=account.display_name)
+    classroom = None
+    if row.classroom_id is not None:
+        room = (await catalog.classroom_references(session, [row.classroom_id]))[
+            row.classroom_id
+        ]
+        classroom = SessionClassroom(
+            id=room.id, name=room.name, is_active=room.is_active
+        )
+    makeup = (
+        await session_makeup(session, row.id)
+        if row.state == SessionState.CANCELLED.value
+        else None
+    )
+    return _detail(
+        row,
+        subject=SessionSubject(
+            id=subject.id,
+            name=subject.name,
+            education_level_name=subject.education_level_name,
+            is_active=subject.is_active and subject.education_level_is_active,
+        ),
+        tutor=tutor,
+        classroom=classroom,
+        participants=[
+            SessionParticipant(
+                student_id=student.id,
+                display_name=student.display_name,
+                is_active=student.is_active,
+            )
+            for student in students.values()
+        ],
+        overrides=[_override_item(override, accounts) for override in override_rows],
+        pending_offer=(
+            None
+            if offer_id is None or tutor is None
+            else PendingOffer(
+                id=offer_id,
+                scope=offer_scope,
+                tutor=tutor,
+                respond_by=offer_respond_by.astimezone(UTC),
+            )
+        ),
+        pending_substitution=(
+            None
+            if substitution_id is None
+            else PendingSubstitution(
+                id=substitution_id,
+                substitute=SessionTutor(
+                    id=accounts[substitute_id].id,
+                    display_name=accounts[substitute_id].display_name,
+                ),
+                respond_by=substitution_respond_by.astimezone(UTC),
+            )
+        ),
+        pending_change_request_id=change_request_id,
+        reassignment=(
+            None
+            if flag_tutor_id is None
+            else SessionReassignment(
+                reason=REASSIGNMENT_AVAILABILITY_CHANGE,
+                tutor=SessionTutor(
+                    id=flag_tutor_id,
+                    display_name=accounts[flag_tutor_id].display_name,
+                ),
+                flagged_at=flagged_at.astimezone(UTC),
+                change_request_id=flag_source_id,
+            )
+        ),
+        makeup=makeup,
+    )

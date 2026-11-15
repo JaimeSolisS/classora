@@ -1,0 +1,431 @@
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { expect, fn, within } from 'storybook/test';
+import { ApiError } from '@/app/api';
+import { i18n } from '@/i18n';
+import { STAFF_VIEW } from '@/features/tutor-portal/attendance/fixtures';
+import { STAFF_APPROVED } from '@/features/tutor-portal/closeout/fixtures';
+import { SOFT_CONFLICTS, TUTOR_SUGGESTIONS, TUTORS } from '../create/fixtures';
+import {
+  ACCEPTED_SERIES,
+  CANCELLED_SESSION,
+  CONFIRMED_SESSION,
+  DECLINED,
+  DECLINED_SUBSTITUTION,
+  FLAGGED_SESSION,
+  NEW_SUBSTITUTION,
+  PENDING_SUBSTITUTION,
+  SUBSTITUTED_SESSION,
+  NEW_OFFER,
+  NEW_SERIES_OFFER,
+  OFFERED_SESSION,
+  PENDING_SERIES,
+  SERIES,
+  SERIES_CONFLICTS,
+  SERIES_ROW,
+  UNASSIGNED_SESSION,
+} from './fixtures';
+import type { SubstitutionCreated } from './api';
+import { AttendanceSection } from './AttendanceSection';
+import { CancelSessionDialog } from './CancelSessionDialog';
+import { CloseoutSection } from './CloseoutSection';
+import { OfferPanel } from './OfferPanel';
+import { SessionDetailView } from './SessionDetailView';
+import { SubstitutionSection } from './SubstitutionSection';
+
+// The staff session page (#52 H4): with its offer history, with the "Offer
+// to a tutor" panel, and with a conflict (the #48 panel and the #49
+// override action); an offered session with its pending offer; an
+// occurrence of a weekly series (#233 G4): the series choice, a series 409
+// grouped by date, and the pending and accepted series assignment; #55 H4:
+// the "Find a substitute" panel (with suggestions, with a conflict), a
+// pending substitution with its history, the cancel dialog with an error
+// and the cancelled banner; #63 H4: the "Needs reassignment" notice; #311:
+// a completed session with its Attendance (Correct buttons) and approved
+// Closeout (with history) sections at 320 px and 390 px, without page
+// scroll. No request: the panel's calls are stubs. Axe runs in light and
+// dark.
+
+const VIEWPORTS = {
+  narrow320: {
+    name: 'Narrow (320 px)',
+    styles: { width: '320px', height: '640px' },
+    type: 'mobile',
+  },
+  phone390: {
+    name: 'Phone (390 px)',
+    styles: { width: '390px', height: '844px' },
+    type: 'mobile',
+  },
+} as const;
+
+const meta = {
+  title: 'Scheduling/SessionDetailView',
+  component: SessionDetailView,
+  args: {
+    state: {
+      status: 'ready',
+      session: UNASSIGNED_SESSION,
+      offers: [DECLINED],
+    },
+    timeZone: 'America/Mexico_City',
+  },
+  parameters: { viewport: { options: VIEWPORTS } },
+  render: (args) => (
+    <main className="p-4">
+      <h1 className="mb-4 text-2xl font-semibold">
+        {i18n.t('scheduling.session.title')}
+      </h1>
+      <SessionDetailView {...args} />
+    </main>
+  ),
+} satisfies Meta<typeof SessionDetailView>;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+const panel = (conflicts?: typeof SOFT_CONFLICTS) => (
+  <OfferPanel
+    tutors={TUTORS}
+    timeZone="America/Mexico_City"
+    canOverride
+    onSuggest={fn(() => Promise.resolve(TUTOR_SUGGESTIONS))}
+    onSubmit={fn(() => Promise.resolve(NEW_OFFER))}
+    onOffered={fn()}
+    initialConflicts={conflicts}
+  />
+);
+
+export const WithHistory: Story = {
+  play: async ({ canvasElement }) => {
+    await expect(
+      within(canvasElement).getByText(
+        i18n.t('offers.card.note', { note: DECLINED.decline_note }),
+      ),
+    ).toBeInTheDocument();
+  },
+};
+
+export const WithOfferPanel: Story = {
+  args: { offerPanel: panel() },
+  play: async ({ canvasElement }) => {
+    await expect(
+      within(canvasElement).getByText(i18n.t('scheduling.offer.heading')),
+    ).toBeInTheDocument();
+  },
+};
+
+export const WithConflict: Story = {
+  args: { offerPanel: panel(SOFT_CONFLICTS) },
+  play: async ({ canvasElement }) => {
+    await expect(
+      within(canvasElement).getByRole('button', {
+        name: i18n.t('scheduling.offer.overrideAction'),
+      }),
+    ).toBeInTheDocument();
+  },
+};
+
+export const Offered: Story = {
+  args: {
+    state: { status: 'ready', session: OFFERED_SESSION, offers: [] },
+    offered: { tutorName: 'Carmen Ruiz', warnings: NEW_OFFER.warnings },
+  },
+};
+
+const seriesPanel = (conflicts?: typeof SERIES_CONFLICTS) => (
+  <OfferPanel
+    tutors={TUTORS}
+    timeZone="America/Mexico_City"
+    canOverride
+    onSuggest={fn(() => Promise.resolve(TUTOR_SUGGESTIONS))}
+    onSubmit={fn(() => Promise.resolve(NEW_OFFER))}
+    onOffered={fn()}
+    series={{ onSubmit: fn(() => Promise.resolve(NEW_SERIES_OFFER)) }}
+    initialScope={conflicts ? 'series' : 'session'}
+    initialSeriesConflicts={conflicts}
+  />
+);
+
+export const SeriesChoice: Story = {
+  args: {
+    state: { status: 'ready', session: SERIES_ROW, offers: [] },
+    series: SERIES,
+    offerPanel: seriesPanel(),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByRole('radio', {
+        name: i18n.t('scheduling.offer.series.series'),
+      }),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByText(i18n.t('scheduling.session.partOfSeries'), {
+        exact: false,
+      }),
+    ).toBeInTheDocument();
+  },
+};
+
+export const SeriesConflicts: Story = {
+  args: {
+    state: { status: 'ready', session: SERIES_ROW, offers: [] },
+    series: SERIES,
+    offerPanel: seriesPanel(SERIES_CONFLICTS),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByText(
+        i18n.t('scheduling.offer.series.conflictsHeading', { count: 3 }),
+      ),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.queryByRole('button', {
+        name: i18n.t('scheduling.offer.overrideAction'),
+      }),
+    ).not.toBeInTheDocument();
+  },
+};
+
+export const SeriesPending: Story = {
+  args: {
+    state: {
+      status: 'ready',
+      session: {
+        ...SERIES_ROW,
+        state: 'offered',
+        tutor: PENDING_SERIES.tutor,
+        pending_offer: {
+          id: PENDING_SERIES.assignment!.offer_id!,
+          scope: 'series',
+          tutor: PENDING_SERIES.tutor!,
+          respond_by: PENDING_SERIES.assignment!.respond_by!,
+        },
+      },
+      offers: [NEW_SERIES_OFFER.offer],
+    },
+    series: PENDING_SERIES,
+  },
+};
+
+export const SeriesAccepted: Story = {
+  args: {
+    state: {
+      status: 'ready',
+      session: {
+        ...SERIES_ROW,
+        state: 'confirmed',
+        tutor: ACCEPTED_SERIES.tutor,
+      },
+      offers: [{ ...NEW_SERIES_OFFER.offer, status: 'accepted' }],
+    },
+    series: ACCEPTED_SERIES,
+  },
+};
+
+// --- Substitutions and cancellations (#55 H4) ---------------------------------
+
+const substitutePanel = (conflicts?: typeof SOFT_CONFLICTS) => (
+  <OfferPanel<SubstitutionCreated>
+    variant="substitute"
+    tutors={TUTORS.slice(1)}
+    timeZone="America/Mexico_City"
+    canOverride
+    onSuggest={fn(() => Promise.resolve(TUTOR_SUGGESTIONS))}
+    onSubmit={fn(() => Promise.resolve(NEW_SUBSTITUTION))}
+    onOffered={fn()}
+    initialConflicts={conflicts}
+  />
+);
+
+const cancelAction = (
+  <div>
+    <button
+      type="button"
+      className="rounded-md border border-border px-3 py-1.5 text-sm"
+    >
+      {i18n.t('scheduling.cancel.action')}
+    </button>
+  </div>
+);
+
+export const SubstitutePanel: Story = {
+  args: {
+    state: { status: 'ready', session: CONFIRMED_SESSION, offers: [] },
+    offerPanel: substitutePanel(),
+    actions: cancelAction,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByText(i18n.t('scheduling.substitution.heading')),
+    ).toBeInTheDocument();
+    canvas
+      .getByRole('button', {
+        name: i18n.t('scheduling.tutorSuggestions.button'),
+      })
+      .click();
+    await expect(
+      await canvas.findByRole('button', {
+        name: i18n.t('scheduling.tutorSuggestions.chooseTutor', {
+          name: TUTOR_SUGGESTIONS.items[0]!.tutor.display_name,
+        }),
+      }),
+    ).toBeInTheDocument();
+  },
+};
+
+export const SubstituteConflict: Story = {
+  args: {
+    state: { status: 'ready', session: CONFIRMED_SESSION, offers: [] },
+    offerPanel: substitutePanel(SOFT_CONFLICTS),
+  },
+  play: async ({ canvasElement }) => {
+    await expect(
+      within(canvasElement).getByRole('button', {
+        name: i18n.t('scheduling.substitution.overrideAction'),
+      }),
+    ).toBeInTheDocument();
+  },
+};
+
+export const PendingSubstitution: Story = {
+  args: {
+    state: { status: 'ready', session: SUBSTITUTED_SESSION, offers: [] },
+    actions: cancelAction,
+    substitutions: (
+      <SubstitutionSection
+        items={[PENDING_SUBSTITUTION, DECLINED_SUBSTITUTION]}
+        timeZone="America/Mexico_City"
+        canWithdraw
+        onWithdraw={fn(() => Promise.resolve())}
+      />
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByRole('button', {
+        name: i18n.t('scheduling.substitution.withdraw'),
+      }),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByText(
+        i18n.t('offers.card.note', {
+          note: DECLINED_SUBSTITUTION.decline_note,
+        }),
+      ),
+    ).toBeInTheDocument();
+  },
+};
+
+export const CancelDialogWithError: Story = {
+  args: {
+    state: { status: 'ready', session: CONFIRMED_SESSION, offers: [] },
+    actions: (
+      <CancelSessionDialog
+        open
+        onConfirm={fn(() => Promise.resolve())}
+        onCancel={fn()}
+        initialReason="Cierre por mantenimiento."
+        initialError={
+          new ApiError({
+            code: 'class_session_not_cancellable',
+            status: 409,
+          })
+        }
+      />
+    ),
+  },
+};
+
+export const Cancelled: Story = {
+  args: {
+    state: { status: 'ready', session: CANCELLED_SESSION, offers: [] },
+    actions: cancelAction,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByRole('heading', {
+        name: i18n.t('scheduling.cancel.banner'),
+      }),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.queryByRole('button', {
+        name: i18n.t('scheduling.cancel.action'),
+      }),
+    ).not.toBeInTheDocument();
+  },
+};
+
+export const NeedsReassignment: Story = {
+  args: {
+    state: { status: 'ready', session: FLAGGED_SESSION, offers: [] },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const heading = canvas.getByRole('heading', {
+      name: i18n.t('scheduling.session.reassignment.title'),
+    });
+    await expect(heading).toBeVisible();
+    await expect(heading.closest('section')).toHaveTextContent('Carmen Ruiz');
+  },
+};
+
+// #311 A1/C1: the composition QA saw scroll sideways at 390 px. The table
+// already scrolled in its own wrapper; the page grew because the table's
+// absolutely positioned sr-only "Actions" header (the Correct column) had
+// no positioned ancestor inside the scroller, so it escaped it. With the
+// region `relative`, nothing leaves it.
+export const CompletedWithSectionsNarrow320: Story = {
+  args: {
+    state: {
+      status: 'ready',
+      session: { ...CONFIRMED_SESSION, state: 'completed' },
+      offers: [],
+    },
+    attendance: (
+      <AttendanceSection
+        state={{ status: 'ready', attendance: STAFF_VIEW }}
+        timeZone="America/Mexico_City"
+        canCorrect
+        onCorrect={fn(() => Promise.resolve())}
+        onReload={fn()}
+      />
+    ),
+    closeout: (
+      <CloseoutSection
+        state={{ status: 'ready', closeout: STAFF_APPROVED }}
+        timeZone="America/Mexico_City"
+        review={{
+          onApprove: fn(() => Promise.resolve()),
+          onRequestChanges: fn(() => Promise.resolve()),
+          onCorrect: fn(() => Promise.resolve()),
+          onSubmitOnBehalf: fn(() => Promise.resolve()),
+          onTakeOver: fn(() => Promise.resolve()),
+          onReload: fn(),
+        }}
+      />
+    ),
+  },
+  globals: { viewport: { value: 'narrow320' } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByText(i18n.t('closeout.review.history.heading')),
+    ).toBeInTheDocument();
+    const region = canvas.getByRole('region', {
+      name: i18n.t('attendance.section.heading'),
+    });
+    await expect(region.scrollWidth).toBeGreaterThan(region.clientWidth);
+    const page = canvasElement.ownerDocument.documentElement;
+    await expect(page.scrollWidth).toBeLessThanOrEqual(page.clientWidth);
+  },
+};
+
+export const CompletedWithSectionsPhone390: Story = {
+  ...CompletedWithSectionsNarrow320,
+  globals: { viewport: { value: 'phone390' } },
+};

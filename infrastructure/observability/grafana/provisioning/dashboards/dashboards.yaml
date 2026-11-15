@@ -1,0 +1,16 @@
+# Dashboards provisioned from files (ADR-0014): every JSON file in
+# grafana/dashboards/ (mounted at /etc/grafana/dashboards). Changes made in
+# the UI can't be saved over them; edit the JSON in the repository instead.
+apiVersion: 1
+
+providers:
+  - name: classora
+    orgId: 1
+    folder: Classora
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false

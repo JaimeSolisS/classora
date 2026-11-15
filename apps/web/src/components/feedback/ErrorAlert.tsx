@@ -1,4 +1,5 @@
 import { CircleAlert } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { errorMessage, errorRequestId } from '@/app/errors';
@@ -10,13 +11,33 @@ interface ErrorAlertProps {
   error: unknown;
   /** Shows a "Try again" button (for query errors). */
   onRetry?: () => void;
+  /** The retry button's text instead of "Try again" (for example "Reload"). */
+  retryLabel?: string;
+  /** A page-specific message (already translated) instead of the code's. */
+  message?: string;
+  /**
+   * A first line (already translated) above the message, for an error whose
+   * context the code's message doesn't give (#36: a preference not saved).
+   */
+  title?: string;
+  /** More on what to do (already translated), below the message and read
+   * with it: `role="alert"` covers it. */
+  detail?: ReactNode;
   className?: string;
 }
 
 // Shows a failed request: the translated message for its code and, when
 // there is one, the request ID to quote to support. Never shows the server's
 // title or detail.
-export function ErrorAlert({ error, onRetry, className }: ErrorAlertProps) {
+export function ErrorAlert({
+  error,
+  onRetry,
+  retryLabel,
+  message,
+  title,
+  detail,
+  className,
+}: ErrorAlertProps) {
   const { t } = useTranslation();
   const { t: tErrors } = useTranslation('errors');
   const requestId = errorRequestId(error);
@@ -34,13 +55,15 @@ export function ErrorAlert({ error, onRetry, className }: ErrorAlertProps) {
         className="mt-0.5 size-5 shrink-0 text-destructive"
       />
       <div className="flex min-w-0 flex-col items-start gap-2">
-        <p className="font-medium text-destructive">
-          {errorMessage(error, tErrors)}
+        {title ? <p className="font-medium text-destructive">{title}</p> : null}
+        <p className={title ? undefined : 'font-medium text-destructive'}>
+          {message ?? errorMessage(error, tErrors)}
         </p>
+        {detail ? <p className="text-sm">{detail}</p> : null}
         {requestId ? <RequestReference requestId={requestId} /> : null}
         {onRetry ? (
           <Button type="button" variant="outline" size="sm" onClick={onRetry}>
-            {t('feedback.retry')}
+            {retryLabel ?? t('feedback.retry')}
           </Button>
         ) : null}
       </div>

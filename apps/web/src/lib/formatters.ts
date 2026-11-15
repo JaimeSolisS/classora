@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useCenterTimeZone } from '@/features/auth/useCenterTimeZone';
 import { toLanguage } from '@/i18n/language';
 import { formatMoney } from './money';
 import {
-  DEFAULT_CENTER_TIME_ZONE,
   formatInstant,
   formatLocalDate,
   type Instant,
@@ -22,18 +22,19 @@ export interface Formatters {
 }
 
 /**
- * Formatters bound to the active UI language and the center time zone
- * (DEFAULT_CENTER_TIME_ZONE until M3-01). Components using it re-render on a
- * language change.
+ * Formatters bound to the active UI language and the center time zone (the
+ * business setting from the session, #37). Components using it re-render on
+ * a language or zone change.
  */
 export function useFormatters(): Formatters {
   const { i18n } = useTranslation();
   const language = toLanguage(i18n.resolvedLanguage);
+  const timeZone = useCenterTimeZone();
   return useMemo(
     () => ({
       formatInstant: (instant, style) =>
         formatInstant(instant, {
-          timeZone: DEFAULT_CENTER_TIME_ZONE,
+          timeZone,
           language,
           style,
         }),
@@ -41,6 +42,6 @@ export function useFormatters(): Formatters {
         formatLocalDate(localDate, { language, style }),
       formatMoney,
     }),
-    [language],
+    [language, timeZone],
   );
 }

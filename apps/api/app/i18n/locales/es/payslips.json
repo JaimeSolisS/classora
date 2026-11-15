@@ -1,0 +1,95 @@
+{
+  "v1": {
+    "title": "Comprobante de pago",
+    "number": "Número",
+    "issued_on": "Fecha de emisión",
+    "tutor": "Tutor",
+    "period": "Periodo",
+    "frequency": "Frecuencia de pago",
+    "finalized_on": "Fecha de cierre",
+    "period_range": "Del {start} al {end}",
+    "frequencies": {
+      "weekly": "Semanal",
+      "biweekly": "Quincenal",
+      "monthly": "Mensual"
+    },
+    "sections": {
+      "classes": "Clases",
+      "salary": "Salario",
+      "bonuses": "Bonos",
+      "deductions": "Deducciones",
+      "adjustments": "Ajustes",
+      "summary": "Resumen"
+    },
+    "columns": {
+      "date": "Fecha",
+      "class_kind": "Tipo de clase",
+      "event": "Concepto",
+      "minutes": "Minutos",
+      "rate": "Tarifa",
+      "amount": "Importe",
+      "piece": "Periodo",
+      "detail": "Detalle",
+      "type": "Tipo",
+      "description": "Descripción",
+      "kind": "Tipo"
+    },
+    "minutes": "{minutes} min",
+    "kinds": {
+      "session": "Clase",
+      "late_cancellation": "Cancelación tardía",
+      "no_show": "Inasistencia",
+      "makeup": "Reposición"
+    },
+    "event_with_rule": "{event} ({rule})",
+    "rules": {
+      "percent": "{percent} de la tarifa",
+      "fixed": "monto fijo de {amount}",
+      "none": "sin pago"
+    },
+    "covered_by_salary": "Cubierta por salario",
+    "rate": "{rate} {model}",
+    "course_share": "{rate}, sesión {k} / {n}",
+    "models": {
+      "per_hour": "por hora",
+      "per_session": "por sesión",
+      "per_course": "por curso"
+    },
+    "class_kinds": {
+      "individual": "Individual",
+      "group": "Grupo",
+      "course": "Curso"
+    },
+    "salary": {
+      "detail": "{numerator} / {denominator} de {amount}, contado en {basis}"
+    },
+    "bases": {
+      "calendar_days": "días naturales",
+      "weekdays": "días entre semana"
+    },
+    "adjustment_kinds": {
+      "late_approval": "Aprobación tardía",
+      "hours_correction": "Corrección de horas",
+      "manual": "Ajuste manual",
+      "carry_forward": "Saldo trasladado"
+    },
+    "adjustments": {
+      "work": "Trabajo del {date}",
+      "work_kind": "Trabajo del {date} ({class_kind})",
+      "origin": "Periodo de origen: {period}",
+      "paired": "Periodo relacionado: {period}",
+      "reason": "Motivo: {reason}"
+    },
+    "summary": {
+      "class_lines": "Clases pagadas",
+      "class_count": "{count} ({minutes} min)",
+      "classes": "Clases",
+      "salary": "Salario",
+      "bonuses": "Bonos",
+      "deductions": "Deducciones",
+      "adjustments": "Ajustes",
+      "total": "Total del periodo"
+    },
+    "notice": "Este documento no es un comprobante fiscal (no es un CFDI de nómina)."
+  }
+}

@@ -2,16 +2,22 @@
 
 - Read relevant sections of `_docs/spec.md` and `_docs/architecture.md`.
 - Follow `_docs/process.md`; GitHub Issues are the only active backlog.
-- Work on exactly one groomed issue at a time unless orchestrator explicitly
-  manages independently approved work.
+- Each agent works on exactly one groomed issue; the orchestrator keeps one
+  issue in flight, in its own worktree (`_docs/process.md`).
 - Do not implement extra features, adjust acceptance criteria during coding,
   or introduce Redis/Celery/RDS without a new approved ADR.
 - Use tests, migrations and authorization checks suited to the change.
 - Document findings and exact test commands/results in the issue.
-- AFTER EVERY ISSUE OR FOLLOW-UP CODING PROMPT: review root `README.md`.
-  Update only if public onboarding, implemented capabilities, tech stack,
-  verified commands, deployment status or links changed. Never put task logs
+- AFTER EVERY ISSUE OR FOLLOW-UP CODING PROMPT: review root `README.md`
+  (short overview) and `_docs/Full_README.md` (full reference). Update only
+  if public onboarding, implemented capabilities, tech stack, verified
+  commands, deployment status or links changed. Never put task logs
   or internal notes in the README. Report one of:
   `README updated: ...` / `README reviewed: no update necessary`.
+- Modular docs: roles in `_docs/team/` (`pm.md`, `software-engineer.md`,
+  `qa-engineer.md`); tests in `_docs/testing-guidelines.md`; API conventions
+  in `_docs/api.md`; UI rules in `_docs/design-system.md`; decisions in
+  `_docs/adr/`; AWS operations in `_docs/runbooks/index.md`; every command
+  and setting in `_docs/Full_README.md`.
 - QA must verify the README gate before PASS. The orchestrator must not close
   an issue without a QA PASS and README verdict.

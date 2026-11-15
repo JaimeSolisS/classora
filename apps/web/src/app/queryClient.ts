@@ -26,14 +26,37 @@ export function shouldRetryQuery(
 }
 
 /**
+ * A query's own expected outcomes (#315 QA D1): `meta: { expectedStatuses:
+ * [404] }` marks HTTP statuses that the page shows as a designed state (a
+ * family's "This report is no longer available."), so the cache doesn't
+ * report them as errors. Every other failure is still reported.
+ */
+export interface ExpectedErrorsMeta {
+  expectedStatuses?: readonly number[];
+}
+
+/** Whether `error` is one of the query's expected outcomes. */
+export function isExpectedQueryError(error: unknown, meta: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status === undefined) {
+    return false;
+  }
+  const statuses = (meta as ExpectedErrorsMeta | undefined)?.expectedStatuses;
+  return Array.isArray(statuses) && statuses.includes(error.status);
+}
+
+/**
  * A new client with the app defaults. The app creates exactly one at
  * startup; each test creates its own.
  */
 export function createQueryClient(): QueryClient {
   return new QueryClient({
     queryCache: new QueryCache({
-      onError: (error, query) =>
-        reportError(error, { source: 'query', queryKey: query.queryKey }),
+      onError: (error, query) => {
+        if (isExpectedQueryError(error, query.meta)) {
+          return;
+        }
+        reportError(error, { source: 'query', queryKey: query.queryKey });
+      },
     }),
     mutationCache: new MutationCache({
       onError: (error, _variables, _context, mutation) =>

@@ -1,0 +1,121 @@
+{#- Payslip, template version 1 (#113 D1; app/modules/payroll/payslips.py).
+    Rendered from the stored snapshot only (`payslip`, `sections`, `summary`,
+    `center`) in the payslip's stored language. Versioning rule (D2): a
+    wording or layout change that would alter what an issued payslip says
+    goes into a new payslips/v2/ directory with new `payslips.v2.*` keys;
+    styling-only fixes may edit this file. No student or subject names, no
+    payments and no actor names (#113 E5, E6). -#}
+{% extends "documents/base.html" %}
+{% block style %}
+  .payslip-number { font-size: 11pt; margin: -4mm 0 6mm 0; color: var(--muted); }
+  h2 { font-size: 11pt; margin: 8mm 0 3mm 0; }
+  table.lines th { width: auto; }
+  table.lines thead { display: table-header-group; }
+  table.lines tr { page-break-inside: avoid; }
+  table.lines td { font-size: 9pt; }
+  .detail { color: var(--muted); font-size: 8.5pt; }
+  tr.total td, tr.total th { font-weight: bold; color: var(--text); }
+  .notice { margin-top: 10mm; font-size: 8.5pt; color: var(--muted); }
+{% endblock %}
+{% block title %}{{ t("payslips.v1.title") }}{% endblock %}
+{% block content %}
+<p class="payslip-number">{{ t("payslips.v1.number") }}: {{ payslip.number }}</p>
+<table class="details">
+  <tr><th>{{ t("payslips.v1.issued_on") }}</th><td>{{ date(payslip.issued_on) }}</td></tr>
+  <tr><th>{{ t("payslips.v1.tutor") }}</th><td>{{ payslip.tutor_name }}</td></tr>
+  <tr><th>{{ t("payslips.v1.period") }}</th><td>{{ payslip.period }}</td></tr>
+  <tr><th>{{ t("payslips.v1.frequency") }}</th><td>{{ payslip.frequency }}</td></tr>
+  <tr><th>{{ t("payslips.v1.finalized_on") }}</th><td>{{ date(payslip.finalized_on) }}</td></tr>
+</table>
+{% if sections.classes %}
+<h2>{{ t("payslips.v1.sections.classes") }}</h2>
+<table class="lines">
+  <thead>
+    <tr>
+      <th>{{ t("payslips.v1.columns.date") }}</th>
+      <th>{{ t("payslips.v1.columns.class_kind") }}</th>
+      <th>{{ t("payslips.v1.columns.event") }}</th>
+      <th>{{ t("payslips.v1.columns.minutes") }}</th>
+      <th>{{ t("payslips.v1.columns.rate") }}</th>
+      <th class="amount">{{ t("payslips.v1.columns.amount") }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for line in sections.classes %}
+    <tr><td>{{ line.date }}</td><td>{{ line.class_kind }}</td><td>{{ line.event }}</td><td>{{ t("payslips.v1.minutes", minutes=line.minutes) }}</td><td>{{ line.rate }}</td><td class="amount">{{ money(line.amount) }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% if sections.salary %}
+<h2>{{ t("payslips.v1.sections.salary") }}</h2>
+<table class="lines">
+  <thead>
+    <tr>
+      <th>{{ t("payslips.v1.columns.piece") }}</th>
+      <th>{{ t("payslips.v1.columns.detail") }}</th>
+      <th class="amount">{{ t("payslips.v1.columns.amount") }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for line in sections.salary %}
+    <tr><td>{{ line.piece }}</td><td>{{ line.detail }}</td><td class="amount">{{ money(line.amount) }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% for key in ("bonuses", "deductions") %}
+{% if sections[key] %}
+<h2>{{ t("payslips.v1.sections." ~ key) }}</h2>
+<table class="lines">
+  <thead>
+    <tr>
+      <th>{{ t("payslips.v1.columns.type") }}</th>
+      <th>{{ t("payslips.v1.columns.description") }}</th>
+      <th class="amount">{{ t("payslips.v1.columns.amount") }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for line in sections[key] %}
+    <tr><td>{{ line.type_name }}</td><td>{{ line.description }}</td><td class="amount">{{ money(line.amount) }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endfor %}
+{% if sections.adjustments %}
+<h2>{{ t("payslips.v1.sections.adjustments") }}</h2>
+<table class="lines">
+  <thead>
+    <tr>
+      <th>{{ t("payslips.v1.columns.kind") }}</th>
+      <th>{{ t("payslips.v1.columns.detail") }}</th>
+      <th class="amount">{{ t("payslips.v1.columns.amount") }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for line in sections.adjustments %}
+    <tr>
+      <td>{{ line.kind }}</td>
+      <td>
+        {% for detail in line.details %}<div>{{ detail }}</div>{% endfor %}
+        {% if line.reason %}<div class="detail">{{ t("payslips.v1.adjustments.reason", reason=line.reason) }}</div>{% endif %}
+      </td>
+      <td class="amount">{{ money(line.amount) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+<h2>{{ t("payslips.v1.sections.summary") }}</h2>
+<table class="totals">
+  <tr><th>{{ t("payslips.v1.summary.class_lines") }}</th><td class="amount">{{ t("payslips.v1.summary.class_count", count=summary.class_line_count, minutes=summary.class_minutes) }}</td></tr>
+  <tr><th>{{ t("payslips.v1.summary.classes") }}</th><td class="amount">{{ money(summary.classes) }}</td></tr>
+  <tr><th>{{ t("payslips.v1.summary.salary") }}</th><td class="amount">{{ money(summary.salary) }}</td></tr>
+  <tr><th>{{ t("payslips.v1.summary.bonuses") }}</th><td class="amount">{{ money(summary.bonuses) }}</td></tr>
+  <tr><th>{{ t("payslips.v1.summary.deductions") }}</th><td class="amount">{{ money(summary.deductions) }}</td></tr>
+  <tr><th>{{ t("payslips.v1.summary.adjustments") }}</th><td class="amount">{{ money(summary.adjustments) }}</td></tr>
+  <tr class="total"><th>{{ t("payslips.v1.summary.total") }}</th><td class="amount">{{ money(payslip.total) }}</td></tr>
+</table>
+<p class="notice">{{ t("payslips.v1.notice") }}</p>
+{% endblock %}

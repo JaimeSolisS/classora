@@ -1,0 +1,65 @@
+{#- Payment receipt, template version 1 (#98 E1; app/modules/billing/receipts.py).
+    Rendered from the stored snapshot only (`receipt`, `lines`, `center`) in
+    the receipt's stored language. Versioning rule (P8): a wording or layout
+    change that would alter what an issued receipt says goes into a new
+    receipts/v2/ directory with new `receipts.v2.*` keys; styling-only fixes
+    may edit this file. No staff note and no actor names (#364 D4). -#}
+{% extends "documents/base.html" %}
+{% block style %}
+  .receipt-number { font-size: 11pt; margin: -4mm 0 6mm 0; color: var(--muted); }
+  .reversed {
+    border: 1.5pt solid #b91c1c;
+    color: #b91c1c;
+    font-weight: bold;
+    font-size: 13pt;
+    text-align: center;
+    padding: 3mm;
+    margin: 0 0 6mm 0;
+  }
+  h2 { font-size: 11pt; margin: 8mm 0 3mm 0; }
+  table.lines th { width: auto; }
+  table.lines thead { display: table-header-group; }
+  table.lines tr { page-break-inside: avoid; }
+  tr.total td, tr.total th { font-weight: bold; color: var(--text); }
+  .notice { margin-top: 10mm; font-size: 8.5pt; color: var(--muted); }
+{% endblock %}
+{% block title %}{{ t("receipts.v1.title") }}{% endblock %}
+{% block content %}
+<p class="receipt-number">{{ t("receipts.v1.number") }}: {{ receipt.number }}</p>
+{% if receipt.reversed_on is not none %}
+<p class="reversed">{{ t("receipts.v1.reversed", date=date(receipt.reversed_on)) }}</p>
+{% endif %}
+<table class="details">
+  <tr><th>{{ t("receipts.v1.issued_on") }}</th><td>{{ date(receipt.issued_on) }}</td></tr>
+  <tr><th>{{ t("receipts.v1.received_from") }}</th><td>{{ receipt.received_from }}</td></tr>
+  <tr><th>{{ t("receipts.v1.family") }}</th><td>{{ receipt.family_name }}</td></tr>
+  <tr><th>{{ t("receipts.v1.received_on") }}</th><td>{{ date(receipt.received_on) }}</td></tr>
+  <tr><th>{{ t("receipts.v1.method") }}</th><td>{{ receipt.method }}</td></tr>
+  {% if receipt.reference %}<tr><th>{{ t("receipts.v1.reference") }}</th><td>{{ receipt.reference }}</td></tr>{% endif %}
+  <tr class="total"><th>{{ t("receipts.v1.amount") }}</th><td class="amount">{{ money(receipt.amount) }}</td></tr>
+</table>
+<h2>{{ t("receipts.v1.allocations.title") }}</h2>
+{% if lines %}
+<table class="lines">
+  <thead>
+    <tr>
+      <th>{{ t("receipts.v1.allocations.student") }}</th>
+      <th>{{ t("receipts.v1.allocations.concept") }}</th>
+      <th class="amount">{{ t("receipts.v1.allocations.amount") }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for line in lines %}
+    <tr><td>{{ line.student }}</td><td>{{ line.label }}</td><td class="amount">{{ money(line.amount) }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>{{ t("receipts.v1.allocations.none") }}</p>
+{% endif %}
+<table class="totals">
+  <tr class="total"><th>{{ t("receipts.v1.allocations.allocated_total") }}</th><td class="amount">{{ money(receipt.allocated_total) }}</td></tr>
+  {% if receipt.has_credit %}<tr><th>{{ t("receipts.v1.allocations.credit") }}</th><td class="amount">{{ money(receipt.unallocated) }}</td></tr>{% endif %}
+</table>
+<p class="notice">{{ t("receipts.v1.notice") }}</p>
+{% endblock %}

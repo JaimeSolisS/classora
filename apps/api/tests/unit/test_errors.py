@@ -3,10 +3,18 @@
 import re
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.core.errors import AppError, VersionConflictError
+from app.core.conventions import install_conventions
+from app.core.errors import (
+    CORE_PROBLEM_CODES,
+    AppError,
+    VersionConflictError,
+    status_code_name,
+)
 from app.main import create_app
+from tests.authz.csrf import PROD_APP_ORIGIN
 from tests.unit.conventions_app import LEAK_MARKER
 
 PROBLEM_JSON = "application/problem+json"
@@ -167,15 +175,314 @@ def test_unhandled_exception_is_generic_500_without_leak(client: TestClient):
 # --- D1 production wiring -----------------------------------------------------
 
 
-def test_production_app_has_only_health_and_docs_routes(
+def test_production_app_has_no_demo_route(
     app_env: None, monkeypatch: pytest.MonkeyPatch
 ):
-    # APP_ENV=prod: the local/DEV demo job route is not mounted (M1-16 D4).
+    # APP_ENV=prod: the local/DEV demo job and notification routes are not
+    # mounted (M1-16 D4, #41 D2).
     monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("APP_ORIGIN", PROD_APP_ORIGIN)
     app = create_app()
 
     assert app.debug is False
-    assert set(app.openapi()["paths"]) == {"/health/live", "/health/ready"}
+    assert set(app.openapi()["paths"]) == {
+        "/health/live",
+        "/health/ready",
+        "/api/v1/academic-periods",
+        "/api/v1/academic-periods/{period_id}",
+        "/api/v1/approval-requests",
+        "/api/v1/approval-requests/{request_id}",
+        "/api/v1/approval-requests/{request_id}/approve",
+        "/api/v1/approval-requests/{request_id}/assign",
+        "/api/v1/approval-requests/{request_id}/assignee-options",
+        "/api/v1/approval-requests/{request_id}/reject",
+        "/api/v1/approval-requests/{request_id}/request-changes",
+        "/api/v1/audit-events",
+        "/api/v1/audit-events/record-types",
+        "/api/v1/imports",
+        "/api/v1/imports/{import_id}",
+        "/api/v1/imports/{import_id}/rows",
+        "/api/v1/imports/{import_id}/commit",
+        "/api/v1/imports/{import_id}/discard",
+        "/api/v1/jobs",
+        "/api/v1/jobs/tasks",
+        "/api/v1/jobs/{job_id}/retry",
+        "/api/v1/exports",
+        "/api/v1/exports/datasets",
+        "/api/v1/exports/{export_id}",
+        "/api/v1/exports/{export_id}/download",
+        "/api/v1/report-setups",
+        "/api/v1/report-setups/{setup_id}",
+        "/api/v1/notifications",
+        "/api/v1/notifications/preferences",
+        "/api/v1/notifications/stream",
+        "/api/v1/notifications/unread-count",
+        "/api/v1/notifications/read-all",
+        "/api/v1/notifications/{notification_id}/read",
+        "/api/v1/business-settings",
+        "/api/v1/billing/custom-prices",
+        "/api/v1/billing/custom-prices/{custom_price_id}",
+        "/api/v1/billing/discounts",
+        "/api/v1/billing/discounts/{discount_id}",
+        "/api/v1/billing/discounts/{discount_id}/assignments",
+        "/api/v1/billing/discounts/{discount_id}/assignments/{assignment_id}",
+        "/api/v1/billing/service-prices",
+        "/api/v1/billing/service-prices/{service_price_id}",
+        "/api/v1/billing/service-prices/{service_price_id}/versions",
+        "/api/v1/billing/service-prices/{service_price_id}/versions/{price_version_id}",
+        "/api/v1/billing/settings",
+        "/api/v1/billing/cancellation-rules",
+        "/api/v1/billing/cancellation-rules/{rule_id}",
+        "/api/v1/billing/unbilled-items",
+        "/api/v1/billing/unbilled-enrollments",
+        "/api/v1/billing/tuition-plans",
+        "/api/v1/billing/tuition-plans/eligible-enrollments",
+        "/api/v1/billing/tuition-plans/{tuition_plan_id}",
+        "/api/v1/billing/tuition-plans/{tuition_plan_id}/pauses",
+        "/api/v1/billing/tuition-plans/{tuition_plan_id}/resume",
+        "/api/v1/billing/unbilled-tuition-periods",
+        "/api/v1/billing/package-products",
+        "/api/v1/billing/package-products/{product_id}",
+        "/api/v1/billing/package-products/{product_id}/versions",
+        "/api/v1/billing/package-products/{product_id}/versions/{price_version_id}",
+        "/api/v1/billing/packages",
+        "/api/v1/billing/packages/{package_id}",
+        "/api/v1/billing/packages/{package_id}/cancellation",
+        "/api/v1/billing/withdrawal-preview",
+        "/api/v1/billing/withdrawals",
+        "/api/v1/billing/withdrawals/account-credit",
+        "/api/v1/billing/withdrawals/refund",
+        "/api/v1/billing/withdrawals/{withdrawal_id}",
+        "/api/v1/families/{family_id}/billing-account",
+        "/api/v1/families/{family_id}/billing-account/charges",
+        "/api/v1/families/{family_id}/billing-account/charges/{charge_id}",
+        "/api/v1/families/{family_id}/billing-account/charges/{charge_id}/adjustments",
+        "/api/v1/families/{family_id}/billing-account/payments/{payment_id}/reversal",
+        "/api/v1/families/{family_id}/billing-account/payments/{payment_id}/refunds",
+        "/api/v1/families/{family_id}/billing-account/ledger",
+        "/api/v1/families/{family_id}/billing-account/packages",
+        "/api/v1/families/{family_id}/billing-account/packages/{package_id}",
+        "/api/v1/families/{family_id}/billing-account/payments",
+        "/api/v1/families/{family_id}/billing-account/payments/{payment_id}",
+        "/api/v1/families/{family_id}/billing-account/receipts/{receipt_id}/pdf",
+        "/api/v1/families/{family_id}/billing-account/allocations",
+        "/api/v1/billing/payment-methods",
+        "/api/v1/billing/payment-methods/{code}",
+        "/api/v1/families/{family_id}/billing-account/charges/{charge_id}/due-date-changes",
+        "/api/v1/billing/overdue-accounts",
+        "/api/v1/scheduling-policies",
+        "/api/v1/scheduling-policies/{policy_id}",
+        "/api/v1/classrooms",
+        "/api/v1/classrooms/{classroom_id}",
+        "/api/v1/closures",
+        "/api/v1/closures/check",
+        "/api/v1/closures/{closure_id}",
+        "/api/v1/course-templates",
+        "/api/v1/course-templates/{template_id}",
+        "/api/v1/tutors",
+        "/api/v1/tutors/{user_id}",
+        "/api/v1/tutors/{user_id}/qualifications",
+        "/api/v1/tutors/{user_id}/qualifications/grant",
+        "/api/v1/tutors/{user_id}/qualifications/{qualification_id}/cancel",
+        "/api/v1/tutors/{user_id}/qualifications/{qualification_id}/revoke",
+        "/api/v1/tutors/{user_id}/availability",
+        "/api/v1/tutors/{user_id}/availability/weekly",
+        "/api/v1/tutors/{user_id}/availability/settings",
+        "/api/v1/tutors/{user_id}/availability/exceptions",
+        "/api/v1/tutors/{user_id}/availability/exceptions/{exception_id}",
+        "/api/v1/tutors/{user_id}/availability/change-requests/{change_request_id}/cancel",
+        "/api/v1/tutors/{user_id}/availability/check",
+        "/api/v1/class-sessions",
+        "/api/v1/class-sessions/suggestions",
+        "/api/v1/class-sessions/{class_session_id}",
+        "/api/v1/class-sessions/{class_session_id}/replacement-tutors",
+        "/api/v1/class-sessions/{class_session_id}/offers",
+        "/api/v1/class-sessions/{class_session_id}/conflict-overrides",
+        "/api/v1/class-sessions/{class_session_id}/substitutions",
+        "/api/v1/class-sessions/{class_session_id}/substitutions/{substitution_id}/withdraw",
+        "/api/v1/class-sessions/{class_session_id}/attendance",
+        "/api/v1/class-sessions/{class_session_id}/attendance/corrections",
+        "/api/v1/class-sessions/{class_session_id}/closeout",
+        "/api/v1/class-sessions/{class_session_id}/closeout/approve",
+        "/api/v1/class-sessions/{class_session_id}/closeout/request-changes",
+        "/api/v1/class-sessions/{class_session_id}/closeout/corrections",
+        "/api/v1/class-sessions/{class_session_id}/closeout/on-behalf",
+        "/api/v1/closeouts/overdue",
+        # #79 session notes
+        "/api/v1/class-sessions/{class_session_id}/notes",
+        "/api/v1/students/{student_id}/notes",
+        "/api/v1/students/{student_id}/learning-notes",
+        "/api/v1/notes/{note_id}",
+        "/api/v1/deleted-records",
+        "/api/v1/deleted-records/{kind}/{record_id}/restore",
+        "/api/v1/notes/{note_id}/publish",
+        "/api/v1/notes/{note_id}/unpublish",
+        # #80 evaluations
+        "/api/v1/evaluation-templates",
+        "/api/v1/evaluation-templates/{template_id}",
+        "/api/v1/evaluations",
+        "/api/v1/evaluations/{evaluation_id}",
+        "/api/v1/evaluations/{evaluation_id}/finalize",
+        "/api/v1/evaluations/{evaluation_id}/void",
+        "/api/v1/students/{student_id}/evaluations",
+        "/api/v1/students/{student_id}/academic-history",
+        "/api/v1/class-sessions/{class_session_id}/evaluation-context",
+        # #81 learning plans
+        "/api/v1/students/{student_id}/learning-plans",
+        "/api/v1/learning-plans/{plan_id}",
+        "/api/v1/learning-plans/{plan_id}/transition",
+        "/api/v1/learning-plan-milestones/{milestone_id}",
+        # #82 homework assignments
+        "/api/v1/assignments",
+        "/api/v1/assignments/{assignment_id}",
+        "/api/v1/assignments/{assignment_id}/students/{student_id}/submission",
+        "/api/v1/assignments/{assignment_id}/students/{student_id}/grade",
+        "/api/v1/students/{student_id}/assignments",
+        "/api/v1/students/{student_id}/assignments/{assignment_id}",
+        # #83 progress reports
+        "/api/v1/progress-reports",
+        "/api/v1/progress-reports/{report_id}",
+        "/api/v1/progress-reports/{report_id}/submit",
+        "/api/v1/progress-reports/{report_id}/approve",
+        "/api/v1/progress-reports/{report_id}/request-changes",
+        "/api/v1/progress-reports/{report_id}/retract",
+        "/api/v1/students/{student_id}/progress-reports",
+        "/api/v1/students/{student_id}/progress-reports/{report_id}",
+        # #316 report schedules
+        "/api/v1/students/{student_id}/progress-report-schedules",
+        "/api/v1/progress-report-schedules/{schedule_id}",
+        # #84 progress dashboard
+        "/api/v1/students/{student_id}/progress",
+        "/api/v1/students/{student_id}/session-log",
+        "/api/v1/class-sessions/{class_session_id}/cancel",
+        "/api/v1/assignment-offers",
+        "/api/v1/assignment-offers/{offer_id}/accept",
+        "/api/v1/assignment-offers/{offer_id}/decline",
+        "/api/v1/schedule/tutor-options",
+        # #67: the role-scoped schedules.
+        "/api/v1/tutors/{user_id}/schedule",
+        "/api/v1/students/{student_id}/schedule",
+        "/api/v1/schedule/family-students",
+        "/api/v1/tutor-suggestions",
+        "/api/v1/tutor-suggestions/series",
+        "/api/v1/class-series",
+        "/api/v1/class-series/{class_series_id}",
+        "/api/v1/class-series/{class_series_id}/cancellations",
+        "/api/v1/class-series/{class_series_id}/edits",
+        "/api/v1/class-series/{class_series_id}/offers",
+        "/api/v1/groups",
+        "/api/v1/groups/{group_id}",
+        "/api/v1/groups/{group_id}/sessions",
+        "/api/v1/groups/{group_id}/enrollments",
+        "/api/v1/groups/{group_id}/enrollments/{enrollment_id}/withdraw",
+        "/api/v1/cohorts",
+        "/api/v1/cohorts/{cohort_id}",
+        "/api/v1/cohorts/{cohort_id}/sessions",
+        "/api/v1/cohorts/{cohort_id}/completion",
+        "/api/v1/cohorts/{cohort_id}/enrollments",
+        "/api/v1/cohorts/{cohort_id}/enrollments/{enrollment_id}/withdraw",
+        "/api/v1/available-slots",
+        "/api/v1/session-requests",
+        "/api/v1/session-requests/{request_id}",
+        "/api/v1/session-requests/{request_id}/withdraw",
+        "/api/v1/session-requests/{request_id}/review",
+        "/api/v1/session-requests/{request_id}/confirm",
+        "/api/v1/session-requests/{request_id}/reject",
+        "/api/v1/change-requests",
+        "/api/v1/change-requests/{change_request_id}",
+        "/api/v1/change-requests/{change_request_id}/withdraw",
+        "/api/v1/change-requests/{change_request_id}/review",
+        "/api/v1/change-requests/{change_request_id}/approve",
+        "/api/v1/change-requests/{change_request_id}/reject",
+        "/api/v1/auth/login",
+        "/api/v1/auth/logout",
+        "/api/v1/auth/me",
+        "/api/v1/auth/me/preferences",
+        "/api/v1/auth/reauthenticate",
+        "/api/v1/auth/invitation/lookup",
+        "/api/v1/auth/invitation/redeem",
+        "/api/v1/invitations",
+        "/api/v1/invitations/{user_id}/reissue",
+        "/api/v1/payroll/pay-item-types",
+        "/api/v1/payroll/pay-item-types/{type_id}",
+        "/api/v1/payroll/pay-rules",
+        "/api/v1/payroll/pay-rules/{rule_id}",
+        "/api/v1/payroll/payments/{payment_id}/reversal",
+        "/api/v1/payroll/periods",
+        "/api/v1/payroll/periods/{period_id}/carry-forward",
+        "/api/v1/payroll/periods/{period_id}/finalize",
+        "/api/v1/payroll/periods/{period_id}/lines",
+        "/api/v1/payroll/periods/{period_id}/payments",
+        "/api/v1/payroll/periods/{period_id}/prepare",
+        "/api/v1/payroll/periods/{period_id}/recalculate",
+        "/api/v1/payroll/periods/{period_id}/return",
+        "/api/v1/payroll/settings",
+        "/api/v1/payroll/tutors",
+        "/api/v1/payroll/tutors/{tutor_user_id}/adjustments",
+        "/api/v1/payroll/tutors/{tutor_user_id}/compensation",
+        "/api/v1/payroll/tutors/{tutor_user_id}/earnings",
+        "/api/v1/payroll/tutors/{tutor_user_id}/earnings/{period_id}",
+        "/api/v1/payroll/tutors/{tutor_user_id}/pay-items",
+        "/api/v1/payroll/tutors/{tutor_user_id}/pay-items/{item_id}",
+        "/api/v1/payroll/tutors/{tutor_user_id}/pay-terms",
+        "/api/v1/payroll/tutors/{tutor_user_id}/pay-terms/{terms_id}",
+        "/api/v1/payroll/tutors/{tutor_user_id}/payslips/{payslip_id}/pdf",
+        "/api/v1/payroll/tutors/{tutor_user_id}/rates",
+        "/api/v1/payroll/tutors/{tutor_user_id}/rates/{rate_id}",
+        "/api/v1/payroll/unresolved-work",
+        "/api/v1/finance/expense-categories",
+        "/api/v1/finance/expense-categories/{category_id}",
+        "/api/v1/finance/expense-payments/{payment_id}/reversal",
+        "/api/v1/finance/expense-templates",
+        "/api/v1/finance/expense-templates/{template_id}",
+        "/api/v1/finance/expenses",
+        "/api/v1/finance/expenses/{expense_id}",
+        "/api/v1/finance/expenses/{expense_id}/adjustments",
+        "/api/v1/finance/expenses/{expense_id}/payments",
+        "/api/v1/finance/vendors",
+        "/api/v1/finance/vendors/{vendor_id}",
+        "/api/v1/reports/dashboard/layout",
+        "/api/v1/reports/finance/balances",
+        "/api/v1/reports/finance/profitability",
+        "/api/v1/reports/kpis/revenue-trend",
+        "/api/v1/reports/kpis/course-profitability",
+        "/api/v1/reports/kpis/room-utilization",
+        "/api/v1/reports/kpis/student-retention",
+        "/api/v1/reports/kpis/tutor-performance",
+        "/api/v1/privacy-notice",
+        "/api/v1/privacy-notice/acceptance",
+        "/api/v1/auth/password",
+        "/api/v1/auth/password-reset/lookup",
+        "/api/v1/auth/password-reset/redeem",
+        "/api/v1/password-resets",
+        "/api/v1/auth/registrations",
+        "/api/v1/users",
+        "/api/v1/users/{user_id}",
+        "/api/v1/users/{user_id}/suspend",
+        "/api/v1/users/{user_id}/archive",
+        "/api/v1/users/{user_id}/reactivate",
+        "/api/v1/users/{user_id}/roles",
+        "/api/v1/users/{user_id}/delegations",
+        "/api/v1/education-levels",
+        "/api/v1/education-levels/{level_id}",
+        "/api/v1/education-levels/{level_id}/subjects",
+        "/api/v1/subjects",
+        "/api/v1/subjects/{subject_id}",
+        "/api/v1/students",
+        "/api/v1/students/{student_id}",
+        "/api/v1/students/{student_id}/guardians",
+        "/api/v1/students/{student_id}/guardians/{guardian_id}",
+        "/api/v1/students/{student_id}/account",
+        "/api/v1/students/{student_id}/consents",
+        "/api/v1/students/{student_id}/consents/{consent_id}/revoke",
+        "/api/v1/guardians",
+        "/api/v1/guardians/{guardian_id}",
+        "/api/v1/families",
+        "/api/v1/families/own",
+        "/api/v1/families/{family_id}",
+        "/api/v1/families/{family_id}/students/{student_id}",
+        "/api/v1/families/{family_id}/guardians/{guardian_id}",
+    }
     top_level = {getattr(r, "path", None) for r in app.routes} - {None}
     assert top_level == {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
     with TestClient(app) as client:
@@ -188,3 +495,53 @@ def test_production_app_renders_404_problem(app_env: None):
         response = client.get("/nope")
 
     assert_problem(response, 404, "not_found")
+
+
+# --- AppError headers (#27 B6) ------------------------------------------------------
+
+
+class SlowDownError(AppError):
+    status = 429
+    code = "slow_down"
+    detail = "Slow down."
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.headers = {"Retry-After": "7", "X-Extra": "1"}
+
+
+def test_app_error_headers_are_sent_and_default_to_none():
+    app = FastAPI()
+    install_conventions(app)
+
+    @app.get("/slow")
+    async def slow() -> None:
+        raise SlowDownError()
+
+    @app.get("/plain")
+    async def plain() -> None:
+        raise VersionConflictError()
+
+    with TestClient(app) as client:
+        slow_response = client.get("/slow")
+        plain_response = client.get("/plain")
+
+    assert_problem(slow_response, 429, "slow_down")
+    assert slow_response.headers["retry-after"] == "7"
+    assert slow_response.headers["x-extra"] == "1"
+    assert AppError.headers is None
+    assert "retry-after" not in plain_response.headers
+
+
+def test_the_core_problem_codes_are_pinned():
+    # #130 B1: the codes the core sends without an AppError subclass (the
+    # i18n inventory lists them). A new problem_response( call site in
+    # app/core/errors.py adds its code here.
+    assert CORE_PROBLEM_CODES == {
+        "internal_error",
+        "validation_error",
+        "not_found",
+        "method_not_allowed",
+    }
+    assert {status_code_name(404), status_code_name(405)} <= CORE_PROBLEM_CODES
+    assert AppError.code in CORE_PROBLEM_CODES

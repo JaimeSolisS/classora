@@ -1,4 +1,4 @@
-.PHONY: dev migrate seed seed-demo lint lint-api lint-web lint-e2e test test-api test-web test-unit test-integration test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image
+.PHONY: start dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english seed-data-spanish-native seed-data-english-native lint lint-api lint-web lint-e2e check-pdf-image test test-all test-api-docker test-web-docker test-native test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability check-infra tf-plan tf-apply tf-destroy env-teardown monitoring-sync load-test
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -28,25 +28,174 @@ SEMGREP_TARGETS := apps/api/app apps/api/migrations apps/web/src packages
 SEMGREP = docker run --rm $(REPO_MOUNT) $(SEMGREP_IMAGE) \
 	semgrep scan --metrics=off --disable-version-check --no-git-ignore $(SEMGREP_CONFIGS) $(SEMGREP_TARGETS)
 
-## Build the images and start db, pgbouncer, api, worker and web in the background (idempotent).
-# The worker (same image as api) waits for its tables until `make migrate` has run.
-dev:
-	docker compose up -d --build --wait
+## One command for a first (or any) local start: create .env from .env.example if it is
+## missing, apply the migrations, then start the stack (`make dev`). Safe to repeat.
+start:
+	@test -f .env || { cp .env.example .env && echo "Created .env from .env.example"; }
+	$(MAKE) migrate
+	$(MAKE) dev
+	@echo "Classora is up: http://127.0.0.1:$${WEB_PORT:-5173} (sign-in: see README 'Run it on your machine')"
 
-## Apply Alembic migrations to the local Compose database (starts db if needed; make dev never migrates).
-# --build: uses the migrations in the working tree. Alembic connects directly to PostgreSQL (ADR-0003).
+## Build the images and start db, pgbouncer, api, worker and web in the background (idempotent).
+## On a new checkout or volume run `make migrate` first: it creates the database role
+## (classora_app) the api, worker and PgBouncer log in as (#165).
+## On failure it prints each container's status and the last 40 log lines of every service
+## that is not running and healthy (#660), then exits non-zero. No retry: re-run it.
+dev:
+	@docker compose up -d --build --wait || { status=$$?; \
+	  echo "make dev: docker compose up failed (exit $$status). Containers:" >&2; \
+	  docker compose ps -a >&2; \
+	  for id in $$(docker compose ps -a -q); do \
+	    set -- $$(docker inspect --format '{{index .Config.Labels "com.docker.compose.service"}} {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$$id"); \
+	    case "$$2/$$3" in running/healthy|running/none) continue ;; esac; \
+	    echo "--- $$1 ($$2, health: $$3), last 40 log lines ---" >&2; \
+	    docker compose logs --no-color --tail 40 "$$1" >&2; \
+	  done; \
+	  echo "If this is a new checkout or volume, run make migrate first (it creates the database role the app uses)." >&2; \
+	  echo "A very busy machine can be slow on the first start; make dev is safe to run again." >&2; \
+	  exit $$status; }
+
+# Optional local observability (ADR-0014, #611): OTel Collector, Prometheus, Loki,
+# Tempo and Grafana, Compose profile `observability` (root compose.yaml). Off by
+# default: `make dev` never starts it. Image pins: compose.observability.yaml.
+OBS_SERVICES := otel-collector prometheus loki tempo grafana
+OBS_VOLUMES := prometheus-data loki-data tempo-data grafana-data
+
+## Start the app stack plus the observability profile (about 700 MB more RAM; a heavy
+## command). Grafana on http://127.0.0.1:GRAFANA_PORT (default 3000), login admin and
+## GRAFANA_ADMIN_PASSWORD from .env. Stop only the profile with `make dev-observability-down`.
+## The API and worker export telemetry to the local collector (OTEL_EXPORTER_OTLP_ENDPOINT,
+## #612); a later `make dev` recreates them with telemetry off.
+dev-observability:
+	@if docker compose --profile observability config | grep -qE '^ +GF_SECURITY_ADMIN_PASSWORD: ("")?$$'; then \
+	  echo "dev-observability: set GRAFANA_ADMIN_PASSWORD in .env (see .env.example)" >&2; exit 2; fi
+	OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 docker compose --profile observability up -d --build --wait
+
+## Stop and remove only the observability containers (the app stack keeps running).
+## Their data volumes are kept unless V=1.
+dev-observability-down:
+	docker compose --profile observability rm --stop --force $(OBS_SERVICES)
+	@if [ "$(V)" = 1 ]; then \
+	  project=$$(docker compose config | sed -n 's/^name: //p' | head -n 1); \
+	  for volume in $(OBS_VOLUMES); do docker volume rm --force "$${project}_$$volume"; done; fi
+
+## Validate every observability config with the pinned images, without starting the stack:
+## profile off by default, otelcol validate, promtool, loki/tempo verify, Grafana provisioning.
+## Needs Docker and uv (CI job `infra`).
+check-observability:
+	infrastructure/observability/check.sh
+
+# --- Terraform (ADR-0011, #613; _docs/runbooks/terraform.md) -----------------
+# check-infra runs Terraform, shellcheck and actionlint from these images (by
+# multi-arch index digest; the tag is informational), so none needs a local install.
+TERRAFORM_IMAGE := hashicorp/terraform:1.13.4@sha256:eebc943e69008b6d6d986800087164274d8c92d83db8d53fb9baa4ccff309884
+SHELLCHECK_IMAGE := koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
+ACTIONLINT_IMAGE := rhysd/actionlint:1.7.8@sha256:96d4a8c87dbbfb3bdd324f8fdc285fc3df5261e2decc619a4dd7e8ee52bbfd46
+TF := infrastructure/scripts/terraform.sh
+TF_ROOT_CHECK = @test -n "$(ENV)" || { echo "usage: make $@ ENV=<bootstrap|shared|dev|prod|monitoring>" >&2; exit 2; }
+
+## Static infrastructure checks, no AWS credentials (CI job `infra`): terraform fmt -check
+## and validate for every root, shellcheck on infrastructure/scripts, infrastructure/host and infrastructure/load,
+## and actionlint on .github/workflows.
+check-infra:
+	TERRAFORM_IMAGE=$(TERRAFORM_IMAGE) SHELLCHECK_IMAGE=$(SHELLCHECK_IMAGE) ACTIONLINT_IMAGE=$(ACTIONLINT_IMAGE) $(TF) check
+
+## Load test (#152, ADR-0018; runbook _docs/runbooks/load-test.md): k6 from K6_IMAGE against
+## TARGET (default DEV) with the scrubbed accounts of infrastructure/load/prepare-dataset.sh.
+## make load-test PROFILE=p1|p2|p3|staff-600 [TARGET=<url>] [VUS=<n>] [DURATION=<k6 duration>]
+## [K6_ARGS=--no-thresholds]. Summary: infrastructure/load/out/<profile>-latest.json (gitignored), with
+## k6's setup_data (the shared sessions) removed.
+## DEV runs need load mode first (infrastructure/load/dev-up.sh). No repo secret is used.
+# k6 by multi-arch index digest (ADR-0016 style; the tag is informational).
+K6_IMAGE := grafana/k6:2.3.0@sha256:2dd4756ec6e14e62778916e1eb850108e4b499304c02df56760fa0bdb0fba0b8
+LOAD_TARGET = $(or $(TARGET),https://dev.classora.dev)
+load-test:
+	@case "$(PROFILE)" in p1|p2|p3|staff-600) ;; *) echo "usage: make load-test PROFILE=p1|p2|p3|staff-600 [TARGET=…] [VUS=…] [DURATION=…]" >&2; exit 2;; esac
+	@case "$(LOAD_TARGET)" in *app.classora.dev*) echo "load-test: PROD is never a target" >&2; exit 2;; esac
+	@test -f infrastructure/load/accounts.local.json || { echo "load-test: run infrastructure/load/prepare-dataset.sh first" >&2; exit 2; }
+	@mkdir -p infrastructure/load/out
+	docker run --rm -i -v "$(CURDIR)/infrastructure/load:/load:ro" \
+	  -v "$(CURDIR)/infrastructure/load/out:/out" \
+	  -e TARGET="$(LOAD_TARGET)" -e PROFILE="$(PROFILE)" -e VUS="$(VUS)" -e DURATION="$(DURATION)" -e THINK_MIN="$(THINK_MIN)" -e THINK_MAX="$(THINK_MAX)" -e DEBUG="$(DEBUG)" \
+	  -e ACCOUNTS=/load/accounts.local.json \
+	  $(K6_IMAGE) run --quiet $(K6_ARGS) \
+	  --summary-export "/out/$(or $(SUMMARY),$(PROFILE)-latest.json)" /load/k6/main.js; status=$$?; \
+	  python3 infrastructure/load/strip_summary.py \
+	    "infrastructure/load/out/$(or $(SUMMARY),$(PROFILE)-latest.json)" || true; exit $$status
+
+## Plan a Terraform root (AWS_PROFILE defaults to jsolisdev): make tf-plan ENV=<root>
+## [ARGS='-replace=<address>']. Saves <root>/tfplan; the first bootstrap plan runs on local state.
+tf-plan:
+	$(TF_ROOT_CHECK)
+	$(TF) plan $(ENV) $(ARGS)
+
+## Apply the saved plan after typing the root's name (no auto-approve): make tf-apply ENV=<root>.
+tf-apply:
+	$(TF_ROOT_CHECK)
+	$(TF) apply $(ENV)
+
+## Destroy a root after typing its name: make tf-destroy ENV=<root>. Refuses bootstrap,
+## and prod without a verified final dump newer than its last deploy (prod-destroy-guard.sh).
+tf-destroy:
+	$(TF_ROOT_CHECK)
+	$(TF) destroy $(ENV)
+
+## End of the environments' window (runbook _docs/runbooks/teardown.md): final PROD
+## dump, then destroy, each step confirmed. make env-teardown MODE=dev-only|all
+## (dev-only keeps DEV with monitoring off; MONITORING=colocated keeps it on DEV).
+env-teardown:
+	@test -n "$(MODE)" || { echo "usage: make env-teardown MODE=dev-only|all" >&2; exit 2; }
+	MONITORING=$(or $(MONITORING),off) infrastructure/scripts/env-teardown.sh $(MODE)
+
+## Sync the dedicated monitoring host with HEAD (bundle infrastructure/observability and
+## infrastructure/host, upload, SSM classora-monitoring-sync; #617): make monitoring-sync.
+monitoring-sync:
+	infrastructure/scripts/monitoring-sync.sh
+
+## Apply Alembic migrations to the local Compose database, then give the runtime role
+## classora_app its login and password (starts db if needed; make dev never migrates).
+# --build: uses the migrations in the working tree. The `migrate` tools service connects
+# directly to PostgreSQL as the owner (DATABASE_MIGRATION_URL; ADR-0003 amendment, #165).
 migrate:
-	docker compose run --rm --build api alembic upgrade head
+	docker compose run --rm --build migrate sh -c 'alembic upgrade head && python -m app.cli sync-runtime-role'
 
 ## Apply the reference seeds to the local Compose database (idempotent; run `make migrate` first).
-# Same image and direct connection as `make migrate` (ADR-0003); never migrates.
+# Same tools service and owner connection as `make migrate` (ADR-0003); never migrates.
 seed:
-	docker compose run --rm --build api python -m app.seeds
+	docker compose run --rm --build migrate python -m app.seeds
 
-## Generate synthetic es_MX demo data on the host (refused unless APP_ENV is local or dev; needs .env).
-# Runs with the API dev dependencies (Factory Boy, Faker), which the image does not contain.
-seed-demo:
-	cd apps/api && uv run --env-file ../../.env python -m tests.factories.demo
+## Create the first Owner account: make bootstrap-owner USERNAME=<name> (prompts for the
+## password twice; refused once any Owner exists). Run `make migrate` and `make seed` first.
+# Same image and direct connection as `make seed` (ADR-0003); runs in every APP_ENV.
+bootstrap-owner:
+	@test -n "$(USERNAME)" || { echo "usage: make bootstrap-owner USERNAME=<name>" >&2; exit 2; }
+	docker compose run --rm --build migrate python -m app.cli bootstrap-owner --username "$(USERNAME)"
+
+## Print a one-time password-reset link for a locked-out active Owner:
+## make reset-owner-password USERNAME=<name> (shown once; expires in 24 hours).
+# Same image and direct connection as `make bootstrap-owner` (ADR-0003); runs in every APP_ENV.
+reset-owner-password:
+	@test -n "$(USERNAME)" || { echo "usage: make reset-owner-password USERNAME=<name>" >&2; exit 2; }
+	docker compose run --rm --build migrate python -m app.cli reset-owner-password --username "$(USERNAME)"
+
+## Generate the simulated operations data in Spanish into the Compose database (APP_ENV=local and dev only; run `make start` first, on a fresh volume).
+# A deterministic center from 1 Sep to 5 Dec 2026 (history to 18 Nov), through the services; _docs/Full_README.md "Simulated operations data".
+# Runs in the Compose tools service `devtools` (the API image's test stage; #672 D4): only Docker is needed.
+seed-data-spanish:
+	docker compose run --rm --build devtools python -m tests.factories.simulation --language es
+
+## Generate the simulated operations data in English into the Compose database (APP_ENV=local and dev only; run `make start` first, on a fresh volume).
+seed-data-english:
+	docker compose run --rm --build devtools python -m tests.factories.simulation --language en
+
+## Generate the simulated operations data in Spanish on the host (APP_ENV=local and dev only; needs a freshly migrated database and .env).
+# Native stack (uv); the database is the one this checkout's .env names.
+seed-data-spanish-native:
+	cd apps/api && uv run --env-file ../../.env python -m tests.factories.simulation --language es
+
+## Generate the simulated operations data in English on the host (APP_ENV=local and dev only; needs its own freshly migrated database).
+seed-data-english-native:
+	cd apps/api && uv run --env-file ../../.env python -m tests.factories.simulation --language en
 
 ## Lint both apps and the E2E tests (check only, never modifies files). Fails if any part fails.
 lint: lint-api lint-web lint-e2e
@@ -73,8 +222,33 @@ lint-e2e:
 	$(PNPM) --filter @classora/e2e typecheck
 	$(PNPM) --filter @classora/e2e format:check
 
-## Run all tests for both apps (not E2E). Fails if either part fails.
-test: test-api test-web
+# Docker test targets (#672; infrastructure/docker/test-in-docker.sh). SHARDS=n test
+# containers at once (default: Docker's CPUs minus one, 1 to 4); PYTEST_ARGS="..."
+# narrows the API selection (paths relative to apps/api).
+TEST_IN_DOCKER = SHARDS="$(SHARDS)" infrastructure/docker/test-in-docker.sh
+
+## Run the API unit and integration tests (the selections of make test-unit and
+## make test-integration) and the web and API client tests in Docker (not E2E): needs
+## only Docker. SHARDS=n containers at once, PYTEST_ARGS="..." narrows the API part;
+## no coverage report. Every part runs; fails if any part fails. Logs in test-results/docker/.
+test:
+	@$(TEST_IN_DOCKER) both
+
+## Everything `make test` runs plus the migration checks, the billing invariant suite
+## and the simulation seed tests (all API tests), in Docker. Much longer than make test.
+test-all:
+	@SUITE=everything $(TEST_IN_DOCKER) both
+
+## Only the API part of `make test` (SHARDS, PYTEST_ARGS as there).
+test-api-docker:
+	@$(TEST_IN_DOCKER) api
+
+## Only the web and API client part of `make test` (Vitest, in Docker).
+test-web-docker:
+	@$(TEST_IN_DOCKER) web
+
+## Run all tests for both apps on the host (not E2E; needs uv, Pango, Node 24). Fails if either part fails.
+test-native: test-api test-web
 
 ## Run all API tests (unit + integration) with one coverage report.
 ## Integration tests start a throwaway Testcontainers PostgreSQL; Docker must be running.
@@ -91,9 +265,23 @@ test-web:
 test-unit:
 	cd apps/api && uv run pytest -m unit
 
-## Run only the API integration tests (Testcontainers PostgreSQL; Docker must be running).
+## Run the API integration tests except the migration checks (those are `make test-migrations`),
+## the billing invariant suite (`make test-billing-invariants`) and the simulation seed tests
+## (`make test-simulation`) (Testcontainers PostgreSQL; Docker must be running).
+## SHARD=K/N runs only shard K of N, as in CI (SHARD=K/5).
+## The ignore glob is quoted so the shell passes it to pytest unexpanded.
 test-integration:
-	cd apps/api && uv run pytest -m integration
+	cd apps/api && uv run pytest -m integration --ignore=tests/integration/test_migrations.py --ignore=tests/integration/billing_invariants --ignore-glob='tests/integration/test_simulation_*.py' $(if $(SHARD),--shard=$(SHARD))
+
+## Run the billing invariant suite (randomized sequences, races, job walks; Docker; no coverage).
+## SEEDS=5,9 replaces the default seeds, EXTRA_SEED=n adds one, STEPS=n truncates every sequence:
+## a failure prints the exact `make test-billing-invariants SEEDS=… STEPS=…` that reproduces it.
+test-billing-invariants:
+	cd apps/api && $(if $(SEEDS),BILLING_INVARIANT_SEEDS=$(SEEDS)) $(if $(STEPS),BILLING_INVARIANT_STEPS=$(STEPS)) $(if $(EXTRA_SEED),BILLING_INVARIANT_EXTRA_SEED=$(EXTRA_SEED)) uv run pytest tests/integration/billing_invariants --no-cov --durations=10
+
+## Run only the simulated-operations seed tests (tests/integration/test_simulation_*.py; Docker; no coverage).
+test-simulation:
+	cd apps/api && uv run pytest tests/integration/test_simulation_*.py --no-cov --durations=10
 
 ## Run only the migration tests: upgrade from empty, single head, round trip, no model drift (Docker).
 test-migrations:
@@ -117,6 +305,41 @@ test-storybook:
 	$(PNPM) --filter @classora/web exec playwright install --only-shell chromium
 	$(PNPM) --filter @classora/web test-storybook
 
+## Build the API image and render the sample PDF in es and en inside it (ADR-0015).
+## Fails on a render error or a missing system library (warnings are errors). Needs Docker.
+check-pdf-image:
+	docker build -f infrastructure/docker/api.Dockerfile -t classora-api:pdf-check .
+	docker run --rm classora-api:pdf-check python -m app.cli pdf-smoke
+
+# The images that run on AWS (ADR-0010, #610), named after their ECR repositories
+# (classora/<name>). PLATFORM is the target platform: linux/amd64 by default (the
+# local Intel machines), linux/arm64 in the CI `images` job (native arm64 runner).
+PLATFORM ?= linux/amd64
+IMAGE_TAG ?= local
+API_IMAGE = classora/api:$(IMAGE_TAG)
+WEB_IMAGE = classora/web:$(IMAGE_TAG)
+PGBOUNCER_IMAGE = classora/pgbouncer:$(IMAGE_TAG)
+
+## Build the three AWS images for PLATFORM (default linux/amd64): api (also the worker),
+## web (the edge: Caddy with the built SPA) and pgbouncer. Same Dockerfiles as make dev.
+build-images:
+	docker build --platform $(PLATFORM) -f infrastructure/docker/api.Dockerfile -t $(API_IMAGE) .
+	docker build --platform $(PLATFORM) -f infrastructure/docker/edge.Dockerfile -t $(WEB_IMAGE) .
+	docker build --platform $(PLATFORM) -t $(PGBOUNCER_IMAGE) infrastructure/docker/pgbouncer
+
+## Check the images of `make build-images`: architecture, API as uid 10001, no secret in
+## any image's Env, no .env file in the build context. Run `make build-images` first.
+check-images:
+	infrastructure/docker/check-images.sh $(lastword $(subst /, ,$(PLATFORM))) $(API_IMAGE) $(WEB_IMAGE) $(PGBOUNCER_IMAGE)
+
+## Build the edge image and smoke-test it in front of a stub API: SPA fallback, asset
+## caching, security headers (against PRODUCTION_HEADERS), /api proxy, X-Forwarded-For,
+## unbuffered SSE, /health/* 404, no Server/Via header, the 4 MB body cap and HSTS over HTTPS.
+## Needs Docker, curl, jq and Node 24.
+smoke-edge:
+	docker build --platform $(PLATFORM) -f infrastructure/docker/edge.Dockerfile -t $(WEB_IMAGE) .
+	infrastructure/docker/edge/smoke.sh $(WEB_IMAGE)
+
 ## Playwright E2E (smoke and axe) against an isolated, freshly migrated and seeded Compose
 ## stack (project classora-e2e, own ports and volume; always torn down, E2E_KEEP=1 keeps it).
 ## Needs Docker, uv and Node 24, not .env; runs while `make dev` is up (e2e/scripts/run.sh).
@@ -124,11 +347,12 @@ e2e:
 	$(PNPM) install --frozen-lockfile
 	e2e/scripts/run.sh
 
-## Regenerate the API contract: export the OpenAPI document, then the TypeScript client types.
+## Regenerate the API contract: export the OpenAPI document and the i18n code inventory, then the TypeScript client types.
 ## Run after any API change and commit the result. Needs uv and Node 24; no Docker, database or .env.
 api-client:
 	$(PNPM) install --frozen-lockfile
 	cd apps/api && uv run python -m app.core.openapi ../../packages/api-client/openapi.json
+	cd apps/api && uv run python -m app.core.i18n_inventory ../../packages/api-client/i18n-inventory.json
 	$(PNPM) --filter @classora/api-client generate
 
 ## Drift check (CI): regenerate, then fail if packages/api-client differs from the commit
@@ -194,7 +418,7 @@ sast:
 
 ## Trivy vulnerability scan of a local or registry image: make scan-image IMAGE=<ref>.
 ## Prints HIGH and CRITICAL; fails on CRITICAL with a fixed version (not in .trivyignore).
-## Not run in PR CI; M9-06 runs it after docker build, before push (ADR-0016).
+## The CI `images` job runs it on the three arm64 images; M9-07 (#615) runs it before push (ADR-0016).
 scan-image:
 	@test -n "$(IMAGE)" || { echo "usage: make scan-image IMAGE=<image reference>" >&2; exit 2; }
 	@infrastructure/scripts/check-scan-exceptions.sh trivy .trivyignore
@@ -206,3 +430,52 @@ scan-image:
 	  -v classora-trivy-cache:/root/.cache -v "$(CURDIR)/.trivyignore:/trivyignore:ro" \
 	  $(TRIVY_IMAGE) image --quiet --scanners vuln --ignorefile /trivyignore --skip-db-update \
 	  --table-mode detailed --severity CRITICAL --ignore-unfixed --exit-code 1 "$(IMAGE)"
+
+# --- Native local stack (agents and developers; _docs/process.md) ------------
+# One shared PostgreSQL container (Compose project classora-shared, 127.0.0.1:55432)
+# with one database per worktree or clone; the API, worker and web app run on the
+# host (no image builds, no PgBouncer). The Docker stack (make dev, make e2e) and
+# CI stay the reference. Settings: this checkout's .env (ENV_FILE=<path> picks
+# another), and variables set in the shell or on the make command line win over it.
+.PHONY: db-shared db-shared-down db-create db-drop api-native worker-native web-native
+
+SHARED_DB_COMPOSE := docker compose -f infrastructure/docker/compose.shared-db.yaml
+WITH_ENV := infrastructure/scripts/with-env.sh
+
+## Start the shared PostgreSQL server for native stacks (idempotent; 127.0.0.1:55432).
+db-shared:
+	$(SHARED_DB_COMPOSE) up -d --wait
+
+## Stop the shared PostgreSQL server; its volume (every database) is kept unless V=1.
+db-shared-down:
+	$(SHARED_DB_COMPOSE) down $(if $(filter 1,$(V)),-v)
+
+## Create a database and its role on the shared server: make db-create NAME=<name>
+## (name: [a-z0-9_]+; idempotent). Also creates the cluster-wide runtime role classora_app once.
+## Prints the DATABASE_URL, DATABASE_DIRECT_URL (runtime role) and DATABASE_MIGRATION_URL (owner) to set.
+db-create:
+	@infrastructure/scripts/shared-db.sh create "$(NAME)"
+
+## Drop a database and its role from the shared server: make db-drop NAME=<name>
+## (classora_app stays: other databases use it).
+db-drop:
+	@infrastructure/scripts/shared-db.sh drop "$(NAME)"
+
+## Apply the migrations (as the owner, DATABASE_MIGRATION_URL), then run the API on the host
+## with reload on 127.0.0.1:API_PORT (default 8000) against DATABASE_URL / DATABASE_DIRECT_URL.
+api-native:
+	$(WITH_ENV) sh -c 'cd apps/api && uv run alembic upgrade head && \
+	  exec uv run uvicorn --factory app.main:create_app --host 127.0.0.1 --port "$${API_PORT:-8000}" \
+	  --reload --reload-dir app --no-access-log --no-proxy-headers --timeout-graceful-shutdown 5'
+
+## Run the background worker on the host against DATABASE_DIRECT_URL.
+worker-native:
+	$(WITH_ENV) sh -c 'cd apps/api && exec uv run python -m app.worker'
+
+## Install from the lockfile, then run the Vite dev server (hot reload) on 127.0.0.1:WEB_PORT
+## (default 5173), proxying to API_PROXY_TARGET (default http://127.0.0.1:API_PORT).
+web-native:
+	$(PNPM) install --frozen-lockfile
+	COREPACK_ENABLE_DOWNLOAD_PROMPT=0 $(WITH_ENV) sh -c \
+	  'export API_PROXY_TARGET="$${API_PROXY_TARGET:-http://127.0.0.1:$${API_PORT:-8000}}"; \
+	  exec corepack pnpm --filter @classora/web exec vite --port "$${WEB_PORT:-5173}"'

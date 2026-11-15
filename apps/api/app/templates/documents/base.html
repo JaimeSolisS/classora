@@ -1,0 +1,78 @@
+{#- The branded base layout of every server-rendered document (ADR-0006 E15,
+    ADR-0015; app/core/pdf.py). Child templates fill the `title` and `content`
+    blocks. The center block comes from the caller's context (`center`: name,
+    and optional address, phone, email), never from the database. Nothing is
+    fetched: the CSS is inline and the mark is an inline SVG. -#}
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<title>{% if document_title is defined %}{{ document_title }}{% endif %}</title>
+<style>
+  :root {
+    /* apps/web/src/styles/tokens.css, light theme. */
+    --brand-primary: #1d4ed8;
+    --brand-primary-foreground: #ffffff;
+    --text: #0f172a;
+    --muted: #475569;
+    --border: #cbd5e1;
+  }
+  @page {
+    size: A4;
+    margin: 20mm 18mm 22mm 18mm;
+    @bottom-center {
+      content: {{ page_footer_css }};
+      font-family: "DejaVu Sans", sans-serif;
+      font-size: 8pt;
+      color: #475569;
+    }
+  }
+  html {
+    font-family: "DejaVu Sans", sans-serif;
+    font-size: 10pt;
+    color: var(--text);
+  }
+  body { margin: 0; }
+  .document-header {
+    display: flex;
+    align-items: center;
+    gap: 6mm;
+    padding-bottom: 4mm;
+    border-bottom: 1.5pt solid var(--brand-primary);
+    margin-bottom: 8mm;
+  }
+  .mark { width: 14mm; height: 14mm; flex: none; }
+  .center-name {
+    font-size: 13pt;
+    font-weight: bold;
+    color: var(--brand-primary);
+    margin: 0 0 1mm 0;
+  }
+  .center-contact { margin: 0; color: var(--muted); font-size: 8.5pt; }
+  h1.document-title { font-size: 15pt; margin: 0 0 6mm 0; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 2mm 3mm; border-bottom: 0.5pt solid var(--border); }
+  th { color: var(--muted); font-weight: normal; width: 35%; }
+  .amount { text-align: right; font-variant-numeric: tabular-nums; }
+  {% block style %}{% endblock %}
+</style>
+</head>
+<body>
+<header class="document-header">
+  <svg class="mark" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Classora">
+    <rect width="48" height="48" rx="10" fill="#1d4ed8"/>
+    <path d="M33 16.5a11 11 0 1 0 0 15" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+  </svg>
+  <div>
+    <p class="center-name">{{ center.name }}</p>
+    {% if center.address is defined and center.address %}<p class="center-contact">{{ center.address }}</p>{% endif %}
+    {% if center.phone is defined and center.phone %}<p class="center-contact">{{ t("common.center.phone") }}: {{ center.phone }}</p>{% endif %}
+    {% if center.email is defined and center.email %}<p class="center-contact">{{ t("common.center.email") }}: {{ center.email }}</p>{% endif %}
+  </div>
+</header>
+<main>
+  <h1 class="document-title">{% block title %}{% endblock %}</h1>
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

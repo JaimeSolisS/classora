@@ -26,6 +26,7 @@ arbitrary color classes.
 | `popover-foreground` | Text in dialogs and popovers | `#0f172a` | `#f8fafc` |
 | `primary` | Primary action, links | `#1d4ed8` | `#60a5fa` |
 | `primary-foreground` | Text on primary | `#ffffff` | `#020617` |
+| `primary-hover` | Hover background of the primary action | `#1e40af` | `#3b82f6` |
 | `secondary` | Secondary action | `#f1f5f9` | `#1e293b` |
 | `secondary-foreground` | Text on secondary | `#0f172a` | `#f8fafc` |
 | `muted` | Subtle surfaces, skeletons | `#f1f5f9` | `#1e293b` |
@@ -37,8 +38,15 @@ arbitrary color classes.
 | `border` | Decorative borders and dividers | `#cbd5e1` | `#334155` |
 | `input` | Form control borders | `#64748b` | `#64748b` |
 | `ring` | Keyboard focus ring | `#1d4ed8` | `#60a5fa` |
+| `chart-1` | Chart series 1 (blue) | `#2563eb` | `#3b82f6` |
+| `chart-2` | Chart series 2 (orange) | `#c2410c` | `#ea580c` |
+| `chart-3` | Chart series 3 (teal) | `#0d9488` | `#0d9488` |
+| `chart-4` | Chart series 4 (violet) | `#9333ea` | `#a855f7` |
 
 `border` is decorative only. Borders that identify a control use `input`.
+The `chart-*` tokens (#322) are read as `var(--chart-n)` by chart code only
+(no Tailwind utility); they are assigned in this fixed order, never cycled,
+and checked as a set for colour-vision-deficiency separation.
 
 ### Contrast pairs enforced by tests
 
@@ -47,12 +55,15 @@ from `tokens.css` and checks them in both themes:
 
 - At least 4.5:1 (SC 1.4.3): `foreground`/`background`, `card-foreground`/`card`,
   `popover-foreground`/`popover`, `primary-foreground`/`primary`,
+  `primary-foreground`/`primary-hover` (hovered primary button),
   `secondary-foreground`/`secondary`, `muted-foreground`/`muted`,
   `muted-foreground`/`background`, `accent-foreground`/`accent`,
   `destructive-foreground`/`destructive`, `destructive`/`background` (error
   text), `primary`/`background` (link text).
-- At least 3:1 (SC 1.4.11, non-text): `input`/`background` and
-  `ring`/`background`.
+- At least 3:1 (SC 1.4.11, non-text): `input`/`background`,
+  `ring`/`background` and `primary`/`muted` (the `ProgressMeter` fill on its
+  track, #310); `chart-1` … `chart-4` against both `background` and `card`
+  (chart series, #322: 16 pairs over the two themes).
 
 ### Spacing, typography and radius
 
@@ -81,8 +92,13 @@ from `tokens.css` and checks them in both themes:
 - Fallback rules: no stored value, an unknown value or a `localStorage` that
   throws all resolve to `system`, with no error. If the browser has no
   `matchMedia`, `system` resolves to light.
-- M2-18 moves the preference to the user's profile in the database; the local
-  `classora.theme` value is what it migrates.
+- Signed in, the choice is also saved to the user's account (#36): at
+  sign-in the account's stored theme wins and replaces the local value (an
+  account that never stored one is filled from it), and a switcher choice is
+  applied at once, stored locally and saved. Signed out (the login and other
+  public pages) the choice is local only. If a save fails, the choice still
+  applies on this device and an alert with "Try again" shows below the
+  switchers (`features/preferences`).
 - Code: `apps/web/src/theme/` (`theme.ts`, `ThemeProvider.tsx`, `use-theme.ts`,
   `ThemeSwitcher.tsx`). The switcher labels come from the translation
   catalogs (see "Text, dates and money").
@@ -118,8 +134,10 @@ Rules for every user-visible string, date and amount in `apps/web`
   entry whose primary subtag is `es` or `en`, else `es`. Unknown stored
   values and a throwing `localStorage` fall back the same way. It is applied
   in `main.tsx` before the first render; switching updates the text in place
-  with no reload or remount. M2-18 migrates `classora.language` to the user's
-  profile.
+  with no reload or remount. Signed in, the language is also saved to the
+  user's account (#36), the same way as the theme (see "Theming"): the
+  account's language wins at sign-in, and signed out it is local only.
+  Applying the account's values at sign-in never moves focus.
 - `<html lang>` always matches the active language (`index.html` ships
   `lang="es"`). The language switcher shows the endonyms "Español" and
   "English", each with its own `lang` attribute.
@@ -138,11 +156,19 @@ Rules for every user-visible string, date and amount in `apps/web`
   Show them with `formatLocalDate(localDate, { language })`: it never goes
   through `new Date('YYYY-MM-DD')` or a zone conversion, so every viewer sees
   the same day. `todayInZone(timeZone)` gives today's date in a zone.
-- **Center time zone:** `DEFAULT_CENTER_TIME_ZONE` (`America/Mexico_City`) is
-  the one source until M3-01 replaces it with the business setting. Every
-  helper takes the zone as a required argument; nothing uses the browser's
-  zone. In components, `useFormatters()` (`src/lib/formatters.ts`) binds the
-  active language and the center zone.
+- **Center time zone:** a business setting (#37) that the session carries
+  (`SessionUser.center_time_zone`). Components read it with
+  `useCenterTimeZone()` (`features/auth`); `DEFAULT_CENTER_TIME_ZONE`
+  (`America/Mexico_City`) is only the value for signed-out pages and tests.
+  Every helper takes the zone as a required argument; nothing uses the
+  browser's zone. In components, `useFormatters()` (`src/lib/formatters.ts`)
+  binds the active language and the center zone, and follows a zone change
+  (a settings save refreshes the session).
+- **Elapsed time:** `formatElapsed(instant, now, language)` gives relative
+  text with `Intl.RelativeTimeFormat` ("3 hours ago" / "hace 3 horas"):
+  whole minutes under an hour (at least 1), whole hours under 48 hours, then
+  whole days. Pass the time of the read as `now` (the overdue closeouts
+  list, #301b).
 - **Local to instant:** `localDateTimeToInstant(localDate, 'HH:mm', timeZone)`
   and `localDayBounds(localDate, timeZone)` (end exclusive, so 23- and 25-hour
   days work). DST follows Temporal's `'compatible'` rule: a time in a
@@ -185,12 +211,52 @@ Rules for every user-visible string, date and amount in `apps/web`
 - **Skeleton:** the placeholder shapes are `aria-hidden="true"`. The region
   that is loading sets `aria-busy="true"` and contains a visually hidden
   (`sr-only`) loading message.
+- **Checkbox** (`components/ui/checkbox.tsx`, #170; Radix from the pinned
+  `radix-ui`): every checkbox has a visible `<label htmlFor>`; a group sits
+  in a `fieldset` with a `legend`. A disabled box says why with
+  `aria-describedby` (for example "You can't change this role."). Its
+  `after:` box widens the pointer target to 40 × 32 px (SC 2.5.8).
 - Axe runs on every story in both themes (`make test-storybook`) and a
   violation fails the run. No axe rule is disabled globally. A story-level
   rule exception needs a reason comment in the story and a line in the list
   below.
 
 Story-level axe rule exceptions: none.
+
+## Forms
+
+The form stack (architecture §8), set by the login form and the password
+dialog (#28, `apps/web/src/features/auth/`):
+
+- React Hook Form with a Zod schema through `zodResolver`. Import `z` from
+  `@/lib/forms`, never from `zod` (ESLint enforces it): that module turns on
+  Zod's `jitless` mode, because the Content Security Policy has no
+  `'unsafe-eval'`.
+- Every field has a visible `<label>` linked with `htmlFor`/`id`, and the
+  right `autocomplete` token. Placeholders are never the only label.
+- Schema messages are catalog keys, translated when shown, so a language
+  switch re-renders them without losing typed values.
+- A field error sets `aria-invalid="true"` and is linked with
+  `aria-describedby` to the error text under the field. On a failed submit,
+  focus moves to the first invalid field (`shouldFocusError`).
+- Forms set `noValidate` (messages come from the catalogs) and
+  `method="post"`, and the submit handler prevents the native submission.
+- The submit button is disabled while the request is pending and shows the
+  `Spinner` with a visible label; one submit sends one request.
+- A request error shows in one `role="alert"` region (`ErrorAlert`) above the
+  fields.
+- Passwords stay in the form's own state: never in a store, browser storage,
+  a log or the TanStack cache (direct calls, not mutations).
+- Password fields use `PasswordInput` (`components/ui/password-input.tsx`,
+  #664), never a plain `Input type="password"`. Its eye toggle is a
+  `<button type="button">` (it never submits) whose name follows the state,
+  "Show password" / "Hide password" (`common.showPassword` /
+  `common.hidePassword`), with `aria-controls` set to the input and no
+  `aria-pressed`. The field starts hidden on every mount and is hidden again
+  when its form submits, valid or not. The `autocomplete` token stays the
+  same in both states, and visibility is local state only. A disabled or
+  read-only field disables its toggle. Test locators for a password field stay
+  exact: "Show password" contains the label word "Password".
 
 ## Feedback
 
@@ -209,14 +275,416 @@ Loading and error primitives in `apps/web/src/components/feedback/`
   `destructive` tokens and an `aria-hidden` icon. It shows the translated
   message for the error's code and, when there is one, a "Reference" line
   with the request ID in a selectable monospace element that users can quote
-  to support. Pass `onRetry` for a query error to show "Try again". The
-  server's `title` and `detail` are never shown.
+  to support. Pass `onRetry` for a query error to show "Try again" (or, with
+  `retryLabel`, another action such as "Reload" after a `version_conflict`).
+  The server's `title` and `detail` are never shown.
+- **`StateBadge`** (`features/users/admin`, #31): a user's state as a short
+  text badge; the border style only reinforces the word, so the state never
+  depends on colour alone.
+- **`CatalogStatusBadge`** (`features/catalog`, #32): "Active" or
+  "Inactive" for a catalog record, the same text-first badge.
+- **`CatalogItemDialog`** (`features/catalog`, #32): the add/edit dialog of
+  a catalog record (name, and for levels an optional position), with
+  Deactivate/Reactivate when editing. A `name_taken` error goes on the name
+  field; other errors, `version_conflict` with "Reload", go in the dialog's
+  alert; focus returns to the button that opened it. Later catalogs reuse it.
+- **`CatalogTabs`** (`features/catalog`, #38): the catalog pages' tab bar,
+  a labelled `nav` of links ("Levels and subjects", "Academic periods",
+  "Closures", "Classrooms"); the current section has `aria-current="page"`.
+  Not ARIA tabs: each tab is its own page and URL.
+- **`RangeItemDialog`** (`features/catalog`, #38): the add/edit dialog of a
+  period or a closure: name, type (a select; a read-only field with a help
+  text when the type can't change), start and end as `type="date"`
+  (inclusive), Deactivate/Reactivate. An end before the start or a range too
+  long is an error on the end field; `name_taken` goes on the name field;
+  `period_overlap` and `version_conflict` (with "Reload") go in the alert.
+- **`RangesTable`** (`features/catalog`, #38): the periods and closures
+  table; dates are formatted as calendar dates (no zone conversion), and a
+  one-day closure shows one date instead of a range.
+- **`WeeklyWindowsEditor`** (`components/weekly-windows`, #39; reused by
+  #45 for tutor availability): a fieldset of weekly windows, each row a
+  weekday select, start and end (`type="time"`, 15-minute step) and
+  "Remove", with "Add window" below (disabled at 28 rows, or the `max` prop, with a help
+  text). Controlled: the parent keeps the rows and passes each row's errors
+  (`validateWindows` mirrors the API: `HH:MM`, end after start, no overlap
+  with an earlier row of the same weekday; touching is fine). Every control
+  names its row ("Window 2 start time"); focus moves to the new row's
+  weekday after "Add window" and to "Add window" after a removal.
+  `windowsSummary` gives the one-line text of a list ("Lun–Vie
+  09:00–20:00", or "Sin restricción" without windows).
+- **`ClassroomDialog` / `ClassroomsTable`** (`features/catalog`, #39): the
+  classroom add/edit dialog (name, capacity, the windows editor,
+  Deactivate/Reactivate; a server window error goes on its row) and the
+  classrooms table with the availability summary.
+- **`StudentStatusBadge` / `StudentAgeBadge`** (`features/students`, #33):
+  "Active"/"Inactive" and "Minor"/"Adult" as text badges (the border only
+  reinforces the word).
+- **`StudentForm`** (`features/students`, #33): the create/edit form of a
+  student. The emergency contacts are a fieldset of 1 to 5 numbered rows
+  (each its own fieldset; labels carry the number, for example "Contact 2
+  phone") with keyboard "Move up"/"Move down"/"Remove" buttons; "Add contact"
+  and the last "Remove" are disabled with a help text. Focus goes to the new
+  row after adding, to a neighbour after removing, and stays on the moved
+  row's button after a move. Server field errors land on their fields.
+- **`Combobox`** (`components/ui/combobox.tsx`, #545): the type-ahead
+  picker, the WAI-ARIA APG "combobox with list autocomplete" over `Input`
+  and the pinned `radix-ui` Popover (no new dependency). Generic
+  (`Combobox<T>`), with the loader contract `load(q | null, signal) →
+  { items, total }`, `optionId`, `optionLabel` and optional
+  `optionSearchText` (what local filtering matches; defaults to the label),
+  `optionDisabled` and `optionNote`; the caller holds `selected`
+  (`{ id, label }`), so a deep link or a reset shows in the field.
+  - **Pattern:** the input has `role="combobox"`, `aria-autocomplete="list"`,
+    `aria-expanded`, `aria-controls` (while open) and
+    `aria-activedescendant`; the popup is a `listbox` named by the field's
+    label; options carry `aria-selected` and `aria-disabled`. DOM focus never
+    leaves the input. A visible `<label>`, help and errors through
+    `aria-describedby`, `aria-invalid` on an error, `autocomplete="off"`,
+    100 characters at most.
+  - **Opening:** a click or tap, typing, ArrowDown / Alt+ArrowDown, or the
+    chevron button (out of the tab order, "Show options"). Never on Tab or
+    `autoFocus` focus; the first page is requested on first focus, so the
+    list shows without a wait.
+  - **Keyboard:** ArrowDown/ArrowUp move (wrapping, skipping disabled
+    options, scrolled into view); Enter chooses and never submits the form;
+    Escape closes, a second Escape restores the chosen label (inside a
+    modal dialog, the second Escape closes the dialog instead); Tab closes
+    without choosing. Leaving the field restores the chosen label.
+  - **Filtering:** when the first page (100, the API's maximum) holds every
+    option, each keystroke filters locally, ignoring case and accents, every
+    term in any order (`src/lib/search.ts`, the API's term rule). Otherwise
+    the text goes to the server as `q` after 300 ms (never a blank `q`);
+    the loaded options stay filtered locally and busy until it answers, and
+    an older answer never replaces a newer one. Server mode keeps each
+    endpoint's matching: students, guardians and families fold accents and
+    take the words in any order, but tutors (`tutor-options`,
+    `/payroll/tutors`) and accounts (`/users`) match one case-insensitive
+    substring of the username or display name **without** accent folding
+    (#548 E4). Local mode always ignores accents.
+  - **States:** loading (`aria-busy`), the caller's empty text, "No matches
+    for …", "Showing N of M. Keep typing to narrow the list." and a result
+    count, announced by one polite status; a failed load shows "Couldn't
+    load the options." and "Try again" under the field, outside the popup.
+  - **Modes and layout:** `single` shows the choice in the field; `add`
+    reports each choice, clears the field and keeps the list open (chips
+    next to it, disabled once picked). The popup is portalled, as wide as
+    the field, at most `min(16rem, 50vh)` tall with its own scroll, so a
+    dialog's scroll area never clips it (its wheel and touch scroll are kept
+    from the dialog's scroll lock); options are at least 36 px tall and wrap.
+  - **Used by** every student picker (#545): scheduling a class or series,
+    enrolling in a group or cohort, a new group's students, the calendar and
+    export student filters, custom price and discount targets (students and
+    families), tuition plans (dialog and filter), packages (sell dialog and
+    student filter) and the family page's "Add student" / "Add guardian";
+    and, since #548, every tutor, account, guardian and family picker: the
+    calendar, export, overdue-closeouts, payroll periods and unresolved-work
+    tutor filters (tutor options, 50 per page, with `total`; payroll tutors,
+    100), the guardian form's account picker and the student's login-account
+    dialog (`/users`, 100; archived accounts listed and disabled), the
+    student's "Link guardian" dialog (active guardians) and the packages
+    family filter. Account pickers pass `optionSearchText` = username +
+    display name, and tutor pickers the plain name, so local filtering
+    matches what the server searches, not the state, role, "(archived)" or
+    "(inactive)" words of the label. `SearchPicker` was removed (#548).
+- **`AccountBadge`** (`features/guardians`, #34): "Has account" / "No
+  account" as a text badge.
+- **`TutorsTable` / `TutorDetailView` / `TutorForm`** (`features/tutors`,
+  #43): the tutor list (name link, username, `StateBadge`, email, phone) and
+  the tutor profile page. The profile shows as text with "Edit" only when
+  the server's `editable_fields` isn't empty; the form then shows only those
+  fields (a tutor never sees a name input), Save and Cancel, with
+  `version_conflict` and "Reload" in its alert. Focus returns to "Edit"
+  after Save or Cancel, and "Changes saved." is a status message.
+- **`QualificationsSection`** (`features/tutors`, #44): the tutor profile's
+  `#qualifications` section. "Teaching subjects" lists the approved ones;
+  a table lists every request with its status as a text badge, the request
+  and decision dates and a rejection's reason. For the tutor themselves,
+  "Request qualification" opens a dialog with a level select and a subject
+  select (active ones, loaded per level; API errors in the dialog's alert),
+  and a pending row has "Cancel request" behind a confirmation ("Keep
+  request" / "Cancel request"). Results are polite status messages.
+  #198: a revoked row shows "Revoked" with the revoked date and reason in
+  the reason column; holders of `qualification.review` get "Revoke" on
+  approved rows, which opens `RevokeQualificationDialog` (subject and level,
+  a required reason textarea, destructive confirm; `qualification_not_approved`
+  and `version_conflict` with "Reload" in its alert region).
+- **`AvailabilitySection`** (`features/tutors`, #45): the tutor profile's
+  `#availability` section. A help line names the center's time zone. For
+  the tutor themselves and `tutor.manage` holders, the
+  `WeeklyWindowsEditor` (up to 42 windows; tutor-specific legend, help and
+  empty text) with "Save availability"; for other viewers a per-weekday
+  list. "Exceptions" is a table (type as text, dates, hours or "All day",
+  note) with "Delete" behind a confirmation, and "Add exception" opens a
+  dialog: type, start and end date, an "All day" checkbox (disabled and off
+  for extra availability, with a help text), start and end time, note.
+  `version_conflict` offers "Reload"; other errors show in the alert region;
+  results are polite status messages. A change that affects scheduled
+  classes (M4-18, a `202`) announces "Sent for approval" with the first
+  affected classes and keeps the current availability in the forms; after
+  the exceptions, **`PendingChanges`** lists the changes waiting for
+  approval (what, how many classes, who and when, with "Withdraw" behind a
+  confirmation for editors) and the recent decisions (a rejection's
+  reason). Between the weekly windows and the exceptions,
+  **`AvailabilitySettingsForm`** (#197): "Teaching limits" (a help text
+  says they only produce warnings when scheduling) with one fieldset per
+  limit (daily and weekly maximum: a "No limit" checkbox, then "Hours" and
+  "Minutes" number inputs; required break: "No break", then "Minutes"), and
+  "Preferred classrooms", a checkbox group of the active rooms plus stored
+  rooms deactivated since, labelled "<name> (inactive)" (at most 10).
+  Saved with the shared `version` ("Save limits and classrooms"), sending
+  only what changed; errors on the fieldset (`aria-invalid` and
+  `aria-describedby` on its inputs). Other viewers see a definition list
+  and a room list.
+- **`SettingsForm`** (`features/settings`, #37): the business settings in
+  three fieldsets of one form. Each operating-hours row has an "Open"
+  checkbox and two `type="time"` inputs (15-minute step) that are disabled
+  while the day is closed; every control's accessible name includes the day
+  (for example "Monday opening time"). A closing time not after the opening
+  time is an error on the closing field. "Saved." is a polite status.
+- **`SettingsTabs`** (`features/settings`, #61): the Settings area's tab
+  bar, the `CatalogTabs` pattern, with three groups: "General",
+  "Scheduling policies" and "Payments and receipts" (M8-04b). Settings that
+  live in their own areas (academic periods, prices, billing settings,
+  packages) are linked from General's **`MoreSettingsLinks`** ("More
+  settings"): each link shows only when its route would open for the user
+  (`canAccess`), with a one-line description as its `aria-describedby`; with
+  no link visible the section isn't rendered.
+- **`PaymentMethodsCard`** (`features/settings`, M8-04b): a bordered card
+  (`h2` region) listing each payment method with a `CatalogStatusBadge` and
+  one outline button whose accessible name names the method ("Deactivate
+  Cash"). Deactivating asks first in a `ConfirmDialog`; the request may then
+  open the reauthentication dialog through `apiCall`. While a request runs
+  every button refuses clicks with `aria-disabled` (focus stays put) and the
+  pressed one is `aria-busy`. The last active method's button is `disabled`,
+  with the reason as its description. Results are a polite status.
+- **`ReceiptMessageCard`** (`features/settings`, M8-04b): one textarea per
+  receipt language, each described by the card's help text and a live
+  character count ("12 of 500 characters", destructive past the limit).
+  Save stays disabled until a message differs from the stored one (compared
+  as the API normalizes it: trimmed, CRLF as LF).
+- **`SchedulingPolicyForm`** (`features/settings`, #61): number inputs whose
+  labels carry the unit ("Cancellation notice (hours)"), three makeup
+  checkboxes and a "Takes effect" radio group ("Immediately" or "From
+  date", which reveals a `type="date"` input with the center's zone in its
+  help text). Save stays disabled until a rule changes.
+- **`CourseTemplateForm`** (`features/courses`, #64): a long form on its own
+  page (not a dialog) with `h2` sections. Repeated rows (modules,
+  assessments) are bordered list items with an `h3` ("Module 2"); each
+  control's accessible name names its row and starts from or contains the
+  visible label ("Module 2 title", "Move up module 2"). "Move up" / "Move
+  down" announce the new position in a polite live region and keep focus on
+  the moved row; "Add" focuses the new row's first field, "Remove" focuses
+  the "Add" button. Rows reference each other by a stable row key, so a
+  reorder never loses a link. Read-only holders get `CourseTemplateView`.
+- **`popover`** (`components/ui/popover.tsx`, #41): the shadcn wrapper over
+  the Popover of the pinned `radix-ui` package. Non-modal (`role="dialog"`);
+  give the content an accessible name (`aria-labelledby` its heading).
+  Escape or an outside click closes it and returns focus to the trigger.
+- **`tooltip`** (`components/ui/tooltip.tsx`, #546): the shadcn wrapper
+  over the Tooltip of the pinned `radix-ui` package; `TooltipProvider` is
+  mounted once, in `AppLayout`. It opens on hover and on keyboard focus,
+  Escape dismisses it and the pointer can move onto it (SC 1.4.13). It only
+  repeats a name the trigger already has (visible or `sr-only` text, or
+  `aria-label`); never use it as the only name.
+- **`NotificationBell`** (`features/notifications`, #41): the header bell,
+  next to the user menu (inside the navigation drawer below `lg`), for a
+  signed-in user who accepted the privacy notice. The button's accessible
+  name is "Notifications", plus "(3 unread)" when there are unread ones; the
+  visual badge ("99+" above 99) is `aria-hidden` and sits outside the button
+  so the name matches the visible text rule. The unread count is polled
+  every 30 s (`NOTIFICATION_POLL_MS`) while the tab is visible and refetched
+  on focus. The panel (a `popover`) has the heading "Notifications", the
+  newest 10 with "Load more", "Mark all as read", and per item the message
+  (from i18n keys), the time in the center zone and the word "Unread" or
+  "Read" (never colour alone). Activating an item marks it read.
+- **`OverdueCloseoutsView`** (`features/scheduling/overdue`, #301b): a list
+  page whose table scrolls inside its own container (the #311 pattern for
+  hand-written tables): the wrapper is the only horizontal scroller, with
+  `role="region"`, `aria-labelledby` the page `h1`, `tabIndex={0}`, a
+  `focus-visible` ring and `relative` (so an `sr-only` header cell can't
+  widen the page). The table's `min-width` keeps its columns readable; at
+  320 and 390 px it scrolls in the region and the page never scrolls
+  sideways. A state that can't act is a bordered text badge ("Can't
+  submit"), never colour alone. Repeated row links carry an accessible name
+  with the row's subject and date ("Open session: Matemáticas, …"). The
+  filters (a tutor `Combobox`, two labelled `type="date"` inputs with the
+  range error on "To", a removable chip, "Clear filters") stack in one
+  column below `sm`.
+- **Completion disclosure table** (`features/courses/cohorts/completion`,
+  #323): the cohort's "Course completion" roster is a contained table (the
+  #311 scroll region, named by the table's `caption` so it never shares the
+  section's name, `tabIndex={0}`) with one disclosure row per student: the
+  name is a button (`aria-expanded`, `aria-controls` the detail `<tr>`,
+  accessible name "Details for {name}", focus stays on it when toggled), and
+  the detail row is one cell spanning every column, `hidden` until opened,
+  holding `StudentCompletionDetail` (lists, never a nested table). The
+  region is a query container (`@container`) and the detail is pinned to
+  its visible width (`sticky left-0 w-[100cqw]`), so on a phone the detail
+  reflows at 320 px instead of scrolling sideways with the table. Statuses ("In progress", "Met", "Passed", …) are
+  bordered text badges with an icon, dashed while pending, never colour
+  alone. Decimals are shown as the API's text (`decimalText`).
+- **`CloseoutOnBehalfDialog`** (`features/scheduling/session`, #301b): a
+  reviewer's "Close out on behalf of {tutor}" or "Take over and resubmit".
+  The minutes and summary fields are `CloseoutFields`, shared with
+  `CorrectCloseoutDialog`; a required reason with a live counter follows.
+  An attendance line says how many students are marked; while any is
+  unmarked it names them, Submit sends nothing and focus moves to the line
+  (`role="alert"` once a submit was attempted). Server errors keep the
+  typed values: field errors go on the fields and focus moves to the first
+  invalid one once the send is over (the fields are disabled while it is
+  pending and a disabled control can't take focus, so the move runs after
+  they are enabled again: `useFocusAfterSend`, shared with
+  `CorrectCloseoutDialog`); a changed closeout or session shows its message
+  with "Reload".
+- **Session notes** (`features/tutor-portal/notes`, #79): the tutor's
+  `NotesView` (phone-first, reflows at 320 px). A note's visibility is the
+  `NoteBadge`: a bordered badge with an icon **and** text ("Internal: never
+  shown to families" with a lock, "Shared with family on {date}" with a
+  people icon), never colour alone; `NoteText` renders the note as plain
+  text (`whitespace-pre-wrap`, never HTML) with the author, "Edited" and a
+  reviewer's unpublish reason. The composer and the inline edit are a
+  labelled textarea with a hint, a live counter ("12/4000 characters") and
+  the error under the field (focus moves to it on a failed save). "Share
+  with family" always confirms in `ShareNoteDialog`, which quotes the exact
+  text and says who will see it. Actions follow the API's `can_*` flags. A
+  version conflict shows "Note changed elsewhere" with "Reload". Focus:
+  cancelling a dialog returns it to its trigger (the notes heading if the
+  trigger is gone); a done action moves it to the `role="status"` message
+  and a refused one to the failure; leaving the inline edit returns it to
+  "Edit". The staff
+  `NotesSection` (`features/scheduling/session`) reuses the badge and text;
+  its `StopSharingDialog` requires a reason with a counter. The family's
+  "Notes from the tutor" (`FamilyNotesList`, `features/my-schedule`) renders
+  nothing while loading or when empty and an inline `ErrorAlert` with "Try
+  again" on failure.
+- **Evaluation score inputs** (`features/academics/evaluations`, #308):
+  scores and maximum scores are decimals with at most two places, typed in
+  a labelled text input with `inputmode="decimal"` followed by "of {max}".
+  `lib/decimal.ts` reads them as whole hundredths (`parseScore`,
+  `compareHundredths`), never with `Number()` or `parseFloat`; a decimal
+  comma ("5,5") gets its own hint to use a period. They are sent as the
+  API's decimal strings ("7.50"). The client never computes totals,
+  percentages or averages: those come from the API. A blocked Finalize
+  lists the unscored criteria in a `role="alert"` and focuses the first
+  empty score. Dialogs (Finalize, Delete, Void, Discard changes) return
+  focus to their trigger on Cancel or Escape; a done action moves it to the
+  `role="status"` message (after a void, to the page heading) and a refused
+  one to its failure or the first invalid field. Arriving from a create
+  (the first "Save draft", a new template) focuses the status message from
+  the navigation state; "Reload" after a conflict focuses the heading (the
+  evaluation) or Name (the template editor).
+- **`AcademicHistory`** (`features/academics/history`, #308): one student's
+  academic history for every audience, its controls in the URL. Grouped:
+  a section per period (an `h2` with its dates, or "No period"), an `h3`
+  per subject with "{count} evaluations · average {average} %", then the
+  entries; chronological: every entry newest first, naming its subject.
+  Each entry is an `article` whose numbers are the API's strings as sent
+  (no client arithmetic or rounding) and whose meaning never relies on
+  colour (no colour scale; "Updated" is a bordered text badge); free text
+  is plain text (`whitespace-pre-line break-words`). An entry kind the view
+  doesn't know is skipped. Staff and tutors get a "Details" link per
+  entry; families don't.
+- **`ProgressMeter`** (`features/learning-plans`, #310): a native
+  `<progress>` (`max` = total, `value` = done) labelled by the text next to
+  it, "{done} of {total} milestones done · {percent} %", which is always
+  shown: the bar never stands alone. The percent is the API's string as
+  sent; the client never computes progress. The fill (`primary`) on its
+  track (`muted`, bordered with `input`) meets 3:1 in both themes. Status
+  and "Overdue" / "Complete" markers are text (with a decorative icon),
+  never colour only.
+- **Nested ordered editor** (the learning plan editor, #310; the #64 and
+  #308 template editors are the one-level case): each item is a `fieldset`
+  with a `legend` ("Objective 2", "Milestone 2.1"); "Move up", "Move down"
+  and "Remove" are named with the position and title; a child moves only
+  within its parent (the first and last child's buttons are disabled).
+  Counters are always visible ("Objectives 2 of 10", "{n} of 50 milestones
+  in this plan"); an "Add" at its limit is disabled with the reason linked
+  by `aria-describedby`, as is "Remove" on the last item. Add focuses the
+  new item's title; Move keeps focus on the moved item's button (the other
+  one at an end); Remove focuses the matching "Add"; removing saved
+  progress asks first, and Cancel or Escape returns focus to "Remove".
+  "Reload" after a conflict asks before discarding typed changes, then
+  remounts the editor on the fresh version and focuses the heading.
+- **User-supplied links** (`SafeLink`, `features/assignments`, #313): a
+  link a user typed (a homework submission) is an anchor only when the #82
+  rule accepts it (absolute `http`/`https` with a host, no user-info, no
+  whitespace or control characters, at most 2000 characters); it opens in a
+  new tab with `rel="noopener noreferrer nofollow"`, shows the full URL as
+  its text (`break-all`, so it wraps at 320 px) and adds a visually hidden
+  "(opens in a new tab)". Anything else, such as a stored `javascript:`
+  link, is plain text, never an anchor. Typed links use `type="url"`,
+  `inputmode="url"` and `autocomplete="url"`, with the same rule as a field
+  error.
+- **Homework state badge** (`StateBadge`, `features/assignments`, #313): one
+  bordered text badge with a decorative icon for every view ("Pending",
+  "Missing", "Handed in", "Graded"); "Late" is a separate text marker, never
+  a colour. The summary of a student's homework is four `aria-pressed`
+  filter buttons with their counts plus "All". A saved grade returns focus
+  to the row's grade button with a "Grade saved." status; other done
+  actions, and arriving from the form, focus their status message; a
+  hand-in focuses the "Your work" heading; Reload remounts on the fresh
+  data and focuses the heading. The `AcademicHistory` renders scored
+  homework as "Homework: {title}" entries (no "Details") and adds "{n}
+  homework · average {a} %" to the subject line.
+- **`ProgressReportFacts`** (`features/progress-reports`, #315): the
+  figures the server compiled for a report, text first: one section per
+  block (attendance, evaluations, homework, learning plans) with sentences
+  such as "6 classes: 4 present · 1 late · …". Numbers are the API's;
+  decimal strings go through `lib/decimal` (never a float), and the client
+  adds no totals or averages. A `null` average reads "No average", never
+  "0 %". A plan's bar is decorative (`aria-hidden`, the `ProgressMeter`
+  fill and track tokens): its value is in the text next to it. An unknown
+  schema version shows only "can't be shown". The editor shows the live
+  preview with "Refresh facts"; every other view shows the frozen facts.
+- **Disabled with a reason** (the progress report self-review, #315): an
+  action the user may not take for a reason they should know (a reviewer's
+  own report) stays visible as a button with `aria-disabled="true"`, never
+  the `disabled` attribute, so it keeps focus; it is described by the
+  reason with `aria-describedby`, the reason is shown next to it, and
+  activating it opens nothing. A submit or a review decision moves focus to
+  the page heading with a status message; Save and Refresh to the status
+  message.
+- **`ConfirmDialog`** (`features/guardians`, #34): a title, a body and
+  Cancel/confirm buttons; focus returns to the button that opened it. Used
+  to deactivate a guardian and to unlink a guardian from a student.
 - Render errors are caught by the route error page (inside the layout), the
   root error page and the app-level boundary. None of them shows the error
   message or stack.
 - Error messages live in the `errors` namespace, keyed by the Problem
   `code`, and are mapped in `apps/web/src/app/errors.ts` (unknown codes fall
   back to `client_error`, `server_error` or `generic`).
+
+## Charts
+
+The progress pages (#322) are the first charts (Recharts, architecture §8).
+
+- **Recharts only in lazy route chunks.** `recharts` is imported only under
+  `apps/web/src/features/progress/charts/` (an ESLint `no-restricted-imports`
+  rule and `features/progress/imports.test.ts`), and only the code-split
+  progress pages render those modules, so the entry chunk doesn't grow.
+- **Every chart is a `figure`:** an `h2` heading, a one-sentence text summary
+  built only from server fields (linked with `aria-describedby`), and a
+  **Chart / Table** toggle (two `aria-pressed` buttons in a labelled group,
+  Chart by default). The table has a `<caption>`, `th scope="col"` and
+  `scope="row"`, every value as text, and sits in the scroll region pattern
+  (`role="region"` named by the caption, `tabIndex={0}`, a focus ring), so a
+  wide table scrolls inside its container, never the page.
+- **Never colour alone:** series use `--chart-1` … `--chart-4` plus a second
+  cue: bars a fill pattern (solid, diagonal hatch, dots, cross-hatch), lines
+  a dash pattern and a marker shape (homework series hollow). A text legend
+  names each series; tooltips are never the only way to read a value.
+- **No animation** (`isAnimationActive={false}` on every series) and
+  `accessibilityLayer` on. Axis text and grid lines use `muted-foreground`
+  and `border`. A fixed height with `ResponsiveContainer` width, so a chart
+  reflows at 320 px.
+- **Text empty states** ("No classes in this period.") instead of an empty
+  chart; a single data point still renders (one bar, one marker). Lines leave
+  gaps where a month has no value (`connectNulls={false}`).
+- **Decimals as API text.** Percentages and averages are shown exactly as the
+  API sends them (`lib/decimal.ts` `decimalText`); `charts/chartValue.ts`
+  turns the text into a number for the y position only.
+- At most four series colours: with more than four subjects the grade trend
+  asks for one subject, and its table still lists everything.
 
 ## Role-adaptive layouts
 
@@ -231,6 +699,63 @@ breakpoints are used: `sm` 640px, `md` 768px, `lg` 1024px, `xl` 1280px.
   target phones; `sm` and `md` add columns and spacing for tablets and
   desktops. Primary actions stay reachable with one hand on small screens.
 - Every view reflows down to 320 CSS px.
+
+### App shell (#546)
+
+`AppLayout` is the one shell for every signed-in role.
+
+- **`lg` and up:** the primary navigation is a fixed sidebar on the left
+  (about 15rem wide), still the `<nav>` inside `<header>`. Its items are
+  grouped in sections (Administration, Finance, People, Academics, My
+  space; Home has none), each a `<ul>` labelled by a visible text label (not
+  a heading). A section with no visible item is not rendered. The active
+  link has `aria-current="page"`, a background and a leading bar (not colour
+  alone). The top bar (brand, switchers, bell, user menu) and `<main>` are
+  offset to its right; `<main>` has `min-w-0`, so wide content scrolls in
+  its own container and the page never scrolls sideways.
+- **Icon rail:** the toggle at the top of the sidebar ("Collapse sidebar" /
+  "Expand sidebar") collapses it to about 4rem. Each link then shows only
+  its `aria-hidden` icon in a 40 × 40 px target, keeps its label as
+  `sr-only` text, and shows the label in a `tooltip` on hover and keyboard
+  focus. The choice is kept per browser in `localStorage`
+  (`classora.sidebar`: `expanded` | `collapsed`; blocked or invalid storage
+  means expanded), not in the account; sign-out keeps it. Width changes
+  animate with `motion-reduce:transition-none`. The top bar and `<main>`
+  margins animate at `lg` and up only (`lg:transition-[margin]`), so a
+  resize below `lg` drops the offset at once and never overflows (#576).
+- **Below `lg`:** the navigation and the top-bar utilities are a modal
+  drawer from the left behind "Menu", always with labels. Opening it moves
+  focus to its first link and makes `<main>` `inert`; Escape or a click on
+  the backdrop closes it and returns focus to "Menu"; following a link
+  closes it (focus goes to `<main>` if it was left on a hidden element);
+  widening to `lg` closes it.
+- Signed-out pages and the privacy-notice step have no navigation items, so
+  no sidebar and no offset.
+
+### Home (HF-06)
+
+`/` is never empty. Staff (`DASHBOARD_ACCESS`) get the #127 dashboard with a
+fixed "Hoy / Today" panel (`features/home/TodayPanel`, an `h2`) between the
+header and the range control; it is not part of the customizable layout.
+Everyone else gets the role home (`features/home/RoleHomePage`): an `h1`
+greeting, then the same sections as `h2` cards.
+
+- **Sections**, in a fixed order and as the roles allow (the union for
+  multi-role users): the center's classes today (`schedule.view`), "My
+  classes" (tutor), the family's classes (student or guardian), then the
+  pending items. Each is a token-only card (`HomeCard`), loads, fails and
+  retries on its own (`LoadingState`, `ErrorAlert`), and lists rows as
+  `<ul>` links (44 px rows below `md`, 24 px above).
+- **Pending items** are counts as labelled links ("3 aprobaciones
+  abiertas", never a bare "3"), each read only when its access passes, hidden
+  at 0 and on a 403/404 (no alert); any other error is a compact line with
+  "Reintentar" on that item. A truncated source shows "{n}+".
+- **Fallback:** with no agenda and no pending source, "Accesos rápidos" (the
+  user's visible navigation items except Home, at most 8) or a text that
+  asks the center for access.
+- **Empty states are text** ("No tienes clases hoy.", "No hay clases en los
+  próximos 14 días.", "Nada pendiente."), never an empty card. "Today" is
+  always the center's date (`useCenterTimeZone`), never the browser's.
 
 ## Adding a component
 

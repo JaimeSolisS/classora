@@ -15,7 +15,9 @@ from pydantic import SecretStr
 from app import worker
 from app.core import jobs
 from app.core.config import Settings
+from app.core.errors import AppError
 from app.main import create_app
+from tests.authz.csrf import origin_for
 
 API_ROOT = Path(__file__).resolve().parents[2]
 APP_ROOT = API_ROOT / "app"
@@ -31,6 +33,7 @@ FORBIDDEN_DRIVER_MODULES = {"psycopg", "psycopg_pool", "asyncpg"}
 def settings(app_env: str = "local") -> Settings:
     return Settings(
         app_env=app_env,  # type: ignore[arg-type]
+        app_origin=origin_for(app_env),
         database_url=SecretStr(POOLED_DSN),
         database_direct_url=SecretStr(DIRECT_DSN),
     )
@@ -213,6 +216,27 @@ async def test_ids_only_turns_json_strings_back_into_uuids():
 # --- D4/D5 environment gating ----------------------------------------------------
 
 DEMO_TASKS = {"demo:succeed", "demo:fail", "demo:periodic"}
+# Registered in every environment (#25, #27).
+MODULE_TASKS = {
+    "identity:purge_auth_sessions",
+    "idempotency:purge_keys",
+    "ratelimit:purge_counters",
+    "scheduling:expire_offers",
+    "scheduling:materialize_series",
+    "academics:create_progress_report_placeholders",
+    "billing:post_session_charges",
+    "billing:post_enrollment_charges",
+    "billing:post_tuition_charges",
+    "billing:expire_packages",
+    "billing:send_charge_reminders",
+    "billing:reconcile_session_charges",
+    "payroll:open_periods",
+    "payroll:post_adjustments",
+    "finance:generate_recurring_expenses",
+    "administration:run_imports",
+    "reporting:run_exports",
+    "administration:run_retention",
+}
 
 
 def app_tasks(app: App) -> set[str]:
@@ -228,19 +252,324 @@ def periodic_tasks(app: App) -> set[str]:
 def test_demo_tasks_and_periodic_demo_exist_in_local_and_dev(app_env):
     app = jobs.create_worker_job_app(settings(app_env))
 
-    assert app_tasks(app) == DEMO_TASKS
-    assert periodic_tasks(app) == {"demo:periodic"}
-    (periodic,) = app.periodic_registry.periodic_tasks.values()
+    assert app_tasks(app) == DEMO_TASKS | MODULE_TASKS
+    assert periodic_tasks(app) == {"demo:periodic"} | MODULE_TASKS
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "demo:periodic"
+    ]
     assert periodic.cron == "* * * * *"
     assert periodic.periodic_id == "demo"
     assert periodic.configure_kwargs["queueing_lock"] == "demo-periodic"
 
 
-def test_prod_registers_no_demo_task_and_schedules_nothing():
+def test_prod_registers_no_demo_task_and_schedules_only_module_tasks():
     app = jobs.create_worker_job_app(settings("prod"))
 
-    assert app_tasks(app) == set()
-    assert periodic_tasks(app) == set()
+    assert app_tasks(app) == MODULE_TASKS
+    assert periodic_tasks(app) == MODULE_TASKS
+
+
+def test_the_series_materialization_runs_nightly_at_08_utc():
+    # #53 F4: Procrastinate evaluates the cron on UTC timestamps.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "scheduling:materialize_series"
+    ]
+    assert periodic.cron == "0 8 * * *"
+    assert periodic.periodic_id == "scheduling-materialize-series"
+    assert periodic.configure_kwargs["queueing_lock"] == "scheduling-materialize-series"
+    assert jobs.task_parameter_types(app)["scheduling:materialize_series"] == {
+        "timestamp": int
+    }
+
+
+def test_the_progress_report_placeholders_run_daily_at_07_utc():
+    # #316 D1: one job a day (01:00 in Mexico City); correctness depends only
+    # on the center-local today of the run.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "academics:create_progress_report_placeholders"
+    ]
+    assert periodic.cron == "0 7 * * *"
+    assert periodic.periodic_id == "academics-progress-report-placeholders"
+    assert (
+        periodic.configure_kwargs["queueing_lock"]
+        == "academics-progress-report-placeholders"
+    )
+    assert (
+        app.tasks["academics:create_progress_report_placeholders"].queueing_lock
+        == "academics-progress-report-placeholders"
+    )
+    assert jobs.task_parameter_types(app)[
+        "academics:create_progress_report_placeholders"
+    ] == {"timestamp": int}
+
+
+def test_the_session_charges_run_every_15_minutes():
+    # #91 C1: one queued job at a time; the settings PATCH shares the lock.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "billing:post_session_charges"
+    ]
+    assert periodic.cron == "*/15 * * * *"
+    assert periodic.periodic_id == "billing-post-session-charges"
+    assert periodic.configure_kwargs["queueing_lock"] == "billing-post-session-charges"
+    assert app.tasks["billing:post_session_charges"].queueing_lock == (
+        jobs.SESSION_CHARGES_QUEUEING_LOCK
+    )
+    assert jobs.SESSION_CHARGES_TASK == "billing:post_session_charges"
+    assert jobs.task_parameter_types(app)["billing:post_session_charges"] == {
+        "timestamp": int
+    }
+
+
+def test_the_enrollment_charges_run_every_15_minutes():
+    # #92 D1: one queued job at a time; the settings PATCH shares the lock.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "billing:post_enrollment_charges"
+    ]
+    assert periodic.cron == "*/15 * * * *"
+    assert periodic.periodic_id == "billing-post-enrollment-charges"
+    assert periodic.configure_kwargs["queueing_lock"] == (
+        "billing-post-enrollment-charges"
+    )
+    assert app.tasks["billing:post_enrollment_charges"].queueing_lock == (
+        jobs.ENROLLMENT_CHARGES_QUEUEING_LOCK
+    )
+    assert jobs.ENROLLMENT_CHARGES_TASK == "billing:post_enrollment_charges"
+    assert jobs.task_parameter_types(app)["billing:post_enrollment_charges"] == {
+        "timestamp": int
+    }
+
+
+def test_the_tuition_charges_run_daily_at_0730_utc():
+    # #93 E1 (K5): one queued job at a time; the plan writes and the settings
+    # PATCH share the lock.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "billing:post_tuition_charges"
+    ]
+    assert periodic.cron == "30 7 * * *"
+    assert periodic.periodic_id == "billing-post-tuition-charges"
+    assert periodic.configure_kwargs["queueing_lock"] == (
+        "billing-post-tuition-charges"
+    )
+    assert app.tasks["billing:post_tuition_charges"].queueing_lock == (
+        jobs.TUITION_CHARGES_QUEUEING_LOCK
+    )
+    assert jobs.TUITION_CHARGES_TASK == "billing:post_tuition_charges"
+    assert jobs.task_parameter_types(app)["billing:post_tuition_charges"] == {
+        "timestamp": int
+    }
+
+
+def test_the_payroll_periods_open_daily_at_0750_utc():
+    # #106 D1: one queued job at a time; nothing else queues it (E7).
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "payroll:open_periods"
+    ]
+    assert periodic.cron == "50 7 * * *"
+    assert periodic.periodic_id == "payroll-open-periods"
+    assert periodic.configure_kwargs["queueing_lock"] == "payroll-open-periods"
+    assert app.tasks["payroll:open_periods"].queueing_lock == (
+        jobs.PAYROLL_OPEN_PERIODS_QUEUEING_LOCK
+    )
+    assert jobs.PAYROLL_OPEN_PERIODS_TASK == "payroll:open_periods"
+    assert jobs.task_parameter_types(app)["payroll:open_periods"] == {"timestamp": int}
+
+
+def test_the_recurring_expenses_generate_daily_at_0755_utc():
+    # #116 D1: 01:55 in Mexico City; one queued job at a time; only the cron
+    # and defer_recurring_expenses (E8) queue it.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "finance:generate_recurring_expenses"
+    ]
+    assert periodic.cron == "55 7 * * *"
+    assert periodic.periodic_id == "finance-generate-recurring-expenses"
+    assert periodic.configure_kwargs["queueing_lock"] == (
+        "finance-generate-recurring-expenses"
+    )
+    assert app.tasks["finance:generate_recurring_expenses"].queueing_lock == (
+        jobs.RECURRING_EXPENSES_QUEUEING_LOCK
+    )
+    assert jobs.RECURRING_EXPENSES_TASK == "finance:generate_recurring_expenses"
+    assert jobs.task_parameter_types(app)["finance:generate_recurring_expenses"] == {
+        "timestamp": int
+    }
+
+
+class _RecordingDeferrer:
+    def __init__(self, error: Exception | None) -> None:
+        self.error = error
+        self.calls: list[dict[str, object]] = []
+
+    async def defer_async(self, **kwargs: object) -> int:
+        self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return 1
+
+
+class _RecordingJobApp:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.deferrer = _RecordingDeferrer(error)
+        self.configured: list[tuple[str, dict[str, object]]] = []
+
+    def configure_task(self, name: str, **options: object) -> _RecordingDeferrer:
+        self.configured.append((name, options))
+        return self.deferrer
+
+
+@pytest.mark.anyio
+async def test_deferring_the_recurring_expenses_names_the_task_and_its_lock():
+    # #116 E8: the defer_tuition_charges contract.
+    app = _RecordingJobApp()
+
+    await jobs.defer_recurring_expenses(app)  # type: ignore[arg-type]
+
+    [(name, options)] = app.configured
+    assert name == "finance:generate_recurring_expenses"
+    assert options == {
+        "allow_unknown": False,
+        "queueing_lock": "finance-generate-recurring-expenses",
+    }
+    [call] = app.deferrer.calls
+    assert set(call) == {"timestamp"} and isinstance(call["timestamp"], int)
+
+
+@pytest.mark.anyio
+async def test_deferring_the_recurring_expenses_ignores_a_queued_run_and_logs_errors(
+    caplog,
+):
+    from procrastinate.exceptions import AlreadyEnqueued
+
+    with caplog.at_level("ERROR", logger=jobs.__name__):
+        await jobs.defer_recurring_expenses(
+            _RecordingJobApp(AlreadyEnqueued("queued"))  # type: ignore[arg-type]
+        )
+        assert caplog.records == []
+        await jobs.defer_recurring_expenses(
+            _RecordingJobApp(OSError("unreachable"))  # type: ignore[arg-type]
+        )
+
+    [record] = caplog.records
+    assert record.message == "Deferring the recurring expenses failed"
+    assert record.error == "OSError"
+
+
+def test_the_payroll_adjustments_post_every_15_minutes():
+    # #111 B1: one queued job at a time; nothing else queues it (E10).
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "payroll:post_adjustments"
+    ]
+    assert periodic.cron == "*/15 * * * *"
+    assert periodic.periodic_id == "payroll-post-adjustments"
+    assert periodic.configure_kwargs["queueing_lock"] == "payroll-post-adjustments"
+    assert app.tasks["payroll:post_adjustments"].queueing_lock == (
+        jobs.PAYROLL_POST_ADJUSTMENTS_QUEUEING_LOCK
+    )
+    assert jobs.PAYROLL_POST_ADJUSTMENTS_TASK == "payroll:post_adjustments"
+    assert jobs.task_parameter_types(app)["payroll:post_adjustments"] == {
+        "timestamp": int
+    }
+
+
+def test_the_package_expiry_runs_daily_at_0740_utc():
+    # #94 F1: after the 07:30 tuition charges; one queued job at a time.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "billing:expire_packages"
+    ]
+    assert periodic.cron == "40 7 * * *"
+    assert periodic.periodic_id == "billing-expire-packages"
+    assert periodic.configure_kwargs["queueing_lock"] == "billing-expire-packages"
+    assert app.tasks["billing:expire_packages"].queueing_lock == (
+        jobs.PACKAGE_EXPIRY_QUEUEING_LOCK
+    )
+    assert jobs.PACKAGE_EXPIRY_TASK == "billing:expire_packages"
+    assert jobs.task_parameter_types(app)["billing:expire_packages"] == {
+        "timestamp": int
+    }
+
+
+def test_the_charge_reminders_run_daily_at_1500_utc():
+    # #97 F2 (N4 (a)): 09:00 in Mexico City; one queued job at a time.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "billing:send_charge_reminders"
+    ]
+    assert periodic.cron == "0 15 * * *"
+    assert periodic.periodic_id == "billing-send-charge-reminders"
+    assert periodic.configure_kwargs["queueing_lock"] == (
+        "billing-send-charge-reminders"
+    )
+    assert app.tasks["billing:send_charge_reminders"].queueing_lock == (
+        jobs.CHARGE_REMINDERS_QUEUEING_LOCK
+    )
+    assert jobs.CHARGE_REMINDERS_TASK == "billing:send_charge_reminders"
+    assert jobs.task_parameter_types(app)["billing:send_charge_reminders"] == {
+        "timestamp": int
+    }
+
+
+def test_the_schedule_reconciliation_runs_every_15_minutes():
+    # #99 D1, D9: one queued job at a time; the routes that change sessions,
+    # the settings PATCH and the materialization share the lock.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "billing:reconcile_session_charges"
+    ]
+    assert periodic.cron == "*/15 * * * *"
+    assert periodic.periodic_id == "billing-reconcile-session-charges"
+    assert periodic.configure_kwargs["queueing_lock"] == (
+        "billing-reconcile-session-charges"
+    )
+    assert app.tasks["billing:reconcile_session_charges"].queueing_lock == (
+        jobs.SCHEDULE_RECONCILIATION_QUEUEING_LOCK
+    )
+    assert jobs.SCHEDULE_RECONCILIATION_TASK == "billing:reconcile_session_charges"
+    assert jobs.task_parameter_types(app)["billing:reconcile_session_charges"] == {
+        "timestamp": int
+    }
 
 
 def test_demo_tasks_use_fixed_queueing_locks_and_a_retry_policy():
@@ -257,9 +586,14 @@ def test_demo_tasks_use_fixed_queueing_locks_and_a_retry_policy():
 def make_client(monkeypatch: pytest.MonkeyPatch, app_env: str) -> TestClient:
     placeholder = "postgresql://placeholder:placeholder@127.0.0.1:1/placeholder"
     monkeypatch.setenv("APP_ENV", app_env)
+    monkeypatch.setenv("APP_ORIGIN", origin_for(app_env))
     monkeypatch.setenv("DATABASE_URL", placeholder)
     monkeypatch.setenv("DATABASE_DIRECT_URL", placeholder)
-    return TestClient(create_app(), raise_server_exceptions=False)
+    return TestClient(
+        create_app(),
+        raise_server_exceptions=False,
+        headers={"Origin": origin_for(app_env)},
+    )
 
 
 @pytest.mark.parametrize("app_env", ["local", "dev"])
@@ -292,6 +626,7 @@ def test_demo_route_is_absent_in_prod(monkeypatch):
 def test_invalid_shutdown_timeout_stops_the_worker(monkeypatch, capsys, value):
     placeholder = f"postgresql://u:{DIRECT_PASSWORD}@127.0.0.1:1/x"
     monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("APP_ORIGIN", origin_for("local"))
     monkeypatch.setenv("DATABASE_URL", placeholder)
     monkeypatch.setenv("DATABASE_DIRECT_URL", placeholder)
     monkeypatch.setenv("WORKER_SHUTDOWN_TIMEOUT_SECONDS", value)
@@ -314,6 +649,7 @@ def test_shutdown_timeout_default_and_bounds(monkeypatch, value, expected):
         monkeypatch.setenv("WORKER_SHUTDOWN_TIMEOUT_SECONDS", value)
     s = Settings(
         app_env="local",
+        app_origin=origin_for("local"),
         database_url=SecretStr(POOLED_DSN),
         database_direct_url=SecretStr(DIRECT_DSN),
     )
@@ -328,10 +664,162 @@ def test_worker_runs_one_job_at_a_time_and_handles_its_own_signals():
     assert options["concurrency"] == 1
     assert options["name"] == "classora-worker"
     assert options["install_signal_handlers"] is False
+    # #128 A1: every failed run's sanitized error goes to job_failures.
+    assert options["worker_middleware"] == [jobs.record_job_failure]
+    assert set(options) == {
+        "name",
+        "concurrency",
+        "shutdown_graceful_timeout",
+        "install_signal_handlers",
+        "worker_middleware",
+    }
+
+
+# --- #128 C2 retry classification ---------------------------------------------------
+
+
+@pytest.mark.parametrize("app_env", ["local", "prod"])
+def test_every_registered_task_is_classified_for_retry_exactly_once(app_env):
+    # A new task must be added to RETRYABLE_TASKS or NON_RETRYABLE_TASKS
+    # (app/core/jobs.py); the assertion names it.
+    app = jobs.create_job_app(jobs.worker_connector(settings()), app_env=app_env)
+
+    assert jobs.RETRYABLE_TASKS.isdisjoint(jobs.NON_RETRYABLE_TASKS)
+    unclassified = {
+        name
+        for name in jobs.task_parameter_types(app)
+        if name not in jobs.RETRYABLE_TASKS | jobs.NON_RETRYABLE_TASKS
+    }
+    assert unclassified == set()
+
+
+def test_the_retry_classification_names_only_registered_tasks():
+    app = jobs.create_job_app(jobs.worker_connector(settings()), app_env="local")
+
+    assert jobs.RETRYABLE_TASKS | jobs.NON_RETRYABLE_TASKS == set(
+        jobs.task_parameter_types(app)
+    )
+    # #128 C1: today every task is a retryable sweeper.
+    assert jobs.NON_RETRYABLE_TASKS == frozenset()
+    assert jobs.RETRYABLE_TASKS == DEMO_TASKS | MODULE_TASKS
+
+
+# --- #128 A1 failure-capture middleware ---------------------------------------------
+
+
+class _FakeConnector:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error
+        self.calls: list[tuple[str, dict[str, object]]] = []
+
+    async def execute_query_async(self, query: str, **arguments: object) -> None:
+        self.calls.append((query, arguments))
+        if self.error is not None:
+            raise self.error
+
+
+class _FakeJob:
+    id = 41
+    task_name = "billing:post_session_charges"
+
+
+class _FakeContext:
+    job = _FakeJob()
+
+
+class _FakeWorker:
+    def __init__(self, connector: _FakeConnector) -> None:
+        self.app = type("FakeApp", (), {"connector": connector})()
+
+
+class _AppFailure(AppError):
+    status = 409
+    code = "charge_posting_failed"
+    detail = "The run failed."
+
+
+@pytest.mark.anyio
+async def test_the_middleware_records_the_failure_and_reraises_the_original():
+    connector = _FakeConnector()
+    original = _AppFailure(detail="Ana López ana@example.com")
+
+    async def call_next() -> None:
+        raise original
+
+    with pytest.raises(_AppFailure) as raised:
+        await jobs.record_job_failure(
+            call_next,
+            _FakeContext(),  # type: ignore[arg-type]
+            _FakeWorker(connector),  # type: ignore[arg-type]
+        )
+
+    assert raised.value is original
+    [(query, arguments)] = connector.calls
+    assert "ON CONFLICT (job_id) DO UPDATE" in query
+    assert arguments == {
+        "job_id": 41,
+        "task_name": "billing:post_session_charges",
+        "error_class": "_AppFailure",
+        "error_code": "charge_posting_failed",
+        "sqlstate": None,
+    }
+
+
+@pytest.mark.anyio
+async def test_the_middleware_still_reraises_when_the_insert_fails(caplog):
+    connector = _FakeConnector(OSError("db down at host secret-host"))
+    original = RuntimeError("run failed")
+
+    async def call_next() -> None:
+        raise original
+
+    with caplog.at_level("ERROR", logger=jobs.__name__):
+        with pytest.raises(RuntimeError) as raised:
+            await jobs.record_job_failure(
+                call_next,
+                _FakeContext(),  # type: ignore[arg-type]
+                _FakeWorker(connector),  # type: ignore[arg-type]
+            )
+
+    assert raised.value is original
+    [record] = caplog.records
+    assert record.message == "Recording the job failure failed"
+    assert record.error == "OSError"
+    assert record.job_id == 41
+    assert "secret-host" not in caplog.text
+
+
+@pytest.mark.anyio
+async def test_the_middleware_passes_results_and_aborts_through_untouched():
+    from procrastinate.exceptions import JobAborted
+
+    connector = _FakeConnector()
+
+    async def succeeds() -> str:
+        return "done"
+
+    async def aborted() -> None:
+        raise JobAborted()
+
+    result = await jobs.record_job_failure(
+        succeeds,
+        _FakeContext(),  # type: ignore[arg-type]
+        _FakeWorker(connector),  # type: ignore[arg-type]
+    )
+    with pytest.raises(JobAborted):
+        await jobs.record_job_failure(
+            aborted,
+            _FakeContext(),  # type: ignore[arg-type]
+            _FakeWorker(connector),  # type: ignore[arg-type]
+        )
+
+    assert result == "done"
+    assert connector.calls == []
 
 
 def test_worker_rejects_unknown_arguments(monkeypatch, capsys):
     monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("APP_ORIGIN", origin_for("local"))
     monkeypatch.setenv("DATABASE_URL", POOLED_DSN)
     monkeypatch.setenv("DATABASE_DIRECT_URL", DIRECT_DSN)
 
@@ -341,6 +829,7 @@ def test_worker_rejects_unknown_arguments(monkeypatch, capsys):
 
 def test_healthcheck_fails_fast_when_postgresql_is_unreachable(monkeypatch):
     monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("APP_ORIGIN", origin_for("local"))
     unreachable = "postgresql://u:p@127.0.0.1:1/x"
     monkeypatch.setenv("DATABASE_URL", unreachable)
     monkeypatch.setenv("DATABASE_DIRECT_URL", unreachable)
@@ -360,3 +849,127 @@ def test_app_never_applies_the_procrastinate_schema():
     ]
 
     assert offenders == []
+
+
+def test_the_import_run_runs_every_15_minutes():
+    # #122 D2: one queued job at a time; the commit route shares the lock.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "administration:run_imports"
+    ]
+    assert periodic.cron == "*/15 * * * *"
+    assert periodic.periodic_id == "administration-run-imports"
+    assert periodic.configure_kwargs["queueing_lock"] == "administration-run-imports"
+    assert app.tasks["administration:run_imports"].queueing_lock == (
+        jobs.IMPORTS_QUEUEING_LOCK
+    )
+    assert jobs.IMPORTS_TASK == "administration:run_imports"
+    assert jobs.task_parameter_types(app)["administration:run_imports"] == {
+        "timestamp": int
+    }
+
+
+def test_the_retention_run_runs_daily_at_0930_utc():
+    # #129 C2: one queued job at a time; nothing else queues it.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "administration:run_retention"
+    ]
+    assert periodic.cron == "30 9 * * *"
+    assert periodic.periodic_id == "administration-run-retention"
+    assert periodic.configure_kwargs["queueing_lock"] == "administration-run-retention"
+    assert app.tasks["administration:run_retention"].queueing_lock == (
+        jobs.RETENTION_QUEUEING_LOCK
+    )
+    assert jobs.RETENTION_TASK == "administration:run_retention"
+    assert jobs.RETENTION_TASK in jobs.RETRYABLE_TASKS
+    assert jobs.task_parameter_types(app)["administration:run_retention"] == {
+        "timestamp": int
+    }
+
+
+@pytest.mark.anyio
+async def test_deferring_the_import_run_names_the_task_and_its_lock(caplog):
+    # #122 D1: queued after the commit; a queued run is a no-op; any other
+    # failure is logged and swallowed.
+    from procrastinate.exceptions import AlreadyEnqueued
+
+    app = _RecordingJobApp()
+    await jobs.defer_import_run(app)  # type: ignore[arg-type]
+
+    [(name, options)] = app.configured
+    assert name == "administration:run_imports"
+    assert options == {
+        "allow_unknown": False,
+        "queueing_lock": "administration-run-imports",
+    }
+    [call] = app.deferrer.calls
+    assert set(call) == {"timestamp"} and isinstance(call["timestamp"], int)
+
+    with caplog.at_level("ERROR", logger=jobs.__name__):
+        await jobs.defer_import_run(
+            _RecordingJobApp(AlreadyEnqueued("queued"))  # type: ignore[arg-type]
+        )
+        assert caplog.records == []
+        await jobs.defer_import_run(
+            _RecordingJobApp(OSError("unreachable"))  # type: ignore[arg-type]
+        )
+    [record] = caplog.records
+    assert record.message == "Deferring the import run failed"
+    assert record.error == "OSError"
+
+
+def test_the_export_run_runs_every_15_minutes():
+    # #124 D1: one queued job at a time; the request route shares the lock.
+    app = jobs.create_worker_job_app(settings("prod"))
+
+    [periodic] = [
+        p
+        for p in app.periodic_registry.periodic_tasks.values()
+        if p.task.name == "reporting:run_exports"
+    ]
+    assert periodic.cron == "*/15 * * * *"
+    assert periodic.periodic_id == "reporting-run-exports"
+    assert periodic.configure_kwargs["queueing_lock"] == "reporting-run-exports"
+    assert app.tasks["reporting:run_exports"].queueing_lock == (
+        jobs.EXPORTS_QUEUEING_LOCK
+    )
+    assert jobs.EXPORTS_TASK == "reporting:run_exports"
+    assert jobs.task_parameter_types(app)["reporting:run_exports"] == {"timestamp": int}
+
+
+@pytest.mark.anyio
+async def test_deferring_the_export_run_names_the_task_and_its_lock(caplog):
+    # #124 B2: queued after the request; a queued run is a no-op; any other
+    # failure is logged and swallowed.
+    from procrastinate.exceptions import AlreadyEnqueued
+
+    app = _RecordingJobApp()
+    await jobs.defer_export_run(app)  # type: ignore[arg-type]
+
+    [(name, options)] = app.configured
+    assert name == "reporting:run_exports"
+    assert options == {
+        "allow_unknown": False,
+        "queueing_lock": "reporting-run-exports",
+    }
+    [call] = app.deferrer.calls
+    assert set(call) == {"timestamp"} and isinstance(call["timestamp"], int)
+
+    with caplog.at_level("ERROR", logger=jobs.__name__):
+        await jobs.defer_export_run(
+            _RecordingJobApp(AlreadyEnqueued("queued"))  # type: ignore[arg-type]
+        )
+        assert caplog.records == []
+        await jobs.defer_export_run(
+            _RecordingJobApp(OSError("unreachable"))  # type: ignore[arg-type]
+        )
+    [record] = caplog.records
+    assert record.message == "Deferring the export run failed"
+    assert record.error == "OSError"

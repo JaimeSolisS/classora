@@ -1,0 +1,39 @@
+output "instance_id" {
+  description = "The host's instance ID."
+  value       = aws_instance.this.id
+}
+
+output "data_volume_id" {
+  description = "The data volume's ID."
+  value       = aws_ebs_volume.data.id
+}
+
+output "ops_bucket" {
+  description = "The ops bucket's name."
+  value       = aws_s3_bucket.ops.bucket
+}
+
+output "hostnames" {
+  description = "Hostnames with an A record to the host's Elastic IP."
+  value       = var.hostnames
+}
+
+output "security_group_id" {
+  description = "The host's security group."
+  value       = aws_security_group.host.id
+}
+
+output "deploy_document" {
+  description = "The SSM document the deploy workflow sends (only parameter: sha)."
+  value       = aws_ssm_document.deploy.name
+}
+
+output "snapshot_policy_id" {
+  description = "The Data Lifecycle Manager policy that snapshots the data volume."
+  value       = aws_dlm_lifecycle_policy.data.id
+}
+
+output "public_ip" {
+  description = "The host's Elastic IP (colocated Grafana's A record, #617)."
+  value       = aws_eip.host.public_ip
+}

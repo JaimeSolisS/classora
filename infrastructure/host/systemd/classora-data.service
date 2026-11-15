@@ -1,0 +1,27 @@
+# Classora data stack: PostgreSQL and PgBouncer (ADR-0010, #614).
+# Started at boot before classora-app.service; stopped after it. Runs only
+# once a release exists on the data volume (deploy.sh).
+[Unit]
+Description=Classora data stack (db, pgbouncer)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+RequiresMountsFor=/srv/classora-data
+ConditionPathExists=/srv/classora-data/releases/current/images.env
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# The env file from Parameter Store (keeps the old file if SSM is unreachable),
+# and an ECR login so a replaced instance can pull the release's images.
+ExecStartPre=/opt/classora/bin/render-env.sh
+ExecStartPre=-/opt/classora/bin/ecr-login.sh
+# PgBouncer reports healthy only once the runtime role exists, so no --wait here.
+ExecStart=/opt/classora/bin/compose.sh up -d --wait --wait-timeout 300 db
+ExecStart=/opt/classora/bin/compose.sh up -d pgbouncer
+ExecStop=/opt/classora/bin/compose.sh stop pgbouncer db
+TimeoutStartSec=900
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

@@ -3,18 +3,16 @@ import { createRoot } from 'react-dom/client';
 import type { RouteObject } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyLanguage } from '@/i18n';
-import {
-  renderApp,
-  stubPendingFetch,
-  type RenderedApp,
-} from '@/test/render-app';
+import { stubSignedIn } from '@/test/api-stub';
+import { renderApp, type RenderedApp } from '@/test/render-app';
 import { ApiError } from './api';
 import { AppErrorBoundary } from './AppErrorBoundary';
 import { reportError } from './errors';
 import { routes } from './router';
 
 // E3/E4 (H6): render errors never leave a blank screen, never show the error
-// text or stack, and are reported once through reportError.
+// text or stack, and are reported once through reportError. Signed in through
+// a stubbed /auth/me (#28 I2), so pages under the guard render.
 
 vi.mock('./errors', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./errors')>();
@@ -39,15 +37,12 @@ function ApiBoom(): never {
 // errorElements are exercised.
 function routesWithPage(path: string, element: React.ReactNode): RouteObject[] {
   const [root] = routes;
-  const guard = root!.children![0]!;
-  return [
-    {
-      ...root,
-      children: [
-        { ...guard, children: [...guard.children!, { path, element }] },
-      ],
-    } as RouteObject,
-  ];
+  const children = root!.children!.map((child) =>
+    child.id === 'guard'
+      ? { ...child, children: [...child.children!, { path, element }] }
+      : child,
+  );
+  return [{ ...root, children } as RouteObject];
 }
 
 let app: RenderedApp | undefined;
@@ -59,7 +54,7 @@ function expectNoErrorDetails(container: HTMLElement) {
 
 beforeEach(() => {
   applyLanguage('en');
-  stubPendingFetch();
+  stubSignedIn();
   // React and React Router log caught errors; silenced in these tests only.
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});

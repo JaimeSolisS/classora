@@ -1,0 +1,542 @@
+"""Roles, the permission catalog and role permission sets (ADR-0007, D4).
+
+Each role's permission set is fixed in code here and written to the database
+by the reference seeds (``make seed``). Effective permissions are the union of
+a user's roles plus the delegable permissions an Owner granted them while they
+hold ``administrator``; record-level policies are applied on top by the
+issues that use each permission.
+
+Later milestones add their own permissions to :data:`PERMISSIONS` and
+:data:`ROLE_PERMISSIONS`; the unit tests in
+``tests/unit/test_identity_permissions.py`` guard the invariants (the Owner
+holds everything, the delegable set is exactly ADR-0007's).
+"""
+
+from collections.abc import Collection, Iterable, Mapping
+from dataclasses import dataclass
+from types import MappingProxyType
+
+# --- Roles (spec §2) -------------------------------------------------------------
+
+OWNER = "owner"
+ADMINISTRATOR = "administrator"
+ACADEMIC_COORDINATOR = "academic_coordinator"
+FINANCE_STAFF = "finance_staff"
+TUTOR = "tutor"
+STUDENT = "student"
+GUARDIAN = "guardian"
+
+ROLE_CODES: tuple[str, ...] = (
+    OWNER,
+    ADMINISTRATOR,
+    ACADEMIC_COORDINATOR,
+    FINANCE_STAFF,
+    TUTOR,
+    STUDENT,
+    GUARDIAN,
+)
+
+STAFF_ROLES: frozenset[str] = frozenset(
+    {OWNER, ADMINISTRATOR, ACADEMIC_COORDINATOR, FINANCE_STAFF}
+)
+"""Staff roles: the strict session class (#25) and reauthenticated invitations (#29)."""
+
+# --- User states (spec §2) -------------------------------------------------------
+
+PENDING = "pending"
+ACTIVE = "active"
+SUSPENDED = "suspended"
+ARCHIVED = "archived"
+
+USER_STATES: tuple[str, ...] = (PENDING, ACTIVE, SUSPENDED, ARCHIVED)
+
+# --- Permissions ---------------------------------------------------------------
+
+USER_VIEW = "user.view"
+USER_MANAGE = "user.manage"
+USER_INVITE = "user.invite"
+USER_ROLE_ASSIGN = "user.role.assign"
+USER_ADMIN_ROLE_ASSIGN = "user.admin_role.assign"
+USER_OWNER_ROLE_ASSIGN = "user.owner_role.assign"
+USER_DELEGATION_MANAGE = "user.delegation.manage"
+# S105: a permission code, not a password.
+USER_PASSWORD_RESET_ISSUE = "user.password_reset.issue"  # noqa: S105
+REGISTRATION_REVIEW = "registration.review"
+# The approval type of self-registration requests (#40 D), reviewed with
+# REGISTRATION_REVIEW.
+REGISTRATION_APPROVAL_TYPE = "identity.registration"
+AUDIT_VIEW = "audit.view"
+CATALOG_MANAGE = "catalog.manage"
+SETTINGS_MANAGE = "settings.manage"
+STUDENT_VIEW = "student.view"
+STUDENT_MANAGE = "student.manage"
+GUARDIAN_VIEW = "guardian.view"
+FAMILY_MANAGE = "family.manage"
+CONSENT_RECORD = "consent.record"
+PAYROLL_FINALIZE = "payroll.finalize"
+# Tutor compensation (#105; ADR-0017 E12): who reads and who writes pay terms
+# and rates (Owner, Finance Staff; not delegable). Administrators see no pay.
+# Tutors read their own through the record policy (payroll/permissions.py).
+PAYROLL_VIEW = "payroll.view"
+PAYROLL_MANAGE = "payroll.manage"
+# The payroll calculation (#107 E10): who runs it (Owner, Finance Staff; not
+# delegable). #110 is prepare, and return with payroll.finalize.
+PAYROLL_PREPARE = "payroll.prepare"
+# Logging payments made to a tutor outside the platform (#112; ADR-0017 E12,
+# E13): Owner, Finance Staff; not delegable. Reversals use
+# finance.refund.approve.
+PAYROLL_PAYMENT_RECORD = "payroll.payment.record"
+SCHEDULE_OVERRIDE = "schedule.override"
+FINANCE_REFUND_APPROVE = "finance.refund.approve"
+# Tutor profiles (#43, owner decision E1 (a)): the record policy limits a
+# tutor to their own profile (staff/permissions.py).
+TUTOR_VIEW = "tutor.view"
+TUTOR_MANAGE = "tutor.manage"
+# Tutor qualification requests (#44): who sees and decides the
+# staff.qualification approval requests.
+QUALIFICATION_REVIEW = "qualification.review"
+# Class sessions (#48; ADR-0005 D9): who reads every session and who
+# schedules them. schedule.assign (#51, its first user; #52 reuses it): who
+# sees tutor eligibility and replacement suggestions and assigns tutors
+# (Owner, Administrator, Academic coordinator; not delegable).
+SCHEDULE_VIEW = "schedule.view"
+SCHEDULE_MANAGE = "schedule.manage"
+SCHEDULE_ASSIGN = "schedule.assign"
+# Course templates (#64, owner decision E3 (a)): Finance Staff read them
+# (pricing later); tutors and families see a cohort's syllabus through the
+# cohort's record policies (#65, #67), not through these.
+COURSE_VIEW = "course.view"
+COURSE_MANAGE = "course.manage"
+# Attendance (#76, owner decision E1 (a)): who corrects a session's
+# attendance with a reason (Owner, Administrator, Academic Coordinator; not
+# delegable). Tutors mark and schedule.view holders read through the
+# attendance record policy (scheduling/attendance_rules.py).
+ATTENDANCE_CORRECT = "attendance.correct"
+# Teaching hours (#77, owner decision E3 (a); architecture ISSUE-F7): who
+# reviews a tutor's session closeout (the actual minutes and the summary) in
+# the approval inbox (Owner, Administrator, Academic Coordinator; not
+# delegable). #78 adds the decisions.
+TEACHING_HOURS_APPROVE = "teaching_hours.approve"
+# Session notes (#79, owner decision E4 (a)): who reads every tutor note and
+# can stop sharing a family note with a reason (Owner, Administrator,
+# Academic Coordinator; not delegable). Tutors write and read notes through
+# the note record policy (academics/note_rules.py); families read shared
+# notes through their own route.
+ACADEMIC_NOTE_REVIEW = "academic_note.review"
+# Evaluations (#80, owner-delegated decision E5 (a)): who manages evaluation
+# templates, reads every final and voided evaluation and voids one with a
+# reason (Owner, Administrator, Academic Coordinator; not delegable). Tutors
+# record and read evaluations through the evaluation record policy
+# (academics/evaluation_rules.py); families read the academic history.
+EVALUATION_MANAGE = "evaluation.manage"
+# Learning plans (#81, owner-delegated decision E4 (a)): who creates, edits,
+# transitions and deletes any learning plan and reads every plan, drafts
+# included (Owner, Administrator, Academic Coordinator; not delegable).
+# Tutors write the plans of students they currently teach in the plan's
+# subject through the plan record policy (academics/learning_plan_rules.py);
+# families read active and closed plans through the same routes.
+LEARNING_PLAN_MANAGE = "learning_plan.manage"
+# Homework assignments (#82, owner-delegated decision E6 (a)): who reads every
+# homework assignment, its roster and every submission and grade (Owner,
+# Administrator, Academic Coordinator; read-only oversight, not delegable).
+# Tutors set, edit, grade and delete their own homework through the
+# assignment record policy (academics/assignment_rules.py); students submit
+# and families read through the per-student routes.
+ASSIGNMENT_REVIEW = "assignment.review"
+# Progress reports (#83, owner-delegated decision E4 (a)): who reads every
+# non-draft progress report and approves it for families, sends it back to its
+# author or retracts it (Owner, Administrator, Academic Coordinator; spec W5.2
+# "an administrator approves", read as staff with academic approval authority,
+# the ISSUE-F7 precedent; not delegable). A reviewer never decides their own
+# report unless they hold the Owner role. Tutors write their reports through
+# the report record policy (academics/progress_report_rules.py).
+PROGRESS_REPORT_REVIEW = "progress_report.review"
+# Price catalog (#89, owner-delegated decision E6 (a); ADR-0006 E8): who reads
+# and manages the service price catalog (Owner, Administrator, Finance
+# Staff; not delegable). Seeded by #89, its first user.
+BILLING_MANAGE = "billing.manage"
+# Billing accounts (#364 / #90b F1 (a); ADR-0006 E8): who reads every
+# family's billing account, charges and ledger (Owner, Administrator,
+# Finance Staff; not delegable). Guardians read their own family's account
+# through the record policy of app/workflows/billing_accounts.py, not
+# through this permission.
+BILLING_VIEW = "billing.view"
+# Payments (#96, owner-delegated decisions M1 (a) and M6 (a); ADR-0006 E8): who
+# records a family's external payments and allocates them, or allocates the
+# account credit later (Owner, Administrator, Finance Staff; not delegable; no
+# reauthentication: a mistake is undone by a #100 reversal, which needs it).
+PAYMENT_RECORD = "payment.record"
+# Expense categories and vendors (#114; ADR-0017 E12): who reads and manages
+# them (Owner, Administrator, Finance Staff; not delegable). The reads need it
+# too (#114 E6).
+EXPENSE_CONFIGURE = "expense.configure"
+# Operating expenses (#115; ADR-0017 E12, E16): who reads expenses, with their
+# amounts, receipt references and notes, and who records expenses, payments and
+# adjustments (Owner, Finance Staff; not delegable). Administrators see no
+# expense amounts. Reversing a payment needs finance.refund.approve as well as
+# expense.view (#115 E6).
+EXPENSE_VIEW = "expense.view"
+EXPENSE_MANAGE = "expense.manage"
+# Financial reports (#117; ADR-0017 E12): profitability on the accrual and cash
+# bases, receivables, payables and deferred revenue (Owner, Finance Staff; not
+# delegable). Administrators get none, even with payroll.finalize delegated.
+FINANCE_REPORT_VIEW = "finance.report.view"
+# Failed background jobs (#128 E3; architecture ISSUE-J3): who sees the jobs
+# that failed and retries them (Owner, Administrator; not delegable).
+JOBS_MANAGE = "jobs.manage"
+
+
+@dataclass(frozen=True)
+class PermissionDef:
+    """One catalog entry: its code and whether an Owner may delegate it."""
+
+    code: str
+    delegable: bool = False
+
+
+PERMISSIONS: tuple[PermissionDef, ...] = (
+    PermissionDef(USER_VIEW),
+    PermissionDef(USER_MANAGE),
+    PermissionDef(USER_INVITE),
+    PermissionDef(USER_ROLE_ASSIGN),
+    PermissionDef(USER_ADMIN_ROLE_ASSIGN, delegable=True),
+    PermissionDef(USER_OWNER_ROLE_ASSIGN),
+    PermissionDef(USER_DELEGATION_MANAGE),
+    PermissionDef(USER_PASSWORD_RESET_ISSUE),
+    PermissionDef(REGISTRATION_REVIEW),
+    PermissionDef(AUDIT_VIEW),
+    PermissionDef(CATALOG_MANAGE),
+    PermissionDef(SETTINGS_MANAGE),
+    PermissionDef(STUDENT_VIEW),
+    PermissionDef(STUDENT_MANAGE),
+    PermissionDef(GUARDIAN_VIEW),
+    PermissionDef(FAMILY_MANAGE),
+    PermissionDef(CONSENT_RECORD),
+    PermissionDef(TUTOR_VIEW),
+    PermissionDef(TUTOR_MANAGE),
+    PermissionDef(QUALIFICATION_REVIEW),
+    PermissionDef(SCHEDULE_VIEW),
+    PermissionDef(SCHEDULE_MANAGE),
+    PermissionDef(SCHEDULE_ASSIGN),
+    PermissionDef(COURSE_VIEW),
+    PermissionDef(COURSE_MANAGE),
+    PermissionDef(ATTENDANCE_CORRECT),
+    PermissionDef(TEACHING_HOURS_APPROVE),
+    PermissionDef(ACADEMIC_NOTE_REVIEW),
+    PermissionDef(EVALUATION_MANAGE),
+    PermissionDef(LEARNING_PLAN_MANAGE),
+    PermissionDef(ASSIGNMENT_REVIEW),
+    PermissionDef(PROGRESS_REPORT_REVIEW),
+    PermissionDef(BILLING_MANAGE),
+    PermissionDef(BILLING_VIEW),
+    PermissionDef(PAYMENT_RECORD),
+    PermissionDef(PAYROLL_FINALIZE, delegable=True),
+    PermissionDef(PAYROLL_VIEW),
+    PermissionDef(PAYROLL_MANAGE),
+    PermissionDef(PAYROLL_PREPARE),
+    PermissionDef(PAYROLL_PAYMENT_RECORD),
+    PermissionDef(EXPENSE_CONFIGURE),
+    PermissionDef(EXPENSE_VIEW),
+    PermissionDef(EXPENSE_MANAGE),
+    PermissionDef(FINANCE_REPORT_VIEW),
+    PermissionDef(JOBS_MANAGE),
+    PermissionDef(SCHEDULE_OVERRIDE, delegable=True),
+    PermissionDef(FINANCE_REFUND_APPROVE, delegable=True),
+)
+"""The permission catalog, in seed order."""
+
+PERMISSION_CODES: frozenset[str] = frozenset(p.code for p in PERMISSIONS)
+
+DELEGABLE_PERMISSIONS: frozenset[str] = frozenset(
+    p.code for p in PERMISSIONS if p.delegable
+)
+"""Granted only by an Owner, only to Administrators (ADR-0007)."""
+
+ROLE_PERMISSIONS: Mapping[str, frozenset[str]] = MappingProxyType(
+    {
+        OWNER: PERMISSION_CODES,
+        ADMINISTRATOR: frozenset(
+            {
+                USER_VIEW,
+                USER_MANAGE,
+                USER_INVITE,
+                USER_ROLE_ASSIGN,
+                USER_PASSWORD_RESET_ISSUE,
+                REGISTRATION_REVIEW,
+                AUDIT_VIEW,
+                CATALOG_MANAGE,
+                SETTINGS_MANAGE,
+                STUDENT_VIEW,
+                STUDENT_MANAGE,
+                GUARDIAN_VIEW,
+                FAMILY_MANAGE,
+                CONSENT_RECORD,
+                TUTOR_VIEW,
+                TUTOR_MANAGE,
+                QUALIFICATION_REVIEW,
+                SCHEDULE_VIEW,
+                SCHEDULE_MANAGE,
+                SCHEDULE_ASSIGN,
+                COURSE_VIEW,
+                COURSE_MANAGE,
+                ATTENDANCE_CORRECT,
+                TEACHING_HOURS_APPROVE,
+                ACADEMIC_NOTE_REVIEW,
+                EVALUATION_MANAGE,
+                LEARNING_PLAN_MANAGE,
+                ASSIGNMENT_REVIEW,
+                PROGRESS_REPORT_REVIEW,
+                BILLING_MANAGE,
+                BILLING_VIEW,
+                PAYMENT_RECORD,
+                EXPENSE_CONFIGURE,
+                JOBS_MANAGE,
+            }
+        ),
+        ACADEMIC_COORDINATOR: frozenset(
+            {
+                STUDENT_VIEW,
+                STUDENT_MANAGE,
+                GUARDIAN_VIEW,
+                TUTOR_VIEW,
+                SCHEDULE_VIEW,
+                SCHEDULE_ASSIGN,
+                COURSE_VIEW,
+                COURSE_MANAGE,
+                ATTENDANCE_CORRECT,
+                TEACHING_HOURS_APPROVE,
+                ACADEMIC_NOTE_REVIEW,
+                EVALUATION_MANAGE,
+                LEARNING_PLAN_MANAGE,
+                ASSIGNMENT_REVIEW,
+                PROGRESS_REPORT_REVIEW,
+            }
+        ),
+        FINANCE_STAFF: frozenset(
+            {
+                STUDENT_VIEW,
+                GUARDIAN_VIEW,
+                SCHEDULE_VIEW,
+                COURSE_VIEW,
+                BILLING_MANAGE,
+                BILLING_VIEW,
+                PAYMENT_RECORD,
+                PAYROLL_VIEW,
+                PAYROLL_MANAGE,
+                PAYROLL_PREPARE,
+                PAYROLL_PAYMENT_RECORD,
+                EXPENSE_CONFIGURE,
+                EXPENSE_VIEW,
+                EXPENSE_MANAGE,
+                FINANCE_REPORT_VIEW,
+            }
+        ),
+        # Record policies limit these to assigned students, self and linked
+        # children (#21, #33-#35), and tutor.view to the tutor's own profile
+        # (#43).
+        TUTOR: frozenset({STUDENT_VIEW, TUTOR_VIEW}),
+        STUDENT: frozenset({STUDENT_VIEW, CONSENT_RECORD}),
+        GUARDIAN: frozenset({STUDENT_VIEW, GUARDIAN_VIEW, CONSENT_RECORD}),
+    }
+)
+"""Each role's fixed permission set (seeded into ``role_permissions``)."""
+
+
+def may_assign_role(actor_permissions: Collection[str], role: str) -> bool:
+    """Whether an actor with ``actor_permissions`` may assign or remove ``role``.
+
+    Authority only (ADR-0007, D4): callers add reauthentication, audit and the
+    last-active-Owner guard. An unknown role is never assignable.
+    """
+    if role == OWNER:
+        return USER_OWNER_ROLE_ASSIGN in actor_permissions
+    if role == ADMINISTRATOR:
+        return USER_ADMIN_ROLE_ASSIGN in actor_permissions
+    if role in ROLE_CODES:
+        return USER_ROLE_ASSIGN in actor_permissions
+    return False
+
+
+def may_manage_user(
+    actor_permissions: Collection[str],
+    *,
+    actor_id: object,
+    target_id: object,
+    target_roles: Iterable[str],
+) -> bool:
+    """Whether the actor may manage the target's account (#31; ADR-0007 D4 as
+    amended by #31): edit the profile, suspend, archive, reactivate and change
+    roles (#170).
+
+    Only for a holder of ``user.manage``. Then true when the actor **is** the
+    target (their own profile; the routes refuse self state changes), or when
+    :func:`may_assign_role` holds for **every** role the target has. A target
+    without roles can be managed by any holder of ``user.manage``. So an
+    Administrator manages neither an Owner nor another Administrator, unless
+    they hold the ``user.admin_role.assign`` delegation (Administrators only).
+    """
+    if USER_MANAGE not in actor_permissions:
+        return False
+    if actor_id == target_id:
+        return True
+    return all(may_assign_role(actor_permissions, role) for role in target_roles)
+
+
+OWNER_ONLY_RESET_TARGETS: frozenset[str] = frozenset({OWNER, ADMINISTRATOR})
+"""Only a holder of the ``owner`` role may reset a user holding one of these
+roles (ADR-0007 D12)."""
+
+
+def may_reset_password_of(
+    actor_roles: Collection[str],
+    *,
+    actor_id: object,
+    target_id: object,
+    target_roles: Iterable[str],
+) -> bool:
+    """The #30 authority rule for issuing a password reset (ADR-0007 D12),
+    without the permission and state checks: nobody resets their own account,
+    and only the ``owner`` **role** (a delegation does not count) resets an
+    Owner or an Administrator."""
+    if actor_id == target_id:
+        return False
+    return not (OWNER_ONLY_RESET_TARGETS.intersection(target_roles)) or (
+        OWNER in actor_roles
+    )
+
+
+@dataclass(frozen=True)
+class UserActions:
+    """What the caller may do to one user (``UserDetail.allowed_actions``)."""
+
+    edit: bool
+    suspend: bool
+    archive: bool
+    reactivate: bool
+    reset_password: bool
+    assignable_roles: tuple[str, ...]
+    """Roles the caller may add **and** remove on this target, in
+    :data:`ROLE_CODES` order (#170 D1)."""
+    manage_delegations: bool
+    """The caller may grant or revoke this target's delegations (#170 D1)."""
+
+
+def assignable_roles(
+    actor_permissions: Collection[str],
+    *,
+    actor_id: object,
+    target_id: object,
+    target_roles: Iterable[str],
+) -> tuple[str, ...]:
+    """The roles the actor may add to or remove from the target (#170 A2, D1):
+    none unless :func:`may_manage_user`; otherwise every role for which
+    :func:`may_assign_role` holds, in :data:`ROLE_CODES` order."""
+    if not may_manage_user(
+        actor_permissions,
+        actor_id=actor_id,
+        target_id=target_id,
+        target_roles=target_roles,
+    ):
+        return ()
+    return tuple(r for r in ROLE_CODES if may_assign_role(actor_permissions, r))
+
+
+def may_manage_delegations(
+    actor_permissions: Collection[str], *, target_roles: Iterable[str]
+) -> bool:
+    """Whether the delegations section is editable (#170 D1): the actor holds
+    ``user.delegation.manage`` (Owners only) and the target holds
+    ``administrator``. The route also lets an Owner revoke from any target
+    (#170 B2) and refuses grants to an archived Administrator."""
+    return USER_DELEGATION_MANAGE in actor_permissions and ADMINISTRATOR in set(
+        target_roles
+    )
+
+
+def allowed_user_actions(
+    *,
+    actor_id: object,
+    actor_roles: Collection[str],
+    actor_permissions: Collection[str],
+    target_id: object,
+    target_state: str,
+    target_roles: Collection[str],
+    target_password_set: bool,
+) -> UserActions:
+    """The actions the user detail page offers (#31 E2), computed with the
+    same rules as the routes. The routes stay the authority.
+
+    - ``edit``: :func:`may_manage_user`.
+    - ``suspend``: an ``active`` target; ``archive``: ``active``,
+      ``suspended``, or ``pending`` without a password (an open invitation);
+      ``reactivate``: ``suspended`` or ``archived``. All three need
+      :func:`may_manage_user` and are false for the caller's own account.
+    - ``reset_password``: ``user.password_reset.issue``, an ``active`` target
+      and :func:`may_reset_password_of` (#30 C2).
+    - ``assignable_roles``: :func:`assignable_roles`; ``manage_delegations``:
+      :func:`may_manage_delegations` (#170 D1).
+
+    The last-active-Owner guard is not considered: the server answers ``409
+    last_active_owner``.
+    """
+    manage = may_manage_user(
+        actor_permissions,
+        actor_id=actor_id,
+        target_id=target_id,
+        target_roles=target_roles,
+    )
+    change_state = manage and actor_id != target_id
+    return UserActions(
+        edit=manage,
+        suspend=change_state and target_state == ACTIVE,
+        archive=change_state
+        and (
+            target_state in (ACTIVE, SUSPENDED)
+            or (target_state == PENDING and not target_password_set)
+        ),
+        reactivate=change_state and target_state in (SUSPENDED, ARCHIVED),
+        reset_password=USER_PASSWORD_RESET_ISSUE in actor_permissions
+        and target_state == ACTIVE
+        and may_reset_password_of(
+            actor_roles,
+            actor_id=actor_id,
+            target_id=target_id,
+            target_roles=target_roles,
+        ),
+        assignable_roles=assignable_roles(
+            actor_permissions,
+            actor_id=actor_id,
+            target_id=target_id,
+            target_roles=target_roles,
+        ),
+        manage_delegations=may_manage_delegations(
+            actor_permissions, target_roles=target_roles
+        ),
+    )
+
+
+def resolve_permissions(
+    state: str,
+    roles: Iterable[str],
+    delegated: Iterable[str],
+    *,
+    role_permissions: Mapping[str, Collection[str]] = ROLE_PERMISSIONS,
+) -> frozenset[str]:
+    """A user's effective permissions (pure; ADR-0007, D4).
+
+    - Only an ``active`` user has permissions; any other state gets none.
+    - The union of ``role_permissions[r]`` for each of ``roles`` (unknown roles
+      add nothing). The loader passes the seeded mapping from the database.
+    - Plus the ``delegated`` codes that are delegable, only while the user
+      holds ``administrator``.
+    - Codes no longer in the catalog are dropped.
+    """
+    if state != ACTIVE:
+        return frozenset()
+    held = set(roles)
+    codes: set[str] = set()
+    for role in held:
+        codes.update(role_permissions.get(role, ()))
+    if ADMINISTRATOR in held:
+        codes.update(DELEGABLE_PERMISSIONS.intersection(delegated))
+    return frozenset(codes & PERMISSION_CODES)

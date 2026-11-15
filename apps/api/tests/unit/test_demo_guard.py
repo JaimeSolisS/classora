@@ -1,5 +1,8 @@
-"""Demo-data command without a database (M1-17 C5): the production guard."""
+"""Demo-data command without a database (M1-17 C5): the production guard,
+and the payroll, M7-demo-b and M8-demo generators' skips without a session
+(M7-demo #499 E5, M7-demo-b #501 F5, M8-demo #539 A2/A3)."""
 
+import asyncio
 import os
 import subprocess
 import sys
@@ -10,7 +13,28 @@ from typing import Any
 import factory
 import pytest
 
+from tests.authz.csrf import origin_for
 from tests.factories import demo
+from tests.factories.base import GeneratorSkipped
+from tests.factories.demo_admin import (
+    DemoAdminGenerator,
+    DemoDeletedGenerator,
+    DemoImportsGenerator,
+    DemoReceiptMessageGenerator,
+    DemoSetupsGenerator,
+)
+from tests.factories.demo_billing import WITHOUT_BILLING
+from tests.factories.demo_finance import (
+    DemoFinanceExpensesGenerator,
+    DemoFinanceSetupGenerator,
+    DemoFinanceTemplatesGenerator,
+    DemoPastCohortFeeGenerator,
+)
+from tests.factories.demo_payroll import (
+    DemoPayrollCorrectionsGenerator,
+    DemoPayrollPeriodsGenerator,
+    DemoPayrollSetupGenerator,
+)
 
 API_ROOT = Path(__file__).resolve().parents[2]
 CLOSED_PORT_DSN = "postgresql://x:y@127.0.0.1:1/z"
@@ -28,6 +52,7 @@ def failing_engine_factory(settings: Any) -> Any:
 def env(monkeypatch):
     def _set(app_env: str) -> None:
         monkeypatch.setenv("APP_ENV", app_env)
+        monkeypatch.setenv("APP_ORIGIN", origin_for(app_env))
         monkeypatch.setenv("DATABASE_URL", CLOSED_PORT_DSN)
         monkeypatch.setenv("DATABASE_DIRECT_URL", CLOSED_PORT_DSN)
 
@@ -90,6 +115,7 @@ def test_prod_refusal_as_a_process_returns_immediately():
     }
     environment |= {
         "APP_ENV": "prod",
+        "APP_ORIGIN": origin_for("prod"),
         "DATABASE_URL": CLOSED_PORT_DSN,
         "DATABASE_DIRECT_URL": CLOSED_PORT_DSN,
     }
@@ -107,3 +133,93 @@ def test_prod_refusal_as_a_process_returns_immediately():
     assert completed.stderr.strip() == "Refusing to generate demo data: APP_ENV=prod"
     assert "Traceback" not in completed.stderr
     assert time.monotonic() - started < 10
+
+
+def test_the_billing_flag_is_documented_for_e2e(capsys):
+    # M6-demo A5, #499 A4, #539 E1: --without-billing names the E2E run that
+    # passes it and the billing, payroll, expense and M8 data it leaves out.
+    with pytest.raises(SystemExit) as exit_info:
+        demo.main(["--help"])
+
+    assert exit_info.value.code == 0
+    out = " ".join(capsys.readouterr().out.split())
+    assert "--without-billing" in out
+    assert "e2e/scripts/run.sh" in out
+    assert (
+        "without the billing, payroll, expense and M8 administration demo data"
+        " (E2E;" in out
+    )
+    assert "E2E database keeps them off" in out
+
+
+@pytest.mark.parametrize("app_env", ["local", "dev"])
+def test_the_billing_flag_passes_the_guard(env, app_env):
+    env(app_env)
+
+    with pytest.raises(EngineRequested):
+        demo.main(["--without-billing"], engine_factory=failing_engine_factory)
+
+
+def test_no_make_target_runs_the_demo_command_and_e2e_skips_billing():
+    # HF-587: no make target runs the demo command; it is E2E and test
+    # fixture data. M6-demo A5: run.sh still passes the flag.
+    makefile = (API_ROOT.parents[1] / "Makefile").read_text()
+    recipes = [
+        line
+        for line in makefile.splitlines()
+        if "python -m tests.factories.demo" in line
+    ]
+    assert recipes == []
+    run_sh = (API_ROOT.parents[1] / "e2e" / "scripts" / "run.sh").read_text()
+    [step] = [
+        line for line in run_sh.splitlines() if "python -m tests.factories.demo" in line
+    ]
+    assert "--without-billing" in step
+
+
+class UntouchedSession:
+    """Fails the test if the generator uses the session."""
+
+    def __getattr__(self, name: str) -> object:
+        raise AssertionError(f"the session was used ({name})")
+
+
+PAYROLL_GENERATORS = [
+    DemoPayrollSetupGenerator,
+    DemoPayrollPeriodsGenerator,
+    DemoPayrollCorrectionsGenerator,
+    # M7-demo-b #501 F5: the cohort fee and the three finance generators.
+    DemoPastCohortFeeGenerator,
+    DemoFinanceSetupGenerator,
+    DemoFinanceTemplatesGenerator,
+    DemoFinanceExpensesGenerator,
+    # M8-demo #539 A2, A3: the five M8 generators.
+    DemoReceiptMessageGenerator,
+    DemoAdminGenerator,
+    DemoImportsGenerator,
+    DemoSetupsGenerator,
+    DemoDeletedGenerator,
+]
+
+
+@pytest.mark.parametrize("app_env", ["dev", "prod", "staging"])
+@pytest.mark.parametrize("generator", PAYROLL_GENERATORS, ids=lambda g: g.name)
+def test_a_payroll_generator_writes_nothing_outside_local(generator, app_env):
+    # #499 E5: skipped without touching the session.
+    result = asyncio.run(
+        generator(app_env=lambda: app_env).generate(UntouchedSession())  # type: ignore[arg-type]
+    )
+
+    assert result == GeneratorSkipped(f"APP_ENV={app_env}; local only")
+
+
+@pytest.mark.parametrize("generator", PAYROLL_GENERATORS, ids=lambda g: g.name)
+def test_a_payroll_generator_writes_nothing_under_the_flag(generator):
+    # #499 E5, A4: --without-billing, without touching the session.
+    result = asyncio.run(
+        generator(app_env=lambda: "local", skipped=lambda: True).generate(
+            UntouchedSession()  # type: ignore[arg-type]
+        )
+    )
+
+    assert result == GeneratorSkipped(WITHOUT_BILLING)

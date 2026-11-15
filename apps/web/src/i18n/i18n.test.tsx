@@ -1,7 +1,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { applyLanguage, i18n } from './index';
+import { applyLanguage, i18n, reportsMissingKeys } from './index';
 import { LANGUAGE_STORAGE_KEY } from './language';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { useLanguage } from './use-language';
@@ -45,12 +45,12 @@ describe('i18n instance', () => {
     expect(i18n.isInitialized).toBe(true);
     applyLanguage('es');
     expect(i18n.language).toBe('es');
-    expect(i18n.t('apiStatus.live')).toBe('API: activa');
+    expect(i18n.t('home.today.title')).toBe('Hoy');
     expect(i18n.t('errors:generic')).toBe(
       'Algo salió mal. Inténtalo de nuevo.',
     );
     applyLanguage('en');
-    expect(i18n.t('apiStatus.live')).toBe('API: live');
+    expect(i18n.t('home.today.title')).toBe('Today');
   });
 
   it('types keys from the catalogs', () => {
@@ -105,5 +105,21 @@ describe('LanguageSwitcher', () => {
     act(() => button('Español').click());
     expect(document.documentElement.lang).toBe('es');
     expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('es');
+  });
+});
+
+// #130 C5: the dev-only missing-key log (the E2E language spec fails on it).
+describe('reportsMissingKeys', () => {
+  it.each([
+    [{ DEV: true, MODE: 'development' }, true],
+    [{ DEV: true, MODE: 'test' }, false],
+    [{ DEV: false, MODE: 'production' }, false],
+    [{ DEV: false, MODE: 'test' }, false],
+  ])('%o -> %s', (env, expected) => {
+    expect(reportsMissingKeys(env)).toBe(expected);
+  });
+
+  it('is off under Vitest', () => {
+    expect(reportsMissingKeys(import.meta.env)).toBe(false);
   });
 });

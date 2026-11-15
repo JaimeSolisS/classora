@@ -38,9 +38,19 @@ from app.core.jobs import (
     WORKER_APPLICATION_NAME,
     WORKER_CONCURRENCY,
     create_worker_job_app,
+    record_job_failure,
     worker_healthcheck_connector,
 )
 from app.core.logging import configure_logging
+from app.core.telemetry import (
+    WORKER_SERVICE,
+    configure_telemetry,
+    shutdown_telemetry,
+    worker_middleware,
+)
+from app.modules.families import service as families_service
+from app.modules.identity.service import register_student_login_gate
+from app.wiring import register_approval_wiring
 
 logger = logging.getLogger("app.worker")
 
@@ -92,6 +102,10 @@ def worker_options(settings: Settings) -> dict[str, object]:
         "shutdown_graceful_timeout": float(settings.worker_shutdown_timeout_seconds),
         # Signals are handled by run() for the whole process lifetime.
         "install_signal_handlers": False,
+        # One span per job when telemetry is on (outermost, so it covers the
+        # failure insert; #612), and every failed run's sanitized error goes
+        # to job_failures (#128 A1).
+        "worker_middleware": [*worker_middleware(), record_job_failure],
     }
 
 
@@ -157,6 +171,11 @@ async def healthcheck(settings: Settings) -> bool:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    # Jobs that change a user's state pass the families student-login gate
+    # (#35 B1), as in the API.
+    register_student_login_gate(families_service.STUDENT_LOGIN_GATE)
+    # The approval inbox wiring (#40 D3), as in the API.
+    register_approval_wiring()
     args = list(sys.argv[1:] if argv is None else argv)
     try:
         settings = load_settings()
@@ -170,7 +189,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("usage: python -m app.worker [--healthcheck]", file=sys.stderr)
         return 2
     configure_logging()
-    return asyncio.run(_main_async(settings))
+    # Off (no SDK object) unless OTEL_EXPORTER_OTLP_ENDPOINT is set (#612).
+    configure_telemetry(settings, WORKER_SERVICE)
+    try:
+        return asyncio.run(_main_async(settings))
+    finally:
+        shutdown_telemetry()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,65 @@
+import { useTranslation } from 'react-i18next';
+import { Button } from '@/components/ui/button';
+
+// Previous / Next and "{{from}}–{{to}} of {{total}}" under a catalog table
+// (#32 H2), with the #31 strings.
+
+interface PaginationProps {
+  offset: number;
+  limit: number;
+  shown: number;
+  total: number;
+  /** Goes to another 1-based page. */
+  onPage: (page: number) => void;
+  /** The navigation's name, when a page has more than one list. */
+  label?: string;
+  /** Classes added to both buttons (the family portal's 44 px, #388 I1). */
+  buttonClassName?: string;
+}
+
+export function Pagination({
+  offset,
+  limit,
+  shown,
+  total,
+  onPage,
+  label,
+  buttonClassName,
+}: PaginationProps) {
+  const { t } = useTranslation();
+  const page = Math.floor(offset / limit) + 1;
+  return (
+    <nav
+      aria-label={label ?? t('users.list.pagination')}
+      className="flex flex-wrap items-center gap-3"
+    >
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className={buttonClassName}
+        disabled={offset === 0}
+        onClick={() => onPage(page - 1)}
+      >
+        {t('users.list.previous')}
+      </Button>
+      <p className="text-sm">
+        {t('users.list.range', {
+          from: offset + 1,
+          to: offset + shown,
+          total,
+        })}
+      </p>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className={buttonClassName}
+        disabled={offset + shown >= total}
+        onClick={() => onPage(page + 1)}
+      >
+        {t('users.list.next')}
+      </Button>
+    </nav>
+  );
+}

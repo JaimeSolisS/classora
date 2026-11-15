@@ -9,6 +9,8 @@ import pytest
 from alembic import command
 from alembic.config import Config
 
+from tests.authz.csrf import TEST_APP_ORIGIN
+
 API_ROOT = Path(__file__).resolve().parents[2]
 DB_USER = "leakcheck_user"
 DB_PASSWORD = "not-a-real-secret-pw"
@@ -41,6 +43,7 @@ def test_unreachable_database_fails_without_leaking_the_password():
     result = run_alembic(
         {
             "APP_ENV": "local",
+            "APP_ORIGIN": TEST_APP_ORIGIN,
             "DATABASE_URL": f"postgresql://{DB_USER}:{DB_PASSWORD}@127.0.0.1:1/db",
             "DATABASE_DIRECT_URL": (
                 f"postgresql://{DB_USER}:{DB_PASSWORD}@127.0.0.1:1/db"
@@ -73,6 +76,7 @@ class _Stop(Exception):
 
 def test_env_builds_its_engine_from_the_direct_url(monkeypatch):
     monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("APP_ORIGIN", TEST_APP_ORIGIN)
     monkeypatch.setenv("DATABASE_URL", "postgresql://u:pooled-pw@pgbouncer:6432/app")
     monkeypatch.setenv("DATABASE_DIRECT_URL", "postgresql://u:direct-pw@db:5432/app")
     urls = []
@@ -91,3 +95,34 @@ def test_env_builds_its_engine_from_the_direct_url(monkeypatch):
 
     assert len(urls) == 1
     assert urls[0].startswith("postgresql+asyncpg://u:direct-pw@db:5432/app")
+
+
+def test_env_prefers_the_owner_migration_url(monkeypatch):
+    # #165: Alembic runs as the owner (DATABASE_MIGRATION_URL), never as the
+    # runtime role of DATABASE_DIRECT_URL.
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("APP_ORIGIN", TEST_APP_ORIGIN)
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgresql://classora_app:pooled-pw@pgbouncer:6432/app"
+    )
+    monkeypatch.setenv(
+        "DATABASE_DIRECT_URL", "postgresql://classora_app:direct-pw@db:5432/app"
+    )
+    monkeypatch.setenv(
+        "DATABASE_MIGRATION_URL", "postgresql://owner:owner-pw@db:5432/app"
+    )
+    urls = []
+
+    def fake_create_direct_engine(url, **kwargs):
+        urls.append(url)
+        raise _Stop
+
+    monkeypatch.setattr("app.core.db.create_direct_engine", fake_create_direct_engine)
+    config = Config(str(API_ROOT / "alembic.ini"))
+    config.attributes["configure_logging"] = False
+
+    with pytest.raises(_Stop):
+        command.upgrade(config, "head")
+
+    assert len(urls) == 1
+    assert urls[0].startswith("postgresql+asyncpg://owner:owner-pw@db:5432/app")

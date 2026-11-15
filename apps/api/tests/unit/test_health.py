@@ -9,6 +9,7 @@ from pydantic import SecretStr
 
 from app.core.config import Settings, get_settings
 from app.main import create_app
+from tests.authz.csrf import TEST_APP_ORIGIN
 
 # Closed local port: connection is refused immediately.
 UNREACHABLE_PASSWORD = "not-a-real-secret-pw"
@@ -77,6 +78,7 @@ def test_ready_503_within_5_seconds_when_database_never_answers(app_env):
         silent_dsn = SecretStr(f"postgresql://u:pw@127.0.0.1:{port}/db")
         app.dependency_overrides[get_settings] = lambda: Settings(
             app_env="local",
+            app_origin=TEST_APP_ORIGIN,
             database_url=silent_dsn,
             database_direct_url=silent_dsn,
         )
