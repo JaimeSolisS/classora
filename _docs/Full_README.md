@@ -704,8 +704,19 @@ and dev,
 `curl -X POST -H 'Origin: http://127.0.0.1:5173' http://127.0.0.1:8000/api/v1/dev/demo-jobs`
 queues a demo job to check that the worker runs it.
 
-Stop the stack with `docker compose down` (data is kept in a named volume;
-`docker compose down -v` deletes it).
+Stop or delete the local stack:
+
+```bash
+make stop              # stop every container, the app and the observability services (Grafana, ...); nothing is deleted
+make destroy           # delete all containers, the network, every data volume and the stack's images (built and pulled)
+make destroy YES=1     # the same without the confirmation question
+```
+
+Both cover every Compose profile (`tools`, `observability`). `make stop` keeps
+the data: `make dev` (or `make dev-observability`) starts it again. `make destroy`
+keeps `.env`; `make start` then rebuilds from scratch. Both read `.env.example`
+under `.env`, so they work even when `.env` is missing or older than
+`.env.example`.
 
 ### Compose layout
 

@@ -166,8 +166,12 @@ use `direccion`). The [full README](_docs/Full_README.md#simulated-operations-da
 lists every other login. To create a real first owner on an empty database
 instead, use `make bootstrap-owner USERNAME=<name>`.
 
-Stop everything with `docker compose down`. Your data is kept; add `-v` to
-delete it.
+Stop or remove it:
+
+```sh
+make stop      # stop every container (the app and Grafana); your data is kept, make dev starts it again
+make destroy   # delete everything: containers, data volumes and images (asks first; YES=1 skips)
+```
 
 ## How it is built
 
