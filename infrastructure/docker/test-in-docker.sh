@@ -37,6 +37,13 @@
 # with bash 3.2 (macOS).
 set -u
 
+# Git Bash (MSYS) on Windows rewrites arguments that look like Unix paths, so
+# `-v /var/run/docker.sock:...` reached Docker as `C:\Program Files\Git\var\...`
+# ("mkdir C:\Program Files\Git\var: Access is denied", exit 125). Every path this
+# script passes to docker is a daemon (Linux) path or relative, so turn the
+# rewriting off. No effect outside MSYS.
+export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
+
 usage() {
   echo "usage: $0 <both|api|web>" >&2
   exit 2
