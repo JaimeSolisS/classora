@@ -7,6 +7,13 @@ hold: it stays open until B has committed. If B needed anything A holds, B
 could never commit, A would give up after :data:`BLOCKED_AFTER_SECONDS` and
 the test fails. The limit only bounds that failure: a passing run never waits
 for it, however slow the machine is.
+
+The opposite proof, that B *does* wait for A, is :func:`waiting_on_a_lock`
+(#336, #683): A stays open until B waits on one of A's locks
+(``pg_stat_activity``), then commits. No fixed hold decides the interleaving,
+so a loaded runner can't let B reach its reads after A committed. A's end
+mark, when a test orders the two, is taken before A's commit: B, blocked on
+A's lock, can't finish before then.
 """
 
 import asyncio
@@ -15,13 +22,18 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.db import create_sessionmaker
 from app.core.uow import UnitOfWork
 from tests.integration.conftest import short_lived_engine
 
 BLOCKED_AFTER_SECONDS = 30.0
+# How long A waits for B to block on its lock before the race fails (#336).
+# Generous: B normally blocks within 0.1 s; hitting it fails the test.
+LOCK_WAIT_CAP_SECONDS = 30.0
+POLL_SECONDS = 0.02
 
 Step = Callable[[UnitOfWork], Awaitable[Any]]
 
@@ -83,3 +95,36 @@ def commit_b_inside_a(
     A then commits. Returns both results; fails the test if B can't commit
     while A is open."""
     return asyncio.run(_commit_b_inside_a(url, actor, first, second))
+
+
+async def waiting_on_a_lock(
+    probe: AsyncEngine, b_done: asyncio.Event, *, waiters: int = 1
+) -> None:
+    """Returns once ``waiters`` other backends of this test's database wait on
+    a lock (B on A's: only A, B and this probe use the database). Fails when B
+    finished without waiting, or after :data:`LOCK_WAIT_CAP_SECONDS`."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + LOCK_WAIT_CAP_SECONDS
+    async with probe.connect() as conn:
+        while True:
+            waiting = await conn.scalar(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity"
+                    " WHERE datname = current_database()"
+                    " AND pid <> pg_backend_pid()"
+                    " AND wait_event_type = 'Lock'"
+                )
+            )
+            # pg_stat_activity is read once per transaction: end it, so the
+            # next poll sees fresh rows.
+            await conn.commit()
+            if waiting >= waiters:
+                return
+            if b_done.is_set():
+                raise AssertionError("B finished without waiting on A's lock")
+            if loop.time() >= deadline:
+                raise AssertionError(
+                    f"{waiters} backend(s) never waited on A's lock within"
+                    f" {LOCK_WAIT_CAP_SECONDS} s"
+                )
+            await asyncio.sleep(POLL_SECONDS)

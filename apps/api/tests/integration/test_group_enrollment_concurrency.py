@@ -1,6 +1,7 @@
 """Concurrent group writes (#56 J3, F1, C2; the #47 D3 two-connection
-pattern): transaction A makes its change and keeps its transaction open for
-a moment; B starts once A's rows are flushed and uncommitted.
+pattern): transaction A makes its change and keeps its transaction open
+until B waits on one of its locks (``lock_support.waiting_on_a_lock``, #683);
+B starts once A's rows are flushed and uncommitted.
 
 - **The last seat:** the group row ``FOR UPDATE`` makes B wait until A
   commits; B then counts A's enrollment: ``group_capacity_exceeded``.
@@ -59,8 +60,8 @@ from app.modules.scheduling.service import OCCURRENCE_CONFLICT_HANDLER
 from tests.conftest import frozen_clock
 from tests.factories.scheduling import add_participant, persist_class_session
 from tests.integration.conftest import run_sql_async, settings_for, short_lived_engine
+from tests.integration.lock_support import waiting_on_a_lock
 from tests.integration.test_class_session_create_concurrency import (
-    HOLD_SECONDS,
     REPEATS,
     _references,
     create,
@@ -94,14 +95,16 @@ async def _outcome(engine: Any, change: Change, after: Any = None) -> str:
 async def race(
     url: str, first: Change, second: Callable[[Any], Awaitable[str]]
 ) -> list[str]:
-    """``first`` (A, held open after its change) and ``second`` (B, given its
-    own engine, started once A's change is flushed)."""
+    """``first`` (A, held open after its change until B waits on its lock)
+    and ``second`` (B, given its own engine, started once A's change is
+    flushed)."""
     engine_a, engine_b = short_lived_engine(url), short_lived_engine(url)
-    changed = asyncio.Event()
+    probe = short_lived_engine(url)
+    changed, b_done = asyncio.Event(), asyncio.Event()
 
     async def hold() -> None:
         changed.set()
-        await asyncio.sleep(HOLD_SECONDS)
+        await waiting_on_a_lock(probe, b_done)
 
     async def run_a() -> str:
         try:
@@ -111,13 +114,17 @@ async def race(
 
     async def run_b() -> str:
         await changed.wait()
-        return await second(engine_b)
+        try:
+            return await second(engine_b)
+        finally:
+            b_done.set()
 
     try:
         return list(await asyncio.gather(run_a(), run_b()))
     finally:
         await engine_a.dispose()
         await engine_b.dispose()
+        await probe.dispose()
 
 
 def in_b(change: Change) -> Callable[[Any], Awaitable[str]]:

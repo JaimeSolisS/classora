@@ -38,6 +38,7 @@ from tests.integration.courses_support import (
 )
 from tests.integration.invitation_support import sign_in
 from tests.integration.lifecycle_support import in_uow
+from tests.integration.lock_support import waiting_on_a_lock
 
 
 @pytest.fixture(scope="module")
@@ -265,7 +266,6 @@ def test_no_route_exposes_snapshots(client, cookie, template):
 # --- Concurrency (E2, D7) ---------------------------------------------------------
 
 Change = Callable[[AsyncSession], Awaitable[Any]]
-HOLD_SECONDS = 0.5
 
 
 async def _run(
@@ -284,33 +284,42 @@ async def _run(
 
 
 async def race(url: str, first: Change, second: Change) -> list[tuple[str, Any, float]]:
-    """``(outcome, result, finished_at)`` of ``first`` (transaction A, which
-    holds its transaction open for a moment after its change) and
-    ``second`` (transaction B, started once A's change is flushed)."""
+    """``(outcome, result, mark)`` of ``first`` (transaction A, which holds
+    its transaction open after its change until B waits on one of its locks,
+    #683) and ``second`` (transaction B, started once A's change is
+    flushed). A's mark is taken right before its commit, B's when it
+    finished."""
     engine_a, engine_b = short_lived_engine(url), short_lived_engine(url)
-    changed = asyncio.Event()
+    probe = short_lived_engine(url)
+    changed, b_done = asyncio.Event(), asyncio.Event()
+    marks: dict[str, float] = {}
 
     async def hold() -> None:
         changed.set()
-        await asyncio.sleep(HOLD_SECONDS)
+        await waiting_on_a_lock(probe, b_done)
+        marks["a"] = time.monotonic()
 
     async def run_a() -> tuple[str, Any, float]:
         try:
             outcome, result = await _run(engine_a, first, hold)
-            return outcome, result, time.monotonic()
+            return outcome, result, marks.setdefault("a", time.monotonic())
         finally:
             changed.set()
 
     async def run_b() -> tuple[str, Any, float]:
         await changed.wait()
-        outcome, result = await _run(engine_b, second)
-        return outcome, result, time.monotonic()
+        try:
+            outcome, result = await _run(engine_b, second)
+            return outcome, result, time.monotonic()
+        finally:
+            b_done.set()
 
     try:
         return list(await asyncio.gather(run_a(), run_b()))
     finally:
         await engine_a.dispose()
         await engine_b.dispose()
+        await probe.dispose()
 
 
 def _replace(template: dict[str, Any], **changes: Any) -> Change:
@@ -328,9 +337,7 @@ def _snapshot_change(template: dict[str, Any]) -> Change:
 
 
 def test_a_put_waits_for_a_snapshot_transaction(module_seeded_url, template):
-    started = time.monotonic()
-
-    [(a, taken, a_done), (b, replaced, b_done)] = asyncio.run(
+    [(a, taken, a_mark), (b, replaced, b_done)] = asyncio.run(
         race(
             module_seeded_url,
             _snapshot_change(template),
@@ -339,9 +346,9 @@ def test_a_put_waits_for_a_snapshot_transaction(module_seeded_url, template):
     )
 
     assert (a, b) == ("ok", "ok")
-    # B's FOR UPDATE waited for A's FOR SHARE until A committed.
-    assert b_done >= a_done
-    assert b_done - started >= HOLD_SECONDS
+    # B's FOR UPDATE waited for A's FOR SHARE until A committed (the race
+    # proves B waited; A's mark is taken right before its commit).
+    assert b_done >= a_mark
     assert taken.template_version == 1
     assert taken.content["name"] == template["name"]
     assert replaced.version == 2
