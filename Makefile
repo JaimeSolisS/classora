@@ -1,4 +1,4 @@
-.PHONY: start dev migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english seed-data-spanish-native seed-data-english-native lint lint-api lint-web lint-e2e check-pdf-image test test-all test-api-docker test-web-docker test-native test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability check-infra tf-plan tf-apply tf-destroy env-teardown monitoring-sync load-test
+.PHONY: start dev stop destroy migrate seed bootstrap-owner reset-owner-password seed-data-spanish seed-data-english seed-data-spanish-native seed-data-english-native lint lint-api lint-web lint-e2e check-pdf-image test test-all test-api-docker test-web-docker test-native test-api test-web test-unit test-integration test-billing-invariants test-simulation test-migrations build-web storybook test-storybook e2e api-client check-api-client security audit-deps audit-api audit-web scan-secrets scan-secrets-diff sast scan-image build-images check-images smoke-edge dev-observability dev-observability-down check-observability check-infra tf-plan tf-apply tf-destroy env-teardown monitoring-sync load-test
 
 # pnpm runs through Corepack (pinned by packageManager in package.json), never
 # a global install, and never stops for a download prompt.
@@ -78,6 +78,28 @@ dev-observability-down:
 	@if [ "$(V)" = 1 ]; then \
 	  project=$$(docker compose config | sed -n 's/^name: //p' | head -n 1); \
 	  for volume in $(OBS_VOLUMES); do docker volume rm --force "$${project}_$$volume"; done; fi
+
+# Every Compose profile, so stop/destroy also reach the observability services
+# (Grafana and the rest) and any leftover `migrate`/`devtools` container.
+# .env.example is layered under .env (which wins), so both still work with a missing or
+# outdated .env: stopping and deleting never use the values, only the names.
+ALL_PROFILES := --profile tools --profile observability
+STACK_COMPOSE = docker compose --env-file .env.example $(if $(wildcard .env),--env-file .env) $(ALL_PROFILES)
+
+## Stop every container of the local stack: the app (db, pgbouncer, api, worker, web)
+## and, if running, Grafana and the other observability services. Nothing is deleted:
+## `make dev` (or `make dev-observability`) starts them again with the same data.
+stop:
+	$(STACK_COMPOSE) stop
+
+## Delete the whole local stack: every container, the network, every data volume (the
+## database and the Grafana/Prometheus/Loki/Tempo data) and the stack's images (built
+## and pulled). Asks first; YES=1 skips the question. .env is kept. Start over with `make start`.
+destroy:
+	@if [ "$(YES)" != 1 ]; then \
+	  printf 'This deletes all local Classora containers, data volumes and images. Continue? [y/N] '; \
+	  read answer; case "$$answer" in [yY]|[yY][eE][sS]) ;; *) echo "destroy: cancelled"; exit 1;; esac; fi
+	$(STACK_COMPOSE) down --volumes --rmi all --remove-orphans
 
 ## Validate every observability config with the pinned images, without starting the stack:
 ## profile off by default, otelcol validate, promtool, loki/tempo verify, Grafana provisioning.
