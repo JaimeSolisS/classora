@@ -77,9 +77,38 @@ The full feature list is in the
 
 | Where | Link |
 |---|---|
-| DEV: every merge to `develop` deploys here. Sign in as `visitor` / `visitor-classora` (an Owner on an English simulated center; the other simulated accounts in the [full README](_docs/Full_README.md#simulated-operations-data) also work; DEV resets nightly at 04:00 UTC) | <https://dev.classora.dev> |
+| DEV: every merge to `develop` deploys here. Sign in as the demo visitor ([how](#sign-in-to-dev-as-the-visitor)) | <https://dev.classora.dev> |
 | PROD: the owner releases here after approval (serves after the first release) | <https://app.classora.dev> |
 | Monitoring (Grafana, login required) | <https://grafana.classora.dev> |
+
+### Sign in to DEV as the visitor
+
+1. Open <https://dev.classora.dev>.
+2. Username: `visitor`
+3. Password: `visitor-classora`
+4. Select **Sign in**. If a privacy notice appears, accept it.
+
+The visitor is an **Owner** of a simulated English-speaking tutoring center,
+so it sees every screen and can do everything: schedule classes, bill
+families, run payroll and see the reports. Switch the language with
+**Español / English** at the top. Change whatever you like: DEV resets to the
+simulated data every night at 04:00 UTC. The other
+simulated accounts (a tutor, a guardian and so on) are listed in the
+[full README](_docs/Full_README.md#simulated-operations-data).
+
+### Screenshots
+
+The KPI dashboard on DEV, signed in as the visitor:
+
+![The Classora dashboard on DEV: today's classes and what is waiting for the visitor](_docs/images/dev-dashboard.png)
+
+The schedule (week view), with filters by tutor, student, room and class type:
+
+![The Classora schedule on DEV, week view](_docs/images/dev-schedule.png)
+
+The "Host and containers" dashboard in Grafana (monitoring, login required):
+
+![Grafana dashboard: container CPU and memory, PostgreSQL connections, database size, API readiness and background jobs](_docs/images/grafana-host-and-containers.png)
 
 ### Run it on your machine
 
