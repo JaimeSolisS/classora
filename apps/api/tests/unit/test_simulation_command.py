@@ -261,4 +261,6 @@ def test_visitor_account_is_the_published_one():
     assert visitor_command.VISITOR_DISPLAY_NAME == "Demo visitor"
     assert visitor_command.INVITER_USERNAME == "owner"
     readme = (REPO_ROOT / "README.md").read_text()
-    assert "`visitor` / `visitor-classora`" in readme
+    # The root README publishes this login as numbered sign-in steps (#691).
+    assert "Username: `visitor`" in readme
+    assert "Password: `visitor-classora`" in readme
