@@ -9,6 +9,23 @@ who attended, what each family owes and what each tutor earns.**
 > Looking for every command and setting? See the
 > [full README](_docs/Full_README.md).
 
+## For reviewers
+
+| Area | Where to find it |
+|---|---|
+| Problem and expected behavior | [The problem](#the-problem), [What Classora does](#what-classora-does) |
+| Specification and task tracker | [Specification](_docs/spec.md); public [GitHub issues](https://github.com/JaimeSolisS/classora/issues) with acceptance criteria and the agents' reports |
+| Agent team and process | [How the work is done](#how-the-work-is-done-a-team-of-ai-agents), [delivery process](_docs/process.md) |
+| Context docs | [`AGENTS.md`](AGENTS.md), which points to the modular docs in `_docs/` |
+| Application (one command) | `make start`, then <http://127.0.0.1:5173> ([Run it on your machine](#run-it-on-your-machine)) |
+| Tests (one command) | `make test`: unit, integration and web tests ([Tests](#tests)) |
+| Containers | Docker Compose for the whole system, database included |
+| Deployment | DEV <https://dev.classora.dev> (sign in as [the visitor](#sign-in-to-dev-as-the-visitor)) and PROD <https://app.classora.dev> |
+| CI/CD and rollback | Tests on every pull request, automatic deploy to DEV, manual approved deploy to PROD, automatic rollback ([From pull request to production](#from-pull-request-to-production)) |
+| Observability | Logs, metrics and traces sharing one trace ID, in Grafana ([Monitoring and alerts](#monitoring-and-alerts), [screenshot](#screenshots)) |
+| Alerts | E-mail alerts on user impact ([alert list](_docs/runbooks/monitoring.md#alerts)) |
+| On-call agent | Not in this version ([Status](#status)) |
+
 ## The problem
 
 A small tutoring or test-prep center usually runs on spreadsheets, chat
@@ -78,7 +95,7 @@ The full feature list is in the
 | Where | Link |
 |---|---|
 | DEV: every merge to `develop` deploys here. Sign in as the demo visitor ([how](#sign-in-to-dev-as-the-visitor)) | <https://dev.classora.dev> |
-| PROD: the owner releases here after approval (serves after the first release) | <https://app.classora.dev> |
+| PROD: live since the first release (v2026.11.15-18e2fec); the owner releases here after approval. Accounts are real, so there is no demo login | <https://app.classora.dev> |
 | Monitoring (Grafana, login required) | <https://grafana.classora.dev> |
 
 ### Sign in to DEV as the visitor
@@ -173,7 +190,7 @@ parts that touch the database. The design and its reasons are in
 ```bash
 make test       # the API unit and integration tests, plus the web app tests
 make test-all   # everything make test runs, plus the slow migration, billing and simulation suites
-make e2e        # end-to-end tests in a real browser, with accessibility checks
+make e2e        # end-to-end tests in a real browser, with accessibility checks (also needs Node.js 24 and uv)
 ```
 
 - **Unit tests** check the business rules on their own.
@@ -183,30 +200,11 @@ make e2e        # end-to-end tests in a real browser, with accessibility checks
 - **End-to-end tests** (Playwright) click through the app on its own Docker
   stack.
 
-`make test` and `make test-all` need only Docker and Make. They build two test
-images, then run the tests in a few containers at once (by default one fewer
-than the CPUs Docker has, at most 4), each API container with its own
-throwaway PostgreSQL. They print one summary line per part and fail if any
-part fails; full logs are in `test-results/docker/`. On a machine with little
-memory (a Docker Desktop VM under 8 GB), run `make test SHARDS=2` or
-`SHARDS=1`.
-
-`make test` runs the same API tests as CI's unit and integration jobs. The
-full `make test` took about 53 minutes on CI's 4-core amd64 runner and about
-66 minutes on its 4-core arm64 runner (3 test containers at a time). A pull
-request's smaller selection takes about 8 minutes, and the web tests alone
-took about 12 minutes on a 4-core Intel Mac.
-`make test-all` also runs the migration checks, the billing invariant suite
-and the simulation seed tests; that full selection took 1½ to 2 hours on CI's
-4-core runners.
-
-`make test` does not work with rootless Docker, Podman, Docker Desktop with
-Enhanced Container Isolation, or a Linux firewall that blocks containers from
-reaching the host. Use the native commands in the
-[full README](_docs/Full_README.md#running-tests) there.
-
-The end-to-end tests also need Node.js 24 and
-[uv](https://docs.astral.sh/uv/) on the host.
+`make test` and `make test-all` need only Docker and Make, and print one
+summary line per part. The full `make test` takes about an hour on a 4-core
+machine. On a machine with little memory, run `make test SHARDS=2`. Run times,
+the Docker setups that don't work, and the native commands are in the
+[full README](_docs/Full_README.md#running-tests).
 
 How to write tests is in the
 [testing guidelines](_docs/testing-guidelines.md).
@@ -238,6 +236,10 @@ flowchart LR
   ([`release-prod.yml`](.github/workflows/release-prod.yml)). The owner merges
   a release pull request into `main` and approves the deploy in GitHub. PROD
   then runs the exact images DEV already tested.
+- **Rollback:** on DEV and PROD alike, if the app isn't healthy after a
+  deploy, the server goes back to the previous release by itself. The owner
+  can also roll PROD back to an earlier release by hand
+  ([release runbook](_docs/runbooks/release.md#roll-back-or-redeploy)).
 
 The servers back up their database every night and are rebuilt from code
 with Terraform. Details are in the
@@ -369,14 +371,17 @@ Classora was built in four weeks (from 2026-10-16) by the agent team above:
 
 ## Status
 
-**Pre-alpha, close to its first production release.**
+**Pre-alpha, live in production** (first release v2026.11.15-18e2fec).
 - **Built:** every feature in the [full README](_docs/Full_README.md#features)
-  works end to end on DEV.
+  works end to end on DEV and PROD.
 - **Hardening done:**
   - a security review found no critical or high issues
     ([security review](_docs/security-review.md));
   - the server size was load-tested ([report](_docs/load-test-report.md)).
-- **Not in this version:** file uploads and documents.
+- **Not in this version:**
+  - file uploads and documents;
+  - an on-call responder agent that acts on alerts (planned after the MVP;
+    today alerts e-mail the owner).
 - **Remaining work:** what's left is in the open
   [milestones](https://github.com/JaimeSolisS/classora/milestones).
 
